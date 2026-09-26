@@ -961,18 +961,26 @@ impl Plan {
     /// `dtype`.
     ///
     /// The `create` section types its computed columns against the datatype;
-    /// otherwise `where` keeps it and `select` publishes from it.
+    /// otherwise `where` keeps it and `select` publishes from it - a `where`
+    /// that names what only the `select` publishes typed after it, where it
+    /// runs.
     ///
     /// # Errors
     ///
     /// Returns an error when a section does not bind against the datatype.
     pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType> {
+        let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
         if let Some(schema) = &self.schema {
-            let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
             return Ok(schema
                 .declared_field(Some(&root), self.root_name())?
                 .dtype()
                 .clone());
+        }
+        let input = root.fields().iter().map(Field::name);
+        if super::filter_after_select(&self.filter, &self.selector, input) {
+            return self
+                .filter
+                .apply_datatype(&self.selector.apply_datatype(dtype)?);
         }
         self.selector
             .apply_datatype(&self.filter.apply_datatype(dtype)?)
@@ -1004,11 +1012,12 @@ impl Plan {
     /// The stored columns a read has to decode for this plan, when the plan
     /// narrows them; `None` reads everything.
     ///
-    /// A `select *` reads every column; anything else reads what its own
-    /// clauses name.
+    /// A `select` holding a `*` reads every column - whatever it excludes,
+    /// since what it keeps is the schema's to name, and whatever it appends;
+    /// anything else reads what its own clauses name.
     #[must_use]
     pub fn read_columns(&self) -> Option<Vec<String>> {
-        if self.selector.is_all() {
+        if self.selector.has_star() {
             return None;
         }
         Some(self.columns())
@@ -1509,6 +1518,7 @@ mod arrow {
         /// the projection drops; a key that names what the projection
         /// publishes - an alias - orders after it instead.
         pub(crate) fn shape_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            let reader = self.narrowed_arrow_reader(reader)?;
             // A `where` over an alias runs after the projection that
             // publishes it; every other `where` runs first, where it prunes.
             let late = super::super::filter_after_select(
@@ -1547,6 +1557,52 @@ mod arrow {
                 reader = crate::arrow::sliced_reader(reader, self.offset.unwrap_or(0), self.limit);
             }
             Ok(reader)
+        }
+
+        /// The stream with only the columns some section reads.
+        ///
+        /// A column no section reads is dropped first, as the bare column it
+        /// is - which moves no buffer - so a `where` that keeps some rows
+        /// never copies a column the `select` would drop after it. A `*`
+        /// reads every column it does not exclude. A stream whose names two
+        /// columns spell alike is left whole, since only a quoted name tells
+        /// them apart.
+        fn narrowed_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            if self.selector.is_all() {
+                return Ok(reader);
+            }
+            let schema = reader.schema();
+            let names: Vec<&str> = schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect();
+            let alike = names.iter().enumerate().any(|(index, name)| {
+                names[..index]
+                    .iter()
+                    .any(|held| held.eq_ignore_ascii_case(name))
+            });
+            if alike {
+                return Ok(reader);
+            }
+            let read = self.columns();
+            let kept: Vec<&str> = names
+                .iter()
+                .copied()
+                .filter(|name| {
+                    read.iter().any(|column| column.eq_ignore_ascii_case(name))
+                        || (self.selector.has_star()
+                            && !self
+                                .selector
+                                .excluded()
+                                .iter()
+                                .any(|excluded| excluded.eq_ignore_ascii_case(name)))
+                })
+                .collect();
+            if kept.is_empty() || kept.len() == names.len() {
+                return Ok(reader);
+            }
+            super::Selector::from_columns(kept).apply_arrow_reader(reader)
         }
 
         /// Order a whole stream, which is the one section that has to collect.

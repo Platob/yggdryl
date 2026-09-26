@@ -611,6 +611,17 @@ impl Term {
         }
     }
 
+    /// The arguments of an `unnest` call, when this term is one.
+    ///
+    /// A projection whose whole term answers here multiplies rows; anywhere
+    /// else the call is refused where it is typed.
+    pub(crate) fn as_unnest(&self) -> Option<&[Self]> {
+        match self {
+            Self::Function(Function::Unnest, arguments) => Some(arguments),
+            _ => None,
+        }
+    }
+
     /// The top-level column a path term starts at, if it is one.
     #[must_use]
     pub fn root_column(&self) -> Option<&str> {
@@ -1448,6 +1459,8 @@ fn negate_value(value: &Scalar) -> Option<Scalar> {
             | Scalar::Decimal64(_)
             | Scalar::Decimal128(_)
             | Scalar::Decimal256(_)
+            | Scalar::Decimal(_)
+            | Scalar::BigDecimal(_)
             | Scalar::Duration32(_)
             | Scalar::Duration64(_)
     )

@@ -617,6 +617,12 @@ const nativeCodec = Object.freeze({
     loadPath: binding.tomlLoadPathNative,
     loads: binding.tomlLoadsNative,
   }),
+  xml: Object.freeze({
+    dumpPath: binding.xmlDumpPathNative,
+    dumps: binding.xmlDumpsNative,
+    loadPath: binding.xmlLoadPathNative,
+    loads: binding.xmlLoadsNative,
+  }),
   yaml: Object.freeze({
     dumpAll: binding.yamlDumpAllNative,
     dumpAllPath: binding.yamlDumpAllPathNative,
@@ -644,6 +650,10 @@ for (const name of [
   'tomlDumpsNative',
   'tomlLoadPathNative',
   'tomlLoadsNative',
+  'xmlDumpPathNative',
+  'xmlDumpsNative',
+  'xmlLoadPathNative',
+  'xmlLoadsNative',
   'yamlDumpAllNative',
   'yamlDumpAllPathNative',
   'yamlDumpPathNative',
@@ -660,6 +670,7 @@ const TRANSPORT_KEY = '__yggdryl_codec__'
 const FORMAT_JSON = 'json'
 const FORMAT_JSON_LINES = 'json_lines'
 const FORMAT_TOML = 'toml'
+const FORMAT_XML = 'xml'
 const FORMAT_YAML = 'yaml'
 const MAX_DEPTH = 48
 const DEFAULT_MAX_STREAM_BYTES = 64 * 1024 * 1024
@@ -822,19 +833,19 @@ function fillingArguments(options) {
   ]
 }
 
-// `{{ }}` substitution is a YAML and TOML feature: JSON is a data
+// `{{ }}` substitution is a YAML, TOML and XML feature: JSON is a data
 // interchange format, and the core refuses the pair for it by name. The
 // refusal happens here too, so a JS caller learns at the call site rather
 // than from a native error.
 function refuseFillingForJson(format, options) {
   if (options.placeholders !== undefined && options.placeholders !== null) {
     throw new TypeError(
-      `placeholders are a yaml/toml feature, not a ${format} one`,
+      `placeholders are a yaml/toml/xml feature, not a ${format} one`,
     )
   }
   if (options.environment !== undefined && options.environment !== false) {
     throw new TypeError(
-      `environment resolution is a yaml/toml feature, not a ${format} one`,
+      `environment resolution is a yaml/toml/xml feature, not a ${format} one`,
     )
   }
 }
@@ -991,7 +1002,7 @@ function markerShape(value, kind, keys) {
 // exactly, and a decimal fraction has no finite binary expansion at all.
 function fromTypedMarker(value) {
   const decimalKeys = [TRANSPORT_KEY, 'scale', 'value'].sort()
-  for (const id of ['decimal32', 'decimal64', 'decimal128', 'decimal256']) {
+  for (const id of ['decimal32', 'decimal64', 'decimal128', 'decimal256', 'decimal', 'bigdecimal']) {
     if (markerShape(value, id, decimalKeys)) {
       return nativeScalarFromDecimalParts(id, BigInt(value.value), value.scale)
     }
@@ -2379,6 +2390,8 @@ function nativeFormat(format) {
       return nativeCodec.json
     case FORMAT_TOML:
       return nativeCodec.toml
+    case FORMAT_XML:
+      return nativeCodec.xml
     case FORMAT_YAML:
       return nativeCodec.yaml
     default:
@@ -3069,6 +3082,7 @@ function fixedCodec(format, multiFormat) {
 
 const json = fixedCodec(FORMAT_JSON, FORMAT_JSON_LINES)
 const toml = Object.freeze(singleDocumentMethods(FORMAT_TOML))
+const xml = Object.freeze(singleDocumentMethods(FORMAT_XML))
 const yaml = fixedCodec(FORMAT_YAML, FORMAT_YAML)
 
 const codec = Object.freeze({
@@ -4225,7 +4239,7 @@ NativeFixMsg.prototype.set = function set(key, value) {
 // widen, because a line is a decoded row and not a value - and a batch source
 // as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
 // batch, IPC bytes. That widening lives here, beside the conversions it uses.
-for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'messages']) {
+for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'marketOperationsArrowReader', 'messages']) {
   const native = binding.FixCodec.prototype[name]
   binding.FixCodec.prototype[name] = {
     [name](source) {
@@ -4281,6 +4295,7 @@ function asLine(value) {
     [binding.FixCodec, 'parseLines', '_parseLinesNative', toBytes, 'lines'],
     [binding.FixCodec, 'parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
     [binding.FixCodec, 'lifecycle', '_lifecycleNative', asMessage, 'messages'],
+    [binding.FixCodec, 'marketOperations', '_marketOperationsNative', asMessage, 'messages'],
   ]
   for (const [owner, name, hidden, read, what] of streams) {
     const native = owner.prototype[hidden]
@@ -4306,6 +4321,11 @@ function asLine(value) {
   delete binding.FixCodec.prototype._bookArrowReaderNative
   binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(messages, snapshotMillis = 0, global = false) {
     return nativeBookArrowReader.call(this, pullOf(messages, asMessage, 'messages'), snapshotMillis, global)
+  }
+  const nativeMarketArrowReader = binding.FixCodec.prototype._marketArrowReaderNative
+  delete binding.FixCodec.prototype._marketArrowReaderNative
+  binding.FixCodec.prototype.marketArrowReader = function marketArrowReader(messages) {
+    return nativeMarketArrowReader.call(this, pullOf(messages, asMessage, 'messages'))
   }
   // A format answers rows rather than a stream, so the pull is drained here
   // and the failure a bad item raises is that call's own.
@@ -4596,6 +4616,14 @@ NativeMarketData.arrowReader = function arrowReader(items, batchRowSize, batchBy
     batchRowSize,
     batchByteSize,
   )
+}
+// A view reads its stream as the `FixCodec` batch twins read theirs:
+// whatever `BatchReader.from` accepts - a native reader, an Apache Arrow JS
+// table or batch, IPC bytes - is a source.
+const nativeMarketDataApplyView = binding._marketDataApplyViewNative
+delete binding._marketDataApplyViewNative
+NativeMarketData.applyView = function applyView(view, reader, lifts, crosscode) {
+  return nativeMarketDataApplyView(view, BatchReader.from(reader), lifts, crosscode)
 }
 
 // `BookIterator` and `EventIterator` are built only through their hidden
@@ -5065,6 +5093,7 @@ binding.graph = graph
 binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
+binding.xml = xml
 binding.yaml = yaml
 
 // The core's static enum vocabularies, frozen: pure enums cross the boundary
@@ -5089,6 +5118,7 @@ binding.yaml = yaml
     compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
     levels: Object.freeze(levels),
     marketKinds: Object.freeze(listing.marketKinds),
+    marketViews: Object.freeze(listing.marketViews),
     mdUpdateActions: Object.freeze(listing.mdUpdateActions),
     eventColumns: Object.freeze(listing.eventColumns),
     marketColumns: Object.freeze(listing.marketColumns),

@@ -273,6 +273,15 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.push(held.scale() as u8);
             chunk.extend_from_slice(&held.coefficient().into_le_bytes());
         }
+        // The fixed leaves carry no scale byte: the scale is the datatype's.
+        Scalar::Decimal(held) => {
+            chunk.push(DataTypeId::Decimal.as_u8());
+            chunk.extend_from_slice(&held.units().to_le_bytes());
+        }
+        Scalar::BigDecimal(held) => {
+            chunk.push(DataTypeId::BigDecimal.as_u8());
+            chunk.extend_from_slice(&held.units().into_le_bytes());
+        }
         Scalar::Date32(held) => fixed(chunk, DataTypeId::Date32, &held.count().to_le_bytes()),
         Scalar::Date64(held) => fixed(chunk, DataTypeId::Date64, &held.count().to_le_bytes()),
         Scalar::Time32(held) => {
@@ -564,6 +573,14 @@ impl<'a> Reader<'a> {
                     crate::i256::from_le_bytes(self.array()?),
                     scale,
                 ))
+            }
+            DataTypeId::Decimal => crate::Decimal::from_units(i128::from_le_bytes(self.array()?))
+                .map(Scalar::Decimal)
+                .ok_or_else(|| self.refuse("decimal units exceed 38 digits"))?,
+            DataTypeId::BigDecimal => {
+                crate::BigDecimal::from_units(crate::i256::from_le_bytes(self.array()?))
+                    .map(Scalar::BigDecimal)
+                    .ok_or_else(|| self.refuse("bigdecimal units exceed 76 digits"))?
             }
             DataTypeId::Date32 => Scalar::date32(i32::from_le_bytes(self.array()?)),
             DataTypeId::Date64 => Scalar::date64(i64::from_le_bytes(self.array()?)),

@@ -129,6 +129,14 @@ market operations and books into lifted ``marketdata`` batches, one
 :meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
 selects an epoch-aligned snapshot grid and ``global_`` consolidates symbols
 under ``GLOBAL``. Lifecycle enrichment remains an explicit composition.
+:meth:`FixCodec.market_operations` is the sorted door: it collects a
+capture, admits what the book door admits, expands each message and answers
+the operations stably sorted by the instant a book folds them at, an
+expansion refused first; :meth:`FixCodec.market_arrow_reader` writes them as
+``marketdata`` rows and :meth:`FixCodec.market_operations_arrow_reader` reads
+them off FIX rows. Each leaf carries, in its metadata, what its message
+states that no typed column reads, unless the codec's ``market_metadata`` is
+off.
 :meth:`FixCodec.write_arrow_reader` is the encode direction, re-emitting
 every row's wire. :meth:`FixCodec.format_messages` and
 :meth:`FixCodec.format_arrow_reader` answer the same messages under whatever
@@ -136,7 +144,8 @@ field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
 ``payload_column``, ``null_values``, ``direction``, ``batch_byte_size``,
-``snapshot_ns`` and ``official_time_delay_ms`` - is on the codec; a positive
+``snapshot_ns``, ``official_time_delay_ms`` and ``market_metadata`` - is on
+the codec; a positive
 ``snapshot_ns`` emits independent living views on its epoch-aligned grid and
 zero, a negative width or ``None`` disables them, while
 ``official_time_delay_ms`` is how far from ``SendingTime(52)`` an official

@@ -953,7 +953,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
 
-`TextLine` exposes the [event identity](../graph.md#event) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+`TextLine` exposes the [event identity](../graph/index.md#event) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 
 === "Rust"
 
@@ -1320,6 +1320,134 @@ One Windows x86_64 release run, one fixture per runtime; compare routes within a
 | natural document emit | Node | 15.5 ms |
 
 ```bash
+python/.venv/bin/python python/benchmarks/text.py --iterations 10000
+npm run --prefix node bench:text
+```
+
+## XML
+
+A document is one [`Scalar`](../types/scalar.md): the record naming its root element. An attribute is an `@name` entry, an element's own text beside attributes or children is `#text`, child elements sharing a name are a sequence in document order, a self-closed element (`<a/>`) is null where one with a body (`<a></a>`) is the empty text, and every leaf is text - XML proves nothing else, so a declared field is what types a document, and it reads one repeated element as one item of a sequence column and an element occurring no time as the empty sequence. Names keep the prefix the document spells; comments, processing instructions and the document type declaration are skipped, and an entity a declaration would have defined is refused by name. Writing is the inverse, one line unless indented, and refuses what XML cannot spell: a root with several entries, a sequence inside a sequence, a key that is not an XML name.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::xml;
+    use yggdryl::{from_xml_scalar, from_xml_scalar_with_field, into_xml_scalar, Field, Scalar};
+
+    let source = "<order id=\"7\"><symbol>AAPL</symbol><leg>1</leg><leg>2</leg><note/></order>";
+    let value = xml::from_utf8(source)?;
+
+    // The record naming its root: `@` for an attribute, a sequence for a
+    // repeated element, null for a self-closed one, text for every leaf.
+    let order = value.get_key_str("order").expect("the root element");
+    assert_eq!(order.get_key_str("@id").and_then(Scalar::as_str), Some("7"));
+    assert_eq!(
+        order.get_key_str("leg").and_then(Scalar::as_sequence).map(<[Scalar]>::len),
+        Some(2)
+    );
+    assert_eq!(order.get_key_str("note"), Some(&Scalar::Null));
+
+    // It writes back as the same document, on one line unless indented.
+    let encoded = into_xml_scalar(&value)?;
+    assert_eq!(
+        encoded,
+        "<order id=\"7\"><leg>1</leg><leg>2</leg><note/><symbol>AAPL</symbol></order>"
+    );
+    assert_eq!(from_xml_scalar(encoded.as_bytes())?, value);
+    assert_eq!(xml::from_utf8(&xml::into_utf8(&value)?)?, value);
+
+    // A field types the root element's value: one repeated element read once
+    // is one item of a sequence column, and text is what the column says.
+    let field = Field::from_str(
+        "order: struct<@id: int32 not null, symbol: utf8 not null, leg: serie<int32> not null, note: utf8> not null",
+    )?;
+    let typed = from_xml_scalar_with_field(source, &field)?;
+    assert_eq!(
+        typed,
+        Scalar::from_sequence([
+            Scalar::from(7),
+            Scalar::from("AAPL"),
+            Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+            Scalar::Null,
+        ])
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Scalar, xml
+
+    source = '<order id="7"><symbol>AAPL</symbol><leg>1</leg><leg>2</leg><note/></order>'
+    natural = xml.loads(source)
+    assert natural == {
+        "order": {"@id": "7", "symbol": "AAPL", "leg": ["1", "2"], "note": None}
+    }
+
+    encoded = xml.dumps(natural)
+    assert encoded == (
+        b'<order id="7"><leg>1</leg><leg>2</leg><note/><symbol>AAPL</symbol></order>'
+    )
+    assert xml.loads(encoded) == natural
+    assert xml.loads(encoded, cls=Scalar).kind == "struct"
+
+    # A field types the root element's value; a dataclass `cls` is that field.
+    field = Field(
+        "order",
+        "struct<@id: int32 not null, symbol: utf8 not null, leg: serie<int32> not null, note: utf8>",
+        nullable=False,
+    )
+    assert xml.loads(source, field=field) == {
+        "@id": 7,
+        "symbol": "AAPL",
+        "leg": [1, 2],
+        "note": None,
+    }
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, xml } = require('yggdryl')
+
+    const source = '<order id="7"><symbol>AAPL</symbol><leg>1</leg><leg>2</leg><note/></order>'
+    const natural = xml.loads(source)
+    assert.deepEqual(natural, {
+      order: { '@id': '7', symbol: 'AAPL', leg: ['1', '2'], note: null },
+    })
+
+    const encoded = xml.dumps(natural)
+    assert.ok(Buffer.isBuffer(encoded))
+    assert.equal(
+      encoded.toString(),
+      '<order id="7"><leg>1</leg><leg>2</leg><note/><symbol>AAPL</symbol></order>',
+    )
+    assert.deepEqual(xml.loads(encoded), natural)
+    assert.equal(xml.loads(encoded, { scalar: true }).kind, 'struct')
+
+    // A field types the root element's value.
+    const field = new Field(
+      'order',
+      'struct<@id: int32 not null, symbol: utf8 not null, leg: serie<int32> not null, note: utf8>',
+      false,
+    )
+    assert.deepEqual(xml.loads(source, { field }), {
+      '@id': 7,
+      symbol: 'AAPL',
+      leg: [1, 2],
+      note: null,
+    })
+    ```
+
+As a record medium, a `.xml` handle holds one document element, `data`, with one child element per row named after the root field - `<data><row>...</row></data>` - and reads the rows back as the elements of that name, the root itself when it has none, and no row from an empty root. A charset other than UTF-8 is read off the declaration when neither the handle's media type nor a byte order mark states one, and written back as a declaration for the same reason; the codec itself reads UTF-8, like every other. There is no schema-document door (`DataType::from_xml`, `Field::from_xml`): a schema document types its own leaves, which XML text cannot.
+
+### XML performance
+
+XML is measured where the other formats are: `codec/xml` in the Rust `text` bench, the `XML` rows of `python/benchmarks/text.py`, the `xml/*` rows of `node/benchmarks/text.js`. A table is stated once a release run on the machine the tables above name produces one, and not before.
+
+```bash
+cargo bench -p yggdryl --bench text -- codec/xml
 python/.venv/bin/python python/benchmarks/text.py --iterations 10000
 npm run --prefix node bench:text
 ```

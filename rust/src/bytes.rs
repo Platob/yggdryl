@@ -521,8 +521,8 @@ pub(crate) mod casts {
             DataType::Float16 => 16,
             DataType::Float32 => 24,
             DataType::Float64 => 32,
-            DataType::Decimal128 { .. } => 41,
-            DataType::Decimal256 { .. } => 78,
+            DataType::Decimal128 { .. } | DataType::Decimal => 41,
+            DataType::Decimal256 { .. } | DataType::BigDecimal => 78,
             DataType::DateTime64 { .. }
             | DataType::Date32
             | DataType::Date64

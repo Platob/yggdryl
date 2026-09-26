@@ -731,6 +731,14 @@ fn call(
             segment.apply_scalar(&container.field, first)?
         }
         Function::User(_) => unreachable!("a user function returned above"),
+        // Typing refuses an unnest anywhere a node is built from it, so no
+        // row ever reaches one; saying so costs nothing.
+        Function::Unnest => {
+            return Err(super::typing::unnest_misplaced(
+                &function.as_str(),
+                "where a value is read",
+            ));
+        }
         Function::Slice => {
             let Some(items) = first.as_serie() else {
                 return Ok(Scalar::Null);
@@ -953,7 +961,9 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal256 { .. } => Scalar::d256(i256::from_i128(unscaled), scale),
+            DataType::Decimal256 { .. } | DataType::BigDecimal => {
+                Scalar::d256(i256::from_i128(unscaled), scale)
+            }
             _ => Scalar::d128(unscaled, scale),
         };
         return canonical(candidate);

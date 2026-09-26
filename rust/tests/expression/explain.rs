@@ -123,4 +123,47 @@ mod grammar {
             .join("\n")
         );
     }
+
+    #[test]
+    fn a_star_explains_as_the_first_branch_of_its_select() {
+        let selector: yggdryl::expression::Selector =
+            "* exclude (a, b), upper(s) as y".parse().unwrap();
+        assert_eq!(
+            selector.explain(),
+            [
+                "select",
+                "├─ * exclude",
+                "│  ├─ a",
+                "│  └─ b",
+                "└─ y",
+                "   └─ call upper",
+                "      └─ column s",
+            ]
+            .join("\n")
+        );
+        let appended: yggdryl::expression::Selector = "*, s".parse().unwrap();
+        assert!(
+            appended.explain().starts_with("select\n├─ *\n"),
+            "{}",
+            appended.explain()
+        );
+        assert_eq!(yggdryl::expression::Selector::all().explain(), "select *");
+    }
+
+    #[test]
+    fn a_bound_unnest_explains_its_item_over_the_serie_it_reads() {
+        let schema = rows_schema();
+        let selector: yggdryl::expression::Selector = "i, unnest(legs) as leg".parse().unwrap();
+        let bound = selector.bind(&schema).unwrap();
+        let explained = bound.explain();
+        let lines: Vec<&str> = explained.lines().collect();
+        assert_eq!(lines[0], "select");
+        assert!(lines[1].starts_with("├─ i : int64 null"), "{explained}");
+        assert!(
+            lines[3].starts_with("└─ unnest leg : struct("),
+            "{explained}"
+        );
+        assert!(lines[4].contains("column legs #10"), "{explained}");
+        assert_eq!(lines.len(), 5, "{explained}");
+    }
 }

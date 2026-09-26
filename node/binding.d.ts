@@ -8,6 +8,7 @@ export {
   Digest,
   Expression,
   Field,
+  FieldPath,
   Filter,
   IOBase,
   IOCursor,
@@ -37,6 +38,7 @@ export {
   Xxh128,
   Xxh32,
   Xxh64,
+  type BookLimit,
   type BookRefInput,
   type BytesParameters,
   type BytesParametersInput,
@@ -305,7 +307,9 @@ export type ObjectMap<K extends PropertyKey, V> = { [P in K]: V }
 export type JsonLinesCodecFormat =
   'json_lines' | 'json-lines' | 'jsonl' | 'ndjson'
 export type TomlCodecFormat = 'toml'
-export type SingleCodecFormat = 'json' | 'yaml' | 'yml' | TomlCodecFormat
+export type XmlCodecFormat = 'xml' | 'application/xml' | 'text/xml'
+export type SingleCodecFormat =
+  'json' | 'yaml' | 'yml' | TomlCodecFormat | XmlCodecFormat
 export type CodecFormat = SingleCodecFormat | JsonLinesCodecFormat
 export type JsonLinesPath = `${string}.jsonl` | `${string}.ndjson`
 export type CodecContent =
@@ -386,6 +390,8 @@ export type DataTypeId =
   | 'decimal64'
   | 'decimal128'
   | 'decimal256'
+  | 'decimal'
+  | 'bigdecimal'
   | 'map'
   | 'run_end_encoded'
   | 'variant'
@@ -494,6 +500,8 @@ interface DataTypeKindById {
   decimal64: 'decimal'
   decimal128: 'decimal'
   decimal256: 'decimal'
+  decimal: 'decimal'
+  bigdecimal: 'decimal'
   map: 'nested'
   run_end_encoded: 'nested'
   variant: 'nested'
@@ -754,6 +762,19 @@ declare module './index' {
      */
     bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number, global?: boolean): BatchReader
     /**
+     * The sorted door: a capture collected, what `bookArrowReader` admits
+     * expanded into market operations, stably sorted by `snapunix`, else
+     * `currunix`. Source errors and expansion refusals come first, in
+     * source order, each thrown by its own `next`; a failure of the
+     * iterable itself is thrown once, in place of the end.
+     */
+    marketOperations(messages: Iterable<FixMsg>): MarketDataRowIterator
+    /**
+     * `marketOperations` as bounded batches of lifted `marketdata` rows; one
+     * intake failure is the reader's only item.
+     */
+    marketArrowReader(messages: Iterable<FixMsg>): BatchReader
+    /**
      * A stream of messages as the rows one message field holds them.
      *
      * The third verb, and the one a consumer reads by: `parse*` turns a
@@ -768,6 +789,7 @@ declare module './index' {
     /** The batch twins take whatever `BatchReader.from` accepts. */
     parseTextArrowReader(source: BatchSource): BatchReader
     lifecycleArrowReader(source: BatchSource): BatchReader
+    marketOperationsArrowReader(source: BatchSource): BatchReader
     formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
@@ -1285,7 +1307,16 @@ export type Decimal32Field = FieldOf<'decimal32', bigint>
 export type Decimal64Field = FieldOf<'decimal64', bigint>
 export type Decimal128Field = FieldOf<'decimal128', bigint>
 export type Decimal256Field = FieldOf<'decimal256', bigint>
-export type DecimalField = Decimal128Field | Decimal256Field
+/** What `fields.decimal(name, precision, scale)` answers: the narrowest width. */
+export type DecimalWidthField =
+  | Decimal32Field
+  | Decimal64Field
+  | Decimal128Field
+  | Decimal256Field
+/** The fixed `decimal` leaf: thirty-eight digits at scale eighteen, as a bigint of units. */
+export type DecimalField = FieldOf<'decimal', bigint>
+/** The fixed `bigdecimal` leaf: seventy-six digits at scale eighteen. */
+export type BigDecimalField = FieldOf<'bigdecimal', bigint>
 export type MapField<K = unknown, V = unknown> = FieldOf<
   'map',
   ReadonlyMap<K, V>
@@ -1531,13 +1562,15 @@ export interface FieldsNamespace {
     value: DataTypeInput,
     options?: FieldOptions,
   ): DictionaryField
+  decimal(name: string, options?: FieldOptions): DecimalField
   decimal(
     name: string,
     precision: number,
     scale?: number,
     options?: FieldOptions,
-  ): DecimalField
-  decimal(name: string, precision: number, options: FieldOptions): DecimalField
+  ): DecimalWidthField
+  decimal(name: string, precision: number, options: FieldOptions): DecimalWidthField
+  bigdecimal(name: string, options?: FieldOptions): BigDecimalField
   decimal32(
     name: string,
     precision: number,
@@ -2541,7 +2574,7 @@ export interface BufferedOptions {
 }
 
 /**
- * The options of a format with `{{ }}` placeholder support: YAML and TOML.
+ * The options of a format with `{{ }}` placeholder support: YAML, TOML and XML.
  *
  * JSON is a data interchange format and refuses the pair by name, which is
  * why its methods take plain {@link CodecOptions}.
@@ -2807,6 +2840,15 @@ export interface ParquetFileStatistics {
 export declare const json: StructuredCodec
 /** Byte-first single-document TOML codec using only natural TOML shapes. */
 export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
+/**
+ * Byte-first single-document XML codec.
+ *
+ * A document is the record naming its root element: attributes are `@name`
+ * entries, an element's own text beside them is `#text`, repeated elements are
+ * an array, a self-closed element is `null`, one with an empty body is `''`,
+ * and every leaf is text until a `field` types the root element's value.
+ */
+export declare const xml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
 export declare const yaml: StructuredCodec<TemplateCodecOptions>
 
@@ -2850,6 +2892,11 @@ export declare const enums: {
   }
   /** Every `MarketData.kind` spelling, e.g. `'order'`, `'order_event'`, `'book_event'`. */
   readonly marketKinds: readonly string[]
+  /**
+   * Every named view `graph.MarketData.plan` and `applyView` read, e.g.
+   * `'orders'`, `'book_sides'`, `'lifecycle'`.
+   */
+  readonly marketViews: readonly string[]
   /** Every `BookRef.action` spelling. */
   readonly mdUpdateActions: readonly string[]
   /** The sixteen event column names, in schema order. */
@@ -3280,7 +3327,7 @@ declare module './index' {
     ): Buffer
     /** Append bytes or UTF-8 text after the last byte, returning its offset. */
     append(data: ArrayBufferView | ArrayBuffer | string): number
-    /** Decode inferred JSON, YAML, or TOML, including its content coding. */
+    /** Decode inferred JSON, YAML, TOML, or XML, including its content coding. */
     readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
     readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T
     /** Encode one JavaScript or native `Scalar` through the inferred format. */
@@ -3883,6 +3930,20 @@ declare module './index' {
       batchRowSize?: number,
       batchByteSize?: number,
     ): BatchReader
+    /**
+     * One named view over a `marketdata` stream - exactly
+     * `MarketData.plan(view, lifts, crosscode)` applied to `reader`, bound
+     * once against its schema. The reader is whatever `BatchReader.from`
+     * accepts, and a native one is consumed; `lifts` are `FieldPath`s
+     * appended after the view's own columns, and only `lifecycle` takes a
+     * `crosscode`.
+     */
+    function applyView(
+      view: string,
+      reader: BatchSource,
+      lifts?: ReadonlyArray<string | FieldPath> | null,
+      crosscode?: string | null,
+    ): BatchReader
   }
   interface BookEvent {
     /**
@@ -3939,7 +4000,11 @@ export interface Graph {
   readonly SnapshotEvent: typeof SnapshotEvent
   /** One value over every market leaf, with the lifted `marketdata` Arrow doors. */
   readonly MarketData: typeof MarketData
-  /** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+  /**
+   * A stream of `MarketData`: the lazy row-decode walk
+   * `MarketData.fromArrowReader` answers, and the sorted operations
+   * `FixCodec.marketOperations` answers.
+   */
   readonly MarketDataRowIterator: typeof MarketDataRowIterator
   /** Books from a sorted stream of market items, pulling them lazily. */
   readonly BookIterator: BookIteratorConstructor

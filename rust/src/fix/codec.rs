@@ -499,6 +499,9 @@ pub struct FixCodec {
     /// stand and still date the message, in milliseconds; nonpositive
     /// leaves only a clock equal to it.
     official_time_delay_ms: i64,
+    /// Whether a market operation this codec builds carries what its
+    /// message states that no typed column reads.
+    market_metadata: bool,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -639,6 +642,7 @@ impl FixCodec {
             threads: std::thread::available_parallelism().map_or(1, usize::from),
             snapshot_ns: 0,
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
+            market_metadata: true,
             beginstring,
         }
     }
@@ -937,6 +941,29 @@ impl FixCodec {
     #[must_use]
     pub const fn official_time_delay_ms(&self) -> i64 {
         self.official_time_delay_ms
+    }
+
+    /// Sets whether a market operation this codec builds carries, in its
+    /// metadata, what its message states that no typed column reads.
+    ///
+    /// On by default, and read by [`Self::market_operations`],
+    /// [`Self::market_arrow_reader`] and [`Self::book_arrow_reader`]: every
+    /// field but the ones a column types, the envelope and the identifier
+    /// maps' sources, as [`FixMsg::market_operations`] states them. The map
+    /// is part of what a leaf's identity digests, so turning it off answers
+    /// other identities for any message stating such a field - and nothing
+    /// changes for a message stating none.
+    #[must_use]
+    pub const fn with_market_metadata(mut self, market_metadata: bool) -> Self {
+        self.market_metadata = market_metadata;
+        self
+    }
+
+    /// Whether a market operation this codec builds carries its message's
+    /// unmapped fields.
+    #[must_use]
+    pub const fn market_metadata(&self) -> bool {
+        self.market_metadata
     }
 
     /// The delay as the nanosecond distance a dating compares against: never

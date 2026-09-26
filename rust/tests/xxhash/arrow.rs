@@ -191,6 +191,22 @@ mod columns {
                 Scalar::from_sequence([Scalar::d128(18_723, 3), Scalar::d128(-1, 3), Scalar::Null]),
             ),
             (
+                Field::new("decimal", DataType::Decimal, true),
+                Scalar::from_sequence([
+                    Scalar::Decimal("82.5".parse().unwrap()),
+                    Scalar::Decimal(yggdryl::Decimal::MIN),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("bigdecimal", DataType::BigDecimal, false),
+                Scalar::from_sequence([
+                    Scalar::BigDecimal(yggdryl::BigDecimal::MAX),
+                    Scalar::BigDecimal(yggdryl::BigDecimal::from_int(-7)),
+                    Scalar::BigDecimal(yggdryl::BigDecimal::ZERO),
+                ]),
+            ),
+            (
                 Field::new("utf8", DataType::utf8(), true),
                 Scalar::from_sequence([
                     Scalar::from(""),

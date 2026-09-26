@@ -172,6 +172,56 @@ pub(crate) fn stages<M: Measurement>(
         });
     });
 
+    // The parse, the walk, and then the sorted market door: every admitted
+    // delivery expanded into its leaves, each carrying its unmapped fields,
+    // and the leaves sorted by the instant a book folds them at. The one
+    // trade capture whose side states no `Side(54)` is a refusal the door
+    // yields first, and is drained with the rest.
+    group.bench_function("market", |bencher| {
+        bencher.iter(|| {
+            black_box(&codec)
+                .market_operations(
+                    codec.lifecycle(codec.parse_text_lines(black_box(&lines).iter())),
+                )
+                .count()
+        });
+    });
+
+    // The walked deliveries as `marketdata` rows, folded: the deliveries the
+    // door refuses are left out once, outside the timer, because one intake
+    // refusal is the reader's whole answer and would leave nothing to lay
+    // out.
+    let admissible: Vec<FixMsg> = codec
+        .lifecycle(messages.clone())
+        .filter_map(Result::ok)
+        .filter(|message| message.market_operations().is_ok())
+        .collect();
+    let market_rows = codec
+        .market_arrow_reader(admissible.clone())
+        .expect("a market reader")
+        .try_fold(0_usize, |rows, batch| {
+            batch.map(|batch| rows + batch.num_rows())
+        })
+        .expect("the admissible deliveries lay out");
+    assert!(market_rows > 0, "the capture reaches a book");
+    group.bench_function("market_arrow_reader", |bencher| {
+        bencher.iter_batched(
+            || admissible.clone(),
+            |held| {
+                let rows = black_box(&codec)
+                    .market_arrow_reader(held)
+                    .expect("a market reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the admissible deliveries lay out");
+                assert_eq!(rows, market_rows);
+                rows
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
     // What a message costs after it is built, each over fresh clones set up
     // outside the timer: a clone carries none of what a message derives
     // about itself on its first projection, so each number is the pass

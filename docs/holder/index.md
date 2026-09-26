@@ -6,7 +6,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | --- | --- | --- |
 | [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
-| [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML scalars, `std::io` adapters | default |
+| [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
 | [Records](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | `arrow` (default), `parquet` |
 | [Partitions](#partitions) | listings, globs, Hive pruning, partition columns, derived columns | default |
 | [Call counts](#call-counts) | `Counted`, the `IOBase` call budget every derived operation is held to | default |
@@ -1276,7 +1276,7 @@ fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>   // c
 fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()>
 fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>                    // the offset the bytes landed at
 fn read_digest(&self, algorithm: DigestAlgorithm) -> Result<Digest>
-fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>              // JSON, YAML or TOML by media type
+fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>              // JSON, YAML, TOML or XML by media type
 fn write_scalar(&mut self, value: &Scalar) -> Result<()>
 ```
 
@@ -1389,7 +1389,7 @@ Both stream [`pstream_bytes`](#streams-and-cursors) and retain one bounded chunk
 
 ### Structured values
 
-The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
+The media type selects JSON, YAML, TOML or XML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
 
 === "Rust"
 

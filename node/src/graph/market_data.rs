@@ -5,9 +5,10 @@ use std::iter::FusedIterator;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use napi::bindgen_prelude::{Either10, Env, Function, Result, Unknown};
+use napi::bindgen_prelude::{ClassInstance, Either, Either10, Env, Function, Result, Unknown};
 use napi_derive::napi;
-use yggdryl::graph::{MarketData as CoreMarketData, MarketKind};
+use yggdryl::FieldPath;
+use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
 
@@ -17,8 +18,10 @@ use super::operation::{
 };
 use super::trade::JsTradeEvent;
 use super::{AnyMarketData, market_data_from, market_data_of};
+use crate::expression::JsPlan;
 use crate::field::JsField;
 use crate::iomedia::JsBatchReader;
+use crate::text::line::{JsFieldPath, path_from_input};
 use crate::{Pulled, exact_u64, javascript_failure, napi_error};
 
 /// The root a batch of `MarketData` rows is named by, the core's own
@@ -81,6 +84,22 @@ pub(crate) fn from_json(text: &str) -> Result<CoreMarketData> {
         return Err(napi_error("the MarketData text holds more than one row"));
     }
     Ok(data)
+}
+
+/// The lifts a view appends, each path read once.
+fn lifts_of(
+    lifts: Option<Vec<Either<String, ClassInstance<'_, JsFieldPath>>>>,
+) -> Result<Vec<FieldPath>> {
+    lifts
+        .unwrap_or_default()
+        .into_iter()
+        .map(|lift| {
+            path_from_input(match &lift {
+                Either::A(text) => Either::A(text.clone()),
+                Either::B(path) => Either::B(&**path),
+            })
+        })
+        .collect()
 }
 
 /// The batch bounds a caller stated, checked once.
@@ -258,9 +277,28 @@ impl JsMarketData {
     pub fn from_arrow_reader(reader: &mut JsBatchReader) -> Result<JsMarketDataRowIterator> {
         let batches = reader.take()?;
         let rows = CoreMarketData::from_arrow_reader(batches).map_err(napi_error)?;
-        Ok(JsMarketDataRowIterator {
-            inner: Box::new(rows),
-        })
+        Ok(JsMarketDataRowIterator::over(Box::new(rows)))
+    }
+
+    /// The plan one named view is over a `marketdata` stream - `orders`,
+    /// `quotes`, `executions`, `trades`, `book_sides`, `books`, or the
+    /// `lifecycle` of the chain `crosscode` names, the one view that takes
+    /// one - read ignoring ASCII case, with each lift, a `FieldPath` read
+    /// once, appended as a projection after the view's own columns. Built
+    /// structurally; its text reads back as the same plan.
+    #[napi(
+        ts_args_type = "view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null"
+    )]
+    pub fn plan(
+        view: String,
+        lifts: Option<Vec<Either<String, ClassInstance<'_, JsFieldPath>>>>,
+        crosscode: Option<String>,
+    ) -> Result<JsPlan> {
+        let view = CoreMarketView::read(&view, crosscode.as_deref()).map_err(napi_error)?;
+        let lifts = lifts_of(lifts)?;
+        CoreMarketData::plan(&view, &lifts)
+            .map(JsPlan::from_core)
+            .map_err(napi_error)
     }
 
     /// `MarketData(<curruuid>, kind=.., crosscode=..)`.
@@ -279,17 +317,29 @@ element_getters!(JsMarketData);
 market_getters!(JsMarketData);
 common_verbs!(JsMarketData);
 
-/// The lazy row-decode walk `MarketData.fromArrowReader` answers.
+/// A stream of `MarketData`: the lazy row-decode walk
+/// `MarketData.fromArrowReader` answers, and the sorted operations
+/// `FixCodec.marketOperations` answers.
 #[napi(js_name = "MarketDataRowIterator")]
 pub struct JsMarketDataRowIterator {
     inner: Box<dyn FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send>,
 }
 
+impl JsMarketDataRowIterator {
+    /// Wrap a stream the core built.
+    pub(crate) fn over(
+        inner: Box<dyn FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send>,
+    ) -> Self {
+        Self { inner }
+    }
+}
+
 #[napi]
 impl JsMarketDataRowIterator {
-    /// Advance the stream: the next value, or `null` at its end; a row the
-    /// decoder refuses throws, once, and ends the walk. The loader wraps
-    /// this into the iterator protocol.
+    /// Advance the stream: the next value, or `null` at its end; an item the
+    /// stream refuses throws, once - a decode walk ends there, the sorted
+    /// operations continue past it. The loader wraps this into the iterator
+    /// protocol.
     #[allow(clippy::should_implement_trait)] // JavaScript's iterator adapter needs a throwing next().
     #[napi(ts_return_type = "IteratorResult<MarketData>")]
     pub fn next(&mut self) -> Result<Option<JsMarketData>> {
@@ -323,4 +373,23 @@ pub fn market_data_arrow_reader_native(
     let reader =
         CoreMarketData::arrow_reader(items, batch_row_size, batch_byte_size).map_err(napi_error)?;
     Ok(JsBatchReader::from_core(reader, ROOT_NAME))
+}
+
+/// One named view over a `marketdata` stream: exactly
+/// `MarketData.plan(view, lifts, crosscode)` applied to `reader`, bound once
+/// against its schema - `graph.MarketData.applyView`'s native half, a
+/// module function so the loader can delete it once captured. The view and
+/// the lifts are read before the reader is taken; the reader is consumed.
+#[napi(js_name = "_marketDataApplyViewNative", skip_typescript)]
+pub fn market_data_apply_view_native(
+    view: String,
+    reader: &mut JsBatchReader,
+    lifts: Option<Vec<Either<String, ClassInstance<'_, JsFieldPath>>>>,
+    crosscode: Option<String>,
+) -> Result<JsBatchReader> {
+    let view = CoreMarketView::read(&view, crosscode.as_deref()).map_err(napi_error)?;
+    let lifts = lifts_of(lifts)?;
+    let root = reader.root_name().to_owned();
+    let viewed = CoreMarketData::apply_view(&view, &lifts, reader.take()?).map_err(napi_error)?;
+    Ok(JsBatchReader::from_core(viewed, &root))
 }

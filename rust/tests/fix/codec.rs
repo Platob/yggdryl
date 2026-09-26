@@ -2761,6 +2761,20 @@ fn the_official_time_delay_is_the_codecs_own_and_bounds_the_transaction() {
     }
 }
 
+/// Whether a market operation carries its message's unmapped fields is the
+/// codec's own switch: on by default, set by value, and carried by a clone
+/// into every door that builds one.
+#[test]
+fn the_market_metadata_switch_is_the_codecs_own_and_on_by_default() {
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new()));
+    assert!(codec.market_metadata());
+    let bare = codec.clone().with_market_metadata(false);
+    assert!(!bare.market_metadata());
+    assert!(!bare.clone().market_metadata(), "a clone keeps it");
+    assert!(bare.with_market_metadata(true).market_metadata());
+    assert!(codec.market_metadata(), "the original is untouched");
+}
+
 /// `60=20260102` states a day, which the parse restates as that day's
 /// midnight. Midnight to the nanosecond is that statement and no other a
 /// venue makes, so the sending clock keeps the message even where the two

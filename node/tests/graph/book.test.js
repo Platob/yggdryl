@@ -78,6 +78,80 @@ test('BookSide: equals, stableHash, toString, clone and toJSON round trip', () =
   assert.ok(side.toString().startsWith(`BookSide(${side.curruuid}`))
 })
 
+test('BookSide: limits fold the live entries one level a price', () => {
+  // An empty side has no limit and no depth to sum.
+  const empty = new graph.BookSide('BUY')
+  assert.deepEqual(empty.limits, [])
+  assert.equal(empty.depth(1), '0')
+
+  // Two entries at one price are one limit naming both, in position
+  // order; a lower price is the next limit.
+  const side = empty
+    .withOperation(order(CLOCK, '101', 'O-1'))
+    .withOperation(order(CLOCK, '101', 'O-2'))
+    .withOperation(order(CLOCK, '100', 'O-3'))
+  const [first, second, third] = side.live.map((entry) => entry.curruuid)
+  assert.deepEqual(side.limits, [
+    { price: '101', quantity: '20', uuids: [first, second] },
+    { price: '100', quantity: '10', uuids: [third] },
+  ])
+  assert.equal(side.depth(0), '0')
+  assert.equal(side.depth(1), '20')
+  assert.equal(side.depth(2), '30')
+  assert.equal(side.depth(9), '30')
+
+  // An order stating no price - a market order - rests at the one unpriced
+  // limit, after every priced one, and the best price is still the first
+  // priced limit's.
+  const market = new graph.OrderEvent(CLOCK, { crosscode: 'M-1', side: 'BUY', quantity: 7, ticker: 'IBM' })
+  const priced = empty.withOperation(order()).withOperation(market)
+  const uuids = priced.live.map((entry) => entry.curruuid)
+  assert.deepEqual(priced.limits, [
+    { price: '101', quantity: '10', uuids: [uuids[0]] },
+    { price: null, quantity: '7', uuids: [uuids[1]] },
+  ])
+  assert.equal(priced.bestPrice, '101')
+  assert.equal(priced.depth(2), '17')
+
+  // A level count is a whole number of at most 2^53.
+  assert.throws(() => side.depth(-1), /levels must be a non-negative whole number/)
+  assert.throws(() => side.depth(1.5), /levels must be a non-negative whole number/)
+})
+
+test('BookEvent: locked, spread and imbalance read the two bests', () => {
+  const empty = new graph.BookEvent(CLOCK, 'IBM')
+  assert.equal(empty.isLocked, false)
+  assert.equal(empty.spread, null)
+  assert.equal(empty.imbalance(1), null)
+
+  // Equal bests are locked, never crossed, and the spread is zero.
+  const locked = empty.withOperations([order(CLOCK, '101'), quote(CLOCK, '101')])
+  assert.equal(locked.isLocked, true)
+  assert.equal(locked.isCrossed, false)
+  assert.equal(locked.spread, '0')
+
+  // An ordinary book: the spread is ask less bid, and the imbalance the
+  // signed share of the two depths.
+  const book = empty.withOperations([order(CLOCK, '101'), quote(CLOCK, '102')])
+  assert.equal(book.isLocked, false)
+  assert.equal(book.spread, '1')
+  assert.equal(book.imbalance(1), '0.333333333333333333')
+  assert.equal(book.imbalance(0), null)
+
+  // A crossed book states a negative spread: the honest fact.
+  const crossed = empty.withOperations([order(CLOCK, '103'), quote(CLOCK, '102')])
+  assert.equal(crossed.isCrossed, true)
+  assert.equal(crossed.spread, '-1')
+
+  // One side alone has no spread, and all of the imbalance.
+  const bid = empty.withOperations([order()])
+  const ask = empty.withOperations([quote()])
+  assert.equal(bid.spread, null)
+  assert.equal(bid.imbalance(1), '1')
+  assert.equal(ask.imbalance(1), '-1')
+  assert.throws(() => book.imbalance(-1), /levels must be a non-negative whole number/)
+})
+
 test('BookEvent: an empty book', () => {
   const book = new graph.BookEvent(CLOCK, 'IBM')
   assert.equal(book.currunix, CLOCK)

@@ -274,9 +274,7 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
 
 /// An owning lazy iterator that yields exactly one TOML document.
 pub struct Reader<R: Read> {
-    reader: Option<R>,
-    limits: Limits,
-    byte_offset: usize,
+    inner: crate::text::DocumentReader<R>,
 }
 
 impl<R: Read> Reader<R> {
@@ -288,15 +286,13 @@ impl<R: Read> Reader<R> {
     /// Construct a single-document reader with explicit limits.
     pub const fn with_limits(reader: R, limits: Limits) -> Self {
         Self {
-            reader: Some(reader),
-            limits,
-            byte_offset: 0,
+            inner: crate::text::DocumentReader::new(reader, limits, "toml", from_bytes_with_limits),
         }
     }
 
     /// Return the number of bytes pulled from the source.
     pub const fn byte_offset(&self) -> usize {
-        self.byte_offset
+        self.inner.byte_offset()
     }
 }
 
@@ -304,34 +300,11 @@ impl<R: Read> Iterator for Reader<R> {
     type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let reader = self.reader.take()?;
-        if self.limits.max_documents() == 0 {
-            return Some(Err(Error::Codec {
-                format: "toml",
-                position: 0,
-                reason: "document limit exceeded".into(),
-            }));
-        }
-        let maximum = self.limits.max_input_bytes();
-        let mut reader = reader.take(u64::try_from(maximum.saturating_add(1)).unwrap_or(u64::MAX));
-        let mut input = Vec::with_capacity(maximum.min(8 * 1024));
-        let result = reader.read_to_end(&mut input).map_err(Error::from);
-        self.byte_offset = input.len();
-        Some(result.and_then(|_| {
-            if input.len() > maximum {
-                return Err(Error::Codec {
-                    format: "toml",
-                    position: maximum,
-                    reason: "input byte limit exceeded".into(),
-                });
-            }
-            from_bytes_with_limits(&input, self.limits)
-        }))
+        self.inner.next()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = usize::from(self.reader.is_some());
-        (remaining, Some(remaining))
+        self.inner.size_hint()
     }
 }
 

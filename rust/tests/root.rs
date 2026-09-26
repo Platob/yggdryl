@@ -96,6 +96,8 @@ mod iomedia;
 mod iomode;
 #[path = "root/lib.rs"]
 mod lib;
+#[path = "root/limit.rs"]
+mod limit;
 #[path = "root/listing.rs"]
 mod listing;
 #[path = "root/mapping.rs"]
@@ -170,9 +172,6 @@ mod version;
 mod vocabulary;
 #[path = "root/wkb.rs"]
 mod wkb;
-#[cfg(all(feature = "aws", feature = "internals"))]
-#[path = "root/xml.rs"]
-mod xml;
 #[path = "root/zlib.rs"]
 mod zlib;
 #[path = "root/zstd.rs"]

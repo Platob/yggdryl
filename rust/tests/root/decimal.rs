@@ -322,79 +322,356 @@ mod exact {
     }
 
     mod fixed {
-        use yggdryl::Decimal18;
-        use yggdryl::{DataType, Scalar};
+        use yggdryl::{BigDecimal, DataType, DataTypeId, Decimal, Field, Scalar};
 
         #[test]
-        fn a_fixed_decimal_is_decimal128_at_eighteen_digits_already_applied() {
-            let px: Decimal18 = "82.5".parse().unwrap();
+        fn a_decimal_is_decimal128_at_eighteen_digits_already_applied() {
+            let px: Decimal = "82.5".parse().unwrap();
             assert_eq!(px.units(), 82_500_000_000_000_000_000);
-            assert_eq!(Decimal18::from_units(px.units()), Some(px));
+            assert_eq!(Decimal::from_units(px.units()), Some(px));
             assert_eq!(px.to_string(), "82.5");
-            assert_eq!(Decimal18::from_int(100).to_string(), "100");
-            assert_eq!(Decimal18::ZERO.to_string(), "0");
+            assert_eq!(Decimal::from_int(100).to_string(), "100");
+            assert_eq!(Decimal::ZERO.to_string(), "0");
             assert_eq!(
-                "-0.000000000000000001"
-                    .parse::<Decimal18>()
-                    .unwrap()
-                    .units(),
+                "-0.000000000000000001".parse::<Decimal>().unwrap().units(),
                 -1
             );
-            assert_eq!(Decimal18::dtype(), DataType::decimal128(38, 18).unwrap());
+            // The datatype is the leaf's own; `DECIMAL` stays the storage spelling.
+            assert_eq!(Decimal::dtype(), DataType::Decimal);
             assert_eq!(DataType::DECIMAL, DataType::decimal128(38, 18).unwrap());
-            // The scalar is the column's value, and reads back.
+            // The scalar is the leaf's own variant, reads back, and restates
+            // every exact spelling of the same number.
             let scalar = Scalar::from(px);
-            assert_eq!(scalar.as_d128(), Some((px.units(), 18)));
-            assert_eq!(Decimal18::from_scalar(&scalar), Some(px));
-            assert_eq!(Decimal18::from_scalar(&Scalar::d128(825, 1)), Some(px));
-            assert_eq!(Decimal18::from_scalar(&Scalar::from(82.5_f64)), Some(px));
+            assert_eq!(scalar, Scalar::Decimal(px));
+            assert_eq!(scalar.as_decimal(), Some((px.units().into(), 18)));
+            assert_eq!(Decimal::from_scalar(&scalar), Some(px));
+            assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+            assert_eq!(Decimal::from_scalar(&Scalar::from(82.5_f64)), Some(px));
             assert_eq!(
-                Decimal18::from_scalar(&Scalar::from(100_i64)),
-                Some(Decimal18::from_int(100))
+                Decimal::from_scalar(&Scalar::from(100_i64)),
+                Some(Decimal::from_int(100))
             );
-            assert_eq!(Decimal18::from_scalar(&Scalar::from("82.5")), Some(px));
+            assert_eq!(Decimal::from_scalar(&Scalar::from("82.5")), Some(px));
             assert_eq!(px.to_f64(), 82.5);
-            assert_eq!(Decimal18::from_f64(82.5), Some(px));
-            assert_eq!(Decimal18::from_f64(f64::NAN), None);
+            assert_eq!(Decimal::from_f64(82.5), Some(px));
+            assert_eq!(Decimal::from_f64(f64::NAN), None);
         }
 
         #[test]
         fn fixed_arithmetic_is_exact_bounded_and_truncates_toward_zero() {
-            let px: Decimal18 = "82.5".parse().unwrap();
-            let qty = Decimal18::from_int(1_000);
+            let px: Decimal = "82.5".parse().unwrap();
+            let qty = Decimal::from_int(1_000);
             assert_eq!((px * qty).to_string(), "82500");
-            assert_eq!((px + Decimal18::from_int(1)).to_string(), "83.5");
-            assert_eq!((px - Decimal18::from_int(100)).to_string(), "-17.5");
-            assert_eq!((px / Decimal18::from_int(4)).to_string(), "20.625");
+            assert_eq!((px + Decimal::from_int(1)).to_string(), "83.5");
+            assert_eq!((px - Decimal::from_int(100)).to_string(), "-17.5");
+            assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
             assert_eq!((-px).abs(), px);
-            assert!(px.is_positive() && (-px).is_negative() && Decimal18::ZERO.is_zero());
+            assert!(px.is_positive() && (-px).is_negative() && Decimal::ZERO.is_zero());
             // A third is truncated at the eighteenth digit, never rounded up.
             assert_eq!(
-                (Decimal18::ONE / Decimal18::from_int(3)).to_string(),
+                (Decimal::ONE / Decimal::from_int(3)).to_string(),
                 "0.333333333333333333"
             );
             assert_eq!(
-                Decimal18::parse("1.123456789")
+                Decimal::parse("1.123456789")
                     .unwrap()
                     .truncated(4)
                     .to_string(),
                 "1.1234"
             );
-            // Past thirty-eight digits there is no value.
-            assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
-            assert_eq!(Decimal18::MAX.checked_mul(Decimal18::from_int(2)), None);
-            assert_eq!(Decimal18::ONE.checked_div(Decimal18::ZERO), None);
-            assert_eq!(Decimal18::MIN.checked_sub(Decimal18::ONE), None);
-            assert_eq!(Decimal18::from_units(i128::MAX), None);
-            // Sums fold as integers do.
+            assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
+            assert_eq!(Decimal::MIN.checked_sub(Decimal::ONE), None);
+            assert_eq!(Decimal::MAX.checked_mul(Decimal::from_int(2)), None);
+            assert_eq!(Decimal::ONE.checked_div(Decimal::ZERO), None);
+            assert!(Decimal::parse("1e40").is_err());
             assert_eq!(
-                [px, px, px].into_iter().sum::<Decimal18>().to_string(),
-                "247.5"
+                [px, qty, Decimal::ONE]
+                    .into_iter()
+                    .sum::<Decimal>()
+                    .to_string(),
+                "1083.5"
             );
-            let mut held = px;
-            held += Decimal18::from_int(1);
-            held *= Decimal18::from_int(2);
-            assert_eq!(held.to_string(), "167");
+        }
+
+        #[test]
+        fn the_two_leaves_are_registered_datatypes() {
+            // Identity: the two ids sit inside the decimal family's range, so
+            // `is_decimal` answers without a second table.
+            assert_eq!(DataTypeId::Decimal.as_u8(), 0x2d);
+            assert_eq!(DataTypeId::BigDecimal.as_u8(), 0x2e);
+            assert_eq!(DataType::Decimal.id(), DataTypeId::Decimal);
+            assert_eq!(DataType::BigDecimal.id(), DataTypeId::BigDecimal);
+            assert!(yggdryl::DataTypeKind::Decimal.contains(DataTypeId::Decimal));
+            assert!(yggdryl::DataTypeKind::Decimal.contains(DataTypeId::BigDecimal));
+            assert!(!DataType::Decimal.id().is_parameterized());
+            // The grammar: bare `decimal` is the leaf, `decimal(p, s)` the
+            // family, `numeric` keeps SQL's precision-only meaning.
+            assert_eq!("decimal".parse::<DataType>().unwrap(), DataType::Decimal);
+            assert_eq!("DECIMAL".parse::<DataType>().unwrap(), DataType::Decimal);
+            assert_eq!(
+                "bigdecimal".parse::<DataType>().unwrap(),
+                DataType::BigDecimal
+            );
+            assert_eq!(
+                "decimal(38,18)".parse::<DataType>().unwrap(),
+                DataType::decimal128(38, 18).unwrap()
+            );
+            assert_eq!(
+                "numeric".parse::<DataType>().unwrap(),
+                DataType::decimal128(38, 0).unwrap()
+            );
+            assert_eq!(DataType::Decimal.to_string(), "decimal");
+            assert_eq!(DataType::BigDecimal.to_string(), "bigdecimal");
+            assert_eq!(DataType::BigDecimal.name(), "bigdecimal");
+            // The field and the value contract.
+            let field = Field::new("px", DataType::Decimal, false);
+            assert_eq!(field.dtype(), &DataType::Decimal);
+            let px: Decimal = "82.5".parse().unwrap();
+            assert_eq!(
+                field.scalar(Scalar::d128(825, 1)).unwrap(),
+                Scalar::Decimal(px)
+            );
+            assert_eq!(
+                field.scalar(Scalar::from(82_i64)).unwrap(),
+                Scalar::Decimal(Decimal::from_int(82))
+            );
+            assert_eq!(
+                field.scalar(Scalar::Decimal(px)).unwrap(),
+                Scalar::Decimal(px)
+            );
+            assert!(
+                field.scalar(Scalar::d128(1, 19)).is_err(),
+                "a nineteenth digit is refused"
+            );
+            assert!(
+                field.scalar(Scalar::from(0.5_f64)).is_err(),
+                "a float is not an exact number"
+            );
+            // The scalar's wire vocabulary and the datatype document round trip.
+            assert_eq!(Scalar::Decimal(px).kind(), "decimal");
+            assert_eq!(Scalar::BigDecimal(px.widened()).kind(), "bigdecimal");
+            let document = DataType::Decimal.into_json().unwrap();
+            assert_eq!(DataType::from_json(&document).unwrap(), DataType::Decimal);
+            let document = DataType::BigDecimal.into_json().unwrap();
+            assert_eq!(
+                DataType::from_json(&document).unwrap(),
+                DataType::BigDecimal
+            );
+            let value = serde_json::to_string(&Scalar::Decimal(px)).unwrap();
+            assert_eq!(
+                serde_json::from_str::<Scalar>(&value).unwrap(),
+                Scalar::Decimal(px)
+            );
+            let value = serde_json::to_string(&Scalar::BigDecimal(BigDecimal::MAX)).unwrap();
+            assert_eq!(
+                serde_json::from_str::<Scalar>(&value).unwrap(),
+                Scalar::BigDecimal(BigDecimal::MAX)
+            );
+            // The digest is the number's: the leaf hashes as its `d128` twin.
+            let hashed = |value: &Scalar| {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                value.hash(&mut hasher);
+                hasher.finish()
+            };
+            assert_eq!(
+                hashed(&Scalar::Decimal(px)),
+                hashed(&Scalar::d128(px.units(), 18))
+            );
+            assert_eq!(Scalar::Decimal(px), Scalar::d128(825, 1));
+        }
+
+        #[test]
+        fn the_leaves_ride_arrow_under_their_names() {
+            use yggdryl::{ArrowCastOptions, Serie};
+
+            let px: Decimal = "82.5".parse().unwrap();
+            let field = Field::new("px", DataType::Decimal, false);
+            let column = Serie::from_scalars(field.clone(), [Scalar::Decimal(px)]).unwrap();
+            let array = column.clone().into_arrow_array().unwrap();
+            assert_eq!(
+                array.data_type(),
+                &arrow_schema::DataType::Decimal128(38, 18)
+            );
+            let arrow_field = field.as_arrow_field_ref().unwrap();
+            assert_eq!(
+                arrow_field
+                    .metadata()
+                    .get("ARROW:extension:name")
+                    .map(String::as_str),
+                Some("yggdryl.decimal")
+            );
+            // Back: a schema carrying the name imports as the leaf, and the
+            // cell is its value.
+            let root = Field::new(
+                "row",
+                DataType::from(yggdryl::StructType::from_fields(vec![field.clone()]).unwrap()),
+                false,
+            );
+            let rows =
+                Serie::from_scalars(root.clone(), [Scalar::from_sequence([Scalar::Decimal(px)])])
+                    .unwrap();
+            let batch = rows.into_arrow_batch().unwrap();
+            let landed = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new()).unwrap();
+            assert_eq!(
+                landed.field().unwrap().fields()[0].dtype(),
+                &DataType::Decimal
+            );
+            let landed =
+                Serie::from_arrow_array(Some(&field), array.clone(), ArrowCastOptions::new())
+                    .unwrap();
+            assert_eq!(landed.scalar(0).unwrap(), Scalar::Decimal(px));
+            // Bare storage imports as the parameterized width, and casts onto
+            // the leaf by identity (same storage), reading the digits once.
+            let bare = Field::new("px", DataType::DECIMAL, false);
+            let stored =
+                Serie::from_arrow_array(Some(&bare), array, ArrowCastOptions::new()).unwrap();
+            assert_eq!(stored.scalar(0).unwrap(), Scalar::d128(px.units(), 18));
+            let cast = stored.cast(&field, ArrowCastOptions::new()).unwrap();
+            assert_eq!(cast.scalar(0).unwrap(), Scalar::Decimal(px));
+            // The wide leaf the same way.
+            let wide = Field::new("notional", DataType::BigDecimal, false);
+            let big = BigDecimal::MAX;
+            let column = Serie::from_scalars(wide.clone(), [Scalar::BigDecimal(big)]).unwrap();
+            let array = column.into_arrow_array().unwrap();
+            assert_eq!(
+                array.data_type(),
+                &arrow_schema::DataType::Decimal256(76, 18)
+            );
+            assert_eq!(
+                wide.as_arrow_field_ref()
+                    .unwrap()
+                    .metadata()
+                    .get("ARROW:extension:name")
+                    .map(String::as_str),
+                Some("yggdryl.bigdecimal")
+            );
+            let landed =
+                Serie::from_arrow_array(Some(&wide), array, ArrowCastOptions::new()).unwrap();
+            assert_eq!(landed.scalar(0).unwrap(), Scalar::BigDecimal(big));
+            // Widening is lossless; narrowing a value past 38 digits refuses.
+            let widened = Serie::from_scalars(field.clone(), [Scalar::Decimal(px)])
+                .unwrap()
+                .cast(&wide, ArrowCastOptions::new())
+                .unwrap();
+            assert_eq!(widened.scalar(0).unwrap(), Scalar::BigDecimal(px.widened()));
+        }
+
+        #[test]
+        fn scalar_arithmetic_over_the_leaves_keeps_the_scale() {
+            let px = Scalar::Decimal("82.5".parse().unwrap());
+            let qty = Scalar::from(1_000_i64);
+            let product = px.checked_mul(&qty).unwrap();
+            assert_eq!(product, Scalar::Decimal(Decimal::from_int(82_500)));
+            assert!(
+                matches!(product, Scalar::Decimal(_)),
+                "the leaf keeps its scale"
+            );
+            let third = Scalar::Decimal(Decimal::ONE)
+                .checked_div(&Scalar::from(3_i64))
+                .unwrap();
+            assert_eq!(
+                third,
+                Scalar::Decimal("0.333333333333333333".parse().unwrap())
+            );
+            // A parameterized decimal meets the leaf at the leaf's scale.
+            assert_eq!(
+                px.checked_add(&Scalar::d128(5, 1)).unwrap(),
+                Scalar::Decimal(Decimal::from_int(83))
+            );
+            // The wide leaf wins where either side is wide.
+            let wide = Scalar::BigDecimal(BigDecimal::from_int(2));
+            assert!(matches!(
+                px.checked_mul(&wide).unwrap(),
+                Scalar::BigDecimal(_)
+            ));
+            // Past thirty-eight digits the narrow leaf overflows; the wide one holds.
+            let big = Scalar::Decimal(Decimal::MAX);
+            assert!(big.checked_mul(&Scalar::from(10_i64)).is_err());
+            assert!(matches!(
+                big.checked_mul(&Scalar::BigDecimal(BigDecimal::from_int(10)))
+                    .unwrap(),
+                Scalar::BigDecimal(_)
+            ));
+            assert!(
+                px.checked_rem(&qty).is_err(),
+                "a fixed scale states no remainder"
+            );
+            assert!(px.checked_mul(&Scalar::from(1.5_f64)).is_err());
+            assert_eq!(
+                px.checked_neg().unwrap(),
+                Scalar::Decimal("-82.5".parse().unwrap())
+            );
+        }
+
+        #[test]
+        fn a_bigdecimal_holds_seventy_six_digits_and_computes_exactly() {
+            let notional: BigDecimal = "123456789012345678901234567890.5".parse().unwrap();
+            let px = Decimal::from_int(3).widened();
+            assert_eq!(
+                (notional * px).to_string(),
+                "370370367037037036703703703671.5"
+            );
+            assert_eq!(
+                (notional / px).to_string(),
+                "41152263004115226300411522630.166666666666666666"
+            );
+            assert_eq!(
+                notional.narrowed(),
+                None,
+                "forty-eight digits do not narrow"
+            );
+            assert_eq!(px.narrowed(), Some(Decimal::from_int(3)));
+            assert_eq!(BigDecimal::MAX.narrowed(), None);
+            assert_eq!(
+                BigDecimal::MAX.to_string().len(),
+                77,
+                "seventy-six digits and a point"
+            );
+            assert_eq!(BigDecimal::MAX.checked_add(BigDecimal::ONE), None);
+            assert_eq!(BigDecimal::MIN.checked_sub(BigDecimal::ONE), None);
+            assert_eq!(BigDecimal::MIN, -BigDecimal::MAX);
+            // The product runs through 512 bits: the largest values multiply
+            // and divide exactly where the result fits, and refuse where not.
+            let half = "0.5".parse::<BigDecimal>().unwrap();
+            assert_eq!(
+                BigDecimal::MAX.checked_mul(half).unwrap().to_string().len(),
+                77
+            );
+            assert_eq!(BigDecimal::MAX.checked_mul(BigDecimal::from_int(2)), None);
+            assert_eq!(
+                BigDecimal::MAX.checked_div(BigDecimal::MAX).unwrap(),
+                BigDecimal::ONE
+            );
+            assert_eq!(BigDecimal::ONE.checked_div(BigDecimal::ZERO), None);
+            assert_eq!(
+                (BigDecimal::ONE / BigDecimal::from_int(3)).to_string(),
+                "0.333333333333333333"
+            );
+            assert!(BigDecimal::parse("1e77").is_err());
+            assert_eq!(
+                BigDecimal::parse("-0.000000000000000001").unwrap().units(),
+                (-1_i128).into()
+            );
+            assert_eq!(
+                BigDecimal::from_scalar(&Scalar::d256(yggdryl::i256::from_i128(15), 1)),
+                Some("1.5".parse().unwrap())
+            );
+            assert_eq!(BigDecimal::dtype(), DataType::BigDecimal);
+            assert_eq!(BigDecimal::from(Decimal::ONE), BigDecimal::ONE);
+        }
+
+        #[test]
+        fn the_value_stream_carries_both_leaves() {
+            let px: Decimal = "82.5".parse().unwrap();
+            for value in [
+                Scalar::Decimal(px),
+                Scalar::BigDecimal(BigDecimal::MAX),
+                Scalar::Decimal(Decimal::MIN),
+            ] {
+                let bytes = value.into_value_bytes();
+                assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
+            }
         }
 
         #[test]
@@ -424,7 +701,7 @@ mod exact {
                 ),
             ] {
                 assert_eq!(
-                    Decimal18::parse(text).unwrap().to_string(),
+                    Decimal::parse(text).unwrap().to_string(),
                     expected,
                     "{text:?}"
                 );
@@ -446,22 +723,22 @@ mod exact {
                 "1e21",
                 "1e400",
             ] {
-                assert!(Decimal18::parse(refused).is_err(), "{refused:?}");
+                assert!(Decimal::parse(refused).is_err(), "{refused:?}");
             }
             // Text held as a scalar reads the same way.
             assert_eq!(
-                Decimal18::from_scalar(&Scalar::from("1,250.5"))
+                Decimal::from_scalar(&Scalar::from("1,250.5"))
                     .unwrap()
                     .to_string(),
                 "1250.5"
             );
-            assert_eq!(Decimal18::from_scalar(&Scalar::from("x")), None);
+            assert_eq!(Decimal::from_scalar(&Scalar::from("x")), None);
         }
     }
 
     mod family {
         use yggdryl::{DataType, DataTypeKind, Scalar, i256};
-        use yggdryl::{Decimal18, Decimal32, Decimal64, Decimal128, Decimal256};
+        use yggdryl::{Decimal, Decimal32, Decimal64, Decimal128, Decimal256};
 
         #[test]
         fn the_decimal_family_stands_for_every_width() {
@@ -476,18 +753,14 @@ mod exact {
                 &Scalar::from(3_i64),
             );
 
-            // The fixed-scale money value is one decimal128 leaf of the family,
-            // and `as_decimal` stays the coefficient-and-scale reader beside it.
-            // The value's own datatype holds the digits it has at scale 18; the
-            // column a `Decimal18` declares, `DataType::DECIMAL`, is the wider
-            // decimal128 it is stored in.
-            let money = Scalar::from(Decimal18::from_int(3));
-            assert!(matches!(money, Scalar::Decimal128(_)), "{money:?}");
+            // The fixed-scale money value is the family's own `decimal` leaf,
+            // and `as_decimal` stays the coefficient-and-scale reader beside it:
+            // the datatype is the leaf, and the storage it rides is
+            // `DataType::DECIMAL`.
+            let money = Scalar::from(Decimal::from_int(3));
+            assert!(matches!(money, Scalar::Decimal(_)), "{money:?}");
             assert!(DataTypeKind::Decimal.contains(money.id()));
-            assert_eq!(
-                money.dtype().unwrap(),
-                DataType::decimal128(19, 18).unwrap()
-            );
+            assert_eq!(money.dtype().unwrap(), DataType::Decimal);
             assert_eq!(
                 money.as_decimal(),
                 Some((i256::from_i128(3_000_000_000_000_000_000), 18))

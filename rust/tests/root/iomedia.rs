@@ -40,6 +40,40 @@ mod positional {
     }
 
     #[test]
+    fn an_xml_handle_reads_and_writes_the_document_its_root_names() {
+        // XML proves text and nothing else, so the untyped round trip holds
+        // for text; a field types the same document below.
+        let expected = Scalar::from_struct([(
+            "trade",
+            Scalar::from_struct([
+                ("quantity", Scalar::from("2")),
+                ("symbol", Scalar::from("AAPL")),
+            ])
+            .unwrap(),
+        )])
+        .unwrap();
+        for name in ["trade.xml", "trade.xml.gz"] {
+            let media = Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type();
+            let mut handle = Buffer::new().with_media_type(media);
+            handle
+                .write_scalar(&expected)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(handle.read_scalar(None).unwrap(), expected, "{name}");
+        }
+
+        let media = Url::from_str("file:///trade.xml").unwrap().media_type();
+        let source = Buffer::from_bytes(b"<trade><quantity>2</quantity></trade>".to_vec())
+            .with_media_type(media);
+        let field = Field::from_str("trade: struct<quantity: int32 not null> not null").unwrap();
+        assert_eq!(
+            source.read_scalar(Some(&field)).unwrap(),
+            Scalar::from_sequence([Scalar::from(2)])
+        );
+    }
+
+    #[test]
     fn structured_value_fields_direct_parsing_and_casting() {
         let media = Url::from_str("file:///trade.json").unwrap().media_type();
         let source = Buffer::from_bytes(br#"{"quantity":2}"#.to_vec()).with_media_type(media);

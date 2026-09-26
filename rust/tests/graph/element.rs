@@ -18,7 +18,7 @@ use yggdryl::graph::{BookSide, Element, Event, Lane, Market, Operation, OrderEve
 use yggdryl::idmap::IdMap;
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, CfiCode, Decimal18, IsinCode, MicCode, Side, State, TimeInForce, Unit, Uuid};
+use yggdryl::{Ccy, CfiCode, Decimal, IsinCode, MicCode, Side, State, TimeInForce, Unit, Uuid};
 
 #[test]
 fn generic_event_uuid_lists_are_sorted_unique_at_the_storage_boundary() {
@@ -284,8 +284,8 @@ fn crosshash(crosscode: &str) -> u64 {
     state.as_u64()
 }
 
-fn decimal(text: &str) -> Decimal18 {
-    Decimal18::parse(text).expect("a decimal")
+fn decimal(text: &str) -> Decimal {
+    Decimal::parse(text).expect("a decimal")
 }
 
 fn currency(code: &str) -> Ccy {
@@ -321,7 +321,7 @@ fn stated(ms: i64) -> OrderEvent {
     let mut trade = OrderEvent::at(at(ms));
     trade.set_price(Some(decimal("82.5")));
     trade.set_currency(currency("USD"));
-    trade.set_quantity(Some(Decimal18::from_int(1_000)));
+    trade.set_quantity(Some(Decimal::from_int(1_000)));
     trade.set_unit(unit("bbl"));
     trade.set_side(Side::read("Buy").expect("a side"));
     trade
@@ -1600,16 +1600,16 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     let mut held = trade(10);
     assert_eq!(held.get_price(), Some(decimal("82.5")));
     assert_eq!(held.get_currency().as_str(), "USD");
-    assert_eq!(held.get_quantity(), Some(Decimal18::from_int(1_000)));
+    assert_eq!(held.get_quantity(), Some(Decimal::from_int(1_000)));
     assert_eq!(held.get_unit().as_str(), "bbl");
     assert_eq!(held.get_side().as_str(), "BUY");
 
-    held.set_price(Some(Decimal18::from_int(83)));
+    held.set_price(Some(Decimal::from_int(83)));
     held.set_currency(currency("EUR"));
     held.set_quantity(None);
     held.set_unit(unit("MWh"));
     held.set_side(Side::read("2").expect("a side"));
-    assert_eq!(held.get_price(), Some(Decimal18::from_int(83)));
+    assert_eq!(held.get_price(), Some(Decimal::from_int(83)));
     assert_eq!(held.get_currency().as_str(), "EUR");
     assert_eq!(
         held.get_quantity(),
@@ -1635,7 +1635,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     // traits, and the timed readings are the market event's too.
     fn readings<E: Event + Market + ?Sized>(
         object: &E,
-    ) -> (Uuid, i64, u64, Option<Uuid>, Option<Decimal18>) {
+    ) -> (Uuid, i64, u64, Option<Uuid>, Option<Decimal>) {
         (
             object.get_curruuid(),
             object.get_currunix(),
@@ -1674,8 +1674,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // and the facts restated.
     let mut later = first.clone();
     later.set_currunix(at(20));
-    later.set_price(Some(Decimal18::from_int(83)));
-    later.set_quantity(Some(Decimal18::from_int(5)));
+    later.set_price(Some(Decimal::from_int(83)));
+    later.set_quantity(Some(Decimal::from_int(5)));
     later.set_unit(unit("MWh"));
     later.set_currency(currency("EUR"));
     later.set_side(Side::read("2").expect("a side"));
@@ -1698,8 +1698,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
             merged.get_unit().as_str()
         ),
         (
-            Some(Decimal18::from_int(83)),
-            Some(Decimal18::from_int(5)),
+            Some(Decimal::from_int(83)),
+            Some(Decimal::from_int(5)),
             "MWh"
         )
     );
@@ -1725,7 +1725,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let merged = later.clone().merge_with(&first).expect("the same trade");
     assert_eq!(
         (merged.get_price(), merged.get_currency().as_str()),
-        (Some(Decimal18::from_int(83)), "EUR")
+        (Some(Decimal::from_int(83)), "EUR")
     );
     assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
     assert_eq!(merged.get_securityids().get("ISIN"), Some("US0378331005"));
@@ -1751,7 +1751,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
     event_time_later.set_currunix(at(30));
     event_time_later.set_recdunix(Some(at(100)));
     event_time_later.set_execunix(Some(at(12)));
-    event_time_later.set_price(Some(Decimal18::from_int(83)));
+    event_time_later.set_price(Some(Decimal::from_int(83)));
     event_time_later.set_unit(unit("old"));
     event_time_later.set_curruuid(first.get_curruuid());
 
@@ -1759,7 +1759,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
     recorded_later.set_currunix(at(20));
     recorded_later.set_recdunix(Some(at(200)));
     recorded_later.set_execunix(Some(at(15)));
-    recorded_later.set_price(Some(Decimal18::from_int(84)));
+    recorded_later.set_price(Some(Decimal::from_int(84)));
     recorded_later.set_unit(unit("reference"));
     recorded_later.set_curruuid(first.get_curruuid());
 
@@ -1774,7 +1774,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
             .expect("the other statement contributes its earlier clocks"),
     ] {
         assert_eq!(merged.get_currunix(), at(20));
-        assert_eq!(merged.get_price(), Some(Decimal18::from_int(84)));
+        assert_eq!(merged.get_price(), Some(Decimal::from_int(84)));
         assert_eq!(merged.get_unit().as_str(), "reference");
         assert_eq!(merged.get_execunix(), Some(at(12)));
         assert_eq!(merged.get_recdunix(), Some(at(100)));
@@ -1848,7 +1848,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     let bid = buy.get_bid().expect("the bid lane the buy fills");
     assert_eq!(bid.price, Some(decimal("82.5")));
     assert_eq!(bid.currency.as_ref().map(Ccy::as_str), Some("USD"));
-    assert_eq!(bid.quantity, Some(Decimal18::from_int(1_000)));
+    assert_eq!(bid.quantity, Some(Decimal::from_int(1_000)));
     assert_eq!(bid.unit.as_ref().map(Unit::as_str), Some("bbl"));
     assert_eq!((bid.spotrate, bid.forwardpoints), (None, None));
     assert_eq!(buy.get_ask(), None);
@@ -1859,13 +1859,13 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     let mut sell = stated(20);
     sell.set_side(Side::read("SellShort").expect("a side"));
     sell.set_ask(Some(Lane {
-        price: Some(Decimal18::from_int(90)),
+        price: Some(Decimal::from_int(90)),
         ..Lane::default()
     }));
     sell.fill_lanes();
     let ask = sell.get_ask().expect("the ask lane");
-    assert_eq!(ask.price, Some(Decimal18::from_int(90)));
-    assert_eq!(ask.quantity, Some(Decimal18::from_int(1_000)));
+    assert_eq!(ask.price, Some(Decimal::from_int(90)));
+    assert_eq!(ask.quantity, Some(Decimal::from_int(1_000)));
     assert_eq!(ask.unit.as_ref().map(Unit::as_str), Some("bbl"));
     assert_eq!(sell.get_bid(), None);
 
@@ -1887,10 +1887,10 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     unstated.set_side(Side::read("Buy").expect("a side"));
     unstated.fill_lanes();
     assert_eq!(unstated.get_bid(), None);
-    unstated.set_quantity(Some(Decimal18::from_int(5)));
+    unstated.set_quantity(Some(Decimal::from_int(5)));
     unstated.fill_lanes();
     let bid = unstated.get_bid().expect("a lane with one fact");
-    assert_eq!(bid.quantity, Some(Decimal18::from_int(5)));
+    assert_eq!(bid.quantity, Some(Decimal::from_int(5)));
     assert_eq!(bid.price, None, "still no price to state");
     assert!(bid.currency.is_none() && bid.unit.is_none());
     assert!(!Lane::default().is_stated());
@@ -1900,25 +1900,25 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     // states one, else this one's.
     let mut quoted = operation(40);
     quoted.set_bid(Some(Lane {
-        price: Some(Decimal18::from_int(80)),
+        price: Some(Decimal::from_int(80)),
         ..Lane::default()
     }));
     let mut later = quoted.clone();
     later.set_currunix(at(50));
     later.set_bid(None);
     later.set_ask(Some(Lane {
-        price: Some(Decimal18::from_int(85)),
+        price: Some(Decimal::from_int(85)),
         ..Lane::default()
     }));
     later.set_curruuid(quoted.get_curruuid());
     let merged = quoted.merge_with(&later).expect("the same quote");
     assert_eq!(
         merged.get_bid().and_then(|lane| lane.price),
-        Some(Decimal18::from_int(80))
+        Some(Decimal::from_int(80))
     );
     assert_eq!(
         merged.get_ask().and_then(|lane| lane.price),
-        Some(Decimal18::from_int(85))
+        Some(Decimal::from_int(85))
     );
 }
 
@@ -1965,7 +1965,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     // and the event's digest continues the element's with its own.
     let trade = trade(10);
     let mut repriced = trade.clone();
-    repriced.set_price(Some(Decimal18::from_int(90)));
+    repriced.set_price(Some(Decimal::from_int(90)));
     assert_ne!(
         trade.digest_market_event().as_u64(),
         repriced.digest_market_event().as_u64()
@@ -1996,7 +1996,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     );
     let mut quoted = operation.clone();
     quoted.set_ask(Some(Lane {
-        price: Some(Decimal18::from_int(85)),
+        price: Some(Decimal::from_int(85)),
         ..Lane::default()
     }));
     assert_ne!(
@@ -2160,7 +2160,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     let mut fill = OrderEvent::at(at(10));
     fill.set_side(Side::read("Buy").expect("a side"));
     fill.set_lastpx(Some(decimal("82.5")));
-    fill.set_lastqty(Some(Decimal18::from_int(300)));
+    fill.set_lastqty(Some(Decimal::from_int(300)));
     fill.set_avgpx(Some(decimal("82.25")));
     fill.fill_market();
     assert_eq!(
@@ -2174,7 +2174,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
         "nor a last executed quantity the quantity stated"
     );
     assert_eq!(fill.get_lastpx(), Some(decimal("82.5")));
-    assert_eq!(fill.get_lastqty(), Some(Decimal18::from_int(300)));
+    assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(300)));
     assert_eq!(fill.get_avgpx(), Some(decimal("82.25")));
     assert_eq!(fill.get_bid(), None, "the market ladder fills no lane");
     fill.fill_operation();
@@ -2187,17 +2187,17 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
 
     // An average is an average: it stands in for no price either.
     let mut averaged = OrderEvent::at(at(20));
-    averaged.set_avgpx(Some(Decimal18::from_int(99)));
+    averaged.set_avgpx(Some(Decimal::from_int(99)));
     averaged.fill_market();
     assert_eq!(averaged.get_price(), None);
-    assert_eq!(averaged.get_avgpx(), Some(Decimal18::from_int(99)));
+    assert_eq!(averaged.get_avgpx(), Some(Decimal::from_int(99)));
 
     // How much is done and how much is left are not the quantity either:
     // together they are the quantity ordered, which is a rule the
     // dictionary states and this never restates.
     let mut working = OrderEvent::at(at(30));
-    working.set_cumqty(Some(Decimal18::from_int(40)));
-    working.set_leavesqty(Some(Decimal18::from_int(60)));
+    working.set_cumqty(Some(Decimal::from_int(40)));
+    working.set_leavesqty(Some(Decimal::from_int(60)));
     working.fill_market();
     assert_eq!(working.get_quantity(), None);
 
@@ -2208,8 +2208,8 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     let mut quote = OrderEvent::at(at(40));
     quote.set_side(Side::read("Sell").expect("a side"));
     quote.set_ask(Some(Lane {
-        price: Some(Decimal18::from_int(85)),
-        quantity: Some(Decimal18::from_int(7)),
+        price: Some(Decimal::from_int(85)),
+        quantity: Some(Decimal::from_int(7)),
         currency: Some(currency("EUR")),
         unit: Some(unit("mt")),
         ..Lane::default()
@@ -2217,8 +2217,8 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     quote.fill_market();
     assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
     quote.fill_operation();
-    assert_eq!(quote.get_price(), Some(Decimal18::from_int(85)));
-    assert_eq!(quote.get_quantity(), Some(Decimal18::from_int(7)));
+    assert_eq!(quote.get_price(), Some(Decimal::from_int(85)));
+    assert_eq!(quote.get_quantity(), Some(Decimal::from_int(7)));
     assert_eq!(quote.get_currency().as_str(), "EUR");
     assert_eq!(quote.get_unit().as_str(), "mt");
 
@@ -2244,7 +2244,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     // element stated is never overwritten: a trade stating its price keeps
     // it beside a last executed price of its own.
     let mut once = trade(50);
-    once.set_lastpx(Some(Decimal18::from_int(1)));
+    once.set_lastpx(Some(Decimal::from_int(1)));
     once.fill_market();
     let twice = {
         let mut held = once.clone();
@@ -2252,7 +2252,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
         held
     };
     assert_eq!(once.get_price(), Some(decimal("82.5")));
-    assert_eq!(once.get_lastpx(), Some(Decimal18::from_int(1)));
+    assert_eq!(once.get_lastpx(), Some(Decimal::from_int(1)));
     assert_eq!(once, twice);
     let mut once = operation(50);
     once.fill_operation();
@@ -2273,7 +2273,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     assert_eq!(bid.get_side(), Side::Unknown);
     bid.set_bid(Some(Lane {
         price: Some(decimal("101.5")),
-        quantity: Some(Decimal18::from_int(200)),
+        quantity: Some(Decimal::from_int(200)),
         currency: Some(currency("USD")),
         unit: Some(unit("shares")),
         ..Lane::default()
@@ -2281,7 +2281,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     bid.fill_operation();
     assert_eq!(bid.get_side().as_str(), "BUY");
     assert_eq!(bid.get_price(), Some(decimal("101.5")));
-    assert_eq!(bid.get_quantity(), Some(Decimal18::from_int(200)));
+    assert_eq!(bid.get_quantity(), Some(Decimal::from_int(200)));
     assert_eq!(bid.get_currency().as_str(), "USD");
     assert_eq!(bid.get_unit().as_str(), "shares");
     assert_eq!(bid.get_ask(), None, "the other lane stays empty");
@@ -2290,13 +2290,13 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     let mut ask = OrderEvent::at(at(20));
     ask.set_ask(Some(Lane {
         price: Some(decimal("102")),
-        quantity: Some(Decimal18::from_int(50)),
+        quantity: Some(Decimal::from_int(50)),
         ..Lane::default()
     }));
     ask.fill_operation();
     assert_eq!(ask.get_side().as_str(), "SELL");
     assert_eq!(ask.get_price(), Some(decimal("102")));
-    assert_eq!(ask.get_quantity(), Some(Decimal18::from_int(50)));
+    assert_eq!(ask.get_quantity(), Some(Decimal::from_int(50)));
     assert_eq!(ask.get_bid(), None);
 
     // Any fact of a lane states it: a currency alone names the side and
@@ -2460,15 +2460,15 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     // a quantity of its own.
     let mut report = OrderEvent::at(at(20));
     report.set_crosscode("O-100".to_owned());
-    report.set_price(Some(Decimal18::from_int(83)));
-    report.set_quantity(Some(Decimal18::from_int(400)));
+    report.set_price(Some(Decimal::from_int(83)));
+    report.set_quantity(Some(Decimal::from_int(400)));
     report.finalize();
 
     let followed = report.with_previous(&order).expect("the step after");
     // The step before, as the step before: a price beside the price it
     // moved from.
     assert_eq!(followed.get_prevpx(), Some(decimal("82.5")));
-    assert_eq!(followed.get_prevqty(), Some(Decimal18::from_int(1_000)));
+    assert_eq!(followed.get_prevqty(), Some(Decimal::from_int(1_000)));
     // And what the chain is about, where this report said nothing.
     assert_eq!(followed.get_tif().map(TimeInForce::as_str), Some("1"));
     assert_eq!(followed.get_tradable(), Some(true));
@@ -2480,8 +2480,8 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_miccode().map(MicCode::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the
     // one it followed.
-    assert_eq!(followed.get_price(), Some(Decimal18::from_int(83)));
-    assert_eq!(followed.get_quantity(), Some(Decimal18::from_int(400)));
+    assert_eq!(followed.get_price(), Some(Decimal::from_int(83)));
+    assert_eq!(followed.get_quantity(), Some(Decimal::from_int(400)));
     assert_eq!(followed.get_seqnum(), 1);
 
     // A statement of its own never gives way to the chain's.
@@ -2490,36 +2490,36 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     own.set_tif(TimeInForce::from_spelling("ImmediateOrCancel"));
     own.set_tradable(Some(false));
     own.set_ticker(Some(SmolStr::new("WTI")));
-    own.set_prevpx(Some(Decimal18::from_int(1)));
+    own.set_prevpx(Some(Decimal::from_int(1)));
     own.finalize();
     let followed = own.with_previous(&order).expect("the step after");
     assert_eq!(followed.get_tif().map(TimeInForce::as_str), Some("3"));
     assert_eq!(followed.get_tradable(), Some(false));
     assert_eq!(followed.get_ticker(), Some("WTI"));
-    assert_eq!(followed.get_prevpx(), Some(Decimal18::from_int(1)));
+    assert_eq!(followed.get_prevpx(), Some(Decimal::from_int(1)));
 
     // Merging folds the same facts the other way: two statements of one
     // event, the later leading where both state one and the other filling
     // what it leaves out.
     let mut first = operation(30);
-    first.set_lastpx(Some(Decimal18::from_int(80)));
-    first.set_cumqty(Some(Decimal18::from_int(100)));
+    first.set_lastpx(Some(Decimal::from_int(80)));
+    first.set_cumqty(Some(Decimal::from_int(100)));
     first.set_tif(TimeInForce::from_spelling("Day"));
     first.finalize();
     let mut later = first.clone();
     later.set_currunix(at(40));
-    later.set_lastpx(Some(Decimal18::from_int(81)));
+    later.set_lastpx(Some(Decimal::from_int(81)));
     later.set_cumqty(None);
-    later.set_leavesqty(Some(Decimal18::from_int(900)));
+    later.set_leavesqty(Some(Decimal::from_int(900)));
     later.set_avgpx(Some(decimal("80.5")));
     later.set_tif(None);
     later.set_tradable(Some(true));
     later.set_ticker(Some(SmolStr::new("BRN")));
     later.set_curruuid(first.get_curruuid());
     let merged = first.merge_with(&later).expect("the same event");
-    assert_eq!(merged.get_lastpx(), Some(Decimal18::from_int(81)));
-    assert_eq!(merged.get_cumqty(), Some(Decimal18::from_int(100)));
-    assert_eq!(merged.get_leavesqty(), Some(Decimal18::from_int(900)));
+    assert_eq!(merged.get_lastpx(), Some(Decimal::from_int(81)));
+    assert_eq!(merged.get_cumqty(), Some(Decimal::from_int(100)));
+    assert_eq!(merged.get_leavesqty(), Some(Decimal::from_int(900)));
     assert_eq!(merged.get_avgpx(), Some(decimal("80.5")));
     assert_eq!(merged.get_tif().map(TimeInForce::as_str), Some("0"));
     assert_eq!(merged.get_tradable(), Some(true));

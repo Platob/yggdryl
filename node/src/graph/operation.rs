@@ -12,7 +12,7 @@ use yggdryl::graph::{
     OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
     QuoteKind,
 };
-use yggdryl::{DataType, Decimal18, Field, Scalar};
+use yggdryl::{DataType, Decimal, Field, Scalar};
 
 use super::{decimal_text, instant_of, stated_operation};
 use crate::napi_error;
@@ -257,15 +257,15 @@ fn md_update_action_of(text: &str) -> Result<CoreMdUpdateAction> {
 /// A stated decimal slot, checked through the same `DataType::scalar` door
 /// every other decimal slot in the graph binding crosses, so a value this
 /// slot refuses is refused the same way theirs is.
-fn stated_decimal(value: Scalar, name: &str) -> Result<Option<Decimal18>> {
+fn stated_decimal(value: Scalar, name: &str) -> Result<Option<Decimal>> {
     if matches!(value, Scalar::Null) {
         return Ok(None);
     }
-    let checked = DataType::DECIMAL
+    let checked = DataType::Decimal
         .nullable_field(name)
         .scalar(value)
         .map_err(napi_error)?;
-    Decimal18::from_scalar(&checked)
+    Decimal::from_scalar(&checked)
         .map(Some)
         .ok_or_else(|| napi_error(format!("expected a decimal for {name}")))
 }

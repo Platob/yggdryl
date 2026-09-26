@@ -810,6 +810,25 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             BatchSize::LargeInput,
         );
     });
+    // The same snapshots through the sorted market door: collected, each
+    // expanded into its three entries, sorted, and laid out as rows.
+    group.bench_function("fix_market_arrow_reader", |bencher| {
+        bencher.iter_batched(
+            || market_messages.clone(),
+            |messages| {
+                let rows = codec
+                    .market_arrow_reader(black_box(messages))
+                    .expect("a FIX market Arrow reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the FIX messages lay out as market rows");
+                assert_eq!(rows, 3 * MARKET_REPEATS);
+                black_box(rows)
+            },
+            BatchSize::LargeInput,
+        );
+    });
     group.throughput(Throughput::Elements(operations.len() as u64));
     group.bench_function("operation_arrow_roundtrip", |bencher| {
         bencher.iter_batched(

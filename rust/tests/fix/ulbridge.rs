@@ -1008,6 +1008,183 @@ mod dataset {
         let framed = wires.iter().filter(|wire| wire.contains("|10=")).count();
         assert!(framed >= 11, "{framed} frames checked");
     }
+
+    /// The typed spellings no leaf's metadata may key: each is a column, a
+    /// header or a trailer fact.
+    const TYPED: [&str; 11] = [
+        "symbol",
+        "side",
+        "price",
+        "orderqty",
+        "clordid",
+        "account",
+        "transacttime",
+        "sendingtime",
+        "bodylength",
+        "msgseqnum",
+        "checksum",
+    ];
+
+    #[test]
+    fn the_capture_reads_as_market_operations_and_folds_into_books() {
+        use std::collections::{BTreeMap, HashMap};
+
+        use yggdryl::graph::{BookIterator, MarketData};
+
+        // The codec refusing nothing: every message the capture carries.
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let lines = text_lines();
+        assert_eq!(lines.len(), LINES);
+        // The row header matched every one of the 144 lines. A line it missed
+        // would arrive with no session, context or sequence - a line the walk
+        // cannot fold onto the delivery it repeats - so this count is what
+        // the operations below stand on.
+        let matched = lines
+            .iter()
+            .filter(|line| line.capture(0).is_some())
+            .count();
+        assert_eq!(matched, LINES);
+        let messages = line_messages(&codec);
+        assert_eq!(messages.len(), EVERY_ROW, "nothing refused");
+
+        // The walk folds the 94 observations into the 28 deliveries the
+        // lifecycle pin states, and the sorted door expands those.
+        let walked = codec
+            .lifecycle(messages)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the capture walks");
+        assert_eq!(walked.len(), 28);
+        let (operations, refused): (Vec<_>, Vec<_>) = codec
+            .market_operations(walked.clone())
+            .partition(Result::is_ok);
+        let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
+        let refused: Vec<String> = refused
+            .into_iter()
+            .map(|held| held.unwrap_err().to_string())
+            .collect();
+        // Eleven of the deliveries reach a book - eight fills and three
+        // orders; the rest are acknowledgements, rejects, session traffic
+        // and bridge rows no book takes. The one admitted message refused is
+        // the trade capture of line 112, whose single side states no
+        // `Side(54)`: a sided execution needs one.
+        assert_eq!(
+            refused,
+            [
+                "invalid record value at $.NoSides(552)[0].Side(54): expected a bid or ask side, got no value"
+            ]
+        );
+        assert_eq!(operations.len(), 11);
+        let mut census: BTreeMap<&str, usize> = BTreeMap::new();
+        for operation in &operations {
+            *census.entry(operation.kind().as_str()).or_default() += 1;
+        }
+        assert_eq!(
+            census,
+            BTreeMap::from([("execution_event", 8), ("order_event", 3)])
+        );
+        assert!(operations.windows(2).all(|pair| {
+            let at = |operation: &MarketData| {
+                let event: &dyn Event = match operation {
+                    MarketData::OrderEvent(event) => event,
+                    MarketData::ExecutionEvent(event) => event,
+                    other => panic!("an order or a fill, got {}", other.kind().as_str()),
+                };
+                event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+            };
+            at(&pair[0]) <= at(&pair[1])
+        }));
+
+        // Every operation folds into a book, read off the `Buffer` source so
+        // no modification time dates a line. The Sell order of `2454` states
+        // no price: it rests at its side's one unpriced level rather than
+        // being refused, and it leaves the side at the same instant, so the
+        // one book of that instant applies both as deltas and holds nothing;
+        // seven books come out, and the last is that one.
+        let books: Vec<yggdryl::graph::BookEvent> =
+            BookIterator::new(operations.clone().into_iter().map(Ok), 0, false)
+                .expect("a book iterator")
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("every operation folds");
+        assert_eq!(books.len(), 7);
+        let last = books.last().expect("a last book");
+        assert_eq!(last.get_ticker(), Some("2454"));
+        assert!(last.bid().is_empty() && last.ask().is_empty());
+        let deltas = last.ask().deltas();
+        assert_eq!(deltas.len(), 2, "the unpriced order and its exit");
+        assert_eq!(
+            deltas
+                .iter()
+                .map(yggdryl::graph::Market::get_price)
+                .collect::<Vec<_>>(),
+            [None, None]
+        );
+        assert_eq!(
+            yggdryl::graph::Market::get_quantity(&deltas[0]),
+            Some(yggdryl::Decimal::from_int(10_000))
+        );
+        assert_eq!(last.get_currhashcode(), 4_619_727_780_541_450_139);
+
+        // No leaf keys a typed fact.
+        for operation in &operations {
+            for typed in TYPED {
+                assert!(
+                    !operation.get_metadata().contains_key(typed),
+                    "{typed} is a typed fact: {:?}",
+                    operation.get_metadata()
+                );
+            }
+        }
+        // The bridge's own namespaced keys ride every leaf of the message
+        // that states them, as the message holds them: 40 of them over the
+        // eleven leaves.
+        let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
+            .iter()
+            .map(|message| (message.get_srcuuids(), message))
+            .collect();
+        let mut carried = 0;
+        for operation in &operations {
+            let message = by_sources[operation.get_srcuuids()];
+            for (key, value) in message.get_metadata() {
+                assert_eq!(operation.get_metadata().get(key), Some(value), "{key}");
+                carried += 1;
+            }
+        }
+        assert_eq!(carried, 40);
+        let of_line = |seqnum: u64| {
+            lines
+                .iter()
+                .find(|line| line.get_seqnum() == seqnum)
+                .expect("a line of the capture")
+                .get_curruuid()
+        };
+        // The fill line 105 carries is one of them.
+        let fill = operations
+            .iter()
+            .find(|operation| operation.get_srcuuids().contains(&of_line(105)))
+            .expect("the fill line 105 carries");
+        assert_eq!(
+            fill.get_metadata()
+                .get("tech.clientid")
+                .map(|held| held.as_str()),
+            Some("OMSX1")
+        );
+        // The trade line 112 carries keeps the metal's location its bridge
+        // stated, on the message: its expansion is the refusal above, so no
+        // leaf carries it.
+        let trade = walked
+            .iter()
+            .find(|message| message.get_srcuuids().contains(&of_line(112)))
+            .expect("the trade line 112 carries");
+        assert_eq!(trade.header().msgtype(), "AE");
+        assert_eq!(
+            trade
+                .get_metadata()
+                .get("metal.loco")
+                .map(|held| held.as_str()),
+            Some("LN")
+        );
+        assert!(trade.market_operations().is_err());
+    }
 }
 
 mod pipeline {

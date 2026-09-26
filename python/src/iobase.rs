@@ -1519,7 +1519,7 @@ impl PyIOBase {
         String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
-    /// Decode inferred JSON, YAML, or TOML into natural Python or exact `Scalar`.
+    /// Decode inferred JSON, YAML, TOML, or XML into natural Python or exact `Scalar`.
     #[pyo3(signature = (field = None, *, cls = None))]
     fn read_scalar(
         &self,
@@ -1605,7 +1605,7 @@ impl PyIOBase {
         self.write_bytes(text.as_bytes())
     }
 
-    /// Encode one Python value as inferred JSON, YAML, or TOML.
+    /// Encode one Python value as inferred JSON, YAML, TOML, or XML.
     fn write_scalar(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner_mut()?
             .write_scalar(&from_py(value)?)

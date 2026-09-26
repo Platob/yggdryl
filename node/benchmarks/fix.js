@@ -336,6 +336,24 @@ try {
   benchmarkStreams(`fix/write_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.writeArrowReader(BatchReader.fromIpc(parsedIpc), sink),
   )
+  // The market doors over the parsed orders: the sorted door drained, its
+  // batch door, and the Arrow twin over the FIX rows a parse wrote. Each
+  // parse dated its orders by UTC now, and the parse's workers need not
+  // answer them in that order: the sorted door places them, where the book
+  // reader would refuse the regression.
+  const MESSAGES = [...seedCodec.parseLines(LINES)]
+  if (drain(seedCodec.marketOperations(MESSAGES)) !== LINES.length) {
+    throw new Error('one market operation per order')
+  }
+  benchmarkStreams(`fix/market_operations_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.marketOperations(MESSAGES)),
+  )
+  benchmarkStreams(`fix/market_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.marketArrowReader(MESSAGES).intoTable().numRows,
+  )
+  benchmarkStreams(`fix/market_operations_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.marketOperationsArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
+  )
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>
     fix.FixRegistry.fromHandle(generated),

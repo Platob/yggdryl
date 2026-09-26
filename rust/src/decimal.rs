@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
-pub use fixed::Decimal18;
+pub use fixed::{BigDecimal, Decimal};
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -14,6 +14,13 @@ use crate::parser::Parser;
 use crate::value::DataTypeValue;
 use crate::value::{DecimalValue, ValidationFailure, expected};
 use crate::{DataType, DataTypeId, Error, Result, Scalar, Value, i256};
+
+/// The extension name a `decimal` column rides Arrow under: `decimal128(38, 18)`
+/// storage, the fixed scale being the one fact Arrow cannot state.
+pub(crate) const DECIMAL_EXTENSION_NAME: &str = "yggdryl.decimal";
+/// The extension name a `bigdecimal` column rides Arrow under: `decimal256(76, 18)`
+/// storage.
+pub(crate) const BIGDECIMAL_EXTENSION_NAME: &str = "yggdryl.bigdecimal";
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -83,6 +90,8 @@ pub(crate) mod casts {
                 | DataType::Decimal64 { .. }
                 | DataType::Decimal128 { .. }
                 | DataType::Decimal256 { .. }
+                | DataType::Decimal
+                | DataType::BigDecimal
         )
     }
 }
@@ -91,7 +100,10 @@ pub(crate) mod casts {
 // Decimal construction and precision/scale validation.
 // ------------------------------------------------------------------------
 
-/// One exact-decimal datatype and its precision and scale.
+/// One exact-decimal datatype and its precision and scale: the four
+/// parameterized widths, and the two fixed leaves whose precision and scale
+/// are what they are - `decimal`, thirty-eight digits at scale eighteen, and
+/// `bigdecimal`, seventy-six at the same scale.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum DecimalType {
@@ -103,6 +115,10 @@ pub enum DecimalType {
     Decimal128 { precision: u8, scale: i8 },
     /// Decimal backed by 256 bits.
     Decimal256 { precision: u8, scale: i8 },
+    /// The fixed `decimal128(38, 18)` leaf every [`Decimal`] is.
+    Decimal,
+    /// The fixed `decimal256(76, 18)` leaf every [`BigDecimal`] is.
+    BigDecimal,
 }
 
 impl DecimalType {
@@ -113,6 +129,8 @@ impl DecimalType {
             Self::Decimal64 { .. } => DataTypeId::Decimal64,
             Self::Decimal128 { .. } => DataTypeId::Decimal128,
             Self::Decimal256 { .. } => DataTypeId::Decimal256,
+            Self::Decimal => DataTypeId::Decimal,
+            Self::BigDecimal => DataTypeId::BigDecimal,
         }
     }
 
@@ -128,6 +146,8 @@ impl DecimalType {
             | Self::Decimal64 { precision, .. }
             | Self::Decimal128 { precision, .. }
             | Self::Decimal256 { precision, .. } => precision,
+            Self::Decimal => Decimal::PRECISION,
+            Self::BigDecimal => BigDecimal::PRECISION,
         }
     }
 
@@ -139,6 +159,7 @@ impl DecimalType {
             | Self::Decimal64 { scale, .. }
             | Self::Decimal128 { scale, .. }
             | Self::Decimal256 { scale, .. } => scale,
+            Self::Decimal | Self::BigDecimal => Decimal::SCALE,
         }
     }
 
@@ -152,6 +173,8 @@ impl DecimalType {
             Self::Decimal64 { .. } => "Decimal64",
             Self::Decimal128 { .. } => "Decimal128",
             Self::Decimal256 { .. } => "Decimal256",
+            Self::Decimal => "Decimal",
+            Self::BigDecimal => "BigDecimal",
         }
     }
 
@@ -161,8 +184,8 @@ impl DecimalType {
         match self {
             Self::Decimal32 { .. } => 9,
             Self::Decimal64 { .. } => 18,
-            Self::Decimal128 { .. } => 38,
-            Self::Decimal256 { .. } => 76,
+            Self::Decimal128 { .. } | Self::Decimal => 38,
+            Self::Decimal256 { .. } | Self::BigDecimal => 76,
         }
     }
 
@@ -205,6 +228,8 @@ impl DataTypeValue for DecimalType {
             Self::Decimal64 { precision, scale } => DataType::Decimal64 { precision, scale },
             Self::Decimal128 { precision, scale } => DataType::Decimal128 { precision, scale },
             Self::Decimal256 { precision, scale } => DataType::Decimal256 { precision, scale },
+            Self::Decimal => DataType::Decimal,
+            Self::BigDecimal => DataType::BigDecimal,
         }
     }
 
@@ -215,13 +240,16 @@ impl DataTypeValue for DecimalType {
 
 impl fmt::Display for DecimalType {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "{}({},{})",
-            self.id().as_str(),
-            self.precision(),
-            self.scale()
-        )
+        match self {
+            Self::Decimal | Self::BigDecimal => formatter.write_str(self.id().as_str()),
+            _ => write!(
+                formatter,
+                "{}({},{})",
+                self.id().as_str(),
+                self.precision(),
+                self.scale()
+            ),
+        }
     }
 }
 
@@ -328,6 +356,8 @@ impl DataType {
             Self::Decimal256 { precision, scale } => {
                 Some(DecimalType::Decimal256 { precision, scale })
             }
+            Self::Decimal => Some(DecimalType::Decimal),
+            Self::BigDecimal => Some(DecimalType::BigDecimal),
             _ => None,
         }
     }
@@ -367,21 +397,31 @@ mod fixed {
 
     use smol_str::format_smolstr;
 
-    use super::Decimal128;
-    use crate::i256;
-    use crate::{DataType, Error, Result, Scalar};
+    use super::{Decimal128, Decimal256};
+    use crate::{DataType, Error, Result, Scalar, i256, u256};
 
     /// The units one whole is: `10^18`.
     const ONE_UNITS: i128 = 1_000_000_000_000_000_000;
 
-    /// The most units a value holds: `10^38 - 1`, what a 38-digit coefficient
-    /// states.
+    /// The most units a [`Decimal`] holds: `10^38 - 1`, what a 38-digit
+    /// coefficient states.
     const MAX_UNITS: i128 = 99_999_999_999_999_999_999_999_999_999_999_999_999;
 
-    /// The mantissa a reading stops adding digits to: past `10^38 - 1` no
-    /// value holds a further digit ahead of the point, and one behind it is
-    /// truncated.
-    const MANTISSA_LIMIT: u128 = 10_000_000_000_000_000_000_000_000_000_000_000_000;
+    /// The most units a [`BigDecimal`] holds: `10^76 - 1`, what a 76-digit
+    /// coefficient states, as the little-endian two's complement bytes of the
+    /// 256-bit integer.
+    const MAX_BIG_UNITS: i256 = i256::from_le_bytes([
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x95, 0x71, 0xf1, 0xa5, 0x75,
+        0x77, 0x79, 0x29, 0x65, 0xe8, 0xab, 0xb4, 0x64, 0x07, 0xb5, 0x15, 0x99, 0x11, 0xa7, 0xcc,
+        0x1b, 0x16,
+    ]);
+
+    /// `MAX_BIG_UNITS` negated, the same way.
+    const MIN_BIG_UNITS: i256 = i256::from_le_bytes([
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x6a, 0x8e, 0x0e, 0x5a, 0x8a,
+        0x88, 0x86, 0xd6, 0x9a, 0x17, 0x54, 0x4b, 0x9b, 0xf8, 0x4a, 0xea, 0x66, 0xee, 0x58, 0x33,
+        0xe4, 0xe9,
+    ]);
 
     /// The exponent one `e` tail states: an optional sign and digits, or
     /// nothing where the tail is not that or is past what an `i32` holds.
@@ -403,49 +443,200 @@ mod fixed {
         Some(if negative { -exponent } else { exponent })
     }
 
+    /// The integer a fixed decimal's text is read into: the digits as they
+    /// come, then moved to the scale.
+    trait Mantissa: Copy {
+        /// Nothing read yet.
+        const EMPTY: Self;
+        /// The first integer no further digit ahead of the point fits under.
+        const LIMIT: Self;
+        /// Whether a further digit still fits.
+        fn below_limit(self) -> bool;
+        /// This integer with one more decimal digit behind it.
+        fn push_digit(self, digit: u8) -> Self;
+        /// This integer times `10^shift`, or nothing past the width.
+        fn scaled_up(self, shift: u32) -> Option<Self>;
+        /// This integer divided by `10^shift`, truncated toward zero; nothing
+        /// is left of a shift past the width.
+        fn scaled_down(self, shift: u32) -> Self;
+    }
+
+    impl Mantissa for u128 {
+        const EMPTY: Self = 0;
+        const LIMIT: Self = 10_000_000_000_000_000_000_000_000_000_000_000_000;
+
+        fn below_limit(self) -> bool {
+            self < Self::LIMIT
+        }
+
+        fn push_digit(self, digit: u8) -> Self {
+            self * 10 + Self::from(digit)
+        }
+
+        fn scaled_up(self, shift: u32) -> Option<Self> {
+            self.checked_mul(10_u128.checked_pow(shift)?)
+        }
+
+        fn scaled_down(self, shift: u32) -> Self {
+            10_u128.checked_pow(shift).map_or(0, |scale| self / scale)
+        }
+    }
+
+    impl Mantissa for u256 {
+        const EMPTY: Self = Self::ZERO;
+        const LIMIT: Self = Self::TEN_POW_76;
+
+        fn below_limit(self) -> bool {
+            self < Self::LIMIT
+        }
+
+        fn push_digit(self, digit: u8) -> Self {
+            self.checked_mul(Self::from_u128(10))
+                .and_then(|held| held.checked_add(Self::from_u128(u128::from(digit))))
+                .expect("a mantissa below the limit takes one more digit")
+        }
+
+        fn scaled_up(self, shift: u32) -> Option<Self> {
+            (0..shift).try_fold(self, |held, _| held.checked_mul(Self::from_u128(10)))
+        }
+
+        fn scaled_down(self, shift: u32) -> Self {
+            (0..shift).fold(self, |held, _| {
+                held.checked_div(Self::from_u128(10)).unwrap_or(Self::ZERO)
+            })
+        }
+    }
+
+    /// The units one decimal text states at `scale`, read as leniently as a
+    /// number can be read without guessing: the sign, and the magnitude.
+    ///
+    /// One pass over the bytes, no allocation: surrounding ASCII whitespace is
+    /// ignored; an empty text is nothing, `0`; a `+` or `-` may lead; the
+    /// digits may be grouped with `,`, `_`, `'` or a space ahead of the point;
+    /// the point may lead (`.5`), trail (`5.`) or be absent; digits past the
+    /// scale's last fractional one are truncated toward zero; and an exponent
+    /// (`1e3`, `2.5E-2`) moves the point. What is refused is text that states
+    /// no number (a bare sign, two points, a letter, `NaN`, `inf`) and a
+    /// value past the width, which no reading could hold.
+    fn parse_units<M: Mantissa>(text: &str, scale: i8, digits: &'static str) -> Result<(bool, M)> {
+        let refused = |reason: &str| Error::Parse {
+            target: "decimal",
+            position: 0,
+            reason: format_smolstr!("{reason}: {text:?}"),
+        };
+        let too_many = || refused(digits);
+        let bytes = text.trim_ascii().as_bytes();
+        let Some((&first, mut rest)) = bytes.split_first() else {
+            return Ok((false, M::EMPTY));
+        };
+        let negative = match first {
+            b'-' => true,
+            b'+' => false,
+            _ => {
+                rest = bytes;
+                false
+            }
+        };
+        // The digits read, as an integer, and how many of them fell behind
+        // the point; a digit past what the integer holds is one too many
+        // ahead of the point and one truncated behind it.
+        let mut mantissa = M::EMPTY;
+        let mut fraction: i32 = 0;
+        let mut seen_digit = false;
+        let mut seen_point = false;
+        let mut exponent: i32 = 0;
+        let mut at = 0;
+        while at < rest.len() {
+            match rest[at] {
+                digit @ b'0'..=b'9' => {
+                    seen_digit = true;
+                    if mantissa.below_limit() {
+                        mantissa = mantissa.push_digit(digit - b'0');
+                        if seen_point {
+                            fraction += 1;
+                        }
+                    } else if !seen_point {
+                        return Err(too_many());
+                    }
+                }
+                b'.' if !seen_point => seen_point = true,
+                b',' | b'_' | b'\'' | b' ' if seen_digit && !seen_point => {}
+                b'e' | b'E' if seen_digit => {
+                    exponent = parse_exponent(&rest[at + 1..])
+                        .ok_or_else(|| refused("expected an exponent"))?;
+                    break;
+                }
+                _ => return Err(refused("expected a decimal")),
+            }
+            at += 1;
+        }
+        if !seen_digit {
+            return Err(refused("expected a decimal"));
+        }
+        // The units are the mantissa moved to the scale: up by what the point
+        // and the exponent leave short, down - truncated toward zero - by what
+        // they leave over.
+        let shift = i32::from(scale) + exponent - fraction;
+        let units = if shift >= 0 {
+            u32::try_from(shift)
+                .ok()
+                .and_then(|shift| mantissa.scaled_up(shift))
+                .ok_or_else(too_many)?
+        } else {
+            u32::try_from(-shift).map_or(M::EMPTY, |shift| mantissa.scaled_down(shift))
+        };
+        Ok((negative, units))
+    }
+
     /// One exact decimal at eighteen fractional digits and thirty-eight digits
-    /// of precision - Arrow's `decimal128(38, 18)`, preapplied.
+    /// of precision - Arrow's `decimal128(38, 18)`, preapplied - and the
+    /// `decimal` datatype a column of them declares.
     ///
     /// A market's numbers are decimals: a price of `82.5` is exactly that, and
-    /// a float would hold `82.5000000000000071`. The crate's exact decimals hold
-    /// any coefficient at any scale, and every operation on two of them first
-    /// asks which scale they meet at. This one fixes the scale once, at
-    /// eighteen - more than any venue quotes, enough for a rate compounded over
-    /// a year - so the value is one `i128` of units and every operation is an
-    /// integer's: add and subtract are one addition, compare is one comparison,
-    /// hash is the integer's, and multiply and divide widen to 256 bits for the
-    /// one product and come back. Nothing is allocated, and nothing passes
-    /// through a float unless a caller asks for one.
+    /// a float would hold `82.5000000000000071`. The crate's parameterized
+    /// decimals hold any coefficient at any scale, and every operation on two
+    /// of them first asks which scale they meet at. This one fixes the scale
+    /// once, at eighteen - more than any venue quotes, enough for a rate
+    /// compounded over a year - so the value is one `i128` of units and every
+    /// operation is an integer's: add and subtract are one addition, compare
+    /// is one comparison, hash is the integer's, and multiply and divide widen
+    /// to 256 bits for the one product and come back. Nothing is allocated,
+    /// and nothing passes through a float unless a caller asks for one.
     ///
     /// The value is bounded to thirty-eight digits, `MIN` to `MAX`, so it lands
     /// in a `decimal128(38, 18)` column exactly; a result past that is an
     /// overflow, which the checked operations answer as `None` and the
     /// operators refuse the way the integers' do. Multiplication and division
-    /// keep eighteen digits and truncate the rest toward zero.
+    /// keep eighteen digits and truncate the rest toward zero. What needs more
+    /// digits ahead of the point is a [`BigDecimal`].
     ///
     /// ```
-    /// use yggdryl::Decimal18;
+    /// use yggdryl::{DataType, Decimal, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let px: Decimal18 = "82.5".parse()?;
-    /// let qty = Decimal18::from_int(1_000);
+    /// let px: Decimal = "82.5".parse()?;
+    /// let qty = Decimal::from_int(1_000);
     /// assert_eq!((px * qty).to_string(), "82500");
-    /// assert_eq!((px / Decimal18::from_int(4)).to_string(), "20.625");
-    /// assert_eq!(px + Decimal18::from_int(1), "83.5".parse()?);
-    /// assert!(px > Decimal18::ZERO && -px < Decimal18::ZERO);
+    /// assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
+    /// assert_eq!(px + Decimal::from_int(1), "83.5".parse()?);
+    /// assert!(px > Decimal::ZERO && -px < Decimal::ZERO);
     /// // Exactly the column's value, and back.
     /// assert_eq!(px.units(), 82_500_000_000_000_000_000);
-    /// assert_eq!(Decimal18::from_units(px.units()), Some(px));
+    /// assert_eq!(Decimal::from_units(px.units()), Some(px));
     /// assert_eq!(px.to_f64(), 82.5);
+    /// // The datatype and the scalar are its own.
+    /// assert_eq!(Decimal::dtype(), DataType::Decimal);
+    /// assert_eq!(Scalar::from(px), Scalar::Decimal(px));
+    /// assert_eq!(Decimal::from_scalar(&Scalar::from(px)), Some(px));
     /// // Past thirty-eight digits there is no value, only an overflow.
-    /// assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
+    /// assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
     /// # Ok(())
     /// # }
     /// ```
     #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct Decimal18(i128);
+    pub struct Decimal(i128);
 
-    impl Decimal18 {
+    impl Decimal {
         /// The fractional digits every value holds.
         pub const SCALE: i8 = 18;
 
@@ -525,16 +716,16 @@ mod fixed {
         /// hold.
         ///
         /// ```
-        /// use yggdryl::Decimal18;
+        /// use yggdryl::Decimal;
         ///
         /// # fn main() -> yggdryl::Result<()> {
-        /// assert_eq!(Decimal18::parse(" 1,250.50 ")?.to_string(), "1250.5");
-        /// assert_eq!(Decimal18::parse("")?, Decimal18::ZERO);
-        /// assert_eq!(Decimal18::parse(".5")?.to_string(), "0.5");
-        /// assert_eq!(Decimal18::parse("2.5e3")?.to_string(), "2500");
-        /// assert_eq!(Decimal18::parse("1E-2")?.to_string(), "0.01");
-        /// assert_eq!(Decimal18::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
-        /// assert!(Decimal18::parse("1.2.3").is_err() && Decimal18::parse("NaN").is_err());
+        /// assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
+        /// assert_eq!(Decimal::parse("")?, Decimal::ZERO);
+        /// assert_eq!(Decimal::parse(".5")?.to_string(), "0.5");
+        /// assert_eq!(Decimal::parse("2.5e3")?.to_string(), "2500");
+        /// assert_eq!(Decimal::parse("1E-2")?.to_string(), "0.01");
+        /// assert_eq!(Decimal::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
+        /// assert!(Decimal::parse("1.2.3").is_err() && Decimal::parse("NaN").is_err());
         /// # Ok(())
         /// # }
         /// ```
@@ -544,81 +735,15 @@ mod fixed {
         /// Returns [`Error::Parse`] for text that states no number and for a
         /// value past the precision.
         pub fn parse(text: &str) -> Result<Self> {
-            let refused = |reason: &str| Error::Parse {
+            let (negative, units) =
+                parse_units::<u128>(text, Self::SCALE, "expected at most 38 digits")?;
+            let refused = || Error::Parse {
                 target: "decimal",
                 position: 0,
-                reason: format_smolstr!("{reason}: {text:?}"),
+                reason: format_smolstr!("expected at most 38 digits: {text:?}"),
             };
-            let bytes = text.trim_ascii().as_bytes();
-            let Some((&first, mut rest)) = bytes.split_first() else {
-                return Ok(Self::ZERO);
-            };
-            let negative = match first {
-                b'-' => true,
-                b'+' => false,
-                _ => {
-                    rest = bytes;
-                    false
-                }
-            };
-            // The digits read, as an integer, and how many of them fell behind
-            // the point; a digit past what the integer holds is one too many
-            // ahead of the point and one truncated behind it.
-            let mut mantissa: u128 = 0;
-            let mut fraction: i32 = 0;
-            let mut seen_digit = false;
-            let mut seen_point = false;
-            let mut exponent: i32 = 0;
-            let mut at = 0;
-            while at < rest.len() {
-                match rest[at] {
-                    digit @ b'0'..=b'9' => {
-                        seen_digit = true;
-                        if mantissa < MANTISSA_LIMIT {
-                            mantissa = mantissa * 10 + u128::from(digit - b'0');
-                            if seen_point {
-                                fraction += 1;
-                            }
-                        } else if !seen_point {
-                            return Err(refused("expected at most 38 digits"));
-                        }
-                    }
-                    b'.' if !seen_point => seen_point = true,
-                    b',' | b'_' | b'\'' | b' ' if seen_digit && !seen_point => {}
-                    b'e' | b'E' if seen_digit => {
-                        exponent = parse_exponent(&rest[at + 1..])
-                            .ok_or_else(|| refused("expected an exponent"))?;
-                        break;
-                    }
-                    _ => return Err(refused("expected a decimal")),
-                }
-                at += 1;
-            }
-            if !seen_digit {
-                return Err(refused("expected a decimal"));
-            }
-            // The units are the mantissa moved to eighteen fractional digits:
-            // up by what the point and the exponent leave short, down - truncated
-            // toward zero - by what they leave over.
-            let shift = i32::from(Self::SCALE) + exponent - fraction;
-            let units = if shift >= 0 {
-                u32::try_from(shift)
-                    .ok()
-                    .and_then(|shift| 10_u128.checked_pow(shift))
-                    .and_then(|scale| mantissa.checked_mul(scale))
-                    .ok_or_else(|| refused("expected at most 38 digits"))?
-            } else {
-                match u32::try_from(-shift)
-                    .ok()
-                    .and_then(|shift| 10_u128.checked_pow(shift))
-                {
-                    Some(scale) => mantissa / scale,
-                    None => 0,
-                }
-            };
-            let units = i128::try_from(units).map_err(|_| refused("expected at most 38 digits"))?;
-            Self::from_units(if negative { -units } else { units })
-                .ok_or_else(|| refused("expected at most 38 digits"))
+            let units = i128::try_from(units).map_err(|_| refused())?;
+            Self::from_units(if negative { -units } else { units }).ok_or_else(refused)
         }
 
         /// The value a scalar holds, where it is an exact decimal that restates
@@ -626,6 +751,9 @@ mod fixed {
         /// text [`Self::parse`] reads.
         #[must_use]
         pub fn from_scalar(value: &Scalar) -> Option<Self> {
+            if let Scalar::Decimal(held) = value {
+                return Some(*held);
+            }
             if let Some(units) = value.decimal_unscaled_at(Self::SCALE) {
                 return Self::from_units(units);
             }
@@ -638,10 +766,11 @@ mod fixed {
             value.as_f64().and_then(Self::from_f64)
         }
 
-        /// The datatype every value is: `decimal128(38, 18)`.
+        /// The datatype every value is: `decimal`, over `decimal128(38, 18)`
+        /// storage.
         #[must_use]
         pub const fn dtype() -> DataType {
-            DataType::DECIMAL
+            DataType::Decimal
         }
 
         /// Whether this value is nothing.
@@ -722,36 +851,308 @@ mod fixed {
         pub const fn into_decimal128(self) -> Decimal128 {
             Decimal128::new(self.0, Self::SCALE)
         }
+
+        /// This value widened: every [`Decimal`] is a [`BigDecimal`].
+        #[must_use]
+        pub const fn widened(self) -> BigDecimal {
+            BigDecimal(i256::from_i128(self.0))
+        }
+    }
+
+    /// One exact decimal at eighteen fractional digits and seventy-six digits
+    /// of precision - Arrow's `decimal256(76, 18)`, preapplied - and the
+    /// `bigdecimal` datatype a column of them declares.
+    ///
+    /// The wide twin of [`Decimal`]: the same scale, so a `Decimal` widens
+    /// into it losslessly and a value within thirty-eight digits narrows back,
+    /// and fifty-eight digits ahead of the point for the notional a book of
+    /// them sums to. The value is one 256-bit integer of units; add, subtract
+    /// and compare are that integer's, and multiply and divide run through a
+    /// 512-bit product so the one truncation is the scale's. A result past
+    /// seventy-six digits is an overflow, `None` from the checked operations
+    /// and a refusal from the operators.
+    ///
+    /// ```
+    /// use yggdryl::{BigDecimal, DataType, Decimal, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let notional: BigDecimal = "123456789012345678901234567890.5".parse()?;
+    /// let px = Decimal::from_int(3).widened();
+    /// assert_eq!((notional * px).to_string(), "370370367037037036703703703671.5");
+    /// assert_eq!((notional / px).to_string(), "41152263004115226300411522630.166666666666666666");
+    /// assert_eq!(px.narrowed(), Some(Decimal::from_int(3)));
+    /// assert_eq!(notional.narrowed(), None);
+    /// assert_eq!(BigDecimal::dtype(), DataType::BigDecimal);
+    /// assert_eq!(Scalar::from(px), Scalar::BigDecimal(px));
+    /// assert_eq!(BigDecimal::MAX.checked_add(BigDecimal::ONE), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct BigDecimal(i256);
+
+    impl BigDecimal {
+        /// The fractional digits every value holds.
+        pub const SCALE: i8 = 18;
+
+        /// The digits of precision every value holds.
+        pub const PRECISION: u8 = 76;
+
+        /// Nothing.
+        pub const ZERO: Self = Self(i256::ZERO);
+
+        /// One whole.
+        pub const ONE: Self = Self(i256::from_i128(ONE_UNITS));
+
+        /// The greatest value: seventy-six nines, eighteen of them fractional.
+        pub const MAX: Self = Self(MAX_BIG_UNITS);
+
+        /// The least value: `MAX` negated.
+        pub const MIN: Self = Self(MIN_BIG_UNITS);
+
+        /// The value `units * 10^-18` states, or nothing past the precision.
+        #[must_use]
+        pub fn from_units(units: i256) -> Option<Self> {
+            (units <= MAX_BIG_UNITS && units >= MIN_BIG_UNITS).then_some(Self(units))
+        }
+
+        /// The units this value is: the `decimal256(76, 18)` coefficient.
+        #[must_use]
+        pub const fn units(self) -> i256 {
+            self.0
+        }
+
+        /// A whole number, which every `i64` is within the precision.
+        #[must_use]
+        pub const fn from_int(value: i64) -> Self {
+            Self(i256::from_i128(value as i128 * ONE_UNITS))
+        }
+
+        /// The value within thirty-eight digits, or nothing past them.
+        #[must_use]
+        pub fn narrowed(self) -> Option<Decimal> {
+            self.0.as_i128().and_then(Decimal::from_units)
+        }
+
+        /// The nearest value to a float, or nothing for one that is not finite
+        /// or is past the precision; see [`Decimal::from_f64`].
+        #[must_use]
+        pub fn from_f64(value: f64) -> Option<Self> {
+            if !value.is_finite() {
+                return None;
+            }
+            Self::parse(&format!("{value}")).ok()
+        }
+
+        /// The float nearest this value.
+        #[must_use]
+        pub fn to_f64(self) -> f64 {
+            self.to_string().parse().unwrap_or(f64::NAN)
+        }
+
+        /// The value one decimal text states, read exactly as
+        /// [`Decimal::parse`] reads it, with seventy-six digits to fill.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`Error::Parse`] for text that states no number and for a
+        /// value past the precision.
+        pub fn parse(text: &str) -> Result<Self> {
+            let (negative, units) =
+                parse_units::<u256>(text, Self::SCALE, "expected at most 76 digits")?;
+            let refused = || Error::Parse {
+                target: "decimal",
+                position: 0,
+                reason: format_smolstr!("expected at most 76 digits: {text:?}"),
+            };
+            let units = i256::from_le_bytes(units.into_le_bytes());
+            if units.is_negative() {
+                return Err(refused());
+            }
+            let units = if negative {
+                units.checked_neg().ok_or_else(refused)?
+            } else {
+                units
+            };
+            Self::from_units(units).ok_or_else(refused)
+        }
+
+        /// The value a scalar holds, where it is an exact decimal that restates
+        /// at eighteen fractional digits, a whole integer, a finite float, or
+        /// text [`Self::parse`] reads.
+        #[must_use]
+        pub fn from_scalar(value: &Scalar) -> Option<Self> {
+            match value {
+                Scalar::BigDecimal(held) => return Some(*held),
+                Scalar::Decimal(held) => return Some(held.widened()),
+                _ => {}
+            }
+            if let Some(units) = value.decimal256_unscaled_at(Self::SCALE) {
+                return Self::from_units(units);
+            }
+            if let Some(whole) = value.as_i64() {
+                return Some(Self::from_int(whole));
+            }
+            if let Some(text) = value.as_str() {
+                return Self::parse(text).ok();
+            }
+            value.as_f64().and_then(Self::from_f64)
+        }
+
+        /// The datatype every value is: `bigdecimal`, over `decimal256(76, 18)`
+        /// storage.
+        #[must_use]
+        pub const fn dtype() -> DataType {
+            DataType::BigDecimal
+        }
+
+        /// Whether this value is nothing.
+        #[must_use]
+        pub const fn is_zero(self) -> bool {
+            self.0.is_zero()
+        }
+
+        /// Whether this value is below nothing.
+        #[must_use]
+        pub const fn is_negative(self) -> bool {
+            self.0.is_negative()
+        }
+
+        /// Whether this value is above nothing.
+        #[must_use]
+        pub fn is_positive(self) -> bool {
+            !self.0.is_negative() && !self.0.is_zero()
+        }
+
+        /// This value without its sign.
+        #[must_use]
+        pub fn abs(self) -> Self {
+            // Every value is within `MIN..=MAX`, a symmetric range, so negation
+            // never leaves it.
+            Self(self.0.checked_abs().unwrap_or(self.0))
+        }
+
+        /// The sum, or nothing past the precision.
+        #[must_use]
+        pub fn checked_add(self, other: Self) -> Option<Self> {
+            self.0.checked_add(other.0).and_then(Self::from_units)
+        }
+
+        /// The difference, or nothing past the precision.
+        #[must_use]
+        pub fn checked_sub(self, other: Self) -> Option<Self> {
+            self.0.checked_sub(other.0).and_then(Self::from_units)
+        }
+
+        /// The product at eighteen digits, truncated toward zero, or nothing
+        /// past the precision.
+        #[must_use]
+        pub fn checked_mul(self, other: Self) -> Option<Self> {
+            Self::signed(
+                self.is_negative() != other.is_negative(),
+                self.0
+                    .unsigned_abs()
+                    .mul_div(other.0.unsigned_abs(), u256::from_u128(ONE_UNITS as u128))?,
+            )
+        }
+
+        /// The quotient at eighteen digits, truncated toward zero, or nothing
+        /// for a divisor of nothing or a quotient past the precision.
+        #[must_use]
+        pub fn checked_div(self, other: Self) -> Option<Self> {
+            if other.is_zero() {
+                return None;
+            }
+            Self::signed(
+                self.is_negative() != other.is_negative(),
+                self.0
+                    .unsigned_abs()
+                    .mul_div(u256::from_u128(ONE_UNITS as u128), other.0.unsigned_abs())?,
+            )
+        }
+
+        /// The value `magnitude` units state under a sign, or nothing past the
+        /// precision.
+        fn signed(negative: bool, magnitude: u256) -> Option<Self> {
+            let units = i256::from_le_bytes(magnitude.into_le_bytes());
+            if units.is_negative() {
+                return None;
+            }
+            Self::from_units(if negative {
+                units.checked_neg()?
+            } else {
+                units
+            })
+        }
+
+        /// The value truncated toward zero at `places` fractional digits;
+        /// `places` past the scale is the value itself.
+        #[must_use]
+        pub fn truncated(self, places: u8) -> Self {
+            if places >= Self::SCALE as u8 {
+                return self;
+            }
+            let keep = i256::from_i128(10_i128.pow(u32::from(Self::SCALE as u8 - places)));
+            self.0
+                .checked_div(keep)
+                .and_then(|held| held.checked_mul(keep))
+                .map_or(self, Self)
+        }
+
+        /// The `Decimal256` this value is, at its own scale.
+        #[must_use]
+        pub const fn into_decimal256(self) -> Decimal256 {
+            Decimal256::new(self.0, Self::SCALE)
+        }
     }
 
     impl DataType {
-        /// The decimal a market's numbers are held as: `decimal128(38, 18)`,
-        /// what every [`Decimal18`] is.
+        /// `decimal128(38, 18)`: the storage every [`Decimal`] rides, and the
+        /// spelling a FIX dictionary types a price with.
         pub const DECIMAL: Self = Self::Decimal128 {
             precision: 38,
             scale: 18,
         };
     }
 
-    impl fmt::Display for Decimal18 {
+    /// The decimal text of `units` at scale eighteen, with no trailing zero
+    /// behind the point.
+    fn write_trimmed(units: i256, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = super::decimal_text(units, Decimal::SCALE);
+        let trimmed = match text.find('.') {
+            Some(_) => text.trim_end_matches('0').trim_end_matches('.'),
+            None => text.as_str(),
+        };
+        formatter.write_str(if trimmed.is_empty() { "0" } else { trimmed })
+    }
+
+    impl fmt::Display for Decimal {
         /// The decimal text, with no trailing zero behind the point.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let text = super::decimal_text(i256::from(self.0), Self::SCALE);
-            let trimmed = match text.find('.') {
-                Some(_) => text.trim_end_matches('0').trim_end_matches('.'),
-                None => text.as_str(),
-            };
-            formatter.write_str(if trimmed.is_empty() { "0" } else { trimmed })
+            write_trimmed(i256::from(self.0), formatter)
         }
     }
 
-    impl fmt::Debug for Decimal18 {
+    impl fmt::Display for BigDecimal {
+        /// The decimal text, with no trailing zero behind the point.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(formatter, "Decimal18({self})")
+            write_trimmed(self.0, formatter)
         }
     }
 
-    impl FromStr for Decimal18 {
+    impl fmt::Debug for Decimal {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "Decimal({self})")
+        }
+    }
+
+    impl fmt::Debug for BigDecimal {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "BigDecimal({self})")
+        }
+    }
+
+    impl FromStr for Decimal {
         type Err = Error;
 
         fn from_str(text: &str) -> Result<Self> {
@@ -759,37 +1160,75 @@ mod fixed {
         }
     }
 
-    impl From<Decimal18> for Decimal128 {
-        fn from(value: Decimal18) -> Self {
+    impl FromStr for BigDecimal {
+        type Err = Error;
+
+        fn from_str(text: &str) -> Result<Self> {
+            Self::parse(text)
+        }
+    }
+
+    impl From<Decimal> for Decimal128 {
+        fn from(value: Decimal) -> Self {
             value.into_decimal128()
         }
     }
 
-    impl From<Decimal18> for Scalar {
-        fn from(value: Decimal18) -> Self {
-            Self::Decimal128(value.into_decimal128())
+    impl From<BigDecimal> for Decimal256 {
+        fn from(value: BigDecimal) -> Self {
+            value.into_decimal256()
         }
     }
 
-    impl From<i64> for Decimal18 {
+    impl From<Decimal> for BigDecimal {
+        fn from(value: Decimal) -> Self {
+            value.widened()
+        }
+    }
+
+    impl From<Decimal> for Scalar {
+        fn from(value: Decimal) -> Self {
+            Self::Decimal(value)
+        }
+    }
+
+    impl From<BigDecimal> for Scalar {
+        fn from(value: BigDecimal) -> Self {
+            Self::BigDecimal(value)
+        }
+    }
+
+    impl From<i64> for Decimal {
+        fn from(value: i64) -> Self {
+            Self::from_int(value)
+        }
+    }
+
+    impl From<i64> for BigDecimal {
         fn from(value: i64) -> Self {
             Self::from_int(value)
         }
     }
 
     macro_rules! operator {
-        ($trait:ident, $method:ident, $assign:ident, $assign_method:ident, $checked:ident, $what:literal) => {
-            impl $trait for Decimal18 {
+        ($type:ident, $digits:literal, $trait:ident, $method:ident, $assign:ident, $assign_method:ident, $checked:ident, $what:literal) => {
+            impl $trait for $type {
                 type Output = Self;
 
                 fn $method(self, other: Self) -> Self {
                     self.$checked(other).unwrap_or_else(|| {
-                        panic!(concat!("decimal ", $what, " overflows 38 digits"))
+                        panic!(concat!(
+                            "decimal ",
+                            $what,
+                            " overflows ",
+                            $digits,
+                            " digits"
+                        ))
                     })
                 }
             }
 
-            impl $assign for Decimal18 {
+            impl $assign for $type {
                 fn $assign_method(&mut self, other: Self) {
                     *self = $trait::$method(*self, other);
                 }
@@ -797,19 +1236,61 @@ mod fixed {
         };
     }
 
-    operator!(Add, add, AddAssign, add_assign, checked_add, "addition");
-    operator!(Sub, sub, SubAssign, sub_assign, checked_sub, "subtraction");
-    operator!(
-        Mul,
-        mul,
-        MulAssign,
-        mul_assign,
-        checked_mul,
-        "multiplication"
-    );
-    operator!(Div, div, DivAssign, div_assign, checked_div, "division");
+    macro_rules! operators {
+        ($type:ident, $digits:literal) => {
+            operator!(
+                $type,
+                $digits,
+                Add,
+                add,
+                AddAssign,
+                add_assign,
+                checked_add,
+                "addition"
+            );
+            operator!(
+                $type,
+                $digits,
+                Sub,
+                sub,
+                SubAssign,
+                sub_assign,
+                checked_sub,
+                "subtraction"
+            );
+            operator!(
+                $type,
+                $digits,
+                Mul,
+                mul,
+                MulAssign,
+                mul_assign,
+                checked_mul,
+                "multiplication"
+            );
+            operator!(
+                $type,
+                $digits,
+                Div,
+                div,
+                DivAssign,
+                div_assign,
+                checked_div,
+                "division"
+            );
 
-    impl Neg for Decimal18 {
+            impl std::iter::Sum for $type {
+                fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+                    iter.fold(Self::ZERO, Add::add)
+                }
+            }
+        };
+    }
+
+    operators!(Decimal, "38");
+    operators!(BigDecimal, "76");
+
+    impl Neg for Decimal {
         type Output = Self;
 
         fn neg(self) -> Self {
@@ -817,9 +1298,12 @@ mod fixed {
         }
     }
 
-    impl std::iter::Sum for Decimal18 {
-        fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-            iter.fold(Self::ZERO, Add::add)
+    impl Neg for BigDecimal {
+        type Output = Self;
+
+        fn neg(self) -> Self {
+            // The range is symmetric, so every value's negation is a value.
+            Self(self.0.checked_neg().unwrap_or(self.0))
         }
     }
 }
@@ -995,6 +1479,54 @@ decimal_value!(Decimal64, i64);
 decimal_value!(Decimal128, i128);
 decimal_value!(Decimal256);
 
+/// The fixed leaves answer the decimal contract at their one scale: a
+/// restatement at eighteen is the value itself, and at any other scale there
+/// is no such value, which is refused rather than built.
+macro_rules! fixed_decimal_value {
+    ($leaf:ident, $kind:literal) => {
+        impl Value for $leaf {
+            fn dtype(&self) -> Result<DataType> {
+                Ok(DataType::$leaf)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$leaf(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$leaf(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl DecimalValue for $leaf {
+            fn coefficient(&self) -> i256 {
+                self.units().into_i256()
+            }
+
+            fn scale(&self) -> i8 {
+                Self::SCALE
+            }
+
+            fn rescale(self, scale: i8) -> Result<Self> {
+                if scale == Self::SCALE {
+                    Ok(self)
+                } else {
+                    Err(Error::InexactArithmetic {
+                        operation: "rescale",
+                        kind: $kind,
+                    })
+                }
+            }
+        }
+    };
+}
+
+fixed_decimal_value!(Decimal, "Decimal");
+fixed_decimal_value!(BigDecimal, "BigDecimal");
+
 impl DecimalValue for Decimal256 {
     fn coefficient(&self) -> i256 {
         self.coefficient()
@@ -1059,6 +1591,8 @@ impl Scalar {
             Self::Decimal64(value) => Some((value.coefficient().into_i256(), value.scale())),
             Self::Decimal128(value) => Some((value.coefficient().into_i256(), value.scale())),
             Self::Decimal256(value) => Some((value.coefficient(), value.scale())),
+            Self::Decimal(value) => Some((value.units().into_i256(), Decimal::SCALE)),
+            Self::BigDecimal(value) => Some((value.units(), BigDecimal::SCALE)),
             _ => None,
         }
     }
@@ -1658,6 +2192,7 @@ impl Scalar {
             | DataType::Decimal64 { scale, .. }
             | DataType::Decimal128 { scale, .. }
             | DataType::Decimal256 { scale, .. } => *scale,
+            DataType::Decimal | DataType::BigDecimal => Decimal::SCALE,
             other => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1679,21 +2214,30 @@ impl Scalar {
                 }
             }
         })?;
-        if matches!(dtype, DataType::Decimal256 { .. }) {
-            return Ok(Self::d256(coefficient, scale));
+        let past = |digits: &'static str| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: format_smolstr!("decimal coefficient exceeds {digits}"),
+        };
+        match dtype {
+            DataType::Decimal256 { .. } => Ok(Self::d256(coefficient, scale)),
+            DataType::BigDecimal => BigDecimal::from_units(coefficient)
+                .map(Self::BigDecimal)
+                .ok_or_else(|| past("76 digits")),
+            DataType::Decimal => coefficient
+                .as_i128()
+                .and_then(Decimal::from_units)
+                .map(Self::Decimal)
+                .ok_or_else(|| past("38 digits")),
+            _ => coefficient
+                .as_i128()
+                .map(|coefficient| Self::d128(coefficient, scale))
+                .ok_or_else(|| past("128 bits")),
         }
-        coefficient
-            .as_i128()
-            .map(|coefficient| Self::d128(coefficient, scale))
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: SmolStr::new_static("decimal coefficient exceeds 128 bits"),
-            })
     }
 }
 
 // ------------------------------------------------------------------------
-// Arrow projection: the four exact-decimal widths.
+// Arrow projection: the four exact-decimal widths and the two fixed leaves.
 // ------------------------------------------------------------------------
 
 mod arrow {
@@ -1731,6 +2275,8 @@ mod arrow {
                 validate_decimal("Decimal256", *precision, *scale, 76)?;
                 ArrowDataType::Decimal256(*precision, *scale)
             }
+            DataType::Decimal => ArrowDataType::Decimal128(38, 18),
+            DataType::BigDecimal => ArrowDataType::Decimal256(76, 18),
             other => {
                 return Err(invalid(
                     "decimal",
