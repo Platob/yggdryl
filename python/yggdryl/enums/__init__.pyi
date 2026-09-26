@@ -33,6 +33,12 @@ COMPATIBILITY_SCHEMES: tuple[str, ...]
 NULLABILITIES: tuple[str, ...]
 REPRESENTATIONS: tuple[str, ...]
 LEVELS: Mapping[str, int]
+MARKET_KINDS: tuple[str, ...]
+MARKET_VIEWS: tuple[str, ...]
+MD_UPDATE_ACTIONS: tuple[str, ...]
+EVENT_COLUMNS: tuple[str, ...]
+MARKET_COLUMNS: tuple[str, ...]
+OPERATION_COLUMNS: tuple[str, ...]
 
 __all__ = [
     "AsciiCode",
@@ -52,9 +58,15 @@ __all__ = [
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
     "DIGEST_ALGORITHMS",
+    "EVENT_COLUMNS",
     "IO_KINDS",
     "LEVELS",
+    "MARKET_COLUMNS",
+    "MARKET_KINDS",
+    "MARKET_VIEWS",
+    "MD_UPDATE_ACTIONS",
     "NULLABILITIES",
+    "OPERATION_COLUMNS",
     "REPRESENTATIONS",
     "TIME_UNITS",
     "UNION_MODES",

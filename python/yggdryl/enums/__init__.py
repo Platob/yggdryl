@@ -104,6 +104,11 @@ MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
 #: The eight columns a market operation states, in schema order.
 OPERATION_COLUMNS: tuple[str, ...] = tuple(_LISTING["operation_columns"])
 
+#: Every named reading of a ``marketdata`` stream ``graph.MarketData.plan``
+#: and ``apply_view`` take, e.g. ``"orders"``, ``"book_sides"``, in
+#: declaration order.
+MARKET_VIEWS: tuple[str, ...] = tuple(_LISTING["market_views"])
+
 __all__ = [
     "AsciiCode",
     "CfiCode",
@@ -127,6 +132,7 @@ __all__ = [
     "LEVELS",
     "MARKET_COLUMNS",
     "MARKET_KINDS",
+    "MARKET_VIEWS",
     "MD_UPDATE_ACTIONS",
     "NULLABILITIES",
     "OPERATION_COLUMNS",

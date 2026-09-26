@@ -21,6 +21,8 @@ enum DefaultPlan {
     Float,
     Decimal,
     Decimal256,
+    FixedDecimal,
+    FixedBigDecimal,
     Interval(TimeUnit),
     String,
     Bytes(usize),
@@ -250,6 +252,8 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
             | DataType::Decimal256 { .. }
+            | DataType::Decimal
+            | DataType::BigDecimal
             // A variant declares its types per value and a geometry is one
             // WKB payload: neither holds child fields for the walk to visit.
             | DataType::Variant
@@ -421,6 +425,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             scalar(DefaultPlan::Decimal, false)
         }
         D::Decimal256 { .. } => scalar(DefaultPlan::Decimal256, false),
+        D::Decimal => scalar(DefaultPlan::FixedDecimal, false),
+        D::BigDecimal => scalar(DefaultPlan::FixedBigDecimal, false),
         // The present default wraps the encoding's null; bare Scalar::Null
         // remains field absence and is chosen only by a nullable field.
         D::Variant => scalar(DefaultPlan::VariantNull, false),
@@ -612,6 +618,8 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
         DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::i256::ZERO, 0)),
+        DefaultPlan::FixedDecimal => Ok(Scalar::Decimal(crate::Decimal::ZERO)),
+        DefaultPlan::FixedBigDecimal => Ok(Scalar::BigDecimal(crate::BigDecimal::ZERO)),
         DefaultPlan::Interval(unit) => crate::Interval::new(0, 0, 0, unit).map(Scalar::Interval),
         DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::Bytes(width) => {
@@ -709,7 +717,10 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
         // A zero coefficient is zero at every scale.
-        DefaultPlan::Decimal | DefaultPlan::Decimal256 => {
+        DefaultPlan::Decimal
+        | DefaultPlan::Decimal256
+        | DefaultPlan::FixedDecimal
+        | DefaultPlan::FixedBigDecimal => {
             value.as_i128() == Some(0)
                 || value
                     .as_decimal()

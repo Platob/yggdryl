@@ -177,7 +177,7 @@ test('the datatype identifiers are laid out by family', () => {
   // the geospatial pair closes the list. An identifier is a wire contract
   // laid out by family, so a leaf added later lands beside its family and
   // nothing ever moves.
-  assert.equal(enums.dataTypeIds.length, 85)
+  assert.equal(enums.dataTypeIds.length, 87)
   assert.equal(enums.dataTypeIds.includes('figi'), true)
   const ids = [...enums.dataTypeIds]
   assert.equal(ids.indexOf('url'), ids.indexOf('version') + 1)

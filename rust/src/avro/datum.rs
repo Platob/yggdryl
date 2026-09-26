@@ -1029,7 +1029,9 @@ fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
+        | Scalar::Decimal256(_)
+        | Scalar::Decimal(_)
+        | Scalar::BigDecimal(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected a decimal exactly representable at scale {scale}"
             ))

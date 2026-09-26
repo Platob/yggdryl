@@ -1628,7 +1628,7 @@ field_leaves! {
     [Struct] => StructField / StructType,
     [Union] => UnionField / UnionType,
     [Dictionary] => EnumField / EnumType,
-    [Decimal32, Decimal64, Decimal128, Decimal256] => DecimalField / DecimalType,
+    [Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal] => DecimalField / DecimalType,
     [Map, SortedMap] => MappingField / MappingType,
     [RunEndEncoded] => RunEndEncodedField / RunEndType,
     [Variant] => VariantField / VariantType,
@@ -1922,10 +1922,11 @@ mod arrow {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::{
-        BYTES_EXTENSION_NAME, BytesType, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
-        MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME,
-        URL_EXTENSION_NAME, URN_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
-        VERSION_EXTENSION_NAME, code_for_extension, is_variant_storage,
+        BIGDECIMAL_EXTENSION_NAME, BYTES_EXTENSION_NAME, BytesType, DECIMAL_EXTENSION_NAME,
+        GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME, MIMETYPE_EXTENSION_NAME,
+        STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME, URL_EXTENSION_NAME,
+        URN_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
+        code_for_extension, is_variant_storage,
     };
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
     use crate::{Field, FieldRef};
@@ -2340,6 +2341,10 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
+        /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
+        Decimal,
+        /// The `yggdryl.bigdecimal` fixed decimal over `Decimal256(76, 18)`.
+        BigDecimal,
         /// The canonical version text over Utf8.
         Version,
         /// The canonical URL text over Utf8.
@@ -2368,6 +2373,8 @@ mod arrow {
                 }
                 Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
                 Self::Uuid => DataType::Uuid,
+                Self::Decimal => DataType::Decimal,
+                Self::BigDecimal => DataType::BigDecimal,
                 Self::Version => DataType::Version,
                 Self::Url => DataType::url(),
                 Self::Urn => DataType::urn(),
@@ -2487,6 +2494,14 @@ mod arrow {
             UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                     .then_some(RecognizedExtension::Uuid))
+            }
+            DECIMAL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Decimal128(38, 18))
+                    .then_some(RecognizedExtension::Decimal))
+            }
+            BIGDECIMAL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Decimal256(76, 18))
+                    .then_some(RecognizedExtension::BigDecimal))
             }
             VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))

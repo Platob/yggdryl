@@ -244,6 +244,19 @@ export declare class BookEvent {
   get snapshotPartitions(): Array<SnapshotPartition>
   /** Whether the best bid is strictly above the best ask. */
   get isCrossed(): boolean
+  /** Whether both bests are stated and equal. */
+  get isLocked(): boolean
+  /**
+   * The best ask less the best bid, negative when crossed, as decimal
+   * text; `null` where a side states no best.
+   */
+  get spread(): string | null
+  /**
+   * `(bid - ask) / (bid + ask)` over the two sides' `depth(levels)`, as
+   * decimal text: `'1'` bid-only, `'-1'` ask-only; `null` when the total
+   * is zero - both sides empty, or no level.
+   */
+  imbalance(levels: number): string | null
   /**
    * The arithmetic midpoint of a coherent two-sided best bid and offer,
    * as decimal text; `null` where there is none.
@@ -500,6 +513,17 @@ export declare class BookSide {
   get bestPrice(): string | null
   /** The aggregate quantity at the exact best price; `null` where empty. */
   get bestQuantity(): string | null
+  /**
+   * One limit per price level, best first and the one unpriced limit
+   * last, each naming its entries' `curruuid`s in position order.
+   */
+  get limits(): Array<BookLimit>
+  /**
+   * The exact quantity resting on the first `levels` limits, the
+   * unpriced one counted where reached, as decimal text: `'0'` for an
+   * empty side or no level, `null` only past what a decimal holds.
+   */
+  depth(levels: number): string | null
   /**
    * This side with one order or quote event - a leaf or a `MarketData` -
    * atomically applied.
@@ -2335,7 +2359,8 @@ export declare class FixCodec {
    * nanoseconds; `null`, zero and a negative width disable snapshots;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
    * transaction clock may stand and still date the message, the core's
-   * one second when unstated.
+   * one second when unstated; `marketMetadata` is whether a market
+   * operation carries its message's unmapped fields, on when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -2382,6 +2407,11 @@ export declare class FixCodec {
   get includeMsgtypes(): Array<string>
   /** The message types a parse refuses before it builds a frame. */
   get excludeMsgtypes(): Array<string>
+  /**
+   * Whether a market operation this codec builds carries, in its
+   * metadata, what its message states that no typed column reads.
+   */
+  get marketMetadata(): boolean
   /**
    * The `SendingTime` an undated message takes - one neither its row nor
    * its line dates - `DateTime64(ns, UTC)`, or `null` where each new
@@ -2474,6 +2504,12 @@ export declare class FixCodec {
    * states them again exactly as `lifecycleArrowReader(reader)` does.
    */
   messages(source: JsBatchReader): FixMessages
+  /**
+   * A stream of batches of FIX rows as batches of lifted `marketdata`
+   * rows: `messages` into `marketArrowReader`. A schema making no FIX
+   * root is refused before a row is read. The source is consumed.
+   */
+  marketOperationsArrowReader(source: JsBatchReader): JsBatchReader
   /**
    * A stream of batches of FIX rows as batches under one message field.
    *
@@ -4164,6 +4200,15 @@ export declare class MarketData {
    * after an error, the error thrown at the failing item.
    */
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
+  /**
+   * The plan one named view is over a `marketdata` stream - `orders`,
+   * `quotes`, `executions`, `trades`, `book_sides`, `books`, or the
+   * `lifecycle` of the chain `crosscode` names, the one view that takes
+   * one - read ignoring ASCII case, with each lift, a `FieldPath` read
+   * once, appended as a projection after the view's own columns. Built
+   * structurally; its text reads back as the same plan.
+   */
+  static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
   /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
   toString(): string
   /** The element's own identity, as its hyphenated text. */
@@ -4273,12 +4318,17 @@ export declare class MarketData {
 }
 export type JsMarketData = MarketData
 
-/** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+/**
+ * A stream of `MarketData`: the lazy row-decode walk
+ * `MarketData.fromArrowReader` answers, and the sorted operations
+ * `FixCodec.marketOperations` answers.
+ */
 export declare class MarketDataRowIterator {
   /**
-   * Advance the stream: the next value, or `null` at its end; a row the
-   * decoder refuses throws, once, and ends the walk. The loader wraps
-   * this into the iterator protocol.
+   * Advance the stream: the next value, or `null` at its end; an item the
+   * stream refuses throws, once - a decode walk ends there, the sorted
+   * operations continue past it. The loader wraps this into the iterator
+   * protocol.
    */
   next(): IteratorResult<MarketData>
 }
@@ -6222,15 +6272,29 @@ export declare class Selector {
   static fromField(field: JsField): Selector
   /** Each projection, as its canonical text. */
   get projections(): Array<string>
-  /** The names this selector publishes, in output order; empty for `*`. */
+  /**
+   * The names this selector's projections publish, in output order: the
+   * columns a `*` keeps are the schema's to name, so empty for `*`.
+   */
   get names(): Array<string>
   /** The column names `select * exclude (...)` drops. */
   get excluded(): Array<string>
-  /** Whether this is `select *` with nothing excluded. */
+  /**
+   * Whether this is `select *` with nothing excluded and nothing
+   * appended: every column, unchanged.
+   */
   get isAll(): boolean
+  /**
+   * Whether this selector opens with `*`: it reads every stored column
+   * it does not exclude, whatever it appends after.
+   */
+  get hasStar(): boolean
   /** Whether every projection is a bare column. */
   get isColumns(): boolean
-  /** How many projections this selector holds. */
+  /**
+   * How many projections this selector holds: zero for `*`, the
+   * appended ones for a `*` that appends.
+   */
   get length(): number
   /** Every top-level column this selector reads, in first-seen order. */
   get columns(): Array<string>
@@ -8492,6 +8556,22 @@ export interface AvroDecodeLimitsInput {
   maxNodes?: number
 }
 
+/** One price limit of a book side, as the plain object JavaScript reads. */
+export interface BookLimit {
+  /**
+   * The limit's price as decimal text; `null` on the one limit folding
+   * every entry that states no price.
+   */
+  price: string | null
+  /**
+   * The exact sum of the quantities its entries state, as decimal text;
+   * an entry stating none adds nothing.
+   */
+  quantity: string
+  /** Its entries' `curruuid`s in live order: position, then arrival. */
+  uuids: Array<string>
+}
+
 /**
  * The five slots a book-control object states, each `undefined` or `null`
  * where not given; given, a slot is widened through `Scalar.from` as a
@@ -8768,6 +8848,12 @@ export interface FixCodecOptions {
    * `null`.
    */
   defaultSendingTime?: Scalar | Date | null
+  /**
+   * Whether a market operation this codec builds carries, in its
+   * metadata, what its message states that no typed column reads - part
+   * of the leaf's identity; the core's `true` when unstated.
+   */
+  marketMetadata?: boolean
 }
 
 /**

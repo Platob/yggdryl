@@ -82,8 +82,19 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
     assert enums.MARKET_COLUMNS[0] == "price"
     assert len(enums.OPERATION_COLUMNS) == 8
     assert enums.OPERATION_COLUMNS[-2:] == ("bid", "ask")
+    # The views a `marketdata` stream is read by, in declaration order.
+    assert enums.MARKET_VIEWS == (
+        "orders",
+        "quotes",
+        "executions",
+        "trades",
+        "book_sides",
+        "books",
+        "lifecycle",
+    )
     for listing in (
         enums.MARKET_KINDS,
+        enums.MARKET_VIEWS,
         enums.MD_UPDATE_ACTIONS,
         enums.EVENT_COLUMNS,
         enums.MARKET_COLUMNS,

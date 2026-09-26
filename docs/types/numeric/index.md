@@ -6,7 +6,7 @@ Boolean, integer, floating and decimal: the four families whose values are numbe
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `null`, `boolean`, `int8`..`int64`, `uint8`..`uint64`, `float16`/`float32`/`float64`, `decimal32`..`decimal256` |
+| Owns | `null`, `boolean`, `int8`..`int64`, `uint8`..`uint64`, `float16`/`float32`/`float64`, `decimal32`..`decimal256`, and the fixed `decimal` and `bigdecimal` |
 | Validates | Once at construction, and only a decimal has something to check: precision `1..=max` of the width, positive scale `<= precision`; a bad parameter never becomes a value |
 | Lazy | Nothing - a number has no children, no registry and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field and shared by its clones |
@@ -20,7 +20,7 @@ Boolean, integer, floating and decimal: the four families whose values are numbe
 | --- | --- |
 | [Integer](integer.md) | The eight Arrow widths, signed and unsigned, their markers, their `Scalar` variants and readers, and the 128-bit values a wide computation lands in |
 | [Floating](floating.md) | `float16`, `float32`, `float64`: bit-preserving, totally ordered values, and the NaN and zero rules that follow |
-| [Decimal](decimal.md) | One decimal datatype over four backing widths, precision and scale, the exact `i256`/`u256` arithmetic, and `Decimal18` |
+| [Decimal](decimal.md) | One decimal family over four backing widths, precision and scale, the exact `i256`/`u256` arithmetic, and the two fixed leaves at scale eighteen, `decimal` and `bigdecimal` |
 | [Boolean](boolean.md) | `boolean` and the `null` datatype beside it: two parameter-free variants with no payload to carry |
 
 ## The kind a number answers

@@ -13,7 +13,7 @@ use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
 use super::operation::{BookRef, ExecutionEvent, MdUpdateAction, OrderKind, QuoteKind};
 use super::{Element, Event, Market, Operation};
-use crate::{Ccy, Decimal18, Error, Result, Side, State, Unit, Uuid};
+use crate::{Ccy, Decimal, Error, Limit, Result, Side, State, Unit, Uuid};
 
 /// The symbol of the one consolidated book emitted in global mode.
 pub const GLOBAL_SYMBOL: &str = "GLOBAL";
@@ -147,10 +147,15 @@ delegate_event!(
     set_currunix = |this: &mut SnapshotEvent, unix: i64| this.event.set_currunix(unix)
 );
 
+/// Where a level stands on its side. The derived order is the side's: the
+/// best bid or ask first, and `Unpriced` - declared last - after every
+/// priced level on either side.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum BookPrice {
-    Bid(Reverse<Decimal18>),
-    Ask(Decimal18),
+    Bid(Reverse<Decimal>),
+    Ask(Decimal),
+    /// The one level every entry stating no price rests at.
+    Unpriced,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -209,21 +214,34 @@ impl LiveKey {
 }
 
 impl BookPrice {
-    fn of(side: Side, price: Decimal18) -> Option<Self> {
-        if side.is_bid() {
-            Some(Self::Bid(Reverse(price)))
-        } else if side.is_ask() {
-            Some(Self::Ask(price))
-        } else {
-            None
+    /// The level an entry of `side` stating `price` rests at; none for a
+    /// side that is neither a bid nor an ask.
+    fn of(side: Side, price: Option<Decimal>) -> Option<Self> {
+        if !side.is_bid() && !side.is_ask() {
+            return None;
         }
+        Some(match price {
+            None => Self::Unpriced,
+            Some(price) if side.is_bid() => Self::Bid(Reverse(price)),
+            Some(price) => Self::Ask(price),
+        })
     }
 
-    const fn price(self) -> Decimal18 {
+    const fn price(self) -> Option<Decimal> {
         match self {
-            Self::Bid(Reverse(price)) | Self::Ask(price) => price,
+            Self::Bid(Reverse(price)) | Self::Ask(price) => Some(price),
+            Self::Unpriced => None,
         }
     }
+}
+
+/// A level's quantity: the exact sum of what its entries state, an entry
+/// stating none adding nothing; `None` past decimal. The one place a level
+/// is summed.
+fn level_quantity(level: &[Arc<MarketData>]) -> Option<Decimal> {
+    level.iter().try_fold(Decimal::ZERO, |sum, operation| {
+        sum.checked_add(operation.get_quantity().unwrap_or(Decimal::ZERO))
+    })
 }
 
 /// The book scope an entry states, empty where it states none: the seam
@@ -458,10 +476,7 @@ impl BookSide {
         for (index, operation) in live.into_iter().enumerate() {
             let path = format_smolstr!("$.live[{index}]");
             side.validate_component(&operation, &path, true)?;
-            let stated = operation
-                .get_price()
-                .expect("a validated operation states a price");
-            let price = BookPrice::of(operation.get_side(), stated)
+            let price = BookPrice::of(operation.get_side(), operation.get_price())
                 .expect("a validated side has a book price");
             let identity = LiveKey::of(&operation);
             if built.positions.insert(identity.clone(), price).is_some() {
@@ -491,7 +506,8 @@ impl BookSide {
         Ok(side)
     }
 
-    /// The live orders and quotes, best price first.
+    /// The live orders and quotes, best price first and every entry
+    /// stating no price last.
     pub fn live(&self) -> impl Iterator<Item = &MarketData> {
         self.levels
             .values()
@@ -514,29 +530,142 @@ impl BookSide {
         self.index.positions.is_empty()
     }
 
-    /// The best live price on this side.
+    /// The best live price on this side: the first priced level's, `None`
+    /// for an empty side or one holding only unpriced entries.
     #[must_use]
-    pub fn best_price(&self) -> Option<Decimal18> {
-        self.levels
-            .first_key_value()
-            .map(|(price, _)| price.price())
+    pub fn best_price(&self) -> Option<Decimal> {
+        self.best_level().map(|(price, _)| price)
     }
 
-    /// Aggregate quantity at the best exact price.
+    /// The aggregate quantity at the best price: the exact sum of what the
+    /// entries of the first priced level state, an entry stating none adding
+    /// nothing; `None` where [`Self::best_price`] is.
     #[must_use]
-    pub fn best_quantity(&self) -> Option<Decimal18> {
-        Some(
-            self.levels
-                .first_key_value()?
-                .1
+    pub fn best_quantity(&self) -> Option<Decimal> {
+        self.best_level().map(|(_, level)| {
+            // `canonical_element` refuses a level past decimal at every
+            // refresh, and every change refreshes or rolls back.
+            level_quantity(level)
+                .expect("a refreshed side holds no level whose quantity overflows decimal")
+        })
+    }
+
+    /// The first priced level: the first key, since the unpriced level
+    /// sorts after every priced one.
+    fn best_level(&self) -> Option<(Decimal, &[Arc<MarketData>])> {
+        let (key, level) = self.levels.first_key_value()?;
+        Some((key.price()?, level))
+    }
+
+    /// One [`Limit`] per level, best first and the unpriced limit last:
+    /// its price, the exact sum of its entries' quantities, and their
+    /// `curruuid`s in position order, ties in arrival order.
+    ///
+    /// One pass over the levels in the order they are held, allocating each
+    /// limit's `uuids` and nothing else.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookSide, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, price: Option<i64>, quantity: i64| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::read("Buy").unwrap());
+    ///     order.set_price(price.map(Decimal::from_int));
+    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
+    ///     order.set_state(State::read("New").unwrap());
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut side = BookSide::new(Side::read("Buy")?)?;
+    /// side.add_operation(order("A", Some(100), 2))?;
+    /// side.add_operation(order("MARKET", None, 5))?;
+    /// side.add_operation(order("B", Some(101), 3))?;
+    /// side.add_operation(order("C", Some(101), 4))?;
+    ///
+    /// let limits: Vec<_> = side.limits().collect();
+    /// assert_eq!(limits.len(), 3);
+    /// assert_eq!(limits[0].price, Some(Decimal::from_int(101)));
+    /// assert_eq!(limits[0].quantity, Decimal::from_int(7));
+    /// assert_eq!(limits[0].uuids.len(), 2);
+    /// assert_eq!(limits[1].price, Some(Decimal::from_int(100)));
+    /// // The market order rests after every priced level.
+    /// assert_eq!(limits[2].price, None);
+    /// assert_eq!(limits[2].quantity, Decimal::from_int(5));
+    /// assert_eq!(side.best_price(), Some(Decimal::from_int(101)));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn limits(&self) -> impl Iterator<Item = Limit> {
+        self.levels.iter().map(|(key, level)| Limit {
+            price: key.price(),
+            quantity: level_quantity(level)
+                .expect("a refreshed side holds no level whose quantity overflows decimal"),
+            uuids: level
                 .iter()
-                .fold(Decimal18::ZERO, |quantity, operation| {
-                    quantity + operation.get_quantity().unwrap_or(Decimal18::ZERO)
-                }),
-        )
+                .map(|operation| operation.get_curruuid())
+                .collect(),
+        })
+    }
+
+    /// The exact sum of the first `levels` limits' quantities in
+    /// [`Self::limits`] order, the unpriced limit counted where it is
+    /// reached: zero for an empty side or no level, `None` only past
+    /// decimal.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookSide, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, price: Option<i64>, quantity: i64| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::read("Sell").unwrap());
+    ///     order.set_price(price.map(Decimal::from_int));
+    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
+    ///     order.set_state(State::read("New").unwrap());
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut side = BookSide::new(Side::read("Sell")?)?;
+    /// side.add_operation(order("A", Some(102), 2))?;
+    /// side.add_operation(order("B", Some(101), 3))?;
+    /// side.add_operation(order("MARKET", None, 5))?;
+    ///
+    /// assert_eq!(side.depth(0), Some(Decimal::ZERO));
+    /// assert_eq!(side.depth(1), Some(Decimal::from_int(3)));
+    /// assert_eq!(side.depth(2), Some(Decimal::from_int(5)));
+    /// assert_eq!(side.depth(3), Some(Decimal::from_int(10)));
+    /// assert_eq!(side.depth(100), Some(Decimal::from_int(10)));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn depth(&self, levels: usize) -> Option<Decimal> {
+        self.levels
+            .values()
+            .take(levels)
+            .try_fold(Decimal::ZERO, |sum, level| {
+                sum.checked_add(level_quantity(level)?)
+            })
     }
 
     /// Atomically applies one order or quote delta.
+    ///
+    /// An entry stating no price - a market order - is given none: it rests
+    /// at the one unpriced level, after every priced level, so [`Self::live`],
+    /// the side's digest and a delete-from or delete-through position all
+    /// reach it last, and [`Self::limits`] answers it as the last limit.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRecord`] for any variant but an order or a quote, an
+    /// entry of the other side, an update the side cannot place, or a level
+    /// whose aggregate quantity would pass decimal (at `$.quantity`); the
+    /// side is unchanged on every error.
     pub fn add_operation(&mut self, operation: MarketData) -> Result<()> {
         let mut journal = SideJournal::new(self, false);
         let result = self
@@ -572,14 +701,6 @@ impl BookSide {
                     self.get_side().as_str(),
                     operation.get_side().as_str()
                 ),
-            ));
-        }
-        // A level is a price: an operation stating none has no place on a
-        // side, and nothing here invents one for it.
-        if operation.get_price().is_none() {
-            return Err(invalid(
-                format_smolstr!("{path}.price"),
-                "expected a price on a book side",
             ));
         }
         Ok(())
@@ -780,13 +901,9 @@ impl BookSide {
             };
             operation.finalize();
         }
-        let Some(stated) = operation.get_price() else {
-            return Err(invalid(
-                "$.operation.price",
-                "expected a price on a book side",
-            ));
-        };
-        let Some(price) = BookPrice::of(operation.get_side(), stated) else {
+        // No price is invented for an entry stating none - not a zero, not
+        // a last executed price: it rests at the unpriced level.
+        let Some(price) = BookPrice::of(operation.get_side(), operation.get_price()) else {
             return Err(invalid(
                 "$.operation.side",
                 format_smolstr!(
@@ -990,19 +1107,30 @@ impl BookSide {
         element.set_quantity(None);
         element.set_currency(Ccy::none());
         element.set_unit(Unit::none());
-        if let Some((price, level)) = self.levels.first_key_value() {
-            let quantity = level.iter().try_fold(Decimal18::ZERO, |sum, operation| {
-                sum.checked_add(operation.get_quantity().unwrap_or(Decimal18::ZERO))
-                    .ok_or_else(|| {
-                        invalid(
-                            "$.quantity",
-                            "aggregate best-level quantity exceeds decimal18",
-                        )
-                    })
-            })?;
+        // Every level is summed, so a refreshed side holds none whose
+        // quantity overflows: `best_quantity` and `limits` rely on it. The
+        // digest below walks every entry anyway, so this stays linear.
+        for (key, level) in &self.levels {
+            if level_quantity(level).is_none() {
+                return Err(invalid(
+                    "$.quantity",
+                    match key.price() {
+                        Some(price) => format_smolstr!(
+                            "expected the aggregate quantity at {price} to fit decimal, got an overflow"
+                        ),
+                        None => SmolStr::new_static(
+                            "expected the aggregate unpriced quantity to fit decimal, got an overflow",
+                        ),
+                    },
+                ));
+            }
+        }
+        // The summary is the first priced level's; with none, no price and
+        // no quantity are stated - never a zero.
+        if let Some((price, level)) = self.best_level() {
             let first = &level[0];
-            element.set_price(Some(price.price()));
-            element.set_quantity(Some(quantity));
+            element.set_price(Some(price));
+            element.set_quantity(level_quantity(level));
             element.set_currency(first.get_currency().clone());
             element.set_unit(first.get_unit().clone());
         }
@@ -1388,7 +1516,8 @@ impl BookEvent {
         &self.executions
     }
 
-    /// Whether the best bid is above the best ask.
+    /// Whether the best bid is above the best ask; a locked book - the two
+    /// equal - is not crossed, and a side stating no best crosses nothing.
     #[must_use]
     pub fn is_crossed(&self) -> bool {
         matches!(
@@ -1397,20 +1526,127 @@ impl BookEvent {
         )
     }
 
+    /// Whether both sides state a best price and the two are equal.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, side: &str, price: i64| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::read(side).unwrap());
+    ///     order.set_price(Some(Decimal::from_int(price)));
+    ///     order.set_quantity(Some(Decimal::from_int(1)));
+    ///     order.set_state(State::read("New").unwrap());
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([order("B", "Buy", 100), order("A", "Sell", 100)])?;
+    /// assert!(book.is_locked() && !book.is_crossed());
+    /// assert_eq!(book.spread(), Some(Decimal::ZERO));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn is_locked(&self) -> bool {
+        matches!(
+            (self.bid.best_price(), self.ask.best_price()),
+            (Some(bid), Some(ask)) if bid == ask
+        )
+    }
+
+    /// The best ask less the best bid: negative on a crossed book, which
+    /// [`Self::is_crossed`] names; `None` where a side states no best price
+    /// or the difference is past decimal.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, side: &str, price: &str| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::read(side).unwrap());
+    ///     order.set_price(Some(price.parse().unwrap()));
+    ///     order.set_quantity(Some(Decimal::from_int(1)));
+    ///     order.set_state(State::read("New").unwrap());
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([order("B", "Buy", "100")])?;
+    /// assert_eq!(book.spread(), None);
+    /// book.add_operations([order("A", "Sell", "100.25")])?;
+    /// assert_eq!(book.spread(), Some("0.25".parse()?));
+    /// // A bid above the ask: the spread says by how much.
+    /// book.add_operations([order("B-2", "Buy", "101")])?;
+    /// assert!(book.is_crossed());
+    /// assert_eq!(book.spread(), Some("-0.75".parse()?));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn spread(&self) -> Option<Decimal> {
+        self.ask.best_price()?.checked_sub(self.bid.best_price()?)
+    }
+
+    /// The order-book imbalance over the first `levels` limits of each side:
+    /// `(bid - ask) / (bid + ask)` over their [`BookSide::depth`]s, from `1`
+    /// for a book resting on the bid alone to `-1` on the ask alone; `None`
+    /// where the total is zero - both sides empty, or no level - or past
+    /// decimal.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, side: &str, price: i64, quantity: i64| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::read(side).unwrap());
+    ///     order.set_price(Some(Decimal::from_int(price)));
+    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
+    ///     order.set_state(State::read("New").unwrap());
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// assert_eq!(book.imbalance(1), None);
+    /// book.add_operations([order("B", "Buy", 100, 30)])?;
+    /// assert_eq!(book.imbalance(1), Some(Decimal::ONE));
+    /// book.add_operations([order("A", "Sell", 101, 10), order("A-2", "Sell", 102, 20)])?;
+    /// assert_eq!(book.imbalance(1), Some("0.5".parse()?));
+    /// assert_eq!(book.imbalance(2), Some(Decimal::ZERO));
+    /// assert_eq!(book.imbalance(0), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn imbalance(&self, levels: usize) -> Option<Decimal> {
+        let bid = self.bid.depth(levels)?;
+        let ask = self.ask.depth(levels)?;
+        bid.checked_sub(ask)?.checked_div(bid.checked_add(ask)?)
+    }
+
     /// The arithmetic midpoint of a coherent two-sided BBO.
     #[must_use]
-    pub fn bbo_midpoint(&self) -> Option<Decimal18> {
+    pub fn bbo_midpoint(&self) -> Option<Decimal> {
         let (bid, ask) = (self.bid.best_price()?, self.ask.best_price()?);
         (bid <= ask).then(|| decimal_mean(bid, ask)).flatten()
     }
 
     /// The two-value median of the best bid and ask aggregate quantities.
     #[must_use]
-    pub fn median_quantity(&self) -> Option<Decimal18> {
+    pub fn median_quantity(&self) -> Option<Decimal> {
         median_quantity(self.bid.best_quantity(), self.ask.best_quantity())
     }
 
-    fn cached_median_quantity(&self, bid: &MarketFacts, ask: &MarketFacts) -> Option<Decimal18> {
+    fn cached_median_quantity(&self, bid: &MarketFacts, ask: &MarketFacts) -> Option<Decimal> {
         median_quantity(
             (!self.bid.is_empty()).then(|| bid.get_quantity()).flatten(),
             (!self.ask.is_empty()).then(|| ask.get_quantity()).flatten(),
@@ -1681,9 +1917,13 @@ impl BookEvent {
         };
         event.set_price(midpoint);
         event.set_quantity(self.cached_median_quantity(bid, ask));
+        // A side speaks for the book only where it states a best: a side of
+        // unpriced entries alone states no currency and no unit, and leaves
+        // the other side's standing alone.
+        let (bid_best, ask_best) = (bid.get_price().is_some(), ask.get_price().is_some());
         let currency = match (
-            (!self.bid.is_empty()).then(|| bid.get_currency()),
-            (!self.ask.is_empty()).then(|| ask.get_currency()),
+            bid_best.then(|| bid.get_currency()),
+            ask_best.then(|| ask.get_currency()),
         ) {
             (Some(bid), Some(ask)) if bid == ask => bid.clone(),
             (Some(currency), None) | (None, Some(currency)) => currency.clone(),
@@ -1691,8 +1931,8 @@ impl BookEvent {
         };
         event.set_currency(currency);
         let unit = match (
-            (!self.bid.is_empty()).then(|| bid.get_unit()),
-            (!self.ask.is_empty()).then(|| ask.get_unit()),
+            bid_best.then(|| bid.get_unit()),
+            ask_best.then(|| ask.get_unit()),
         ) {
             (Some(bid), Some(ask)) if bid == ask => bid.clone(),
             (Some(unit), None) | (None, Some(unit)) => unit.clone(),
@@ -1751,7 +1991,7 @@ impl BookEvent {
     }
 }
 
-fn median_quantity(bid: Option<Decimal18>, ask: Option<Decimal18>) -> Option<Decimal18> {
+fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal> {
     match (bid, ask) {
         (Some(bid), Some(ask)) => decimal_mean(bid, ask),
         (Some(quantity), None) | (None, Some(quantity)) => Some(quantity),
@@ -2511,11 +2751,11 @@ fn position_of(operation: &MarketData) -> Option<u64> {
         .map(u64::from)
 }
 
-fn entry_px_of(operation: &MarketData) -> Option<Decimal18> {
+fn entry_px_of(operation: &MarketData) -> Option<Decimal> {
     operation.book().and_then(|book| book.entry_px)
 }
 
-fn entry_size_of(operation: &MarketData) -> Option<Decimal18> {
+fn entry_size_of(operation: &MarketData) -> Option<Decimal> {
     operation.book().and_then(|book| book.entry_size)
 }
 
@@ -2570,14 +2810,14 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     }
 }
 
-fn decimal_mean(left: Decimal18, right: Decimal18) -> Option<Decimal18> {
+fn decimal_mean(left: Decimal, right: Decimal) -> Option<Decimal> {
     let left = left.units();
     let right = right.units();
     let units = left
         .checked_div(2)?
         .checked_add(right.checked_div(2)?)?
         .checked_add((left % 2).checked_add(right % 2)?.checked_div(2)?)?;
-    Decimal18::from_units(units)
+    Decimal::from_units(units)
 }
 
 fn validate_component_times<'a, E, I>(

@@ -670,9 +670,12 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
             Ok(integer_from_text(text)?)
         }
         D::Float16 | D::Float32 | D::Float64 => Ok(float_from_text(text)?),
-        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } | D::Decimal256 { .. } => {
-            Scalar::from_decimal_text(dtype, text)
-        }
+        D::Decimal32 { .. }
+        | D::Decimal64 { .. }
+        | D::Decimal128 { .. }
+        | D::Decimal256 { .. }
+        | D::Decimal
+        | D::BigDecimal => Scalar::from_decimal_text(dtype, text),
         D::Date32
         | D::Date64
         | D::Time32(_)
@@ -733,6 +736,33 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         return Ok((canonical, true));
     }
     match dtype {
+        // The fixed leaves: any exact decimal or whole number that restates at
+        // scale eighteen within the width, held as the leaf's own value.
+        D::Decimal => {
+            let held = decimal_coefficient_at(value, crate::Decimal::SCALE)
+                .and_then(|wide| wide.as_i128())
+                .and_then(crate::Decimal::from_units)
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: SmolStr::new_static(
+                        "expected a decimal representable at scale 18 within 38 digits",
+                    ),
+                })?;
+            let changed = !matches!(value, Scalar::Decimal(same) if *same == held);
+            return Ok((Scalar::Decimal(held), changed));
+        }
+        D::BigDecimal => {
+            let held = decimal_coefficient_at(value, crate::BigDecimal::SCALE)
+                .and_then(crate::BigDecimal::from_units)
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: SmolStr::new_static(
+                        "expected a decimal representable at scale 18 within 76 digits",
+                    ),
+                })?;
+            let changed = !matches!(value, Scalar::BigDecimal(same) if *same == held);
+            return Ok((Scalar::BigDecimal(held), changed));
+        }
         D::Decimal32 { scale, .. } => {
             let coefficient = decimal_coefficient_at(value, *scale)
                 .and_then(|wide| wide.as_i128())
@@ -1027,6 +1057,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
         | D::Decimal256 { .. }
+        | D::Decimal
+        | D::BigDecimal
         | D::DateTime64 { .. }
         | D::Date32
         | D::Date64
@@ -1804,6 +1836,21 @@ fn validate_dtype_value(
         D::Decimal64 { precision, .. } => validate_decimal_value(value, *precision, 64),
         D::Decimal128 { precision, .. } => validate_decimal_value(value, *precision, 128),
         D::Decimal256 { precision, scale } => validate_decimal256_value(value, *precision, *scale),
+        D::Decimal => require(
+            decimal_coefficient_at(value, crate::Decimal::SCALE)
+                .and_then(|wide| wide.as_i128())
+                .and_then(crate::Decimal::from_units)
+                .is_some(),
+            "a decimal representable at scale 18 within 38 digits",
+            value,
+        ),
+        D::BigDecimal => require(
+            decimal_coefficient_at(value, crate::BigDecimal::SCALE)
+                .and_then(crate::BigDecimal::from_units)
+                .is_some(),
+            "a decimal representable at scale 18 within 76 digits",
+            value,
+        ),
         map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()

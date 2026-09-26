@@ -112,6 +112,7 @@ const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
         DataType::Decimal32 { precision, scale }
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal => Some((crate::Decimal::PRECISION, crate::Decimal::SCALE)),
         _ => None,
     }
 }

@@ -565,12 +565,14 @@ impl<'input> Parser<'input> {
     // -- selector -----------------------------------------------------------
 
     fn selector(&mut self) -> Result<Selector> {
+        let mut projections = Vec::new();
         if self.eat_symbol("*") {
-            // `select *` is the empty projection list: every column, unchanged;
-            // `* exclude (a, b)` is the same list with names left out.
+            // `select *` is every column, unchanged; `* exclude (a, b)` the
+            // same with names left out; and a comma after either appends
+            // projections to what the `*` keeps.
+            let mut names = Vec::new();
             if self.eat_word("exclude") || self.eat_word("except") {
                 self.expect_symbol("(")?;
-                let mut names = Vec::new();
                 loop {
                     names.push(self.identifier()?);
                     if !self.eat_symbol(",") {
@@ -578,9 +580,11 @@ impl<'input> Parser<'input> {
                     }
                 }
                 self.expect_symbol(")")?;
-                return Ok(Selector::all_except(names));
             }
-            return Ok(Selector::all());
+            if self.eat_symbol(",") {
+                self.projections(&mut projections)?;
+            }
+            return Ok(Selector::starred(names, projections));
         }
         if self.peek().is_none() {
             return Err(parse_error(
@@ -588,14 +592,18 @@ impl<'input> Parser<'input> {
                 "expected a projection or `*`, got the end of the expression",
             ));
         }
-        let mut projections = Vec::new();
+        self.projections(&mut projections)?;
+        Ok(Selector::new(projections))
+    }
+
+    /// Read a comma-separated run of projections, at least one.
+    fn projections(&mut self, projections: &mut Vec<Projection>) -> Result<()> {
         loop {
             projections.push(self.projection()?);
             if !self.eat_symbol(",") {
-                break;
+                return Ok(());
             }
         }
-        Ok(Selector::new(projections))
     }
 
     /// Read one projection: a term, then its alias and its declared type in
@@ -1752,6 +1760,10 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
                 *scale,
             )
         }
+        // The fixed leaves read through the crate's strict text door, which
+        // refuses a digit their scale cannot hold.
+        D::Decimal | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
+            .map_err(|_| fail("an exact decimal that fits the declared precision and scale"))?,
         D::Decimal256 { scale, .. } => Scalar::d256(
             i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")

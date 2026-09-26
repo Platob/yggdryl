@@ -8,7 +8,11 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
-use yggdryl::graph::{Event, Market, MarketData as CoreMarketData, MarketKind, Operation};
+use yggdryl::FieldPath;
+use yggdryl::graph::{
+    Event, Market, MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView,
+    Operation,
+};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
 
@@ -17,9 +21,11 @@ use super::operation::{
     PyBookRef, PyExecution, PyExecutionEvent, PyOrder, PyOrderEvent, PyQuote, PyQuoteEvent,
 };
 use super::trade::PyTradeEvent;
+use crate::expression::PyPlan;
 use crate::field::PyField;
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::{Pulled, python_failure, value_error};
+use crate::text::line::core_path_from_value;
+use crate::{Failed, Pulled, python_failure, value_error};
 
 /// A dated operation, whichever leaf holds it: what a trade's root reads.
 pub(crate) trait EventOperation: Event + Operation {}
@@ -85,6 +91,14 @@ pub(crate) fn market_data_of(item: &Bound<'_, PyAny>) -> PyResult<CoreMarketData
         "expected MarketData or a market leaf, got {}",
         item.get_type().name()?
     )))
+}
+
+/// The lifts a view appends, each a `FieldPath` or its text, resolved once.
+fn lifts_of(lifts: Vec<Bound<'_, PyAny>>) -> PyResult<Vec<FieldPath>> {
+    lifts
+        .into_iter()
+        .map(|lift| core_path_from_value(&lift))
+        .collect()
 }
 
 /// The leaf object `data` holds, as the class of its variant.
@@ -262,9 +276,54 @@ graph_methods!(PyMarketData, "MarketData"; [
     fn from_arrow_reader(reader: &Bound<'_, PyAny>) -> PyResult<PyMarketDataRowIterator> {
         let reader = batch_reader_from_value(reader)?;
         let rows = CoreMarketData::from_arrow_reader(reader).map_err(value_error)?;
-        Ok(PyMarketDataRowIterator {
-            inner: Mutex::new(Box::new(rows)),
-        })
+        Ok(PyMarketDataRowIterator::over(rows))
+    }
+
+    /// The plan one named view is over a `marketdata` stream - `view` one
+    /// of `enums.MARKET_VIEWS`, read ignoring ASCII case - with each of
+    /// `lifts`, a `FieldPath` or its text such as
+    /// `"securityids['ISIN'] as isin"`, appended after the view's own
+    /// columns. `crosscode` is the chain the `lifecycle` view follows: that
+    /// view needs one and every other view refuses one.
+    #[staticmethod]
+    #[pyo3(
+        signature = (view, lifts = Vec::new(), *, crosscode = None),
+        text_signature = "(view, lifts=(), *, crosscode=None)"
+    )]
+    fn plan(
+        view: &str,
+        lifts: Vec<Bound<'_, PyAny>>,
+        crosscode: Option<&str>,
+    ) -> PyResult<PyPlan> {
+        let view = CoreMarketView::read(view, crosscode).map_err(value_error)?;
+        let lifts = lifts_of(lifts)?;
+        CoreMarketData::plan(&view, &lifts)
+            .map(PyPlan::from_core)
+            .map_err(value_error)
+    }
+
+    /// One named view over `source` - a `pyarrow.RecordBatchReader`, a table,
+    /// a batch or any Arrow C stream exporter of `marketdata` rows - as a
+    /// `pyarrow.RecordBatchReader`: exactly `MarketData.plan(view, lifts,
+    /// crosscode=crosscode)` applied to it, bound once against its schema.
+    /// A lift naming a column the rows do not hold is refused there.
+    #[staticmethod]
+    #[pyo3(
+        signature = (view, source, lifts = Vec::new(), *, crosscode = None),
+        text_signature = "(view, source, lifts=(), *, crosscode=None)"
+    )]
+    fn apply_view<'py>(
+        py: Python<'py>,
+        view: &str,
+        source: &Bound<'py, PyAny>,
+        lifts: Vec<Bound<'py, PyAny>>,
+        crosscode: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let view = CoreMarketView::read(view, crosscode).map_err(value_error)?;
+        let lifts = lifts_of(lifts)?;
+        let reader = batch_reader_from_value(source)?;
+        let reader = CoreMarketData::apply_view(&view, &lifts, reader).map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
     }
 
     fn __repr__(&self) -> String {
@@ -277,7 +336,9 @@ graph_methods!(PyMarketData, "MarketData"; [
     }
 });
 
-/// The lazy row-decode walk `MarketData.from_arrow_reader` answers.
+/// A lazy stream of `MarketData` a core stage answers: the rows
+/// `MarketData.from_arrow_reader` decodes, or the operations
+/// `FixCodec.market_operations` sorted out of a capture.
 ///
 /// Behind a lock, as [`crate::fix::PyFixMessages`] is: a cursor a single
 /// caller advances, never contended, and the lock is what makes the boxed
@@ -285,6 +346,34 @@ graph_methods!(PyMarketData, "MarketData"; [
 #[pyclass(name = "MarketDataRowIterator", module = "yggdryl._native")]
 pub(crate) struct PyMarketDataRowIterator {
     inner: Mutex<Box<dyn FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send>>,
+    /// Where the Python source behind `inner` failed, when there is one.
+    failed: Option<Failed>,
+}
+
+impl PyMarketDataRowIterator {
+    /// A stream over a core iterator that pulls nothing from Python.
+    fn over<I>(inner: I) -> Self
+    where
+        I: FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send + 'static,
+    {
+        Self {
+            inner: Mutex::new(Box::new(inner)),
+            failed: None,
+        }
+    }
+
+    /// A stream over a core stage fed by a Python iterable: the source's
+    /// own failure, which ended the pull, is raised once the stage is
+    /// exhausted.
+    pub(crate) fn pulling<I>(inner: I, failed: Failed) -> Self
+    where
+        I: FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send + 'static,
+    {
+        Self {
+            inner: Mutex::new(Box::new(inner)),
+            failed: Some(failed),
+        }
+    }
 }
 
 #[pymethods]
@@ -297,12 +386,19 @@ impl PyMarketDataRowIterator {
     }
 
     fn __next__(&self) -> PyResult<Option<PyMarketData>> {
-        self.inner
+        let next = self
+            .inner
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .next()
-            .transpose()
-            .map(|data| data.map(PyMarketData::from_core))
-            .map_err(value_error)
+            .next();
+        match next {
+            Some(held) => held
+                .map(|data| Some(PyMarketData::from_core(data)))
+                .map_err(value_error),
+            None => match self.failed.as_ref().and_then(Failed::take) {
+                Some(error) => Err(error),
+                None => Ok(None),
+            },
+        }
     }
 }

@@ -238,6 +238,27 @@ impl JsScalar {
                 scale,
             ),
             DataTypeId::Decimal256 => Scalar::d256(unscaled, scale),
+            // The fixed leaves carry their units at their one scale.
+            DataTypeId::Decimal => {
+                if scale != yggdryl::Decimal::SCALE {
+                    return Err(napi_error("decimal parts carry scale 18"));
+                }
+                Scalar::Decimal(
+                    unscaled
+                        .as_i128()
+                        .and_then(yggdryl::Decimal::from_units)
+                        .ok_or_else(|| napi_error("decimal units must fit 38 digits"))?,
+                )
+            }
+            DataTypeId::BigDecimal => {
+                if scale != yggdryl::BigDecimal::SCALE {
+                    return Err(napi_error("bigdecimal parts carry scale 18"));
+                }
+                Scalar::BigDecimal(
+                    yggdryl::BigDecimal::from_units(unscaled)
+                        .ok_or_else(|| napi_error("bigdecimal units must fit 76 digits"))?,
+                )
+            }
             _ => return Err(napi_error(format!("{id:?} is not an exact decimal id"))),
         };
         Ok(Self::from_core(inner))
@@ -2319,6 +2340,8 @@ pub(crate) fn value_to_transport(
         Scalar::Decimal64(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Decimal128(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Decimal256(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::BigDecimal(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Interval(interval) => match interval.unit() {
             TimeUnit::YearMonth => integer_transport(i128::from(interval.months())),
             TimeUnit::DayTime => Ok(JsonValue::Array(vec![

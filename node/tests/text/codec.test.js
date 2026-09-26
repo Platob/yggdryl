@@ -927,6 +927,25 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     }
   })
 
+  test('the fixed decimal leaves cross the transport as themselves', () => {
+    // An exact decimal has no JavaScript number, so its marker comes back as
+    // the `Scalar` it was, the fixed leaf's id and units included, alone or
+    // inside a record.
+    for (const [id, text] of [['decimal', '1.5'], ['bigdecimal', '-2.25']]) {
+      const value = new DataType(id).scalar(text)
+      const back = value.asJs()
+      assert.ok(back instanceof Scalar, id)
+      assert.equal(back.id, id)
+      assert.ok(back.equals(value), id)
+      const { amount } = Scalar.from({ amount: value }).asJs()
+      assert.equal(amount.id, id)
+      assert.ok(amount.equals(value), id)
+    }
+    // The width with the same units is another leaf, and stays one.
+    const width = new DataType('decimal128(38,18)').scalar('1.5')
+    assert.equal(width.asJs().id, 'decimal128')
+  })
+
   test('exact intervals retain their flat JavaScript layouts', () => {
     const typed = (document, dtype) => json.loads(document, {
       field: new Field('span', dtype, false),

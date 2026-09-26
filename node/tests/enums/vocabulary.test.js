@@ -40,6 +40,7 @@ test('the vocabularies the core lists are the ones exported', () => {
       'ioModes',
       'marketColumns',
       'marketKinds',
+      'marketViews',
       'mdUpdateActions',
       'operationColumns',
       'pythonKinds',

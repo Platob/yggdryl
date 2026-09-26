@@ -315,9 +315,15 @@ function createFields(DataType, Field, native) {
       )
     },
 
+    // Bare `decimal(name)`, with or without options, is the fixed leaf; a
+    // precision names the narrowest width that holds it.
     decimal(name, precision, scale = 0, value) {
+      if (precision === undefined || isOptions(precision)) {
+        return field(name, simpleType('decimal'), precision)
+      }
       return decimalField('decimal', name, precision, scale, value)
     },
+    bigdecimal: simple('bigdecimal'),
     decimal32(name, precision, scale = 0, value) {
       return decimalField('decimal32', name, precision, scale, value)
     },

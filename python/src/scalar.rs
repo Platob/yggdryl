@@ -324,6 +324,19 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Decimal256(value) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
+        // The fixed leaves pickle their units beside their one scale.
+        Scalar::Decimal(value) => decimal_pickle_state(
+            py,
+            "decimal",
+            &value.units().to_string(),
+            yggdryl::Decimal::SCALE,
+        ),
+        Scalar::BigDecimal(value) => decimal_pickle_state(
+            py,
+            "bigdecimal",
+            &value.units().to_string(),
+            yggdryl::BigDecimal::SCALE,
+        ),
         // The ordinary string - the plain `utf8` leaf - pickles its
         // characters alone. Any other leaf pickles its name beside the text,
         // and a fixed or sized leaf its number: the name already says the
@@ -643,6 +656,26 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .parse::<i256>()
                 .map(|coefficient| Scalar::d256(coefficient, scale))
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
+        }
+        "decimal" => {
+            let (units, scale) = pickle_decimal(&payload()?)?;
+            units
+                .parse::<i128>()
+                .ok()
+                .filter(|_| scale == yggdryl::Decimal::SCALE)
+                .and_then(yggdryl::Decimal::from_units)
+                .map(Scalar::Decimal)
+                .ok_or_else(|| PyOverflowError::new_err("decimal units are out of range"))
+        }
+        "bigdecimal" => {
+            let (units, scale) = pickle_decimal(&payload()?)?;
+            units
+                .parse::<i256>()
+                .ok()
+                .filter(|_| scale == yggdryl::BigDecimal::SCALE)
+                .and_then(yggdryl::BigDecimal::from_units)
+                .map(Scalar::BigDecimal)
+                .ok_or_else(|| PyOverflowError::new_err("bigdecimal units are out of range"))
         }
         "string" => {
             let payload = payload()?;
@@ -1665,7 +1698,9 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => decimal_as_py(py, value),
+        | Scalar::Decimal256(_)
+        | Scalar::Decimal(_)
+        | Scalar::BigDecimal(_) => decimal_as_py(py, value),
         string if string.string_parameters().is_some() => Ok(PyString::new(
             py,
             string.as_str().expect("a string borrowed its text"),

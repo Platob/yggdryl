@@ -140,7 +140,7 @@ A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-a
 === "Rust"
 
     ```rust
-    use yggdryl::{DataTypeId, DataTypeKind, Decimal18, Int32, Scalar, TimeUnit, Timezone, Value};
+    use yggdryl::{DataTypeId, DataTypeKind, Decimal, Int32, Scalar, TimeUnit, Timezone, Value};
 
     // A value is in the family whose range its identifier is in.
     let seven = Scalar::from(7_i32);
@@ -162,9 +162,9 @@ A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-a
     assert_eq!(at.id().temporal_family(), Some("datetime"));
     assert_eq!(seven.id().temporal_family(), None);
 
-    // A decimal is its width's leaf, and `as_decimal` reads any width.
-    let price = Scalar::from(Decimal18::from_int(3));
-    assert!(matches!(price, Scalar::Decimal128(_)));
+    // A decimal is its own leaf, and `as_decimal` reads any of them.
+    let price = Scalar::from(Decimal::from_int(3));
+    assert!(matches!(price, Scalar::Decimal(_)));
     assert!(price.is_decimal() && !price.is_integer());
     assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
 
@@ -265,7 +265,7 @@ Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(I
 | absence and logic | `Null`, `Boolean` |
 | integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
-| decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
+| decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale; the fixed [`Decimal` and `BigDecimal`](numeric/decimal.md#decimal), their units at scale eighteen under the wire tags `decimal` and `bigdecimal` |
 | text and binary | one variant per string leaf - `Utf8String`, `LargeUtf8String`, `Utf8StringView`, `LargeUtf8StringView`, `FixedUtf8String`, `SizedUtf8String` and the same six for `Ascii` and `Cp1252` - each holding the characters and, fixed or sized, its number; one per byte leaf - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`, `FixedBinary`, `SizedBinary` - likewise; `Geometry`, `Geography`. Every string leaf writes the one wire tag `string` and every byte leaf `bytes`: the plain leaf its characters or payload alone, any other its `layout`, its number under `fixed`, and the text or bytes |
 | registered codes | `Country`, `Ccy`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
@@ -279,7 +279,7 @@ Arithmetic is checked in the Rust value model, both bindings redirect to it, and
 | --- | --- | --- |
 | integers | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | keep a shared width; mixed signed/unsigned inputs promote only when lossless |
 | floats | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | retain the widest float input; mixing an integer uses `F64` |
-| exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused |
+| exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused. A [`decimal` or `bigdecimal`](numeric/decimal.md#decimal) operand keeps its leaf at scale eighteen - `*` and `/` truncate toward zero, a `bigdecimal` on either side answers one, and `%` is refused |
 | temporal and duration | temporal `+/-` duration, temporal `-` temporal, duration `+/-` duration, duration `*` integer, duration `/` integer | preserve the temporal kind or return an exact duration in the finest required unit |
 | text, bytes, sequences | `+` only | concatenation - the join a repertoire with no sum has. Both sides one repertoire; a code joins as its text and stops being a code; a WKB payload does not join |
 | null | every binary operation above | propagate `Null` |

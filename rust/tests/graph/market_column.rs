@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
-use yggdryl::{Ccy, CfiCode, DataType, Decimal18, MicCode, Scalar, Side, Unit};
+use yggdryl::{Ccy, CfiCode, DataType, Decimal, MicCode, Scalar, Side, Unit};
 
-fn decimal(text: &str) -> Decimal18 {
+fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
 }
 
@@ -21,7 +21,7 @@ fn market_columns_round_trip_every_optional_band() {
     let mut source = OrderEvent::at(10);
     source.set_price(Some(decimal("101.25")));
     source.set_currency(Ccy::new("USD").unwrap());
-    source.set_quantity(Some(Decimal18::from_int(7)));
+    source.set_quantity(Some(Decimal::from_int(7)));
     source.set_unit(Unit::new("share").unwrap());
     source.set_side(Side::read("Buy").unwrap());
     source
@@ -33,12 +33,12 @@ fn market_columns_round_trip_every_optional_band() {
     source.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
     source.set_miccode(Some(MicCode::new("XNAS").unwrap()));
     source.set_lastpx(Some(decimal("101")));
-    source.set_lastqty(Some(Decimal18::from_int(2)));
+    source.set_lastqty(Some(Decimal::from_int(2)));
     source.set_avgpx(Some(decimal("100.5")));
-    source.set_cumqty(Some(Decimal18::from_int(3)));
-    source.set_leavesqty(Some(Decimal18::from_int(4)));
+    source.set_cumqty(Some(Decimal::from_int(3)));
+    source.set_leavesqty(Some(Decimal::from_int(4)));
     source.set_prevpx(Some(decimal("100")));
-    source.set_prevqty(Some(Decimal18::from_int(8)));
+    source.set_prevqty(Some(Decimal::from_int(8)));
     source.set_spotrate(Some(decimal("100.75")));
     source.set_forwardpoints(Some(decimal("0.5")));
     source.set_ticker(Some(SmolStr::new("IBM")));
@@ -100,7 +100,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     let mut element = OrderEvent::default();
     element.set_price(Some(decimal("1")));
     element.set_currency(Ccy::new("EUR").unwrap());
-    element.set_quantity(Some(Decimal18::from_int(2)));
+    element.set_quantity(Some(Decimal::from_int(2)));
     element.set_unit(Unit::new("bbl").unwrap());
     element.set_side(Side::read("Sell").unwrap());
     element.set_lastpx(Some(decimal("3")));

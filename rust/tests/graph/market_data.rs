@@ -7,15 +7,15 @@ use yggdryl::graph::{
     BookEvent, BookRef, BookSide, Element, Event, Execution, ExecutionEvent, Market, MarketData,
     MarketKind, MdUpdateAction, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent, TradeEvent,
 };
-use yggdryl::{Decimal18, Error, Side, State};
+use yggdryl::{Decimal, Error, Side, State};
 
 fn order(unix: i64, code: &str) -> OrderEvent {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
     order.set_ticker(Some(SmolStr::new("ACME")));
     order.set_side(Side::read("Buy").unwrap());
-    order.set_price(Some(Decimal18::from_int(100)));
-    order.set_quantity(Some(Decimal18::from_int(2)));
+    order.set_price(Some(Decimal::from_int(100)));
+    order.set_quantity(Some(Decimal::from_int(2)));
     order.finalize();
     order
 }
@@ -131,10 +131,10 @@ fn the_readings_are_the_leafs_own() {
     }
     // A write reaches the leaf.
     let mut value = MarketData::from(order(1, "O-1"));
-    value.set_price(Some(Decimal18::from_int(7)));
+    value.set_price(Some(Decimal::from_int(7)));
     value.finalize();
     let leaf = value.as_order_event().unwrap();
-    assert_eq!(leaf.get_price(), Some(Decimal18::from_int(7)));
+    assert_eq!(leaf.get_price(), Some(Decimal::from_int(7)));
     assert_eq!(value.get_curruuid(), leaf.get_curruuid());
 }
 

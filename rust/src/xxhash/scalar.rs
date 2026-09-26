@@ -113,6 +113,8 @@ impl Scalar {
             Self::Decimal64(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
             Self::Decimal128(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
             Self::Decimal256(value) => ValueBytes::inline(&value.coefficient().into_le_bytes()),
+            Self::Decimal(value) => ValueBytes::inline(&value.units().to_le_bytes()),
+            Self::BigDecimal(value) => ValueBytes::inline(&value.units().into_le_bytes()),
             Self::Date32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
             Self::Time32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
             Self::Duration32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
@@ -289,7 +291,12 @@ impl Scalar {
             }
             // Decimals compare by the number they name, so the feed is the
             // normalized coefficient and scale rather than the stored pair.
-            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+            Self::Decimal32(_)
+            | Self::Decimal64(_)
+            | Self::Decimal128(_)
+            | Self::Decimal256(_)
+            | Self::Decimal(_)
+            | Self::BigDecimal(_) => {
                 if let Some((unscaled, scale)) = self.as_decimal() {
                     write_decimal(sink, unscaled, scale);
                     return;
@@ -427,7 +434,12 @@ impl Scalar {
             Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("every float width fed above")
             }
-            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+            Self::Decimal32(_)
+            | Self::Decimal64(_)
+            | Self::Decimal128(_)
+            | Self::Decimal256(_)
+            | Self::Decimal(_)
+            | Self::BigDecimal(_) => {
                 unreachable!("all decimal widths fed above")
             }
             Self::Date32(_)

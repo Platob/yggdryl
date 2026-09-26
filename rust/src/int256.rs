@@ -164,6 +164,60 @@ impl u256 {
         (!other.is_zero()).then(|| self.div_rem(other).1)
     }
 
+    /// `10^76`, the first integer no seventy-six-digit coefficient reaches.
+    pub(crate) const TEN_POW_76: Self = Self::from_le_bytes([
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x95, 0x71, 0xf1, 0xa5, 0x75,
+        0x77, 0x79, 0x29, 0x65, 0xe8, 0xab, 0xb4, 0x64, 0x07, 0xb5, 0x15, 0x99, 0x11, 0xa7, 0xcc,
+        0x1b, 0x16,
+    ]);
+
+    /// `self * multiplier / divisor`, truncated toward zero and exact through
+    /// a 512-bit product; `None` for a zero divisor or a quotient past 256
+    /// bits.
+    ///
+    /// What a fixed-scale decimal's product and quotient need: `a * b / 10^18`
+    /// and `a * 10^18 / b` each pass through an integer up to 512 bits wide
+    /// before the one truncation, so neither is a pair of 256-bit operations.
+    /// Restoring long division, one bit at a time, as `div_rem` does; the
+    /// decimal paths that reach this are per-value, not per-row.
+    pub(crate) fn mul_div(self, multiplier: Self, divisor: Self) -> Option<Self> {
+        if divisor.is_zero() {
+            return None;
+        }
+        let mut product = [0_u64; WORDS * 2];
+        for (left_index, left_word) in self.0.into_iter().enumerate() {
+            let mut carry = 0_u128;
+            for (right_index, right_word) in multiplier.0.into_iter().enumerate() {
+                let index = left_index + right_index;
+                let held = u128::from(left_word) * u128::from(right_word)
+                    + u128::from(product[index])
+                    + carry;
+                product[index] = held as u64;
+                carry = held >> 64;
+            }
+            product[left_index + WORDS] = carry as u64;
+        }
+        let mut quotient = [0_u64; WORDS * 2];
+        let mut remainder = Self::ZERO;
+        for bit in (0..WORDS * 2 * 64).rev() {
+            let incoming = (product[bit / 64] >> (bit % 64)) & 1;
+            let mut carry = incoming;
+            for word in &mut remainder.0 {
+                let next = *word >> 63;
+                *word = (*word << 1) | carry;
+                carry = next;
+            }
+            // A bit carried out of the shift means the 257-bit remainder is
+            // past the divisor; the wrapped difference is the exact one.
+            if carry == 1 || remainder >= divisor {
+                remainder = remainder.borrowing_sub(divisor).0;
+                quotient[bit / 64] |= 1_u64 << (bit % 64);
+            }
+        }
+        (quotient[WORDS..].iter().all(|word| *word == 0))
+            .then(|| Self([quotient[0], quotient[1], quotient[2], quotient[3]]))
+    }
+
     /// Return the quotient and remainder of a non-zero division.
     ///
     /// Restoring long division, one bit at a time: the 256-bit words leave no

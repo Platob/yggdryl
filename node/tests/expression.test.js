@@ -284,6 +284,29 @@ test('a selector is a select clause', () => {
   assert.ok(rows.intoArrowReader === undefined || true)
 })
 
+test('a star may carry appended projections, and hasStar says it stands', () => {
+  // `*` reads every stored column it does not exclude, whatever it appends:
+  // the question a projection pushdown asks.
+  const starred = new Selector("* exclude (size), upper(ccy) as code")
+  assert.equal(starred.toString(), '* exclude (size), upper(ccy) as code')
+  assert.equal(starred.hasStar, true)
+  assert.equal(starred.isAll, false)
+  assert.deepEqual(starred.excluded, ['size'])
+  assert.deepEqual(starred.names, ['code'])
+  assert.equal(starred.length, 1)
+  assert.equal(Selector.all().hasStar, true)
+  assert.equal(Selector.all().withProjection('size as quantity').toString(), '*, size as quantity')
+  assert.equal(Selector.all().withProjection('size as quantity').hasStar, true)
+  assert.equal(Selector.allExcept(['size']).hasStar, true)
+  assert.equal(new Selector('ccy, size').hasStar, false)
+  assert.equal(Selector.fromColumns(['ccy']).hasStar, false)
+  // A star appending a projection publishes every kept column, then it.
+  assert.deepEqual(
+    starred.applyField(ROWS).dtype.values().map((field) => field.name),
+    ['ccy', 'code'],
+  )
+})
+
 test('a selector declares columns like a create table', () => {
   const declared = new Selector('id int64 not null, name utf8, size * 2 as doubled int32')
   const root = Field.from('rows: struct<id: int64, name: utf8, size: int64> not null')

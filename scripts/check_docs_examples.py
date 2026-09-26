@@ -6,8 +6,9 @@ it is shown in. This extracts each fenced block under ``docs/`` and executes it:
 * ``rust`` blocks become tests in one generated integration target and are
   compiled and run by cargo;
 * ``python`` blocks run under the extension's virtual environment;
-* ``javascript`` blocks run under node, with ``yggdryl`` resolved to the
-  package in this repository.
+* ``javascript`` blocks run under node, with ``yggdryl``, ``yggdryl/replay``
+  and every ``yggdryl/web/<name>.js`` resolved to the package in this
+  repository.
 
 A block that genuinely cannot stand alone is tagged ``ignore`` in the brace form
 pymdownx.superfences reads (for example ``{ .rust .ignore }``), which is reported
@@ -45,6 +46,11 @@ PYTHON = ROOT / "python" / ".venv" / "Scripts" / "python.exe"
 if not PYTHON.exists():
     PYTHON = ROOT / "python" / ".venv" / "bin" / "python"
 NODE_BINDING = (ROOT / "node" / "binding.js").as_posix()
+NODE_REPLAY = (ROOT / "node" / "replay.js").as_posix()
+# The browser components are ES modules a block loads with `import()`, which
+# takes a URL: a Windows path is not one, so the prefix becomes the folder's
+# file URL rather than its path.
+NODE_WEB = (ROOT / "node" / "web").as_uri() + "/"
 # Apache Arrow JS is a dependency of the package, so a reader who installed
 # ``yggdryl`` can require it; a generated script in a temporary directory
 # cannot, because Node resolves from the script's own folder.
@@ -244,11 +250,14 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
                     rewired = block.code
                     for name, target in (
                         ("yggdryl", NODE_BINDING),
+                        ("yggdryl/replay", NODE_REPLAY),
                         ("apache-arrow", NODE_ARROW),
                     ):
                         rewired = rewired.replace(f"'{name}'", f"'{target}'").replace(
                             f'"{name}"', f'"{target}"'
                         )
+                    for quote in ("'", '"'):
+                        rewired = rewired.replace(f"{quote}yggdryl/web/", f"{quote}{NODE_WEB}")
                     script.write_text(rewired, encoding="utf-8")
                     command = ["node", str(script)]
                 pending.append((page, block, command))

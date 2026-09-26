@@ -541,6 +541,42 @@ mod streams {
     }
 
     #[test]
+    fn a_star_plan_drops_what_it_excludes_and_appends_what_it_computes() {
+        let batch = trades(&[(1, "a"), (2, "b"), (3, "c")]);
+        let plan: Plan = "select * exclude (name), upper(name) as shout where id > 1"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            plan.to_string(),
+            "select * exclude (name), upper(name) as shout where id > 1"
+        );
+        assert_eq!(plan.to_string().parse::<Plan>().unwrap(), plan);
+        assert_eq!(plan.read_columns(), None);
+        let out = collected(plan.apply_arrow_reader(one_batch(&batch)).unwrap()).unwrap();
+        let published: Vec<&str> = out
+            .schema_ref()
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect();
+        assert_eq!(published, ["id", "shout"]);
+        assert_eq!(ids(&out), [2, 3]);
+        let shouted: Vec<Option<&str>> = out
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .iter()
+            .collect();
+        assert_eq!(shouted, [Some("B"), Some("C")]);
+        // With nothing to filter, a kept column is the batch's own array.
+        let plan: Plan = "select * exclude (name), id * 2 as twice".parse().unwrap();
+        let out = collected(plan.apply_arrow_reader(one_batch(&batch)).unwrap()).unwrap();
+        assert!(std::sync::Arc::ptr_eq(out.column(0), batch.column(0)));
+        assert_eq!(out.schema_ref().field(1).name(), "twice");
+    }
+
+    #[test]
     fn a_sliced_reader_walks_batch_boundaries_without_copying_whole_batches() {
         let batches = [
             trades(&[(1, "a"), (2, "b")]),

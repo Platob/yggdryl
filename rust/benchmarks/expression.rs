@@ -391,6 +391,170 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// `unnest`: every element of every serie a row of its own - a serie column
+/// of structs laid flat beside its parent's columns, and two struct columns
+/// stacked into one serie per row and laid flat.
+fn unnest_benchmarks(criterion: &mut Criterion) {
+    const LEGS: usize = 4;
+    let leg = || {
+        StructType::from_fields([
+            Field::new("ccy", DataType::utf8(), true),
+            Field::new("size", DataType::Int64, true),
+        ])
+        .map(DataType::from)
+        .unwrap()
+    };
+    let schema = Field::new(
+        "trades",
+        StructType::from_fields([
+            Field::new("id", DataType::Int64, false),
+            Field::new("legs", DataType::serie(leg().nullable_field("item")), true),
+            Field::new("bid", leg(), true),
+            Field::new("ask", leg(), true),
+        ])
+        .map(DataType::from)
+        .unwrap(),
+        false,
+    );
+    let one = |row: usize, leg: usize| {
+        Scalar::from_sequence([
+            Scalar::from(CURRENCIES[(row + leg) % CURRENCIES.len()]),
+            Scalar::from(i64::try_from(row % 1_000 + leg).unwrap_or_default()),
+        ])
+    };
+    let rows: Vec<Scalar> = (0..ROWS)
+        .map(|row| {
+            Scalar::from_sequence([
+                Scalar::from(i64::try_from(row).unwrap_or_default()),
+                Scalar::from_sequence((0..LEGS).map(|leg| one(row, leg))),
+                one(row, 0),
+                one(row, 1),
+            ])
+        })
+        .collect();
+    let batch = Serie::from_scalars(schema.clone(), rows)
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+    let flat = "id, unnest(legs) as leg"
+        .parse::<yggdryl::Selector>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let stacked = "id, unnest([bid, ask]) as side"
+        .parse::<yggdryl::Selector>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let mut group = criterion.benchmark_group("expression_unnest");
+    group.throughput(criterion::Throughput::Elements((ROWS * LEGS) as u64));
+    group.bench_function("serie_of_structs", |bencher| {
+        bencher.iter(|| {
+            black_box(&flat)
+                .apply_arrow_batch(black_box(&batch))
+                .expect("the unnest must answer")
+        });
+    });
+    group.throughput(criterion::Throughput::Elements((ROWS * 2) as u64));
+    group.bench_function("stacked_struct_columns", |bencher| {
+        bencher.iter(|| {
+            black_box(&stacked)
+                .apply_arrow_batch(black_box(&batch))
+                .expect("the stacked unnest must answer")
+        });
+    });
+    group.finish();
+}
+
+/// A map key: one key found per row by search in a sorted map and by walk in
+/// an unsorted one, the values taken once - against the field-segment
+/// spelling, which reads each row's map as the value it is.
+fn map_key_benchmarks(criterion: &mut Criterion) {
+    let map = |sorted: bool| {
+        let entries = StructType::from_fields([
+            DataType::utf8().required_field("key"),
+            DataType::utf8().required_field("value"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("entries");
+        DataType::map(entries, sorted).unwrap()
+    };
+    let schema = Field::new(
+        "instruments",
+        StructType::from_fields([
+            Field::new("sorted", map(true), true),
+            Field::new("unsorted", map(false), true),
+        ])
+        .map(DataType::from)
+        .unwrap(),
+        false,
+    );
+    let ids = |row: usize| {
+        let isin = format!("US{row:010}");
+        Scalar::from_mapping([
+            (Scalar::from("CUSIP"), Scalar::from(&isin[2..11])),
+            (Scalar::from("ISIN"), Scalar::from(isin.as_str())),
+            (Scalar::from("SEDOL"), Scalar::from("B0YBKJ7")),
+        ])
+        .unwrap()
+    };
+    let rows: Vec<Scalar> = (0..ROWS)
+        .map(|row| Scalar::from_sequence([ids(row), ids(row)]))
+        .collect();
+    let batch = Serie::from_scalars(schema.clone(), rows)
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+    let mut group = criterion.benchmark_group("expression_map_key");
+    group.throughput(criterion::Throughput::Elements(ROWS as u64));
+    for (name, text) in [
+        ("sorted", "sorted['ISIN']"),
+        ("unsorted", "unsorted['ISIN']"),
+        ("field_segment", "sorted.isin"),
+    ] {
+        let bound = text.parse::<Term>().unwrap().bind(&schema).unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                black_box(&bound)
+                    .evaluate(black_box(&batch))
+                    .expect("the key must answer")
+            });
+        });
+    }
+    group.finish();
+}
+
+/// A `*` that excludes and appends: the kept columns are the batch's own,
+/// so the cost is what the appended projection computes.
+fn star_projection_benchmarks(criterion: &mut Criterion) {
+    let schema = schema();
+    let batch = batch();
+    let mut group = criterion.benchmark_group("expression_star_projection");
+    group.throughput(criterion::Throughput::Elements(ROWS as u64));
+    for (name, text) in [
+        ("exclude", "* exclude (venue)"),
+        (
+            "exclude_and_append",
+            "* exclude (venue), size is null as missing",
+        ),
+    ] {
+        let bound = text
+            .parse::<yggdryl::Selector>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                black_box(&bound)
+                    .apply_arrow_batch(black_box(&batch))
+                    .expect("the star must answer")
+            });
+        });
+    }
+    group.finish();
+}
+
 /// A plan: the statement a caller runs, and the rule a FIX dictionary
 /// states - parsed, printed, hashed, and its condition bound under the
 /// parameters a rule is read with.
@@ -516,6 +680,9 @@ criterion_group!(
     apply_benchmarks,
     scalar_benchmarks,
     predicate_path_benchmarks,
+    unnest_benchmarks,
+    map_key_benchmarks,
+    star_projection_benchmarks,
     plan_benchmarks,
     prune_benchmarks
 );

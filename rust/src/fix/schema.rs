@@ -2537,20 +2537,39 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
 /// A lane the message never wrote and this crate filled therefore meets a
 /// float column, and the narrowing is made here, once, rather than at each
 /// lane: the alternative is a null, which loses the fact the fill was for.
-/// Nothing else narrows - a decimal column takes the decimal whole.
+/// A settled number is the crate's fixed `decimal` leaf, and the dictionary
+/// types the column it lands in as `decimal128(38, 18)`: the fact is restated
+/// as that column's own value, so one tag answers one type whether it is
+/// read off the holder, off the row, or out of an Arrow column. Nothing else
+/// narrows - a decimal column takes any other decimal whole.
 pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
-    let float = matches!(column.dtype(), DataType::Float64 | DataType::Float32);
-    let decimal = matches!(
+    let fixed = matches!(
         value,
-        crate::Scalar::Decimal32(_)
-            | crate::Scalar::Decimal64(_)
-            | crate::Scalar::Decimal128(_)
-            | crate::Scalar::Decimal256(_)
+        crate::Scalar::Decimal(_) | crate::Scalar::BigDecimal(_)
     );
-    if !float || !decimal {
-        return value;
+    let decimal = fixed
+        || matches!(
+            value,
+            crate::Scalar::Decimal32(_)
+                | crate::Scalar::Decimal64(_)
+                | crate::Scalar::Decimal128(_)
+                | crate::Scalar::Decimal256(_)
+        );
+    match column.dtype() {
+        DataType::Float64 | DataType::Float32 if decimal => crate::Decimal::from_scalar(&value)
+            .map_or(value, |held| crate::Scalar::from(held.to_f64())),
+        DataType::Decimal32 { .. }
+        | DataType::Decimal64 { .. }
+        | DataType::Decimal128 { .. }
+        | DataType::Decimal256 { .. }
+            if fixed =>
+        {
+            // The column's own leaf where the number fits it; where it does
+            // not, the row's write is what refuses, located.
+            column.dtype().scalar(value.clone()).unwrap_or(value)
+        }
+        _ => value,
     }
-    crate::Decimal18::from_scalar(&value).map_or(value, |held| crate::Scalar::from(held.to_f64()))
 }
 
 /// One value rebuilt under one field with every leaf that will not fit nulled.

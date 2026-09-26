@@ -506,7 +506,7 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         datetime.date: "date32",
         datetime.time: "time64",
         datetime.timedelta: "duration64",
-        decimal.Decimal: "decimal128",
+        decimal.Decimal: "decimal",
         uuid.UUID: "uuid",
         pathlib.Path: "utf8",
         Uri: "utf8",
@@ -535,7 +535,7 @@ def test_scalar_subclasses_keep_their_physical_type() -> None:
 
     assert DataType.from_pyhint(Count).id == "int64"
     assert DataType.from_pyhint(EventTime).id == "datetime64"
-    assert DataType.from_pyhint(Price).id == "decimal128"
+    assert DataType.from_pyhint(Price).id == "decimal"
 
 
 def test_only_explicit_none_makes_fields_nullable() -> None:
