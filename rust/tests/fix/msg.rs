@@ -136,6 +136,47 @@ fn instrument_identifier_setters_fill_secaltids() {
     );
 }
 
+/// What the message only derives - the national number its ISIN carries -
+/// stays off the wire until it is stated: a stated identifier replaces the
+/// derived one and is written, and removing the ISIN takes back only what
+/// hung on it.
+#[test]
+fn a_stated_identifier_replaces_a_derived_one_on_the_wire() {
+    let (_, reader) = reader();
+    let mut message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|48=US0378331005|22=4|10=0|")
+        .expect("an order stating its ISIN");
+    let on_wire = |message: &FixMsg, code: &str| {
+        message.by_name("secaltids").is_ok_and(|group| {
+            super::sequence(group).into_iter().any(|occurrence| {
+                occurrence.as_sequence().expect("an occurrence")[0].as_str() == Some(code)
+            })
+        })
+    };
+    assert_eq!(message.get_securityids().get("CUSIP"), Some("037833100"));
+    assert!(!on_wire(&message, "037833100"));
+
+    assert!(
+        message
+            .insert_securityid(securityid("CUSIP", "037833100"))
+            .unwrap()
+    );
+    assert!(on_wire(&message, "037833100"));
+    assert!(
+        !message
+            .insert_securityid(securityid("CUSIP", "594918104"))
+            .unwrap()
+    );
+
+    let mut derived = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|48=US0378331005|22=4|10=0|")
+        .expect("an order stating its ISIN");
+    assert!(derived.remove_securityid(&sectype("ISIN")).unwrap());
+    assert_eq!(derived.get_securityids().get("CUSIP"), None);
+    assert!(message.remove_securityid(&sectype("ISIN")).unwrap());
+    assert_eq!(message.get_securityids().get("CUSIP"), Some("037833100"));
+}
+
 #[test]
 fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     let (registry, reader) = reader();

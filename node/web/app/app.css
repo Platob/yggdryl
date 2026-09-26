@@ -1,196 +1,28 @@
-/*
- * The replay application's layout: the page grid, the header bar, the split
- * panes and what sits in them. Every colour, font, radius and motion is a
- * `theme.css` token; nothing here restyles a component, and nothing reaches
- * outside the app's root - the document it is mounted in keeps its own
- * `html` and `body` (the served page frames itself in `index.html`).
- */
+/* The replay page: a header bar over the timeline, which fills the rest of the viewport. */
 .ygg-app {
-  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   color: var(--ygg-ui-text);
   background: var(--ygg-ui-page);
-  font-family: var(--ygg-ui-font);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: var(--ygg-ui-gap);
-  height: 100vh;
-  padding: var(--ygg-ui-gap);
+  font: 13px/1.4 var(--ygg-ui-font);
 }
-
-.ygg-app *,
-.ygg-app *::before,
-.ygg-app *::after {
-  box-sizing: border-box;
-}
-
-/* A component's own display never shows what the app has hidden. */
-.ygg-app [hidden] {
-  display: none !important;
-}
-
-.ygg-app__header {
+.ygg-app__bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--ygg-ui-gap);
-  padding: 6px 10px;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ygg-ui-line);
 }
-
-.ygg-app__title {
-  margin: 0 8px 0 0;
-  font-size: 15px;
-  font-weight: 600;
+.ygg-app__picker { display: flex; align-items: center; gap: 6px; color: var(--ygg-ui-muted); }
+.ygg-app__picker select {
+  font: inherit;
+  color: var(--ygg-ui-text);
+  background: var(--ygg-ui-surface-2);
+  border: 1px solid var(--ygg-ui-line);
+  border-radius: var(--ygg-ui-radius);
+  padding: 2px 6px;
 }
-
-.ygg-app__field {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ygg-app__grid {
-  width: 6em;
-}
-
-.ygg-app__status {
-  flex: 1 1 12em;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ygg-app__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.ygg-app__main {
-  min-height: 0;
-}
-
-.ygg-app__transport {
-  min-width: 0;
-}
-
-.ygg-app__main > .ygg-ui__split {
-  height: 100%;
-}
-
-/* A stacked split's one column is the pane's width, never its widest table's. */
-.ygg-app__main .ygg-ui__split--vertical {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* A pane is a container of its own: what sits in it is laid out by the pane's width, not the page's. */
-.ygg-app__pane {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ygg-ui-gap);
-  padding: 2px;
-  container: ygg-app-pane / inline-size;
-}
-
-.ygg-app__ladders {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--ygg-ui-gap);
-}
-
-.ygg-app__price {
-  min-width: 0;
-}
-
-.ygg-app__inspector {
-  padding: 8px;
-}
-
-.ygg-app__inspector > p {
-  margin: 0;
-}
-
-.ygg-app__lifts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--ygg-ui-gap);
-}
-
-.ygg-app__lifts .ygg-app__field {
-  flex: 1 1 24em;
-  align-items: flex-start;
-  flex-direction: column;
-}
-
-.ygg-app__lifts-input {
-  width: 100%;
-  resize: vertical;
-}
-
-.ygg-app__view-status,
-.ygg-app__view-refusal {
-  margin: 6px 0;
-}
-
-.ygg-app__view-scroll {
-  overflow: auto;
-  max-width: 100%;
-}
-
-.ygg-app__view-table td {
-  white-space: nowrap;
-}
-
-.ygg-app__readonly {
-  margin: 0;
-}
-
-.ygg-app__insert-scenario {
-  margin-bottom: var(--ygg-ui-gap);
-}
-
-/* A recorded replay changes no scenario: the controls that would are not shown. */
-.ygg-app[data-readonly] .ygg-ui__scenario-new,
-.ygg-app[data-readonly] .ygg-ui__scenario-item [data-action="rename"],
-.ygg-app[data-readonly] .ygg-ui__scenario-item [data-action="delete"],
-.ygg-app[data-readonly] .ygg-ui__scenario-event [data-action="remove-event"] {
-  display: none;
-}
-
-/* Narrow: the panes stack in reading order and the page scrolls, whatever the splits say. */
-.ygg-app {
-  container: ygg-app / inline-size;
-}
-
-@container ygg-app (max-width: 900px) {
-  .ygg-app__main .ygg-ui__split {
-    display: flex !important;
-    flex-direction: column;
-    gap: var(--ygg-ui-gap);
-  }
-
-  .ygg-app__main .ygg-ui__split-separator {
-    display: none;
-  }
-
-  .ygg-app__main .ygg-ui__split-pane {
-    overflow: visible;
-  }
-}
-
-/* Two ladders side by side need about 220 px each for their three columns; a narrower pane stacks them. */
-@container ygg-app-pane (max-width: 440px) {
-  .ygg-app__ladders {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .ygg-app {
-    height: auto;
-    min-height: 100vh;
-  }
-}
+.ygg-app__status { margin-left: auto; color: var(--ygg-ui-muted); }
+.ygg-app__main { min-height: 0; padding: 12px; }

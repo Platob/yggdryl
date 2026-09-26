@@ -10,7 +10,7 @@ use super::sequence;
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::Market;
-    use yggdryl::{CfiCode, FixMsg, IsinCode, Scalar};
+    use yggdryl::{Cfi, FixMsg, Isin, Scalar};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -84,7 +84,7 @@ mod categories {
         let mut learned = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=L|10=0|")
             .expect("a message without a raw CFI");
-        learned.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
+        learned.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
         assert_eq!(
             learned.get_cficode().map(|value| value.as_str()),
             Some("ESVUFR")
@@ -189,7 +189,7 @@ mod categories {
         explicit
             .set(
                 yggdryl::ISINCODE_TAG_NAME.0,
-                Scalar::IsinCode(IsinCode::new("US0378331005").expect("an ISIN")),
+                Scalar::Isin(Isin::new("US0378331005").expect("an ISIN")),
             )
             .expect("a normalized ISIN fact");
         let row = explicit.into_row(&schema).expect("a fixed row");

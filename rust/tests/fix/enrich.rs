@@ -18,7 +18,7 @@ use yggdryl::{
     DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructType, Timezone, Url,
     fix_schema,
 };
-use yggdryl::{IsinCode, State};
+use yggdryl::{Isin, State};
 
 fn reader() -> FixCodec {
     super::fixed_codec(super::committed_registry())
@@ -1246,7 +1246,7 @@ fn a_country_of_issue_is_exactly_a_prefix_the_crates_registry_lists() {
         for second in b'A'..=b'Z' {
             let prefix = format!("{}{}", char::from(first), char::from(second));
             let body = format!("{prefix}000000000");
-            let digit = IsinCode::closing_digit(&body).expect("two letters and nine digits close");
+            let digit = Isin::closing_digit(&body).expect("two letters and nine digits close");
             let number = format!("{body}{digit}");
             let line = format!("8=FIX.4.4|35=D|11=A|22=4|48={number}|10=0|");
             let held = reader.sole_line(line.as_bytes()).expect("a readable line");
@@ -1353,7 +1353,7 @@ fn a_typed_read_fires_where_the_old_text_read_could_not() {
 
 #[test]
 fn a_source_code_is_compared_exactly_because_fix_codes_are_case_sensitive() {
-    // `A` is BloombergCode's source; `a` is no code of the set, and the deleted
+    // `A` is Bloomberg's source; `a` is no code of the set, and the deleted
     // rule's case folding read it as one.
     let reader = reader();
     let bloomberg = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN SW|22=A|10=0|");

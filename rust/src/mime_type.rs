@@ -43,6 +43,7 @@ enum MimeTypeWire {
     JavaScript,
     Xml,
     Xmla,
+    Http,
     Pdf,
     Cbor,
     MessagePack,
@@ -206,6 +207,9 @@ impl MimeType {
     /// An XML for Analysis document: a SOAP message carrying a rowset, or
     /// the bare rowset `root`.
     pub const XMLA: Self = Self(MimeTypeWire::Xmla);
+    /// An HTTP message: a request or a response with its head and its body,
+    /// as RFC 9112 frames one on the wire.
+    pub const HTTP: Self = Self(MimeTypeWire::Http);
     /// A PDF document.
     pub const PDF: Self = Self(MimeTypeWire::Pdf);
     /// CBOR structured data.
@@ -457,6 +461,7 @@ impl MimeType {
             MimeTypeWire::JavaScript => "text/javascript",
             MimeTypeWire::Xml => "application/xml",
             MimeTypeWire::Xmla => "application/xmla+xml",
+            MimeTypeWire::Http => "message/http",
             MimeTypeWire::Pdf => "application/pdf",
             MimeTypeWire::Cbor => "application/cbor",
             MimeTypeWire::MessagePack => "application/vnd.msgpack",
@@ -558,6 +563,7 @@ impl MimeType {
             MimeTypeWire::JavaScript => Some("js"),
             MimeTypeWire::Xml => Some("xml"),
             MimeTypeWire::Xmla => Some("xmla"),
+            MimeTypeWire::Http => Some("http"),
             MimeTypeWire::Pdf => Some("pdf"),
             MimeTypeWire::Cbor => Some("cbor"),
             MimeTypeWire::MessagePack => Some("msgpack"),

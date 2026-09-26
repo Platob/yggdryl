@@ -62,8 +62,8 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -599,11 +599,12 @@ pub(crate) mod casts {
         // answers, so the check digit and the case are settled here rather
         // than on every read of the cell.
         let canonical = match field.dtype() {
-            DataType::IsinCode => crate::IsinCode::is_canonical(text),
-            DataType::CusipCode => crate::CusipCode::is_canonical(text),
-            DataType::SedolCode => crate::SedolCode::is_canonical(text),
-            DataType::BloombergCode => crate::BloombergCode::is_canonical(text),
-            DataType::FIGICode => crate::FIGICode::is_canonical(text),
+            DataType::Isin => crate::Isin::is_canonical(text),
+            DataType::Cusip => crate::Cusip::is_canonical(text),
+            DataType::Sedol => crate::Sedol::is_canonical(text),
+            DataType::Bbg => crate::Bbg::is_canonical(text),
+            DataType::Ric => crate::Ric::is_canonical(text),
+            DataType::Figi => crate::Figi::is_canonical(text),
             _ => true,
         };
         if !canonical {
@@ -615,9 +616,9 @@ pub(crate) mod casts {
     }
 }
 
-// The twelve registered codes' values.
+// The registered codes' values.
 // ------------------------------------------------------------------------
-// What a [`CfiCode`] code means: ISO 10962, six characters.
+// What a [`Cfi`] code means: ISO 10962, six characters.
 //
 // The [code registry](crate::codes) already owns a CFI's width and its
 // ASCII validity, which is all a *storage* layer needs. This is the rest of
@@ -635,19 +636,19 @@ pub(crate) mod casts {
 // "income" for `EP`, "assets" for `CI` and not applicable at all for `SE` -
 // so nothing here reads an attribute by position alone.
 //
-// [`CfiCode::UNKNOWN`] means "not applicable or unknown" and is valid **only in
+// [`Cfi::UNKNOWN`] means "not applicable or unknown" and is valid **only in
 // positions 3 to 6**. There is no valid category `X` and no valid group `X`,
 // which is what stops a caller filling a code it does not have: a value that
 // knows no category is absent, never `XXXXXX`.
 //
-// Where a category is known and its group is not, [`CfiCode::coarse`] answers
+// Where a category is known and its group is not, [`Cfi::coarse`] answers
 // that category's **Others** group rather than an `X`, because that is how
 // the standard itself spells "this kind of thing, kind unspecified": `EM` is
 // Equities/Others, `DM` Debt/Others, `CM` CIVs/Others.
 //
 // # Merging two statements
 //
-// [`CfiCode::merged`] folds two codes for one instrument position by position,
+// [`Cfi::merged`] folds two codes for one instrument position by position,
 // and only when they agree on what the instrument *is*: same category, same
 // group. A stated attribute fills an unknown one, so `ESXXXX` merged with
 // `ESVUFR` is `ESVUFR`. Two different stated attributes are a conflict, and
@@ -673,17 +674,18 @@ impl DataType {
     pub const CODES: &'static [(&'static str, DataType, usize)] = &[
         ("country", DataType::Country, COUNTRY_WIDTH),
         ("ccy", DataType::Ccy, CCY_WIDTH),
-        ("mic", DataType::MicCode, MIC_WIDTH),
-        ("cfi", DataType::CfiCode, CFI_WIDTH),
-        ("isin", DataType::IsinCode, ISIN_WIDTH),
-        ("cusip", DataType::CusipCode, CUSIP_WIDTH),
-        ("sedol", DataType::SedolCode, SEDOL_WIDTH),
+        ("mic", DataType::Mic, MIC_WIDTH),
+        ("cfi", DataType::Cfi, CFI_WIDTH),
+        ("isin", DataType::Isin, ISIN_WIDTH),
+        ("cusip", DataType::Cusip, CUSIP_WIDTH),
+        ("sedol", DataType::Sedol, SEDOL_WIDTH),
         ("side", DataType::Side, SIDE_WIDTH),
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
-        ("bloomberg", DataType::BloombergCode, BLOOMBERG_WIDTH),
-        ("figi", DataType::FIGICode, FIGI_WIDTH),
+        ("bbg", DataType::Bbg, BBG_WIDTH),
+        ("figi", DataType::Figi, FIGI_WIDTH),
         ("unit", DataType::Unit, UNIT_WIDTH),
+        ("ric", DataType::Ric, RIC_WIDTH),
     ];
 }
 
@@ -1122,7 +1124,7 @@ impl DataType {
 }
 
 // ------------------------------------------------------------------------
-// Every string's field marker: the one family and the twelve codes.
+// Every string's field marker: the one family and the registered codes.
 //
 // One file because a marker is one line per datatype and the family is one
 // family; splitting them would be two lists to keep in step rather than one.
@@ -2451,8 +2453,8 @@ impl StringEnum {
     ///
     /// // A member's code is the value's own bytes under the resolved width.
     /// assert_eq!(
-    ///     venues.into_members(&DataType::MicCode)?[0].1,
-    ///     DataType::MicCode.ascii_packed(StringEnum::MICS[0].as_bytes())?
+    ///     venues.into_members(&DataType::Mic)?[0].1,
+    ///     DataType::Mic.ascii_packed(StringEnum::MICS[0].as_bytes())?
     /// );
     ///
     /// // `exchange` is FIX's name for the same list, under the same type.

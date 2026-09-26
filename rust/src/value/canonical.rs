@@ -928,13 +928,14 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         // that trimmed text, so it is returned without re-walking its bytes.
         D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce
@@ -956,13 +957,14 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let canonical = match dtype {
                 D::Country => Scalar::Country(crate::Country::new(text)?),
                 D::Ccy => Scalar::Ccy(crate::Ccy::new(text)?),
-                D::MicCode => Scalar::MicCode(crate::MicCode::new(text)?),
-                D::CfiCode => Scalar::CfiCode(crate::CfiCode::new(text)?),
-                D::IsinCode => Scalar::IsinCode(crate::IsinCode::new(text)?),
-                D::CusipCode => Scalar::CusipCode(crate::CusipCode::new(text)?),
-                D::SedolCode => Scalar::SedolCode(crate::SedolCode::new(text)?),
-                D::BloombergCode => Scalar::BloombergCode(crate::BloombergCode::new(text)?),
-                D::FIGICode => Scalar::FIGICode(crate::FIGICode::new(text)?),
+                D::Mic => Scalar::Mic(crate::Mic::new(text)?),
+                D::Cfi => Scalar::Cfi(crate::Cfi::new(text)?),
+                D::Isin => Scalar::Isin(crate::Isin::new(text)?),
+                D::Cusip => Scalar::Cusip(crate::Cusip::new(text)?),
+                D::Sedol => Scalar::Sedol(crate::Sedol::new(text)?),
+                D::Bbg => Scalar::Bbg(crate::Bbg::new(text)?),
+                D::Ric => Scalar::Ric(crate::Ric::new(text)?),
+                D::Figi => Scalar::Figi(crate::Figi::new(text)?),
                 // A side and a state are read by their spelling: the wire
                 // code, the specification's name or a stored value all reach
                 // the one explicit value, and a spelling that names none is
@@ -1775,13 +1777,14 @@ fn validate_dtype_value(
         },
         D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce

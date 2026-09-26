@@ -374,13 +374,14 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         crate::string_dtypes!()
         | D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce
@@ -526,13 +527,14 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         crate::string_dtypes!()
         | D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce
@@ -653,13 +655,14 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         crate::string_dtypes!()
         | D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce
@@ -782,13 +785,14 @@ incompatible(
         crate::string_dtypes!()
         | D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Ric
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce

@@ -6,7 +6,7 @@ ISO 6166's international securities identification number: twelve characters, cl
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `isin`, `IsinCodeType`/`IsinCodeField`, the `IsinCode` value and `Scalar::IsinCode` |
+| Owns | `isin`, `IsinType`/`IsinField`, the `Isin` value and `Scalar::Isin` |
 | Validates | Twelve ASCII bytes: a two-letter prefix, nine alphanumerics, one digit that closes the eleven before it; lower case folds at the value door |
 | Lazy | Nothing - the whole check runs on the stack, over bounded bytes |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -23,13 +23,13 @@ A spelling whose check digit does not close it is not that identifier - it is a 
     ```rust
     use yggdryl::{DataType, DataTypeKind};
 
-    assert_eq!(DataType::isin(), DataType::IsinCode);
-    assert_eq!(DataType::from_str("isin")?, DataType::IsinCode);
-    assert_eq!(DataType::IsinCode.to_string(), "isin");
-    assert_eq!(DataType::IsinCode.kind(), DataTypeKind::Code);
-    assert_eq!(DataType::IsinCode.code_name(), Some("isin"));
-    assert_eq!(DataType::IsinCode.code_width(), Some(12));
-    assert_eq!(DataType::IsinCode.fixed_byte_width(), None);
+    assert_eq!(DataType::isin(), DataType::Isin);
+    assert_eq!(DataType::from_str("isin")?, DataType::Isin);
+    assert_eq!(DataType::Isin.to_string(), "isin");
+    assert_eq!(DataType::Isin.kind(), DataTypeKind::Code);
+    assert_eq!(DataType::Isin.code_name(), Some("isin"));
+    assert_eq!(DataType::Isin.code_width(), Some(12));
+    assert_eq!(DataType::Isin.fixed_byte_width(), None);
     ```
 
 === "Python"
@@ -59,16 +59,16 @@ A spelling whose check digit does not close it is not that identifier - it is a 
 
 ## Field
 
-`IsinCodeField` is the typed marker; Python and JavaScript name the factory `isin`.
+`IsinField` is the typed marker; Python and JavaScript name the factory `isin`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, IsinCodeField};
+    use yggdryl::{DataType, Field, IsinField};
 
-    let sid = IsinCodeField::unit("sid", true);
-    assert_eq!(sid.dtype(), &DataType::IsinCode);
-    assert_eq!(sid.to_field(), Field::new("sid", DataType::IsinCode, true));
+    let sid = IsinField::unit("sid", true);
+    assert_eq!(sid.dtype(), &DataType::Isin);
+    assert_eq!(sid.to_field(), Field::new("sid", DataType::Isin, true));
     ```
 
 === "Python"
@@ -99,10 +99,10 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, IsinCode, Scalar};
+    use yggdryl::{DataType, Isin, Scalar};
 
     let apple = DataType::isin().scalar("us0378331005")?;
-    assert_eq!(apple, Scalar::IsinCode(IsinCode::new("US0378331005")?));
+    assert_eq!(apple, Scalar::Isin(Isin::new("US0378331005")?));
     assert_eq!(apple.as_str(), Some("US0378331005"));
     assert_eq!(apple.kind(), "isin");
 
@@ -150,7 +150,7 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{DataType, Field};
 
-    let sid = Field::new("sid", DataType::IsinCode, false);
+    let sid = Field::new("sid", DataType::Isin, false);
     let arrow = sid.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.isin");
@@ -185,24 +185,24 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
 ## The check digit
 
-Two letters of prefix - the numbering agency's country, or an international prefix such as `XS` - then nine alphanumerics of national number, then the Luhn digit of the eleven before them, each letter first expanded to the two digits of its alphabet position. `IsinCode::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value, and `prefix`, `nsin` and `check_digit` read a built one apart. Rust only; the other bindings reach the same rule through the value door above.
+Two letters of prefix - the numbering agency's country, or an international prefix such as `XS` - then nine alphanumerics of national number, then the Luhn digit of the eleven before them, each letter first expanded to the two digits of its alphabet position. `Isin::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value, and `prefix`, `nsin` and `check_digit` read a built one apart. Rust only; the other bindings reach the same rule through the value door above.
 
 ```rust
-use yggdryl::IsinCode;
+use yggdryl::Isin;
 
-let apple = IsinCode::new("US0378331005")?;
+let apple = Isin::new("US0378331005")?;
 assert_eq!(apple.prefix(), "US");
 assert_eq!(apple.nsin(), "037833100");
 assert_eq!(apple.check_digit(), 5);
 
 // The rule answers without building a value, in either case.
-assert!(IsinCode::is_valid("us0378331005"));
-assert!(IsinCode::is_canonical("US0378331005"));
-assert!(!IsinCode::is_canonical("us0378331005"));
-assert_eq!(IsinCode::closing_digit("US037833100"), Some(5));
+assert!(Isin::is_valid("us0378331005"));
+assert!(Isin::is_canonical("US0378331005"));
+assert!(!Isin::is_canonical("us0378331005"));
+assert_eq!(Isin::closing_digit("US037833100"), Some(5));
 
 // A typo is refused, and the refusal says why.
-let refused = IsinCode::new("US0378331006").unwrap_err().to_string();
+let refused = Isin::new("US0378331006").unwrap_err().to_string();
 assert!(refused.contains("the check digit does not close the number"), "{refused}");
 ```
 
@@ -218,7 +218,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     use arrow_array::{ArrayRef, StringArray};
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let sid = Field::new("sid", DataType::IsinCode, true);
+    let sid = Field::new("sid", DataType::Isin, true);
     let source: ArrayRef = Arc::new(StringArray::from(vec!["US0378331005", "us0378331005"]));
     let strict = ArrowCastOptions::new().with_safe(false);
     let refused = Serie::from_arrow_array(Some(&sid), source, strict)
@@ -263,7 +263,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null, as it is for a UUID ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../../graph/index.md); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
+- A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
 - `SecurityIDSource(22)` and the crate tag `isincode(65055)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 
@@ -272,7 +272,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes code::securities cusip_code::securities figi_code::securities sedol_code::securities state::coded timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes code::securities cusip::securities figi::securities sedol::securities state::coded timeinforce::coded
     ```
 
 === "Python"

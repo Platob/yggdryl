@@ -317,16 +317,16 @@ impl Market for MarketData {
     fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
         delegate_by_variant!(self, derive_securityid, id)
     }
-    fn get_cficode(&self) -> Option<&crate::CfiCode> {
+    fn get_cficode(&self) -> Option<&crate::Cfi> {
         delegate_by_variant!(self, get_cficode)
     }
-    fn set_cficode(&mut self, code: Option<crate::CfiCode>) {
+    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
         delegate_by_variant!(self, set_cficode, code);
     }
-    fn get_miccode(&self) -> Option<&crate::MicCode> {
+    fn get_miccode(&self) -> Option<&crate::Mic> {
         delegate_by_variant!(self, get_miccode)
     }
-    fn set_miccode(&mut self, code: Option<crate::MicCode>) {
+    fn set_miccode(&mut self, code: Option<crate::Mic>) {
         delegate_by_variant!(self, set_miccode, code);
     }
     fn get_lastpx(&self) -> Option<crate::Decimal> {

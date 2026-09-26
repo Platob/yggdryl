@@ -107,7 +107,7 @@ python scripts/check_docs_examples.py
 python -m mkdocs build --strict
 ```
 
-The first command compiles every `rust` block under `docs/` as a test, runs every `python` block under `python/.venv`, and every `javascript` block under node with `yggdryl` rewired to this checkout. The second builds the site strictly, which validates every link.
+The first command compiles every `rust` block under `docs/` and `skills/` as a test, runs every `python` block under `python/.venv`, and every `javascript` block under node with `yggdryl` rewired to this checkout. The second builds the site strictly, which validates every link.
 
 A block that cannot stand alone is tagged `{ .rust .ignore }`, `{ .python .ignore }`, or `{ .javascript .ignore }`; the checker reports those instead of hiding them.
 

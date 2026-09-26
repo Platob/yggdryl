@@ -10,8 +10,8 @@ use crate::budget::{
 };
 use crate::string::is_text_storage;
 use crate::{
-    BLOOMBERG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH,
-    FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
+    BBG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
@@ -154,13 +154,14 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         }
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Ccy => code_array::<CCY_WIDTH>(dtype, values)?,
-        DataType::MicCode => code_array::<MIC_WIDTH>(dtype, values)?,
-        DataType::CfiCode => code_array::<CFI_WIDTH>(dtype, values)?,
-        DataType::IsinCode => code_array::<ISIN_WIDTH>(dtype, values)?,
-        DataType::CusipCode => code_array::<CUSIP_WIDTH>(dtype, values)?,
-        DataType::SedolCode => code_array::<SEDOL_WIDTH>(dtype, values)?,
-        DataType::BloombergCode => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
-        DataType::FIGICode => code_array::<FIGI_WIDTH>(dtype, values)?,
+        DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
+        DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
+        DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
+        DataType::Cusip => code_array::<CUSIP_WIDTH>(dtype, values)?,
+        DataType::Sedol => code_array::<SEDOL_WIDTH>(dtype, values)?,
+        DataType::Bbg => code_array::<BBG_WIDTH>(dtype, values)?,
+        DataType::Ric => code_array::<RIC_WIDTH>(dtype, values)?,
+        DataType::Figi => code_array::<FIGI_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -534,13 +535,14 @@ macro_rules! read_code {
 read_code!(
     read_country => Country,
     read_ccy => Ccy,
-    read_mic => MicCode,
-    read_cfi => CfiCode,
-    read_isin => IsinCode,
-    read_cusip => CusipCode,
-    read_sedol => SedolCode,
-    read_bloomberg => BloombergCode,
-    read_figi => FIGICode,
+    read_mic => Mic,
+    read_cfi => Cfi,
+    read_isin => Isin,
+    read_cusip => Cusip,
+    read_sedol => Sedol,
+    read_bbg => Bbg,
+    read_ric => Ric,
+    read_figi => Figi,
     read_side => Side,
     read_state => State,
     read_time_in_force => TimeInForce,
@@ -644,13 +646,14 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::SizedUtf8String(_) | DataType::SizedAsciiString(_) => read_numbered_text,
         DataType::Country => read_country,
         DataType::Ccy => read_ccy,
-        DataType::MicCode => read_mic,
-        DataType::CfiCode => read_cfi,
-        DataType::IsinCode => read_isin,
-        DataType::CusipCode => read_cusip,
-        DataType::SedolCode => read_sedol,
-        DataType::BloombergCode => read_bloomberg,
-        DataType::FIGICode => read_figi,
+        DataType::Mic => read_mic,
+        DataType::Cfi => read_cfi,
+        DataType::Isin => read_isin,
+        DataType::Cusip => read_cusip,
+        DataType::Sedol => read_sedol,
+        DataType::Bbg => read_bbg,
+        DataType::Ric => read_ric,
+        DataType::Figi => read_figi,
         DataType::Side => read_side,
         DataType::State => read_state,
         DataType::TimeInForce => read_time_in_force,
@@ -817,13 +820,14 @@ pub(crate) fn value_from_array(
         | DataType::MediaType
         | DataType::Country
         | DataType::Ccy
-        | DataType::MicCode
-        | DataType::CfiCode
-        | DataType::IsinCode
-        | DataType::CusipCode
-        | DataType::SedolCode
-        | DataType::BloombergCode
-        | DataType::FIGICode
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Isin
+        | DataType::Cusip
+        | DataType::Sedol
+        | DataType::Bbg
+        | DataType::Ric
+        | DataType::Figi
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce

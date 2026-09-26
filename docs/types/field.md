@@ -627,12 +627,12 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 | alias | constructors |
 | --- | --- |
-| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CcyField`, `MicCodeField`, `CfiCodeField`, `IsinCodeField`, `CusipCodeField`, `SedolCodeField`, `BloombergCodeField`, `FIGICodeField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CcyField`, `MicField`, `CfiField`, `IsinField`, `CusipField`, `SedolField`, `BbgField`, `FigiField`, `RicField`, `SideField`, `StateField`, `TimeInForceField`, `UnitField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
 | a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `UriField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SerieField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `yggdryl.int64` / `fields.int64` return the native `Field`, typed for a checker only; `yggdryl.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `yggdryl.bytes` / `fields.bytes`, `yggdryl.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `yggdryl.version` / `fields.version`, `yggdryl.figi` / `fields.figi` |
 
-[Geospatial](geospatial/index.md), [Strings & bytes](text/index.md), [Codes](codes/index.md), [UUID](uuid.md), and [Version](version.md) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::FIGICode`; `DataType::FIGICode.shared_field()` answers that shared field.
+[Geospatial](geospatial/index.md), [Strings & bytes](text/index.md), [Codes](codes/index.md), [UUID](uuid.md), and [Version](version.md) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::Figi`; `DataType::Figi.shared_field()` answers that shared field.
 
 ## Converting to one native field
 

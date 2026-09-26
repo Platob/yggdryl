@@ -169,9 +169,9 @@ pub enum DataTypeId {
     /// ISO 4217: a currency code, three ASCII bytes.
     Ccy = 0x72,
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    MicCode = 0x73,
+    Mic = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    CfiCode = 0x74,
+    Cfi = 0x74,
     /// FIX's side of a trade, four ASCII bytes.
     Side = 0x75,
     /// What state one thing is in.
@@ -179,20 +179,23 @@ pub enum DataTypeId {
     /// How long an order stands.
     TimeInForce = 0x77,
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
-    IsinCode = 0x78,
+    Isin = 0x78,
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
-    CusipCode = 0x79,
+    Cusip = 0x79,
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes.
-    SedolCode = 0x7a,
+    Sedol = 0x7a,
     /// A Bloomberg identifier: ticker, market and yellow key, up to thirty-two
     /// ASCII bytes.
-    BloombergCode = 0x7b,
+    Bbg = 0x7b,
     /// ANSI X9.145 Financial Instrument Global Identifier, twelve ASCII bytes.
-    FIGICode = 0x7c,
+    Figi = 0x7c,
     /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
     /// thirty-two ASCII bytes.
     Unit = 0x7d,
+    /// A Refinitiv Identification Code: a ticker and an exchange mnemonic,
+    /// up to thirty-two ASCII bytes.
+    Ric = 0x7e,
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
@@ -230,7 +233,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 87] = [
+    pub const ALL: [Self; 88] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -292,17 +295,18 @@ impl DataTypeId {
         Self::MediaType,
         Self::Country,
         Self::Ccy,
-        Self::MicCode,
-        Self::CfiCode,
+        Self::Mic,
+        Self::Cfi,
         Self::Side,
         Self::State,
         Self::TimeInForce,
-        Self::IsinCode,
-        Self::CusipCode,
-        Self::SedolCode,
-        Self::BloombergCode,
-        Self::FIGICode,
+        Self::Isin,
+        Self::Cusip,
+        Self::Sedol,
+        Self::Bbg,
+        Self::Figi,
         Self::Unit,
+        Self::Ric,
         Self::Uuid,
         Self::Serie,
         Self::LargeSerie,
@@ -366,13 +370,14 @@ impl DataTypeId {
             Self::BinaryView => "binary_view",
             Self::Country => "country",
             Self::Ccy => "ccy",
-            Self::MicCode => "mic",
-            Self::CfiCode => "cfi",
-            Self::IsinCode => "isin",
-            Self::CusipCode => "cusip",
-            Self::SedolCode => "sedol",
-            Self::BloombergCode => "bloomberg",
-            Self::FIGICode => "figi",
+            Self::Mic => "mic",
+            Self::Cfi => "cfi",
+            Self::Isin => "isin",
+            Self::Cusip => "cusip",
+            Self::Sedol => "sedol",
+            Self::Bbg => "bbg",
+            Self::Ric => "ric",
+            Self::Figi => "figi",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -667,14 +672,14 @@ impl DataTypeId {
         match self {
             Self::Country => Some(2),
             Self::Ccy => Some(3),
-            Self::MicCode => Some(4),
-            Self::CfiCode => Some(6),
-            Self::SedolCode => Some(7),
+            Self::Mic => Some(4),
+            Self::Cfi => Some(6),
+            Self::Sedol => Some(7),
             Self::Side | Self::TimeInForce => Some(8),
-            Self::CusipCode => Some(9),
+            Self::Cusip => Some(9),
             Self::State => Some(10),
-            Self::IsinCode | Self::FIGICode => Some(12),
-            Self::BloombergCode | Self::Unit => Some(32),
+            Self::Isin | Self::Figi => Some(12),
+            Self::Bbg | Self::Unit | Self::Ric => Some(32),
             _ => None,
         }
     }

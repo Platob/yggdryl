@@ -295,7 +295,7 @@ fn a_required_dictionary_child_hidden_under_an_absent_record_crosses_and_is_writ
 fn isin_dictionary_column(keys: Vec<i8>) -> (arrow_schema::FieldRef, ArrayRef) {
     let isin = Field::new(
         "isin",
-        DataType::dictionary(DataType::Int8, DataType::IsinCode).expect("an int8 key"),
+        DataType::dictionary(DataType::Int8, DataType::Isin).expect("an int8 key"),
         false,
     )
     .into_arrow_field_ref()

@@ -292,7 +292,7 @@
   {
     "name": "bloombergcode",
     "dtype": {
-      "type": "bloomberg"
+      "type": "bbg"
     },
     "nullable": true,
     "metadata": {

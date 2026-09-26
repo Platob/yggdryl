@@ -255,8 +255,11 @@ impl S3Options {
 
     /// Reach the endpoint through the proxy at `uri`.
     ///
-    /// `http://`, `https://`, `socks4://`, and `socks5://` are understood, and
-    /// a proxy may carry credentials of its own as `user:password@host`.
+    /// `http://` and `https://` are understood, and a proxy may carry
+    /// credentials of its own as `user:password@host`; a SOCKS proxy is
+    /// refused when the client is built, because the transport does not
+    /// speak it and a request going direct past it would leave the network
+    /// it names.
     /// Unset, the transport reads the usual `HTTPS_PROXY` and `NO_PROXY`
     /// variables, which is what most environments already say.
     #[must_use]
@@ -503,14 +506,6 @@ impl S3Options {
         self.aws
             .payload_signing()
             .unwrap_or(!scheme.eq_ignore_ascii_case("https"))
-    }
-
-    /// Whether the transport differs from the process-wide default, in which
-    /// case the client needs a connection pool of its own.
-    pub(super) fn has_custom_transport(&self) -> bool {
-        self.timeout != DEFAULT_TIMEOUT
-            || self.connect_timeout != DEFAULT_CONNECT_TIMEOUT
-            || self.proxy.is_some()
     }
 }
 

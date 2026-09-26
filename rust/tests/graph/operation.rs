@@ -12,7 +12,7 @@ use yggdryl::graph::{
     MdUpdateAction, Operation, OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote,
     QuoteEvent, QuoteKind,
 };
-use yggdryl::{Ccy, CfiCode, Decimal, Side, State, TimeInForce, Unit, Uuid};
+use yggdryl::{Ccy, Cfi, Decimal, Side, State, TimeInForce, Unit, Uuid};
 
 /// One filled order as a foreign caller would state it, finalized.
 fn full<K: OperationKind>() -> OperationEvent<K> {
@@ -356,14 +356,14 @@ fn merging_an_undated_element_lets_this_statement_lead() {
     this.set_crosscode("T-1".to_owned());
     this.set_price(Some(Decimal::parse("82.5").expect("a decimal")));
     this.set_quantity(Some(Decimal::from_int(1_000)));
-    this.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
+    this.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
     this.finalize();
     let mut other = this.clone();
     other.set_price(Some(Decimal::from_int(83)));
     other.set_unit(Unit::new("bbl").expect("a unit"));
     other.set_currency(Ccy::new("USD").expect("a currency"));
     other.set_side(Side::read("1").expect("a side"));
-    other.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
+    other.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
     other.set_metadata(Some(BTreeMap::from([(
         SmolStr::new("Feed"),
         SmolStr::new("OTHER"),
@@ -384,7 +384,7 @@ fn merging_an_undated_element_lets_this_statement_lead() {
         "unknown takes the other"
     );
     assert_eq!(merged.get_side().as_str(), "BUY");
-    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
     assert_eq!(
         merged.get_metadata()["Feed"],
         "OTHER",
@@ -415,11 +415,14 @@ fn a_boxed_book_control_is_one_pointer() {
 /// wrap were pinned at when the slim `Market` trait landed - 864 bytes of
 /// facts undated, 1040 dated - the dated leaf adding the boxed control,
 /// padded to 1056. It moved from the one generic envelope's 1024 when the
-/// four holders came back: a leaf holds only its role's facts.
+/// four holders came back: a leaf holds only its role's facts. It moved by
+/// sixteen bytes each when the market facts began to know which
+/// identifiers they only derived: one `u64` mask, padded to the facts'
+/// sixteen-byte alignment.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (864, 1056));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (880, 1072));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
 }

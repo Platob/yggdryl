@@ -160,12 +160,12 @@ pub enum DataType {
     /// ISO 4217: a currency code, three ASCII bytes.
     Ccy,
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    MicCode,
+    Mic,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    CfiCode,
+    Cfi,
     /// ISO 6166: a securities identification number, twelve ASCII bytes
     /// closed by a check digit.
-    IsinCode,
+    Isin,
     /// FIX's side of a trade, four ASCII bytes.
     Side,
     /// What state one thing is in, eight ASCII bytes.
@@ -274,17 +274,19 @@ pub enum DataType {
     /// A MIME type with its charset and content codings, stored as the
     /// canonical text that spells all three.
     MediaType,
-    // Appended after the text datatypes rather than beside `IsinCode` for the
+    // Appended after the text datatypes rather than beside `Isin` for the
     // same reason.
     /// CUSIP: a North American securities identifier, nine ASCII bytes
     /// closed by a check digit.
-    CusipCode,
+    Cusip,
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes closed by a check digit.
-    SedolCode,
-    BloombergCode,
+    Sedol,
+    /// A Bloomberg identifier: a ticker, a market and a yellow key, up to
+    /// thirty-two ASCII bytes.
+    Bbg,
     /// ANSI X9.145 Financial Instrument Global Identifier.
-    FIGICode,
+    Figi,
     /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
     /// thirty-two ASCII bytes.
     Unit,
@@ -296,6 +298,9 @@ pub enum DataType {
     /// `decimal256(76, 18)` preapplied - what every
     /// [`BigDecimal`](crate::BigDecimal) is.
     BigDecimal,
+    /// A Refinitiv Identification Code: a ticker and an exchange mnemonic, up
+    /// to thirty-two ASCII bytes.
+    Ric,
 }
 
 impl DataType {
@@ -400,13 +405,14 @@ impl DataType {
             Self::SizedCp1252String(_) => DataTypeId::SizedCp1252String,
             Self::Country => DataTypeId::Country,
             Self::Ccy => DataTypeId::Ccy,
-            Self::MicCode => DataTypeId::MicCode,
-            Self::CfiCode => DataTypeId::CfiCode,
-            Self::IsinCode => DataTypeId::IsinCode,
-            Self::CusipCode => DataTypeId::CusipCode,
-            Self::SedolCode => DataTypeId::SedolCode,
-            Self::BloombergCode => DataTypeId::BloombergCode,
-            Self::FIGICode => DataTypeId::FIGICode,
+            Self::Mic => DataTypeId::Mic,
+            Self::Cfi => DataTypeId::Cfi,
+            Self::Isin => DataTypeId::Isin,
+            Self::Cusip => DataTypeId::Cusip,
+            Self::Sedol => DataTypeId::Sedol,
+            Self::Bbg => DataTypeId::Bbg,
+            Self::Ric => DataTypeId::Ric,
+            Self::Figi => DataTypeId::Figi,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
@@ -747,9 +753,9 @@ enum Shape<'a> {
     String(crate::string::StringType),
     Country,
     Ccy,
-    MicCode,
-    CfiCode,
-    IsinCode,
+    Mic,
+    Cfi,
+    Isin,
     Side,
     State,
     TimeInForce,
@@ -778,13 +784,14 @@ enum Shape<'a> {
     Timezone,
     MimeType,
     MediaType,
-    CusipCode,
-    SedolCode,
-    BloombergCode,
-    FIGICode,
+    Cusip,
+    Sedol,
+    Bbg,
+    Figi,
     Unit,
     Decimal,
     BigDecimal,
+    Ric,
 }
 
 impl<'a> Shape<'a> {
@@ -839,9 +846,9 @@ impl<'a> Shape<'a> {
             D::Date64 => Self::Date64,
             D::Country => Self::Country,
             D::Ccy => Self::Ccy,
-            D::MicCode => Self::MicCode,
-            D::CfiCode => Self::CfiCode,
-            D::IsinCode => Self::IsinCode,
+            D::Mic => Self::Mic,
+            D::Cfi => Self::Cfi,
+            D::Isin => Self::Isin,
             D::Side => Self::Side,
             D::State => Self::State,
             D::TimeInForce => Self::TimeInForce,
@@ -853,10 +860,11 @@ impl<'a> Shape<'a> {
             D::Timezone => Self::Timezone,
             D::MimeType => Self::MimeType,
             D::MediaType => Self::MediaType,
-            D::CusipCode => Self::CusipCode,
-            D::SedolCode => Self::SedolCode,
-            D::BloombergCode => Self::BloombergCode,
-            D::FIGICode => Self::FIGICode,
+            D::Cusip => Self::Cusip,
+            D::Sedol => Self::Sedol,
+            D::Bbg => Self::Bbg,
+            D::Ric => Self::Ric,
+            D::Figi => Self::Figi,
             D::Unit => Self::Unit,
             D::Decimal => Self::Decimal,
             D::BigDecimal => Self::BigDecimal,
@@ -947,8 +955,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         crate::string_dtypes!() => 25,
         DataType::Country => 30,
         DataType::Ccy => 31,
-        DataType::MicCode => 32,
-        DataType::CfiCode => 33,
+        DataType::Mic => 32,
+        DataType::Cfi => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
         DataType::Serie(_) => 36,
@@ -978,18 +986,19 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::State => 55,
         DataType::TimeInForce => 56,
         DataType::Url => 57,
-        DataType::IsinCode => 58,
+        DataType::Isin => 58,
         DataType::Timezone => 59,
         DataType::MimeType => 60,
         DataType::MediaType => 61,
-        DataType::CusipCode => 62,
-        DataType::SedolCode => 63,
-        DataType::BloombergCode => 64,
+        DataType::Cusip => 62,
+        DataType::Sedol => 63,
+        DataType::Bbg => 64,
         DataType::Urn => 65,
-        DataType::FIGICode => 66,
+        DataType::Figi => 66,
         DataType::Unit => 68,
         DataType::Decimal => 69,
         DataType::BigDecimal => 70,
+        DataType::Ric => 71,
     }
 }
 
@@ -1271,13 +1280,14 @@ mod arrow {
                 }
                 R::Country
                 | R::Ccy
-                | R::MicCode
-                | R::CfiCode
-                | R::IsinCode
-                | R::CusipCode
-                | R::SedolCode
-                | R::BloombergCode
-                | R::FIGICode
+                | R::Mic
+                | R::Cfi
+                | R::Isin
+                | R::Cusip
+                | R::Sedol
+                | R::Bbg
+                | R::Ric
+                | R::Figi
                 | R::Side
                 | R::State
                 | R::TimeInForce

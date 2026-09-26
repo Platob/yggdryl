@@ -51,6 +51,15 @@ export {
   type FixDirection,
   type FixEntryView,
   type FixHeaderView,
+  type HttpContentRange,
+  type HttpCookie,
+  type HttpETag,
+  type HttpFault,
+  type HttpHop,
+  type HttpLink,
+  type HttpRecorded,
+  type HttpServerOptions,
+  type HttpStats,
   type LaneInput,
   type MetadataEntry,
   type PartitionEntry,
@@ -103,9 +112,15 @@ import type {
   Xxh32,
   Xxh64,
 } from './index'
-// The Iceberg and FIX values are reached through their namespaces, so they are
-// imported here as values to type those and re-exported as types only.
+// The Iceberg, FIX and HTTP values are reached through their namespaces, so
+// they are imported here as values to type those and re-exported as types only.
 import {
+  Headers,
+  Pages,
+  Request,
+  Response,
+  Server,
+  Session,
   Catalog,
   Compaction,
   DataFile,
@@ -227,6 +242,12 @@ export declare class StructSerie extends Serie {
 }
 
 export type {
+  Headers,
+  Pages,
+  Request,
+  Response,
+  Server,
+  Session,
   Catalog,
   Compaction,
   DataFile,
@@ -365,12 +386,13 @@ export type DataTypeId =
   | 'isin'
   | 'cusip'
   | 'sedol'
-  | 'bloomberg'
+  | 'bbg'
   | 'figi'
   | 'side'
   | 'state'
   | 'timeinforce'
   | 'unit'
+  | 'ric'
   | 'uuid'
   | 'version'
   | 'url'
@@ -475,12 +497,13 @@ interface DataTypeKindById {
   isin: 'code'
   cusip: 'code'
   sedol: 'code'
-  bloomberg: 'code'
+  bbg: 'code'
   figi: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
   unit: 'code'
+  ric: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -1223,19 +1246,19 @@ export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
 export type CcyField = FieldOf<'ccy', string>
 /** ISO 10383, the four-character market identifier code. */
-export type MicCodeField = FieldOf<'mic', string>
+export type MicField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
-export type CfiCodeField = FieldOf<'cfi', string>
+export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
-export type IsinCodeField = FieldOf<'isin', string>
+export type IsinField = FieldOf<'isin', string>
 /** CUSIP, the nine-character securities identifier closed by its check digit. */
-export type CusipCodeField = FieldOf<'cusip', string>
+export type CusipField = FieldOf<'cusip', string>
 /** SEDOL, the seven-character securities identifier closed by its check digit. */
-export type SedolCodeField = FieldOf<'sedol', string>
+export type SedolField = FieldOf<'sedol', string>
 /** A Bloomberg identifier - a ticker, a market and a yellow key - bounded at thirty-two bytes. */
-export type BloombergCodeField = FieldOf<'bloomberg', string>
+export type BbgField = FieldOf<'bbg', string>
 /** FIGI, the twelve-character Financial Instrument Global Identifier closed by its check digit. */
-export type FIGICodeField = FieldOf<'figi', string>
+export type FigiField = FieldOf<'figi', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1244,6 +1267,8 @@ export type StateField = FieldOf<'state', string>
 export type TimeInForceField = FieldOf<'timeinforce', string>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
+/** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
+export type RicField = FieldOf<'ric', string>
 export type SerieField<V = unknown> = FieldOf<'serie', V[], string, unknown>
 export type SerieViewField<V = unknown> = FieldOf<
   'serie_view',
@@ -1535,17 +1560,18 @@ export interface FieldsNamespace {
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   ccy(name: string, options?: FieldOptions): CcyField
-  mic(name: string, options?: FieldOptions): MicCodeField
-  cfi(name: string, options?: FieldOptions): CfiCodeField
-  isin(name: string, options?: FieldOptions): IsinCodeField
-  cusip(name: string, options?: FieldOptions): CusipCodeField
-  sedol(name: string, options?: FieldOptions): SedolCodeField
-  bloomberg(name: string, options?: FieldOptions): BloombergCodeField
-  figi(name: string, options?: FieldOptions): FIGICodeField
+  mic(name: string, options?: FieldOptions): MicField
+  cfi(name: string, options?: FieldOptions): CfiField
+  isin(name: string, options?: FieldOptions): IsinField
+  cusip(name: string, options?: FieldOptions): CusipField
+  sedol(name: string, options?: FieldOptions): SedolField
+  bbg(name: string, options?: FieldOptions): BbgField
+  figi(name: string, options?: FieldOptions): FigiField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
   unit(name: string, options?: FieldOptions): UnitField
+  ric(name: string, options?: FieldOptions): RicField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2163,10 +2189,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'sedol', string, N, O>
-  bloomberg<const N extends string, const O extends FieldOptionsInput = undefined>(
+  bbg<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'bloomberg', string, N, O>
+  ): NamedField<'bbg', string, N, O>
   figi<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -2193,6 +2219,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'unit', string, N, O>
+  ric<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'ric', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3138,6 +3168,7 @@ declare module './index' {
     const CSS: MimeType
     const JAVASCRIPT: MimeType
     const XML: MimeType
+    const HTTP: MimeType
     const PDF: MimeType
     const CBOR: MimeType
     const MESSAGE_PACK: MimeType
@@ -3710,6 +3741,210 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** One header, query or form value: text, or a number or boolean spelled as text. */
+export type HttpTextInput = string | number | bigint | boolean
+
+/**
+ * Name-value pairs - headers, query parameters, a form, `HttpOptions`
+ * properties - in the order written: a `Headers`, a `Map`,
+ * `URLSearchParams`, `[name, value]` entries, or a plain object whose array
+ * value is one pair per member.
+ */
+export type HttpPairsInput =
+  | Headers
+  | Map<string, HttpTextInput>
+  | URLSearchParams
+  | ReadonlyArray<readonly [string, HttpTextInput]>
+  | { readonly [name: string]: HttpTextInput | readonly HttpTextInput[] }
+
+/** A URL an HTTP call takes: text, a native `Url`, or a WHATWG `URL`. */
+export type HttpUrlInput = string | Url | NodeURL
+
+/** A request body: text (sent as UTF-8) or bytes. */
+export type HttpBodyInput = string | Uint8Array | ArrayBuffer
+
+/** A credential, spelled one way at a time. */
+export type HttpAuthInput =
+  | readonly [username: string, password: string]
+  | { readonly username: string; readonly password?: string }
+  | { readonly bearer: string }
+  | { readonly header: string; readonly value: string }
+
+/**
+ * One request of `Session.sendAll`: the request options but `stream`, a
+ * `method` and a `url`.
+ */
+export interface HttpRequestSpec extends Omit<HttpRequestOptions, 'stream'> {
+  method?: string
+  url: HttpUrlInput
+}
+
+/** What one request carries beyond its method and URL. */
+export interface HttpRequestOptions {
+  /** Query pairs appended to the URL's own. */
+  params?: HttpPairsInput | null
+  /** Headers set on the request, winning over a body's `Content-Type`. */
+  headers?: HttpPairsInput | null
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number | null
+  /** Leave the body on the wire as a resumable stream. */
+  stream?: boolean | null
+  /** The body, as text or bytes. */
+  data?: HttpBodyInput | null
+  /** The body, as a compact JSON document; `null` is the document `null`. */
+  json?: unknown
+  /** The body, as a form under `application/x-www-form-urlencoded`. */
+  form?: HttpPairsInput | null
+  /** The credential this request sends, whatever the session's is. */
+  auth?: HttpAuthInput | null
+  /** Whether a `3xx` is followed, in place of the session's answer. */
+  followRedirects?: boolean | null
+  /**
+   * How the next page is found: `auto`, `none`, `link`, `header:<name>`,
+   * `url:<path>`, `cursor:<path>:<parameter>`,
+   * `offset:<parameter>:<size>[:<total>]` or `page:<parameter>[:<start>]`.
+   */
+  pagination?: string | null
+  /** Where a page's rows are in its document: a field path. */
+  records?: string | null
+  /** What the resource is, whatever a response says. */
+  mediaType?: MediaTypeInput | null
+}
+
+/** What a session is built with; the named knobs win over `options`. */
+export interface HttpSessionOptions {
+  /** Headers every request carries unless it sets its own. */
+  headers?: HttpPairsInput | null
+  /** The credential every request sends unless it names its own. */
+  auth?: HttpAuthInput | null
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number | null
+  /**
+   * The HTTP version asked for: `'auto'` (negotiated: ALPN `h2` over TLS,
+   * HTTP/3 once an origin advertises it), `'1.1'`, `2` or `3`.
+   */
+  httpVersion?: 'auto' | '1.1' | '2' | '3' | 1.1 | 2 | 3 | null
+  /**
+   * `HttpOptions` properties by name - `max_attempts`, `follow_redirects`,
+   * `pagination`, `records`, `header.<name>`, ... - as the core reads them.
+   */
+  options?: HttpPairsInput | null
+}
+
+declare module './index' {
+  interface Session {
+    /** Send `method` to `url` and answer the response, its body read whole unless `stream`. */
+    request(method: string, url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    get(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    head(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    post(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    put(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    patch(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    delete(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    options(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    /** `GET url`, the body left on the wire as a resumable stream. */
+    stream(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    /** Walk the pages of `url` per its pagination, one `GET` per page. */
+    pages(url: HttpUrlInput, options?: HttpRequestOptions | null): Pages
+    /**
+     * Send every request - a `Request`, a URL to `GET` on this session, or a
+     * spec naming `url` beside the request options and `method` - on up to
+     * `concurrency` threads, as a walk answering in the order given: each
+     * answer is pulled when asked for while the requests after it are in
+     * flight, and a failure is an `Error` in its place. `requests` is read
+     * 1024 at a time, so an endless iterable is walked; an item that is no
+     * request throws once the answers before it are out, and leaving the
+     * walk early lets its requests in flight finish off the event loop.
+     */
+    sendAll(
+      requests: Iterable<Request | HttpUrlInput | HttpRequestSpec>,
+      concurrency?: number | null,
+    ): IterableIterator<Response | Error>
+  }
+
+  interface Request {
+    /** The same request with `headers` merged under its own. */
+    withHeaders(headers: HttpPairsInput): Request
+    /** The same request with `params` appended to its query. */
+    withQuery(params: HttpPairsInput): Request
+    /** The same request carrying `form` as its body. */
+    withForm(form: HttpPairsInput): Request
+    /** The same request carrying `body`. */
+    withBody(body: HttpBodyInput): Request
+    /** The same request carrying `value` as a JSON body. */
+    withJson(value: unknown): Request
+    /** The same request sending `auth`, whatever the session's is. */
+    withAuthorization(auth: HttpAuthInput): Request
+  }
+
+  interface Response {
+    /** The body's document as natural JavaScript data, through `Scalar.asJs`. */
+    json(): unknown
+    /** This response, or the refusal a status of 400 or more is. */
+    raiseForStatus(): this
+  }
+
+  /** A walk of pages is a JavaScript iterable and iterator at once. */
+  interface Pages extends IterableIterator<Response> {
+    next(): IteratorResult<Response>
+    /** Every remaining page as one Apache Arrow JS table. */
+    intoTable(field?: Field | string | null, batchRowSize?: number | null): ArrowTable
+  }
+
+  /** Iterating a header map yields its `[name, value]` pairs. */
+  interface Headers extends Iterable<[string, string]> {}
+
+  interface Server extends Disposable {
+    /**
+     * Answer `path` with `status`, `headers` and `body` every time, for
+     * `method` or for every method.
+     */
+    respond(
+      path: string,
+      status: number,
+      headers?: HttpPairsInput | null,
+      body?: HttpBodyInput | null,
+      method?: string | null,
+    ): void
+  }
+}
+
+/** `yggdryl::http`: sessions, requests, responses, page walks and a server. */
+export interface Http {
+  /** An HTTP session: default options, one cookie jar, one client. */
+  readonly Session: Omit<typeof Session, 'prototype'> & {
+    readonly prototype: Session
+    new (baseUrl?: HttpUrlInput | null, options?: HttpSessionOptions | null): Session
+  }
+  /** One request, and the resource its URL names. */
+  readonly Request: Omit<typeof Request, 'prototype'> & {
+    readonly prototype: Request
+    new (method: string, url: HttpUrlInput): Request
+  }
+  /** One answer and its body. */
+  readonly Response: typeof Response
+  /** An immutable, case-insensitive header map. */
+  readonly Headers: Omit<typeof Headers, 'prototype'> & {
+    readonly prototype: Headers
+    new (init?: HttpPairsInput | null): Headers
+  }
+  /** A walk of a paginated resource. */
+  readonly Pages: typeof Pages
+  /** An HTTP/1.1 server hosting handles and fixed answers. */
+  readonly Server: typeof Server
+  /** The process-wide default session every door below sends on. */
+  session(): Session
+  request(method: string, url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  get(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  head(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  post(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  put(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  patch(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  delete(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+}
+
+export declare const http: Http
 
 /**
  * A message value: the native scalar, or the row `Scalar.from` reads.

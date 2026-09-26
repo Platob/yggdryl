@@ -32,7 +32,7 @@ use crate::CodeValue;
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds, embedded};
 use crate::xxhash::Xxh3;
-use crate::{Ccy, CfiCode, Decimal, MicCode, Result, Side, TimeInForce, Unit};
+use crate::{Ccy, Cfi, Decimal, Mic, Result, Side, TimeInForce, Unit};
 
 /// Free-form facts a market element carries beside its typed ones: never an
 /// identifier, which has a typed home in [`Market::get_securityids`] or an
@@ -176,15 +176,16 @@ pub trait Market {
     /// Returns an error when the holder is a view of a store that refuses
     /// one of the keys.
     fn set_securityids(&mut self, ids: SecurityIds) -> Result<()>;
-    /// States one security identifier, filling only an absent key; whether
-    /// it was added.
+    /// States one security identifier, filling an absent key or replacing
+    /// a derived identifier, never a stated one; whether it was added.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// the key.
     fn insert_securityid(&mut self, id: SecurityId) -> Result<bool>;
-    /// Removes the identifier under one key; whether one was held.
+    /// Removes the identifier under one key; whether one was held. Removing
+    /// the ISIN takes back every derived identifier, since each hangs on it.
     ///
     /// # Errors
     ///
@@ -192,17 +193,18 @@ pub trait Market {
     /// the key.
     fn remove_securityid(&mut self, key: &SecType) -> Result<bool>;
     /// Derives one security identifier - one the element implies rather
-    /// than states - filling only an absent key; whether it was added. A
-    /// derived identifier never reaches a store the holder is a view of.
+    /// than states: the national number its ISIN carries, what a lifecycle
+    /// learned under it - filling only an absent key; whether it was added.
+    /// A derived identifier never reaches a store the holder is a view of.
     fn derive_securityid(&mut self, id: SecurityId) -> bool;
     /// The detailed CFI classification, where one is known.
-    fn get_cficode(&self) -> Option<&CfiCode>;
+    fn get_cficode(&self) -> Option<&Cfi>;
     /// Sets [`Self::get_cficode`].
-    fn set_cficode(&mut self, code: Option<CfiCode>);
+    fn set_cficode(&mut self, code: Option<Cfi>);
     /// The market the element trades on, where known.
-    fn get_miccode(&self) -> Option<&MicCode>;
+    fn get_miccode(&self) -> Option<&Mic>;
     /// Sets [`Self::get_miccode`].
-    fn set_miccode(&mut self, code: Option<MicCode>);
+    fn set_miccode(&mut self, code: Option<Mic>);
     /// The last executed price: what the element's last execution traded
     /// at, never the price it states.
     fn get_lastpx(&self) -> Option<Decimal>;
@@ -272,7 +274,7 @@ pub trait Market {
         let embedded: Vec<SecurityId> = self
             .get_securityids()
             .get_id("ISIN")
-            .and_then(|id| crate::IsinCode::new(id.code()).ok())
+            .and_then(|id| crate::Isin::new(id.code()).ok())
             .map(|isin| embedded(&isin).collect())
             .unwrap_or_default();
         for id in embedded {
@@ -880,9 +882,13 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E, side_from_chain:
             changed = true;
         }
     }
-    for id in previous.get_securityids() {
-        if !this.get_securityids().contains_key(id.sectype().as_str()) {
-            changed |= this.insert_securityid(id.clone()).unwrap_or(false);
+    // An element naming another ISIN than its predecessor is another
+    // instrument, and takes none of the predecessor's identifiers.
+    if !names_other_instrument(this, previous) {
+        for id in previous.get_securityids() {
+            if !this.get_securityids().contains_key(id.sectype().as_str()) {
+                changed |= this.insert_securityid(id.clone()).unwrap_or(false);
+            }
         }
     }
     changed |= moved(
@@ -896,6 +902,14 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E, side_from_chain:
         |code| this.set_miccode(code),
     );
     changed
+}
+
+/// Whether `this` and `other` each state an ISIN, and not the same one.
+fn names_other_instrument<E: Market + ?Sized>(this: &E, other: &E) -> bool {
+    matches!(
+        (this.get_securityids().get("ISIN"), other.get_securityids().get("ISIN")),
+        (Some(mine), Some(theirs)) if mine != theirs
+    )
 }
 
 /// The market facts an element takes from another statement of itself:
@@ -950,16 +964,26 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
         ),
         |ticker| this.set_ticker(ticker),
     );
-    for id in other.get_securityids() {
-        let key = id.sectype();
-        match this.get_securityids().get(key.as_str()) {
-            Some(held) if held == id.code() => {}
-            Some(_) if later => {
-                let _ = this.remove_securityid(&key);
-                changed |= this.insert_securityid(id.clone()).unwrap_or(false);
+    // Two statements naming different ISINs name two instruments, whose
+    // identifiers never mix: the leading statement's stand whole.
+    if names_other_instrument(this, other) {
+        if later {
+            changed |= this
+                .set_securityids(other.get_securityids().clone())
+                .is_ok();
+        }
+    } else {
+        for id in other.get_securityids() {
+            let key = id.sectype();
+            match this.get_securityids().get(key.as_str()) {
+                Some(held) if held == id.code() => {}
+                Some(_) if later => {
+                    let _ = this.remove_securityid(&key);
+                    changed |= this.insert_securityid(id.clone()).unwrap_or(false);
+                }
+                Some(_) => {}
+                None => changed |= this.insert_securityid(id.clone()).unwrap_or(false),
             }
-            Some(_) => {}
-            None => changed |= this.insert_securityid(id.clone()).unwrap_or(false),
         }
     }
     changed |= moved(

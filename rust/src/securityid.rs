@@ -13,13 +13,13 @@ use std::sync::LazyLock;
 use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::bloomberg_code::BLOOMBERG_WIDTH;
+use crate::bbg::BBG_WIDTH;
 use crate::code::{folded_spelling, is_null_like};
 use crate::graph::{Element, Market};
 use crate::idmap::{
     IdMap, entry_refusal, located_at, merge_sorted, sorted_map_scalar, text_entries,
 };
-use crate::{CfiCode, CusipCode, DataType, Error, FIGICode, IsinCode, Result, Scalar, SedolCode};
+use crate::{Cfi, Cusip, DataType, Error, Figi, Isin, Result, Ric, Scalar, Sedol};
 
 /// The most bytes a source key may be once upper-cased.
 const KEY_WIDTH: usize = 32;
@@ -355,7 +355,7 @@ impl SecType {
     }
 
     /// The most bytes a code of this source may be: the fixed width of a
-    /// checked code, `BLOOMBERG_WIDTH` for a Bloomberg identifier, 32 for
+    /// checked code, `BBG_WIDTH` for a Bloomberg identifier, 32 for
     /// every other source.
     #[must_use]
     pub fn max_code_width(&self) -> usize {
@@ -366,7 +366,7 @@ impl SecType {
             "WKN" => 6,
             "ISOCCY" => 3,
             "ISOCTRY" => 2,
-            _ => BLOOMBERG_WIDTH,
+            _ => BBG_WIDTH,
         }
     }
 
@@ -378,9 +378,10 @@ impl SecType {
     /// Whether `code` is a code of this source.
     ///
     /// An ISIN, a CUSIP, a SEDOL and a FIGI must close on their check digit;
-    /// a WKN is six of `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits
-    /// without a leading zero; a Bloomberg identifier keeps its case and its
-    /// inner spaces; every other source takes printable ASCII within
+    /// a RIC is one token of printable ASCII, its case kept; a WKN is six of
+    /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a leading
+    /// zero; a Bloomberg identifier keeps its case and its inner spaces;
+    /// every other source takes printable ASCII within
     /// [`Self::max_code_width`]. No source takes an empty or null-like code.
     ///
     /// # Errors
@@ -396,10 +397,11 @@ impl SecType {
             return Err(refusal(&format_args!("{code:?}, which states nothing")));
         }
         match self.as_str() {
-            "ISIN" => IsinCode::new(code).map(drop),
-            "CUSIP" => CusipCode::new(code).map(drop),
-            "SEDOL" => SedolCode::new(code).map(drop),
-            "FIGI" => FIGICode::new(code).map(drop),
+            "ISIN" => Isin::new(code).map(drop),
+            "CUSIP" => Cusip::new(code).map(drop),
+            "SEDOL" => Sedol::new(code).map(drop),
+            "FIGI" => Figi::new(code).map(drop),
+            "RIC" => Ric::new(code).map(drop),
             "WKN" => {
                 if code.len() == 6
                     && code
@@ -482,7 +484,7 @@ impl SecurityId {
     pub fn new(key: SecType, code: &str) -> Result<Self> {
         let code = code.trim_matches(|c: char| c.is_ascii_whitespace());
         key.validate_code(code)?;
-        let mut buffer = [0_u8; 2 + KEY_WIDTH + BLOOMBERG_WIDTH];
+        let mut buffer = [0_u8; 2 + KEY_WIDTH + BBG_WIDTH];
         let head = match SecType::known_index(key.as_str()) {
             Some(index) => {
                 buffer[0] = 1 + index as u8;
@@ -762,17 +764,17 @@ impl<'ids> IntoIterator for &'ids SecurityIds {
 /// enough to name another identifier.
 ///
 /// ```
-/// use yggdryl::IsinCode;
+/// use yggdryl::Isin;
 /// use yggdryl::securityid::embedded;
 ///
-/// let apple = IsinCode::new("US0378331005").unwrap();
+/// let apple = Isin::new("US0378331005").unwrap();
 /// let cusip = embedded(&apple).next().unwrap();
 /// assert_eq!(cusip.to_string(), "CUSIP:037833100");
-/// assert!(embedded(&IsinCode::new("XS0203470157").unwrap()).next().is_none());
+/// assert!(embedded(&Isin::new("XS0203470157").unwrap()).next().is_none());
 /// ```
-pub fn embedded(isin: &IsinCode) -> impl Iterator<Item = SecurityId> {
+pub fn embedded(isin: &Isin) -> impl Iterator<Item = SecurityId> {
     let text = isin.as_str();
-    let found = if !IsinCode::is_canonical(text) {
+    let found = if !Isin::is_canonical(text) {
         None
     } else {
         let (key, code) = match &text[..2] {
@@ -799,7 +801,7 @@ const MAX_REGISTRY_BYTES: usize = 32 * 1024 * 1024;
 const ENTRY_CHARGE: usize = 2048;
 const HASH_CONTROL_BYTES: usize = 1;
 const MAX_BLOOMBERG_HEAP_ALLOWANCE: usize =
-    BLOOMBERG_WIDTH + 2 * size_of::<usize>() + 2 * align_of::<usize>();
+    BBG_WIDTH + 2 * size_of::<usize>() + 2 * align_of::<usize>();
 
 /// The most sources one instrument's associations are learned under.
 const MAX_KEYS_PER_INSTRUMENT: usize = 8;
@@ -845,15 +847,15 @@ impl<T: Clone + PartialEq> Association<T> {
     }
 }
 
-impl Association<CfiCode> {
-    fn classify(&mut self, value: Option<&CfiCode>) {
+impl Association<Cfi> {
+    fn classify(&mut self, value: Option<&Cfi>) {
         let Some(value) = value else { return };
         match self {
             Self::Ambiguous => return,
             Self::Known(known) if known == value => return,
             _ => {}
         }
-        if !CfiCode::is_classified(value.as_str())
+        if !Cfi::is_classified(value.as_str())
             || value.as_str().as_bytes()[2..]
                 .iter()
                 .all(|byte| *byte == b'X')
@@ -868,8 +870,8 @@ impl Association<CfiCode> {
                 .any(|(left, right)| left != right && left != b'X' && right != b'X')
             {
                 *self = Self::Ambiguous;
-            } else if let Some(merged) = CfiCode::merged(known.as_str(), value.as_str()) {
-                *known = CfiCode::new(merged).expect("merged validated CFI codes");
+            } else if let Some(merged) = Cfi::merged(known.as_str(), value.as_str()) {
+                *known = Cfi::new(merged).expect("merged validated CFI codes");
             }
         } else {
             *self = Self::Known(value.clone());
@@ -882,7 +884,7 @@ type Slot = (SecType, Association<SecurityId>);
 
 #[derive(Default)]
 struct Learned {
-    cfi: Association<CfiCode>,
+    cfi: Association<Cfi>,
     keys: SmallVec<[Slot; 2]>,
 }
 
@@ -944,7 +946,7 @@ impl SecurityIdRegistry {
     /// its ISIN: one association per stated source but a listing's, at most
     /// `MAX_KEYS_PER_INSTRUMENT` of them, and the classification where it
     /// is detailed. Nothing without an ISIN.
-    pub(crate) fn learn(&mut self, ids: &SecurityIds, cfi: Option<&CfiCode>) {
+    pub(crate) fn learn(&mut self, ids: &SecurityIds, cfi: Option<&Cfi>) {
         let Some(isin) = ids.get_id("ISIN") else {
             return;
         };
@@ -983,7 +985,7 @@ impl SecurityIdRegistry {
     /// names by its ISIN, from what was learned: only absent sources, and a
     /// classification only where the learned one refines the stated one.
     /// Whether anything was filled.
-    pub(crate) fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<CfiCode>) -> bool {
+    pub(crate) fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<Cfi>) -> bool {
         let Some(learned) = ids.get_id("ISIN").and_then(|isin| self.by_isin.get(isin)) else {
             return false;
         };
@@ -992,7 +994,7 @@ impl SecurityIdRegistry {
             let replacement = match cfi.as_ref() {
                 None => Some(known.clone()),
                 Some(stated) if stated != known => {
-                    CfiCode::merged(stated.as_str(), known.as_str())
+                    Cfi::merged(stated.as_str(), known.as_str())
                         .filter(|merged| {
                             // Unknown positions can fill; a stated classification
                             // attribute is never overwritten by a learned default.
@@ -1003,7 +1005,7 @@ impl SecurityIdRegistry {
                                 .all(|(old, new)| old == b'X' || old == new)
                                 && merged.as_str() != stated.as_str()
                         })
-                        .and_then(|merged| CfiCode::new(merged).ok())
+                        .and_then(|merged| Cfi::new(merged).ok())
                 }
                 Some(_) => None,
             };
@@ -1061,7 +1063,7 @@ pub mod internals {
     use std::collections::HashMap;
 
     use crate::graph::{Element, Market};
-    use crate::{CfiCode, SecurityIds};
+    use crate::{Cfi, SecurityIds};
 
     /// The instrument associations one ordered lifecycle learns.
     #[derive(Default)]
@@ -1095,12 +1097,12 @@ pub mod internals {
         }
 
         /// Learn what `ids` and `cfi` state.
-        pub fn learn(&mut self, ids: &SecurityIds, cfi: Option<&CfiCode>) {
+        pub fn learn(&mut self, ids: &SecurityIds, cfi: Option<&Cfi>) {
             self.0.learn(ids, cfi);
         }
 
         /// Fill what `ids` and `cfi` leave unstated; whether anything was.
-        pub fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<CfiCode>) -> bool {
+        pub fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<Cfi>) -> bool {
             self.0.fill(ids, cfi)
         }
 

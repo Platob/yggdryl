@@ -26,8 +26,7 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce, Unit,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol, Side, State, TimeInForce, Unit,
 };
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
@@ -697,26 +696,26 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "ccy" => Ccy::new(payload()?.extract::<String>()?)
             .map(Scalar::Ccy)
             .map_err(value_error),
-        "mic" => MicCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::MicCode)
+        "mic" => Mic::new(payload()?.extract::<String>()?)
+            .map(Scalar::Mic)
             .map_err(value_error),
-        "cfi" => CfiCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::CfiCode)
+        "cfi" => Cfi::new(payload()?.extract::<String>()?)
+            .map(Scalar::Cfi)
             .map_err(value_error),
-        "isin" => IsinCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::IsinCode)
+        "isin" => Isin::new(payload()?.extract::<String>()?)
+            .map(Scalar::Isin)
             .map_err(value_error),
-        "cusip" => CusipCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::CusipCode)
+        "cusip" => Cusip::new(payload()?.extract::<String>()?)
+            .map(Scalar::Cusip)
             .map_err(value_error),
-        "sedol" => SedolCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::SedolCode)
+        "sedol" => Sedol::new(payload()?.extract::<String>()?)
+            .map(Scalar::Sedol)
             .map_err(value_error),
-        "bloomberg" => BloombergCode::new(payload()?.extract::<String>()?)
-            .map(Scalar::BloombergCode)
+        "bbg" => Bbg::new(payload()?.extract::<String>()?)
+            .map(Scalar::Bbg)
             .map_err(value_error),
-        "figi" => FIGICode::new(payload()?.extract::<String>()?)
-            .map(Scalar::FIGICode)
+        "figi" => Figi::new(payload()?.extract::<String>()?)
+            .map(Scalar::Figi)
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(Scalar::Side)
@@ -729,6 +728,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "unit" => Unit::new(payload()?.extract::<String>()?)
             .map(Scalar::Unit)
+            .map_err(value_error),
+        "ric" => Ric::new(payload()?.extract::<String>()?)
+            .map(Scalar::Ric)
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;

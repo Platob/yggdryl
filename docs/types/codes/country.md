@@ -1,6 +1,6 @@
 # Country
 
-ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the twelve, and the one a securities identifier opens with.
+ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the fourteen, and the one a securities identifier opens with.
 
 ## Contract
 
@@ -187,7 +187,7 @@ The value is the two letters, under the country's identity.
 
 ## Two bytes is the whole width
 
-The width is the narrowest of the twelve, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
+The width is the narrowest of the fourteen, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
 
 === "Rust"
 
@@ -225,7 +225,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 
 ## The ISO 3166 listing
 
-`StringEnum::COUNTRIES` ships with the package under the logical name `country`, and Python declares it over the width as `yggdryl.enums.Country`. A declared vocabulary, never a gate ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)).
+`StringEnum::COUNTRIES` ships with the package under the logical name `country`, and Python declares it over the width as `yggdryl.enums.COUNTRY`, over the `yggdryl.enums.Country` base a caller subclasses for a vocabulary of its own. A declared vocabulary, never a gate ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)).
 
 === "Rust"
 
@@ -241,15 +241,15 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 
     ```python
     from yggdryl import StringEnum
-    from yggdryl.enums import Country
+    from yggdryl.enums import COUNTRY
 
     countries = StringEnum.from_logical_name("country")
     assert len(countries) == len(StringEnum.prebuilt()["country"])
     assert countries.get("US") == "US"
 
     # A member is its value's own storage bytes, read big-endian.
-    assert int(Country.US) == 0x5553
-    assert str(Country.US) == "US"
+    assert int(COUNTRY.US) == 0x5553
+    assert str(COUNTRY.US) == "US"
     ```
 
 === "JavaScript"
@@ -268,7 +268,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 - `at most 2 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
 - A country has no value stating none, so nothing is taken over on a [merge](index.md#the-code-family-value): this one stands.
 - `country` beside [`ccy`](ccy.md) merges to `sized_ascii(3)` widening and `sized_ascii(2)` narrowing - the bounded text both fit.
-- The two letters an [ISIN](isin.md) opens with are the numbering agency's prefix, which includes international prefixes such as `XS` that no country names; `IsinCode::prefix` reads them as text rather than as this code.
+- The two letters an [ISIN](isin.md) opens with are the numbering agency's prefix, which includes international prefixes such as `XS` that no country names; `Isin::prefix` reads them as text rather than as this code.
 - The default value is the empty text, answered as a `country` scalar ([Cast](../cast.md#empty-text)).
 
 ## Commands
@@ -276,7 +276,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"

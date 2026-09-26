@@ -1,17 +1,14 @@
 'use strict'
 
-// The one renderer between the native package and JSON. A stream's rows
-// cross as the native package wrote them - one `marketdata` row per leaf,
-// or a view's rows - read column by column out of the Arrow JS table, each
-// column converted by one reader chosen once from its Arrow type: a decimal
-// is its exact text, an instant the decimal text of its nanoseconds, a UUID
-// its hyphenated text, a 64-bit integer its decimal text, a map its
-// `[key, value]` pairs in the native key order - an object would move an
-// integer-like key first and lose a `__proto__` one. What is not a
-// column - a book's depth, imbalance, midpoint and hash - is asked of the
-// native object; nothing here computes a market fact. The other way, an
-// inserted event is built by the native constructor, which refuses what it
-// cannot state, and its refusal crosses verbatim.
+// The one renderer between the native package and JSON. A book crosses as
+// the native package wrote it - its `marketdata` row - read column by column
+// out of the Arrow JS table, each column converted by one reader chosen once
+// from its Arrow type: a decimal is its exact text, an instant the decimal
+// text of its nanoseconds, a UUID its hyphenated text, a 64-bit integer its
+// decimal text, a map its `[key, value]` pairs in the native key order - an
+// object would move an integer-like key first and lose a `__proto__` one.
+// What is not a column - a book's depth, imbalance, midpoint and hash - is
+// asked of the native object; nothing here computes a market fact.
 
 const { Type, util } = require('apache-arrow')
 
@@ -32,9 +29,6 @@ function columnsOf(field) {
 
 const MARKETDATA = graph.MarketData.field()
 
-/** The columns of the lifted `marketdata` row, as `GET /api/field` serves them. */
-const MARKETDATA_COLUMNS = Object.freeze(columnsOf(MARKETDATA).map(Object.freeze))
-
 /** The names of the `marketdata` columns whose datatype `id` is one of `ids`. */
 function columnsWith(...ids) {
   return Object.freeze(
@@ -46,8 +40,6 @@ function columnsWith(...ids) {
   )
 }
 
-/** The `marketdata` columns holding an instant: their facts cross as decimal nanoseconds. */
-const INSTANT_COLUMNS = columnsWith('datetime64')
 /** The `marketdata` columns holding a map: their facts cross as `[key, value]` pairs. */
 const MAP_COLUMNS = columnsWith('map', 'sorted_map')
 
@@ -242,113 +234,6 @@ function bookJson(book) {
   return booksJson([book])[0]
 }
 
-/** The book a stream item is, or `null`. */
-function bookOf(item) {
-  if (item instanceof graph.BookEvent) return item
-  return item instanceof graph.MarketData ? item.asBookEvent() : null
-}
-
-/** Every leaf of `items` as JSON: its row and `stableHash`; a book as `bookJson` answers it. */
-function leavesJson(items) {
-  if (!items.length) return []
-  const { rows } = rowsOf(graph.MarketData.arrowReader(items))
-  return rows.map((row, at) => {
-    const book = bookOf(items[at])
-    return book ? shapeBook(row, book) : { ...row, stableHash: String(items[at].stableHash()) }
-  })
-}
-
-/** One leaf as JSON: `leavesJson([leaf])[0]`. */
-function leafJson(leaf) {
-  return leavesJson([leaf])[0]
-}
-
-/**
- * Inserted events as a scenario holds them, through one Arrow stream: each
- * leaf's JSON beside `native`, the leaf's own `toJSON` text, which
- * `MarketData.fromJSON` rebuilds exactly.
- */
-function eventsJson(leaves) {
-  return leavesJson(leaves).map((row, at) => ({ ...row, native: leaves[at].toJSON() }))
-}
-
-/** One inserted event: `eventsJson([leaf])[0]`. */
-function eventJson(leaf) {
-  return eventsJson([leaf])[0]
-}
-
-/** The leaf constructors an inserted event names by its `kind`: dated first. */
-const KINDS = Object.freeze({
-  order_event: graph.OrderEvent,
-  quote_event: graph.QuoteEvent,
-  execution_event: graph.ExecutionEvent,
-  order: graph.Order,
-  quote: graph.Quote,
-  execution: graph.Execution,
-})
-
-/**
- * The kinds an event inserted into a scenario may name: the dated ones. A scenario admits a leaf
- * through the native walk alone, and the walk reads only events, so an undated `order`, `quote` or
- * `execution` is refused by it however it was built.
- */
-const DATED_KINDS = Object.freeze(['order_event', 'quote_event', 'execution_event'])
-
-const NANOSECONDS = /^-?\d+$/
-
-/** An instant fact as the constructor reads it: decimal nanoseconds become a bigint. */
-function instantFact(value) {
-  return typeof value === 'string' && NANOSECONDS.test(value) ? BigInt(value) : value
-}
-
-/**
- * A map fact as the constructor reads it: `[key, value]` pairs - the spelling
- * a map is served in - become a `Map` in their order, which the constructor
- * judges; an object stays the object it is.
- */
-function mapFact(name, value) {
-  if (!Array.isArray(value)) return value
-  if (!value.every((pair) => Array.isArray(pair) && pair.length === 2)) {
-    throw new TypeError(`${name}: expected a map as [key, value] pairs or an object keyed by text`)
-  }
-  return new Map(value)
-}
-
-/**
- * Build the native leaf an inserted event describes - `{ kind, currunix,
- * facts }`, the instants as decimal nanosecond text - through its own
- * constructor, which states each fact through its column and refuses what it
- * cannot; the refusal is the constructor's own.
- */
-function leafFromJson(event) {
-  if (event === null || typeof event !== 'object' || Array.isArray(event)) {
-    throw new TypeError('expected an event: { kind, currunix, facts }')
-  }
-  const { kind, currunix, facts = {} } = event
-  const Leaf = Object.hasOwn(KINDS, kind) ? KINDS[kind] : undefined
-  if (Leaf === undefined) {
-    throw new TypeError(`expected a kind among ${Object.keys(KINDS).join(', ')}, got ${JSON.stringify(kind)}`)
-  }
-  if (facts === null || typeof facts !== 'object' || Array.isArray(facts)) {
-    throw new TypeError('expected facts as an object keyed by column name')
-  }
-  const stated = {}
-  for (const [name, value] of Object.entries(facts)) {
-    stated[name] = INSTANT_COLUMNS.has(name) ? instantFact(value) : MAP_COLUMNS.has(name) ? mapFact(name, value) : value
-  }
-  if (Leaf === graph.Order || Leaf === graph.Quote || Leaf === graph.Execution) {
-    if (currunix !== undefined && currunix !== null) {
-      throw new TypeError(`an undated ${kind} states no currunix`)
-    }
-    return new Leaf(stated)
-  }
-  const at = typeof currunix === 'bigint' ? currunix : instantFact(currunix)
-  if (typeof at !== 'bigint') {
-    throw new TypeError(`expected currunix as the decimal text of nanoseconds since the epoch, got ${JSON.stringify(currunix)}`)
-  }
-  return new Leaf(at, stated)
-}
-
 /** The message a refusal carries, verbatim. */
 function refusalText(error) {
   return error instanceof Error ? error.message : String(error)
@@ -361,20 +246,10 @@ function toJson(value, space) {
 
 module.exports = {
   DEPTHS,
-  INSTANT_COLUMNS,
-  DATED_KINDS,
-  KINDS,
   MAP_COLUMNS,
-  MARKETDATA_COLUMNS,
   bookJson,
   booksJson,
-  columnsOf,
   decimalText,
-  eventJson,
-  eventsJson,
-  leafFromJson,
-  leafJson,
-  leavesJson,
   refusalText,
   rowsOf,
   toJson,

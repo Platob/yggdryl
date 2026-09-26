@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
-use yggdryl::{Ccy, CfiCode, DataType, Decimal, MicCode, Scalar, Side, Unit};
+use yggdryl::{Ccy, Cfi, DataType, Decimal, Mic, Scalar, Side, Unit};
 
 fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
@@ -30,8 +30,8 @@ fn market_columns_round_trip_every_optional_band() {
     source
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .unwrap();
-    source.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
-    source.set_miccode(Some(MicCode::new("XNAS").unwrap()));
+    source.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
+    source.set_miccode(Some(Mic::new("XNAS").unwrap()));
     source.set_lastpx(Some(decimal("101")));
     source.set_lastqty(Some(Decimal::from_int(2)));
     source.set_avgpx(Some(decimal("100.5")));

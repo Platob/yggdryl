@@ -237,15 +237,11 @@ mod codes {
     fn only_a_registered_name_is_a_code() {
         assert_eq!(code_for_extension("yggdryl.ccy"), Some(DataType::Ccy));
         assert_eq!(code_for_extension("yggdryl.currency"), None);
-        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::CfiCode));
-        assert_eq!(
-            code_for_extension("yggdryl.cusip"),
-            Some(DataType::CusipCode)
-        );
-        assert_eq!(
-            code_for_extension("yggdryl.sedol"),
-            Some(DataType::SedolCode)
-        );
+        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
+        assert_eq!(code_for_extension("yggdryl.cusip"), Some(DataType::Cusip));
+        assert_eq!(code_for_extension("yggdryl.sedol"), Some(DataType::Sedol));
+        assert_eq!(code_for_extension("yggdryl.bbg"), Some(DataType::Bbg));
+        assert_eq!(code_for_extension("yggdryl.ric"), Some(DataType::Ric));
         assert_eq!(code_for_extension("yggdryl.ascii"), None);
         assert_eq!(code_for_extension("arrow.uuid"), None);
     }
@@ -281,10 +277,15 @@ mod codes {
     fn a_cell_is_validated_at_the_code_width() {
         assert_eq!(code_cell_text(&DataType::Ccy, b"USD").unwrap(), "USD");
         assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
+        assert_eq!(code_cell_text(&DataType::Cfi, b"ESVUFR").unwrap(), "ESVUFR");
         assert_eq!(
-            code_cell_text(&DataType::CfiCode, b"ESVUFR").unwrap(),
-            "ESVUFR"
+            code_cell_text(&DataType::Ric, b"AAPL.OQ\0\0").unwrap(),
+            "AAPL.OQ"
         );
+        let refused = code_cell_text(&DataType::Ric, &[b'X'; 33])
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 32 bytes"), "{refused}");
         let refused = code_cell_text(&DataType::Country, b"USD")
             .unwrap_err()
             .to_string();
@@ -1798,7 +1799,7 @@ mod unit {
                 .to_string();
             assert!(refused.contains(&dtype.to_string()), "{refused}");
         }
-        Field::new("venue", DataType::CfiCode, false)
+        Field::new("venue", DataType::Cfi, false)
             .set_string_enum(&wide)
             .unwrap();
 
@@ -2072,11 +2073,11 @@ mod widths {
             ("Country", DataType::Country),
             ("ccy", DataType::Ccy),
             ("Ccy", DataType::Ccy),
-            ("mic", DataType::MicCode),
-            ("MIC", DataType::MicCode),
-            ("Exchange", DataType::MicCode),
-            ("cfi", DataType::CfiCode),
-            ("CFI", DataType::CfiCode),
+            ("mic", DataType::Mic),
+            ("MIC", DataType::Mic),
+            ("Exchange", DataType::Mic),
+            ("cfi", DataType::Cfi),
+            ("CFI", DataType::Cfi),
             ("MonthYear", DataType::fixed_ascii(8).unwrap()),
         ] {
             let parsed: DataType = spelling
@@ -2101,7 +2102,7 @@ mod widths {
         );
         assert_eq!(
             row.get_field_by_path("code").map(Field::dtype),
-            Some(&DataType::CfiCode)
+            Some(&DataType::Cfi)
         );
         assert_eq!(
             row.get_field_by_path("iso").map(Field::dtype),
@@ -2184,30 +2185,42 @@ mod widths {
         }
         assert_ne!(DataType::Ccy, DataType::fixed_ascii(3).unwrap());
         // ISO 10962 is six characters, and `cfi` holds at most those six.
-        assert_eq!(DataType::CfiCode.code_width(), Some(6));
+        assert_eq!(DataType::Cfi.code_width(), Some(6));
         // A width of six bytes is spellable, and it is still not a CFI code.
-        assert_ne!(DataType::CfiCode, DataType::fixed_ascii(6).unwrap());
+        assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
         assert!(!DataType::fixed_ascii(6).unwrap().is_code());
         // ISO 6166 is twelve characters closed by a check digit, and `isin`
         // stores exactly those twelve.
-        assert_eq!("isin".parse::<DataType>().unwrap(), DataType::IsinCode);
-        assert_eq!(DataType::IsinCode.code_width(), Some(12));
-        assert_ne!(DataType::IsinCode, DataType::fixed_ascii(12).unwrap());
+        assert_eq!("isin".parse::<DataType>().unwrap(), DataType::Isin);
+        assert_eq!(DataType::Isin.code_width(), Some(12));
+        assert_ne!(DataType::Isin, DataType::fixed_ascii(12).unwrap());
         // A CUSIP is nine and a SEDOL seven, each closed by its own check digit,
         // and neither is the ASCII width that would hold the same text.
-        assert_eq!("cusip".parse::<DataType>().unwrap(), DataType::CusipCode);
-        assert_eq!(DataType::CusipCode.code_width(), Some(9));
-        assert_ne!(DataType::CusipCode, DataType::fixed_ascii(9).unwrap());
-        assert_eq!("sedol".parse::<DataType>().unwrap(), DataType::SedolCode);
-        assert_eq!(DataType::SedolCode.code_width(), Some(7));
-        assert_ne!(DataType::SedolCode, DataType::fixed_ascii(7).unwrap());
+        assert_eq!("cusip".parse::<DataType>().unwrap(), DataType::Cusip);
+        assert_eq!(DataType::Cusip.code_width(), Some(9));
+        assert_ne!(DataType::Cusip, DataType::fixed_ascii(9).unwrap());
+        assert_eq!("sedol".parse::<DataType>().unwrap(), DataType::Sedol);
+        assert_eq!(DataType::Sedol.code_width(), Some(7));
+        assert_ne!(DataType::Sedol, DataType::fixed_ascii(7).unwrap());
+        // A Bloomberg identifier and a RIC are bounded rather than shaped: at
+        // most thirty-two bytes each, and neither is the ASCII width that
+        // would hold the same text.
+        assert_eq!("bbg".parse::<DataType>().unwrap(), DataType::Bbg);
+        assert_eq!(DataType::Bbg.code_width(), Some(32));
+        assert_ne!(DataType::Bbg, DataType::from_str("ascii(32)").unwrap());
+        assert_eq!("ric".parse::<DataType>().unwrap(), DataType::Ric);
+        assert_eq!(DataType::Ric.code_width(), Some(32));
+        assert_ne!(DataType::Ric, DataType::from_str("ascii(32)").unwrap());
 
         // A code name is a grammar keyword like every other, so the parser
         // reads it case-insensitively and trimmed.
         assert_eq!(" CCY ".parse::<DataType>().unwrap(), DataType::Ccy);
         assert!(" CURRENCY ".parse::<DataType>().is_err());
+        assert_eq!(" BBG ".parse::<DataType>().unwrap(), DataType::Bbg);
+        assert!(" BLOOMBERG ".parse::<DataType>().is_err());
+        assert_eq!(" RIC ".parse::<DataType>().unwrap(), DataType::Ric);
         // FIGI is its own checked twelve-character code, not a Bloomberg alias.
-        assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::FIGICode);
+        assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::Figi);
         // The grammar still reports words that name nothing as unknown.
         let error = "figx".parse::<DataType>().unwrap_err().to_string();
         assert!(error.contains("unknown datatype \"figx\""), "{error}");
@@ -2228,7 +2241,7 @@ mod widths {
         );
         assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
         assert_eq!(
-            DataType::CfiCode.ascii_packed(b"ESVUFR").unwrap(),
+            DataType::Cfi.ascii_packed(b"ESVUFR").unwrap(),
             0x4553_5655_4652
         );
         let refused = DataType::Country
@@ -2423,8 +2436,8 @@ mod widths {
         for (code, width) in [
             (DataType::Country, DataType::fixed_ascii(2).unwrap()),
             (DataType::Ccy, DataType::fixed_ascii(3).unwrap()),
-            (DataType::MicCode, DataType::fixed_ascii(4).unwrap()),
-            (DataType::CfiCode, DataType::fixed_ascii(6).unwrap()),
+            (DataType::Mic, DataType::fixed_ascii(4).unwrap()),
+            (DataType::Cfi, DataType::fixed_ascii(6).unwrap()),
         ] {
             assert_ne!(code.stable_hash(), width.stable_hash(), "{code}");
             assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{code}");
@@ -2718,7 +2731,7 @@ mod listings {
 
     #[test]
     fn a_registered_name_with_no_constant_prebuilds_no_members() {
-        for name in ["language", "monthyear", "tenor", "figi"] {
+        for name in ["language", "monthyear", "tenor", "figi", "bbg", "ric"] {
             assert!(
                 StringEnum::from_logical_name(name).unwrap().is_empty(),
                 "{name}"

@@ -6,7 +6,7 @@ The London Stock Exchange's seven-character securities identifier: six alphanume
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `sedol`, `SedolCodeType`/`SedolCodeField`, the `SedolCode` value and `Scalar::SedolCode` |
+| Owns | `sedol`, `SedolType`/`SedolField`, the `Sedol` value and `Scalar::Sedol` |
 | Validates | Seven ASCII bytes: six alphanumerics weighted `1, 3, 1, 7, 3, 9` and one digit closing the weighted sum to a multiple of ten; lower case folds at the value door |
 | Lazy | Nothing - the whole check runs on the stack, over bounded bytes |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -21,13 +21,13 @@ The London Stock Exchange's seven-character securities identifier: six alphanume
     ```rust
     use yggdryl::{DataType, DataTypeKind};
 
-    assert_eq!(DataType::sedol(), DataType::SedolCode);
-    assert_eq!(DataType::from_str("sedol")?, DataType::SedolCode);
-    assert_eq!(DataType::SedolCode.to_string(), "sedol");
-    assert_eq!(DataType::SedolCode.kind(), DataTypeKind::Code);
-    assert_eq!(DataType::SedolCode.code_name(), Some("sedol"));
-    assert_eq!(DataType::SedolCode.code_width(), Some(7));
-    assert_eq!(DataType::SedolCode.fixed_byte_width(), None);
+    assert_eq!(DataType::sedol(), DataType::Sedol);
+    assert_eq!(DataType::from_str("sedol")?, DataType::Sedol);
+    assert_eq!(DataType::Sedol.to_string(), "sedol");
+    assert_eq!(DataType::Sedol.kind(), DataTypeKind::Code);
+    assert_eq!(DataType::Sedol.code_name(), Some("sedol"));
+    assert_eq!(DataType::Sedol.code_width(), Some(7));
+    assert_eq!(DataType::Sedol.fixed_byte_width(), None);
     ```
 
 === "Python"
@@ -58,16 +58,16 @@ The London Stock Exchange's seven-character securities identifier: six alphanume
 
 ## Field
 
-`SedolCodeField` is the typed marker; Python and JavaScript name the factory `sedol`.
+`SedolField` is the typed marker; Python and JavaScript name the factory `sedol`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, SedolCodeField};
+    use yggdryl::{DataType, Field, SedolField};
 
-    let sid = SedolCodeField::unit("sid", true);
-    assert_eq!(sid.dtype(), &DataType::SedolCode);
-    assert_eq!(sid.to_field(), Field::new("sid", DataType::SedolCode, true));
+    let sid = SedolField::unit("sid", true);
+    assert_eq!(sid.dtype(), &DataType::Sedol);
+    assert_eq!(sid.to_field(), Field::new("sid", DataType::Sedol, true));
     ```
 
 === "Python"
@@ -98,10 +98,10 @@ The value is the canonical spelling: upper case, closed by its check digit.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, SedolCode};
+    use yggdryl::{DataType, Scalar, Sedol};
 
     let shell = DataType::sedol().scalar("b0ybkj7")?;
-    assert_eq!(shell, Scalar::SedolCode(SedolCode::new("B0YBKJ7")?));
+    assert_eq!(shell, Scalar::Sedol(Sedol::new("B0YBKJ7")?));
     assert_eq!(shell.as_str(), Some("B0YBKJ7"));
     assert_eq!(shell.kind(), "sedol");
 
@@ -149,7 +149,7 @@ The value is the canonical spelling: upper case, closed by its check digit.
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{DataType, Field};
 
-    let sid = Field::new("sid", DataType::SedolCode, false);
+    let sid = Field::new("sid", DataType::Sedol, false);
     let arrow = sid.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.sedol");
@@ -186,21 +186,21 @@ The value is the canonical spelling: upper case, closed by its check digit.
 
 ## The check digit
 
-Each of the six leading characters reads as a digit or as ten plus its alphabet position, weighted `1, 3, 1, 7, 3, 9` in turn; the digit is what closes the weighted sum to a multiple of ten. `SedolCode::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
+Each of the six leading characters reads as a digit or as ten plus its alphabet position, weighted `1, 3, 1, 7, 3, 9` in turn; the digit is what closes the weighted sum to a multiple of ten. `Sedol::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
 
 ```rust
-use yggdryl::SedolCode;
+use yggdryl::Sedol;
 
-let shell = SedolCode::new("B0YBKJ7")?;
+let shell = Sedol::new("B0YBKJ7")?;
 assert_eq!(shell.check_digit(), 7);
-assert_eq!(SedolCode::closing_digit("B0YBKJ"), Some(7));
-assert_eq!(SedolCode::new("0263494")?.check_digit(), 4);
+assert_eq!(Sedol::closing_digit("B0YBKJ"), Some(7));
+assert_eq!(Sedol::new("0263494")?.check_digit(), 4);
 
 // The rule answers without building a value, in either case.
-assert!(SedolCode::is_valid("b0ybkj7"));
-assert!(SedolCode::is_canonical("B0YBKJ7"));
-assert!(!SedolCode::is_canonical("b0ybkj7"));
-assert!(!SedolCode::is_valid("B0YBKJ8"));
+assert!(Sedol::is_valid("b0ybkj7"));
+assert!(Sedol::is_canonical("B0YBKJ7"));
+assert!(!Sedol::is_canonical("b0ybkj7"));
+assert!(!Sedol::is_valid("B0YBKJ8"));
 ```
 
 ## A column holds the canonical spelling
@@ -215,7 +215,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     use arrow_array::{ArrayRef, StringArray};
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let sid = Field::new("sid", DataType::SedolCode, true);
+    let sid = Field::new("sid", DataType::Sedol, true);
     let source: ArrayRef = Arc::new(StringArray::from(vec!["B0YBKJ7", "b0ybkj7"]));
     let strict = ArrowCastOptions::new().with_safe(false);
     let refused = Serie::from_arrow_array(Some(&sid), source, strict)
@@ -263,7 +263,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip_code::securities figi_code::securities sedol_code::securities
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip::securities figi::securities sedol::securities
     ```
 
 === "Python"

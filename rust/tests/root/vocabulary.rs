@@ -79,7 +79,7 @@ mod rows {
 
         assert_eq!(columns[0].id(), DataTypeId::Ccy);
         assert_eq!(columns[0].as_str(), Some("USD"));
-        assert_eq!(columns[1].id(), DataTypeId::MicCode);
+        assert_eq!(columns[1].id(), DataTypeId::Mic);
         assert_eq!(columns[1].as_str(), Some("XCME"));
         // The specification declares the float family as `float` and states no
         // scale, so a price reads as a double and the exact characters stay in
@@ -117,7 +117,7 @@ mod rows {
 
         // The listing is what a field declares, so a venue column crosses Arrow
         // carrying the vocabulary its values come from.
-        let venue = Field::new("venue", DataType::MicCode, false)
+        let venue = Field::new("venue", DataType::Mic, false)
             .try_with_string_enum(&venues)
             .unwrap();
         let recovered =
@@ -127,17 +127,17 @@ mod rows {
 
         // A member's code is the value's own bytes under the resolved width, so
         // two processes reading this schema answer the same integers.
-        let members = venues.into_members(&DataType::MicCode).unwrap();
+        let members = venues.into_members(&DataType::Mic).unwrap();
         for (member, code) in &members {
             assert_eq!(
                 *code,
-                DataType::MicCode.ascii_packed(member.as_bytes()).unwrap()
+                DataType::Mic.ascii_packed(member.as_bytes()).unwrap()
             );
         }
         assert_eq!(
             StringEnum::from_logical_name("mic")
                 .unwrap()
-                .into_members(&DataType::MicCode)
+                .into_members(&DataType::Mic)
                 .unwrap(),
             members
         );
@@ -177,14 +177,15 @@ mod logical {
         vec![
             ("ccy", DataType::Ccy),
             ("country", DataType::Country),
-            ("mic", DataType::MicCode),
-            ("exchange", DataType::MicCode),
-            ("cfi", DataType::CfiCode),
-            ("isin", DataType::IsinCode),
-            ("cusip", DataType::CusipCode),
-            ("sedol", DataType::SedolCode),
-            ("bloomberg", DataType::BloombergCode),
-            ("figi", DataType::FIGICode),
+            ("mic", DataType::Mic),
+            ("exchange", DataType::Mic),
+            ("cfi", DataType::Cfi),
+            ("isin", DataType::Isin),
+            ("cusip", DataType::Cusip),
+            ("sedol", DataType::Sedol),
+            ("bbg", DataType::Bbg),
+            ("ric", DataType::Ric),
+            ("figi", DataType::Figi),
             ("side", DataType::Side),
             ("state", DataType::State),
             ("timeinforce", DataType::TimeInForce),

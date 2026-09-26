@@ -343,13 +343,14 @@ mod limits {
                 // it, rather than restated here.
                 DataType::Country
                 | DataType::Ccy
-                | DataType::MicCode
-                | DataType::CfiCode
-                | DataType::IsinCode
-                | DataType::CusipCode
-                | DataType::SedolCode
-                | DataType::BloombergCode
-                | DataType::FIGICode
+                | DataType::Mic
+                | DataType::Cfi
+                | DataType::Isin
+                | DataType::Cusip
+                | DataType::Sedol
+                | DataType::Bbg
+                | DataType::Ric
+                | DataType::Figi
                 | DataType::Side
                 | DataType::State
                 | DataType::TimeInForce
@@ -467,13 +468,14 @@ mod limits {
                 // it, rather than restated here.
                 DataType::Country
                 | DataType::Ccy
-                | DataType::MicCode
-                | DataType::CfiCode
-                | DataType::IsinCode
-                | DataType::CusipCode
-                | DataType::SedolCode
-                | DataType::BloombergCode
-                | DataType::FIGICode
+                | DataType::Mic
+                | DataType::Cfi
+                | DataType::Isin
+                | DataType::Cusip
+                | DataType::Sedol
+                | DataType::Bbg
+                | DataType::Ric
+                | DataType::Figi
                 | DataType::Side
                 | DataType::State
                 | DataType::TimeInForce

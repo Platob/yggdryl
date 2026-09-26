@@ -179,7 +179,7 @@
         2
       ],
       [
-        "bloomberg",
+        "bbg",
         1
       ],
       [
@@ -79716,7 +79716,7 @@
       },
       {
         "dtype": {
-          "type": "bloomberg"
+          "type": "bbg"
         },
         "metadata": {
           "FIX:tag": "65059",
@@ -291839,7 +291839,7 @@
         "c": "bloombergcode",
         "t": 65059,
         "n": "BloombergCode",
-        "y": "bloomberg",
+        "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {

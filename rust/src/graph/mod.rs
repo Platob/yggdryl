@@ -187,16 +187,16 @@ macro_rules! delegate_market {
             fn derive_securityid(&mut self, id: $crate::securityid::SecurityId) -> bool {
                 $crate::graph::Market::derive_securityid(&mut self.$($field).+, id)
             }
-            fn get_cficode(&self) -> Option<&$crate::CfiCode> {
+            fn get_cficode(&self) -> Option<&$crate::Cfi> {
                 $crate::graph::Market::get_cficode(&self.$($field).+)
             }
-            fn set_cficode(&mut self, code: Option<$crate::CfiCode>) {
+            fn set_cficode(&mut self, code: Option<$crate::Cfi>) {
                 $crate::graph::Market::set_cficode(&mut self.$($field).+, code);
             }
-            fn get_miccode(&self) -> Option<&$crate::MicCode> {
+            fn get_miccode(&self) -> Option<&$crate::Mic> {
                 $crate::graph::Market::get_miccode(&self.$($field).+)
             }
-            fn set_miccode(&mut self, code: Option<$crate::MicCode>) {
+            fn set_miccode(&mut self, code: Option<$crate::Mic>) {
                 $crate::graph::Market::set_miccode(&mut self.$($field).+, code);
             }
             fn get_lastpx(&self) -> Option<$crate::Decimal> {

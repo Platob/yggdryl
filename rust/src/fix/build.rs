@@ -1446,7 +1446,7 @@ impl<'registry> Builder<'registry> {
         if let Some(((spelling, _), declared)) = alias
             .as_ref()
             .zip(source)
-            .filter(|_| tag == super::MICCODE_TAG_NAME.0 && !crate::MicCode::is_iso(text.trim()))
+            .filter(|_| tag == super::MICCODE_TAG_NAME.0 && !crate::Mic::is_iso(text.trim()))
         {
             self.anomalies.push(super::FixAnomaly::new(
                 spelling.clone(),

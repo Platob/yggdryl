@@ -11,8 +11,10 @@ A struct `Field` is the schema. There is no separate record or schema type: a
 non-null `Struct` field describes rows, and a row is one ordered
 `Scalar::Serie` with one value per child field.
 
-Storage backends (local, memory-mapped, ZIP, and the S3, Google Cloud Storage,
-and Azure Blob object stores behind the `s3` feature), record media, and the FIX
+Storage backends (local, memory-mapped, ZIP, HTTP/1.1 behind the `http`
+feature with HTTP/2 and HTTP/3 behind `http2` and `http3`,
+and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
+feature), record media, and the FIX
 protocol are core domains over those same values; the expression layer is a
 grammar over them, never a second query engine.
 
@@ -58,7 +60,8 @@ rust/                    The core crate
                          iofile.rs and iomedia.rs are root files
   src/holder/            What every storage backend shares: Holder, Buffer,
                          Buffered, Counted
-  src/{local,fs,zip,s3}/ One folder per storage backend
+  src/{local,fs,zip,s3,http}/
+                         One folder per storage backend
   src/coding/            What every codec shares: Coded and Codec dispatch
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
@@ -91,6 +94,9 @@ node/                    The JavaScript extension
   web/                   The browser components and the replay application
   tests/                 The mirror of both, file for file
 cli/                     The ygg command-line tool
+skills/                  Agent skills for code using the package, one folder
+                         per layer, published as a Claude Code plugin by
+                         .claude-plugin/
 config/fix/              The generated FIX dictionary store
 docs/                    The MkDocs site sources
 scripts/                 Generators, documentation and interoperability checkers
@@ -99,6 +105,18 @@ scripts/                 Generators, documentation and interoperability checkers
 The repository root owns the workspace manifest, the shared dependency pins, and
 the shared lints. Repository-wide implementation rules are in
 [`AGENTS.md`](AGENTS.md).
+
+## Agent skills
+
+[`skills/`](skills/README.md) teaches a coding agent to use the package in
+Rust, Python and Node.js - one skill per layer, each a decision table, the
+rules that keep work streamed and compiled once, and runnable recipes per
+language that CI executes like the documentation's. In Claude Code:
+
+```console
+claude plugin marketplace add Platob/yggdryl
+claude plugin install yggdryl@yggdryl
+```
 
 ## Parsing
 

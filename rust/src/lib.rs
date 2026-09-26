@@ -25,24 +25,24 @@ mod fix_category;
 pub use fix_category::FixCategory;
 mod arithmetic;
 pub mod ascii;
-#[cfg(feature = "aws")]
+#[cfg(feature = "http")]
 mod auth;
 pub mod avro;
 #[cfg(feature = "aws")]
 pub mod aws;
-pub mod bloomberg_code;
+pub mod bbg;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
 pub mod cast;
 pub mod ccy;
-pub mod cfi_code;
+pub mod cfi;
 pub mod chunked_serie;
 pub mod code;
 mod compatibility;
 pub mod country;
 pub mod cp1252;
-pub mod cusip_code;
+pub mod cusip;
 mod datatype;
 pub mod date;
 pub mod datetime;
@@ -54,7 +54,7 @@ mod enumeration;
 pub mod enums;
 pub mod expression;
 mod field;
-pub mod figi_code;
+pub mod figi;
 pub mod fix;
 pub mod floating;
 pub mod fs;
@@ -63,6 +63,8 @@ pub mod graph;
 pub mod gzip;
 pub mod hashing;
 pub mod holder;
+#[cfg(feature = "http")]
+pub mod http;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
@@ -81,7 +83,7 @@ mod iomedia;
 mod iomode;
 mod iopath;
 pub mod ipc;
-pub mod isin_code;
+pub mod isin;
 pub mod json;
 pub mod limit;
 mod listing;
@@ -91,7 +93,7 @@ pub mod media;
 mod media_type;
 mod merge;
 mod metadata;
-pub mod mic_code;
+pub mod mic;
 mod mime_type;
 mod parallel;
 #[cfg(feature = "parquet")]
@@ -101,13 +103,14 @@ mod path;
 mod pretty;
 pub mod protocol;
 mod regex;
+pub mod ric;
 pub mod runend;
 #[cfg(feature = "s3")]
 pub mod s3;
 mod scalar;
 mod scheme;
 pub mod securityid;
-pub mod sedol_code;
+pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
 pub mod side;
@@ -221,15 +224,15 @@ pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
 pub(crate) use ascii::{ascii_bytes, ascii_text, ascii_text_sized};
-pub use bloomberg_code::*;
+pub use bbg::*;
 pub use boolean::*;
 pub use bytes::*;
 pub use ccy::*;
-pub use cfi_code::*;
+pub use cfi::*;
 pub(crate) use code::{code_cell_text, code_extension_name, code_for_extension};
 pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
-pub use cusip_code::*;
+pub use cusip::*;
 pub use datatype::{DataType, VariantType};
 pub(crate) use datatype::{bytes_dtypes, string_dtypes};
 pub(crate) use datatype::{invalid, validate_non_negative};
@@ -245,7 +248,7 @@ pub use duration::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
 pub use field::*;
-pub use figi_code::*;
+pub use figi::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
@@ -254,23 +257,24 @@ pub use geospatial::*;
 pub use idmap::IdMap;
 pub use integer::*;
 pub use interval::*;
-pub use isin_code::*;
+pub use isin::*;
 pub use limit::Limit;
 pub use mapping::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
-pub use mic_code::*;
+pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
+pub use ric::*;
 pub use runend::*;
 pub use scalar::Scalar;
 pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
 pub use securityid::{SecType, SecurityId, SecurityIds};
-pub use sedol_code::*;
+pub use sedol::*;
 pub use serie::*;
 pub use side::*;
 pub use state::*;
@@ -316,13 +320,15 @@ pub use version::*;
 pub mod internals {
     pub use crate::arithmetic::internals as arithmetic;
     pub use crate::arrow::rows::internals as arrow_rows;
-    #[cfg(feature = "aws")]
+    #[cfg(feature = "http")]
     pub use crate::auth::environment::internals as auth_environment;
+    #[cfg(feature = "http")]
     #[cfg(feature = "aws")]
     pub use crate::auth::lease::internals as auth_lease;
+    #[cfg(feature = "http")]
     #[cfg(feature = "aws")]
     pub use crate::auth::report::internals as auth_report;
-    #[cfg(feature = "aws")]
+    #[cfg(feature = "http")]
     pub use crate::auth::secret::internals as auth_secret;
     pub use crate::avro::arrow::internals as avro_arrow;
     pub use crate::avro::batch::internals as avro_batch;
@@ -372,6 +378,20 @@ pub mod internals {
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
+    #[cfg(feature = "http")]
+    #[cfg(feature = "http3")]
+    pub use crate::http::alt_svc::internals as http_alt_svc;
+    #[cfg(feature = "http")]
+    pub use crate::http::netrc::internals as http_netrc;
+    #[cfg(feature = "http")]
+    pub use crate::http::proxy::internals as http_proxy;
+    #[cfg(feature = "http")]
+    pub use crate::http::retry::internals as http_retry;
+    #[cfg(feature = "http")]
+    #[cfg(feature = "http2")]
+    pub use crate::http::runtime::internals as http_runtime;
+    #[cfg(feature = "http")]
+    pub use crate::http::stream::internals as http_stream;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::manifest::internals as iceberg_manifest;
     #[cfg(feature = "iceberg")]

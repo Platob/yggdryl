@@ -2963,7 +2963,7 @@ mod committed {
     /// now states that a newer explicit deadline replaces the preceding one.
     /// It last moved when the merged store centralized 735 published vocabularies
     /// and MsgCat's crate vocabulary under `FIX:codeset`, including the shared
-    /// PartyIDSource `proprietary/customcode` alias. FIGICode adds one crate
+    /// PartyIDSource `proprietary/customcode` alias. Figi adds one crate
     /// definition and one fixed-row member; `nofixentries` now describes the
     /// residual count rather than the complete in-memory content.
     /// It last moved when the identifiers group described the synthesized

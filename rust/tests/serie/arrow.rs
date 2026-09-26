@@ -77,7 +77,7 @@ fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
     use arrow_schema::{FieldRef, Fields, UnionFields};
 
     let isin = || {
-        DataType::IsinCode
+        DataType::Isin
             .required_field("item")
             .into_arrow_field_ref()
             .unwrap()
@@ -94,7 +94,7 @@ fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
     };
     let mut cases: Vec<(&str, FieldRef, ArrayRef)> = vec![(
         "struct",
-        DataType::IsinCode
+        DataType::Isin
             .required_field("payload")
             .into_arrow_field_ref()
             .unwrap(),
@@ -111,7 +111,7 @@ fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
     cases.push(("list", plain_field(&list), list));
     let entry_fields: Fields = vec![
         Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
-        DataType::IsinCode
+        DataType::Isin
             .required_field("value")
             .into_arrow_field_ref()
             .unwrap(),
@@ -165,7 +165,7 @@ fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
             union,
         ));
     }
-    let dictionary_field = DataType::dictionary(DataType::Int8, DataType::IsinCode)
+    let dictionary_field = DataType::dictionary(DataType::Int8, DataType::Isin)
         .unwrap()
         .required_field("payload")
         .into_arrow_field_ref()
@@ -176,7 +176,7 @@ fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
     cases.push(("dictionary", dictionary_field, dictionary));
     let run_field = DataType::run_end_encoded(
         DataType::Int32.required_field("run_ends"),
-        DataType::IsinCode.required_field("values"),
+        DataType::Isin.required_field("values"),
     )
     .unwrap()
     .required_field("payload")
@@ -255,9 +255,7 @@ fn a_cast_ingest_proof_does_not_leave_hidden_narrow_bytes_in_a_public_child() {
     ));
     let field = Field::new(
         "root",
-        DataType::from(
-            StructType::from_fields([DataType::IsinCode.required_field("code")]).unwrap(),
-        ),
+        DataType::from(StructType::from_fields([DataType::Isin.required_field("code")]).unwrap()),
         true,
     );
     let column = Serie::from_arrow_array(Some(&field), source, ArrowCastOptions::new())

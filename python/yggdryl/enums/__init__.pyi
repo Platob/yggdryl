@@ -2,16 +2,16 @@ from typing import Mapping
 
 from .string import (
     AsciiCode as AsciiCode,
-    CfiCode as CfiCode,
-    CountryCode as CountryCode,
-    CcyCode as CcyCode,
-    MicCode as MicCode,
+    Cfi as Cfi,
+    Country as Country,
+    Ccy as Ccy,
+    Mic as Mic,
     fixed_ascii as fixed_ascii,
 )
 from .codes import (
     CFI as CFI,
-    Country as Country,
-    Ccy as Ccy,
+    COUNTRY as COUNTRY,
+    CCY as CCY,
     MIC as MIC,
 )
 
@@ -41,13 +41,13 @@ OPERATION_COLUMNS: tuple[str, ...]
 
 __all__ = [
     "AsciiCode",
-    "CfiCode",
-    "CountryCode",
-    "CcyCode",
-    "MicCode",
-    "CFI",
+    "Cfi",
     "Country",
     "Ccy",
+    "Mic",
+    "CFI",
+    "COUNTRY",
+    "CCY",
     "MIC",
     "fixed_ascii",
     "CHARSETS",

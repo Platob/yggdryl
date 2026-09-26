@@ -18,6 +18,6 @@ mod mod_;
 #[cfg(all(feature = "aws", feature = "internals"))]
 #[path = "auth/report.rs"]
 mod report;
-#[cfg(all(feature = "aws", feature = "internals"))]
+#[cfg(all(feature = "http", feature = "internals"))]
 #[path = "auth/secret.rs"]
 mod secret;

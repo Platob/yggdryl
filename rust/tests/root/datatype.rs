@@ -219,8 +219,8 @@ mod arrow {
             DataType::fixed_ascii(4).unwrap(),
             DataType::Country,
             DataType::Ccy,
-            DataType::MicCode,
-            DataType::CfiCode,
+            DataType::Mic,
+            DataType::Cfi,
             DataType::Uuid,
             DataType::Version,
             DataType::Variant,
@@ -449,11 +449,11 @@ mod arrow {
             DataType::fixed_ascii(4).unwrap(),
             DataType::Country,
             DataType::Ccy,
-            DataType::MicCode,
-            DataType::CfiCode,
-            DataType::IsinCode,
-            DataType::CusipCode,
-            DataType::SedolCode,
+            DataType::Mic,
+            DataType::Cfi,
+            DataType::Isin,
+            DataType::Cusip,
+            DataType::Sedol,
             DataType::Side,
             DataType::State,
             DataType::TimeInForce,
@@ -755,7 +755,7 @@ mod structural_hash {
     use yggdryl::internals::hashing_stable::stable_hash_of;
     use yggdryl::{DataType, Scalar};
 
-    const PINNED: [(&str, u64); 100] = [
+    const PINNED: [(&str, u64); 101] = [
         ("utf8", 0x5ab6cab83f73e718),
         ("large_utf8", 0xc049e53a48cbfe3b),
         ("utf8_view", 0xf4813115041b88d1),
@@ -884,7 +884,7 @@ mod structural_hash {
         ("mediatype", 0x5a5bfcc13afb0644),
         ("cusip", 0xc15ec86c30fae930),
         ("sedol", 0x7c79bb6940cec97c),
-        ("bloomberg", 0x0c4abe1a4bc0cfb3),
+        ("bbg", 0x0c4abe1a4bc0cfb3),
         ("figi", 0x42a68c6154ca5261),
         (
             "map(field(\"entries\",struct(field(\"key\",ascii,nullable=false,metadata={}),field(\"value\",sized_binary(4),nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
@@ -897,6 +897,8 @@ mod structural_hash {
         // Appended when the unit code landed: the `Shape` arm sits at the end
         // of that enum, so every row above keeps its value.
         ("unit", 0x9c1c8fe3b6bd3cdb),
+        // Appended when the RIC code landed, its `Shape` arm last in turn.
+        ("ric", 0x73db933494b531da),
     ];
 
     #[test]

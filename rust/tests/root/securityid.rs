@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use yggdryl::securityid::embedded;
-use yggdryl::{Error, IsinCode, Scalar, SecType, SecurityId, SecurityIds};
+use yggdryl::{Error, Isin, Scalar, SecType, SecurityId, SecurityIds};
 
 fn located<T>(result: yggdryl::Result<T>) -> (String, String) {
     match result.err().expect("a refusal") {
@@ -264,6 +264,41 @@ fn each_source_holds_its_code_to_its_own_rule() {
 }
 
 #[test]
+fn a_ric_source_holds_its_code_to_the_ric_rule() {
+    // FIX's SecurityIDSource 5 is a Refinitiv Identification Code, and its
+    // code is validated as one: a token of printable ASCII, its case kept.
+    let ric = SecType::read("RIC").unwrap();
+    assert_eq!(ric.fix_source(), Some('5'));
+    for code in ["AAPL.OQ", "VOD.L", ".SPX", "0#.FTSE", "EUR=", "ESc1"] {
+        assert!(ric.validate_code(code).is_ok(), "{code}");
+    }
+    assert_eq!(id("ric", "ESc1").code(), "ESc1", "a RIC does not fold");
+    assert_eq!(id("5", "AAPL.OQ").to_string(), "RIC:AAPL.OQ");
+
+    // An inner space splits the token, which a generic source would hold.
+    let refused = ric.validate_code("AAPL OQ").unwrap_err();
+    assert!(
+        matches!(refused, Error::InvalidDataType { kind: "ric", .. }),
+        "{refused}"
+    );
+    assert!(refused.to_string().contains("got 0x20 at 4"), "{refused}");
+    assert!(
+        SecType::read("HOUSE")
+            .unwrap()
+            .validate_code("AAPL OQ")
+            .is_ok()
+    );
+    assert!(ric.validate_code("IBM\t.N").is_err());
+    assert!(ric.validate_code(&"R".repeat(33)).is_err());
+    let (path, reason) = located(ric.validate_code("n/a"));
+    assert_eq!(path, "RIC");
+    assert_eq!(
+        reason,
+        "expected a RIC code, got \"n/a\", which states nothing"
+    );
+}
+
+#[test]
 fn a_security_id_holds_source_and_code_in_one_inline_buffer() {
     assert_eq!(std::mem::size_of::<SecurityId>(), 24);
     let apple = id("isin", " us0378331005 ");
@@ -481,15 +516,15 @@ fn security_ids_round_trip_through_arrow_and_refuse_a_map_they_cannot_hold() {
     assert_eq!(refused(null).0, "$[0].value");
 }
 
-fn isin(body: &str) -> IsinCode {
-    let digit = IsinCode::closing_digit(body).unwrap();
-    IsinCode::new(format!("{body}{digit}")).unwrap()
+fn isin(body: &str) -> Isin {
+    let digit = Isin::closing_digit(body).unwrap();
+    Isin::new(format!("{body}{digit}")).unwrap()
 }
 
 #[test]
 fn embedded_names_the_national_number_a_canonical_isin_carries() {
     let found = |text: &str| {
-        embedded(&IsinCode::new(text).unwrap())
+        embedded(&Isin::new(text).unwrap())
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
     };
@@ -505,7 +540,7 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
     assert!(found("XS0203470157").is_empty());
     assert!(found("FR0000120271").is_empty());
 
-    let none = |isin: &IsinCode| embedded(isin).next().is_none();
+    let none = |isin: &Isin| embedded(isin).next().is_none();
     assert!(none(&isin("GB000263495")), "a bad embedded SEDOL check");
     assert!(none(&isin("GB010263494")), "a GB ISIN not starting GB00");
     assert!(none(&isin("IE01B4BNMY3")), "an IE ISIN not starting IE00");
@@ -513,11 +548,11 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
     assert!(none(&isin("DE000BASI11")), "a WKN holding I");
     assert!(none(&isin("DE000BASO11")), "a WKN holding O");
     assert!(none(&isin("CH000000000")), "a Valor number of nothing");
-    assert!(none(&IsinCode::default()), "an empty ISIN");
-    let unchecked: IsinCode = serde_json::from_str("\"US0378331006\"").unwrap();
-    assert!(IsinCode::new("US0378331006").is_err());
+    assert!(none(&Isin::default()), "an empty ISIN");
+    let unchecked: Isin = serde_json::from_str("\"US0378331006\"").unwrap();
+    assert!(Isin::new("US0378331006").is_err());
     assert!(none(&unchecked), "a bad ISIN check digit");
-    let lower: IsinCode = serde_json::from_str("\"us0378331005\"").unwrap();
+    let lower: Isin = serde_json::from_str("\"us0378331005\"").unwrap();
     assert!(none(&lower), "not canonical");
 }
 
@@ -529,7 +564,7 @@ mod internal {
     use yggdryl::internals::securityid::{
         ENTRY_CHARGE, MAX_KEYS_PER_INSTRUMENT, SecurityIdRegistry,
     };
-    use yggdryl::{CfiCode, IsinCode, SecurityIds};
+    use yggdryl::{Cfi, Isin, SecurityIds};
 
     use super::id;
 
@@ -544,7 +579,7 @@ mod internal {
 
     fn numbered(number: usize) -> OrderEvent {
         let body = format!("FR{number:09}");
-        let digit = IsinCode::closing_digit(&body).unwrap();
+        let digit = Isin::closing_digit(&body).unwrap();
         let mut event = OrderEvent::at(number as i64);
         event
             .insert_securityid(id("isin", &format!("{body}{digit}")))
@@ -567,7 +602,7 @@ mod internal {
     fn learned_codes_are_local_validated_and_ambiguous_defaults_are_silent() {
         let mut codes = SecurityIdRegistry::default();
         let mut first = apple();
-        first.set_cficode(Some(CfiCode::new("ESXXXX").unwrap()));
+        first.set_cficode(Some(Cfi::new("ESXXXX").unwrap()));
         stated(&mut first, "bloomberg", "AAPL US Equity");
         codes.enrich(&mut first);
         let mut next = apple();
@@ -579,7 +614,7 @@ mod internal {
         assert_eq!(code(&next, "bloomberg"), code(&first, "bloomberg"));
 
         let mut precise = apple();
-        precise.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
+        precise.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
         stated(&mut precise, "sedol", "2046251");
         codes.enrich(&mut precise);
         let mut later = apple();
@@ -594,7 +629,7 @@ mod internal {
             "earlier snapshots stay unchanged"
         );
         let mut coarse = apple();
-        coarse.set_cficode(Some(CfiCode::new("ESXXXX").unwrap()));
+        coarse.set_cficode(Some(Cfi::new("ESXXXX").unwrap()));
         codes.enrich(&mut coarse);
         assert_eq!(coarse.get_cficode(), precise.get_cficode());
 
@@ -627,7 +662,7 @@ mod internal {
         codes.enrich(&mut unnamed);
         assert_eq!(codes.instruments(), 0, "nothing is learned without an ISIN");
         let mut observed = apple();
-        observed.set_cficode(Some(CfiCode::new("XXXXXX").unwrap()));
+        observed.set_cficode(Some(Cfi::new("XXXXXX").unwrap()));
         codes.enrich(&mut observed);
         let mut later = apple();
         codes.enrich(&mut later);
@@ -676,7 +711,7 @@ mod internal {
         );
 
         let mut learned_at_cap = apple();
-        learned_at_cap.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
+        learned_at_cap.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
         codes.enrich(&mut learned_at_cap);
         let mut later = apple();
         codes.enrich(&mut later);
@@ -725,16 +760,16 @@ mod internal {
         let mut conflicting = SecurityIds::default();
         conflicting.insert(id("isin", "US0378331005"));
         conflicting.insert(id("HOUSE0", "other"));
-        registry.learn(&conflicting, Some(&CfiCode::new("ESVUFR").unwrap()));
+        registry.learn(&conflicting, Some(&Cfi::new("ESVUFR").unwrap()));
         let mut again = SecurityIds::default();
         again.insert(id("isin", "US0378331005"));
         again.insert(id("HOUSE1", "mine"));
-        let mut cfi = Some(CfiCode::new("ESXXXX").unwrap());
+        let mut cfi = Some(Cfi::new("ESXXXX").unwrap());
         assert!(registry.fill(&mut again, &mut cfi));
         assert!(!again.contains_key("HOUSE0"), "two codes seen: ambiguous");
         assert_eq!(again.get("HOUSE1"), Some("mine"), "a stated source stands");
         assert_eq!(again.get("HOUSE2"), Some("h2"));
-        assert_eq!(cfi.as_ref().map(CfiCode::as_str), Some("ESVUFR"));
+        assert_eq!(cfi.as_ref().map(Cfi::as_str), Some("ESVUFR"));
 
         let mut without_isin = SecurityIds::default();
         without_isin.insert(id("cusip", "037833100"));

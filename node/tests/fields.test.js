@@ -268,12 +268,13 @@ test('typed field factories cover every native datatype variant', () => {
     ['isin', fields.isin('value')],
     ['cusip', fields.cusip('value')],
     ['sedol', fields.sedol('value')],
-    ['bloomberg', fields.bloomberg('value')],
+    ['bbg', fields.bbg('value')],
     ['figi', fields.figi('value')],
     ['side', fields.side('value')],
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
     ['unit', fields.unit('value')],
+    ['ric', fields.ric('value')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
@@ -528,9 +529,10 @@ test('the url factory builds a validated, canonical location column', () => {
 
 test('the registered codes build their own datatype at their own width', () => {
   // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six,
-  // ISO 6166 twelve, a CUSIP nine and a SEDOL seven: each factory builds the
-  // code, held to that width, never the ASCII width that would hold the same
-  // text without the identity.
+  // ISO 6166 twelve, a CUSIP nine and a SEDOL seven, and a Bloomberg
+  // identifier and a RIC at most thirty-two: each factory builds the code,
+  // held to that width, never the ASCII width that would hold the same text
+  // without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
     ['ccy', [fields.ccy('settlement_ccy'), 3]],
@@ -539,8 +541,9 @@ test('the registered codes build their own datatype at their own width', () => {
     ['isin', [fields.isin('instrument'), 12]],
     ['cusip', [fields.cusip('cusip'), 9]],
     ['sedol', [fields.sedol('sedol'), 7]],
-    ['bloomberg', [fields.bloomberg('bloomberg'), 32]],
+    ['bbg', [fields.bbg('bbg'), 32]],
     ['figi', [fields.figi('figi'), 12]],
+    ['ric', [fields.ric('ric'), 32]],
   ])
 
   for (const [name, [value, width]] of declared) {
@@ -584,20 +587,48 @@ test('the registered codes build their own datatype at their own width', () => {
     () => castArray(fields.figi('sid'), utf8(['BBG000BLNQ17']), strict),
     /canonical spelling/,
   )
+  // A RIC is one token of printable ASCII and keeps its case: a code with a
+  // space in it is no RIC, and `ESc1` is its own continuation future.
+  assert.deepEqual(
+    [...castArray(fields.ric('sid'), utf8(['VOD.L', 'VOD L', 'ESc1']))],
+    ['VOD.L', null, 'ESc1'],
+  )
+  assert.throws(
+    () => castArray(fields.ric('sid'), utf8(['VOD L']), strict),
+    /canonical spelling/,
+  )
   assert.equal(declared.get('country')[0].name, 'venue_country')
   assert.equal(fields.ccy('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')
   assert.equal('currency' in fields, false)
 
-  const root = fields.struct('row', [fields.ccy('settlement_ccy')], { nullable: false })
+  const root = fields.struct(
+    'row',
+    [fields.ccy('settlement_ccy'), fields.bbg('bbg'), fields.ric('ric')],
+    { nullable: false },
+  )
   const table = new arrow.Table({
     settlement_ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()),
+    bbg: arrow.vectorFromArray(['VOD LN Equity'], new arrow.Utf8()),
+    ric: arrow.vectorFromArray(['VOD.L'], new arrow.Utf8()),
   })
   const batch = Serie.fromArrowBatch(table, root).intoArrowBatch()
-  assert.equal(
-    batch.schema.fields[0].metadata.get('ARROW:extension:name'),
-    'yggdryl.ccy',
+  // Each code rides Arrow's text storage under its own extension name.
+  assert.deepEqual(
+    batch.schema.fields.map((field) => [
+      field.typeId,
+      field.metadata.get('ARROW:extension:name'),
+    ]),
+    [
+      [arrow.Type.Utf8, 'yggdryl.ccy'],
+      [arrow.Type.Utf8, 'yggdryl.bbg'],
+      [arrow.Type.Utf8, 'yggdryl.ric'],
+    ],
   )
+  assert.deepEqual([...batch.getChild('ric')], ['VOD.L'])
+  // The extension name is the identity the field reads back.
+  const landed = Serie.fromArrowBatch(batch).field
+  assert.equal(landed.getFieldAt(2).dtype.id, 'ric')
 })
 
 test('nested factories preserve exact child metadata and dictionary state', () => {

@@ -9,20 +9,7 @@ const arrow = require('apache-arrow')
 
 const { BatchReader, graph } = require('yggdryl')
 
-const {
-  DEPTHS,
-  INSTANT_COLUMNS,
-  MARKETDATA_COLUMNS,
-  bookJson,
-  booksJson,
-  decimalText,
-  eventJson,
-  leafFromJson,
-  leafJson,
-  refusalText,
-  rowsOf,
-  toJson,
-} = require('../../replay/json.js')
+const { DEPTHS, bookJson, booksJson, decimalText, refusalText, rowsOf, toJson } = require('../../replay/json.js')
 const { books, synthetic, T0 } = require('../../replay/synthetic.js')
 
 /** The last ALPHA book of the synthetic walk: a ladder, a market order, two executions. */
@@ -50,22 +37,13 @@ test('decimal text is exact: scaled, signed, trailing zeros trimmed', () => {
   assert.equal(decimalText(12n, -2), '1200')
 })
 
-test('the marketdata columns and its instants are the native field\'s', () => {
-  const field = graph.MarketData.field()
-  assert.equal(MARKETDATA_COLUMNS.length, field.fieldLen)
-  assert.deepEqual(MARKETDATA_COLUMNS[0], { name: 'kind', dtype: 'utf8', nullable: false })
-  assert.deepEqual(MARKETDATA_COLUMNS.find((column) => column.name === 'price'), {
-    name: 'price',
-    dtype: 'decimal',
-    nullable: true,
-  })
-  assert.deepEqual([...INSTANT_COLUMNS], ['currunix', 'creaunix', 'execunix', 'recdunix', 'exprtime', 'prevunix', 'snapunix'])
-})
-
 test('rowsOf converts every column by its Arrow type, once per column', () => {
   const book = alphaBook()
   const { columns, rows } = rowsOf(graph.MarketData.arrowReader([book]))
-  assert.deepEqual(columns, MARKETDATA_COLUMNS)
+  const field = graph.MarketData.field()
+  assert.equal(columns.length, field.fieldLen)
+  assert.deepEqual(columns[0], { name: 'kind', dtype: 'utf8', nullable: false })
+  assert.deepEqual(columns.find((column) => column.name === 'price'), { name: 'price', dtype: 'decimal', nullable: true })
   assert.equal(rows.length, 1)
   const [row] = rows
   assert.deepEqual(Object.keys(row), columns.map((column) => column.name))
@@ -174,114 +152,6 @@ test('isTick is a grid step that changed nothing', () => {
   // A grid step that carried a delta is no tick.
   assert.ok(served.some((json) => json.snapunix !== null && !json.isTick))
   assert.deepEqual(served.map((json) => json.stableHash), walked.map((book) => String(book.stableHash())))
-})
-
-test('leafJson: any leaf\'s row and its hash; a book as bookJson answers it', () => {
-  const [first] = synthetic()
-  const json = leafJson(first)
-  assert.equal(json.kind, 'quote_event')
-  assert.equal(json.curruuid, first.curruuid)
-  assert.equal(json.price, '82')
-  assert.equal(json.stableHash, String(first.stableHash()))
-  const book = alphaBook()
-  assert.deepEqual(leafJson(new graph.MarketData(book)), bookJson(book))
-})
-
-test("eventJson: the leaf's JSON beside the native text that rebuilds it", () => {
-  const [first] = synthetic()
-  const event = eventJson(first)
-  assert.deepEqual({ ...event, native: undefined }, { ...leafJson(first), native: undefined })
-  const rebuilt = graph.MarketData.fromJSON(event.native)
-  assert.ok(rebuilt.equals(first))
-  assert.equal(String(rebuilt.stableHash()), event.stableHash)
-})
-
-test('leafFromJson builds the native leaf, instants from their nanosecond text', () => {
-  const leaf = leafFromJson({
-    kind: 'order_event',
-    currunix: String(T0),
-    facts: { crosscode: 'N-1', ticker: 'ALPHA', side: 'BUY', price: '82.5', quantity: '10', exprtime: String(T0 + 500n) },
-  })
-  assert.ok(leaf instanceof graph.OrderEvent)
-  assert.equal(leaf.currunix, T0)
-  assert.equal(leaf.exprtime, T0 + 500n)
-  assert.equal(leaf.price, '82.5')
-  assert.equal(leafJson(leaf).exprtime, String(T0 + 500n))
-  // A map is its [key, value] pairs, in the key order the native map holds.
-  const identified = leafFromJson({
-    kind: 'order_event',
-    currunix: String(T0),
-    facts: { securityids: { ISIN: 'US0378331005' }, metadata: { venue: 'X', account: 'A' } },
-  })
-  const keyed = leafJson(identified)
-  // The CUSIP is the native package's derivation from the ISIN, in its key order.
-  assert.deepEqual(keyed.securityids, [['CUSIP', '037833100'], ['ISIN', 'US0378331005']])
-  assert.deepEqual(Object.fromEntries(keyed.securityids), identified.securityids)
-  assert.deepEqual(keyed.metadata, [['account', 'A'], ['venue', 'X']])
-  assert.ok(leafFromJson({ kind: 'quote', facts: { crosscode: 'Q' } }) instanceof graph.Quote)
-  assert.ok(leafFromJson({ kind: 'execution_event', currunix: T0 }) instanceof graph.ExecutionEvent)
-})
-
-test('a map is its [key, value] pairs in the native order: integer-like keys and __proto__ keep theirs', () => {
-  const pairs = [['31027', 'a'], ['7117', 'b'], ['__proto__', 'p'], ['venue', 'X']]
-  const leaf = new graph.OrderEvent(T0, {
-    crosscode: 'M',
-    ticker: 'ALPHA',
-    side: 'BUY',
-    price: '82',
-    quantity: 1,
-    metadata: new Map(pairs),
-  })
-  // A plain object would hoist 7117 before 31027 and drop __proto__.
-  const json = leafJson(leaf)
-  assert.deepEqual(json.metadata, pairs)
-  assert.deepEqual(JSON.parse(toJson(json)).metadata, pairs)
-  assert.deepEqual(eventJson(leaf).metadata, pairs)
-  // Every reading of a map column is the one reader: a view's rows too.
-  const view = rowsOf(graph.MarketData.applyView('orders', graph.MarketData.arrowReader([leaf]), []))
-  assert.deepEqual(view.rows[0].metadata, pairs)
-  // The pairs are also what an inserted event may state, and state back exactly.
-  const posted = leafFromJson({ kind: 'order_event', currunix: String(T0), facts: { crosscode: 'M', metadata: pairs } })
-  assert.deepEqual(leafJson(posted).metadata, pairs)
-  // Pairs out of the native key order are the constructor's to refuse.
-  const reversed = [...pairs].reverse()
-  assert.throws(
-    () => leafFromJson({ kind: 'order_event', currunix: String(T0), facts: { metadata: reversed } }),
-    { message: nativeRefusal(() => new graph.OrderEvent(T0, { metadata: new Map(reversed) })) },
-  )
-})
-
-test('leafFromJson lets the native constructor refuse, verbatim', () => {
-  const facts = { crosscode: 'N-1', price: 'abc' }
-  const expected = nativeRefusal(() => new graph.OrderEvent(T0, facts))
-  assert.match(expected, /\$\.price: expected an ISO decimal/)
-  assert.throws(() => leafFromJson({ kind: 'order_event', currunix: String(T0), facts }), { message: expected })
-  const side = nativeRefusal(() => new graph.QuoteEvent(T0, { side: 'UP' }))
-  assert.throws(() => leafFromJson({ kind: 'quote_event', currunix: String(T0), facts: { side: 'UP' } }), {
-    message: side,
-  })
-  assert.throws(() => leafFromJson({ kind: 'order_event', currunix: String(T0), facts: { bogus: 1 } }), {
-    message: 'OrderEvent states no fact "bogus"',
-  })
-})
-
-test('leafFromJson refuses what names no leaf before the constructor runs', () => {
-  assert.throws(() => leafFromJson({ kind: 'book_event', currunix: String(T0) }), {
-    name: 'TypeError',
-    message:
-      'expected a kind among order_event, quote_event, execution_event, order, quote, execution, got "book_event"',
-  })
-  assert.throws(() => leafFromJson({ kind: 'order_event', currunix: 1.5 }), {
-    message: 'expected currunix as the decimal text of nanoseconds since the epoch, got 1.5',
-  })
-  assert.throws(() => leafFromJson({ kind: 'order_event' }), /expected currunix/)
-  assert.throws(() => leafFromJson({ kind: 'order', currunix: '1' }), { message: 'an undated order states no currunix' })
-  assert.throws(() => leafFromJson({ kind: 'order_event', currunix: '1', facts: [] }), /expected facts as an object/)
-  assert.throws(() => leafFromJson({ kind: 'order_event', currunix: '1', facts: { metadata: [['a']] } }), {
-    name: 'TypeError',
-    message: 'metadata: expected a map as [key, value] pairs or an object keyed by text',
-  })
-  assert.throws(() => leafFromJson(null), /expected an event/)
 })
 
 test('refusalText is the message verbatim; toJson spells a bigint as text', () => {

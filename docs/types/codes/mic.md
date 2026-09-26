@@ -6,7 +6,7 @@ ISO 10383's four-character market identifier code, and `XXXX`, the market that s
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `mic`, `MicCodeType`/`MicCodeField`, the `MicCode` value and `Scalar::MicCode` |
+| Owns | `mic`, `MicType`/`MicField`, the `Mic` value and `Scalar::Mic` |
 | Validates | US-ASCII, no NUL, at most four bytes; the ISO registry is a declared vocabulary, never a gate |
 | Lazy | Nothing |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -21,15 +21,15 @@ ISO 10383's four-character market identifier code, and `XXXX`, the market that s
     ```rust
     use yggdryl::{DataType, DataTypeKind};
 
-    assert_eq!(DataType::mic(), DataType::MicCode);
-    assert_eq!(DataType::from_str("mic")?, DataType::MicCode);
-    assert_eq!(DataType::MicCode.to_string(), "mic");
-    assert_eq!(DataType::MicCode.kind(), DataTypeKind::Code);
-    assert_eq!(DataType::MicCode.code_name(), Some("mic"));
-    assert_eq!(DataType::MicCode.code_width(), Some(4));
-    assert_eq!(DataType::MicCode.fixed_byte_width(), None);
+    assert_eq!(DataType::mic(), DataType::Mic);
+    assert_eq!(DataType::from_str("mic")?, DataType::Mic);
+    assert_eq!(DataType::Mic.to_string(), "mic");
+    assert_eq!(DataType::Mic.kind(), DataTypeKind::Code);
+    assert_eq!(DataType::Mic.code_name(), Some("mic"));
+    assert_eq!(DataType::Mic.code_width(), Some(4));
+    assert_eq!(DataType::Mic.fixed_byte_width(), None);
     // FIX calls the ISO 10383 code an `Exchange`; one registry, one datatype.
-    assert_eq!(DataType::from_logical_name("Exchange")?, DataType::MicCode);
+    assert_eq!(DataType::from_logical_name("Exchange")?, DataType::Mic);
     ```
 
 === "Python"
@@ -61,20 +61,20 @@ ISO 10383's four-character market identifier code, and `XXXX`, the market that s
 
 ## Field
 
-`MicCodeField` is the typed marker; Python and JavaScript name the factory `mic`.
+`MicField` is the typed marker; Python and JavaScript name the factory `mic`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, MicCodeField};
+    use yggdryl::{DataType, Field, MicField};
 
-    let venue = MicCodeField::unit("venue", false);
-    assert_eq!(venue.dtype(), &DataType::MicCode);
-    assert_eq!(venue.to_field(), Field::new("venue", DataType::MicCode, false));
+    let venue = MicField::unit("venue", false);
+    assert_eq!(venue.dtype(), &DataType::Mic);
+    assert_eq!(venue.to_field(), Field::new("venue", DataType::Mic, false));
 
     // The leaf is the datatype's: four bytes of text are not a market.
     let plain = Field::new("venue", DataType::fixed_ascii(4)?, false);
-    assert!(MicCodeField::try_from_field(plain).is_err());
+    assert!(MicField::try_from_field(plain).is_err());
     ```
 
 === "Python"
@@ -107,16 +107,16 @@ The value is the identifier, under the market's identity. A value shorter than t
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, MicCode, Scalar};
+    use yggdryl::{DataType, Mic, Scalar};
 
     let paris = DataType::mic().scalar("XPAR")?;
-    assert_eq!(paris, Scalar::MicCode(MicCode::new("XPAR")?));
+    assert_eq!(paris, Scalar::Mic(Mic::new("XPAR")?));
     assert_eq!(paris.as_str(), Some("XPAR"));
     assert_eq!(paris.kind(), "mic");
 
     // Shorter than the width is a value, not a padded one.
     assert_eq!(DataType::mic().scalar("BX")?.as_str(), Some("BX"));
-    let refused = MicCode::new("XPARIS").unwrap_err().to_string();
+    let refused = Mic::new("XPARIS").unwrap_err().to_string();
     assert!(refused.contains("at most 4 bytes"), "{refused}");
     ```
 
@@ -159,7 +159,7 @@ The value is the identifier, under the market's identity. A value shorter than t
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{DataType, Field};
 
-    let venue = Field::new("venue", DataType::MicCode, false);
+    let venue = Field::new("venue", DataType::Mic, false);
     let arrow = venue.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
@@ -202,31 +202,31 @@ The value is the identifier, under the market's identity. A value shorter than t
 ISO 10383 publishes `XXXX` for "no market", so it is what a merge takes the other side over ([`merge_with`](index.md#the-code-family-value)). Rust only.
 
 ```rust
-use yggdryl::{CodeValue, MicCode};
+use yggdryl::{CodeValue, Mic};
 
-assert_eq!(MicCode::none().as_str(), "XXXX");
-assert_eq!(MicCode::none().merge_with(&MicCode::new("XPAR")?).as_str(), "XPAR");
+assert_eq!(Mic::none().as_str(), "XXXX");
+assert_eq!(Mic::none().merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
 // Anything stated stands.
-assert_eq!(MicCode::new("XPAR")?.merge_with(&MicCode::new("XLON")?).as_str(), "XPAR");
+assert_eq!(Mic::new("XPAR")?.merge_with(&Mic::new("XLON")?).as_str(), "XPAR");
 ```
 
 ## A venue's short code is no ISO MIC
 
-`MicCode::new` stays permissive, because a stored column may hold the short code a venue wrote - `S`, `TW`. `MicCode::is_iso` is the stricter question a reading asks when it takes the first market a message names: exactly four upper-case ASCII letters or digits. The FIX [market ladder](../../fix/capture.md#the-crates-own-columns) reads by it. Rust only.
+`Mic::new` stays permissive, because a stored column may hold the short code a venue wrote - `S`, `TW`. `Mic::is_iso` is the stricter question a reading asks when it takes the first market a message names: exactly four upper-case ASCII letters or digits. The FIX [market ladder](../../fix/capture.md#the-crates-own-columns) reads by it. Rust only.
 
 ```rust
-use yggdryl::MicCode;
+use yggdryl::Mic;
 
-assert!(MicCode::is_iso("XSWX"));
-assert!(!MicCode::is_iso("S"));
-assert!(!MicCode::is_iso("xswx"));
+assert!(Mic::is_iso("XSWX"));
+assert!(!Mic::is_iso("S"));
+assert!(!Mic::is_iso("xswx"));
 // Permissive where a column already holds what a venue wrote.
-assert_eq!(MicCode::new("TW")?.as_str(), "TW");
+assert_eq!(Mic::new("TW")?.as_str(), "TW");
 ```
 
 ## The ISO 10383 registry
 
-`StringEnum::MICS` ships with the package, reached by either logical name - `mic` or FIX's `Exchange` - because they name one thing. Python declares it over the width as `yggdryl.enums.MIC`. A declared vocabulary, never a gate: a market the registry has not published yet is stored rather than refused.
+`StringEnum::MICS` ships with the package, reached by either logical name - `mic` or FIX's `Exchange` - because they name one thing. Python declares it over the width as `yggdryl.enums.MIC`, over the `yggdryl.enums.Mic` base a caller subclasses for a vocabulary of its own. A declared vocabulary, never a gate: a market the registry has not published yet is stored rather than refused.
 
 === "Rust"
 
@@ -271,37 +271,37 @@ assert_eq!(MicCode::new("TW")?.as_str(), "TW");
 
 ## A dxFeed exchange code names a market only inside its feed
 
-`MicCode::from_dxfeed_exchange_code(feed, code)` resolves a regional code only under the `DxFeedExchangeFeed` table that gives it meaning. The feed is mandatory: `Q` is `XNAS` under CTA/UTP and Nasdaq Basic but `XNDQ` under US Options. Aggregate Cboe codes and CME source codes are refused because they name no single MIC; custom OPOL values are a separate namespace, not inferred as MICs. The mapping follows [dxFeed's published tables](https://kb.dxfeed.com/en/data-model/reference-data/exchange-codes.html), with CTA/UTP `H` corrected to ISO's current `EPRL` for MIAX Pearl Equities rather than the page's nonexistent `MRPL`, and NYSE BQT `A` corrected to `XASE` for NYSE American rather than `XNYS` ([ISO 10383 registry](https://www.iso20022.org/market-identifier-codes)). Rust only.
+`Mic::from_dxfeed_exchange_code(feed, code)` resolves a regional code only under the `DxFeedExchangeFeed` table that gives it meaning. The feed is mandatory: `Q` is `XNAS` under CTA/UTP and Nasdaq Basic but `XNDQ` under US Options. Aggregate Cboe codes and CME source codes are refused because they name no single MIC; custom OPOL values are a separate namespace, not inferred as MICs. The mapping follows [dxFeed's published tables](https://kb.dxfeed.com/en/data-model/reference-data/exchange-codes.html), with CTA/UTP `H` corrected to ISO's current `EPRL` for MIAX Pearl Equities rather than the page's nonexistent `MRPL`, and NYSE BQT `A` corrected to `XASE` for NYSE American rather than `XNYS` ([ISO 10383 registry](https://www.iso20022.org/market-identifier-codes)). Rust only.
 
 ```rust
-use yggdryl::{DxFeedExchangeFeed, MicCode};
+use yggdryl::{DxFeedExchangeFeed, Mic};
 
 // A dxFeed regional exchange code has meaning only inside its feed.
 assert_eq!(
-    MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
+    Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
     "XNAS",
 );
 assert_eq!(
-    MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
+    Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
     "XNDQ",
 );
 // C is an aggregate under Cboe, not a market that could be stored as a MIC.
-assert!(MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err());
+assert!(Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err());
 ```
 
 ## A Reuters exchange mnemonic names one market
 
-`MicCode::from_reuters_exchange_code(code)` resolves a Reuters exchange mnemonic - the suffix of a RIC, and the value [FIX 4.2's Appendix C](https://www.onixs.biz/fix-dictionary/4.2/app_c.html) gives `LastMkt(30)`, `ExDestination(100)` and `SecurityExchange(207)` - into its ISO 10383 MIC. The mnemonic is case-sensitive: `B` is Boston and `b` Belfox, `D` Dusseldorf and `d` Eurex Germany. A market that closed resolves to the MIC that carries it on (Pacific `P` to `ARCX`); a row naming a segment, a scheme or no market (`TH`, `0`, `11`) and a closed market ISO never carried on are refused. The FIX market ladder reads each of those three tags as an ISO MIC, else as a mnemonic, so an order routed with `100=TW` names `XTAI`. Rust only.
+`Mic::from_reuters_exchange_code(code)` resolves a Reuters exchange mnemonic - the suffix of a [RIC](ric.md), `Ric::exchange_code`, and the value [FIX 4.2's Appendix C](https://www.onixs.biz/fix-dictionary/4.2/app_c.html) gives `LastMkt(30)`, `ExDestination(100)` and `SecurityExchange(207)` - into its ISO 10383 MIC. The mnemonic is case-sensitive: `B` is Boston and `b` Belfox, `D` Dusseldorf and `d` Eurex Germany. A market that closed resolves to the MIC that carries it on (Pacific `P` to `ARCX`); a row naming a segment, a scheme or no market (`TH`, `0`, `11`) and a closed market ISO never carried on are refused. The FIX market ladder reads each of those three tags as an ISO MIC, else as a mnemonic, so an order routed with `100=TW` names `XTAI`. Rust only.
 
 ```rust
-use yggdryl::MicCode;
+use yggdryl::Mic;
 
-assert_eq!(MicCode::from_reuters_exchange_code("L")?.as_str(), "XLON");
-assert_eq!(MicCode::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
+assert_eq!(Mic::from_reuters_exchange_code("L")?.as_str(), "XLON");
+assert_eq!(Mic::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
 // Case is part of the mnemonic.
-assert_eq!(MicCode::from_reuters_exchange_code("b")?.as_str(), "XBRD");
+assert_eq!(Mic::from_reuters_exchange_code("b")?.as_str(), "XBRD");
 // Third Market is a scheme, not a market with a MIC.
-assert!(MicCode::from_reuters_exchange_code("TH").is_err());
+assert!(Mic::from_reuters_exchange_code("TH").is_err());
 ```
 
 ## Edges
@@ -316,7 +316,7 @@ assert!(MicCode::from_reuters_exchange_code("TH").is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"

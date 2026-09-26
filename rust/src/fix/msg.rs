@@ -20,7 +20,7 @@ use crate::graph::{Element, Event, Lane, Market, Metadata, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::xxhash;
-use crate::{Ccy, CfiCode, Decimal, MicCode, Side, State, StructType, TimeInForce, Unit, Uuid};
+use crate::{Ccy, Cfi, Decimal, Mic, Side, State, StructType, TimeInForce, Unit, Uuid};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
 /// The nanoseconds in one day: what a transaction time at midnight to the
@@ -1399,13 +1399,11 @@ impl FixMsg {
         // its identifiers under the sources that name them.
         // The detailed classification the chain reaches, or none: a coarse
         // stated code is not a classification the market keeps.
-        let cficode = self
-            .classification()
-            .and_then(|held| CfiCode::new(&held).ok());
+        let cficode = self.classification().and_then(|held| Cfi::new(&held).ok());
         debug_assert!(
             cficode
                 .as_ref()
-                .is_none_or(|held| CfiCode::is_detailed(held.as_str())),
+                .is_none_or(|held| Cfi::is_detailed(held.as_str())),
             "the classification chain answers a detailed code or none"
         );
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
@@ -1431,7 +1429,7 @@ impl FixMsg {
         // instrument key names, else the one it is listed on - each an ISO
         // 10383 MIC or the Reuters mnemonic FIX 4.2 spelled it in, a code
         // neither reading resolves naming none.
-        let market = |held: &str| MicCode::from_market(held);
+        let market = |held: &str| Mic::from_market(held);
         let miccode = word(30)
             .and_then(|held| market(&held))
             .or_else(|| word(100).and_then(|held| market(&held)))
@@ -1547,10 +1545,12 @@ impl FixMsg {
         event.set_tif(tif.and_then(|held| TimeInForce::from_spelling(&held)));
         event.set_ticker(symbolticker);
         event.set_cficode(cficode);
-        for id in self.derived.iter() {
-            securityids.insert(id.clone());
-        }
         let _ = event.set_securityids(securityids);
+        // The derived overlay goes back as derived, so a stated identifier
+        // still replaces it and removing the ISIN still takes it back.
+        for id in self.derived.iter() {
+            event.derive_securityid(id.clone());
+        }
         if row_stated & ROW_STATED_MIC == 0 {
             event.set_miccode(miccode);
         }
@@ -4068,10 +4068,13 @@ impl Market for FixMsg {
 
     fn insert_securityid(&mut self, id: SecurityId) -> Result<bool> {
         let key = id.sectype();
-        // A stated identifier replaces a derived one under its key; a stated
-        // one already held is not replaced.
-        let derived = self.derived.remove(&key).is_some();
-        if !derived && self.event.get_securityids().contains_key(key.as_str()) {
+        // A stated identifier replaces a derived one under its key - one the
+        // ISIN implies or the overlay carries; a stated one already held is
+        // not replaced.
+        self.derived.remove(&key);
+        if !self.event.is_derived_securityid(&key)
+            && self.event.get_securityids().contains_key(key.as_str())
+        {
             return Ok(false);
         }
         self.sync_security_id(&key, Some(id.code()))?;
@@ -4079,17 +4082,15 @@ impl Market for FixMsg {
         if let Some(bit) = row_stated_securityid_bit(key.as_str()) {
             self.row_stated |= bit;
         }
-        if derived {
-            let mut ids = self.event.get_securityids().clone();
-            ids.set(id);
-            self.event.set_securityids(ids).map(|()| true)
-        } else {
-            self.event.insert_securityid(id)
-        }
+        self.event.insert_securityid(id)
     }
 
     fn remove_securityid(&mut self, key: &SecType) -> Result<bool> {
         self.derived.remove(key);
+        if key.as_str() == "ISIN" {
+            // Every derived identifier hangs on the ISIN.
+            self.derived = SecurityIds::default();
+        }
         if !self.event.get_securityids().contains_key(key.as_str()) {
             return Ok(false);
         }
@@ -4109,20 +4110,20 @@ impl Market for FixMsg {
         added
     }
 
-    fn get_cficode(&self) -> Option<&CfiCode> {
+    fn get_cficode(&self) -> Option<&Cfi> {
         self.event.get_cficode()
     }
 
-    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
+    fn set_cficode(&mut self, cficode: Option<Cfi>) {
         self.forced = true;
         self.event.set_cficode(cficode);
     }
 
-    fn get_miccode(&self) -> Option<&MicCode> {
+    fn get_miccode(&self) -> Option<&Mic> {
         self.event.get_miccode()
     }
 
-    fn set_miccode(&mut self, miccode: Option<MicCode>) {
+    fn set_miccode(&mut self, miccode: Option<Mic>) {
         self.forced = true;
         if miccode.is_some() {
             self.row_stated |= ROW_STATED_MIC;

@@ -6,8 +6,8 @@
 //! evaluator, so `FIX:derivation` remains the public customization surface.
 
 use crate::{
-    CusipCode, DataType, Decimal, FixCategory, IsinCode, Result, Scalar, SedolCode, StringEnum,
-    TimeUnit, Timezone,
+    Cusip, DataType, Decimal, FixCategory, Isin, Result, Scalar, Sedol, StringEnum, TimeUnit,
+    Timezone,
 };
 
 use super::msg::FixMsg;
@@ -354,11 +354,11 @@ fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
 fn security_id_source(row: &NativeRow<'_>) -> Option<Scalar> {
     let identifier = row.get(48)?;
     let text = identifier.as_str()?;
-    if IsinCode::new(text).is_ok() {
+    if Isin::new(text).is_ok() {
         Some(Scalar::from("4"))
-    } else if CusipCode::new(text).is_ok() {
+    } else if Cusip::new(text).is_ok() {
         Some(Scalar::from("1"))
-    } else if SedolCode::new(text).is_ok() {
+    } else if Sedol::new(text).is_ok() {
         Some(Scalar::from("2"))
     } else {
         None
@@ -401,9 +401,9 @@ fn order_status(row: &NativeRow<'_>) -> Option<Scalar> {
     (leaves.is_positive() && row.decimal(14)?.is_positive()).then(|| Scalar::from("1"))
 }
 
-fn alternate_isin(row: &NativeRow<'_>) -> Option<IsinCode> {
+fn alternate_isin(row: &NativeRow<'_>) -> Option<Isin> {
     let alternate = row.alternate("4")?;
-    IsinCode::new(alternate.as_str()?).ok()
+    Isin::new(alternate.as_str()?).ok()
 }
 
 fn symbol(row: &NativeRow<'_>) -> Option<Scalar> {
@@ -639,12 +639,12 @@ fn pegged_price(row: &NativeRow<'_>) -> Option<Scalar> {
     reference.checked_add(&offset).ok()
 }
 
-fn stated_isin(row: &NativeRow<'_>) -> Option<IsinCode> {
+fn stated_isin(row: &NativeRow<'_>) -> Option<Isin> {
     let primary = row
         .text_is(22, "4")
         .then(|| row.get(48))
         .flatten()
-        .and_then(|value| value.as_str().and_then(|text| IsinCode::new(text).ok()));
+        .and_then(|value| value.as_str().and_then(|text| Isin::new(text).ok()));
     primary.or_else(|| alternate_isin(row))
 }
 

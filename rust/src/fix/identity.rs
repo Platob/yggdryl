@@ -8,8 +8,7 @@ use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::securityid::{SecType, SecurityId};
 use crate::{
-    BloombergCode, DataType, Error, FIGICode, Field, IsinCode, MicCode, Result, Scalar, TimeUnit,
-    Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Isin, Mic, Result, Scalar, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -1001,28 +1000,28 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
         tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
             event,
             "ISIN",
-            IsinCode::from_scalar(value)
+            Isin::from_scalar(value)
                 .map(|code| code.as_str().to_owned())
                 .or_else(|| value.as_str().map(str::to_owned)),
         ),
         tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => record_securityid(
             event,
             "BLOOMBERG",
-            BloombergCode::from_scalar(value)
+            Bbg::from_scalar(value)
                 .map(|code| code.as_str().to_owned())
                 .or_else(|| value.as_str().map(str::to_owned)),
         ),
         tag if tag == super::FIGICODE_TAG_NAME.0 => record_securityid(
             event,
             "FIGI",
-            FIGICode::from_scalar(value)
+            Figi::from_scalar(value)
                 .map(|code| code.as_str().to_owned())
                 .or_else(|| value.as_str().map(str::to_owned)),
         ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
-            MicCode::from_scalar(value)
+            Mic::from_scalar(value)
                 .cloned()
-                .or_else(|| value.as_str().and_then(|value| MicCode::new(value).ok())),
+                .or_else(|| value.as_str().and_then(|value| Mic::new(value).ok())),
         ),
         _ => {
             if let Some(column) = super::crated::event_column_of(tag) {
@@ -1053,21 +1052,19 @@ pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar
         tag if tag == super::ISINCODE_TAG_NAME.0 => event
             .get_securityids()
             .get("ISIN")
-            .and_then(|code| IsinCode::new(code).ok())
-            .map(Scalar::IsinCode),
+            .and_then(|code| Isin::new(code).ok())
+            .map(Scalar::Isin),
         tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
             .get_securityids()
             .get("BLOOMBERG")
-            .and_then(|code| BloombergCode::new(code).ok())
-            .map(Scalar::BloombergCode),
+            .and_then(|code| Bbg::new(code).ok())
+            .map(Scalar::Bbg),
         tag if tag == super::FIGICODE_TAG_NAME.0 => event
             .get_securityids()
             .get("FIGI")
-            .and_then(|code| FIGICode::new(code).ok())
-            .map(Scalar::FIGICode),
-        tag if tag == super::MICCODE_TAG_NAME.0 => {
-            event.get_miccode().cloned().map(Scalar::MicCode)
-        }
+            .and_then(|code| Figi::new(code).ok())
+            .map(Scalar::Figi),
+        tag if tag == super::MICCODE_TAG_NAME.0 => event.get_miccode().cloned().map(Scalar::Mic),
         _ => None,
     }
 }

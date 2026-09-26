@@ -14,9 +14,7 @@ mod datatypes {
         ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie,
         StringEnum, StructType,
     };
-    use yggdryl::{
-        CcyField, CfiCodeField, CountryField, DxFeedExchangeFeed, MicCode, MicCodeField,
-    };
+    use yggdryl::{CcyField, CfiField, CountryField, DxFeedExchangeFeed, Mic, MicField};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         Field::new(
@@ -30,16 +28,18 @@ mod datatypes {
         Arc::new(StringArray::from(values.to_vec()))
     }
 
-    /// The ten codes, each with its width and one value its standard names.
-    const CODED: [(&str, DataType, usize, &str); 11] = [
+    /// The codes, each with its width and one value its standard names.
+    const CODED: [(&str, DataType, usize, &str); 13] = [
         ("country", DataType::Country, 2, "US"),
         ("ccy", DataType::Ccy, 3, "USD"),
-        ("mic", DataType::MicCode, 4, "XPAR"),
-        ("cfi", DataType::CfiCode, 6, "ESVUFR"),
-        ("isin", DataType::IsinCode, 12, "US0378331005"),
-        ("cusip", DataType::CusipCode, 9, "037833100"),
-        ("sedol", DataType::SedolCode, 7, "B0YBKJ7"),
-        ("figi", DataType::FIGICode, 12, "BBG000BLNQ16"),
+        ("mic", DataType::Mic, 4, "XPAR"),
+        ("cfi", DataType::Cfi, 6, "ESVUFR"),
+        ("isin", DataType::Isin, 12, "US0378331005"),
+        ("cusip", DataType::Cusip, 9, "037833100"),
+        ("sedol", DataType::Sedol, 7, "B0YBKJ7"),
+        ("figi", DataType::Figi, 12, "BBG000BLNQ16"),
+        ("bbg", DataType::Bbg, 32, "AAPL US Equity"),
+        ("ric", DataType::Ric, 32, "AAPL.OQ"),
         ("side", DataType::Side, 8, "BUY"),
         ("state", DataType::State, 10, "20NEW"),
         ("timeinforce", DataType::TimeInForce, 8, "0"),
@@ -67,7 +67,7 @@ mod datatypes {
             for mapping in mappings.split_ascii_whitespace() {
                 let (exchange, mic) = mapping.split_once(':').unwrap();
                 assert_eq!(
-                    MicCode::from_dxfeed_exchange_code(feed, exchange)
+                    Mic::from_dxfeed_exchange_code(feed, exchange)
                         .unwrap()
                         .as_str(),
                     mic,
@@ -77,13 +77,13 @@ mod datatypes {
         }
 
         for (feed, exchange) in [(Cboe, "C"), (Cboe, "U"), (Cme, "G"), (Cme, "B")] {
-            let error = MicCode::from_dxfeed_exchange_code(feed, exchange)
+            let error = Mic::from_dxfeed_exchange_code(feed, exchange)
                 .unwrap_err()
                 .to_string();
             assert!(error.contains(exchange), "{error}");
             assert!(error.contains("no single MIC"), "{error}");
         }
-        let error = MicCode::from_dxfeed_exchange_code(CtaUtp, "R")
+        let error = Mic::from_dxfeed_exchange_code(CtaUtp, "R")
             .unwrap_err()
             .to_string();
         assert!(error.contains("CTA/UTP"), "{error}");
@@ -114,19 +114,19 @@ mod datatypes {
             ("d", "XEUR"),
             ("p", "XMON"),
         ] {
-            let held = MicCode::from_reuters_exchange_code(mnemonic).unwrap();
+            let held = Mic::from_reuters_exchange_code(mnemonic).unwrap();
             assert_eq!(held.as_str(), mic, "{mnemonic}");
-            assert!(MicCode::is_iso(held.as_str()), "{mnemonic}");
+            assert!(Mic::is_iso(held.as_str()), "{mnemonic}");
         }
         for mnemonic in ["0", "11", "TH", "TP", "Z"] {
-            let error = MicCode::from_reuters_exchange_code(mnemonic)
+            let error = Mic::from_reuters_exchange_code(mnemonic)
                 .unwrap_err()
                 .to_string();
             assert!(error.contains(mnemonic), "{error}");
             assert!(error.contains("no single current MIC"), "{error}");
         }
         for unknown in ["XLON", "l", "ZZ", ""] {
-            let error = MicCode::from_reuters_exchange_code(unknown)
+            let error = Mic::from_reuters_exchange_code(unknown)
                 .unwrap_err()
                 .to_string();
             assert!(error.contains("expected a Reuters"), "{error}");
@@ -297,7 +297,7 @@ mod datatypes {
 
     #[test]
     fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
-        let venue = Field::new("venue", DataType::MicCode, false);
+        let venue = Field::new("venue", DataType::Mic, false);
         let stored = Serie::from_arrow_array(
             Some(&venue),
             text(&["XPAR", "XLON"]),
@@ -378,7 +378,7 @@ mod datatypes {
 
     #[test]
     fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
-        // A time in force declares a vocabulary exactly as `MicCode` does: a value no
+        // A time in force declares a vocabulary exactly as `Mic` does: a value no
         // version defines is held rather than refused.
         let (dtype, outside) = (DataType::TimeInForce, "X");
         let stored = dtype.scalar(Scalar::from(outside)).unwrap();
@@ -616,16 +616,16 @@ mod datatypes {
     #[test]
     fn the_typed_field_and_scalar_aliases_name_their_code() {
         let ccy = CcyField::unit("ccy", false);
-        let venue = MicCodeField::unit("venue", true);
+        let venue = MicField::unit("venue", true);
         let iso = CountryField::unit("iso", true);
-        let cfi = CfiCodeField::unit("classification", true);
+        let cfi = CfiField::unit("classification", true);
 
         let ccy_field = ccy.to_field();
         let venue_field = venue.to_field();
         assert_eq!(ccy_field.dtype(), &DataType::Ccy);
-        assert_eq!(venue_field.dtype(), &DataType::MicCode);
+        assert_eq!(venue_field.dtype(), &DataType::Mic);
         assert_eq!(iso.to_field().dtype(), &DataType::Country);
-        assert_eq!(cfi.to_field().dtype(), &DataType::CfiCode);
+        assert_eq!(cfi.to_field().dtype(), &DataType::Cfi);
 
         // The pairing is the field's value contract, so the text becomes the code
         // leaf on the way in.
@@ -810,22 +810,20 @@ mod datatypes {
 
     #[test]
     fn a_code_merges_to_the_better_statement() {
-        use yggdryl::{Ccy, CfiCode, CodeValue, IsinCode, MicCode, Side, State};
+        use yggdryl::{Ccy, Cfi, CodeValue, Isin, Mic, Side, State};
 
         // A classification fills what it left unknown from the other, and stands
         // as it is beside another instrument's.
-        let partial = CfiCode::new("ESXXXR").unwrap();
+        let partial = Cfi::new("ESXXXR").unwrap();
         assert_eq!(
             partial
                 .clone()
-                .merge_with(&CfiCode::new("ESVUFX").unwrap())
+                .merge_with(&Cfi::new("ESVUFX").unwrap())
                 .as_str(),
             "ESVUFR"
         );
         assert_eq!(
-            partial
-                .merge_with(&CfiCode::new("DBFNFB").unwrap())
-                .as_str(),
+            partial.merge_with(&Cfi::new("DBFNFB").unwrap()).as_str(),
             "ESXXXR"
         );
 
@@ -869,19 +867,19 @@ mod datatypes {
             "USD"
         );
         assert_eq!(
-            MicCode::new("XXXX")
+            Mic::new("XXXX")
                 .unwrap()
-                .merge_with(&MicCode::new("XPAR").unwrap())
+                .merge_with(&Mic::new("XPAR").unwrap())
                 .as_str(),
             "XPAR"
         );
 
         // An identifier has nothing partial about it: this one stands.
-        let apple = IsinCode::new("US0378331005").unwrap();
+        let apple = Isin::new("US0378331005").unwrap();
         assert_eq!(
             apple
                 .clone()
-                .merge_with(&IsinCode::new("US5949181045").unwrap()),
+                .merge_with(&Isin::new("US5949181045").unwrap()),
             apple
         );
 
@@ -901,25 +899,24 @@ mod datatypes {
 
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
-        use yggdryl::{
-            BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
-        };
+        use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
         use yggdryl::{Side, State, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
                 crate::family_leaf!(Country, Country::new("US").unwrap()),
                 crate::family_leaf!(Ccy, Ccy::new("USD").unwrap()),
-                crate::family_leaf!(MicCode, MicCode::new("XPAR").unwrap()),
-                crate::family_leaf!(CfiCode, CfiCode::new("ESVUFR").unwrap()),
+                crate::family_leaf!(Mic, Mic::new("XPAR").unwrap()),
+                crate::family_leaf!(Cfi, Cfi::new("ESVUFR").unwrap()),
                 crate::family_leaf!(Side, Side::new("BUY").unwrap()),
                 crate::family_leaf!(State, State::new("20NEW").unwrap()),
                 crate::family_leaf!(TimeInForce, TimeInForce::new("0").unwrap()),
-                crate::family_leaf!(IsinCode, IsinCode::new("US0378331005").unwrap()),
-                crate::family_leaf!(CusipCode, CusipCode::new("037833100").unwrap()),
-                crate::family_leaf!(SedolCode, SedolCode::new("B0YBKJ7").unwrap()),
-                crate::family_leaf!(BloombergCode, BloombergCode::new("BBG000B9XRY4").unwrap()),
-                crate::family_leaf!(FIGICode, FIGICode::new("BBG000BLNQ16").unwrap()),
+                crate::family_leaf!(Isin, Isin::new("US0378331005").unwrap()),
+                crate::family_leaf!(Cusip, Cusip::new("037833100").unwrap()),
+                crate::family_leaf!(Sedol, Sedol::new("B0YBKJ7").unwrap()),
+                crate::family_leaf!(Bbg, Bbg::new("BBG000B9XRY4").unwrap()),
+                crate::family_leaf!(Ric, Ric::new("AAPL.OQ").unwrap()),
+                crate::family_leaf!(Figi, Figi::new("BBG000BLNQ16").unwrap()),
             ],
             DataTypeKind::Code,
             // The text a code is made of is not the code.
@@ -936,7 +933,7 @@ mod securities {
         ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Serie, StructType,
         Term,
     };
-    use yggdryl::{CusipCodeField, FIGICodeField, SedolCodeField};
+    use yggdryl::{CusipField, FigiField, SedolField};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         Field::new(
@@ -963,7 +960,7 @@ mod securities {
     const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 3] = [
         (
             "cusip",
-            DataType::CusipCode,
+            DataType::Cusip,
             9,
             "38259P508",
             "38259p508",
@@ -972,7 +969,7 @@ mod securities {
         ),
         (
             "sedol",
-            DataType::SedolCode,
+            DataType::Sedol,
             7,
             "B0YBKJ7",
             "b0ybkj7",
@@ -981,7 +978,7 @@ mod securities {
         ),
         (
             "figi",
-            DataType::FIGICode,
+            DataType::Figi,
             12,
             "BBG000BLNQ16",
             "bbg000blnq16",
@@ -1225,16 +1222,18 @@ mod securities {
         // The discriminant is a wire contract laid out by family: every code
         // is in the code family's range, beside the codes stated before it.
         assert_eq!(DataTypeKind::Code.id(), 0x70);
-        assert_eq!(DataTypeId::CusipCode.as_u8(), 0x79);
-        assert_eq!(DataTypeId::SedolCode.as_u8(), 0x7a);
-        assert_eq!(DataTypeId::BloombergCode.as_u8(), 0x7b);
-        assert_eq!(DataTypeId::FIGICode.as_u8(), 0x7c);
+        assert_eq!(DataTypeId::Cusip.as_u8(), 0x79);
+        assert_eq!(DataTypeId::Sedol.as_u8(), 0x7a);
+        assert_eq!(DataTypeId::Bbg.as_u8(), 0x7b);
+        assert_eq!(DataTypeId::Figi.as_u8(), 0x7c);
+        assert_eq!(DataTypeId::Ric.as_u8(), 0x7e);
         for id in [
-            DataTypeId::IsinCode,
-            DataTypeId::CusipCode,
-            DataTypeId::SedolCode,
-            DataTypeId::BloombergCode,
-            DataTypeId::FIGICode,
+            DataTypeId::Isin,
+            DataTypeId::Cusip,
+            DataTypeId::Sedol,
+            DataTypeId::Bbg,
+            DataTypeId::Figi,
+            DataTypeId::Ric,
         ] {
             assert_eq!(
                 DataTypeKind::of_u8(id.as_u8()),
@@ -1245,15 +1244,16 @@ mod securities {
         // The datatype order is total and appends too, so no earlier pair
         // moved: every code stated before them sorts before them, and the
         // last datatype before them sorts before them as well.
-        assert!(DataType::IsinCode < DataType::CusipCode);
-        assert!(DataType::CusipCode < DataType::SedolCode);
-        assert!(DataType::MediaType < DataType::CusipCode);
-        assert!(DataType::TimeInForce < DataType::CusipCode);
+        assert!(DataType::Isin < DataType::Cusip);
+        assert!(DataType::Cusip < DataType::Sedol);
+        assert!(DataType::MediaType < DataType::Cusip);
+        assert!(DataType::TimeInForce < DataType::Cusip);
         let mut shuffled = [
-            DataType::SedolCode,
-            DataType::IsinCode,
-            DataType::CusipCode,
-            DataType::FIGICode,
+            DataType::Ric,
+            DataType::Sedol,
+            DataType::Isin,
+            DataType::Cusip,
+            DataType::Figi,
             DataType::Country,
             DataType::MediaType,
         ];
@@ -1262,47 +1262,42 @@ mod securities {
             shuffled,
             [
                 DataType::Country,
-                DataType::IsinCode,
+                DataType::Isin,
                 DataType::MediaType,
-                DataType::CusipCode,
-                DataType::SedolCode,
-                DataType::FIGICode,
+                DataType::Cusip,
+                DataType::Sedol,
+                DataType::Figi,
+                DataType::Ric,
             ]
         );
 
         // A value carries its identity first: a CUSIP and a SEDOL never
         // compare equal, and neither is the string of its characters.
-        let cusip = DataType::CusipCode
-            .scalar(Scalar::from("037833100"))
-            .unwrap();
-        let sedol = DataType::SedolCode.scalar(Scalar::from("B0YBKJ7")).unwrap();
+        let cusip = DataType::Cusip.scalar(Scalar::from("037833100")).unwrap();
+        let sedol = DataType::Sedol.scalar(Scalar::from("B0YBKJ7")).unwrap();
         assert_ne!(cusip, sedol);
         assert_ne!(cusip.cmp(&sedol), std::cmp::Ordering::Equal);
         assert_ne!(cusip, Scalar::from("037833100"));
-        assert_eq!(cusip.id(), DataTypeId::CusipCode);
-        assert_eq!(sedol.id(), DataTypeId::SedolCode);
+        assert_eq!(cusip.id(), DataTypeId::Cusip);
+        assert_eq!(sedol.id(), DataTypeId::Sedol);
         // Values of one identifier order by their text.
         assert!(
-            DataType::CusipCode
-                .scalar(Scalar::from("037833100"))
-                .unwrap()
-                < DataType::CusipCode
-                    .scalar(Scalar::from("38259P508"))
-                    .unwrap()
+            DataType::Cusip.scalar(Scalar::from("037833100")).unwrap()
+                < DataType::Cusip.scalar(Scalar::from("38259P508")).unwrap()
         );
     }
 
     #[test]
     fn the_typed_fields_name_their_identifier() {
-        let cusip: CusipCodeField = CusipCodeField::unit("cusip", true);
-        assert_eq!(cusip.to_field().dtype(), &DataType::CusipCode);
-        let sedol: SedolCodeField = SedolCodeField::unit("sedol", false);
-        assert_eq!(sedol.to_field().dtype(), &DataType::SedolCode);
-        let figi: FIGICodeField = FIGICodeField::unit("figi", true);
-        assert_eq!(figi.to_field().dtype(), &DataType::FIGICode);
+        let cusip: CusipField = CusipField::unit("cusip", true);
+        assert_eq!(cusip.to_field().dtype(), &DataType::Cusip);
+        let sedol: SedolField = SedolField::unit("sedol", false);
+        assert_eq!(sedol.to_field().dtype(), &DataType::Sedol);
+        let figi: FigiField = FigiField::unit("figi", true);
+        assert_eq!(figi.to_field().dtype(), &DataType::Figi);
         assert!(!&sedol.to_field().is_nullable());
         // A shared field is kept for each, as for every parameter-free leaf.
-        for dtype in [DataType::CusipCode, DataType::SedolCode, DataType::FIGICode] {
+        for dtype in [DataType::Cusip, DataType::Sedol, DataType::Figi] {
             let shared = dtype.shared_field().unwrap();
             assert_eq!(shared.dtype(), &dtype);
             assert!(std::ptr::eq(shared, dtype.shared_field().unwrap()));

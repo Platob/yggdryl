@@ -6,13 +6,13 @@ ANSI X9.145's Financial Instrument Global Identifier: twelve characters, a conso
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `figi`, `FIGICodeType`/`FIGICodeField`, the `FIGICode` value and `Scalar::FIGICode` |
+| Owns | `figi`, `FigiType`/`FigiField`, the `Figi` value and `Scalar::Figi` |
 | Validates | Twelve ASCII bytes: two consonants that are not a reserved prefix, `G`, eight consonants or digits, one decimal check digit; lower case folds at the value door |
 | Lazy | Nothing - the accepted twelve bytes stay inline, so the constructor, the clone and the shared field allocate nothing |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A bad prefix, a reserved prefix, a third character that is not `G`, a vowel or punctuation in the body, and a check digit that does not close it; the empty text, so there is no default value |
 
-A FIGI is a checked identity of its own, never a [Bloomberg](bloomberg.md) fallback: `SecurityIDSource(22)=S` lifts a valid FIGI, and source `A` remains Bloomberg.
+A FIGI is a checked identity of its own, never a [Bbg](bbg.md) fallback: `SecurityIDSource(22)=S` lifts a valid FIGI, and source `A` remains Bloomberg.
 
 ## DataType
 
@@ -23,13 +23,13 @@ A FIGI is a checked identity of its own, never a [Bloomberg](bloomberg.md) fallb
     ```rust
     use yggdryl::{DataType, DataTypeKind};
 
-    assert_eq!(DataType::figi(), DataType::FIGICode);
-    assert_eq!(DataType::from_str("figi")?, DataType::FIGICode);
-    assert_eq!(DataType::FIGICode.to_string(), "figi");
-    assert_eq!(DataType::FIGICode.kind(), DataTypeKind::Code);
-    assert_eq!(DataType::FIGICode.code_name(), Some("figi"));
-    assert_eq!(DataType::FIGICode.code_width(), Some(12));
-    assert_eq!(DataType::FIGICode.fixed_byte_width(), None);
+    assert_eq!(DataType::figi(), DataType::Figi);
+    assert_eq!(DataType::from_str("figi")?, DataType::Figi);
+    assert_eq!(DataType::Figi.to_string(), "figi");
+    assert_eq!(DataType::Figi.kind(), DataTypeKind::Code);
+    assert_eq!(DataType::Figi.code_name(), Some("figi"));
+    assert_eq!(DataType::Figi.code_width(), Some(12));
+    assert_eq!(DataType::Figi.fixed_byte_width(), None);
     ```
 
 === "Python"
@@ -57,16 +57,16 @@ A FIGI is a checked identity of its own, never a [Bloomberg](bloomberg.md) fallb
 
 ## Field
 
-`FIGICodeField` is the typed marker; Python and JavaScript name the factory `figi`.
+`FigiField` is the typed marker; Python and JavaScript name the factory `figi`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, FIGICodeField};
+    use yggdryl::{DataType, Field, FigiField};
 
-    let sid = FIGICodeField::unit("figi", false);
-    assert_eq!(sid.dtype(), &DataType::FIGICode);
-    assert_eq!(sid.to_field(), Field::new("figi", DataType::FIGICode, false));
+    let sid = FigiField::unit("figi", false);
+    assert_eq!(sid.dtype(), &DataType::Figi);
+    assert_eq!(sid.to_field(), Field::new("figi", DataType::Figi, false));
     ```
 
 === "Python"
@@ -94,13 +94,13 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FIGICode, Scalar};
+    use yggdryl::{DataType, Figi, Scalar};
 
-    let figi = FIGICode::new("bbg000blnq16")?;
+    let figi = Figi::new("bbg000blnq16")?;
     assert_eq!(figi.as_str(), "BBG000BLNQ16");
-    assert_eq!(DataType::figi().scalar("BBG000BLNQ16")?, Scalar::FIGICode(figi));
+    assert_eq!(DataType::figi().scalar("BBG000BLNQ16")?, Scalar::Figi(figi));
     assert_eq!(DataType::figi().scalar("BBG000BLNQ16")?.kind(), "figi");
-    assert!(FIGICode::new("BBG000BLNQ17").is_err());
+    assert!(Figi::new("BBG000BLNQ17").is_err());
     ```
 
 === "Python"
@@ -139,7 +139,7 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{DataType, Field};
 
-    let sid = Field::new("figi", DataType::FIGICode, false);
+    let sid = Field::new("figi", DataType::Figi, false);
     let arrow = sid.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.figi");
@@ -174,18 +174,18 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
 ## The shape and the check digit
 
-Two consonants, then `G`, then eight consonants or digits, then one decimal digit. The prefix may not be one of the seven the standard reserves - `BS`, `BM`, `GG`, `GB`, `GH`, `KY`, `VG` - because those are country codes a reader would misread. The check digit reads each of the eleven leading characters as a value from zero to thirty-five, doubles the ones at odd positions, sums the decimal digits of every value and closes the sum to a multiple of ten. `FIGICode::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
+Two consonants, then `G`, then eight consonants or digits, then one decimal digit. The prefix may not be one of the seven the standard reserves - `BS`, `BM`, `GG`, `GB`, `GH`, `KY`, `VG` - because those are country codes a reader would misread. The check digit reads each of the eleven leading characters as a value from zero to thirty-five, doubles the ones at odd positions, sums the decimal digits of every value and closes the sum to a multiple of ten. `Figi::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
 
 ```rust
-use yggdryl::FIGICode;
+use yggdryl::Figi;
 
-let figi = FIGICode::new("BBG000BLNQ16")?;
+let figi = Figi::new("BBG000BLNQ16")?;
 assert_eq!(figi.check_digit(), 6);
-assert!(FIGICode::is_valid("bbg000blnq16"));
-assert!(FIGICode::is_canonical("BBG000BLNQ16"));
-assert!(!FIGICode::is_canonical("bbg000blnq16"));
+assert!(Figi::is_valid("bbg000blnq16"));
+assert!(Figi::is_canonical("BBG000BLNQ16"));
+assert!(!Figi::is_canonical("bbg000blnq16"));
 // A permitted consonant prefix that is not one of the seven reserved.
-assert!(FIGICode::is_valid("BCG000000005"));
+assert!(Figi::is_valid("BCG000000005"));
 
 // A vowel in the prefix, a reserved prefix, no `G`, a letter for the check
 // digit, the wrong length, and a check digit that does not close it.
@@ -197,7 +197,7 @@ for refused in [
     "BBG000BLNQ1",
     "BBG000BLNQ17",
 ] {
-    assert!(FIGICode::new(refused).is_err(), "{refused}");
+    assert!(Figi::new(refused).is_err(), "{refused}");
 }
 ```
 
@@ -217,7 +217,7 @@ for refused in [
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip_code::securities figi_code::securities sedol_code::securities
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip::securities figi::securities sedol::securities
     ```
 
 === "Python"

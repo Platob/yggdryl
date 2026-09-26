@@ -47,7 +47,8 @@ results and exact skipped checks.
    binding exists. Never pin an unsettled design by writing a binding first.
 5. **Python** (§3): redirects, parity tests, boundary benchmarks.
 6. **Node** (§4): the same.
-7. **Docs** (§5): every layer touched, examples in all three languages.
+7. **Docs** (§5): every layer touched, examples in all three languages, and
+   the skill under `skills/` that teaches the surface.
 8. **Push and read CI** (§2), then **handoff** (§5): sweeps, inventories,
    local-only checks, cleanup, report.
 
@@ -172,7 +173,7 @@ passes.
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
-| a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
+| a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language under `docs/` and `skills/` - there is no per-page filter, so this is a pre-push check, not a loop |
 | the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
 
 The measured costs that shape the loop: an already-built harness is under a
@@ -288,7 +289,8 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
-`iceberg` (implies `parquet`), `aws`, `s3` (implies `aws`). Examples live in docs - no `examples/`
+`iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3`
+(implies `http2`), `aws` (implies `http`), `s3` (implies `aws`). Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
 root file, and `value/` - the contracts a datatype, a field and a value each
 owe the root that holds them - is the one folder among them; every
@@ -325,7 +327,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `decimal.rs` holds the four parameterized widths and, beside them, the two fixed leaves at scale eighteen - `Decimal` over `decimal128(38, 18)` and `BigDecimal` over `decimal256(76, 18)`, each a datatype, field and scalar of its own under its `yggdryl.` extension name; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
 | `serie.rs` + `serie/` | `Serie`, the fourth side of the value model: many values, as a schema-free `Run` or as a column - the Arrow buffers of one `Field`, holding no `Scalar`, nested as `Serie` children all the way down - with the collection verbs (`scalar`, `get`, `rows`, `iter`, `slice`, `splice` and the writes spelled over it: `set`, `push`, `insert`, `remove`, `pop`, `truncate`, `clear`, `extend`, `extend_from_serie`, `resize`, `set_child`, `set_cell`), identity over the rows alone, serde, a flat root of one variant per storage layout named as the leaf that holds it (`Utf8String`, `DurationMillisecond`, `IntervalDayTime`) - a variant names the layout, never the datatype, because one layout serves several (`Utf8String` every string leaf laid out as UTF-8, `DurationSecond` both widths), so a column's datatype is its field's, `SerieValue::id`; the five serie layouts each serve one datatype and are named as it is - `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView` - each holding its `<Variant>Serie` leaf (`SerieSerie`, `SerieViewSerie`, `FixedSizeSerieSerie`, `LargeSerieSerie`, `LargeSerieViewSerie`, over the `OffsetSerie<O>`/`OffsetViewSerie<O>` shapes whose offset width is an `OffsetLeaf`), so `Serie::as_serie` narrows a column to `SerieSerie` where `Scalar::as_serie` borrows the whole `Serie` a value holds; the codes, `Version`, `Url`, `Urn`, `Timezone`, `MimeType`, `MediaType`, `Uuid`, `Geometry`, `Geography` and `SortedMap` keep variants of their own - and the `as_<leaf>`/`get_<leaf>_mut` narrowings, and, crate-private, the `is_string_storage`/`is_byte_storage` predicates the text body readers and the FIX payload guard on, and the `value_bytes` those readers and the digest feed - which matches the same storage variants by name - read per row; `serie/datatype.rs` is the family's datatype and field - `SerieType`, the five serie layouts over one item field, and `SerieField` - and `Run`, the schema-free ordered run a row canonicalizes to: one shared `Arc<[Scalar]>`, one allocation to build, and the one leaf of `Serie` that declares no field; `serie/` otherwise holds one leaf per Arrow layout - `primitive.rs`, `boolean.rs`, `null.rs`, `bytes.rs` with its `string.rs` aliases, `structure.rs`, `sequence.rs` (the five serie layouts), `mapping.rs`, `variant.rs`, `enums.rs`, `runend.rs`, `union.rs` - each lending its buffers and writing them in place through prove-check-write - a primitive, boolean or byte leaf reading its own typed buffer through the reading its field resolved where it landed, and a string or byte leaf's `value(i)` lending a run's bytes where they lie across offsets, views and fixed widths with no value built - `layout.rs` the buffer edits they share, `value.rs` the one codec between a row and an Arrow slot (named by nothing outside `serie/`, `cast.rs` and `temporal.rs`), and `arrow.rs` the one door buffers take in and out (`from_arrow_array`, `from_scalars`, `empty`, `with_capacity`, the batch and reader pairs, `SerieReader::from_serie` and `SerieReader::from_chunked`), proving the layout against the field's projection, absence on the validity words, and - only where the layout is not the datatype's whole contract (`DataType::layout_is_contract`) - each row once, a refusal naming the landed row and the path below it (`$[3].bid.live[0].miccode`). `SerieValue`, the contract every column leaf owes, is in `value/` |
 | `chunked_serie.rs` | `ChunkedSerie`: many `Serie` columns under one field, held apart - the chunked array and the table - each chunk a column of exactly that field, proven at its own door, with the chunk ends kept beside the chunks so a row is a binary search and the length a read; the row verbs read across the chunks, a child is the child of every chunk, identity is the rows alone; `from_arrow_arrays`/`into_arrow_arrays` cross a chunked array one array per chunk, `from_arrow_reader`/`into_arrow_reader` a table one batch per chunk, `cast` is one plan over every chunk and `into_serie` the one join; `SerieReader::from_chunked`, beside `from_serie` in `serie/arrow.rs`, streams its chunks |
-| `code.rs` | the contract every registered code answers - the trait and the two builders; the twelve codes are one file each: `ccy.rs`, `country.rs`, `mic_code.rs`, `cfi_code.rs`, `isin_code.rs`, `cusip_code.rs`, `sedol_code.rs`, `bloomberg_code.rs`, `figi_code.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
+| `code.rs` | the contract every registered code answers - the trait and the two builders; the fourteen codes are one file each, named as the code is: `ccy.rs`, `country.rs`, `mic.rs`, `cfi.rs`, `isin.rs`, `cusip.rs`, `sedol.rs`, `bbg.rs`, `figi.rs`, `ric.rs`, `side.rs`, `state.rs`, `timeinforce.rs`, `unit.rs` |
 | `temporal.rs` | what the five temporal families share and nothing any one of them owns: the crate-private `TemporalKind` tag the arithmetic, the digests and canonicalization branch on - public only as `DataTypeId::temporal_family`, `date`, `time`, `datetime`, `duration` or `interval` - the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
 | `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - the typed field's payload over the flat `DataType::Date32` and `DataType::Date64` leaves, with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
 | `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - the typed field's payload over the flat `DataType::Time32(TimeUnit)` and `DataType::Time64(TimeUnit)` leaves, with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
@@ -334,14 +336,15 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - the typed field's payload over the flat `DataType::Interval(TimeUnit)` leaf, with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
 | `timezone.rs` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
 | `mime_type.rs` + `mime_type/`, `media_type.rs` + `media_type/` | the root `MimeType` and `MediaType` values, which stay the media routing vocabulary, each with a `datatype.rs` beneath it for the `mimetype` and `mediatype` datatypes a column declares; `mime_type/` also holds the extension registry and the line classifier |
-| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the eighteen `DataType` and `Scalar` leaf variants it views, the characters `Str` every string value holds, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The thirteen registered codes are not strings and are not here: each is its own file - `ccy.rs`, `country.rs`, the seven `*_code.rs` leaves, `side.rs`, `state.rs` and `timeinforce.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all string leaves and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `StringType::scalar_from_bytes` and `StringType::encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
+| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the eighteen `DataType` and `Scalar` leaf variants it views, the characters `Str` every string value holds, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The fourteen registered codes are not strings and are not here: each is its own file named as the code is - `ccy.rs`, `country.rs`, `mic.rs`, `cfi.rs`, the five identifiers `isin.rs`, `cusip.rs`, `sedol.rs`, `figi.rs` and `ric.rs`, `bbg.rs`, `side.rs`, `state.rs`, `timeinforce.rs` and `unit.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all string leaves and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `StringType::scalar_from_bytes` and `StringType::encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `StringType::read_text` and `StringType::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
-| `auth/` | what every identity provider shares, private and under the `aws` feature: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
+| `auth/` | what every identity provider shares, private and under the `http` feature - `Secret` and the `variable` reader the HTTP client needs, the rest under `aws`: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
 | `aws/` | who this process is to AWS, and where AWS is, for every consumer that signs an AWS request: `session.rs` the one door - `Session`, what a caller states, the rest resolved lazily once and cached, the credential chain walked in botocore's order with every configured-but-broken source recorded and passed over rather than failing the walk, a temporary set refreshed before it lapses and kept while a refresh fails until it has - `credentials.rs` the `Credentials` value and the JSON document the metadata services and a `credential_process` answer, `environment.rs` (under `s3`) the variables the session reads for itself and the S3 sweep leaves to it, `profile.rs` the `~/.aws/config` and `~/.aws/credentials` reading (`[profile x]`, `[sso-session x]`, `[services x]`, indented tables, the credentials file winning) and `Profile`, `sts.rs` `AssumedRole` with `AssumeRole`, `AssumeRoleWithWebIdentity` and the `~/.aws/cli/cache` the CLI shares, `sso.rs` the IAM Identity Center token cache, its refresh, the device sign-in and the portal exchange, `process.rs`, `container.rs` and `metadata.rs` the three remaining sources, `sigv4.rs` Signature Version 4 for every service; under the non-default `aws` feature, which `s3` implies |
 | `xml/` | the XML structured codec over `Scalar` - a document is the record naming its root element, `@name` an attribute, `#text` an element's own text beside attributes or children, a repeated element a sequence, a self-closed element null and an emptied one the empty text, every leaf text - `mod.rs` the doors, `parser.rs` the quick-xml event fold, `wire.rs` the writer and the field-directed reshaping (a repeated element read once is one item, absent is the empty sequence, text trimmed and empty text null under a non-text leaf); `scanner.rs` beside them, private and under the `aws` feature, the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element, each reader naming its own vocabulary over it; `element.rs` the namespace-aware `Element`/`Scope` view over a parsed document, which `soap/` and `xmla/` read through |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
+| `http/` | HTTP behind `IOBase`, under the non-default `http` feature, which `aws` implies: one synchronous HTTP/1.1 client over `ureq` (`client.rs` `Client`, the pool and transport knobs, and `StatsSnapshot`), `session.rs` `Session` - where a request's defaults, authorization, cookie jar, `Accept-Encoding`, retries and redirects are applied - `request.rs` `Request` and `Body`, `response.rs` `Response`, `stream.rs` `Stream`, `pages.rs` `Pages` and `pagination.rs` `Pagination`, the four roles a `Holder` holds (`HttpSession` a container over a base URL, `HttpRequest` the leaf a URL names, `HttpResponse` one answer's body as sent, `HttpStream` a body on the wire); `headers.rs` `Headers` over the crate's `Metadata` under the `HTTP:` protocol key with the typed readers beside it and `headers/` the date, link, range and entity-tag grammars; `method.rs`, `status.rs`, `cookie.rs`, `authorization.rs`, `options.rs` `HttpOptions`; `wire.rs` the RFC 9112 message grammar every `message/http` door and the server share; `retry.rs`, crate-private, the retry budget, backoff and verdicts the S3 client draws on too; `server.rs` with `server/` the `Server` hosting any `Holder` and programmable routes over the same grammar, which the tests run every client feature against |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
@@ -365,8 +368,8 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
 | binding `src/` | the crate layout above, one layer thinner: one type per root file (`datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `parameters.rs`, `timezone.rs`, `protocol.rs`, `value.rs`, `version.rs`), one root file per implementation (`avro.rs`, `iceberg.rs`), `text/` holding `codec.rs`, `line.rs` and Node's `options.rs`, and `media/` holding only what every medium shares - Python's `handles.rs` and `partition.rs`, Node's `options.rs` |
-| `node/replay.js` + `node/replay/` | `yggdryl/replay`, the trading replay service (CommonJS) and its command line: `sources.js` the loaders - a `marketdata` Arrow or Parquet file, a FIX capture read from its bytes, the synthetic scenario of `synthetic.js`; `walk.js` the native `BookIterator` walk, its index by symbol and instant, the merge and the re-run; `json.js` the one renderer between a native stream and JSON, and back for an inserted event through its own constructor; `scenarios.js` named scenarios kept as files; `server.js` the routes, the server-sent book streams and the static files; `web.js` the browser modules the service shares, loaded once |
-| `node/web/` | `yggdryl/web/*`, the browser component library: ES modules with no dependency, bundler or CDN (`web/package.json` is `{"type":"module"}`) - the pure modules `instant.js`, `decimal.js`, `scales.js`, `candles.js`, `diff.js`, `scenario.js`, `shortcuts.js`, `store.js`; one file per component over `component.js`, with `virtual.js` and `canvas.js` what the lists and the charts share; `theme.css` the tokens and every `ygg-ui` class; and `app/`, the one-page application - `index.html`, `app.js` the composition (`mountApp`), `api.js` the wire (`createApi`), `app.css` its layout - which the service serves and the docs Replay page mounts over recorded answers. Everything shown is what the package answered: no fold, aggregation, reading, identity, digest or ordering of its own |
+| `node/replay.js` + `node/replay/` | `yggdryl/replay`, the order book replay service (CommonJS) and its command line: `sources.js` the loaders - a `marketdata` Arrow or Parquet file, a FIX capture read from its bytes, the synthetic scenario of `synthetic.js`; `walk.js` the native `BookIterator` walk and its index by symbol and instant; `json.js` the one renderer between a native book and JSON; `server.js` the two routes - the sources and the server-sent book stream - and the static files |
+| `node/web/` | `yggdryl/web/*`, the browser side: ES modules with no dependency, bundler or CDN (`web/package.json` is `{"type":"module"}`) - `book-timeline.js`, the one component: a walk's books along their timeline, the live limits standing at the chosen instant, and an audit dialog holding the whole book as collapsible items; `theme.css` its tokens and every `ygg-bt` class; and `app/`, the one page - `index.html`, `app.js` the composition (`mountApp`), `api.js` the wire (`createApi`), `app.css` its layout - which the service serves and the docs Replay page mounts over recorded answers. Everything shown is what the package answered: no fold, aggregation, reading, identity, digest or ordering of its own |
 
 Parquet is feature-gated; Avro's scalar codec is unconditional and its record
 surface uses Arrow; Iceberg sits on these codecs. `Text<H>` keeps only options
@@ -508,7 +511,8 @@ it as `yggdryl::<Type>`.
 `<type>` is the vocabulary, not the width. Every integer width is one
 `IntegerValue` over one set of rules, so `integer.rs` holds all ten; every
 registered code is its own standard with its own validity, so `country.rs`,
-`ccy.rs`, `isin.rs` and the eight beside them are eight more files.
+`ccy.rs`, `isin.rs` and the eleven beside them are fourteen files, each type
+named as its datatype is spelled - `Isin` is `isin`, `Bbg` is `bbg`.
 
 What is shared by several types is a file of its own beside them, never a
 folder under one of them: `code.rs` carries the contract every registered code
@@ -1000,6 +1004,102 @@ under the names its own index has: `ZipNode` is a prefix of that index,
   handle beneath it; the cost model in the ZIP section of `docs/holder/index.md` is stated
   and asserted in those terms.
 
+### HTTP (`http/`, non-default `http`, `http2` and `http3` features)
+
+A resource an `http` or `https` URL names is a `Request` leaf answering every
+`IOBase` verb, and each verb is a stated number of requests the accounting
+tests in `rust/tests/http/` assert exactly:
+
+| Operation | Requests |
+| --- | --- |
+| building a session or a request, resolving a child | 0 |
+| `pread`, `read_range_bytes`, `read_range_digest` | 1 ranged `GET` |
+| `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | 1 `GET` + 1 per resume |
+| `size`, `mtime`, `kind` while closed | 1 `HEAD`; 0 while open |
+| `write_all_bytes`, `clear` | 1 `PUT` |
+| `pwrite` then `flush`, `append_bytes` | 1 `GET` + 1 `PUT` |
+| `remove` | 1 `DELETE`; a `404` is success |
+| `send`, `stream` | 1 per attempt + 1 per redirect hop + 1 per resume |
+| a closed `Response` or `Stream` read again, or `open` | 1 ranged `GET` at the cursor |
+| `pages`, a paginated `read_arrow_reader` | 1 `GET` per page |
+
+- A request goes out through `Session::send`, or `Request::send_reader` for
+  a body read once from the caller's reader; everything it carries beyond
+  its own headers - defaults, authorization, cookies, `Accept-Encoding`,
+  `User-Agent` - is merged for both by `Session::headers_for` and nowhere
+  else. The pool's knobs are the client's: a session over a client states
+  none of them otherwise (`Session::with_client`). A ranged
+  or streamed request asks for `identity`, so a byte offset means the same on
+  both ends; content codings are decoded by the crate's `Codec`, never by the
+  transport.
+- A handle learns from the answers it already has: `Content-Type` once
+  (a declared media type wins, the URL's suffix answers until then),
+  `Content-Length` and `Content-Range` for the size while open,
+  `Last-Modified` for `mtime`. It never asks a second question to learn one.
+- Resume, never splice: a cut body re-issues `Range: bytes=<delivered>-` with
+  `If-Range` naming the first answer's strong `ETag` or `Last-Modified`, only
+  for a successful uncoded `GET` - nothing else is asked for twice - only
+  when the first answer offered ranges, and only while consecutive failures
+  stay under `max_attempts` and `Stream::MAX_RESUMES` re-opens in all; a
+  resumed `206` must state in `Content-Range` that it starts at the cursor;
+  a resource whose validator moved is `Error::Conflict`. Every whole-body
+  read goes through that stream, under the same rules, and a `Response` or
+  `Stream` stands alone - request and session carried - so `close` lets go
+  of the transfer and keeps the cursor, and the next read re-opens there or
+  is refused by name.
+- Retry only what cannot do harm twice: a retryable status only for an
+  idempotent method, a transport failure for an idempotent method or a
+  request no connection took (`retry::is_unsent`); `Retry-After` (delta or HTTP-date) waited up
+  to `max_pause` and never past it; one token budget per client. A redirect to
+  another origin carries no credential the caller stated.
+- The proxy is chosen per request: a named `proxy` wins; else, reading the
+  environment, `no_proxy`, then the scheme's `http_proxy`/`https_proxy`,
+  then `all_proxy`, lower case first, upper-case `HTTP_PROXY` unread under
+  CGI - read at send time so a changed environment is followed, the parse
+  memoized by value (`http/proxy.rs`), a SOCKS proxy refused by name; a
+  request naming no credential takes its host's `.netrc` entry, the file
+  parsed once per version (`http/netrc.rs`).
+- `Client::attempt` is the one place a version is chosen (`http/framed.rs`):
+  `http_version` against what the client learned of the origin - ALPN `h2`
+  over TLS, `h2c` by prior knowledge only when asked, HTTP/3 when asked or
+  advertised in `Alt-Svc` on the origin's own host - each refusal a fallback
+  in the same attempt, remembered per origin in a bounded map, a proxied
+  request always HTTP/1.1. Everything above it - retries, redirects, cookies,
+  resume, pages, `send_all` - reads the same `Answer` whatever the version,
+  and HTTP/2 and HTTP/3 failures are spelled in the retry rules' own
+  vocabulary: a refused or never-run stream is unsent, a reset mid-body is a
+  severed transfer a `Stream` resumes.
+- HTTP/2 and HTTP/3 hold one multiplexed connection per origin, driven by the
+  one private runtime in `http/runtime.rs`; a blocking call polls its own
+  future on its own thread, parked between wakes, so nothing crosses a thread
+  per chunk and no caller brings a runtime. Nothing else in the crate starts
+  a runtime or blocks one of its workers.
+- `Server` answers HTTP/2 wherever a connection opens with the preface, and
+  with `http3` on, HTTP/3 on the UDP twin and TLS offering `h2` on the TCP
+  port under a certificate it signs itself; every framed request reaches the
+  same `dispatch` - routes, mounts, faults, the log - as an HTTP/1.1 one, a
+  cut answer's stream reset where it stops.
+- `Session::send_all` is a stream: the source is pulled only as far as the
+  requests in flight and the walk is `Send + 'static`; a binding holds it and
+  pulls one answer per step, never collecting.
+- Pagination is one ladder, `Pagination::Auto`: the `Link` header, the
+  next-page headers, a next URL in the body, a cursor sent back under the
+  parameter the request already carries; a visited URL, `has_more` false or an
+  empty page ends the walk, and a failed page resumes from its own request,
+  never from the first. `Pages` lays every page out through `Serie` under the
+  root the first page infers or the caller declares.
+- `HttpOptions::from_properties` is the one property door, and
+  `Holder::from_url` routes `http`/`https` through it; a name it does not know
+  is ignored and a value it cannot read is refused naming the property.
+- `Server` is the crate's own answer to its own client: every client feature
+  is tested against it, a mounted leaf is never read whole - a child streams
+  through `pstream_bytes`, the holder at the prefix one `read_range_bytes` per
+  batch under its lock, ending the body where a write moves it - and faults are injected per path rather than faked by a
+  second implementation. It stays bounded against peers it does not trust -
+  `max_connections`, a head deadline, a write timeout, a capped request log,
+  `TCP_NODELAY` - and `with_tunnel` makes it the forward proxy the client's
+  proxy handling is tested through.
+
 ### Object stores (`s3/`, non-default `s3` feature)
 
 One backend, one location/container/leaf trio, three stores: Amazon S3, Google
@@ -1281,7 +1381,7 @@ to any of the eighteen leaves or to what a string declares.
   is what catches it before a boundary. `Charset` stays the text-decoding
   vocabulary; a charset with no leaf is refused wherever a leaf is asked for
   (`with_charset`). `string_parameters` reads back for every string, which is
-  what makes "which charset is this column in" one question. The twelve
+  what makes "which charset is this column in" one question. The fourteen
   registered codes are not strings: a currency is an identity over ISO 4217
   that stores as the text it is, so it is `DataType::Ccy`, kind `Code`,
   answers `is_code` and `code_width`, and never `string_parameters`.
@@ -1606,7 +1706,7 @@ and not a silent update.
 | Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
 | Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the three docs manifests | §4 |
-| Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
+| Documentation examples | every fenced block under `docs/` and `skills/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
 
 ## What CI never runs
@@ -1621,7 +1721,7 @@ python scripts/check_charset_interop.py             # every code page against Py
 
 ```bash
 cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix|fix_allocations>
-npm run --prefix node bench:<coding|fix|graph|hashing:txhash|hashing:xxhash|holder|media|text|types>
+npm run --prefix node bench:<coding|fix|graph|hashing:txhash|hashing:xxhash|holder|http|media|text|types>
 python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
 YGGDRYL_S3TABLES_ARN=<table bucket ARN> python python/benchmarks/media/s3tables.py  # a real table bucket and pyiceberg; SKIPPED otherwise
 ```
@@ -1873,6 +1973,15 @@ section change together. What binds every page:
 - A benchmark table lives in the Performance section of the page owning the
   measured method, names machine/runtime/build, compares a trusted baseline, and
   ends with its regenerate command; `docs/benchmarks.md` only indexes them.
+- `skills/` holds the agent skills for code that *uses* the package, one folder
+  per layer: a `SKILL.md` (the door table - task to Rust, Python and JavaScript
+  spelling - then the rules and pitfalls) and `references/rust.md`,
+  `python.md`, `javascript.md` of runnable recipes, linking the published pages
+  for depth rather than restating them. `skills/yggdryl/` is the entry skill.
+  A change to a public name, default, cost or refusal a skill teaches updates
+  that skill in the same change; its blocks follow the example rules above and
+  run under `scripts/check_docs_examples.py`, and `.claude-plugin/` publishes
+  the folder as the `yggdryl` Claude Code plugin.
 
 ## Documentation checks
 
@@ -1891,15 +2000,15 @@ stay responsive). Run the language whose examples were edited, once, before
 pushing; CI runs all three.
 
 ```bash
-python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg s3
+python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg s3 http3
 python scripts/check_docs_examples.py --lang python       # runs under python/.venv
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 ```
 
 ## Handoff
 
-- Sweep for dead code, duplicated logic, retired symbols, stale docs, Rust-only
-  bindings a stable core no longer justifies.
+- Sweep for dead code, duplicated logic, retired symbols, stale docs and
+  skills, Rust-only bindings a stable core no longer justifies.
 - Run the §2 local-only checks the change made stale - charset table drift,
   charset interop, and the benchmark behind any number a page now states.
 - Push, then read the run. A branch whose CI has not been read is not handed

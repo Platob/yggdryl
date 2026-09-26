@@ -334,6 +334,7 @@ test('ASCII is six leaves: the shapes of UTF-8 in US-ASCII', () => {
   assert.throws(() => DataType.fixedAscii(0), /expected a width of at least one byte, got 0/)
   assert.throws(() => DataType.fixedAscii(2.5), /width must be an unsigned 32-bit integer/)
   assert.equal(DataType.fromLogicalName('sedol').toString(), 'sedol')
+  assert.equal(DataType.fromLogicalName('ric').toString(), 'ric')
 })
 
 test('every byte column is one datatype: a layout and a bound', () => {
@@ -455,9 +456,33 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(unit.codeWidth, 32)
   assert.equal(unit.fixedByteWidth, null)
   assert.throws(() => unit.asciiPacked('A'), /at most 16 bytes/)
+  // Its default is the empty text, which crosses as the string it is.
+  assert.equal(unit.defaultJSValue(), '')
   const figi = DataType.fromString('figi')
   assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
   assert.throws(() => figi.scalar('BBG000BLNQ17'), /FIGI|check/i)
+  // A Bloomberg identifier and a RIC are held to thirty-two bytes too, and
+  // neither has a neutral member to default to.
+  for (const name of ['bbg', 'ric']) {
+    const dtype = new DataType(name)
+    assert.equal(dtype.id, name)
+    assert.equal(dtype.toString(), name)
+    assert.equal(dtype.kind, 'code')
+    assert.equal(dtype.codeWidth, 32)
+    assert.equal(dtype.fixedByteWidth, null)
+    assert.equal(dtype.stringParameters, null)
+  }
+  // A RIC is one token of printable ASCII, its case kept.
+  const ric = DataType.from('ric')
+  assert.equal(ric.scalar('VOD.L').asJs(), 'VOD.L')
+  assert.equal(ric.scalar('ESc1').asJs(), 'ESc1')
+  assert.equal(ric.scalar('.SPX').asJs(), '.SPX')
+  assert.throws(() => ric.scalar('VOD L'), /printable ASCII/)
+  assert.throws(() => ric.scalar('X'.repeat(33)), /at most 32 bytes/)
+  // Empty text entering the column is absence, and with no neutral member a
+  // required column has no default to answer.
+  assert.equal(ric.scalar('').asJs(), null)
+  assert.throws(() => ric.defaultJSValue(), /Refinitiv Identification Code/)
 })
 
 test('the uuid is sixteen bytes spelled as one identifier', () => {
@@ -717,6 +742,7 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   assert.equal(StringEnum.fromLogicalName('cusip').length, 0)
   assert.equal(StringEnum.fromLogicalName('sedol').length, 0)
   assert.equal(StringEnum.fromLogicalName('figi').length, 0)
+  assert.equal(StringEnum.fromLogicalName('ric').length, 0)
 })
 
 test('the generated enum names each value by the integer it packs into', () => {

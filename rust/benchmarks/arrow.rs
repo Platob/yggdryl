@@ -717,7 +717,7 @@ fn isin_runs(count: usize) -> (Field, ArrayRef) {
         "encoded",
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::IsinCode.required_field("values"),
+            DataType::Isin.required_field("values"),
         )
         .expect("int32 is a run-end type"),
         false,
@@ -829,7 +829,7 @@ fn null_visibility_benchmarks(criterion: &mut Criterion) {
             )),
         );
         let compacted = alternating_list(
-            DataType::IsinCode.required_field("item"),
+            DataType::Isin.required_field("item"),
             Arc::new(arrow_array::StringArray::from(
                 (0..count)
                     .map(|row| if row % 2 == 0 { "US0378331005" } else { "BAD" })

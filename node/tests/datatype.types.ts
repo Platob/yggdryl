@@ -71,6 +71,8 @@ const ccyType: DataType = new DataType('ccy')
 const ccyTypeWidth: number | null = ccyType.fixedByteWidth
 const figiType: DataType = new DataType('figi')
 const figiTypeWidth: number | null = figiType.codeWidth
+const ricType: DataType = new DataType('ric')
+const ricTypeWidth: number | null = ricType.codeWidth
 const urlType: DataType = new DataType('url')
 const urlTypeWidth: number | null = urlType.fixedByteWidth
 
@@ -115,6 +117,8 @@ void ccyType
 void ccyTypeWidth
 void figiType
 void figiTypeWidth
+void ricType
+void ricTypeWidth
 void urlType
 void urlTypeWidth
 

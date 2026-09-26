@@ -171,18 +171,20 @@ test('Version field defaults and hints expose the native value with Arrow string
 })
 
 test('the datatype identifiers are laid out by family', () => {
-  // Eighty-five, laid out by family: every identifier sits in its family's
+  // Eighty-eight, laid out by family: every identifier sits in its family's
   // range and the list states them in that order, so `url` and `urn` follow
-  // `version` in the text family, `sized_utf8` follows `fixed_utf8`, and
-  // the geospatial pair closes the list. An identifier is a wire contract
-  // laid out by family, so a leaf added later lands beside its family and
-  // nothing ever moves.
-  assert.equal(enums.dataTypeIds.length, 87)
+  // `version` in the text family, `sized_utf8` follows `fixed_utf8`, `ric`
+  // closes the code family after `unit`, and the geospatial pair closes the
+  // list. An identifier is a wire contract laid out by family, so a leaf
+  // added later lands beside its family and nothing ever moves.
+  assert.equal(enums.dataTypeIds.length, 88)
   assert.equal(enums.dataTypeIds.includes('figi'), true)
+  assert.equal(enums.dataTypeIds.includes('bbg'), true)
   const ids = [...enums.dataTypeIds]
   assert.equal(ids.indexOf('url'), ids.indexOf('version') + 1)
   assert.equal(ids.indexOf('urn'), ids.indexOf('url') + 1)
   assert.equal(ids.indexOf('sized_utf8'), ids.indexOf('fixed_utf8') + 1)
+  assert.equal(ids.indexOf('ric'), ids.indexOf('unit') + 1)
   assert.deepEqual(ids.slice(-2), ['geometry', 'geography'])
   assert.deepEqual(ids.slice(0, 2), ['null', 'boolean'])
 })

@@ -17,10 +17,10 @@ its own packed code, registered once and announced once on the
 
 from __future__ import annotations
 
-from .string import CcyCode, CfiCode, CountryCode, MicCode
+from .string import Ccy, Cfi, Country, Mic
 
 
-class Country(CountryCode):
+class COUNTRY(Country):
     """ISO 3166-1 alpha-2, the two-letter country code."""
 
     AE = "AE"
@@ -60,7 +60,7 @@ class Country(CountryCode):
     ZA = "ZA"
 
 
-class Ccy(CcyCode):
+class CCY(Ccy):
     """ISO 4217, the three-letter currency code.
 
     The `ccy` datatype stores as the text it is, so a currency column
@@ -108,7 +108,7 @@ class Ccy(CcyCode):
     XPT = "XPT"
 
 
-class MIC(MicCode):
+class MIC(Mic):
     """ISO 10383, the four-character market identifier code.
 
     The registry lists thousands of venues and adds more every month, so the
@@ -172,7 +172,7 @@ class MIC(MicCode):
     XWAR = "XWAR"
 
 
-class CFI(CfiCode):
+class CFI(Cfi):
     """ISO 10962, the six-character classification of financial instruments.
 
     The first character is the category and the second the group; the last four
@@ -202,7 +202,7 @@ class CFI(CfiCode):
 
 __all__ = [
     "CFI",
-    "Country",
-    "Ccy",
+    "COUNTRY",
+    "CCY",
     "MIC",
 ]
