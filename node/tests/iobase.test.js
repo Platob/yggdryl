@@ -269,10 +269,19 @@ test('a name opens a handle as well as a location does', (t) => {
       /filesystem "s3tables" does not support holding a location of this scheme/,
     )
   }
-  assert.throws(
-    () => new IOBase('https://example.com/part.csv'),
-    /filesystem "https" does not support holding a location of this scheme/,
-  )
+  // An `http` or `https` URL is the request that reads and writes the resource
+  // it names, and holding one sends nothing: the name and the media type come
+  // from the URL, and a child is a request of its own.
+  for (const scheme of ['http', 'https']) {
+    const handle = new IOBase(`${scheme}://example.com/lake/part.parquet`)
+    assert.equal(handle.url.toString(), `${scheme}://example.com/lake/part.parquet`)
+    assert.equal(handle.name, 'part.parquet')
+    assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
+    assert.equal(
+      IOBase.from(new Url(`${scheme}://example.com/a.csv`)).mediaType.toString(),
+      'text/csv',
+    )
+  }
 })
 
 test('a missing location is empty rather than an error', (t) => {

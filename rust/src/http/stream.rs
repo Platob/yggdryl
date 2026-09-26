@@ -11,17 +11,31 @@
 //! transport failure resumes, only while consecutive failures stay under the
 //! client's attempt limit, and only when the first answer said
 //! `Accept-Ranges: bytes` or was itself a `206`; a byte arriving resets the
-//! failure count, so a transfer that keeps moving survives any number of
-//! interruptions while one that cannot deliver a byte stops.
+//! failure count, so a transfer that keeps moving survives interruption
+//! after interruption while one that cannot deliver a byte stops - up to
+//! [`Stream::MAX_RESUMES`] re-opens of one transfer, past which a server cutting
+//! every connection short costs a bounded number of requests. A re-opened
+//! `206` must state in `Content-Range` that it starts at the cursor, or the
+//! bytes are not spliced.
 //!
 //! As an [`IOBase`] a stream reads forward: a position at or beyond the
 //! delivered cursor skips to it, one behind re-opens a range when the
 //! resource accepts one and is refused by name otherwise. Writes are refused.
-//! The lock over the transfer is held across a read, because a transfer is
-//! one sequence of bytes and two readers of it cannot both go forward; the
-//! accessors beside it take it for a load and let it go.
+//! The lock over the transfer is held across a read, a resume's pause
+//! included, because a transfer is one sequence of bytes and two readers of
+//! it cannot both go forward; [`Stream::delivered`] and [`Stream::resumes`]
+//! read counters published beside it and never wait on it.
+//!
+//! A stream stands alone: it carries the request that opened it, and that
+//! request its session, so nothing else has to be held for it to go on.
+//! [`IOBase::close`] lets go of the live transfer and its connection while
+//! keeping the cursor; the next read - or [`IOBase::open`] - re-opens it at
+//! the cursor with one ranged `GET` naming the first answer's validator, so
+//! a stream parked for a while costs no connection and resumes exactly where
+//! it stopped, or is refused if the resource changed meanwhile.
 
 use std::io::{self, Read};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::client::Answer;
@@ -32,6 +46,10 @@ use crate::{ByteStream, Error, IOBase, IOKind, Listing, MediaType, Result, Uri, 
 
 /// The scratch a skip or a discard reads into.
 const DISCARD_CHUNK: usize = 64 * 1024;
+
+/// The most a whole read reserves on the strength of a stated length alone;
+/// past it the buffer grows as the bytes arrive.
+const RESERVE_CAP: usize = 64 << 20;
 
 /// A response body read forward, re-opened from the delivered cursor when
 /// the transport fails under it.
@@ -58,6 +76,10 @@ pub struct Stream {
     media_type: MediaType,
     total: Option<u64>,
     inner: Mutex<Inner>,
+    /// `Inner::delivered` and `Inner::resumes` as last published, read
+    /// without the lock.
+    delivered: AtomicU64,
+    resumes: AtomicU32,
 }
 
 /// What a read moves.
@@ -98,9 +120,16 @@ struct Transfer {
     validator: Option<String>,
     /// Whether the resource accepts a range, so a failure may re-open one.
     resumable: bool,
+    /// Whether the live transfer was let go by a close; the next read
+    /// re-opens it at the cursor.
+    closed: bool,
 }
 
 impl Stream {
+    /// The most times one transfer is re-opened after a transport failure,
+    /// however many bytes each re-open delivered.
+    pub const MAX_RESUMES: u32 = 256;
+
     /// A stream over `answer`, the body of `request` at `url`, covering the
     /// window from `start` to `last` (`None` for the end).
     ///
@@ -145,11 +174,14 @@ impl Stream {
                     expected,
                     validator,
                     resumable,
+                    closed: false,
                 })),
                 delivered: 0,
                 failures: 0,
                 resumes: 0,
             }),
+            delivered: AtomicU64::new(0),
+            resumes: AtomicU32::new(0),
         }
     }
 
@@ -167,6 +199,8 @@ impl Stream {
                 failures: 0,
                 resumes: 0,
             }),
+            delivered: AtomicU64::new(0),
+            resumes: AtomicU32::new(0),
         }
     }
 
@@ -178,7 +212,7 @@ impl Stream {
 
     /// Bytes handed to the caller so far: the resume cursor.
     pub fn delivered(&self) -> u64 {
-        self.inner().map_or(0, |inner| inner.delivered)
+        self.delivered.load(Ordering::Acquire)
     }
 
     /// The length the headers stated: the `Content-Range` total, else
@@ -189,7 +223,7 @@ impl Stream {
 
     /// How many times the transfer was re-opened.
     pub fn resumes(&self) -> u32 {
-        self.inner().map_or(0, |inner| inner.resumes)
+        self.resumes.load(Ordering::Acquire)
     }
 
     /// The headers of the answer the stream reads.
@@ -208,23 +242,103 @@ impl Stream {
     /// resource without ranges.
     pub(crate) fn read_from(&self, position: u64, limit: u64) -> Result<Vec<u8>> {
         let mut inner = self.inner()?;
-        seek(&mut inner, position)?;
-        let mut bytes = Vec::new();
-        let mut chunk = vec![0_u8; DISCARD_CHUNK];
-        loop {
-            let read = read_inner(&mut inner, &mut chunk).map_err(io_into_error)?;
-            if read == 0 {
-                return Ok(bytes);
-            }
-            if (bytes.len() + read) as u64 > limit {
-                return Err(oversized_body(limit, self.url.as_ref()));
-            }
-            bytes.extend_from_slice(&chunk[..read]);
-        }
+        // The length the headers state, when they state one inside the
+        // bound, is reserved at once: one allocation rather than doublings.
+        let stated = self
+            .total
+            .map(|total| total.saturating_sub(position))
+            .filter(|length| *length <= limit)
+            .and_then(|length| usize::try_from(length).ok());
+        let read = read_rest(
+            &mut inner,
+            position,
+            limit,
+            stated.unwrap_or(0),
+            self.url.as_ref(),
+        );
+        self.publish(&inner);
+        read
+    }
+
+    /// The largest body a whole read holds: the session's `max_body_size`
+    /// for a transfer, unbounded for bytes already held.
+    fn max_body_size(&self) -> Result<u64> {
+        Ok(match &self.inner()?.source {
+            Source::Wire(transfer) => transfer.request.session().options().max_body_size(),
+            Source::Bytes(_) => u64::MAX,
+        })
     }
 
     fn inner(&self) -> Result<MutexGuard<'_, Inner>> {
         self.inner.lock().map_err(|_| poisoned())
+    }
+
+    /// Whether a live transfer is held: a body already held never is.
+    pub(crate) fn is_live(&self) -> bool {
+        self.inner()
+            .is_ok_and(|inner| matches!(&inner.source, Source::Wire(transfer) if !transfer.closed))
+    }
+
+    /// Let go of the live transfer and its connection, keeping the cursor.
+    pub(crate) fn release(&self) -> Result<()> {
+        let mut inner = self.inner()?;
+        if let Source::Wire(transfer) = &mut inner.source {
+            transfer.reader = Box::new(io::empty());
+            transfer.closed = true;
+        }
+        Ok(())
+    }
+
+    /// Re-open a released transfer at the cursor now, rather than on the
+    /// next read; a live one is left as it is.
+    pub(crate) fn reacquire(&self) -> Result<()> {
+        let mut inner = self.inner()?;
+        let delivered = inner.delivered;
+        if let Source::Wire(transfer) = &mut inner.source {
+            if transfer.closed {
+                reopen(transfer, delivered).map_err(io_into_error)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Publish the counters a read moved, for the accessors to read.
+    fn publish(&self, inner: &Inner) {
+        self.delivered.store(inner.delivered, Ordering::Release);
+        self.resumes.store(inner.resumes, Ordering::Release);
+    }
+}
+
+/// Read the rest from `position`, holding at most `limit` bytes, with room
+/// for `reserve` of them made first - at most [`RESERVE_CAP`], so a stated
+/// length the body does not keep costs no more than that.
+///
+/// The bytes are read straight into the vector, each region zeroed once and
+/// no scratch chunk copied from.
+fn read_rest(
+    inner: &mut Inner,
+    position: u64,
+    limit: u64,
+    reserve: usize,
+    url: Option<&Url>,
+) -> Result<Vec<u8>> {
+    seek(inner, position)?;
+    let mut bytes = vec![0_u8; reserve.clamp(DISCARD_CHUNK, RESERVE_CAP)];
+    let mut filled = 0;
+    loop {
+        if filled == bytes.len() {
+            let grow = DISCARD_CHUNK.max(bytes.len() / 2);
+            bytes.resize(bytes.len() + grow, 0);
+        }
+        let read = read_inner(inner, &mut bytes[filled..]).map_err(io_into_error)?;
+        if read == 0 {
+            bytes.truncate(filled);
+            return Ok(bytes);
+        }
+        filled += read;
+        if filled as u64 > limit {
+            return Err(oversized_body(limit, url));
+        }
     }
 }
 
@@ -246,7 +360,10 @@ impl Read for Stream {
             .inner
             .get_mut()
             .map_err(|_| io::Error::other(poisoned()))?;
-        read_inner(inner, buffer)
+        let read = read_inner(inner, buffer);
+        *self.delivered.get_mut() = inner.delivered;
+        *self.resumes.get_mut() = inner.resumes;
+        read
     }
 }
 
@@ -266,8 +383,10 @@ impl IOBase for Stream {
     /// [`Error::Io`].
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let mut inner = self.inner()?;
-        seek(&mut inner, offset)?;
-        read_inner(&mut inner, buffer).map_err(io_into_error)
+        let read = seek(&mut inner, offset)
+            .and_then(|()| read_inner(&mut inner, buffer).map_err(io_into_error));
+        self.publish(&inner);
+        read
     }
 
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
@@ -280,9 +399,12 @@ impl IOBase for Stream {
         )
     }
 
+    /// The whole body from its first byte, within the session's
+    /// `max_body_size`: a stream already read past its start re-opens a
+    /// range for the prefix, and one without ranges is refused by name
+    /// rather than answering the rest as if it were the whole.
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        let position = self.delivered();
-        self.read_from(position, u64::MAX)
+        self.read_from(0, self.max_body_size()?)
     }
 
     fn pwrite(&mut self, _offset: u64, _bytes: &[u8]) -> Result<usize> {
@@ -327,6 +449,22 @@ impl IOBase for Stream {
 
     fn kind(&self) -> IOKind {
         IOKind::File
+    }
+
+    /// Re-open a closed transfer at the cursor: one ranged `GET`.
+    fn open(&mut self) -> Result<()> {
+        self.reacquire()
+    }
+
+    /// Whether the live transfer is held.
+    fn opened(&self) -> bool {
+        self.is_live()
+    }
+
+    /// Let go of the live transfer and its connection; the cursor stays,
+    /// and the next read re-opens at it.
+    fn close(&mut self) -> Result<()> {
+        self.release()
     }
 
     fn is_container(&self) -> bool {
@@ -434,6 +572,13 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
             Ok(count)
         }
         Source::Wire(transfer) => loop {
+            if transfer.closed {
+                // Closed by the caller: re-opened here, at the cursor, which
+                // is no failure and spends none of the resume budget.
+                if !reopen(transfer, inner.delivered)? {
+                    return Ok(0);
+                }
+            }
             if let Some(last) = transfer.last {
                 let window = last.saturating_sub(transfer.start).saturating_add(1);
                 if inner.delivered >= window {
@@ -453,6 +598,7 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
                     if !transfer.resumable
                         || !is_resumable(&error)
                         || inner.failures.saturating_add(1) >= client.max_attempts()
+                        || inner.resumes >= Stream::MAX_RESUMES
                     {
                         return Err(error);
                     }
@@ -549,7 +695,11 @@ fn window_length(headers: &Headers, status: Status, start: u64, last: Option<u64
 /// having changed, any other status a remote refusal.
 fn reopen(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
     let from = transfer.start.saturating_add(delivered);
-    if transfer.last.is_some_and(|last| from > last) {
+    if transfer.last.is_some_and(|last| from > last)
+        || transfer
+            .expected
+            .is_some_and(|expected| delivered >= expected)
+    {
         return Ok(false);
     }
     let (answer, url) = transfer
@@ -559,16 +709,23 @@ fn reopen(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
     transfer.request.session().client_ref().record_resume();
     match answer.status {
         Status::PARTIAL_CONTENT => {
-            let stated = answer.headers.content_range().map_err(io::Error::other)?;
-            if let Some(ContentRange::Bytes { start, .. }) = stated {
-                if start != from {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("resumed {url} from byte {from}, got a range starting at {start}"),
-                    ));
+            // Splicing bytes whose place is unknown corrupts the body, so a
+            // `206` is taken only when it says it starts at the cursor.
+            match answer.headers.content_range().map_err(io::Error::other)? {
+                Some(ContentRange::Bytes { start, .. }) if start == from => {}
+                Some(ContentRange::Bytes { start, .. }) => {
+                    return Err(misplaced(format!(
+                        "resumed {url} from byte {from}, got a range starting at {start}"
+                    )));
+                }
+                _ => {
+                    return Err(misplaced(format!(
+                        "resumed {url} from byte {from}, got a 206 stating no Content-Range"
+                    )));
                 }
             }
             transfer.reader = answer.body;
+            transfer.closed = false;
             transfer.skip = 0;
             Ok(true)
         }
@@ -589,6 +746,7 @@ fn reopen(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
                 }
             }
             transfer.reader = answer.body;
+            transfer.closed = false;
             transfer.skip = from;
             Ok(true)
         }
@@ -611,6 +769,15 @@ fn reopen(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
         }
         _ => Err(io::Error::other(refusal(&answer, &url))),
     }
+}
+
+/// A resumed range whose bytes have no known place in the body: a refusal,
+/// so it is the caller's to hear rather than the transport failure before it.
+fn misplaced(message: String) -> io::Error {
+    io::Error::other(Error::Io(io::Error::new(
+        io::ErrorKind::InvalidData,
+        message,
+    )))
 }
 
 /// A status that refuses a resume, as the remote refusal it is.

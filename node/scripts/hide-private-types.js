@@ -4,7 +4,10 @@ const { readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const declarationPath = join(__dirname, '..', 'index.d.ts')
-const privateTypes = [['ArrowWriteSession', 'JsArrowWriteSession']]
+const privateTypes = [
+  ['ArrowWriteSession', 'JsArrowWriteSession'],
+  ['SendAllAnswers', 'JsSendAllAnswers'],
+]
 const loaderPath = join(__dirname, '..', 'index.js')
 
 function occurrences(source, needle) {

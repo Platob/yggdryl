@@ -11,6 +11,7 @@ from . import (
     graph as graph,
     gzip as gzip,
     holder as holder,
+    http as http,
     iceberg as iceberg,
     integer as integer,
     json as json,

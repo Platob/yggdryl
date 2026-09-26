@@ -288,7 +288,7 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
-`iceberg` (implies `parquet`), `aws`, `s3` (implies `aws`). Examples live in docs - no `examples/`
+`iceberg` (implies `parquet`), `http`, `aws` (implies `http`), `s3` (implies `aws`). Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
 root file, and `value/` - the contracts a datatype, a field and a value each
 owe the root that holds them - is the one folder among them; every
@@ -338,10 +338,11 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `StringType::read_text` and `StringType::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
-| `auth/` | what every identity provider shares, private and under the `aws` feature: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
+| `auth/` | what every identity provider shares, private and under the `http` feature - `Secret` and the `variable` reader the HTTP client needs, the rest under `aws`: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
 | `aws/` | who this process is to AWS, and where AWS is, for every consumer that signs an AWS request: `session.rs` the one door - `Session`, what a caller states, the rest resolved lazily once and cached, the credential chain walked in botocore's order with every configured-but-broken source recorded and passed over rather than failing the walk, a temporary set refreshed before it lapses and kept while a refresh fails until it has - `credentials.rs` the `Credentials` value and the JSON document the metadata services and a `credential_process` answer, `environment.rs` (under `s3`) the variables the session reads for itself and the S3 sweep leaves to it, `profile.rs` the `~/.aws/config` and `~/.aws/credentials` reading (`[profile x]`, `[sso-session x]`, `[services x]`, indented tables, the credentials file winning) and `Profile`, `sts.rs` `AssumedRole` with `AssumeRole`, `AssumeRoleWithWebIdentity` and the `~/.aws/cli/cache` the CLI shares, `sso.rs` the IAM Identity Center token cache, its refresh, the device sign-in and the portal exchange, `process.rs`, `container.rs` and `metadata.rs` the three remaining sources, `sigv4.rs` Signature Version 4 for every service; under the non-default `aws` feature, which `s3` implies |
 | `xml/` | the XML structured codec over `Scalar` - a document is the record naming its root element, `@name` an attribute, `#text` an element's own text beside attributes or children, a repeated element a sequence, a self-closed element null and an emptied one the empty text, every leaf text - `mod.rs` the doors, `parser.rs` the quick-xml event fold, `wire.rs` the writer and the field-directed reshaping (a repeated element read once is one item, absent is the empty sequence, text trimmed and empty text null under a non-text leaf); `scanner.rs` beside them, private and under the `aws` feature, the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element, each reader naming its own vocabulary over it |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
+| `http/` | HTTP behind `IOBase`, under the non-default `http` feature, which `aws` implies: one synchronous HTTP/1.1 client over `ureq` (`client.rs` `Client`, the pool and transport knobs, and `StatsSnapshot`), `session.rs` `Session` - the one place a request goes out: defaults, authorization, the cookie jar, `Accept-Encoding`, retries, redirects - `request.rs` `Request` and `Body`, `response.rs` `Response`, `stream.rs` `Stream`, `pages.rs` `Pages` and `pagination.rs` `Pagination`, the four roles a `Holder` holds (`HttpSession` a container over a base URL, `HttpRequest` the leaf a URL names, `HttpResponse` one answer's body as sent, `HttpStream` a body on the wire); `headers.rs` `Headers` over the crate's `Metadata` under the `HTTP:` protocol key with the typed readers beside it and `headers/` the date, link, range and entity-tag grammars; `method.rs`, `status.rs`, `cookie.rs`, `authorization.rs`, `options.rs` `HttpOptions`; `wire.rs` the RFC 9112 message grammar every `message/http` door and the server share; `retry.rs`, crate-private, the retry budget, backoff and verdicts the S3 client draws on too; `server.rs` with `server/` the `Server` hosting any `Holder` and programmable routes over the same grammar, which the tests run every client feature against |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
@@ -997,6 +998,76 @@ under the names its own index has: `ZipNode` is a prefix of that index,
 - `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
   handle beneath it; the cost model in the ZIP section of `docs/holder/index.md` is stated
   and asserted in those terms.
+
+### HTTP (`http/`, non-default `http` feature)
+
+A resource an `http` or `https` URL names is a `Request` leaf answering every
+`IOBase` verb, and each verb is a stated number of requests the accounting
+tests in `rust/tests/http/` assert exactly:
+
+| Operation | Requests |
+| --- | --- |
+| building a session or a request, resolving a child | 0 |
+| `pread`, `read_range_bytes`, `read_range_digest` | 1 ranged `GET` |
+| `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | 1 `GET` + 1 per resume |
+| `size`, `mtime`, `kind` while closed | 1 `HEAD`; 0 while open |
+| `write_all_bytes`, `clear` | 1 `PUT` |
+| `pwrite` then `flush`, `append_bytes` | 1 `GET` + 1 `PUT` |
+| `remove` | 1 `DELETE`; a `404` is success |
+| `send`, `stream` | 1 per attempt + 1 per redirect hop + 1 per resume |
+| a closed `Response` or `Stream` read again, or `open` | 1 ranged `GET` at the cursor |
+| `pages`, a paginated `read_arrow_reader` | 1 `GET` per page |
+
+- `Session::send` is the one place a request goes out; everything a request
+  carries beyond its own headers - defaults, authorization, cookies,
+  `Accept-Encoding`, `User-Agent` - is merged there and nowhere else. A ranged
+  or streamed request asks for `identity`, so a byte offset means the same on
+  both ends; content codings are decoded by the crate's `Codec`, never by the
+  transport.
+- A handle learns from the answers it already has: `Content-Type` once
+  (a declared media type wins, the URL's suffix answers until then),
+  `Content-Length` and `Content-Range` for the size while open,
+  `Last-Modified` for `mtime`. It never asks a second question to learn one.
+- Resume, never splice: a cut body re-issues `Range: bytes=<delivered>-` with
+  `If-Range` naming the first answer's strong `ETag` or `Last-Modified`, only
+  when the first answer offered ranges, and only while consecutive failures
+  stay under `max_attempts` and `Stream::MAX_RESUMES` re-opens in all; a
+  resumed `206` must state in `Content-Range` that it starts at the cursor;
+  a resource whose validator moved is `Error::Conflict`. Every whole-body
+  read goes through that stream, so `send` resumes as `stream` does, and a
+  `Response` or `Stream` stands alone - request and session carried - so
+  `close` lets go of the transfer and keeps the cursor, and the next read
+  re-opens there.
+- Retry only what cannot do harm twice: a retryable status only for an
+  idempotent method, a transport failure for an idempotent method or a
+  connection that never opened; `Retry-After` (delta or HTTP-date) waited up
+  to `max_pause` and never past it; one token budget per client. A redirect to
+  another origin carries no credential the caller stated.
+- The proxy is chosen per request: a named `proxy` wins; else, reading the
+  environment, `no_proxy`, then the scheme's `http_proxy`/`https_proxy`,
+  then `all_proxy`, lower case first - read at send time so a changed
+  environment is followed, the parse memoized by value (`http/proxy.rs`); a
+  request naming no credential takes its host's `.netrc` entry, the file
+  parsed once per version (`http/netrc.rs`).
+- `Session::send_all` is a stream: the source is pulled only as far as the
+  requests in flight and the walk is `Send + 'static`; a binding holds it and
+  pulls one answer per step, never collecting.
+- Pagination is one ladder, `Pagination::Auto`: the `Link` header, the
+  next-page headers, a next URL in the body, a cursor sent back under the
+  parameter the request already carries; a visited URL, `has_more` false or an
+  empty page ends the walk, and a failed page resumes from its own request,
+  never from the first. `Pages` lays every page out through `Serie` under the
+  root the first page infers or the caller declares.
+- `HttpOptions::from_properties` is the one property door, and
+  `Holder::from_url` routes `http`/`https` through it; a name it does not know
+  is ignored and a value it cannot read is refused naming the property.
+- `Server` is the crate's own answer to its own client: every client feature
+  is tested against it, a mounted holder streams through `pstream_bytes` and is
+  never read whole, and faults are injected per path rather than faked by a
+  second implementation. It stays bounded against peers it does not trust -
+  `max_connections`, a head deadline, a write timeout, a capped request log,
+  `TCP_NODELAY` - and `with_tunnel` makes it the forward proxy the client's
+  proxy handling is tested through.
 
 ### Object stores (`s3/`, non-default `s3` feature)
 

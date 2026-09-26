@@ -81,6 +81,9 @@ const STACK_KEY: usize = 128;
 pub struct Headers(Metadata);
 
 impl Headers {
+    /// The most codings [`Self::content_encoding`] reads in one chain.
+    pub const MAX_CODINGS: usize = 5;
+
     /// The empty section, sharing the empty metadata map: no allocation.
     pub fn new() -> Self {
         Self(Metadata::new())
@@ -358,13 +361,22 @@ impl Headers {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] with `target` `http header` for a coding this
-    /// crate cannot decode (`br`, `compress`) or a token no coding has.
+    /// crate cannot decode (`br`, `compress`), a token no coding has, or more
+    /// than [`Self::MAX_CODINGS`] codings: each is a decoder stacked on the
+    /// body, and no sender applies that many.
     pub fn content_encoding(&self) -> Result<Vec<Codec>> {
         let Some(value) = self.get("content-encoding") else {
             return Ok(vec![Codec::Identity]);
         };
         let mut codecs = Vec::new();
         for member in list_members(value) {
+            if codecs.len() == Self::MAX_CODINGS {
+                return Err(refuse(
+                    "Content-Encoding",
+                    &format!("more than {} codings", Self::MAX_CODINGS),
+                    value,
+                ));
+            }
             if member.eq_ignore_ascii_case(Codec::Identity.as_str()) {
                 codecs.push(Codec::Identity);
                 continue;
@@ -469,24 +481,9 @@ impl Headers {
     /// Returns [`Error::Parse`] when the value is neither delta seconds nor
     /// an HTTP-date.
     pub fn retry_after(&self, now_ns: i64) -> Result<Option<Duration>> {
-        let Some(value) = self.get("retry-after") else {
-            return Ok(None);
-        };
-        let trimmed = value.trim_matches([' ', '\t']);
-        if !trimmed.is_empty() && trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
-            let seconds = trimmed
-                .parse()
-                .map_err(|_| refuse("Retry-After", "expected delta seconds a u64 holds", value))?;
-            return Ok(Some(Duration::from_secs(seconds)));
-        }
-        let instant = parse_http_date(trimmed).map_err(|_| {
-            refuse(
-                "Retry-After",
-                "expected delta seconds or an HTTP-date",
-                value,
-            )
-        })?;
-        Ok(Some(pause_until(instant, now_ns)))
+        self.get("retry-after")
+            .map(|value| read_retry_after(value, now_ns))
+            .transpose()
     }
 
     /// `Link` parsed into its link values.
@@ -616,9 +613,37 @@ impl Headers {
     }
 }
 
+/// The fields whose values are credentials, which `Debug` never prints.
+const CREDENTIAL_FIELDS: [&str; 4] = [
+    "authorization",
+    "cookie",
+    "proxy-authorization",
+    "set-cookie",
+];
+
+/// What `Debug` prints in place of a credential.
+struct Redacted;
+
+impl fmt::Debug for Redacted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+/// A debug rendering: every field, a credential's value `<redacted>` so a
+/// logged request or answer leaks no token or session. `Display` and serde
+/// are the data forms and carry every value as it is.
 impl fmt::Debug for Headers {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_map().entries(self.iter()).finish()
+        let mut map = formatter.debug_map();
+        for (name, value) in self.iter() {
+            if CREDENTIAL_FIELDS.contains(&name) {
+                map.entry(&name, &Redacted);
+            } else {
+                map.entry(&name, &value);
+            }
+        }
+        map.finish()
     }
 }
 
@@ -862,6 +887,26 @@ fn with_key<R>(name: &str, read: impl FnOnce(&str) -> R) -> R {
 }
 
 /// The time from `now_ns` until `instant_ns`, zero when it has passed.
+/// One `Retry-After` value as the pause it asks for at `now_ns`: the one
+/// reader [`Headers::retry_after`] and every retrying client share.
+pub(crate) fn read_retry_after(value: &str, now_ns: i64) -> Result<Duration> {
+    let trimmed = value.trim_matches([' ', '\t']);
+    if !trimmed.is_empty() && trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
+        let seconds = trimmed
+            .parse()
+            .map_err(|_| refuse("Retry-After", "expected delta seconds a u64 holds", value))?;
+        return Ok(Duration::from_secs(seconds));
+    }
+    let instant = parse_http_date(trimmed).map_err(|_| {
+        refuse(
+            "Retry-After",
+            "expected delta seconds or an HTTP-date",
+            value,
+        )
+    })?;
+    Ok(pause_until(instant, now_ns))
+}
+
 fn pause_until(instant_ns: i64, now_ns: i64) -> Duration {
     Duration::from_nanos(u64::try_from(instant_ns.saturating_sub(now_ns)).unwrap_or(0))
 }

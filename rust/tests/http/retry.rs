@@ -10,8 +10,8 @@ use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
 use yggdryl::internals::http_retry::{
-    RETRY_AFTER_CAP, RETRY_BACKOFF, RETRY_BACKOFF_CAP, RETRY_COST, RETRY_REFUND, RETRY_TOKENS,
-    RetryBudget, backoff, delay, fresh_jitter, is_resumable, is_retryable_transport, retry_after,
+    RETRY_BACKOFF, RETRY_BACKOFF_CAP, RETRY_COST, RETRY_REFUND, RETRY_TOKENS, RetryBudget, backoff,
+    delay, fresh_jitter, is_resumable, is_retryable_transport, retry_after,
 };
 
 #[test]
@@ -94,26 +94,22 @@ fn the_budget_pays_for_retries_until_it_runs_out_and_refunds_never_exceed_the_st
 }
 
 #[test]
-fn retry_after_reads_delta_seconds_up_to_the_cap_and_nothing_else() {
-    assert_eq!(RETRY_AFTER_CAP, Duration::from_secs(30));
+fn retry_after_reads_delta_seconds_or_a_date_and_nothing_else() {
     assert_eq!(retry_after(None), None);
     assert_eq!(retry_after(Some("0")), Some(Duration::ZERO));
     assert_eq!(retry_after(Some("3")), Some(Duration::from_secs(3)));
     assert_eq!(retry_after(Some("  7 ")), Some(Duration::from_secs(7)));
-    assert_eq!(retry_after(Some("30")), Some(RETRY_AFTER_CAP));
-    // Past the cap is "not now", which the client answers as a backoff.
-    assert_eq!(retry_after(Some("31")), None);
-    assert_eq!(retry_after(Some("3600")), None);
-    // Not delta-seconds: the HTTP-date spelling, a sign, a fraction, text.
-    for malformed in [
-        "Wed, 21 Oct 2015 07:28:00 GMT",
-        "-1",
-        "+3",
-        "2.5",
-        "soon",
-        "",
-        "99999999999999999999999",
-    ] {
+    // No cap here: whether a long pause is waited is each client's call.
+    assert_eq!(retry_after(Some("3600")), Some(Duration::from_secs(3600)));
+    // A date that has passed asks for no pause at all.
+    assert_eq!(
+        retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")),
+        Some(Duration::ZERO)
+    );
+    let far = retry_after(Some("Fri, 01 Jan 2100 00:00:00 GMT")).expect("a date reads");
+    assert!(far > Duration::from_secs(86_400 * 365), "{far:?}");
+    // Neither spelling: a sign, a fraction, text, nothing, an overflow.
+    for malformed in ["-1", "+3", "2.5", "soon", "", "99999999999999999999999"] {
         assert_eq!(retry_after(Some(malformed)), None, "{malformed:?}");
     }
 }

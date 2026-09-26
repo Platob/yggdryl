@@ -11,8 +11,9 @@ A struct `Field` is the schema. There is no separate record or schema type: a
 non-null `Struct` field describes rows, and a row is one ordered
 `Scalar::Serie` with one value per child field.
 
-Storage backends (local, memory-mapped, ZIP, and the S3, Google Cloud Storage,
-and Azure Blob object stores behind the `s3` feature), record media, and the FIX
+Storage backends (local, memory-mapped, ZIP, HTTP behind the `http` feature,
+and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
+feature), record media, and the FIX
 protocol are core domains over those same values; the expression layer is a
 grammar over them, never a second query engine.
 
@@ -58,7 +59,8 @@ rust/                    The core crate
                          iofile.rs and iomedia.rs are root files
   src/holder/            What every storage backend shares: Holder, Buffer,
                          Buffered, Counted
-  src/{local,fs,zip,s3}/ One folder per storage backend
+  src/{local,fs,zip,s3,http}/
+                         One folder per storage backend
   src/coding/            What every codec shares: Coded and Codec dispatch
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record

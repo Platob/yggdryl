@@ -85,6 +85,52 @@ fn a_domain_that_does_not_cover_the_host_is_refused() {
     }
 }
 
+#[test]
+fn a_domain_naming_a_public_suffix_is_refused_so_no_origin_plants_a_supercookie() {
+    for (header, at) in [
+        ("session=abc; Domain=com", "https://evil.example.com/"),
+        ("session=abc; Domain=.co.uk", "https://evil.example.co.uk/"),
+        ("session=abc; Domain=github.io", "https://evil.github.io/"),
+        // A name the list does not know is its own suffix, by the `*` rule.
+        ("session=abc; Domain=internal", "https://app.internal/"),
+    ] {
+        let error = refused(header, at);
+        let Error::Parse {
+            position, reason, ..
+        } = error
+        else {
+            panic!("{header:?}: {error:?}");
+        };
+        assert_eq!(position, "session=abc;".len(), "{header:?}");
+        assert!(reason.contains("public suffix"), "{header:?}: {reason}");
+    }
+    // Refused, so a sibling origin under that suffix never receives it.
+    let mut jar = CookieJar::new();
+    let mut answer = Headers::new();
+    answer
+        .append("Set-Cookie", "sid=planted; Domain=com")
+        .unwrap();
+    let stored = jar.set_from_headers(&url("https://evil.example.com/"), &answer, JUNE_9_2021);
+    assert_eq!(stored, 0);
+    assert_eq!(
+        jar.header_for(&url("https://victim-bank.com/"), JUNE_9_2021),
+        None
+    );
+}
+
+#[test]
+fn a_host_that_is_itself_a_public_suffix_keeps_its_cookie_to_itself() {
+    let kept = cookie("k=v; Domain=github.io", "https://github.io/");
+    assert_eq!(kept.domain, "github.io");
+    assert!(kept.host_only);
+    assert!(kept.matches(&url("https://github.io/"), JUNE_9_2021));
+    assert!(!kept.matches(&url("https://victim.github.io/"), JUNE_9_2021));
+    // A registrable domain under a suffix still covers its subdomains.
+    let cover = cookie("k=v; Domain=example.co.uk", "https://api.example.co.uk/");
+    assert_eq!(cover.domain, "example.co.uk");
+    assert!(!cover.host_only);
+}
+
 // --- reading -----------------------------------------------------------------
 
 #[test]

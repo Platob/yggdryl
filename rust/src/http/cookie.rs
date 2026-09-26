@@ -175,7 +175,20 @@ impl Cookie {
                             "the Domain attribute does not cover the host that set the cookie",
                         ));
                     }
-                    cover = Some(stated);
+                    // Section 5.3 step 5: a public suffix covers every origin
+                    // under it, so it is no cover at all - the host that is
+                    // itself one keeps the cookie to itself, any other host
+                    // is refused.
+                    if is_public_suffix(&stated) {
+                        if stated != host {
+                            return Err(refusal(
+                                start,
+                                "the Domain attribute names a public suffix, which no cookie may cover",
+                            ));
+                        }
+                    } else {
+                        cover = Some(stated);
+                    }
                 }
             } else if attribute_name.eq_ignore_ascii_case("path") {
                 if attribute_value.starts_with('/') {
@@ -378,6 +391,16 @@ fn domain_matches(host: &str, domain: &str) -> bool {
     host.len() > domain.len()
         && host.ends_with(domain)
         && host.as_bytes()[host.len() - domain.len() - 1] == b'.'
+}
+
+/// Whether `domain` is a public suffix - a name under which anyone may
+/// register, `com`, `co.uk`, `github.io` - by the Public Suffix List, a name
+/// the list does not know being its own suffix under the list's `*` rule.
+fn is_public_suffix(domain: &str) -> bool {
+    use psl::Psl as _;
+    psl::List
+        .suffix(domain.as_bytes())
+        .is_some_and(|suffix| suffix.as_bytes() == domain.as_bytes())
 }
 
 /// Whether `host` is an IPv4 or IPv6 literal, which no cover domain reaches.

@@ -36,6 +36,12 @@ use crate::http::retry::{
 };
 use crate::{Error, Result, Url};
 
+/// The `Retry-After` a store asked for, when it is short enough to wait
+/// inside one call; a longer one is "not now" and the backoff decides.
+fn patient_pause(value: Option<&str>) -> Option<Duration> {
+    retry::retry_after(value).filter(|asked| *asked <= crate::http::HttpOptions::DEFAULT_MAX_PAUSE)
+}
+
 /// The region assumed when nothing names one; also the signing region for the
 /// `GetBucketLocation`-free discovery a redirect performs.
 const DEFAULT_REGION: &str = "us-east-1";
@@ -818,7 +824,7 @@ impl Client {
                 continue;
             }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
-                self.pause(attempt, retry::retry_after(answer.header("retry-after")));
+                self.pause(attempt, patient_pause(answer.header("retry-after")));
                 continue;
             }
             self.settle(&answer, attempt);
@@ -1061,7 +1067,7 @@ impl Client {
                     continue;
                 }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
-                    self.pause(attempt, retry::retry_after(answer.header("retry-after")));
+                    self.pause(attempt, patient_pause(answer.header("retry-after")));
                     continue;
                 }
                 self.settle(&answer, attempt);

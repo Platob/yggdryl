@@ -643,7 +643,12 @@ fn send_reader_streams_the_upload_with_its_length() {
     let server = HttpServer::start();
     server.echo("/echo");
     let session = Session::new();
-    let request = session.post(&server.url("/echo"), Body::Empty).unwrap();
+    // A length the caller stated too is the one the transport states, once.
+    let request = session
+        .post(&server.url("/echo"), Body::Empty)
+        .unwrap()
+        .with_header("Content-Length", "5")
+        .unwrap();
     let mut source = std::io::Cursor::new(b"hello".to_vec());
 
     let response = request.send_reader(&mut source, 5).unwrap();

@@ -808,6 +808,35 @@ def test_an_object_store_location_reaches_the_native_backend_without_touching_it
     assert str(child.url) == f"{scheme}://{authority}/lake/year=2026/part.parquet"
 
 
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_an_http_location_is_a_request_on_a_session_without_touching_it(scheme: str) -> None:
+    """An ``http`` or ``https`` URL is the ``GET`` of that resource.
+
+    The scheme selects the HTTP backend exactly as ``s3`` selects the object
+    store, and construction stays lazy: nothing below sends a request - the
+    host does not resolve, so a request would raise.
+    """
+    from yggdryl.http import Request, Session
+
+    handle = IOBase(f"{scheme}://host.invalid/lake/year=2026/part.bin")
+    assert isinstance(handle, Request)
+    assert handle.method == "GET"
+    assert handle.url is not None
+    assert handle.url.scheme == scheme
+    assert handle.name == "part.bin"
+    assert handle.partitions == (("year", "2026"),)
+
+    # A record suffix composes its encoding over the request, for free.
+    composed = IOBase(f"{scheme}://host.invalid/lake/part.parquet")
+    assert str(composed.media_type) == "application/vnd.apache.parquet"
+    assert isinstance(composed.into_handle(), Request)
+
+    # A session is the container over its base URL: a child is a request.
+    child = Session(f"{scheme}://host.invalid/lake/") / "part.bin"
+    assert isinstance(child, Request)
+    assert str(child.url) == f"{scheme}://host.invalid/lake/part.bin"
+
+
 def test_a_handle_is_addressed_by_an_identifier_and_a_location_is_one(
     tmp_path: pathlib.Path,
 ) -> None:

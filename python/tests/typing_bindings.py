@@ -2286,3 +2286,94 @@ assert chunked_values and chunked_get is None and chunked_reader is not None
 assert chunked_plan is not None and chunked_serie_plan is not None
 assert chunked_from is not None and chunked_series is not None and chunked_empty.is_empty()
 assert chunked_one is not None and not chunked_equal and not chunked_ordered
+
+# HTTP: the requests-shaped client, the four storage roles, and the server.
+# Nothing below the functions touches the network; the functions are checked,
+# never called.
+http_headers: yggdryl.http.Headers = yggdryl.http.Headers({"Accept": "application/json"})
+http_header_value: str | None = http_headers.get("accept")
+http_header_default: str = http_headers.get("absent", "x")
+http_header_all: list[str] = http_headers.get_all("accept")
+http_header_items: list[tuple[str, str]] = http_headers.items()
+http_header_length: int | None = http_headers.content_length
+http_header_range: tuple[int | None, int | None, int | None] | None = http_headers.content_range
+http_header_retry: datetime.timedelta | None = http_headers.retry_after
+http_header_modified: datetime.datetime | None = http_headers.last_modified
+http_header_links: dict[str, yggdryl._native.HttpLink] = http_headers.links
+http_built: yggdryl.http.Response = yggdryl.http.Response(201, {"X-Id": "7"}, json={"id": 7})
+http_built_status: int = http_built.status_code
+http_built_ok: bool = http_built.ok
+http_built_json: Any = http_built.json()
+http_built_scalar: Scalar = http_built.scalar()
+http_built_elapsed: datetime.timedelta = http_built.elapsed
+http_built_history: list[tuple[int, Url]] = http_built.history
+http_built_chunks: Iterator[bytes] = http_built.iter_content(1024)
+http_built_lines: Iterator[bytes] = http_built.iter_lines()
+http_built_next: yggdryl.http.Request | None = http_built.next
+http_built_handle: IOBase = http_built
+assert http_header_value == "application/json" and http_header_default == "x"
+assert http_header_all and http_header_items and http_header_length is None
+assert http_header_range is None and http_header_retry is None and http_header_modified is None
+assert http_header_links == {} and http_built_status == 201 and http_built_ok
+assert http_built_json == {"id": 7} and http_built_scalar is not None
+assert http_built_history == [] and http_built_handle is http_built
+
+
+def _http_client_usage(base: str) -> None:
+    session = yggdryl.http.Session(
+        base,
+        headers={"X-Trace": "t"},
+        auth=("user", "password"),
+        timeout=datetime.timedelta(seconds=5),
+        options={"max_attempts": 2},
+    )
+    response: yggdryl.http.Response = session.get(
+        "/orders", params={"limit": 10, "tag": ["a", "b"]}, stream=True
+    )
+    posted: yggdryl.http.Response = session.post("/orders", json={"id": 1})
+    formed: yggdryl.http.Response = session.put("/orders/1", {"name": "a"})
+    deleted: yggdryl.http.Response = yggdryl.http.delete(f"{base}/orders/1")
+    raised: yggdryl.http.Response = response.raise_for_status()
+    content: bytes = posted.content
+    text: str = formed.text
+    code: int = deleted.status_code
+    pages: yggdryl.http.Pages = session.pages("/orders", records="data")
+    first: yggdryl.http.Response = next(pages)
+    table: pa.RecordBatchReader = session.pages("/orders").into_arrow_reader()
+    series: SerieReader = session.pages("/orders").read_arrow()
+    prepared = yggdryl.http.Request("GET", f"{base}/orders", session=session)
+    answers: list[yggdryl.http.Response] = list(session.send_all([prepared], concurrency=4))
+    mixed: list[yggdryl.http.Response] = list(
+        session.send_all(
+            [prepared, "https://example.com/a", {"method": "POST", "url": "/b", "json": {"n": 1}}]
+        )
+    )
+    stream: yggdryl.http.Stream = session.stream("/big").into_stream()
+    head: bytes = stream.read(16)
+    counts: yggdryl._native.HttpStats = session.stats
+    jar: dict[str, str] = session.cookies
+    client_session: yggdryl.http.Session = yggdryl.http.Client({"timeout": "5s"}).session(base)
+    default: yggdryl.http.Session = yggdryl.http.session()
+    assert raised and content and text and code and first and table and series
+    assert answers and head and counts and jar is not None and client_session and default
+
+
+def _http_server_usage(folder: LocalFolder) -> None:
+    def handler(request: yggdryl.http.Request) -> tuple[int, dict[str, str], str]:
+        return 200, {"x-method": request.method}, "ok"
+
+    with yggdryl.http.Server.bind("127.0.0.1:0") as server:
+        server.mount("/files", folder)
+        server.route("/hello", handler, method="POST")
+        server.route("/made", lambda request: yggdryl.http.Response(202, json={"ok": True}))
+        server.respond("/fixed", 200, {"content-type": "text/plain"}, b"same")
+        server.inject("/files/a.txt", ("cut_body_at", 4))
+        server.inject("/files/a.txt", ("refuse", 503, 1.5), times=2)
+        server.inject("/files/a.txt", "close_before_answer")
+        server.inject("/files/a.txt", ("delay", datetime.timedelta(milliseconds=5)))
+        port: int = server.port
+        where: Url = server.url
+        recorded: list[yggdryl._native.HttpRecorded] = server.requests
+        count: int = server.request_count
+        server.clear_requests()
+        assert port and where and recorded is not None and count >= 0

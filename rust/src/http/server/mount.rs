@@ -231,17 +231,19 @@ fn listing(holder: &Holder, prefix: &str, rest: &str, server_url: &Url) -> Resul
     let mut entries = Vec::new();
     for child in holder.ls(false, false) {
         let child = child?;
-        let name = child
+        // The URL spells the segment escaped; the listing names it as it is.
+        let segment = child
             .url()
             .and_then(|url| url.file_name())
             .map(str::to_owned)
             .ok_or_else(|| Error::absent("a listed child's name", &base))?;
+        let name = crate::uri::percent_decode(&segment, "url")?;
         let url = base.join_reference(&format!(
-            "{}/{name}",
+            "{}/{segment}",
             base.path_text(false)?.trim_end_matches('/')
         ))?;
         entries.push(Scalar::from_struct([
-            ("name", Scalar::from(name.as_str())),
+            ("name", Scalar::from(name.as_ref())),
             ("url", Scalar::from(url.to_string())),
             ("kind", Scalar::from(child.kind().as_str())),
             ("size", Scalar::from(child.size())),

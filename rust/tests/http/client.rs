@@ -4,7 +4,9 @@
 use std::time::Duration;
 
 use yggdryl::holder::Holder;
-use yggdryl::http::{Body, Client, HttpOptions, Session, StatsSnapshot};
+use yggdryl::http::{
+    Body, Client, HttpOptions, Method, Server, ServerOptions, Session, StatsSnapshot,
+};
 use yggdryl::{Error, IOBase, IOKind};
 
 use crate::http_server::RecordedExt as _;
@@ -120,6 +122,47 @@ fn a_client_is_a_container_with_no_location() {
     assert_eq!(client.stats().requests, 0);
 }
 
+#[test]
+fn a_named_proxy_tunnels_every_request() {
+    // A server that tunnels `CONNECT` stands in for a forward proxy.
+    let origin = HttpServer::start();
+    origin.put_resource("/rows.json", b"[1]", Some("application/json"));
+    let proxy = Server::bind_with("127.0.0.1:0", ServerOptions::default().with_tunnel(true))
+        .expect("a proxy");
+    let session = session(HttpOptions::default().with_proxy(proxy.url().to_string()));
+
+    let response = session
+        .get(&origin.url("/rows.json"))
+        .unwrap()
+        .send()
+        .unwrap();
+
+    assert_eq!(response.text().unwrap(), "[1]");
+    let tunnelled = proxy.requests();
+    assert_eq!(tunnelled.len(), 1);
+    assert_eq!(tunnelled[0].method, Method::Connect);
+    assert_eq!(tunnelled[0].target, format!("127.0.0.1:{}", origin.port()));
+    assert_eq!(origin.request_count(), 1);
+}
+
+#[test]
+fn a_proxy_that_does_not_tunnel_is_refused_by_status() {
+    let proxy = Server::bind("127.0.0.1:0").expect("a proxy");
+    let origin = HttpServer::start();
+    let session = session(
+        HttpOptions::default()
+            .with_proxy(proxy.url().to_string())
+            .with_max_attempts(1),
+    );
+    let error = session
+        .get(&origin.url("/x"))
+        .unwrap()
+        .send()
+        .expect_err("the proxy refused the tunnel");
+    assert!(error.to_string().contains("405"), "{error}");
+    assert_eq!(origin.request_count(), 0);
+}
+
 // --- retries -----------------------------------------------------------------
 
 #[test]
@@ -189,6 +232,32 @@ fn attempts_stop_at_max_attempts_and_the_last_answer_is_handed_over() {
 #[test]
 fn a_held_body_is_replayed_on_retry() {
     let server = HttpServer::start();
+    server.fail_status("/stored", 503, Some("0"), 1);
+    let session = session(HttpOptions::default().with_max_attempts(3));
+
+    let response = session
+        .put(&server.url("/stored"), Body::from("payload"))
+        .unwrap()
+        .send()
+        .unwrap();
+
+    assert_eq!(response.status().code(), 201);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    for recorded in &requests {
+        assert_eq!(recorded.method.to_string(), "PUT");
+        assert_eq!(recorded.body_len, 7);
+    }
+    assert_eq!(session.stats().puts, 2);
+    let stored = session.get(&server.url("/stored")).unwrap().send().unwrap();
+    assert_eq!(stored.text().unwrap(), "payload");
+}
+
+#[test]
+fn a_post_answered_not_now_is_sent_once_and_handed_over() {
+    // A POST the server may have acted on is never sent twice on its own:
+    // the 503 is the caller's to judge.
+    let server = HttpServer::start();
     server.fail_status("/echo", 503, Some("0"), 1);
     let session = session(HttpOptions::default().with_max_attempts(3));
 
@@ -198,15 +267,50 @@ fn a_held_body_is_replayed_on_retry() {
         .send()
         .unwrap();
 
-    assert_eq!(response.status().code(), 200);
-    assert_eq!(response.text().unwrap(), "payload");
-    let requests = server.requests();
-    assert_eq!(requests.len(), 2);
-    for recorded in &requests {
-        assert_eq!(recorded.method.to_string(), "POST");
-        assert_eq!(recorded.body_len, 7);
-    }
-    assert_eq!(session.stats().posts, 2);
+    assert_eq!(response.status().code(), 503);
+    assert_eq!(server.request_count(), 1);
+    assert_eq!(session.stats().posts, 1);
+    assert_eq!(session.stats().retries, 0);
+}
+
+#[test]
+fn a_retry_after_longer_than_max_pause_ends_the_retries() {
+    let server = HttpServer::start();
+    server.put_resource("/busy", b"later", Some("text/plain"));
+    server.fail_status("/busy", 503, Some("120"), 1);
+    let session = session(
+        HttpOptions::default()
+            .with_max_attempts(3)
+            .with_max_pause(Duration::from_secs(1)),
+    );
+
+    let started = std::time::Instant::now();
+    let response = session.get(&server.url("/busy")).unwrap().send().unwrap();
+
+    assert_eq!(response.status().code(), 503);
+    assert_eq!(response.headers().get("retry-after"), Some("120"));
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert_eq!(server.request_count(), 1);
+    assert_eq!(session.stats().retries, 0);
+}
+
+#[test]
+fn a_retry_after_within_max_pause_is_waited_out() {
+    let server = HttpServer::start();
+    server.put_resource("/busy", b"later", Some("text/plain"));
+    server.fail_status("/busy", 429, Some("1"), 1);
+    let session = session(
+        HttpOptions::default()
+            .with_max_attempts(3)
+            .with_max_pause(Duration::from_secs(2)),
+    );
+
+    let started = std::time::Instant::now();
+    let response = session.get(&server.url("/busy")).unwrap().send().unwrap();
+
+    assert_eq!(response.text().unwrap(), "later");
+    assert!(started.elapsed() >= Duration::from_secs(1));
+    assert_eq!(statuses(&server), [429, 200]);
 }
 
 #[test]

@@ -261,12 +261,23 @@ impl Session {
         )
     }
 
-    /// Send every request of `requests` on up to `concurrency` threads,
-    /// answering in the order they were given.
+    /// Send every request of `requests` on up to `concurrency` threads -
+    /// the options' `concurrency` when `None`, `0` read as one - answering
+    /// in the order they were given, every answer's cookies stored in this
+    /// session's jar.
     ///
+    /// The walk is a stream: `requests` is pulled only as far as the
+    /// workers can take - `concurrency` requests in flight - and each answer
+    /// is handed over as soon as the ones before it were, so a million
+    /// requests hold a handful in memory. The iterator owns what it needs,
+    /// the session included, and can be moved to another thread or held.
     /// A failure is one item; the walk goes on with the next request. One
     /// thread is the sequential map and spawns nothing.
-    pub fn send_all<I>(&self, requests: I) -> impl Iterator<Item = Result<Response>>
+    pub fn send_all<I>(
+        &self,
+        requests: I,
+        concurrency: Option<usize>,
+    ) -> impl Iterator<Item = Result<Response>> + Send + 'static
     where
         I: IntoIterator<Item = Request>,
         I::IntoIter: Send + 'static,
@@ -274,7 +285,7 @@ impl Session {
         let session = self.clone();
         crate::parallel::ordered(
             requests,
-            self.inner.options.concurrency(),
+            concurrency.map_or(self.inner.options.concurrency(), |threads| threads.max(1)),
             SEND_ALL_CHUNK,
             move |request: Request| session.send(&request),
         )
@@ -372,7 +383,8 @@ impl Session {
             .authorization()
             .or(self.inner.options.authorization())
             .cloned()
-            .or_else(|| Authorization::from_url(url));
+            .or_else(|| Authorization::from_url(url))
+            .or_else(|| self.environment_authorization(url));
         if let Some(authorization) = authorization {
             if request.authorization().is_some()
                 || !headers.contains_key(authorization.header_name())
@@ -398,6 +410,49 @@ impl Session {
             headers.insert("user-agent", self.inner.options.user_agent())?;
         }
         Ok(headers)
+    }
+
+    /// Take every credential off `headers` for a hop to another origin: the
+    /// `Authorization` and `Proxy-Authorization` fields, the field the
+    /// request's or the session's credential travels under (`X-Api-Key`),
+    /// and a `Cookie` the caller stated - the jar's own cookies for `url` go
+    /// back on, because they are that origin's, and so does the `.netrc`
+    /// entry for its host.
+    fn withhold_credentials(
+        &self,
+        request: &Request,
+        url: &Url,
+        headers: &mut Headers,
+    ) -> Result<()> {
+        headers.remove("authorization");
+        headers.remove("proxy-authorization");
+        if let Some(authorization) = request
+            .authorization()
+            .or(self.inner.options.authorization())
+        {
+            headers.remove(authorization.header_name());
+        }
+        headers.remove("cookie");
+        if self.inner.options.cookies() {
+            if let Some(cookie) = self.jar()?.header_for(url, self.now_ns()) {
+                headers.insert("cookie", &cookie)?;
+            }
+        }
+        // The new host's own `.netrc` entry is its credential, as it would
+        // be for a request sent there first.
+        if let Some(authorization) = self.environment_authorization(url) {
+            headers.insert(authorization.header_name(), &authorization.header_value())?;
+        }
+        Ok(())
+    }
+
+    /// The `.netrc` credential for `url`'s host, when the options read the
+    /// environment ([`super::netrc`]).
+    fn environment_authorization(&self, url: &Url) -> Option<Authorization> {
+        if !self.inner.options.read_environment() {
+            return None;
+        }
+        super::netrc::environment_authorization(url.hostname()?, crate::auth::variable)
     }
 
     /// One exchange with redirects and cookies.
@@ -433,7 +488,7 @@ impl Session {
         loop {
             let mut headers = self.headers_for(request, &url, ranged)?;
             if hops > 0 && !same_origin(request.url(), &url) {
-                headers.remove("authorization");
+                self.withhold_credentials(request, &url, &mut headers)?;
             }
             if body.is_empty() && method != request.method() {
                 // The body went with the method it was sent under.
@@ -449,7 +504,7 @@ impl Session {
                 headers: &headers,
                 body: (!body.is_empty()).then(|| body.as_bytes()),
                 timeout,
-                retry_body: true,
+                idempotent: method.is_idempotent(),
             };
             let answer = self.inner.client.execute(&wire)?;
             if options.cookies() {

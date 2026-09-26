@@ -284,6 +284,45 @@ fn the_credential_is_not_carried_to_another_host() {
     assert_eq!(header(&requests[1], "authorization"), Some("Bearer t-1"));
 }
 
+#[test]
+fn every_credential_the_caller_stated_is_withheld_from_another_host() {
+    let server = HttpServer::start();
+    server.put_resource("/there", b"there", Some("text/plain"));
+    server.redirect(
+        "/away",
+        307,
+        &format!("http://localhost:{}/there", server.port()),
+    );
+    let session = configured(
+        HttpOptions::default()
+            .with_authorization(Authorization::header("X-Api-Key", "k-123"))
+            .with_header("Proxy-Authorization", "Basic cHJveHk6cGFzcw==")
+            .unwrap(),
+    );
+
+    session
+        .get(&server.url("/away"))
+        .unwrap()
+        .with_header("Cookie", "sid=secret")
+        .unwrap()
+        .send()
+        .unwrap();
+
+    let requests = server.requests();
+    assert_eq!(header(&requests[0], "x-api-key"), Some("k-123"));
+    assert_eq!(header(&requests[0], "cookie"), Some("sid=secret"));
+    assert!(header(&requests[0], "proxy-authorization").is_some());
+    assert_eq!(requests[1].path, "/there");
+    for name in [
+        "x-api-key",
+        "cookie",
+        "proxy-authorization",
+        "authorization",
+    ] {
+        assert_eq!(header(&requests[1], name), None, "{name}");
+    }
+}
+
 // --- redirects ---------------------------------------------------------------
 
 #[test]
@@ -467,7 +506,7 @@ fn send_all_answers_in_order_under_concurrency() {
         .collect();
 
     let bodies: Vec<String> = session
-        .send_all(requests)
+        .send_all(requests, None)
         .map(|response| response.unwrap().text().unwrap())
         .collect();
 
@@ -482,9 +521,10 @@ fn send_all_on_one_thread_is_the_sequential_map() {
     let server = HttpServer::start();
     server.put_resource("/a", b"a", Some("text/plain"));
     server.set_status("/b", 500, None);
+    // The session would send four at once; the walk asks for one.
     let session = configured(
         HttpOptions::default()
-            .with_concurrency(1)
+            .with_concurrency(4)
             .with_max_attempts(1),
     );
     let requests = vec![
@@ -493,11 +533,59 @@ fn send_all_on_one_thread_is_the_sequential_map() {
     ];
 
     let statuses: Vec<u16> = session
-        .send_all(requests)
+        .send_all(requests, Some(1))
         .map(|response| response.unwrap().status().code())
         .collect();
 
     assert_eq!(statuses, [200, 500]);
+}
+
+#[test]
+fn send_all_is_a_stream_over_an_endless_source() {
+    // The source never ends; the walk pulls only what its workers can hold,
+    // so taking three answers sends a bounded handful of requests.
+    let server = HttpServer::start();
+    server.put_resource("/n", b"n", Some("text/plain"));
+    let session = configured(HttpOptions::default());
+    let url = server.url("/n");
+    let making = session.clone();
+    let requests = std::iter::repeat_with(move || making.get(&url).expect("a request"));
+
+    let answers: Vec<u16> = session
+        .send_all(requests, Some(2))
+        .take(3)
+        .map(|response| response.expect("an answer").status().code())
+        .collect();
+
+    assert_eq!(answers, [200, 200, 200]);
+    let sent = server.request_count();
+    assert!((3..=5).contains(&sent), "{sent} requests for three answers");
+}
+
+#[test]
+fn send_all_walks_on_any_thread_and_outlives_its_session_handle() {
+    let server = HttpServer::start();
+    for index in 0..4 {
+        server.put_resource(
+            &format!("/m{index}"),
+            format!("m{index}").as_bytes(),
+            Some("text/plain"),
+        );
+    }
+    let walk = {
+        let session = configured(HttpOptions::default());
+        let requests: Vec<_> = (0..4)
+            .map(|index| session.get(&server.url(&format!("/m{index}"))).unwrap())
+            .collect();
+        session.send_all(requests, Some(4))
+    };
+    let bodies = std::thread::spawn(move || {
+        walk.map(|response| response.unwrap().text().unwrap())
+            .collect::<Vec<_>>()
+    })
+    .join()
+    .expect("the walk's thread");
+    assert_eq!(bodies, ["m0", "m1", "m2", "m3"]);
 }
 
 // --- the container role ------------------------------------------------------

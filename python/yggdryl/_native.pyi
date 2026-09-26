@@ -3565,6 +3565,431 @@ class S3Path(IOBase):
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 
+HttpPairs = Mapping[str, object] | Iterable[tuple[str, object]]
+HttpHeadersInput = Headers | Mapping[str, str] | Iterable[tuple[str, str]]
+HttpAuth = tuple[str, str] | str
+HttpTimeout = float | datetime.timedelta
+HttpBody = bytes | bytearray | memoryview | str | HttpPairs
+HttpFault = (
+    Literal["close_before_answer"]
+    | tuple[Literal["cut_body_at"], int]
+    | tuple[Literal["refuse"], int]
+    | tuple[Literal["refuse"], int, HttpTimeout | None]
+    | tuple[Literal["delay"], HttpTimeout]
+)
+
+class _HttpRequestUrl(TypedDict):
+    url: str | Url
+
+class HttpRequestSpec(_HttpRequestUrl, total=False):
+    """One request of `Session.send_all`, spelled as `Session.request`'s keywords."""
+
+    method: str
+    params: HttpPairs | None
+    headers: HttpHeadersInput | None
+    data: HttpBody | None
+    json: object
+    auth: HttpAuth | None
+    timeout: HttpTimeout | None
+    allow_redirects: bool | None
+
+class HttpLink(TypedDict, total=False):
+    url: str
+    rel: str
+
+class HttpRecorded(TypedDict):
+    method: str
+    target: str
+    path: str
+    query: list[tuple[str, str]]
+    headers: Headers
+    body_len: int
+    status: int
+
+class HttpStats(TypedDict):
+    requests: int
+    gets: int
+    heads: int
+    posts: int
+    puts: int
+    patches: int
+    deletes: int
+    others: int
+    retries: int
+    resumes: int
+    redirects: int
+    retry_tokens: int
+
+def http_session() -> Session: ...
+
+class Headers:
+    """An HTTP header section: names compared ignoring case."""
+
+    def __init__(self, value: HttpHeadersInput | None = None) -> None: ...
+    def __getitem__(self, name: str) -> str: ...
+    def __contains__(self, name: object) -> bool: ...
+    def __len__(self) -> int: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __ne__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
+    @overload
+    def get(self, name: str) -> str | None: ...
+    @overload
+    def get(self, name: str, default: str) -> str: ...
+    def get_all(self, name: str) -> list[str]: ...
+    def keys(self) -> list[str]: ...
+    def values(self) -> list[str]: ...
+    def items(self) -> list[tuple[str, str]]: ...
+    def into_json(self) -> str: ...
+    def stable_hash(self) -> int: ...
+    @property
+    def content_length(self) -> int | None: ...
+    @property
+    def content_type(self) -> str | None: ...
+    @property
+    def mime_type(self) -> MimeType: ...
+    @property
+    def media_type(self) -> MediaType: ...
+    @property
+    def charset(self) -> str | None: ...
+    @property
+    def content_encoding(self) -> list[str]: ...
+    @property
+    def content_range(self) -> tuple[int | None, int | None, int | None] | None: ...
+    @property
+    def accept_ranges(self) -> bool: ...
+    @property
+    def etag(self) -> str | None: ...
+    @property
+    def last_modified(self) -> datetime.datetime | None: ...
+    @property
+    def date(self) -> datetime.datetime | None: ...
+    @property
+    def location(self) -> str | None: ...
+    @property
+    def retry_after(self) -> datetime.timedelta | None: ...
+    @property
+    def rate_limit_pause(self) -> datetime.timedelta | None: ...
+    @property
+    def links(self) -> dict[str, HttpLink]: ...
+    @property
+    def next_link(self) -> str | None: ...
+    @property
+    def transfer_encoding_chunked(self) -> bool: ...
+    @property
+    def connection_close(self) -> bool: ...
+    @property
+    def set_cookies(self) -> list[str]: ...
+
+class Session(IOBase):
+    """Defaults, a credential and a cookie jar every request starts from."""
+
+    def __init__(
+        self,
+        base_url: str | Url | None = None,
+        *,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        options: Mapping[str, object] | None = None,
+    ) -> None: ...
+    def request(
+        self,
+        method: str,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        data: HttpBody | None = None,
+        json: object = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        allow_redirects: bool | None = None,
+        stream: bool = False,
+    ) -> Response: ...
+    def get(
+        self,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        allow_redirects: bool | None = None,
+        stream: bool = False,
+    ) -> Response: ...
+    def head(
+        self,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        allow_redirects: bool | None = None,
+    ) -> Response: ...
+    def delete(
+        self,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+    ) -> Response: ...
+    def post(
+        self,
+        url: str | Url,
+        data: HttpBody | None = None,
+        *,
+        json: object = None,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+    ) -> Response: ...
+    def put(
+        self,
+        url: str | Url,
+        data: HttpBody | None = None,
+        *,
+        json: object = None,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+    ) -> Response: ...
+    def patch(
+        self,
+        url: str | Url,
+        data: HttpBody | None = None,
+        *,
+        json: object = None,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+    ) -> Response: ...
+    def stream(
+        self,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+    ) -> Response: ...
+    def send(self, request: Request, *, stream: bool = False) -> Response: ...
+    def send_all(
+        self,
+        requests: Iterable[Request | str | Url | HttpRequestSpec],
+        concurrency: int | None = None,
+    ) -> Iterator[Response]: ...
+    def pages(
+        self,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        pagination: str | None = None,
+        records: str | None = None,
+    ) -> Pages: ...
+    @property
+    def headers(self) -> Headers: ...
+    @property
+    def timeout(self) -> datetime.timedelta: ...
+    @property
+    def concurrency(self) -> int: ...
+    @property
+    def stats(self) -> HttpStats: ...
+    @property
+    def cookies(self) -> dict[str, str]: ...
+    def set_cookie(self, name: str, value: str, domain: str) -> None: ...
+
+class Request(IOBase):
+    """One prepared request: the resource its URL names."""
+
+    def __init__(
+        self,
+        method: str,
+        url: str | Url,
+        *,
+        params: HttpPairs | None = None,
+        headers: HttpHeadersInput | None = None,
+        data: HttpBody | None = None,
+        json: object = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        allow_redirects: bool | None = None,
+        session: Session | None = None,
+    ) -> None: ...
+    @property
+    def method(self) -> str: ...
+    @property
+    def headers(self) -> Headers: ...
+    @property
+    def body(self) -> bytes: ...
+    @property
+    def session(self) -> Session: ...
+    def send(self) -> Response: ...
+    def stream(self) -> Response: ...
+    def pages(
+        self, *, pagination: str | None = None, records: str | None = None
+    ) -> Pages: ...
+
+class Response(IOBase):
+    """One answer: status, headers, and the body as a handle."""
+
+    def __init__(
+        self,
+        status: int = 200,
+        headers: HttpHeadersInput | None = None,
+        body: bytes | bytearray | memoryview | str | None = None,
+        *,
+        json: object = None,
+    ) -> None: ...
+    @property
+    def status_code(self) -> int: ...
+    @property
+    def reason(self) -> str: ...
+    @property
+    def ok(self) -> bool: ...
+    @property
+    def is_redirect(self) -> bool: ...
+    @property
+    def version(self) -> str: ...
+    @property
+    def headers(self) -> Headers: ...
+    @property
+    def request(self) -> Request: ...
+    @property
+    def history(self) -> list[tuple[int, Url]]: ...
+    @property
+    def elapsed(self) -> datetime.timedelta: ...
+    @property
+    def content(self) -> bytes: ...
+    @property
+    def text(self) -> str: ...
+    @property
+    def encoding(self) -> str | None: ...
+    @property
+    def cookies(self) -> dict[str, str]: ...
+    @property
+    def links(self) -> dict[str, HttpLink]: ...
+    @property
+    def next(self) -> Request | None: ...
+    def json(self) -> Any: ...
+    def scalar(self, field: Field | str | None = None) -> Scalar: ...
+    def raise_for_status(self) -> Response: ...
+    def iter_content(self, chunk_size: int | None = None) -> Iterator[bytes]: ...
+    def iter_lines(self, chunk_size: int | None = None) -> Iterator[bytes]: ...
+    def into_stream(self) -> Stream: ...
+
+class Stream(IOBase):
+    """A body left on the wire, read forward and resumed when cut."""
+
+    @property
+    def delivered(self) -> int: ...
+    @property
+    def total(self) -> int | None: ...
+    @property
+    def resumes(self) -> int: ...
+    @property
+    def headers(self) -> Headers: ...
+    def read(self, size: int = -1) -> bytes: ...
+
+class Pages(Iterator[Response]):
+    """The pages of one paginated resource, one Response per page."""
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    def __iter__(self) -> Pages: ...
+    def __next__(self) -> Response: ...
+    def read_arrow(self, field: Field | str | None = None) -> SerieReader: ...
+    def into_arrow_reader(
+        self, field: Field | str | None = None, batch_row_size: int = 0
+    ) -> pyarrow.RecordBatchReader: ...
+
+class Client:
+    """A connection pool and the transport knobs its sessions share."""
+
+    def __init__(self, options: Mapping[str, object] | None = None) -> None: ...
+    @property
+    def stats(self) -> HttpStats: ...
+    def session(
+        self,
+        base_url: str | Url | None = None,
+        *,
+        headers: HttpHeadersInput | None = None,
+        auth: HttpAuth | None = None,
+        timeout: HttpTimeout | None = None,
+        options: Mapping[str, object] | None = None,
+    ) -> Session: ...
+
+class Server:
+    """An HTTP/1.1 server hosting IOBase handles and Python routes."""
+
+    @staticmethod
+    def bind(
+        address: str = "127.0.0.1:0",
+        *,
+        read_timeout: HttpTimeout | None = None,
+        write_timeout: HttpTimeout | None = None,
+        max_connections: int | None = None,
+        max_head_size: int | None = None,
+        max_body_size: int | None = None,
+        keep_alive: bool | None = None,
+        recording: bool | None = None,
+        etag: bool | None = None,
+        tunnel: bool | None = None,
+        server_header: str | None = None,
+    ) -> Server: ...
+    @property
+    def url(self) -> Url: ...
+    @property
+    def port(self) -> int: ...
+    def url_of(self, path: str) -> Url: ...
+    def mount(self, prefix: str, handle: IOBase) -> None: ...
+    def unmount(self, prefix: str) -> bool: ...
+    def route(
+        self,
+        path: str,
+        handler: Callable[
+            [Request],
+            Response | tuple[int, HttpHeadersInput | None, bytes | str | None],
+        ],
+        method: str | None = None,
+    ) -> None: ...
+    def respond(
+        self,
+        path: str,
+        status: int,
+        headers: HttpHeadersInput | None = None,
+        body: bytes | bytearray | memoryview | str | None = None,
+        method: str | None = None,
+    ) -> None: ...
+    def unroute(self, path: str, method: str | None = None) -> bool: ...
+    def inject(self, path: str, fault: HttpFault, times: int = 1) -> None: ...
+    def clear_faults(self) -> None: ...
+    @property
+    def requests(self) -> list[HttpRecorded]: ...
+    @property
+    def request_count(self) -> int: ...
+    def clear_requests(self) -> None: ...
+    @property
+    def connections(self) -> int: ...
+    def shutdown(self) -> None: ...
+    def __enter__(self) -> Server: ...
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None = None,
+        exception: BaseException | None = None,
+        traceback: object = None,
+    ) -> bool: ...
+
 class Buffered(IOBase):
     """Any handle read through the core's bounded page cache."""
 

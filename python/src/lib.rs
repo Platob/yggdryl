@@ -39,6 +39,7 @@ mod fix;
 mod graph;
 mod hashing;
 mod holder;
+mod http;
 mod iceberg;
 mod iobase;
 mod iomedia;
@@ -517,9 +518,16 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // what went wrong and never what it did. `install` rather than `init`
     // because an embedder may have installed a logger already, and an
     // extension has no business replacing it.
+    //
+    // The project's own targets pass at `debug`, not `trace`: the highest
+    // level any target admits is the process-wide ceiling every `log` call
+    // checks first, and the HTTP transport traces each body chunk as 16-byte
+    // hex rows - at a `trace` ceiling each row was formatted and handed to
+    // the bridge only to be refused by target, which made a download four
+    // times slower. The core logs nothing at `trace`.
     let bridge = pyo3_log::Logger::default()
         .filter(log::LevelFilter::Warn)
-        .filter_target("yggdryl".to_owned(), log::LevelFilter::Trace)
+        .filter_target("yggdryl".to_owned(), log::LevelFilter::Debug)
         .install();
     if let Ok(handle) = bridge {
         let _ = LOGGING.set(handle);
@@ -639,6 +647,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
     holder::handles::register(module)?;
+    http::register(module)?;
     coding::handles::register(module)?;
     media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;

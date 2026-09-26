@@ -51,6 +51,15 @@ export {
   type FixDirection,
   type FixEntryView,
   type FixHeaderView,
+  type HttpContentRange,
+  type HttpCookie,
+  type HttpETag,
+  type HttpFault,
+  type HttpHop,
+  type HttpLink,
+  type HttpRecorded,
+  type HttpServerOptions,
+  type HttpStats,
   type LaneInput,
   type MetadataEntry,
   type PartitionEntry,
@@ -103,9 +112,15 @@ import type {
   Xxh32,
   Xxh64,
 } from './index'
-// The Iceberg and FIX values are reached through their namespaces, so they are
-// imported here as values to type those and re-exported as types only.
+// The Iceberg, FIX and HTTP values are reached through their namespaces, so
+// they are imported here as values to type those and re-exported as types only.
 import {
+  Headers,
+  Pages,
+  Request,
+  Response,
+  Server,
+  Session,
   Catalog,
   Compaction,
   DataFile,
@@ -227,6 +242,12 @@ export declare class StructSerie extends Serie {
 }
 
 export type {
+  Headers,
+  Pages,
+  Request,
+  Response,
+  Server,
+  Session,
   Catalog,
   Compaction,
   DataFile,
@@ -3707,6 +3728,199 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** One header, query or form value: text, or a number or boolean spelled as text. */
+export type HttpTextInput = string | number | bigint | boolean
+
+/**
+ * Name-value pairs - headers, query parameters, a form, `HttpOptions`
+ * properties - in the order written: a `Headers`, a `Map`,
+ * `URLSearchParams`, `[name, value]` entries, or a plain object whose array
+ * value is one pair per member.
+ */
+export type HttpPairsInput =
+  | Headers
+  | Map<string, HttpTextInput>
+  | URLSearchParams
+  | ReadonlyArray<readonly [string, HttpTextInput]>
+  | { readonly [name: string]: HttpTextInput | readonly HttpTextInput[] }
+
+/** A URL an HTTP call takes: text, a native `Url`, or a WHATWG `URL`. */
+export type HttpUrlInput = string | Url | NodeURL
+
+/** A request body: text (sent as UTF-8) or bytes. */
+export type HttpBodyInput = string | Uint8Array | ArrayBuffer
+
+/** A credential, spelled one way at a time. */
+export type HttpAuthInput =
+  | readonly [username: string, password: string]
+  | { readonly username: string; readonly password?: string }
+  | { readonly bearer: string }
+  | { readonly header: string; readonly value: string }
+
+/** What one request carries beyond its method and URL. */
+/** One request of `Session.sendAll`: the request options, a `method` and a `url`. */
+export interface HttpRequestSpec extends HttpRequestOptions {
+  method?: string
+  url: HttpUrlInput
+}
+
+export interface HttpRequestOptions {
+  /** Query pairs appended to the URL's own. */
+  params?: HttpPairsInput | null
+  /** Headers set on the request, winning over a body's `Content-Type`. */
+  headers?: HttpPairsInput | null
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number | null
+  /** Leave the body on the wire as a resumable stream. */
+  stream?: boolean | null
+  /** The body, as text or bytes. */
+  data?: HttpBodyInput | null
+  /** The body, as a compact JSON document; `null` is the document `null`. */
+  json?: unknown
+  /** The body, as a form under `application/x-www-form-urlencoded`. */
+  form?: HttpPairsInput | null
+  /** The credential this request sends, whatever the session's is. */
+  auth?: HttpAuthInput | null
+  /** Whether a `3xx` is followed, in place of the session's answer. */
+  followRedirects?: boolean | null
+  /**
+   * How the next page is found: `auto`, `none`, `link`, `header:<name>`,
+   * `url:<path>`, `cursor:<path>:<parameter>`,
+   * `offset:<parameter>:<size>[:<total>]` or `page:<parameter>[:<start>]`.
+   */
+  pagination?: string | null
+  /** Where a page's rows are in its document: a field path. */
+  records?: string | null
+  /** What the resource is, whatever a response says. */
+  mediaType?: MediaTypeInput | null
+}
+
+/** What a session is built with; the named knobs win over `options`. */
+export interface HttpSessionOptions {
+  /** Headers every request carries unless it sets its own. */
+  headers?: HttpPairsInput | null
+  /** The credential every request sends unless it names its own. */
+  auth?: HttpAuthInput | null
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number | null
+  /**
+   * `HttpOptions` properties by name - `max_attempts`, `follow_redirects`,
+   * `pagination`, `records`, `header.<name>`, ... - as the core reads them.
+   */
+  options?: HttpPairsInput | null
+}
+
+declare module './index' {
+  interface Session {
+    /** Send `method` to `url` and answer the response, its body read whole unless `stream`. */
+    request(method: string, url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    get(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    head(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    post(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    put(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    patch(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    delete(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    options(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    /** `GET url`, the body left on the wire as a resumable stream. */
+    stream(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+    /** Walk the pages of `url` per its pagination, one `GET` per page. */
+    pages(url: HttpUrlInput, options?: HttpRequestOptions | null): Pages
+    /**
+     * Send every request - a `Request`, a URL to `GET` on this session, or a
+     * spec naming `url` beside the request options and `method` - on up to
+     * `concurrency` threads, as a walk answering in the order given: each
+     * answer is pulled when asked for while the requests after it are in
+     * flight, and a failure is an `Error` in its place.
+     */
+    sendAll(
+      requests: Iterable<Request | HttpUrlInput | HttpRequestSpec>,
+      concurrency?: number | null,
+    ): IterableIterator<Response | Error>
+  }
+
+  interface Request {
+    /** The same request with `headers` merged under its own. */
+    withHeaders(headers: HttpPairsInput): Request
+    /** The same request with `params` appended to its query. */
+    withQuery(params: HttpPairsInput): Request
+    /** The same request carrying `form` as its body. */
+    withForm(form: HttpPairsInput): Request
+    /** The same request carrying `body`. */
+    withBody(body: HttpBodyInput): Request
+    /** The same request carrying `value` as a JSON body. */
+    withJson(value: unknown): Request
+    /** The same request sending `auth`, whatever the session's is. */
+    withAuthorization(auth: HttpAuthInput): Request
+  }
+
+  interface Response {
+    /** The body's document as natural JavaScript data, through `Scalar.asJs`. */
+    json(): unknown
+    /** This response, or the refusal a status of 400 or more is. */
+    raiseForStatus(): this
+  }
+
+  /** A walk of pages is a JavaScript iterable and iterator at once. */
+  interface Pages extends IterableIterator<Response> {
+    next(): IteratorResult<Response>
+    /** Every remaining page as one Apache Arrow JS table. */
+    intoTable(field?: Field | string | null, batchRowSize?: number | null): ArrowTable
+  }
+
+  /** Iterating a header map yields its `[name, value]` pairs. */
+  interface Headers extends Iterable<[string, string]> {}
+
+  interface Server extends Disposable {
+    /**
+     * Answer `path` with `status`, `headers` and `body` every time, for
+     * `method` or for every method.
+     */
+    respond(
+      path: string,
+      status: number,
+      headers?: HttpPairsInput | null,
+      body?: HttpBodyInput | null,
+      method?: string | null,
+    ): void
+  }
+}
+
+/** `yggdryl::http`: sessions, requests, responses, page walks and a server. */
+export interface Http {
+  /** An HTTP session: default options, one cookie jar, one client. */
+  readonly Session: Omit<typeof Session, 'prototype'> & {
+    readonly prototype: Session
+    new (baseUrl?: HttpUrlInput | null, options?: HttpSessionOptions | null): Session
+  }
+  /** One request, and the resource its URL names. */
+  readonly Request: Omit<typeof Request, 'prototype'> & {
+    readonly prototype: Request
+    new (method: string, url: HttpUrlInput): Request
+  }
+  /** One answer and its body. */
+  readonly Response: typeof Response
+  /** An immutable, case-insensitive header map. */
+  readonly Headers: Omit<typeof Headers, 'prototype'> & {
+    readonly prototype: Headers
+    new (init?: HttpPairsInput | null): Headers
+  }
+  /** A walk of a paginated resource. */
+  readonly Pages: typeof Pages
+  /** An HTTP/1.1 server hosting handles and fixed answers. */
+  readonly Server: typeof Server
+  /** The process-wide default session every door below sends on. */
+  session(): Session
+  request(method: string, url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  get(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  head(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  post(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  put(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  patch(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+  delete(url: HttpUrlInput, options?: HttpRequestOptions | null): Response
+}
+
+export declare const http: Http
 
 /**
  * A message value: the native scalar, or the row `Scalar.from` reads.

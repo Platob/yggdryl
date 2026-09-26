@@ -70,11 +70,15 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 
 /// Hold the resource `url` names, on the store its scheme selects.
 ///
-/// The scheme is what says which backend a location belongs to. Any S3 URL -
-/// `s3`, `s3a`, or `s3n`, which name one protocol - reaches the native S3
-/// backend; everything else stays local, exactly as it did. Construction
-/// touches nothing on either.
+/// The scheme is what says which backend a location belongs to. An `http` or
+/// `https` URL is the `GET` of that resource on a default session; any S3
+/// URL - `s3`, `s3a`, or `s3n`, which name one protocol - reaches the native
+/// S3 backend; everything else stays local, exactly as it did. Construction
+/// touches nothing on any of them.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme().is_http() {
+        return yggdryl::http::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
+    }
     if url.scheme().is_object_store() {
         return yggdryl::s3::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
     }
@@ -95,6 +99,15 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
 
 /// Hold `url` as a container, on the store its scheme selects.
 pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme().is_http() {
+        // A container over HTTP is a session whose base URL is the location:
+        // a child is the `GET` of the path below it, and nothing is listed.
+        return yggdryl::http::session_with(
+            yggdryl::http::HttpOptions::default().with_base_url(url.clone()),
+        )
+        .map(Holder::HttpSession)
+        .map_err(crate::holder::fs::storage_error);
+    }
     if url.scheme().is_object_store() {
         return yggdryl::s3::folder(&url.to_string())
             .map(Holder::S3Folder)
@@ -135,6 +148,10 @@ pub(crate) enum Role {
     S3Folder,
     S3Path,
     S3File,
+    HttpSession,
+    HttpRequest,
+    HttpResponse,
+    HttpStream,
     Buffered,
     Coded(Codec),
     Text,
@@ -157,6 +174,10 @@ impl Role {
             Holder::S3Folder(_) => Self::S3Folder,
             Holder::S3Path(_) => Self::S3Path,
             Holder::S3File(_) => Self::S3File,
+            Holder::HttpSession(_) => Self::HttpSession,
+            Holder::HttpRequest(_) => Self::HttpRequest,
+            Holder::HttpResponse(_) => Self::HttpResponse,
+            Holder::HttpStream(_) => Self::HttpStream,
             Holder::Buffered(_) => Self::Buffered,
             Holder::Text(_) => Self::Text,
             Holder::Coded(coded) => Self::Coded(coded.codec()),
@@ -183,6 +204,10 @@ impl Role {
             Self::S3Folder => "S3Folder",
             Self::S3Path => "S3Path",
             Self::S3File => "S3File",
+            Self::HttpSession => "Session",
+            Self::HttpRequest => "Request",
+            Self::HttpResponse => "Response",
+            Self::HttpStream => "Stream",
             Self::Buffered => "Buffered",
             Self::Coded(Codec::Gzip) => "Gzip",
             Self::Coded(Codec::Zlib | Codec::Deflate) => "Zlib",
@@ -207,6 +232,7 @@ impl Role {
 pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
     use crate::coding::handles as codings;
     use crate::holder::handles as roles;
+    use crate::http;
     use crate::media::handles as encodings;
 
     let role = Role::of(&holder);
@@ -222,6 +248,10 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
         Role::S3Folder => Py::new(py, base.add_subclass(roles::PyS3Folder))?.into_any(),
         Role::S3Path => Py::new(py, base.add_subclass(roles::PyS3Path))?.into_any(),
         Role::S3File => Py::new(py, base.add_subclass(roles::PyS3File))?.into_any(),
+        Role::HttpSession => Py::new(py, base.add_subclass(http::PySession))?.into_any(),
+        Role::HttpRequest => Py::new(py, base.add_subclass(http::PyRequest))?.into_any(),
+        Role::HttpResponse => Py::new(py, base.add_subclass(http::PyResponse))?.into_any(),
+        Role::HttpStream => Py::new(py, base.add_subclass(http::PyStream))?.into_any(),
         Role::Buffered => Py::new(py, base.add_subclass(roles::PyBuffered))?.into_any(),
         Role::Text => encodings::describe_text(py, base)?,
         Role::Coded(codec) => codings::describe(py, base, codec)?,
@@ -377,7 +407,7 @@ impl PyIOBase {
     /// rebuilt. A handle on a foreign Arrow filesystem rebuilds onto that
     /// same filesystem, because its location alone would not say where it
     /// lives.
-    fn rebuilt(&self) -> PyResult<Holder> {
+    pub(crate) fn rebuilt(&self) -> PyResult<Holder> {
         if let Some(holder) = rebuilt_arrow_holder(self.inner()?) {
             return Ok(holder);
         }
@@ -613,9 +643,9 @@ impl PyIOBase {
         py: Python<'py>,
         options: &RecordOptions,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self
-            .inner()?
-            .read_arrow_reader(options)
+        let inner = self.inner()?;
+        let reader = py
+            .detach(|| inner.read_arrow_reader(options))
             .map_err(crate::holder::fs::storage_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
@@ -1077,29 +1107,31 @@ impl PyIOBase {
 
     /// The number of bytes here, as `Path.stat().st_size`.
     #[getter]
-    fn size(&self) -> PyResult<u64> {
-        match self.inner()?.bound_location() {
-            Some(bound) => bound
+    fn size(&self, py: Python<'_>) -> PyResult<u64> {
+        let inner = self.inner()?;
+        if let Some(bound) = inner.bound_location() {
+            return bound
                 .filesystem()
                 .file_info(bound.path())
                 .map(|info| info.size.unwrap_or(0))
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(self.inner()?.size()),
+                .map_err(crate::holder::fs::storage_error);
         }
+        Ok(py.detach(|| inner.size()))
     }
 
     /// The exact core storage role: memory, file, directory, table,
     /// namespace, catalog, or unknown.
     #[getter]
-    fn kind(&self) -> PyResult<&'static str> {
-        match self.inner()?.bound_location() {
-            Some(bound) => bound
+    fn kind(&self, py: Python<'_>) -> PyResult<&'static str> {
+        let inner = self.inner()?;
+        if let Some(bound) = inner.bound_location() {
+            return bound
                 .filesystem()
                 .file_info(bound.path())
                 .map(|info| info.kind.as_str())
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(self.inner()?.kind().as_str()),
+                .map_err(crate::holder::fs::storage_error);
         }
+        Ok(py.detach(|| inner.kind()).as_str())
     }
 
     /// The number of logical rows in this media value.
@@ -1153,15 +1185,16 @@ impl PyIOBase {
     }
 
     /// Return whether anything is here now, as `Path.exists`.
-    fn exists(&self) -> PyResult<bool> {
-        match self.inner()?.bound_location() {
-            Some(bound) => bound
+    fn exists(&self, py: Python<'_>) -> PyResult<bool> {
+        let inner = self.inner()?;
+        if let Some(bound) = inner.bound_location() {
+            return bound
                 .filesystem()
                 .file_info(bound.path())
                 .map(|info| info.kind != yggdryl::IOKind::Unknown)
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(self.inner()?.kind() != yggdryl::IOKind::Unknown),
+                .map_err(crate::holder::fs::storage_error);
         }
+        Ok(py.detach(|| inner.kind()) != yggdryl::IOKind::Unknown)
     }
 
     /// Return whether this resource contains others, as `Path.is_dir`.
@@ -1177,15 +1210,16 @@ impl PyIOBase {
     }
 
     /// Return whether this resource holds bytes, as `Path.is_file`.
-    fn is_file(&self) -> PyResult<bool> {
-        match self.inner()?.bound_location() {
-            Some(bound) => bound
+    fn is_file(&self, py: Python<'_>) -> PyResult<bool> {
+        let inner = self.inner()?;
+        if let Some(bound) = inner.bound_location() {
+            return bound
                 .filesystem()
                 .file_info(bound.path())
                 .map(|info| info.kind == yggdryl::IOKind::File)
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(self.inner()?.kind() == yggdryl::IOKind::File),
+                .map_err(crate::holder::fs::storage_error);
         }
+        Ok(py.detach(|| inner.kind()) == yggdryl::IOKind::File)
     }
 
     /// Return whether this handle exposes its byte or record surface.
@@ -1467,9 +1501,9 @@ impl PyIOBase {
     /// A resource that does not exist reads as empty rather than raising, per
     /// the laziness contract.
     fn read_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self
-            .inner()?
-            .read_all_bytes()
+        let inner = self.inner()?;
+        let bytes = py
+            .detach(|| inner.read_all_bytes())
             .map_err(crate::holder::fs::storage_error)?;
         Ok(PyBytes::new(py, &bytes))
     }
@@ -1511,10 +1545,10 @@ impl PyIOBase {
     }
 
     /// Read every byte here as text, as `Path.read_text`.
-    fn read_text(&self) -> PyResult<String> {
-        let bytes = self
-            .inner()?
-            .read_all_bytes()
+    fn read_text(&self, py: Python<'_>) -> PyResult<String> {
+        let inner = self.inner()?;
+        let bytes = py
+            .detach(|| inner.read_all_bytes())
             .map_err(crate::holder::fs::storage_error)?;
         String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))
     }
@@ -1533,9 +1567,9 @@ impl PyIOBase {
             Some(_) => return Err(PyTypeError::new_err("cls must be Scalar or None")),
         };
         let field = field.map(core_field_from_value).transpose()?;
-        let value = self
-            .inner()?
-            .read_scalar(field.as_ref())
+        let inner = self.inner()?;
+        let value = py
+            .detach(|| inner.read_scalar(field.as_ref()))
             .map_err(crate::holder::fs::storage_error)?;
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
@@ -1553,12 +1587,13 @@ impl PyIOBase {
     #[pyo3(signature = (*, options = None, **properties))]
     fn read_arrow(
         &self,
+        py: Python<'_>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<crate::serie::PySerieReader> {
         let options = self.arrow_options(options, properties)?;
-        self.inner()?
-            .read_arrow(options.as_ref())
+        let inner = self.inner()?;
+        py.detach(|| inner.read_arrow(options.as_ref()))
             .map(crate::serie::PySerieReader::from)
             .map_err(crate::holder::fs::storage_error)
     }
@@ -1593,22 +1628,24 @@ impl PyIOBase {
     }
 
     /// Replace what is here with `data`, as `Path.write_bytes`.
-    fn write_bytes(&mut self, data: &[u8]) -> PyResult<usize> {
-        self.inner_mut()?
-            .write_all_bytes(data)
+    fn write_bytes(&mut self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.write_all_bytes(data))
             .map_err(crate::holder::fs::storage_error)?;
         Ok(data.len())
     }
 
     /// Replace what is here with `text`, as `Path.write_text`.
-    fn write_text(&mut self, text: &str) -> PyResult<usize> {
-        self.write_bytes(text.as_bytes())
+    fn write_text(&mut self, py: Python<'_>, text: &str) -> PyResult<usize> {
+        self.write_bytes(py, text.as_bytes())
     }
 
     /// Encode one Python value as inferred JSON, YAML, TOML, or XML.
     fn write_scalar(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner_mut()?
-            .write_scalar(&from_py(value)?)
+        let py = value.py();
+        let value = from_py(value)?;
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.write_scalar(&value))
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -1622,9 +1659,9 @@ impl PyIOBase {
         offset: u64,
         length: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self
-            .inner()?
-            .read_range_bytes(offset, length)
+        let inner = self.inner()?;
+        let bytes = py
+            .detach(|| inner.read_range_bytes(offset, length))
             .map_err(crate::holder::fs::storage_error)?;
         Ok(PyBytes::new(py, &bytes))
     }
@@ -1652,9 +1689,9 @@ impl PyIOBase {
         };
         // The core answer is read once and becomes exactly one Python object:
         // the text path never materializes the `bytes` it would discard.
-        let bytes = self
-            .inner()?
-            .read_range_bytes(offset, length)
+        let inner = self.inner()?;
+        let bytes = py
+            .detach(|| inner.read_range_bytes(offset, length))
             .map_err(crate::holder::fs::storage_error)?;
         if !text {
             return Ok(PyBytes::new(py, &bytes).into_any());
@@ -1735,9 +1772,9 @@ impl PyIOBase {
     ///
     /// The core's `append_bytes` under its own name; `append` is the inferring
     /// entry point that also takes text and the other buffer types.
-    fn append_bytes(&mut self, data: &[u8]) -> PyResult<u64> {
-        self.inner_mut()?
-            .append_bytes(data)
+    fn append_bytes(&mut self, py: Python<'_>, data: &[u8]) -> PyResult<u64> {
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.append_bytes(data))
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -1746,14 +1783,15 @@ impl PyIOBase {
     /// `bytes`, `bytearray`, `memoryview`, and `str` all name the same core
     /// append: the buffer is read once here and redirected to `append_bytes`.
     fn append(&mut self, data: &Bound<'_, PyAny>) -> PyResult<u64> {
+        let py = data.py();
         if let Ok(text) = data.cast::<PyString>() {
             let text = text.to_cow()?;
-            return self.append_bytes(text.as_bytes());
+            return self.append_bytes(py, text.as_bytes());
         }
         with_python_bytes(
             data,
             "appended data must be bytes, bytearray, memoryview, or str",
-            |bytes| self.append_bytes(bytes),
+            |bytes| self.append_bytes(py, bytes),
         )
     }
 
@@ -1864,12 +1902,12 @@ impl PyIOBase {
     /// A thin spelling of `remove(recursive=False)` under the name `pathlib`
     /// uses; unlike `pathlib`'s, a resource that is not there is not an error,
     /// because absence is a no-op success everywhere on this handle.
-    fn unlink(&mut self) -> PyResult<()> {
+    fn unlink(&mut self, py: Python<'_>) -> PyResult<()> {
         if self.inner()?.bound_location().is_some() {
             self.delete_file()
         } else {
-            self.inner_mut()?
-                .remove(false)
+            let inner = self.inner_mut()?;
+            py.detach(|| inner.remove(false))
                 .map_err(crate::holder::fs::storage_error)
         }
     }
@@ -1898,9 +1936,9 @@ impl PyIOBase {
     /// The handle stays usable afterwards: writing through it recreates the
     /// resource exactly as a fresh handle would.
     #[pyo3(signature = (recursive = false))]
-    fn remove(&mut self, recursive: bool) -> PyResult<()> {
-        self.inner_mut()?
-            .remove(recursive)
+    fn remove(&mut self, py: Python<'_>, recursive: bool) -> PyResult<()> {
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.remove(recursive))
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -1923,8 +1961,8 @@ impl PyIOBase {
         length: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let mut buffer = vec![0_u8; length];
-        self.inner()?
-            .pread_exact(offset, &mut buffer)
+        let inner = self.inner()?;
+        py.detach(|| inner.pread_exact(offset, &mut buffer))
             .map_err(crate::holder::fs::storage_error)?;
         Ok(PyBytes::new(py, &buffer))
     }
@@ -2077,13 +2115,15 @@ impl PyIOBase {
     /// A handle works without this - every operation materializes what it needs
     /// - so calling it moves that cost to a known point. Opening a resource
     /// that does not exist yet succeeds without creating it.
-    fn open(&mut self) -> PyResult<()> {
+    fn open(&mut self, py: Python<'_>) -> PyResult<()> {
         // The trait method, deliberately: the inherent `Holder::open` promotes
         // the holder into its record media first, and a handle whose variant
         // changed under it would report a class it no longer is. Construction
         // already composed what the name declares, so there is nothing left to
-        // promote.
-        yggdryl::IOBase::open(self.inner_mut()?).map_err(crate::holder::fs::storage_error)
+        // promote. Opening may be a request, so the interpreter is released.
+        let inner = self.inner_mut()?;
+        py.detach(|| yggdryl::IOBase::open(inner))
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Return whether cached state is currently held.
@@ -2115,7 +2155,10 @@ impl PyIOBase {
     /// Enter a scope, as `IOBase.open`.
     fn __enter__(mut slf: PyRefMut<'_, Self>) -> PyResult<PyRefMut<'_, Self>> {
         // The trait method, for the reason `open` gives.
-        yggdryl::IOBase::open(slf.inner_mut()?).map_err(crate::holder::fs::storage_error)?;
+        let py = slf.py();
+        let inner = slf.inner_mut()?;
+        py.detach(|| yggdryl::IOBase::open(inner))
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(slf)
     }
 
@@ -2297,12 +2340,13 @@ impl PyIOBase {
     #[pyo3(signature = (*, options = None, **properties))]
     fn read_arrow_field(
         &self,
+        py: Python<'_>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyField> {
         let options = self.resolve_options(options, properties)?;
-        self.inner()?
-            .read_arrow_field(&options)
+        let inner = self.inner()?;
+        py.detach(|| inner.read_arrow_field(&options))
             .map(PyField::from_inner)
             .map_err(value_error)
     }

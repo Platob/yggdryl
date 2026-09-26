@@ -15,7 +15,7 @@
 //! [`IOBase::pstream_bytes`](crate::IOBase::pstream_bytes) and is never read
 //! whole.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -61,7 +61,8 @@ pub(super) enum Source {
     /// a `Holder` is the crate's widest enum and every other variant is a
     /// pointer.
     Owned(Box<Holder>),
-    /// The mounted holder itself, read under the mount's own lock.
+    /// The mounted holder itself, read under the mount's own lock one
+    /// batch at a time.
     Root(Arc<RwLock<Mounted>>),
 }
 
@@ -215,11 +216,14 @@ const ALLOW: &str = "GET, HEAD, PUT, DELETE, OPTIONS";
 #[derive(Clone, Debug)]
 pub struct ServerOptions {
     read_timeout: Duration,
+    write_timeout: Duration,
+    max_connections: usize,
     max_head_size: usize,
     max_body_size: u64,
     keep_alive: bool,
     recording: bool,
     etag: bool,
+    tunnel: bool,
     server_header: String,
 }
 
@@ -227,19 +231,24 @@ impl Default for ServerOptions {
     fn default() -> Self {
         Self {
             read_timeout: Duration::from_secs(30),
+            write_timeout: Duration::from_secs(30),
+            max_connections: 512,
             max_head_size: MAX_LINE_BYTES * 8,
             max_body_size: 64 << 20,
             keep_alive: true,
             recording: true,
             etag: true,
+            tunnel: false,
             server_header: format!("yggdryl/{}", env!("CARGO_PKG_VERSION")),
         }
     }
 }
 
 impl ServerOptions {
-    /// How long a connection waits for the next byte of a request before it
-    /// is closed (30 seconds).
+    /// How long a connection waits for the next byte of a request, and
+    /// the longest one request head may take to arrive whole, before it is
+    /// closed (30 seconds): a peer trickling a head a byte at a time holds
+    /// its connection no longer than one that sends nothing.
     pub fn read_timeout(&self) -> Duration {
         self.read_timeout
     }
@@ -247,6 +256,30 @@ impl ServerOptions {
     /// This value with `read_timeout` set.
     pub fn with_read_timeout(mut self, read_timeout: Duration) -> Self {
         self.read_timeout = read_timeout;
+        self
+    }
+
+    /// How long writing an answer waits for the peer to take more bytes
+    /// before the connection is closed (30 seconds).
+    pub fn write_timeout(&self) -> Duration {
+        self.write_timeout
+    }
+
+    /// This value with `write_timeout` set.
+    pub fn with_write_timeout(mut self, write_timeout: Duration) -> Self {
+        self.write_timeout = write_timeout;
+        self
+    }
+
+    /// The most connections served at once, one thread each (512); a
+    /// connection accepted past it is closed at once, unread.
+    pub fn max_connections(&self) -> usize {
+        self.max_connections
+    }
+
+    /// This value with `max_connections` set.
+    pub fn with_max_connections(mut self, max_connections: usize) -> Self {
+        self.max_connections = max_connections;
         self
     }
 
@@ -290,7 +323,8 @@ impl ServerOptions {
     }
 
     /// Whether handled requests are kept in the log [`Server::requests`]
-    /// answers (`true`); [`Server::request_count`] counts either way.
+    /// answers (`true`), the newest [`Server::MAX_RECORDED`] of them;
+    /// [`Server::request_count`] counts either way.
     pub fn recording(&self) -> bool {
         self.recording
     }
@@ -310,6 +344,20 @@ impl ServerOptions {
     /// This value with `etag` set.
     pub fn with_etag(mut self, etag: bool) -> Self {
         self.etag = etag;
+        self
+    }
+
+    /// Whether a `CONNECT host:port` is tunnelled to that address (`false`):
+    /// the server then stands in for a forward proxy, which is how a
+    /// client's proxy handling is tested against a real one. Off, a
+    /// `CONNECT` is `405`.
+    pub fn tunnel(&self) -> bool {
+        self.tunnel
+    }
+
+    /// This value with `tunnel` set.
+    pub fn with_tunnel(mut self, tunnel: bool) -> Self {
+        self.tunnel = tunnel;
         self
     }
 
@@ -357,7 +405,7 @@ struct State {
     mounts: Vec<Mount>,
     routes: BTreeMap<(Option<Method>, String), Arc<Handler>>,
     faults: Vec<Injected>,
-    recorded: Vec<Recorded>,
+    recorded: VecDeque<Recorded>,
     recording: bool,
 }
 
@@ -399,6 +447,8 @@ pub(super) struct Inner {
     pub(super) options: ServerOptions,
     stopping: AtomicBool,
     connections: AtomicU64,
+    /// Connections being served now, against `max_connections`.
+    live: AtomicUsize,
     count: AtomicUsize,
     state: Mutex<State>,
 }
@@ -412,12 +462,13 @@ impl Inner {
 
     /// Decide one request: the fault, the route or the mount, then the log.
     pub(super) fn dispatch(&self, incoming: Incoming) -> Outcome {
-        let target = self.url.join_reference(&incoming.head.target);
+        let target = self
+            .url
+            .join_reference(&incoming.head.target)
+            .and_then(|url| decoded_path(&url).map(|path| (url, path)));
         let (path, query) = match &target {
-            Ok(url) => (
-                url.path_text(true)
-                    .map(|path| path.into_owned())
-                    .unwrap_or_default(),
+            Ok((url, path)) => (
+                path.clone(),
                 url.parameters(true)
                     .map(|parameters| {
                         parameters
@@ -469,7 +520,7 @@ impl Inner {
             Some(Fault::CutBodyAt(at)) => cut = Some(at),
             None => {}
         }
-        let answer = match (target, found) {
+        let answer = match (target.map(|(url, _)| url), found) {
             (Err(error), _) => Answer::text(Status::BAD_REQUEST, &error.to_string()),
             (Ok(_), None) => Answer::status(Status::NOT_FOUND),
             (Ok(url), Some(Found::Route(handler))) => {
@@ -507,7 +558,10 @@ impl Inner {
         if !state.recording {
             return;
         }
-        state.recorded.push(Recorded {
+        if state.recorded.len() == Server::MAX_RECORDED {
+            state.recorded.pop_front();
+        }
+        state.recorded.push_back(Recorded {
             method: incoming.head.method,
             target: incoming.head.target.clone(),
             path: path.to_owned(),
@@ -603,7 +657,21 @@ pub struct Server {
     accept: Option<JoinHandle<()>>,
 }
 
+/// One admitted connection, given back when its thread ends however it ends.
+struct Live<'a>(&'a AtomicUsize);
+
+impl Drop for Live<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 impl Server {
+    /// The most requests [`requests`](Self::requests) keeps, the oldest
+    /// dropped first: a server left recording under load holds a bounded
+    /// log rather than every request it ever answered.
+    pub const MAX_RECORDED: usize = 65_536;
+
     /// Bind `address` (`127.0.0.1:0` for any loopback port) with the default
     /// options and start accepting.
     ///
@@ -629,6 +697,7 @@ impl Server {
             url,
             stopping: AtomicBool::new(false),
             connections: AtomicU64::new(0),
+            live: AtomicUsize::new(0),
             count: AtomicUsize::new(0),
             state: Mutex::new(State {
                 recording: options.recording,
@@ -642,10 +711,24 @@ impl Server {
                 if shared.stopping.load(Ordering::SeqCst) {
                     break;
                 }
-                if let Ok(stream) = connection {
-                    shared.connections.fetch_add(1, Ordering::Relaxed);
+                let Ok(stream) = connection else {
+                    continue;
+                };
+                shared.connections.fetch_add(1, Ordering::Relaxed);
+                // Past the cap the stream is dropped here, closing it unread:
+                // a thread per connection is only bounded if this is.
+                let admitted = shared
+                    .live
+                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |live| {
+                        (live < shared.options.max_connections).then_some(live + 1)
+                    })
+                    .is_ok();
+                if admitted {
                     let inner = Arc::clone(&shared);
-                    std::thread::spawn(move || connection::serve(&inner, stream));
+                    std::thread::spawn(move || {
+                        let _live = Live(&inner.live);
+                        connection::serve(&inner, stream);
+                    });
                 }
             }
         });
@@ -797,9 +880,10 @@ impl Server {
     }
 
     /// Every request handled while recording since the last
-    /// [`clear_requests`](Self::clear_requests), in order.
+    /// [`clear_requests`](Self::clear_requests), in order - the newest
+    /// [`MAX_RECORDED`](Self::MAX_RECORDED) of them.
     pub fn requests(&self) -> Vec<Recorded> {
-        self.inner.state().recorded.clone()
+        self.inner.state().recorded.iter().cloned().collect()
     }
 
     /// Requests handled since the last [`clear_requests`](Self::clear_requests),
@@ -877,4 +961,33 @@ impl fmt::Debug for Server {
             .field("requests", &self.inner.count.load(Ordering::Relaxed))
             .finish()
     }
+}
+
+/// The request path, each segment percent-decoded on its own.
+///
+/// A literal `..` was already removed by the reference resolution, which
+/// never climbs above the root; a segment spelling one in escapes
+/// (`%2e%2e`), or decoding to a separator (`%2F`, `%5C`) or a NUL, would
+/// reach a mount's `child_by_path` as a step the resolution never saw, so
+/// the target is refused instead of served.
+fn decoded_path(url: &Url) -> crate::Result<String> {
+    let raw = url.path_text(false)?;
+    let mut path = String::with_capacity(raw.len());
+    for (index, segment) in raw.split('/').enumerate() {
+        let decoded = crate::uri::percent_decode(segment, "http path")?;
+        if decoded == "." || decoded == ".." || decoded.contains(['/', '\\', '\0']) {
+            return Err(crate::Error::Parse {
+                target: "http path",
+                position: 0,
+                reason: smol_str::format_smolstr!(
+                    "expected a path whose segments decode to names, got the segment {segment:?}"
+                ),
+            });
+        }
+        if index > 0 {
+            path.push('/');
+        }
+        path.push_str(&decoded);
+    }
+    Ok(path)
 }

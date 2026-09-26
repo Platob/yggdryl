@@ -12,6 +12,7 @@ A handle's name picks the encoding, the compression and the charset; the read an
 | [YAML](#yaml) | `application/yaml`, `.yaml` | default |
 | [TOML](#toml) | `application/toml`, `.toml` | default |
 | [Iceberg](#iceberg) | a table folder | `iceberg` feature |
+| [HTTP messages](#http-messages) | `message/http`, `.http` | `http` feature |
 | [Compression](#compression) | `.gz`, `.zz`, `.zst` suffix | default |
 | [Charsets](#charsets) | `;charset=` parameter | default |
 
@@ -1650,6 +1651,75 @@ cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
 ```bash
 YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
 ```
+
+## HTTP messages
+
+`message/http` (`.http`) is one whole HTTP/1.1 message - a request or a response, its head and its framed body - as RFC 9112 writes it. `Request::from_bytes` and `Response::from_bytes` parse one and `into_bytes` renders it back; a transfer the [HTTP backend](../holder/index.md#http) made is the same value, so a captured exchange and a live one read alike. Behind the `http` feature; the message doors are Rust and JavaScript only.
+
+```text
+Response::from_bytes(&[u8]) -> Result<Response>     // status line, headers, framed body; the URL about:blank
+Request::from_bytes(&[u8]) -> Result<Request>       // the target joined onto Host
+response.into_bytes() / request.into_bytes()        // the message back: names lower case, lexical order
+response.into_scalar() -> Result<Scalar>            // {status, reason, version, url, headers, body}
+parse_request / parse_response -> (head, body)      // the grammar alone: RequestHead, ResponseHead
+render_request / render_response                    // a head and a body back to bytes
+decode_chunked(reader) / encode_chunked(writer)     // the chunked framing over std::io
+```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::http::{Method, Request, Response, Status};
+    use yggdryl::{MimeType, Scalar, Url};
+
+    // The name declares the medium.
+    assert_eq!(Url::from_str("file:///capture.http")?.media_type().base(), &MimeType::HTTP);
+
+    let wire = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                 Transfer-Encoding: chunked\r\n\r\n7\r\n{\"a\":1}\r\n0\r\n\r\n";
+    let response = Response::from_bytes(wire)?;
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(response.text()?, r#"{"a":1}"#);
+    // Decoded as RFC 9112 says: the length replaces the transfer coding.
+    assert_eq!(response.headers().get("content-length"), Some("7"));
+    assert_eq!(response.headers().get("transfer-encoding"), None);
+    let record = response.into_scalar()?;
+    assert_eq!(record.get_key_str("reason").and_then(Scalar::as_str), Some("OK"));
+
+    // Rendered and parsed again, the message is the same one.
+    let again = Response::from_bytes(&response.into_bytes()?)?;
+    assert_eq!(again.text()?, response.text()?);
+
+    let request = Request::from_bytes(b"GET /v1/orders?limit=2 HTTP/1.1\r\nHost: api.example.com\r\n\r\n")?;
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(request.url().to_string(), "http://api.example.com/v1/orders?limit=2");
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { http } = require('yggdryl')
+
+    const wire = Buffer.from(
+      'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n' +
+        'Transfer-Encoding: chunked\r\n\r\n7\r\n{"a":1}\r\n0\r\n\r\n',
+    )
+    const response = http.Response.fromBytes(wire)
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.text(), '{"a":1}')
+    assert.equal(response.headers.get('content-length'), '7')
+    assert.equal(http.Response.fromBytes(response.intoBytes()).text(), '{"a":1}')
+    ```
+
+A recipient reads what RFC 9112 lets it read, and refuses the rest as `Error::Parse` with target `http message` at the byte position it stopped:
+
+- a line ends in CRLF, a bare LF tolerated as the terminator and a bare CR anywhere else refused; obs-fold is refused;
+- a request, status, field or chunk-size line above `MAX_LINE_BYTES` (8192) and a head of more than `MAX_FIELD_LINES` (256) field lines are refused before they are read further;
+- `Content-Length` is a decimal every repetition agrees on and never stands beside `Transfer-Encoding`; the one transfer coding read is `chunked`, its extensions ignored and its trailers folded into the headers;
+- a `1xx`, `204` or `304` response has no body whatever its headers state, and a response stating no framing reads to the end of the input; the input must be one message;
+- a field value's obs-text is read through `Charset::transcribe`, so a legacy byte is its windows-1252 character rather than a refusal;
+- a `Content-Encoding` is kept on the body as sent: `bytes`, `text` and `scalar` decode it, `into_bytes` renders it coded, and a coding this crate cannot decode is refused when the message is parsed.
 
 ## Compression
 

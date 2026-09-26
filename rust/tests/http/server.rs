@@ -144,6 +144,49 @@ fn a_malformed_request_line_answers_400_and_closes() {
 }
 
 #[test]
+fn an_escaped_dot_segment_or_separator_never_reaches_a_mount() {
+    // A memory root below a mount, beside a file the mount must not reach.
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    let root = memory_root();
+    root.child_by_path("secret.txt")
+        .expect("child")
+        .write_all_bytes(b"classified-bytes")
+        .expect("write");
+    root.child_by_path("public/a.txt")
+        .expect("child")
+        .write_all_bytes(b"alpha")
+        .expect("write");
+    server
+        .mount("/files", root.child_by_path("public").expect("child"))
+        .expect("mount");
+    for target in [
+        "/files/%2e%2e/secret.txt",
+        "/files/%2E%2E/secret.txt",
+        "/files/.%2e/secret.txt",
+        "/files/%2e",
+        "/files/..%2Fsecret.txt",
+        "/files/a%2Fb.txt",
+        "/files/a%5Cb.txt",
+        "/files/a%00.txt",
+    ] {
+        let (head, body) = raw(&server, &request_line("GET", target, ""));
+        assert_eq!(head.status, Status::BAD_REQUEST, "{target}");
+        assert!(
+            !body.windows(10).any(|window| window == b"classified"),
+            "{target} served the file above the mount"
+        );
+    }
+    // A literal `..` is resolved away before any mount is asked: it names the
+    // root's own sibling, which no route or mount answers.
+    let (head, _) = raw(&server, &request_line("GET", "/files/../secret.txt", ""));
+    assert_eq!(head.status, Status::NOT_FOUND);
+    // An ordinary escape still reads as the name it spells.
+    let (head, body) = raw(&server, &request_line("GET", "/files/%61.txt", ""));
+    assert_eq!(head.status, Status::OK);
+    assert_eq!(body, b"alpha");
+}
+
+#[test]
 fn a_folded_field_line_answers_400() {
     let server = served();
     let (head, _) = raw(
@@ -207,6 +250,134 @@ fn an_ambiguous_framing_answers_400() {
         b"PUT /x HTTP/1.1\r\nHost: test\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n",
     );
     assert_eq!(head.status, Status::BAD_REQUEST);
+}
+
+#[test]
+fn a_transfer_coding_on_http_1_0_or_not_ending_in_chunked_answers_400() {
+    let server = served();
+    for request in [
+        &b"PUT /x HTTP/1.0\r\nHost: test\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n"[..],
+        b"PUT /x HTTP/1.1\r\nHost: test\r\nTransfer-Encoding: chunked, gzip\r\n\r\n1\r\nx\r\n0\r\n\r\n",
+        b"PUT /x HTTP/1.1\r\nHost: test\r\nTransfer-Encoding: gzip\r\n\r\nx",
+    ] {
+        let (head, body) = raw(&server, request);
+        assert_eq!(head.status, Status::BAD_REQUEST, "{request:?}");
+        assert!(String::from_utf8_lossy(&body).contains("Transfer-Encoding"));
+    }
+    assert_eq!(
+        server.request_count(),
+        0,
+        "a refused framing reaches no route"
+    );
+}
+
+#[test]
+fn blank_lines_before_the_request_line_count_against_the_head_bound() {
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default().with_max_head_size(64),
+    )
+    .expect("bind");
+    let (head, _) = raw(&server, "\r\n".repeat(100).as_bytes());
+    assert_eq!(head.status.code(), 431);
+}
+
+#[test]
+fn a_head_trickled_past_the_read_timeout_is_closed() {
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default().with_read_timeout(Duration::from_millis(400)),
+    )
+    .expect("bind");
+    let mut stream = TcpStream::connect(server.address()).expect("connect");
+    stream
+        .write_all(b"GET / HTTP/1.1\r\nX-Slow: ")
+        .expect("write");
+    // One byte every 100 ms: each read is well inside the idle bound, and
+    // only the head's deadline ends it.
+    let mut trickle = stream.try_clone().expect("clone");
+    let trickler = std::thread::spawn(move || {
+        for _ in 0..50 {
+            std::thread::sleep(Duration::from_millis(100));
+            if trickle.write_all(b"x").is_err() {
+                return;
+            }
+        }
+    });
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("timeout");
+    let started = Instant::now();
+    let mut answer = Vec::new();
+    let _ = stream.read_to_end(&mut answer);
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "closed by the deadline, not by the trickle ending: {:?}",
+        started.elapsed()
+    );
+    assert!(answer.is_empty(), "{answer:?}");
+    assert_eq!(server.request_count(), 0);
+    drop(stream);
+    trickler.join().expect("trickler");
+}
+
+#[test]
+fn a_peer_that_stops_reading_frees_its_connection_at_the_write_timeout() {
+    // One connection at a time: the second is served only once the first,
+    // whose peer never reads its answer, is closed by the write timeout.
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default()
+            .with_max_connections(1)
+            .with_write_timeout(Duration::from_millis(300)),
+    )
+    .expect("bind");
+    let root = memory_root();
+    root.child_by_path("big.bin")
+        .expect("child")
+        .write_all_bytes(&vec![7_u8; 64 << 20])
+        .expect("write");
+    root.child_by_path("small.txt")
+        .expect("child")
+        .write_all_bytes(b"small")
+        .expect("write");
+    server.mount("/", root).expect("mount");
+
+    let mut stalled = TcpStream::connect(server.address()).expect("connect");
+    stalled
+        .write_all(b"GET /big.bin HTTP/1.1\r\nHost: test\r\n\r\n")
+        .expect("write");
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let served = loop {
+        assert!(
+            Instant::now() < deadline,
+            "the stalled connection was never freed"
+        );
+        let mut stream = TcpStream::connect(server.address()).expect("connect");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("timeout");
+        if stream
+            .write_all(b"GET /small.txt HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n")
+            .is_err()
+        {
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        let mut answer = Vec::new();
+        let _ = stream.read_to_end(&mut answer);
+        if answer.is_empty() {
+            // Closed unread: the one slot is still taken.
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        break parse_response(&answer).expect("an answer");
+    };
+    assert_eq!(served.0.status, Status::OK);
+    assert_eq!(served.1, b"small");
+    assert!(server.connections() >= 2);
+    drop(stalled);
 }
 
 #[test]
@@ -560,6 +731,42 @@ fn a_get_of_a_container_lists_its_children_as_json() {
         text.contains(&format!("\"url\":\"{}dir/a.txt\"", server.url())),
         "{text}"
     );
+}
+
+#[test]
+fn a_listed_name_is_the_decoded_name_and_its_url_reaches_the_child() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    let root = memory_root();
+    for name in ["a b.txt", "q?x#y.txt", "100%.txt"] {
+        root.child_by_path(name)
+            .expect("child")
+            .write_all_bytes(name.as_bytes())
+            .expect("write");
+    }
+    server.mount("/files", root).expect("mount");
+    let listing = get(&server, "/files").scalar().expect("json");
+    let rows = listing.sequence_rows().expect("an array");
+    let mut names = Vec::new();
+    for row in rows.iter() {
+        let name = row
+            .get_key_str("name")
+            .expect("a name")
+            .as_str()
+            .expect("text")
+            .to_owned();
+        let url = row
+            .get_key_str("url")
+            .expect("a url")
+            .as_str()
+            .expect("text")
+            .to_owned();
+        let body = Request::get(&url).expect("a URL").send().expect("send");
+        assert_eq!(body.status(), Status::OK, "{url}");
+        assert_eq!(body.text().expect("text"), name, "{url}");
+        names.push(name);
+    }
+    names.sort();
+    assert_eq!(names, ["100%.txt", "a b.txt", "q?x#y.txt"]);
 }
 
 #[test]
@@ -1020,6 +1227,8 @@ fn expect_100_continue_is_acknowledged_before_the_body_is_read() {
 
 #[test]
 fn every_request_is_recorded_with_what_was_sent_and_answered() {
+    // The log keeps the newest requests up to its bound, never all of them.
+    assert_eq!(Server::MAX_RECORDED, 65_536);
     let server = served();
     let response = Request::get(
         &server

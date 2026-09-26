@@ -309,10 +309,81 @@ fn into_holder_into_declared_media_composes_the_coding_and_the_encoding() {
     assert_eq!(server.request_count(), 2);
 }
 
+#[test]
+fn a_held_body_cut_short_resumes_from_the_byte_it_reached() {
+    let server = HttpServer::start();
+    let bytes = body(8192);
+    server.put_resource("/cut", &bytes, Some("application/octet-stream"));
+    server.cut_body_at("/cut", 3000);
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+
+    let response = session.get(&server.url("/cut")).unwrap().send().unwrap();
+
+    assert_eq!(&*response.bytes().expect("the body"), &bytes[..]);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].header("range"), Some("bytes=3000-"));
+    assert_eq!(session.stats().resumes, 1);
+}
+
+// --- standing alone ----------------------------------------------------------
+
+#[test]
+fn a_closed_response_reopens_at_its_cursor_on_its_own() {
+    let server = HttpServer::start();
+    let body: Vec<u8> = (0..10_000_u32).map(|index| (index % 251) as u8).collect();
+    server.put_resource("/big", &body, Some("application/octet-stream"));
+    // The session goes out of scope: the response carries what it needs.
+    let mut response = {
+        let session = Session::with_options(HttpOptions::default()).expect("a session");
+        session.get(&server.url("/big")).unwrap().stream().unwrap()
+    };
+    assert!(response.opened());
+    let mut head = vec![0_u8; 100];
+    response.pread_exact(0, &mut head).expect("the first bytes");
+
+    response.close().expect("let go of the transfer");
+    assert!(!response.opened());
+    assert_eq!(server.request_count(), 1);
+
+    let mut rest = vec![0_u8; 9_900];
+    response
+        .pread_exact(100, &mut rest)
+        .expect("the rest, re-opened");
+    head.extend_from_slice(&rest);
+    assert_eq!(head, body);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].header("range"), Some("bytes=100-"));
+    assert!(requests[1].header("if-range").is_some());
+    // Everything delivered: closing and opening again asks for nothing.
+    response.close().unwrap();
+    response.open().unwrap();
+    assert_eq!(server.request_count(), 2);
+}
+
+#[test]
+fn a_closed_response_whose_resource_changed_is_refused_on_reopen() {
+    let server = HttpServer::start();
+    server.put_resource("/doc", &[1_u8; 4096], Some("application/octet-stream"));
+    // A session of its own: the default one's counters are other tests'.
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+    let mut response = session.get(&server.url("/doc")).unwrap().stream().unwrap();
+    let mut head = [0_u8; 10];
+    response.pread_exact(0, &mut head).expect("the first bytes");
+    response.close().expect("closed");
+    server.put_resource("/doc", &[2_u8; 4096], Some("application/octet-stream"));
+
+    match response.open().expect_err("the resource changed") {
+        Error::Conflict { actual, .. } => assert_eq!(actual, "changed resource"),
+        other => panic!("expected a conflict, got {other:?}"),
+    }
+}
+
 // --- the headers -------------------------------------------------------------
 
 #[test]
-fn cookies_links_and_next_url_read_the_headers() {
+fn cookies_links_and_the_next_request_read_the_headers() {
     let server = HttpServer::start();
     server.put_resource("/c", b"ok", Some("text/plain"));
     server.set_cookie("/c", "session=abc; Path=/; HttpOnly");
@@ -327,16 +398,27 @@ fn cookies_links_and_next_url_read_the_headers() {
         vec!["[1]".to_owned(), "[2]".to_owned()],
         PageMode::Link,
     );
-    let first = get(&server, "/p");
+    let first = Request::get(&server.url("/p"))
+        .expect("a URL")
+        .with_header("x-probe", "yes")
+        .expect("a header")
+        .send()
+        .expect("a response");
     let links = first.links().expect("links");
     assert_eq!(links.len(), 1);
     assert!(links[0].has_rel("next"));
+    let next = first
+        .next_request()
+        .expect("a next page")
+        .expect("one more");
     assert_eq!(
-        first.next_url().expect("a next URL"),
-        Some(Url::from_str(&server.url("/p?page=1")).expect("a URL"))
+        next.url(),
+        &Url::from_str(&server.url("/p?page=1")).expect("a URL")
     );
-    let last = get(&server, "/p?page=1");
-    assert_eq!(last.next_url().expect("no next URL"), None);
+    // The same request at the next URL: its own headers go along.
+    assert_eq!(next.headers().get("x-probe"), Some("yes"));
+    let last = next.send().expect("the last page");
+    assert!(last.next_request().expect("no next page").is_none());
     assert_eq!(server.request_count(), 3);
 }
 
@@ -464,7 +546,9 @@ fn a_streaming_body_reads_forward_and_materializes_once() {
     let server = HttpServer::start();
     let bytes = body(8192);
     server.put_resource("/s", &bytes, Some("application/octet-stream"));
-    let response = stream(&server, "/s");
+    // A session of its own: the default one's counters are other tests'.
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+    let response = session.get(&server.url("/s")).unwrap().stream().unwrap();
     assert_eq!(response.kind(), IOKind::File);
     assert_eq!(response.size(), 8192);
     let mut buffer = [0_u8; 16];

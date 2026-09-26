@@ -375,6 +375,10 @@ pub mod internals {
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
     #[cfg(feature = "http")]
+    pub use crate::http::netrc::internals as http_netrc;
+    #[cfg(feature = "http")]
+    pub use crate::http::proxy::internals as http_proxy;
+    #[cfg(feature = "http")]
     pub use crate::http::retry::internals as http_retry;
     #[cfg(feature = "http")]
     pub use crate::http::stream::internals as http_stream;

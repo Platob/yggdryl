@@ -119,6 +119,16 @@ fn a_coding_this_crate_cannot_decode_is_refused_by_name() {
     header_refusal(headers(&[("Content-Encoding", " , ")]).content_encoding());
 }
 
+#[test]
+fn a_coding_chain_past_the_bound_is_refused() {
+    assert_eq!(Headers::MAX_CODINGS, 5);
+    let five = headers(&[("Content-Encoding", "gzip, gzip, gzip, gzip, gzip")]);
+    assert_eq!(five.content_encoding().expect("five").len(), 5);
+    let six = headers(&[("Content-Encoding", "gzip, gzip, gzip, gzip, gzip, gzip")]);
+    let reason = header_refusal(six.content_encoding());
+    assert!(reason.contains("more than 5 codings"), "{reason}");
+}
+
 // The fold.
 
 #[test]
@@ -358,6 +368,25 @@ fn the_json_form_spells_bare_lower_case_names_and_reads_back() {
 fn debug_shows_the_bare_names() {
     let section = headers(&[("Content-Type", "text/plain")]);
     assert_eq!(format!("{section:?}"), "{\"content-type\": \"text/plain\"}");
+}
+
+#[test]
+fn debug_never_prints_a_credential_and_display_is_the_data() {
+    let section = headers(&[
+        ("Authorization", "Bearer t-1"),
+        ("Cookie", "sid=secret"),
+        ("Proxy-Authorization", "Basic cHJveHk="),
+        ("Set-Cookie", "sid=secret; Path=/"),
+        ("Accept", "text/plain"),
+    ]);
+    let debug = format!("{section:?}");
+    assert_eq!(
+        debug,
+        "{\"accept\": \"text/plain\", \"authorization\": <redacted>, \"cookie\": <redacted>, \
+         \"proxy-authorization\": <redacted>, \"set-cookie\": <redacted>}"
+    );
+    // Display and serde are the data forms: every value as it is.
+    assert!(section.to_string().contains("Bearer t-1"));
 }
 
 #[test]

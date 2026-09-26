@@ -16,6 +16,7 @@ use napi_derive::napi;
 use yggdryl::IOMode;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
@@ -105,10 +106,15 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     // The scheme is what says which backend a location belongs to, so this is
     // the one place that decides. Any object-store URL - the three S3
     // spellings, Google's two, Azure's five - reaches the native object
-    // backend; everything else stays local. Construction touches nothing on
-    // either.
+    // backend, an `http` or `https` URL the request that reads and writes the
+    // resource; everything else stays local. Construction touches nothing on
+    // any of them.
     if url.scheme().is_object_store() {
         return yggdryl::s3::located(&url.to_string()).map_err(napi_error);
+    }
+    if url.scheme().is_http() {
+        return yggdryl::http::located_with(&url.to_string(), HttpOptions::default())
+            .map_err(napi_error);
     }
     non_local_scheme(url)?;
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
@@ -119,6 +125,13 @@ fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
         return yggdryl::s3::folder(&url.to_string())
             .map(Holder::S3Folder)
+            .map_err(napi_error);
+    }
+    // An HTTP container is a session over the URL: it lists nothing, and a
+    // path below it is the `GET` of that resource.
+    if url.scheme().is_http() {
+        return yggdryl::http::session_with(HttpOptions::default().with_base_url(url.clone()))
+            .map(Holder::HttpSession)
             .map_err(napi_error);
     }
     non_local_scheme(url)?;
@@ -141,11 +154,14 @@ fn non_local_scheme(url: &yggdryl::Url) -> Result<()> {
     )))
 }
 
-/// Rebuild a foreign-file-system handle, keeping the file system it stands on.
+/// Rebuild a foreign-file-system handle, keeping the file system it stands on,
+/// or an HTTP one, keeping the session and headers it goes out with.
 ///
 /// `None` for anything else, so the local rebuild stays the default path.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
+        Holder::HttpSession(session) => Some(Holder::HttpSession(session.clone())),
+        Holder::HttpRequest(request) => Some(Holder::HttpRequest(request.clone())),
         Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
         Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::FsFile::new(
             file.bound().clone(),
@@ -476,6 +492,11 @@ impl JsIOBase {
         Self { inner }
     }
 
+    /// The core handle, for a caller that takes ownership of it.
+    pub(crate) fn into_core(self) -> Holder {
+        self.inner
+    }
+
     fn bound_location(&self) -> Option<&yggdryl::fs::BoundLocation> {
         self.inner.bound_location()
     }
@@ -487,13 +508,27 @@ impl JsIOBase {
             .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
     }
 
+    /// What a server mounts for this handle: a second handle on the same
+    /// location, or - for an in-memory handle, which has none - a copy of
+    /// its bytes under its media type.
+    pub(crate) fn mountable(&self) -> Result<Holder> {
+        if yggdryl::IOBase::kind(&self.inner) != yggdryl::IOKind::Memory {
+            return Ok(self.rebuilt()?.into_core());
+        }
+        let mut buffer = yggdryl::holder::Buffer::from_bytes(
+            yggdryl::IOBase::read_all_bytes(&self.inner).map_err(napi_error)?,
+        );
+        yggdryl::IOBase::set_media_type(&mut buffer, yggdryl::IOBase::media_type(&self.inner).clone());
+        Ok(Holder::Buffer(buffer))
+    }
+
     /// Build a second handle on the same location.
     ///
     /// A handle owns backend state, so it is not copied; the location it
     /// describes is what gets rebuilt. A handle on a foreign Arrow file system rebuilds onto that
     /// same file system, because its location alone would not say where it
     /// lives.
-    fn rebuilt(&self) -> Result<Self> {
+    pub(crate) fn rebuilt(&self) -> Result<Self> {
         if let Some(holder) = rebuilt_arrow_holder(&self.inner) {
             return Ok(Self::from_core(holder));
         }
@@ -1627,6 +1662,20 @@ impl JsIOBase {
     /// out.
     #[napi]
     pub fn read_arrow_reader(&self, options: Option<&JsRecordOptions>) -> Result<JsBatchReader> {
+        // A structured text document - JSON, JSON Lines, YAML, TOML, XML - has
+        // no record options of its own: its rows are the record column the
+        // core's `read_arrow` parses it into, which an HTTP resource answers
+        // one page at a time.
+        if options.is_none()
+            && yggdryl::text::Format::from_media_type(self.inner.media_type()).is_ok()
+        {
+            let records = self.inner.read_arrow(None).map_err(napi_error)?;
+            let root_name = records.field().name().to_owned();
+            return Ok(JsBatchReader::from_core(
+                records.into_arrow_reader(),
+                &root_name,
+            ));
+        }
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         let reader = self.inner.read_arrow_reader(&options).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, options.name()))

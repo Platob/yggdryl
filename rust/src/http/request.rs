@@ -17,8 +17,8 @@ use std::time::Duration;
 use super::client::{Answer, Wire};
 use super::wire::{RequestHead, parse_request, render_request};
 use super::{
-    Authorization, Headers, HttpVersion, Method, Pages, Pagination, Response, Session,
-    StatsSnapshot, Stream, range_header,
+    Authorization, ContentRange, Headers, HttpVersion, Method, Pages, Pagination, Response,
+    Session, StatsSnapshot, Stream, range_header,
 };
 use crate::holder::Holder;
 use crate::uri::Parameters;
@@ -613,7 +613,7 @@ impl Request {
             headers: &headers,
             body: None,
             timeout: self.timeout.unwrap_or(self.session.options().timeout()),
-            retry_body: false,
+            idempotent: false,
         };
         let answer = self
             .session
@@ -766,11 +766,25 @@ impl Request {
         let (mut answer, url) = probe.exchange_range(start, last, None)?;
         match answer.status.code() {
             206 => {
-                let total = answer
-                    .headers
-                    .content_range()?
-                    .and_then(|range| range.total());
-                self.learn(&answer.headers, total);
+                // A range starting anywhere but where it was asked for, or
+                // stating nowhere, would hand over bytes at the wrong place.
+                let range = answer.headers.content_range()?;
+                match range {
+                    Some(ContentRange::Bytes { start: stated, .. }) if stated == start => {}
+                    _ => {
+                        return Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "asked {url} for bytes from {start}, got a 206 stating {}",
+                                range.map_or_else(
+                                    || "no Content-Range".to_owned(),
+                                    |range| range.to_string()
+                                )
+                            ),
+                        )));
+                    }
+                }
+                self.learn(&answer.headers, range.and_then(|range| range.total()));
                 Ok(Some(answer.body))
             }
             200 => {
@@ -803,8 +817,11 @@ impl Request {
         let (mut answer, url) = probe.exchange_range_free()?;
         match answer.status.code() {
             200..=299 => {
-                let bytes = read_bounded(&mut answer.body, self.session.options().max_body_size())?;
-                self.learn(&answer.headers, Some(bytes.len() as u64));
+                // Read through a stream, so a transfer cut short resumes from
+                // the byte it reached rather than failing the whole read.
+                let stream = Stream::new(probe, url, answer, 0, None);
+                let bytes = stream.read_from(0, self.session.options().max_body_size())?;
+                self.learn(stream.headers(), Some(bytes.len() as u64));
                 Ok(Some(bytes))
             }
             404 | 410 => {
@@ -904,8 +921,13 @@ impl IOFile for Request {
         self.meta().is_ok_and(|meta| meta.is_some())
     }
 
-    /// One `PUT` of no bytes: HTTP offers no way to empty a resource that
-    /// does not create one, and probing first is what the contract forbids.
+    /// Empty the resource: one `PUT` of no bytes.
+    ///
+    /// This is where an HTTP leaf departs from [`IOBase::clear`]'s
+    /// "clearing is not a write", as an S3 leaf does: HTTP offers no way to
+    /// empty a resource that does not create one, and the only way to find
+    /// out first is a probe the no-pre-call rule forbids - so clearing an
+    /// absent resource creates it empty.
     fn clear_file(&mut self) -> Result<()> {
         self.discard()?;
         self.upload(&[])
@@ -926,8 +948,8 @@ impl IOFile for Request {
 impl IOBase for Request {
     /// Read into `buffer` from `offset` with one ranged `GET`.
     ///
-    /// A staged write answers from memory instead, and a length this open
-    /// scope already knows bounds the read without asking.
+    /// A staged write answers from memory instead, and a length - or an
+    /// absence - this open scope already knows answers without asking.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         {
             let state = self.state()?;
@@ -935,13 +957,12 @@ impl IOBase for Request {
                 return Ok(copy_from(&stage.bytes, offset, buffer));
             }
             if state.opened {
-                if let Some(Some(Meta {
-                    size: Some(size), ..
-                })) = state.meta
-                {
-                    if offset >= size {
-                        return Ok(0);
-                    }
+                match state.meta {
+                    Some(Some(Meta {
+                        size: Some(size), ..
+                    })) if offset >= size => return Ok(0),
+                    Some(None) => return Ok(0),
+                    _ => {}
                 }
             }
         }
@@ -989,7 +1010,8 @@ impl IOBase for Request {
         }
     }
 
-    /// Read the whole resource with one `GET`.
+    /// Read the whole resource with one `GET`, resuming a cut transfer
+    /// from the byte it reached.
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
         if let Some(stage) = self.state()?.stage.as_ref() {
             return Ok(stage.bytes.clone());
@@ -1498,20 +1520,6 @@ fn read_full(body: &mut dyn Read, buffer: &mut [u8]) -> Result<usize> {
         filled += read;
     }
     Ok(filled)
-}
-
-/// Read `body` whole, refusing one longer than `limit`.
-pub(crate) fn read_bounded(body: &mut dyn Read, limit: u64) -> Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    body.take(limit.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(Error::Io)?;
-    if bytes.len() as u64 > limit {
-        return Err(Error::Io(std::io::Error::other(format!(
-            "the response body exceeds the {limit} bytes a whole-body read holds; stream it instead"
-        ))));
-    }
-    Ok(bytes)
 }
 
 /// The refusal a status past the redirects is, named by the method, the

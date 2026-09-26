@@ -130,6 +130,9 @@ this project and nothing else.
 | `arrow` | on | arrays, batches, IPC, casting |
 | `parquet` | off | the Parquet codec and its compression stack |
 | `iceberg` | off | Iceberg 0.10.1 metadata (Rust 1.94 or newer) |
+| `http` | off | the HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages and the `Server`, behind `IOBase` ([HTTP](holder/index.md#http)) |
+| `aws` | off | who a process is to AWS - the credential chain, Signature Version 4; implies `http` |
+| `s3` | off | Amazon S3, Google Cloud Storage and Azure Blob Storage ([Object stores](holder/index.md#object-stores)); implies `aws` |
 
 A schema, identifier, hashing, FIX, and structured-text consumer builds with `default-features = false` on Rust 1.85.
 

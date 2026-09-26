@@ -270,6 +270,34 @@
     instance: column_sizes, content, file_size_in_bytes, lower_bounds, mime_type, null_value_counts, partition, path, record_count, sort_order_id, split_offsets, stable_hash, upper_bounds, value_counts
   iceberg.ScanPlan
     instance: files_planned, files_skipped, manifests_read, manifests_skipped, record_count, stable_hash
+  http
+    exports: Client, Headers, Pages, Request, Response, Server, Session, Stream, delete, get, head, patch, post, put, session
+    the requests vocabulary over the core's one client: every door redirects into yggdryl::http, every network call releases the interpreter, and the module-level verbs send on the process-wide default session session() answers; Session, Request, Response and Stream are IOBase subclasses over Holder::HttpSession, HttpRequest, HttpResponse, HttpStream, so IOBase("https://...") answers a Request
+  http.Session
+    constructor: Session(base_url=None, *, headers=None, auth=None, timeout=None, options=None) - options are HttpOptions properties by name
+    instance: concurrency, cookies, delete, get, head, headers, pages, patch, post, put, request, send, send_all, set_cookie, stats, stream, timeout
+    send_all(requests, concurrency=None) -> Iterator[Response]: a lazy walk in request order; an item is a Request, a URL to GET, or a mapping of request's keywords (method, url, params, headers, data, json, auth, timeout, allow_redirects); the source is pulled only as far as the requests in flight
+  http.Request
+    constructor: Request(method, url, *, params=None, headers=None, data=None, json=None, auth=None, timeout=None, allow_redirects=None, session=None)
+    instance: body, headers, method, pages, send, session, stream
+  http.Response
+    constructor: Response(status=200, headers=None, body=None, *, json=None)
+    instance: content, cookies, elapsed, encoding, headers, history, into_stream, is_redirect, iter_content, iter_lines, json, links, next, ok, raise_for_status, reason, request, scalar, status_code, text, version
+    close() lets go of a streamed body's transfer and connection and keeps the cursor; the next read, or open(), re-opens it there with one ranged GET; the response stands alone, its request and session carried
+  http.Stream
+    instance: delivered, headers, read, resumes, total
+  http.Pages
+    instance: into_arrow_reader, read_arrow, __iter__, __next__
+    protocol: Iterator[Response], unhashable; one GET per page
+  http.Headers
+    instance: accept_ranges, charset, connection_close, content_encoding, content_length, content_range, content_type, date, etag, get, get_all, into_json, items, keys, last_modified, links, location, media_type, mime_type, next_link, rate_limit_pause, retry_after, set_cookies, stable_hash, transfer_encoding_chunked, values
+    protocol: immutable mapping, names compared ignoring case; equality and hash
+  http.Client
+    instance: session, stats
+  http.Server
+    statics: bind(address="127.0.0.1:0", *, read_timeout=None, write_timeout=None, max_connections=None, max_head_size=None, max_body_size=None, keep_alive=None, recording=None, etag=None, tunnel=None, server_header=None) - each option left out keeps the core's default
+    instance: clear_faults, clear_requests, connections, inject, mount, port, request_count, requests, respond, route, shutdown, unmount, unroute, url, url_of, __enter__, __exit__
+    faults: ("cut_body_at", n), "close_before_answer", ("refuse", status[, retry_after]), ("delay", seconds); a route handler runs under the GIL on the server's connection thread
   text.codec
     exports: from_io, from_stream, into_io, into_stream
     inference: explicit format -> source/destination suffix -> one native content sniff; anonymous output defaults to JSON
@@ -652,6 +680,32 @@
     instance: clone, compare, equals, filesPlanned, filesSkipped, manifestsRead, manifestsSkipped, recordCount, stableHash
   iceberg.Compaction
     instance: bytesRewritten, clone, compare, equals, filesAfter, filesBefore, stableHash
+  http
+    statics: Headers, Pages, Request, Response, Server, Session, delete, get, head, patch, post, put, request, session
+    yggdryl::http as a namespace: every exchange is synchronous, as every handle read is, and new IOBase('https://...') holds the resource a URL names
+  http.Session
+    constructor: new Session(baseUrl?, { headers, auth, timeout, options }?) - options are HttpOptions properties by name
+    instance: baseUrl, close, cookies, delete, get, head, headers, intoIOBase, options, pages, patch, post, put, request, sendAll, setCookie, stats, stream, timeout, toString
+    sendAll(requests, concurrency?) -> IterableIterator<Response | Error>: a walk in request order, each answer pulled when asked for; an item is a Request, a URL to GET, or a spec - the request options beside method and url
+  http.Request
+    statics: fromBytes
+    constructor: new Request(method, url)
+    instance: body, headers, intoBytes, intoIOBase, method, pages, send, session, stats, stream, toString, url, withAuthorization, withBody, withFollowRedirects, withForm, withHeader, withHeaders, withJson, withMediaType, withPagination, withQuery, withRecords, withSession, withTimeout
+  http.Response
+    statics: fromBytes
+    instance: close, content, contentLength, cookies, elapsed, encoding, headers, history, intoBytes, intoIOBase, intoScalar, isRedirect, json, links, mediaType, next, ok, open, opened, raiseForStatus, reason, request, scalar, statusCode, text, toString, url, version
+    next is the Request for the next page, or null; close() lets go of a streamed body's transfer keeping the cursor, and the next read or open() re-opens it there
+  http.Pages
+    instance: intoArrowReader, intoTable, next
+    protocol: IterableIterator<Response>; one GET per page
+  http.Headers
+    constructor: new Headers(init?)
+    instance: acceptRanges, charset, contentEncoding, contentLength, contentRange, contentType, date, entries, equals, etag, get, getAll, has, keys, lastModified, length, links, location, mediaType, nextLink, setCookies, toJSON, toString
+    protocol: Iterable<[name, value]>, immutable, names compared ignoring case
+  http.Server
+    statics: bind(address = '127.0.0.1:0', { readTimeout, writeTimeout, maxConnections, maxHeadSize, maxBodySize, keepAlive, recording, etag, tunnel, serverHeader }?)
+    instance: address, clearFaults, clearRequests, closed, connections, inject, mount, port, requestCount, requests, respond, setMediaType, setRecording, shutdown, toString, unmount, unroute, url
+    no route: a JavaScript handler would run on the server's thread and wait on the JavaScript thread, which deadlocks when that thread is the one sending; Rust and Python only
   codec
     statics: from, into, fromStream, intoStream
     options: format, field, maxDepth, maxInputBytes, maxNodes, maxDocuments, indent, value

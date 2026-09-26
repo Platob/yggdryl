@@ -5070,6 +5070,400 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   binding.txhash = txhash
 }
 
+// `yggdryl::http` is a module in the core, so it is one here too. Each native
+// class holds one core value; this block only spells the JavaScript
+// conveniences down to the one shape each native entry takes: pairs from a
+// `Headers`, a `Map`, `URLSearchParams`, `[name, value]` entries or a plain
+// object; a JSON body from anything `Scalar.from` reads; a URL from text, a
+// native `Url` or a WHATWG `URL`. Every exchange is synchronous, as every
+// handle read is.
+{
+  const NativeHeaders = binding.Headers
+  const NativeSession = binding.Session
+  const NativeRequest = binding.Request
+  const Response = binding.Response
+  const Pages = binding.Pages
+  const Server = binding.Server
+  const sendAllNext = takePrivate(binding.SendAllAnswers, '_nextNative')
+
+  const pairsLabel =
+    'a Headers, a Map, URLSearchParams, [name, value] pairs or a plain object'
+
+  function httpText(value, label) {
+    if (typeof value === 'string') return value
+    if (
+      (typeof value === 'number' && Number.isFinite(value)) ||
+      typeof value === 'bigint' ||
+      typeof value === 'boolean'
+    ) {
+      return String(value)
+    }
+    throw new TypeError(`${label} must be a string, a finite number, a bigint or a boolean`)
+  }
+
+  // Pairs in the order the caller wrote them; a plain object's array value is
+  // one pair per member, as a repeated query parameter is.
+  function httpPairs(value, label) {
+    if (value === undefined || value === null) return undefined
+    if (value instanceof NativeHeaders) return value.entries()
+    let entries
+    if (Array.isArray(value) || value instanceof Map || value instanceof URLSearchParams) {
+      entries = Array.from(value)
+    } else if (isPlainObject(value)) {
+      entries = []
+      for (const [name, item] of Object.entries(value)) {
+        if (Array.isArray(item)) {
+          for (const member of item) entries.push([name, member])
+        } else {
+          entries.push([name, item])
+        }
+      }
+    } else {
+      throw new TypeError(`${label} must be ${pairsLabel}`)
+    }
+    return entries.map((pair) => {
+      if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string') {
+        throw new TypeError(`${label} entries must be [name, value] pairs with a string name`)
+      }
+      return [pair[0], httpText(pair[1], `${label} ${JSON.stringify(pair[0])}`)]
+    })
+  }
+
+  function httpUrl(value, label = 'url') {
+    if (typeof value === 'string') return value
+    if (value instanceof Url || value instanceof URL) return value.toString()
+    throw new TypeError(`${label} must be a string, a Url or a URL`)
+  }
+
+  function httpBody(value, label) {
+    if (typeof value === 'string') return Buffer.from(value, 'utf8')
+    if (value instanceof Uint8Array) return value
+    if (value instanceof ArrayBuffer) return new Uint8Array(value)
+    throw new TypeError(`${label} must be a string, a Uint8Array or an ArrayBuffer`)
+  }
+
+  function httpAuth(value) {
+    if (value === undefined || value === null) return undefined
+    if (Array.isArray(value)) {
+      if (value.length !== 2) {
+        throw new TypeError('auth as an array is the [username, password] pair')
+      }
+      return { username: value[0], password: value[1] }
+    }
+    if (isPlainObject(value)) return value
+    throw new TypeError(
+      'auth must be [username, password], { username, password }, { bearer }, or { header, value }',
+    )
+  }
+
+  const asJsonScalar = (value) => (value instanceof Scalar ? value : Scalar.from(value))
+
+  const requestKeys = [
+    'params',
+    'headers',
+    'timeout',
+    'stream',
+    'data',
+    'json',
+    'form',
+    'auth',
+    'followRedirects',
+    'pagination',
+    'records',
+    'mediaType',
+  ]
+
+  function requestInit(options) {
+    if (options === undefined || options === null) return undefined
+    if (!isPlainObject(options)) throw new TypeError('request options must be a plain object')
+    for (const key of Object.keys(options)) {
+      if (!requestKeys.includes(key)) {
+        throw new TypeError(
+          `unknown request option ${JSON.stringify(key)}; expected one of ${requestKeys.join(', ')}`,
+        )
+      }
+    }
+    const init = { ...options }
+    init.params = httpPairs(options.params, 'params')
+    init.headers = httpPairs(options.headers, 'headers')
+    init.form = httpPairs(options.form, 'form')
+    init.auth = httpAuth(options.auth)
+    init.data =
+      options.data === undefined || options.data === null
+        ? undefined
+        : httpBody(options.data, 'data')
+    // `null` is a JSON document of its own; only an absent `json` is no body.
+    init.json = options.json === undefined ? undefined : asJsonScalar(options.json)
+    return init
+  }
+
+  const sessionKeys = ['headers', 'auth', 'timeout', 'options']
+
+  function sessionInit(options) {
+    if (options === undefined || options === null) return undefined
+    if (!isPlainObject(options)) throw new TypeError('session options must be a plain object')
+    for (const key of Object.keys(options)) {
+      if (!sessionKeys.includes(key)) {
+        throw new TypeError(
+          `unknown session option ${JSON.stringify(key)}; expected one of ${sessionKeys.join(', ')}`,
+        )
+      }
+    }
+    return {
+      headers: httpPairs(options.headers, 'headers'),
+      auth: httpAuth(options.auth),
+      timeout: options.timeout ?? undefined,
+      options: httpPairs(options.options, 'options'),
+    }
+  }
+
+  const prepareNative = takePrivate(NativeSession, '_prepareNative')
+  const sendAllNative = takePrivate(NativeSession, '_sendAllNative')
+  // Native statics cannot be deleted; the public class does not copy this
+  // one, so the default session is reached through `http.session()` alone.
+  const defaultNative = NativeSession._defaultNative
+
+  const Session = publicNativeClass(
+    NativeSession,
+    'Session',
+    new Set(['_defaultNative']),
+    (args) =>
+      args.length === 0
+        ? args
+        : [
+            args[0] === undefined || args[0] === null ? undefined : httpUrl(args[0], 'baseUrl'),
+            sessionInit(args[1]),
+          ],
+  )
+
+  function prepared(session, method, url, options) {
+    if (typeof method !== 'string') throw new TypeError('method must be a string')
+    return prepareNative.call(session, method, httpUrl(url), requestInit(options))
+  }
+
+  // One item of `sendAll`: a prepared Request, a URL to GET, or a spec - the
+  // request options beside `method` (GET unless given) and `url`.
+  function requestOf(session, request) {
+    if (request instanceof NativeRequest) return request
+    if (isPlainObject(request)) {
+      const { method = 'GET', url, ...options } = request
+      if (url === undefined || url === null) {
+        throw new TypeError('a request spec names its url')
+      }
+      return prepared(session, method, url, options)
+    }
+    return prepared(session, 'GET', request)
+  }
+
+  function exchange(request, options) {
+    return options?.stream === true ? request.stream() : request.send()
+  }
+
+  const sessionMethods = {
+    request(method, url, options) {
+      return exchange(prepared(this, method, url, options), options)
+    },
+    stream(url, options) {
+      return prepared(this, 'GET', url, options).stream()
+    },
+    pages(url, options) {
+      return prepared(this, 'GET', url, options).pages()
+    },
+    sendAll(requests, concurrency) {
+      if (concurrency !== undefined && concurrency !== null) {
+        if (!Number.isInteger(concurrency) || concurrency < 0 || concurrency > 0xffffffff) {
+          throw new TypeError('concurrency must be a non-negative whole number')
+        }
+      }
+      const held = Array.from(requests, (request) => requestOf(this, request))
+      const walk = sendAllNative.call(this, held, concurrency ?? undefined)
+      return (function* answers() {
+        for (let answer; (answer = sendAllNext.call(walk)) !== null; ) {
+          yield typeof answer === 'string' ? new Error(answer) : answer
+        }
+      })()
+    },
+  }
+  for (const method of ['get', 'head', 'post', 'put', 'patch', 'delete', 'options']) {
+    const verb = method.toUpperCase()
+    sessionMethods[method] = function (url, options) {
+      return this.request(verb, url, options)
+    }
+  }
+  for (const [name, value] of Object.entries(sessionMethods)) {
+    Object.defineProperty(NativeSession.prototype, name, {
+      configurable: true,
+      writable: true,
+      value,
+    })
+  }
+
+  // A factory (`fromBytes`) constructs through the public class with no
+  // arguments, which pass through untouched.
+  const Request = publicNativeClass(NativeRequest, 'Request', new Set(), (args) =>
+    args.length === 0 ? args : [args[0], httpUrl(args[1])],
+  )
+  const requestPairs = [
+    ['withHeaders', '_withHeadersNative', 'headers'],
+    ['withQuery', '_withQueryNative', 'params'],
+    ['withForm', '_withFormNative', 'form'],
+  ]
+  for (const [name, nativeName, label] of requestPairs) {
+    const native = takePrivate(NativeRequest, nativeName)
+    Object.defineProperty(NativeRequest.prototype, name, {
+      configurable: true,
+      writable: true,
+      value(pairs) {
+        return native.call(this, httpPairs(pairs, label) ?? [])
+      },
+    })
+  }
+  const withBodyNative = takePrivate(NativeRequest, '_withBodyNative')
+  const withJsonNative = takePrivate(NativeRequest, '_withJsonNative')
+  const withAuthorizationNative = takePrivate(NativeRequest, '_withAuthorizationNative')
+  Object.defineProperties(NativeRequest.prototype, {
+    withBody: {
+      configurable: true,
+      writable: true,
+      value(body) {
+        return withBodyNative.call(this, httpBody(body, 'body'))
+      },
+    },
+    withJson: {
+      configurable: true,
+      writable: true,
+      value(value) {
+        return withJsonNative.call(this, asJsonScalar(value))
+      },
+    },
+    withAuthorization: {
+      configurable: true,
+      writable: true,
+      value(auth) {
+        const resolved = httpAuth(auth)
+        if (resolved === undefined) throw new TypeError('auth is required')
+        return withAuthorizationNative.call(this, resolved)
+      },
+    },
+  })
+
+  const raiseForStatusNative = takePrivate(Response, '_raiseForStatusNative')
+  Object.defineProperties(Response.prototype, {
+    raiseForStatus: {
+      configurable: true,
+      writable: true,
+      value() {
+        raiseForStatusNative.call(this)
+        return this
+      },
+    },
+    // The document the body is, through the one conversion `Scalar` owns.
+    json: {
+      configurable: true,
+      writable: true,
+      value() {
+        return this.scalar().asJs()
+      },
+    },
+  })
+
+  const Headers = publicNativeClass(NativeHeaders, 'Headers', new Set(), (args) =>
+    args.length === 0 ? args : [httpPairs(args[0], 'headers')],
+  )
+  Object.defineProperty(NativeHeaders.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function headerEntries() {
+      return this.entries()[Symbol.iterator]()
+    },
+  })
+
+  // A walk is a JavaScript iterable and iterator at once, one page per
+  // `next()`, nothing fetched ahead.
+  const pagesNext = takePrivate(Pages, '_nextNative')
+  Object.defineProperties(Pages.prototype, {
+    next: {
+      configurable: true,
+      writable: true,
+      value() {
+        const page = pagesNext.call(this)
+        return page === null ? { value: undefined, done: true } : { value: page, done: false }
+      },
+    },
+    [Symbol.iterator]: {
+      configurable: true,
+      value: function pages() {
+        return this
+      },
+    },
+    intoTable: {
+      configurable: true,
+      writable: true,
+      value(field, batchRowSize) {
+        return this.intoArrowReader(field, batchRowSize).intoTable()
+      },
+    },
+  })
+
+  const respondNative = takePrivate(Server, '_respondNative')
+  Object.defineProperty(Server.prototype, 'respond', {
+    configurable: true,
+    writable: true,
+    value(path, status, headers, body, method) {
+      return respondNative.call(
+        this,
+        path,
+        status,
+        httpPairs(headers, 'headers') ?? [],
+        body === undefined || body === null ? undefined : httpBody(body, 'body'),
+        method ?? undefined,
+      )
+    },
+  })
+  if (typeof Symbol.dispose === 'symbol') {
+    Object.defineProperty(Server.prototype, Symbol.dispose, {
+      configurable: true,
+      value() {
+        this.shutdown()
+      },
+    })
+  }
+
+  const doors = {
+    Headers,
+    Pages,
+    Request,
+    Response,
+    Server,
+    Session,
+    session() {
+      return defaultNative.call(NativeSession)
+    },
+    request(method, url, options) {
+      return defaultNative.call(NativeSession).request(method, url, options)
+    },
+  }
+  for (const method of ['get', 'head', 'post', 'put', 'patch', 'delete']) {
+    doors[method] = function (url, options) {
+      return defaultNative.call(NativeSession)[method](url, options)
+    }
+  }
+  // The classes are reached through the namespace and nowhere else, as the
+  // core reaches them through `yggdryl::http`.
+  for (const name of [
+    'Headers',
+    'Pages',
+    'Request',
+    'Response',
+    'SendAllAnswers',
+    'Server',
+    'Session',
+  ]) {
+    delete binding[name]
+    delete binding[`Js${name}`]
+  }
+  binding.http = Object.freeze(doors)
+}
+
 binding.codec = codec
 binding.avro = avro
 binding.fields = fields

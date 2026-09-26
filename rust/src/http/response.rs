@@ -69,6 +69,9 @@ pub struct Response {
     history: Vec<Response>,
     elapsed: Duration,
     body: Mutex<BodyState>,
+    /// Held while a streaming body is read whole, so two readers asking at
+    /// once drain the transfer once rather than the second re-fetching it.
+    materializing: Mutex<()>,
 }
 
 /// The body, held or on the wire.
@@ -102,6 +105,7 @@ impl Response {
                 raw: Arc::from([]),
                 decoded: None,
             }),
+            materializing: Mutex::new(()),
         }
     }
 
@@ -353,14 +357,17 @@ impl Response {
         self.headers.links()
     }
 
-    /// Where the next page is, per the request's pagination, read off the
-    /// headers and - when the body is a structured document - the body.
+    /// The request for the page after this one, per the request's
+    /// pagination read off the headers and - when the body is a structured
+    /// document - the body: the same request, its headers, credential,
+    /// timeout, pagination and records kept, at the next URL. `None` on the
+    /// last page.
     ///
     /// # Errors
     ///
     /// A malformed `Link` header or next URL, or a body the pagination
     /// names a path into that is not a document.
-    pub fn next_url(&self) -> Result<Option<Url>> {
+    pub fn next_request(&self) -> Result<Option<Request>> {
         let body = self.scalar().ok();
         let rows = body.as_ref().map_or(1, |body| {
             super::pages::rows_of(body, self.request.records()).map_or(1, |rows| rows.len())
@@ -371,9 +378,9 @@ impl Response {
                 .next(&self.url, &self.headers, body.as_ref(), 0, rows)?;
         Ok(match next {
             None => None,
-            Some(NextPage::Url(url)) => Some(url),
+            Some(NextPage::Url(url)) => Some(self.request.with_url(url)),
             Some(NextPage::Parameter { name, value }) => {
-                Some(self.request.with_parameter(&name, &value)?.url().clone())
+                Some(self.request.with_parameter(&name, &value)?)
             }
         })
     }
@@ -494,16 +501,21 @@ impl Response {
                 0,
                 None,
             )))
-        } else {
-            let mut raw = Vec::new();
-            answer
-                .body
-                .take(limit.saturating_add(1))
-                .read_to_end(&mut raw)
-                .map_err(io_into_error)?;
-            if raw.len() as u64 > limit {
-                return Err(oversized_body(limit, Some(&url)));
+        } else if request.method() == Method::Head
+            || status.is_informational()
+            || matches!(status.code(), 204 | 304)
+        {
+            // No body, whatever length the head states for the one a `GET`
+            // would carry.
+            BodyState::Held {
+                raw: Arc::from([]),
+                decoded: None,
             }
+        } else {
+            // Read through a stream, so a transfer cut short resumes from
+            // the byte it reached rather than failing the whole answer.
+            let raw =
+                Stream::new(request.clone(), url.clone(), answer, 0, None).read_from(0, limit)?;
             BodyState::Held {
                 raw: Arc::from(raw),
                 decoded: None,
@@ -521,6 +533,7 @@ impl Response {
             history,
             elapsed,
             body: Mutex::new(body),
+            materializing: Mutex::new(()),
         })
     }
 
@@ -550,6 +563,7 @@ impl Response {
                 raw: Arc::from([]),
                 decoded: None,
             }),
+            materializing: Mutex::new(()),
         })
     }
 
@@ -585,6 +599,7 @@ impl Response {
 
     /// Read a streaming body whole, from its first byte, and hold it.
     fn materialize(&self) -> Result<()> {
+        let _draining = self.materializing.lock().map_err(|_| poisoned())?;
         let Some(stream) = self.stream()? else {
             return Ok(());
         };
@@ -736,6 +751,34 @@ impl IOBase for Response {
     }
 
     /// `Memory` for a held body, `File` for a streaming one.
+    /// Re-open a streaming body closed earlier, at its cursor: one ranged
+    /// `GET` naming the first answer's validator. A held body has nothing to
+    /// open.
+    fn open(&mut self) -> Result<()> {
+        match self.stream()? {
+            Some(stream) => stream.reacquire(),
+            None => Ok(()),
+        }
+    }
+
+    /// Whether a live transfer is held.
+    fn opened(&self) -> bool {
+        self.stream()
+            .ok()
+            .flatten()
+            .is_some_and(|stream| stream.is_live())
+    }
+
+    /// Let go of a streaming body's transfer and its connection, keeping
+    /// the cursor: the response stands alone - its request and session go
+    /// with it - so a later read re-opens where this one stopped.
+    fn close(&mut self) -> Result<()> {
+        match self.stream()? {
+            Some(stream) => stream.release(),
+            None => Ok(()),
+        }
+    }
+
     fn kind(&self) -> IOKind {
         match self.state() {
             Ok(state) => match &*state {

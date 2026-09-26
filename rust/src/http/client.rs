@@ -16,7 +16,7 @@
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use super::retry::{self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter};
@@ -28,6 +28,11 @@ use crate::{Error, IOBase, IOKind, Listing, MediaType, Result, Uri, Url};
 /// refusal can be reported: a page of HTML is a refusal too, a gigabyte of
 /// one is not worth holding.
 const FAILURE_BODY_LIMIT: u64 = 4 * 1024 * 1024;
+
+/// Idle connections one pool keeps, over every host.
+const MAX_IDLE_CONNECTIONS: usize = 256;
+/// Idle connections one pool keeps to one host.
+const MAX_IDLE_CONNECTIONS_PER_HOST: usize = 64;
 
 /// The environment names a CA bundle is read from, in order, when the
 /// options name none and read the environment.
@@ -138,8 +143,10 @@ pub(crate) struct Wire<'a> {
     pub(crate) headers: &'a Headers,
     pub(crate) body: Option<&'a [u8]>,
     pub(crate) timeout: Duration,
-    /// Whether a failed attempt with this body may be repeated.
-    pub(crate) retry_body: bool,
+    /// Whether the request may go out again after the server may have seen
+    /// it: an idempotent method. A request that is not goes out again only
+    /// when its connection was never made.
+    pub(crate) idempotent: bool,
 }
 
 /// What the pool this client sends on was built for.
@@ -149,11 +156,20 @@ struct Inner {
     /// asking for the same one is not configured twice.
     timeout: Duration,
     max_attempts: u32,
+    /// The longest a `Retry-After` is waited for; a longer one ends the
+    /// retries and hands the answer back.
+    max_pause: Duration,
     stats: Stats,
     /// What is left to spend on retries.
     retries: RetryBudget,
     /// The counter every jitter draw is taken from.
     jitter: AtomicU64,
+    /// Whether the proxy is the environment's, chosen for each request
+    /// ([`super::proxy`]): no proxy is named and the environment is read.
+    environment_proxy: bool,
+    /// The last proxy the environment named, as written and as parsed, so
+    /// an unchanged variable is not parsed again for every request.
+    parsed_proxy: Mutex<Option<(String, ureq::Proxy)>>,
 }
 
 impl std::fmt::Debug for Inner {
@@ -173,6 +189,13 @@ impl std::fmt::Debug for Inner {
 /// Cloning a client shares its pool and its counters; building one touches
 /// no network. A client whose transport knobs are all the defaults shares
 /// one process-wide pool with every other such client.
+///
+/// The retry budget is the client's, not a destination's: retries to a host
+/// that keeps failing spend the tokens retries to every other host would
+/// draw on, until successes refund them. That is the bound - a client's
+/// total retry load stays proportional to its successes whatever fails - and
+/// a caller who wants one host's failures kept from another's gives that
+/// host a client of its own.
 ///
 /// ```
 /// use yggdryl::http::Client;
@@ -196,17 +219,7 @@ impl Client {
     /// A client over the default transport: the shared process-wide pool.
     #[must_use]
     pub fn new() -> Self {
-        let options = HttpOptions::default();
-        Self {
-            inner: Arc::new(Inner {
-                agent: shared_agent().clone(),
-                timeout: options.timeout(),
-                max_attempts: options.max_attempts(),
-                stats: Stats::default(),
-                retries: RetryBudget::default(),
-                jitter: AtomicU64::new(fresh_jitter()),
-            }),
-        }
+        Self::over(shared_agent().clone(), &HttpOptions::default())
     }
 
     /// A client over the transport `options` describe.
@@ -223,17 +236,56 @@ impl Client {
     /// certificate.
     pub fn with_options(options: &HttpOptions) -> Result<Self> {
         let tls = tls_config(options)?;
-        let agent = agent_for(options, tls)?;
-        Ok(Self {
+        Ok(Self::over(agent_for(options, tls)?, options))
+    }
+
+    /// A client sending on `agent` under the retry policy `options` state,
+    /// with fresh counters and a full retry budget.
+    fn over(agent: ureq::Agent, options: &HttpOptions) -> Self {
+        Self {
             inner: Arc::new(Inner {
                 agent,
                 timeout: options.timeout(),
                 max_attempts: options.max_attempts(),
+                max_pause: options.max_pause(),
                 stats: Stats::default(),
                 retries: RetryBudget::default(),
                 jitter: AtomicU64::new(fresh_jitter()),
+                environment_proxy: options.proxy().is_none() && options.read_environment(),
+                parsed_proxy: Mutex::new(None),
             }),
-        })
+        }
+    }
+
+    /// The proxy `url` goes through when the environment decides, read now:
+    /// `Some(None)` to go direct, `None` when the pool's own setting stands.
+    fn proxy_for(&self, url: &Url) -> std::result::Result<Option<Option<ureq::Proxy>>, Error> {
+        if !self.inner.environment_proxy {
+            return Ok(None);
+        }
+        let Some(named) = super::proxy::environment_proxy(url, crate::auth::variable) else {
+            // Nothing to override when the pool goes direct too.
+            return Ok(self.inner.agent.config().proxy().map(|_| None));
+        };
+        let mut parsed = self
+            .inner
+            .parsed_proxy
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((text, proxy)) = parsed.as_ref() {
+            if *text == named {
+                return Ok(Some(Some(proxy.clone())));
+            }
+        }
+        let proxy = ureq::Proxy::new(&named).map_err(|error| Error::Parse {
+            target: "http proxy",
+            position: 0,
+            reason: smol_str::format_smolstr!(
+                "the environment's proxy for {url}: expected a proxy URL, got {named:?}: {error}"
+            ),
+        })?;
+        *parsed = Some((named, proxy.clone()));
+        Ok(Some(Some(proxy)))
     }
 
     /// Every counter, plus what is left of the retry budget.
@@ -302,10 +354,12 @@ impl Client {
 
     /// One request with retries.
     ///
-    /// A transport failure worth retrying and a [`Status::is_retryable`]
-    /// answer - the latter only when `retry_body` says the body may go out
-    /// again, or there is none - are retried per `retry`, `Retry-After`
-    /// honoured up to `RETRY_AFTER_CAP`; a `3xx` is not followed here.
+    /// An idempotent request is retried per `retry` on a transport failure
+    /// worth retrying and on a [`Status::is_retryable`] answer; any other is
+    /// retried only when its connection was never made, since the server
+    /// may have acted on it otherwise. A `Retry-After` - seconds or a date -
+    /// is waited for up to the options' `max_pause`, and one asking longer
+    /// ends the retries with that answer; a `3xx` is not followed here.
     /// Every attempt is counted, so a test reads the true number of round
     /// trips rather than the intended one. A `2xx` body is never read.
     ///
@@ -325,7 +379,14 @@ impl Client {
             let mut answer = match outcome {
                 Ok(answer) => answer,
                 Err(Failure::Transport(error)) => {
-                    if retry::is_retryable_transport(&error) && self.may_retry(attempt) {
+                    let unsent = matches!(
+                        error,
+                        ureq::Error::ConnectionFailed | ureq::Error::HostNotFound
+                    );
+                    if retry::is_retryable_transport(&error)
+                        && (wire.idempotent || unsent)
+                        && self.may_retry(attempt)
+                    {
                         self.pause(attempt, None);
                         continue;
                     }
@@ -333,11 +394,13 @@ impl Client {
                 }
                 Err(Failure::Refused(error)) => return Err(error),
             };
-            let replayable = wire.retry_body || wire.body.is_none_or(<[u8]>::is_empty);
-            if answer.status.is_retryable() && replayable && self.may_retry(attempt) {
+            if answer.status.is_retryable() && wire.idempotent {
                 let asked = retry::retry_after(answer.headers.get("retry-after"));
-                self.pause(attempt, asked);
-                continue;
+                let patient = asked.is_none_or(|pause| pause <= self.inner.max_pause);
+                if patient && self.may_retry(attempt) {
+                    self.pause(attempt, asked);
+                    continue;
+                }
             }
             self.settle(answer.status, attempt);
             answer.attempts = attempt;
@@ -371,28 +434,33 @@ impl Client {
 
     /// Send one attempt and read its head.
     fn attempt(&self, wire: &Wire<'_>, payload: Option<Payload<'_>>) -> Outcome {
+        let proxy = self.proxy_for(wire.url).map_err(Failure::Refused)?;
         self.inner.stats.record(wire.method);
         let mut builder = ureq::http::Request::builder()
             .method(wire.method.as_str())
             .uri(wire.url.to_string());
+        // The transport frames the body it sends and states its length
+        // itself; a length the caller stated too would be a second one.
         for (name, value) in wire.headers {
-            builder = builder.header(name, value);
+            if name != "content-length" {
+                builder = builder.header(name, value);
+            }
         }
         let response = match payload {
             None => {
                 let request = builder.body(()).map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout)?
+                self.run(request, wire.timeout, proxy)?
             }
             Some(Payload::Bytes(bytes)) => {
                 let request = builder.body(bytes).map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout)?
+                self.run(request, wire.timeout, proxy)?
             }
             Some(Payload::Reader { body, length }) => {
                 let request = builder
                     .header("content-length", length.to_string())
                     .body(ureq::SendBody::from_reader(body))
                     .map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout)?
+                self.run(request, wire.timeout, proxy)?
             }
         };
         let status = Status::new(response.status().as_u16()).map_err(Failure::Refused)?;
@@ -440,17 +508,25 @@ impl Client {
         &self,
         request: ureq::http::Request<B>,
         timeout: Duration,
+        proxy: Option<Option<ureq::Proxy>>,
     ) -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error> {
-        if timeout == self.inner.timeout {
+        if timeout == self.inner.timeout && proxy.is_none() {
             return self.inner.agent.run(request);
         }
-        let request = self
-            .inner
-            .agent
-            .configure_request(request)
-            .timeout_global(Some(timeout))
-            .build();
-        self.inner.agent.run(request)
+        let mut request = self.inner.agent.configure_request(request);
+        if timeout != self.inner.timeout {
+            // Every phase the pool bounds is restated: a global bound only
+            // ever shortens the pool's own phase timeouts, never lengthens
+            // them.
+            request = request
+                .timeout_send_request(Some(timeout))
+                .timeout_recv_response(Some(timeout))
+                .timeout_recv_body(Some(timeout));
+        }
+        if let Some(proxy) = proxy {
+            request = request.proxy(proxy);
+        }
+        self.inner.agent.run(request.build())
     }
 }
 
@@ -538,6 +614,11 @@ fn shared_agent() -> &'static ureq::Agent {
 /// re-checked around every read.
 fn build_agent(options: &HttpOptions, tls: Option<ureq::tls::TlsConfig>) -> Result<ureq::Agent> {
     let mut builder = ureq::Agent::config_builder()
+        // Idle connections kept for reuse: enough for every thread of a
+        // parallel walk to one host to find its connection again, where
+        // the default three would reconnect all the others per request.
+        .max_idle_connections(MAX_IDLE_CONNECTIONS)
+        .max_idle_connections_per_host(MAX_IDLE_CONNECTIONS_PER_HOST)
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)

@@ -15,12 +15,6 @@ use std::time::Duration;
 pub(crate) const RETRY_BACKOFF: Duration = Duration::from_millis(50);
 /// The longest a retry ever waits, however many attempts precede it.
 pub(crate) const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(20);
-/// The longest a `Retry-After` a server sent is honoured for.
-///
-/// A server under load may ask for minutes. Waiting that long inside a call
-/// nobody can cancel is worse than failing and letting the caller decide, so
-/// anything past this is treated as "not now" rather than as an instruction.
-pub(crate) const RETRY_AFTER_CAP: Duration = Duration::from_secs(30);
 /// Tokens a client starts with, and never exceeds.
 pub(crate) const RETRY_TOKENS: i64 = 500;
 /// What one retry costs, so a client whose requests are all failing runs out.
@@ -121,22 +115,17 @@ pub(crate) fn fresh_jitter() -> u64 {
     )
 }
 
-/// The `Retry-After` an answer asks for, when it asks for one this will wait.
+/// The pause a `Retry-After` value asks for, read now.
 ///
-/// `value` is the header's value, when the answer carried one. Delta-seconds
-/// only - RFC 9110's `1*DIGIT`, so no sign and no fraction: the HTTP-date
-/// spelling is legal and reading a date needs a clock this has no reason to
-/// trust; a client that wants the date read has the typed header reader for
-/// it. A value past [`RETRY_AFTER_CAP`] is "not now" rather than an
-/// instruction, and answers `None`.
+/// `value` is the header's value, when the answer carried one: delta seconds,
+/// or an HTTP-date read against the system clock, through the reader
+/// `Headers::retry_after` uses. A value neither spelling reads asks for
+/// nothing, so the backoff decides. Whether the pause is honoured is the
+/// client's call - each weighs it against the longest it waits inside one
+/// call (`HttpOptions::max_pause`).
 pub(crate) fn retry_after(value: Option<&str>) -> Option<Duration> {
-    let digits = value?.trim();
-    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let seconds: u64 = digits.parse().ok()?;
-    let asked = Duration::from_secs(seconds);
-    (asked <= RETRY_AFTER_CAP).then_some(asked)
+    let now = crate::holder::system_time_ns(std::time::SystemTime::now()).unwrap_or(0);
+    super::headers::read_retry_after(value?, now).ok()
 }
 
 /// Whether a transport failure is worth another attempt.
@@ -177,7 +166,7 @@ pub(crate) fn is_resumable(error: &std::io::Error) -> bool {
 pub mod internals {
     //! What `rust/tests/http/retry.rs` pins and a caller cannot reach.
     //!
-    //! The schedule, the budget arithmetic and the `Retry-After` cap are
+    //! The schedule, the budget arithmetic and the `Retry-After` reading are
     //! settled before a request goes out, so they are pinned with no server
     //! to answer. Every item forwards to the real one, so the module stays
     //! exactly as private as it was.
@@ -188,8 +177,6 @@ pub mod internals {
     pub const RETRY_BACKOFF: Duration = super::RETRY_BACKOFF;
     /// The longest a retry ever waits.
     pub const RETRY_BACKOFF_CAP: Duration = super::RETRY_BACKOFF_CAP;
-    /// The longest a `Retry-After` is honoured for.
-    pub const RETRY_AFTER_CAP: Duration = super::RETRY_AFTER_CAP;
     /// Tokens a budget starts with.
     pub const RETRY_TOKENS: i64 = super::RETRY_TOKENS;
     /// What one retry withdraws.
@@ -213,7 +200,7 @@ pub mod internals {
         super::fresh_jitter()
     }
 
-    /// The wait a `Retry-After` value asks for, when it will be honoured.
+    /// The wait a `Retry-After` value asks for, read now.
     pub fn retry_after(value: Option<&str>) -> Option<Duration> {
         super::retry_after(value)
     }

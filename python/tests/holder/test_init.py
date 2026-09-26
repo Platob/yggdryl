@@ -316,6 +316,44 @@ class TestTheCacheSurface:
         assert not cached.has_cached_page(0)
 
 
+class TestTheHttpRoles:
+    """An HTTP resource has four roles, each an ``IOBase`` over the core's own.
+
+    ``Session`` is the container, ``Request`` the resource a URL names,
+    ``Response`` an answer's body and ``Stream`` a body left on the wire.
+    Nothing here sends a request.
+    """
+
+    def test_each_role_is_a_handle(self) -> None:
+        from yggdryl.http import Request, Response, Session, Stream
+
+        for role in (Session, Request, Response, Stream):
+            assert issubclass(role, IOBase)
+
+        session = Session("https://host.invalid/api/")
+        assert isinstance(session, Session)
+        assert isinstance(session / "orders.json", Request)
+        assert isinstance(IOBase("https://host.invalid/api/orders.bin"), Request)
+
+        answer = Response(200, {"content-type": "text/csv"}, b"a,b\n1,2\n")
+        assert isinstance(answer, Response)
+        assert answer.kind == "memory"
+        assert answer.read_bytes() == b"a,b\n1,2\n"
+        assert str(answer.media_type) == "text/csv"
+
+        stream = Response(200, None, b"abc").into_stream()
+        assert isinstance(stream, Stream)
+        assert stream.read() == b"abc"
+        assert stream.delivered == 3
+
+    def test_a_record_name_composes_over_the_request(self) -> None:
+        from yggdryl.http import Request
+
+        handle = IOBase("https://host.invalid/lake/part.parquet")
+        assert isinstance(handle, Parquet)
+        assert isinstance(handle.into_handle(), Request)
+
+
 class TestTheObjectStoreRoles:
     """A container has the same three roles a disk does, and naming one is free.
 

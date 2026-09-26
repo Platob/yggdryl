@@ -3391,6 +3391,69 @@ export declare class FixRegistry {
 export type JsFixRegistry = FixRegistry
 
 /**
+ * An immutable, case-insensitive HTTP header map.
+ *
+ * Names read case-insensitively and list lower case, in lexical order; a
+ * name given twice joins its values with `, ` (`Set-Cookie` apart, which
+ * keeps each). The typed readers parse one header each: `null` when it is
+ * absent, a thrown refusal when it is present and malformed.
+ */
+export declare class Headers {
+  /** A map of `entries`, each a `[name, value]` pair. */
+  constructor(entries?: Array<[string, string]> | undefined | null)
+  /** The value of `name`, or `null`. */
+  get(name: string): string | null
+  /**
+   * Every member of `name`: the comma-separated members of a list
+   * header, or each `Set-Cookie`.
+   */
+  getAll(name: string): Array<string>
+  /** Whether `name` is present. */
+  has(name: string): boolean
+  /** Every name, lower case, in lexical order. */
+  keys(): Array<string>
+  /** Every `[name, value]` pair, in lexical order of the names. */
+  entries(): Array<[string, string]>
+  /** How many names are present. */
+  get length(): number
+  /** Whether both maps hold the same names and values. */
+  equals(other: Headers): boolean
+  /** The map as one plain object of lower-case names. */
+  toJSON(): Record<string, any>
+  /** The map as the JSON object text it renders to. */
+  toString(): string
+  /** `Content-Length`, in bytes. */
+  get contentLength(): number | null
+  /** `Content-Type`, as sent. */
+  get contentType(): string | null
+  /** The media type `Content-Type`, its charset and `Content-Encoding` state. */
+  get mediaType(): MediaType
+  /** The charset `Content-Type` declares. */
+  get charset(): string | null
+  /** The content codings `Content-Encoding` lists, identity left out. */
+  get contentEncoding(): Array<string>
+  /** `Content-Range`. */
+  get contentRange(): HttpContentRange | null
+  /** Whether `Accept-Ranges` offers `bytes`. */
+  get acceptRanges(): boolean
+  /** `ETag`. */
+  get etag(): HttpETag | null
+  /** `Last-Modified`, UTC nanoseconds since the epoch. */
+  get lastModified(): bigint | null
+  /** `Date`, UTC nanoseconds since the epoch. */
+  get date(): bigint | null
+  /** `Location`, as sent. */
+  get location(): string | null
+  /** The `Link` header's link values. */
+  get links(): Array<HttpLink>
+  /** The target of the `Link` value whose `rel` holds `next`. */
+  get nextLink(): string | null
+  /** Every `Set-Cookie` value, as sent. */
+  get setCookies(): Array<string>
+}
+export type JsHeaders = Headers
+
+/**
  * The names of one collection level, one at a time.
  *
  * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
@@ -5017,6 +5080,22 @@ export declare class OrderEvent {
 }
 export type JsOrderEvent = OrderEvent
 
+/**
+ * A walk of a paginated resource, one `Response` per page.
+ *
+ * A page answering 400 or more is yielded and ends the walk; a transport
+ * failure throws where the page would have been.
+ */
+export declare class Pages {
+  /**
+   * Every remaining page as Arrow batches under one root: `field` when
+   * given, else the record the first page's rows infer. One batch per page,
+   * split at `batchRowSize` rows when given.
+   */
+  intoArrowReader(field?: FieldInput | undefined | null, batchRowSize?: number | undefined | null): JsBatchReader
+}
+export type JsPages = Pages
+
 /** One partition field of a spec. */
 export declare class PartitionField {
   /** Identifier of the schema column the value is derived from. */
@@ -6026,6 +6105,157 @@ export declare class Records {
 export type JsRecords = Records
 
 /**
+ * One HTTP request, and the resource its URL names.
+ *
+ * A request is a value: every `with` builder answers a new request and
+ * leaves this one as it was. Nothing goes out until `send`, `stream`,
+ * `pages` or a read of `intoIOBase()` asks.
+ */
+export declare class Request {
+  /** A `method` request at `url` on the process-wide default session. */
+  constructor(method: string, url: string)
+  /** Parse one request message: request line, headers, framed body. */
+  static fromBytes(wire: Uint8Array): Request
+  /** Render the request message. */
+  intoBytes(): Buffer
+  /** The method, upper case. */
+  get method(): string
+  /** The URL, query included. */
+  get url(): JsUrl
+  /** The request's own headers, before the session's defaults join them. */
+  get headers(): Headers
+  /** The body. */
+  get body(): Buffer
+  /** The session the request goes out on. */
+  get session(): Session
+  /** The session's request counters. */
+  get stats(): HttpStats
+  /** The same request bound to `session`. */
+  withSession(session: Session): Request
+  /** The same request with one header set, replacing the value it had. */
+  withHeader(name: string, value: string): Request
+  /** The same request with its own whole-request timeout, in milliseconds. */
+  withTimeout(timeout: number): Request
+  /** The same request following a `3xx`, or not, whatever the session says. */
+  withFollowRedirects(follow: boolean): Request
+  /**
+   * The same request finding its next page per `pagination`: `auto`,
+   * `none`, `link`, `header:<name>`, `url:<path>`,
+   * `cursor:<path>:<parameter>`, `offset:<parameter>:<size>[:<total>]`
+   * or `page:<parameter>[:<start>]`.
+   */
+  withPagination(pagination: string): Request
+  /** The same request reading a page's rows at the field path `records`. */
+  withRecords(records: string): Request
+  /** The same request declaring what its resource is. */
+  withMediaType(mediaType: MediaTypeInput): Request
+  /** Send, reading the whole body. */
+  send(): JsResponse
+  /** Send, leaving the body on the wire as a resumable stream. */
+  stream(): JsResponse
+  /** Walk the pages of this resource per its pagination. */
+  pages(): JsPages
+  /**
+   * The resource this request names, as an `IOBase` leaf: a read is a
+   * `GET`, a ranged read a ranged `GET`, a write a `PUT`, a removal a
+   * `DELETE`, each carrying this request's headers.
+   */
+  intoIOBase(): JsIOBase
+  /** The request as `<METHOD> <URL>`. */
+  toString(): string
+}
+export type JsRequest = Request
+
+/**
+ * One HTTP answer and its body.
+ *
+ * The body is read whole (`send`) or left on the wire (`stream`); either way
+ * `content()` is the decoded bytes, `text()` the text and `scalar()` the
+ * document. `intoIOBase()` moves the answer into the `IOBase` over its body
+ * as sent, after which this object answers nothing.
+ */
+export declare class Response {
+  /**
+   * Let go of a streaming body's transfer and its connection, keeping
+   * the cursor: the response stands alone, so a later read re-opens where
+   * this one stopped. A held body has nothing to let go.
+   */
+  close(): void
+  /**
+   * Re-open a closed streaming body at its cursor now: one ranged `GET`
+   * naming the first answer's validator.
+   */
+  open(): void
+  /** Whether a live transfer is held. */
+  get opened(): boolean
+  /** Parse one response message: status line, headers, framed body. */
+  static fromBytes(wire: Uint8Array): Response
+  /** Render the response message, its body as sent. */
+  intoBytes(): Buffer
+  /**
+   * The response as one record: `status`, `reason`, `version`, `url`,
+   * `headers` and `body`.
+   */
+  intoScalar(): JsScalar
+  /** The status code. */
+  get statusCode(): number
+  /** The status's reason phrase. */
+  get reason(): string
+  /** Whether the status is below 400. */
+  get ok(): boolean
+  /** Whether the status is a redirect. */
+  get isRedirect(): boolean
+  /** The HTTP version the answer stated. */
+  get version(): string
+  /** The final URL, after redirects. */
+  get url(): JsUrl
+  /** The headers. */
+  get headers(): Headers
+  /** The request this answers. */
+  get request(): Request
+  /** The redirect hops before this answer, oldest first. */
+  get history(): Array<HttpHop>
+  /**
+   * How long the exchange took, redirects and retries included, in
+   * milliseconds.
+   */
+  get elapsed(): number
+  /** The `Link` header's link values. */
+  get links(): Array<HttpLink>
+  /**
+   * The request for the next page per the request's pagination - the
+   * same request at the next URL - or `null` on the last; reading it
+   * reads the body.
+   */
+  get next(): Request | null
+  /** The charset `Content-Type` declares. */
+  get encoding(): string | null
+  /** The media type the headers state. */
+  get mediaType(): MediaType
+  /** The `Content-Length` the headers state. */
+  get contentLength(): number | null
+  /** Every `Set-Cookie` the answer carried that parses. */
+  get cookies(): Array<HttpCookie>
+  /** The whole decoded body. */
+  content(): Buffer
+  /** The decoded body as text, in the charset `Content-Type` declares. */
+  text(): string
+  /**
+   * The body parsed under its media type - JSON, JSON Lines, YAML, TOML or
+   * XML - and, when `field` is given, read under it.
+   */
+  scalar(field?: FieldInput | undefined | null): JsScalar
+  /**
+   * Move this answer into the `IOBase` over its body as sent: reads,
+   * ranged reads and the record readers answer from it.
+   */
+  intoIOBase(): JsIOBase
+  /** The response as `Response(<status> <URL>)`. */
+  toString(): string
+}
+export type JsResponse = Response
+
+/**
  * One native codec value: the pivot every JavaScript value crosses.
  *
  * A `Scalar` is what the core actually stores, so it is also the honest answer
@@ -6344,6 +6574,7 @@ export declare class Selector {
 }
 export type JsSelector = Selector
 
+
 /**
  * Many values: a schema-free run, or the Arrow buffers of one field.
  *
@@ -6430,6 +6661,107 @@ export declare class SerieReader {
   intoArrowReader(): BatchReader
 }
 export type JsSerieReader = SerieReader
+
+/**
+ * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering
+ * from its own threads.
+ *
+ * A route answered by a JavaScript callback is not offered: the connection
+ * thread would have to wait on the JavaScript thread, which deadlocks the
+ * moment that thread is the one waiting on the answer - a synchronous
+ * request from the same isolate.
+ */
+export declare class Server {
+  /**
+   * Bind `address` (`127.0.0.1:0`, any loopback port, by default) and
+   * start accepting.
+   */
+  static bind(address?: string | undefined | null, options?: HttpServerOptions | undefined | null): Server
+  /** `http://<address>/`. */
+  get url(): JsUrl
+  /** The bound port. */
+  get port(): number
+  /** The bound address, `host:port`. */
+  get address(): string
+  /** Connections accepted so far. */
+  get connections(): number
+  /**
+   * Serve the location `handle` names under `prefix`: the prefix itself
+   * is the handle, a path below it the child at that path. A second
+   * handle on the same location is mounted, so `handle` stays usable; an
+   * in-memory handle, which has no location, is served as a copy of its
+   * bytes under its media type.
+   */
+  mount(prefix: string, handle: JsIOBase): void
+  /** Stop serving `prefix`; whether something was mounted there. */
+  unmount(prefix: string): boolean
+  /** Serve `path` under its mount as `mediaType`, whatever its name says. */
+  setMediaType(path: string, mediaType: MediaTypeInput): void
+  /**
+   * Forget the answer of `method` (every method when omitted) at `path`;
+   * whether there was one.
+   */
+  unroute(path: string, method?: string | undefined | null): boolean
+  /**
+   * Apply `fault` to the next `times` requests of `path` (one by default,
+   * `0` for every request), before any answer or mount.
+   */
+  inject(path: string, fault: 'closeBeforeAnswer' | HttpFault, times?: number | undefined | null): void
+  /** Forget every injected fault. */
+  clearFaults(): void
+  /** Every request handled while recording, in order. */
+  get requests(): Array<HttpRecorded>
+  /** Requests handled since the last `clearRequests`, recording or not. */
+  get requestCount(): number
+  /** Forget the recorded requests and zero the count. */
+  clearRequests(): void
+  /** Keep handled requests in `requests` (`true`) or only count them. */
+  setRecording(on: boolean): void
+  /** Whether `shutdown` has run. */
+  get closed(): boolean
+  /**
+   * Stop accepting and join the accept thread; connections being served
+   * finish their request. A second call does nothing.
+   */
+  shutdown(): void
+  /** The server as `Server(<URL>)`. */
+  toString(): string
+}
+export type JsServer = Server
+
+/**
+ * An HTTP session: the options every request starts from, one cookie jar
+ * and the client requests go out on.
+ */
+export declare class Session {
+  /**
+   * A session joining relative URLs onto `baseUrl`; the named arguments
+   * win over the same knob in `options`.
+   */
+  constructor(baseUrl?: string | undefined | null, init?: HttpSessionInit | undefined | null)
+  /** The URL a relative request joins onto. */
+  get baseUrl(): JsUrl | null
+  /** The headers every request carries unless it sets its own. */
+  get headers(): Headers
+  /** The whole-request timeout, in milliseconds. */
+  get timeout(): number
+  /** The client's request counters. */
+  get stats(): HttpStats
+  /** Every cookie the jar holds. */
+  get cookies(): Array<HttpCookie>
+  /** Store a cookie of `name` and `value` covering `domain` and every path. */
+  setCookie(name: string, value: string, domain: string): void
+  /** Evict the cookies that have lapsed. */
+  close(): void
+  /**
+   * This session as the `IOBase` container over its base URL: a path
+   * below it is the `GET` of that resource.
+   */
+  intoIOBase(): JsIOBase
+  /** The session as `Session(<base URL>)`. */
+  toString(): string
+}
+export type JsSession = Session
 
 /** One committed version of a table's contents. */
 export declare class Snapshot {
@@ -9078,6 +9410,237 @@ export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
  * content record.
  */
 export declare function fixSchemaTags(): Array<number>
+
+/**
+ * A credential, spelled one way at a time.
+ *
+ * The loader reads `[username, password]` as the `basic` pair, so the object
+ * is the one shape the native side takes.
+ */
+export interface HttpAuth {
+  /** `Basic` credentials: the user, beside `password`. */
+  username?: string
+  /** `Basic` credentials: the password, beside `username`. */
+  password?: string
+  /** A `Bearer` token. */
+  bearer?: string
+  /** A header of the caller's naming carrying `value`, such as `X-Api-Key`. */
+  header?: string
+  /** The value `header` carries. */
+  value?: string
+}
+
+/**
+ * A `Content-Range` value: the bytes an answer carries of the whole, or the
+ * whole's length alone when the range asked for could not be satisfied.
+ */
+export interface HttpContentRange {
+  /** The first byte the answer carries; `null` when unsatisfied. */
+  start?: number
+  /** The last byte the answer carries, inclusive; `null` when unsatisfied. */
+  end?: number
+  /** The length of the whole, when the sender knows it. */
+  total?: number
+  /** Whether the range was satisfiable. */
+  satisfied: boolean
+}
+
+/** One cookie a jar holds or an answer set. */
+export interface HttpCookie {
+  /** The cookie name. */
+  name: string
+  /** The cookie value, as the server spelled it. */
+  value: string
+  /** The host or cover domain, lower case. */
+  domain: string
+  /** Whether only `domain` itself receives the cookie. */
+  hostOnly: boolean
+  /** The path prefix the cookie covers. */
+  path: string
+  /** When the cookie lapses, UTC nanoseconds; `null` for a session cookie. */
+  expires: bigint | null
+  /** Whether the cookie travels over `https` alone. */
+  secure: boolean
+  /** Whether the server marked the cookie `HttpOnly`. */
+  httpOnly: boolean
+}
+
+/** An entity tag. */
+export interface HttpETag {
+  /** The opaque tag, without quotes. */
+  opaque: string
+  /** Whether the tag is weak (`W/`). */
+  weak: boolean
+}
+
+/**
+ * A fault a server applies to a path's next requests, in one of four
+ * spellings: `'closeBeforeAnswer'`, `{ cutBodyAt }`, `{ refuse, retryAfter }`
+ * or `{ delay }`.
+ */
+export interface HttpFault {
+  /** Write the head and this many body bytes, then close the connection. */
+  cutBodyAt?: number
+  /** Answer this status with an empty body. */
+  refuse?: number
+  /** With `refuse`: the `Retry-After` delay, in milliseconds. */
+  retryAfter?: number
+  /** Sleep this many milliseconds before answering. */
+  delay?: number
+}
+
+/** One redirect hop of an answer's history. */
+export interface HttpHop {
+  /** The status code. */
+  statusCode: number
+  /** The status's reason phrase. */
+  reason: string
+  /** The URL that answered. */
+  url: string
+  /** The headers it answered with. */
+  headers: Headers
+}
+
+/** One RFC 8288 link value of a `Link` header. */
+export interface HttpLink {
+  /** The target, as the header spelled it. */
+  target: string
+  /** The relation types, lower case. */
+  rel: Array<string>
+  /** Every other parameter, in header order. */
+  parameters: Array<[string, string]>
+}
+
+/** One request a server handled. */
+export interface HttpRecorded {
+  /** The method, upper case. */
+  method: string
+  /** The request target exactly as sent, query included. */
+  target: string
+  /** The path, percent-decoded, without the query. */
+  path: string
+  /** The query pairs, percent-decoded, in wire order. */
+  query: Array<[string, string]>
+  /** The request headers. */
+  headers: Headers
+  /** The request body's length in bytes. */
+  bodyLength: number
+  /** The status answered; `499` when the connection closed unanswered. */
+  statusCode: number
+  /** Whether the connection was closed before any byte of an answer. */
+  closed: boolean
+}
+
+/**
+ * What one request carries beyond its method and URL, as the loader
+ * normalizes it: pairs as `[name, value]` entries, a JSON body as a `Scalar`,
+ * durations in milliseconds.
+ */
+export interface HttpRequestInit {
+  /** Query pairs appended to the URL's own. */
+  params?: Array<[string, string]>
+  /** Headers set on the request, winning over a body's `Content-Type`. */
+  headers?: Array<[string, string]>
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number
+  /** Whether the body is left on the wire rather than read whole. */
+  stream?: boolean
+  /** The body, as bytes. */
+  data?: Uint8Array
+  /** The body, as a compact JSON document under `application/json`. */
+  json?: JsScalar
+  /** The body, as a form under `application/x-www-form-urlencoded`. */
+  form?: Array<[string, string]>
+  /** The credential this request sends, whatever the session's is. */
+  auth?: HttpAuth
+  /** Whether a `3xx` is followed, in place of the session's answer. */
+  followRedirects?: boolean
+  /** How the next page is found: a `Pagination` spelling. */
+  pagination?: string
+  /** Where a page's rows are in its document: a field path. */
+  records?: string
+  /** What the resource is, whatever a response says. */
+  mediaType?: MediaTypeInput
+}
+
+/** How a server reads, frames and answers. */
+export interface HttpServerOptions {
+  /**
+   * How long a connection waits for the next byte of a request, and the
+   * longest a request head may take, in milliseconds.
+   */
+  readTimeout?: number
+  /**
+   * How long writing an answer waits on a peer that stopped reading, in
+   * milliseconds.
+   */
+  writeTimeout?: number
+  /**
+   * The most connections served at once; past it a connection is closed
+   * unread.
+   */
+  maxConnections?: number
+  /** The most bytes a request head may take. */
+  maxHeadSize?: number
+  /** The most bytes a request body may take; a larger one is `413`. */
+  maxBodySize?: number
+  /** Whether a connection serves several requests. */
+  keepAlive?: boolean
+  /** Whether handled requests are kept in `requests`. */
+  recording?: boolean
+  /** Whether a mounted leaf is served with an `ETag`. */
+  etag?: boolean
+  /**
+   * Whether a `CONNECT` is tunnelled, the server standing in for a
+   * forward proxy.
+   */
+  tunnel?: boolean
+  /** The `Server` header every answer carries. */
+  serverHeader?: string
+}
+
+/** What a session is built with, as the loader normalizes it. */
+export interface HttpSessionInit {
+  /** Headers every request carries unless it sets its own. */
+  headers?: Array<[string, string]>
+  /** The credential every request sends unless it names its own. */
+  auth?: HttpAuth
+  /** The whole-request timeout, in milliseconds. */
+  timeout?: number
+  /**
+   * `HttpOptions` properties by name (`max_attempts`, `pagination`,
+   * `header.<name>`...), each value as text.
+   */
+  options?: Array<[string, string]>
+}
+
+/** A client's request counters. */
+export interface HttpStats {
+  /** Every request, retries, resumes and redirect hops included. */
+  requests: number
+  /** `GET` requests, whole or ranged. */
+  gets: number
+  /** `HEAD` requests. */
+  heads: number
+  /** `POST` requests. */
+  posts: number
+  /** `PUT` requests. */
+  puts: number
+  /** `PATCH` requests. */
+  patches: number
+  /** `DELETE` requests. */
+  deletes: number
+  /** `OPTIONS`, `TRACE` and `CONNECT` requests. */
+  others: number
+  /** Attempts beyond the first of one request. */
+  retries: number
+  /** Transfers re-opened after a body was cut. */
+  resumes: number
+  /** Redirect hops followed. */
+  redirects: number
+  /** What is left of the retry budget. */
+  retryTokens: number
+}
 
 /**
  * The Iceberg option fields, as one JavaScript options object.

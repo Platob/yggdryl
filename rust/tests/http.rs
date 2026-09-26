@@ -2,7 +2,9 @@
 //!
 //! The whole module is behind the `http` feature, so every module here
 //! carries that cfg; the ones that pin something a caller cannot reach - the
-//! retry schedule and its budget - carry the `internals` cfg beside it and
+//! retry schedule and its budget, the proxy and the `.netrc` credential the
+//! environment names - carry
+//! the `internals` cfg beside it and
 //! reach the crate through `yggdryl::internals`. `headers` declares the four
 //! helper suites under `http/headers/` itself, and `server` pins the three
 //! files under `http/server/` beside `server.rs`.
@@ -33,6 +35,9 @@ mod method;
 #[cfg(feature = "http")]
 #[path = "http/mod_.rs"]
 mod mod_;
+#[cfg(all(feature = "http", feature = "internals"))]
+#[path = "http/netrc.rs"]
+mod netrc;
 #[cfg(feature = "http")]
 #[path = "http/options.rs"]
 mod options;
@@ -42,6 +47,9 @@ mod pages;
 #[cfg(feature = "http")]
 #[path = "http/pagination.rs"]
 mod pagination;
+#[cfg(all(feature = "http", feature = "internals"))]
+#[path = "http/proxy.rs"]
+mod proxy;
 #[cfg(feature = "http")]
 #[path = "http/request.rs"]
 mod request;

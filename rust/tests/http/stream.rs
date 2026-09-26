@@ -8,7 +8,9 @@
 
 use std::io::Read;
 
-use yggdryl::http::{HttpOptions, Request, Session, Stream};
+use yggdryl::http::{
+    Fault, HttpOptions, Method, Request, Response, Server, Session, Status, Stream,
+};
 use yggdryl::{Error, IOBase, IOKind};
 
 use crate::http_server::HttpServer;
@@ -31,6 +33,20 @@ fn open(server: &HttpServer, path: &str) -> Stream {
         .expect("a response")
         .into_stream()
         .expect("the live stream")
+}
+
+/// The rest of the body from the delivered cursor, read forward: what
+/// resumes, where `read_all_bytes` is the whole body from its first byte.
+fn rest(stream: &Stream) -> yggdryl::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut buffer = vec![0_u8; 4096];
+    loop {
+        let read = stream.pread(stream.delivered(), &mut buffer)?;
+        if read == 0 {
+            return Ok(bytes);
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+    }
 }
 
 fn open_with(session: &Session, server: &HttpServer, path: &str) -> Stream {
@@ -56,7 +72,7 @@ fn a_resumed_transfer_whose_validator_changed_is_a_conflict() {
     assert_eq!(head, body(8192)[..100]);
     // The resource changes under the transfer: a different ETag.
     server.put_resource("/r", &other_body(8192), Some("application/octet-stream"));
-    match stream.read_all_bytes().expect_err("a refusal") {
+    match rest(&stream).expect_err("a refusal") {
         Error::Conflict {
             expected,
             actual,
@@ -76,6 +92,36 @@ fn a_resumed_transfer_whose_validator_changed_is_a_conflict() {
     // validator is what says the resource moved under the transfer.
     assert_eq!(requests[1].status.code(), 200);
     assert_eq!(stream.delivered(), 4096);
+}
+
+#[test]
+fn a_resumed_206_that_states_no_range_is_refused_rather_than_spliced() {
+    // The first answer is whole, ranged and cut; the re-open answers `206`
+    // with no `Content-Range`, so where its bytes belong is unknown.
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/r", |request| {
+        let response = if request.headers().get("range").is_some() {
+            Response::new(Status::PARTIAL_CONTENT).with_body(body(8192)[4096..].to_vec())
+        } else {
+            Response::new(Status::OK)
+                .with_header("Accept-Ranges", "bytes")?
+                .with_body(body(8192))
+        };
+        Ok(response)
+    });
+    server.inject("/r", Fault::CutBodyAt(4096), 1);
+    let stream = Request::get(&server.url_of("/r").expect("url").to_string())
+        .expect("a URL")
+        .stream()
+        .expect("a response")
+        .into_stream()
+        .expect("the live stream");
+    match rest(&stream).expect_err("a refusal") {
+        Error::Io(error) => assert!(error.to_string().contains("no Content-Range"), "{error}"),
+        other => panic!("expected a refused splice, got {other:?}"),
+    }
+    assert_eq!(stream.delivered(), 4096);
+    assert_eq!(server.request_count(), 2);
 }
 
 #[test]
@@ -110,7 +156,7 @@ fn consecutive_failures_past_max_attempts_fail_the_read() {
         .expect("what the server sent");
     // The re-open is cut before any byte: the second consecutive failure.
     server.cut_body_at("/r", 0);
-    match stream.read_all_bytes().expect_err("a failure") {
+    match rest(&stream).expect_err("a failure") {
         Error::Io(error) => assert!(
             error.to_string().contains("ended after") || error.to_string().contains("disconnected"),
             "{error}"
@@ -252,11 +298,42 @@ fn read_all_bytes_and_pstream_bytes_drain_in_one_request() {
 
     let stream = open(&server, "/r");
     assert_eq!(stream.read_all_bytes().expect("drained"), bytes);
-    assert_eq!(
-        stream.read_all_bytes().expect("nothing left"),
-        Vec::<u8>::new()
-    );
     assert_eq!(server.request_count(), 2);
+    // A whole read is the whole body from its first byte, whatever the
+    // cursor: once drained, one ranged `GET` fetches it again.
+    assert_eq!(stream.read_all_bytes().expect("again"), bytes);
+    assert_eq!(server.request_count(), 3);
+    assert_eq!(server.requests()[2].header("range"), Some("bytes=0-"));
+}
+
+#[test]
+fn a_whole_read_after_a_forward_read_without_ranges_is_refused_not_truncated() {
+    let server = HttpServer::start();
+    server.put_resource("/flat", &body(4096), Some("application/octet-stream"));
+    server.set_ranges("/flat", false);
+    let stream = open(&server, "/flat");
+    let mut head = [0_u8; 10];
+    stream.pread_exact(0, &mut head).expect("a forward read");
+    match stream.read_all_bytes().expect_err("a refusal") {
+        Error::Unsupported { operation, .. } => {
+            assert!(operation.contains("without ranges"), "{operation}");
+        }
+        other => panic!("expected an unsupported read, got {other:?}"),
+    }
+    assert_eq!(server.request_count(), 1);
+}
+
+#[test]
+fn a_whole_read_holds_no_more_than_max_body_size() {
+    let server = HttpServer::start();
+    server.put_resource("/r", &body(4096), Some("application/octet-stream"));
+    let session =
+        Session::with_options(HttpOptions::default().with_max_body_size(1000)).expect("a session");
+    let stream = open_with(&session, &server, "/r");
+    match stream.read_all_bytes().expect_err("past the bound") {
+        Error::Io(error) => assert!(error.to_string().contains("max_body_size"), "{error}"),
+        other => panic!("expected an oversized body, got {other:?}"),
+    }
 }
 
 #[test]

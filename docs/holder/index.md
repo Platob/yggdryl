@@ -14,6 +14,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Local](#local) | `LocalPath`, `LocalFolder`, mapped `LocalFile` | default |
 | [Filesystems](#filesystems) | Arrow-style `FileSystem`, `FsPath`, `FsFolder`, `FsFile` | default |
 | [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage | `s3` feature |
+| [HTTP](#http) | `Session`, `Request`, `Response`, `Stream` over any `http`/`https` URL, and `Server` hosting any handle | `http` feature |
 | [Buffered](#buffered) | the page cache over any handle | default |
 | [ZIP](#zip) | `ZipPath`, `ZipNode`, `ZipLeaf` inside one archive, nested archives included | default, Rust only |
 
@@ -83,6 +84,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three on an Arrow `FileSystem` | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile` |
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
+| `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
@@ -4165,6 +4167,502 @@ cargo bench --bench holder --features s3 -- object_ --noplot
 python scripts/check_object_interop.py
 python scripts/check_azure_interop.py
 python scripts/check_gcs_interop.py
+```
+
+## HTTP
+
+`Session`, `Request`, `Response` and `Stream` reach a resource an `http` or `https` URL names through one synchronous HTTP/1.1 client - no async runtime - and answer the same `IOBase` calls every backend does; `Server` hosts any handle over HTTP/1.1 in the same process. Behind the non-default `http` feature, which `aws` and `s3` imply.
+
+```text
+http::get(url) / head(url) / post(url, body) / put / patch / delete  // the default session, the answer read whole
+http::located(url) -> Result<Holder>                // Holder::HttpRequest: the resource as a leaf
+Session::with_options(HttpOptions) -> Result<Session>   // defaults, a credential, one cookie jar, one pool
+session.get(url)?.with_header(name, value)?.send()  // Request -> Response, the body read whole
+request.stream() / request.pages()                  // the body left on the wire / one GET per page
+Server::bind("127.0.0.1:0")?.mount(prefix, holder)  // any handle, served with ranges and validators
+```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Scalar;
+    use yggdryl::http::{Method, Response, Server, Session, Status};
+
+    // A server in this process answers, so nothing leaves the machine.
+    let server = Server::bind("127.0.0.1:0")?;
+    let health = yggdryl::json::from_utf8(r#"{"status":"ok"}"#)?;
+    server.respond(Some(Method::Get), "/health", Response::new(Status::OK).with_json(&health)?);
+
+    let session = Session::new();
+    let response = session.get(&server.url_of("/health")?.to_string())?.send()?;
+    assert!(response.is_ok());
+    assert_eq!(response.headers().get("content-type"), Some("application/json"));
+    // The body parsed under the media type the answer declared.
+    let document = response.scalar()?;
+    assert_eq!(document.get_key_str("status").and_then(Scalar::as_str), Some("ok"));
+    assert_eq!(session.stats().gets, 1);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import http
+
+    with http.Server.bind() as server:
+        server.respond("/health", 200, {"content-type": "application/json"}, b'{"status": "ok"}')
+
+        # A relative URL joins onto the session's base URL.
+        session = http.Session(server.url)
+        response = session.get("health")
+        assert response.ok and response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        assert response.json() == {"status": "ok"}
+        assert session.stats["gets"] == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { http } = require('yggdryl')
+
+    const server = http.Server.bind()
+    server.respond('/health', 200, { 'content-type': 'application/json' }, '{"status":"ok"}')
+
+    // A relative URL joins onto the session's base URL.
+    const session = new http.Session(server.url.toString())
+    const response = session.get('health')
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.headers.get('content-type'), 'application/json')
+    assert.deepEqual(response.json(), { status: 'ok' })
+    server.shutdown()
+    ```
+
+`http::get` and its siblings send on the process-wide default session (`http::session()`), whose cookie jar and counters every caller shares; build a `Session` of its own to count one caller's requests. A relative URL joins onto `HttpOptions::with_base_url` by RFC 3986 (`Url::join_reference`), and another scheme is refused.
+
+### The four roles
+
+| Role | `Holder` variant | Python | Is |
+| --- | --- | --- | --- |
+| `Session` | `HttpSession` | `http.Session` | a container over its base URL: `child_by_path(path)` is the `Request` for that resource, `ls` is empty because HTTP lists nothing, byte writes are refused as a directory's are |
+| `Request` | `HttpRequest` | `http.Request` | the leaf a URL names: every byte, record and value call of [Bytes](#bytes), [Values](#values) and [Records](#records) |
+| `Response` | `HttpResponse` | `http.Response` | one answer's body as sent - coded, under a media type that keeps the coding, so `into_declared_media` composes the codec and the record encoding - read-only |
+| `Stream` | `HttpStream` | `http.Stream` | a body left on the wire, read forward and resumed when cut; read-only |
+
+A `Client` is the connection pool and transport knobs sessions share; as an `IOBase` it is the same container as a session with no base URL.
+
+### What each operation costs
+
+The request count is the contract, asserted by `rust/tests/http/request.rs` and `stream.rs`: one request is one round trip.
+
+| operation | requests |
+| --- | --- |
+| building a session or a request, resolving a child | none |
+| `pread`, `read_range_bytes`, `read_range_digest` | one ranged `GET` |
+| `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | one `GET`, plus one per resume |
+| `size`, `mtime`, `kind` while closed | one `HEAD`; none while open |
+| `write_all_bytes`, `clear` | one `PUT` |
+| `append_bytes` | one `GET` and one `PUT` |
+| `pwrite` then `flush` | one `GET` and one `PUT` |
+| `remove` | one `DELETE`; a `404` is success |
+| `send`, `stream` | one per attempt, plus one per redirect hop |
+| `pages`, a paginated `read_arrow_reader` | one `GET` per page |
+
+`open` costs one `HEAD` and caches the answer - never the bytes - so `size`, `mtime` and `kind` stop being round trips, and a read's `Content-Length` or `Content-Range` total updates the cached size. A `404` reads as zero bytes and a `416` as zero bytes with the total learned; any other refusal is `Error::Remote` naming the method, the status, the reason, the body's first line and the URL.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::fs::{FsFolder, MemoryFileSystem};
+    use yggdryl::holder::Holder;
+    use yggdryl::http::{self, Server};
+    use yggdryl::{IOBase, MimeType};
+
+    // A folder served under `/lake`, so a child is a resource.
+    let server = Server::bind("127.0.0.1:0")?;
+    let lake = Holder::from(FsFolder::from_path(Arc::new(MemoryFileSystem::new()), "", None)?);
+    lake.child_by_path("trades.json")?.write_all_bytes(br#"[{"id":1},{"id":2}]"#)?;
+    server.mount("/lake", lake)?;
+
+    let mut trades = http::located(&server.url_of("/lake/trades.json")?.to_string())?;
+    trades.open()?; // one HEAD, cached while open
+    assert_eq!(trades.size(), 19); // no request
+    assert_eq!(trades.read_range_bytes(0, 8)?, br#"[{"id":1"#); // one ranged GET
+    assert_eq!(trades.media_type().base(), &MimeType::JSON);
+    trades.close()?;
+    assert_eq!(server.request_count(), 2);
+
+    // A whole write is one PUT, and the mount stores it.
+    trades.write_all_bytes(b"[]")?;
+    assert_eq!(trades.read_all_bytes()?, b"[]");
+    assert_eq!(server.request_count(), 4);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, http
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    (root / "trades.json").write_bytes(b'[{"id":1},{"id":2}]')
+
+    with http.Server.bind() as server:
+        server.mount("/lake", IOBase(root))
+
+        # The scheme picks the backend: an http URL is a Request.
+        trades = IOBase(str(server.url_of("/lake/trades.json")))
+        assert type(trades) is http.Request
+        trades.open()  # one HEAD, cached while open
+        assert trades.size == 19  # no request
+        assert trades.read_range_bytes(0, 8) == b'[{"id":1'  # one ranged GET
+        trades.close()
+        assert server.request_count == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, http } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-http-'))
+    fs.writeFileSync(path.join(root, 'trades.json'), '[{"id":1},{"id":2}]')
+
+    const server = http.Server.bind()
+    server.mount('/lake', new IOBase(root))
+
+    // The scheme picks the backend: an http URL is the resource it names.
+    const trades = new IOBase(new URL('lake/trades.json', server.url.toString()).toString())
+    trades.open() // one HEAD, cached while open
+    assert.equal(trades.size, 19) // no request
+    assert.deepEqual(trades.readRangeBytes(0, 8), Buffer.from('[{"id":1'))
+    trades.close()
+    assert.equal(server.requestCount, 2)
+    server.shutdown()
+    ```
+
+### What the headers teach a handle
+
+A handle reads each fact off the answer that carried it and never asks twice while open.
+
+| header | teaches |
+| --- | --- |
+| `Content-Type` | the media type - once, from the first answer that states one; a declared `with_media_type` wins over it, and the URL's own suffix answers until then |
+| `Content-Encoding` | the codings: a `Response` keeps them in its media type, and `bytes`, `text` and `scalar` decode them; a coding this crate cannot decode is refused by name when the response is built |
+| `Content-Length`, `Content-Range` | the size; a `206`'s total, a `416`'s `bytes */total` included |
+| `Last-Modified` | `mtime` |
+| `Accept-Ranges: bytes`, `ETag` | whether a cut transfer may resume, and the validator it resumes under |
+| `charset` on `Content-Type` | how `text` decodes the body (UTF-8 when none is stated) |
+| `Link`, `Retry-After`, `RateLimit-*` | the next page, and how long to pause before the next request (capped at `max_pause`) |
+
+A request asks for `gzip, deflate, zstd` - the codings this crate decodes - unless the caller set `Accept-Encoding`; a ranged or streamed request asks for `identity`, so a byte offset means the same thing on both ends.
+
+### Resuming a cut transfer
+
+`request.stream()` leaves the body on the wire; `into_stream()` hands it over as a `Stream` whose `delivered()` count is the resume cursor. A transport failure mid-body re-issues the request with `Range: bytes=<delivered>-` and, when the first answer carried a strong `ETag` or a `Last-Modified`, `If-Range` naming it, so a resource that changed in between is refused as `Error::Conflict` rather than spliced. It resumes only when the first answer said `Accept-Ranges: bytes` or was itself a `206`, only while consecutive failures stay under `max_attempts` - a byte arriving resets the count - and at most `Stream::MAX_RESUMES` times in all. A resumed `206` must state in `Content-Range` that it starts at the cursor, or its bytes are refused rather than spliced; a `200` answer to a resumed range skips the delivered prefix. A body read whole - `send`, `read_all_bytes` - is read through the same stream, so it resumes too.
+
+A `Response` or `Stream` stands alone: it carries the request that opened it, and that request its session, so nothing else has to be held. `close()` lets go of the live transfer and its connection and keeps the cursor; the next read, or `open()`, re-opens at the cursor with one ranged `GET` under the same `If-Range`, so a parked download costs no connection and resumes exactly where it stopped - or is refused as `Error::Conflict` when the resource changed meanwhile.
+
+```rust
+use std::io::Read;
+
+use yggdryl::IOBase;
+use yggdryl::holder::{Buffer, Holder};
+use yggdryl::http::{Fault, Server, Session};
+
+let server = Server::bind("127.0.0.1:0")?;
+server.mount("/blob.bin", Holder::buffer(Buffer::from_bytes(vec![7_u8; 8192])))?;
+// The next answer is cut after half its body.
+server.inject("/blob.bin", Fault::CutBodyAt(4096), 1);
+
+let session = Session::new();
+let request = session.get(&server.url_of("/blob.bin")?.to_string())?;
+let mut stream = request.stream()?.into_stream()?;
+let mut bytes = Vec::new();
+stream.read_to_end(&mut bytes)?;
+assert_eq!(bytes, vec![7_u8; 8192]);
+assert_eq!((stream.delivered(), stream.resumes()), (8192, 1));
+
+// One GET, plus one per resume, which asked for what was missing under the
+// validator the first answer carried.
+let requests = server.requests();
+assert_eq!(requests.len(), 2);
+assert_eq!(requests[1].headers.get("range"), Some("bytes=4096-"));
+assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
+```
+
+### Many requests at once
+
+`Session::send_all(requests, concurrency)` sends every request on up to `concurrency` threads - the options' `concurrency` when `None` - and answers in the order the requests were given. It is a stream: the source is pulled only as far as the requests in flight, each answer is handed over as soon as the ones before it were, a failure is one item and the walk goes on, and the walk owns what it needs, so it can move to another thread. Python and JavaScript take, beside a prepared `Request`, a URL to `GET` or a mapping of the request's keywords; Python pulls a generator lazily and releases the interpreter while an answer is awaited.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::http::{Method, Response, Server, Session, Status};
+
+    let server = Server::bind("127.0.0.1:0")?;
+    for index in 0..4 {
+        let path = format!("/n{index}");
+        server.respond(Some(Method::Get), &path, Response::new(Status::OK).with_text(&path));
+    }
+    let session = Session::new();
+    let requests = (0..4)
+        .map(|index| session.get(&server.url_of(&format!("/n{index}"))?.to_string()))
+        .collect::<yggdryl::Result<Vec<_>>>()?;
+
+    // Four at once, answered in the order given.
+    let bodies = session
+        .send_all(requests, Some(4))
+        .map(|answer| answer?.text())
+        .collect::<yggdryl::Result<Vec<_>>>()?;
+    assert_eq!(bodies, ["/n0", "/n1", "/n2", "/n3"]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import http
+
+    with http.Server.bind() as server:
+        server.respond("/text", 200, {"content-type": "text/plain"}, b"hello")
+        server.route("/echo", lambda request: (200, None, request.body), method="POST")
+        session = http.Session(server.url)
+
+        answers = session.send_all(
+            [
+                "text",                                          # a URL to GET
+                {"method": "POST", "url": "echo", "data": b"x"},  # the request's keywords
+                http.Request("GET", str(server.url_of("/text")), session=session),
+            ],
+            concurrency=3,
+        )
+        assert [answer.text for answer in answers] == ["hello", "x", "hello"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { http } = require('yggdryl')
+
+    const server = http.Server.bind()
+    server.respond('/text', 200, { 'content-type': 'text/plain' }, 'hello')
+    const session = new http.Session(server.url.toString())
+
+    // A walk pulled one answer at a time; a spec is the request options
+    // beside `method` and `url`.
+    const walk = session.sendAll(['text', { url: 'text', headers: { 'x-probe': 'yes' } }], 2)
+    assert.deepEqual([...walk].map((answer) => answer.text()), ['hello', 'hello'])
+    server.shutdown()
+    ```
+
+### Pages
+
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` on a structured resource whose first page paginates is that walk, reading the first page once. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+
+`Pagination` says how the next page is found; `Auto`, the default, tries in order:
+
+| step | reads |
+| --- | --- |
+| 1 | the `Link` header's `rel="next"` target |
+| 2 | the headers `X-Next-Page`, `X-Next-Cursor`, `X-Next`, `Next-Page` |
+| 3 | a URL, absolute or relative, at `next`, `next_url`, `nextUrl`, `next_page_url`, `nextLink`, `@odata.nextLink`, `links.next`, `links.next.href`, `_links.next.href`, `paging.next`, `meta.next`, `pagination.next` |
+| 4 | a cursor at `next_cursor`, `nextCursor`, `next_page_token`, `nextPageToken`, `cursor`, `after`, `meta.cursor`, `pagination.cursor`, sent back under the parameter the request already carries among `cursor`, `after`, `page_token`, `pageToken`, `next_cursor`, else `cursor` |
+
+The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL equal to the current one or already visited, `page_limit` pages, or a page answering `400` or more, which is yielded and ends it. The explicit spellings are `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` and `page:<parameter>:<start>`. A failed page request is retried under the session's policy and resumed from that page's own request, never from the first.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::http::{Method, Response, Server, Session, Status};
+
+    let server = Server::bind("127.0.0.1:0")?;
+    for (path, page) in [
+        ("/trades-1.json", r#"{"data":[{"id":1},{"id":2}],"next":"/trades-2.json"}"#),
+        ("/trades-2.json", r#"{"data":[{"id":3}]}"#),
+    ] {
+        let answer = Response::new(Status::OK)
+            .with_header("content-type", "application/json")?
+            .with_body(page);
+        server.respond(Some(Method::Get), path, answer);
+    }
+
+    let session = Session::new();
+    let first = session.get(&server.url_of("/trades-1.json")?.to_string())?;
+    let batches = first.pages().into_arrow_reader(None, 0)?.collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2, 1]);
+    assert_eq!(server.request_count(), 2); // one GET per page
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import http
+
+    with http.Server.bind() as server:
+        json = {"content-type": "application/json"}
+        server.respond("/trades-1.json", 200, json, b'{"data":[{"id":1},{"id":2}],"next":"/trades-2.json"}')
+        server.respond("/trades-2.json", 200, json, b'{"data":[{"id":3}]}')
+
+        pages = http.Session(server.url).pages("trades-1.json")
+        table = pages.into_arrow_reader().read_all()
+        assert table.column("id").to_pylist() == [1, 2, 3]
+        assert server.request_count == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { http } = require('yggdryl')
+
+    const server = http.Server.bind()
+    const json = { 'content-type': 'application/json' }
+    server.respond('/trades-1.json', 200, json, '{"data":[{"id":1},{"id":2}],"next":"/trades-2.json"}')
+    server.respond('/trades-2.json', 200, json, '{"data":[{"id":3}]}')
+
+    const session = new http.Session(server.url.toString())
+    const table = session.pages('trades-1.json').intoTable()
+    assert.equal(table.numRows, 3)
+    assert.equal(server.requestCount, 2)
+    server.shutdown()
+    ```
+
+### Configuration
+
+`HttpOptions` holds every knob with its default in the signature; `from_properties` reads the same knobs out of text pairs in snake or kebab case, ignores a name it does not have - so a catalog's whole property bag can be handed over - and refuses a value that does not read as its name means. `Holder::from_url` routes an `http` or `https` URL through `http::located_with(url, HttpOptions::from_properties(properties)?)`, and the generic `media_type` and `codec` properties still apply after.
+
+| property | default | reads |
+| --- | --- | --- |
+| `timeout`, `connect_timeout` | 120 s, 10 s | seconds, decimal allowed, `s` or `ms` suffix |
+| `max_attempts`, `max_redirects`, `follow_redirects` | 3, 10, true | the retry and redirect budget |
+| `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for |
+| `max_body_size` | 256 MiB | what `send` holds in memory; `KiB`, `MiB`, `GiB` suffixes |
+| `accept_encoding` | `gzip, deflate, zstd` | the codings asked for |
+| `concurrency` | the cores, at most 8 | the threads `send_all` sends on |
+| `pagination`, `records`, `page_limit` | `auto`, detected, none | the page walk |
+| `bearer_token`, `basic_auth` | none | a credential; `basic_auth` is `user:password` |
+| `header.<name>`, `headers.<name>` | none | one default header |
+| `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest |
+
+With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxy a value names is parsed once while the value stays the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do: the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::http::{Method, Response, Server, Status};
+use yggdryl::{IOBase, Url};
+
+let server = Server::bind("127.0.0.1:0")?;
+server.respond(Some(Method::Get), "/quote", Response::new(Status::OK).with_text("42"));
+
+// A property bag, the http knobs picked out of it and the rest ignored.
+let url = Url::from_str(&server.url_of("/quote")?.to_string())?;
+let quote = Holder::from_url(
+    &url,
+    [("bearer_token", "t-1"), ("header.X-Desk", "power"), ("warehouse", "s3://lake")],
+)?;
+assert!(matches!(quote, Holder::HttpRequest(_)));
+assert_eq!(quote.read_all_bytes()?, b"42");
+
+let sent = &server.requests()[0];
+assert_eq!(sent.headers.get("authorization"), Some("Bearer t-1"));
+assert_eq!(sent.headers.get("x-desk"), Some("power"));
+```
+
+### Serving a handle
+
+`Server::bind("127.0.0.1:0")` accepts on one thread and answers each connection on its own, with HTTP/1.1 keep-alive and request bodies framed by `Content-Length` or chunked. `mount(prefix, holder)` serves any handle under a prefix - the prefix itself is the holder, a path below it the child at that path, and a longer prefix wins:
+
+| request | a mounted leaf answers |
+| --- | --- |
+| `GET`, `HEAD` | `200` with `Content-Type` and `Content-Encoding` from its media type, `Content-Length`, `Accept-Ranges: bytes`, a strong `ETag` (the XXH3-64 of its bytes) and `Last-Modified`; one `Range` is a `206`, past the end a `416`; `If-Range`, `If-None-Match` and `If-Modified-Since` are honoured; the body streams through `pstream_bytes`, never read whole |
+| `GET` on a container | a JSON listing of `name`, `url`, `kind`, `size`, `media_type` |
+| `PUT` | `write_all_bytes`, `201` when the leaf was new, else `204`; `409` on a container |
+| `DELETE` | `remove`, `204`, or `404` when nothing was there |
+| `OPTIONS`, any other method | `204` or `405`, with `Allow` |
+
+`route(method, path, handler)` answers one exact path with a closure over the `Request` - a route wins over a mount - and `respond` with a fixed `Response`. `inject(path, fault, times)` applies a `Fault` to the next `times` requests of a path (`0` for every one) before any route or mount: `CutBodyAt(n)`, `CloseBeforeAnswer`, `Refuse { status, retry_after }`, `Delay(duration)`. Every request is recorded - method, target, path, query, headers, body length, status - and read back with `requests()`, the newest `Server::MAX_RECORDED` of them.
+
+A server exposed to peers it does not trust stays bounded. `ServerOptions` caps the connections served at once (`max_connections`, 512; past it a connection is closed unread), gives a request head `read_timeout` to arrive whole however slowly it trickles, and gives a peer that stops reading its answer `write_timeout`. A `Transfer-Encoding` on an HTTP/1.0 request, or one not ending in `chunked`, is `400`, and a path whose decoded segments hold `.`, `..` or a separator never reaches a mount. With `with_tunnel(true)` the server answers `CONNECT host:port` by piping bytes to that address, standing in for the forward proxy a client's proxy handling is tested against.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::http::{self, Body, Fault, Method, Response, Server, Status};
+
+    let server = Server::bind("127.0.0.1:0")?;
+    server.route(Some(Method::Put), "/echo", |request| {
+        Ok(Response::new(Status::OK).with_body(request.body().as_bytes().to_vec()))
+    });
+    // The first request is refused as a throttled store would.
+    let refuse = Fault::Refuse { status: Status::SERVICE_UNAVAILABLE, retry_after: None };
+    server.inject("/echo", refuse, 1);
+
+    // A PUT is idempotent and its body held, so the 503 is retried.
+    let response = http::put(&server.url_of("/echo")?.to_string(), Body::from("ping"))?;
+    assert_eq!(response.text()?, "ping");
+    let statuses: Vec<u16> = server.requests().iter().map(|sent| sent.status.code()).collect();
+    assert_eq!(statuses, [503, 200]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import http
+
+    with http.Server.bind() as server:
+        # A route answers with a Response, or a (status, headers, body) tuple.
+        server.route("/echo", lambda request: (200, None, request.body), method="PUT")
+        server.inject("/echo", ("refuse", 503), times=1)
+
+        # A PUT is idempotent and its body held, so the 503 is retried.
+        response = http.put(str(server.url_of("/echo")), b"ping")
+        assert response.text == "ping"
+        assert [sent["status"] for sent in server.requests] == [503, 200]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase, http } = require('yggdryl')
+
+    // A handle served over HTTP, and read back through the client.
+    const server = http.Server.bind()
+    server.mount('/rows.json', IOBase.fromBytes(Buffer.from('[1, 2, 3]')))
+    const response = http.get(new URL('rows.json', server.url.toString()).toString())
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.text(), '[1, 2, 3]')
+    server.shutdown()
+    ```
+
+JavaScript has no `route`: a handler would run on the server's thread and wait on the JavaScript thread, which deadlocks the moment that thread is the one sending the request; `respond`, `mount` and `inject` cover it.
+
+### Retries, redirects and failures
+
+A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when the connection never opened. Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+
+- A `404` read is emptiness and a `404` `DELETE` is success; `401` and `403` are refusals.
+- A refusing status is `Error::Remote` naming the method, the status, the reason, the body's first line and the URL; `raise_for_status` answers the same for a `Response` in hand.
+- A malformed header is `Error::Parse` with target `http header`, a malformed message `http message`, each at a byte position.
+- A resumed transfer whose validator moved is `Error::Conflict { expected: "resource", actual: "changed resource" }`.
+- A body over `max_body_size` is refused rather than held; `stream` holds none of it.
+- `Response` and `Stream` refuse writes as `Error::Unsupported`; a `pread` behind a stream's cursor re-opens a range, and is refused when the resource takes none.
+
+### HTTP performance
+
+The `http_bytes` and `http_session` groups measure, against the crate's own `Server` on loopback, a whole read, an 8 KiB footer read, a streamed drain, one small JSON `POST` answered and parsed, and a walk of 64 pages. The request counts they rest on are the table above; a loopback round trip exaggerates fixed cost, so what the timings establish is that no per-request cost is hiding. No table is published yet: it is regenerated by a release run on the reference host.
+
+```console
+cargo bench -p yggdryl --bench holder --features http -- http_ --noplot
 ```
 
 ## Buffered

@@ -30,7 +30,7 @@ iceberg = ["parquet", "dep:iceberg-official", "dep:uuid"]
 # Not default: the client and its TLS stack are a cost a local or schema-only
 # consumer never pays. Every backend that speaks a REST API rides on it, so
 # `aws` implies it.
-http = ["dep:ureq"]
+http = ["dep:psl", "dep:ureq"]
 # Who this process is to AWS: the credential chain the AWS tools walk, the
 # shared configuration files, IAM Identity Center (SSO) sign-in, STS role
 # exchanges, and Signature Version 4. Not default for the same reason as
@@ -129,6 +129,10 @@ twox-hash = { version = "=2.1.3", default-features = false, features = [
     "xxhash3_128",
     "std",
 ] }
+# The Public Suffix List under `http`: a cookie's `Domain` naming a public
+# suffix (`com`, `co.uk`, `github.io`) is refused, RFC 6265 section 5.3 step 5,
+# so one origin cannot set a cookie every other origin under it receives.
+psl = { version = "2.1", default-features = false, optional = true }
 # The synchronous HTTP/1.1 client under `http` and the S3 backend: connection
 # pooling, rustls, no async runtime. Compression is off because a body is the
 # bytes a caller asked for - this crate's `Codec` decodes a content coding

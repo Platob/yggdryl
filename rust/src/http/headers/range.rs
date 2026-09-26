@@ -76,7 +76,12 @@ impl ContentRange {
     /// The number of bytes the answer carries: none for the unsatisfied form.
     pub const fn len(&self) -> u64 {
         match self {
-            Self::Bytes { start, end, .. } => *end - *start + 1,
+            // A hand-built range can state an end before its start, which
+            // carries nothing, or the whole `u64` span, which saturates.
+            Self::Bytes { start, end, .. } => match end.checked_sub(*start) {
+                Some(span) => span.saturating_add(1),
+                None => 0,
+            },
             Self::Unsatisfied { .. } => 0,
         }
     }

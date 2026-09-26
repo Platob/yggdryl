@@ -1965,6 +1965,415 @@ pub struct ZipPath
   pub fn verification_uri, verification_uri_complete, user_code, expires_in, interval
   impl Display
 
+### yggdryl::http  [rust/src/http/mod.rs]
+  Behind the non-default `http` feature, which `aws` and `s3` imply. HTTP behind IOBase: one synchronous
+  HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages, the `message/http`
+  medium and a server; every IOBase verb a stated number of requests (the table in the module doc).
+  pub fn session() -> Session  (the process-wide default: default options, one cookie jar, shared counters)
+  pub fn session_with(options: HttpOptions) -> Result<Session>
+  pub fn located(url: &str) -> Result<Holder>  (Holder::HttpRequest over a GET of url)
+  pub fn located_with(url: &str, options: HttpOptions) -> Result<Holder>
+  pub fn get(url: &str) -> Result<Response>
+  pub fn head(url: &str) -> Result<Response>
+  pub fn post(url: &str, body: Body) -> Result<Response>
+  pub fn put(url: &str, body: Body) -> Result<Response>
+  pub fn patch(url: &str, body: Body) -> Result<Response>
+  pub fn delete(url: &str) -> Result<Response>
+  pub use authorization::Authorization; client::{Client, StatsSnapshot}; cookie::{Cookie, CookieJar};
+      headers::{ContentRange, ETag, Headers, HeadersIntoIter, HeadersIter, Link, parse_http_date, parse_links,
+      range_header, render_http_date}; method::Method; options::HttpOptions; pages::Pages;
+      pagination::{NextPage, Pagination}; request::{Body, Request}; response::Response;
+      server::{Fault, Handler, Recorded, Server, ServerOptions}; session::Session; status::Status; stream::Stream;
+      wire::{ChunkedReader, ChunkedWriter, HttpVersion, RequestHead, ResponseHead, decode_chunked, encode_chunked,
+      parse_request, parse_response, render_request, render_response}
+
+### yggdryl::http::authorization  [rust/src/http/authorization.rs]
+  pub enum Authorization { Basic { username: String, password: Secret }, Bearer(Secret), Header { name: SmolStr, value: Secret } }  (Clone, PartialEq, Eq; Debug redacts)
+  pub fn basic(username: impl Into<String>, password: impl Into<String>) -> Self
+  pub fn bearer(token: impl Into<String>) -> Self
+  pub fn header(name: impl Into<SmolStr>, value: impl Into<String>) -> Self
+  pub fn from_url(url: &Url) -> Option<Self>  (the URL's user info as Basic)
+  pub fn header_name(&self) -> &str
+  pub fn header_value(&self) -> String
+
+### yggdryl::http::client  [rust/src/http/client.rs]
+  pub struct Client  (Clone shares the pool; Debug, Default; IOBase + IOMedia: a container with no base URL)
+  pub fn new() -> Self
+  pub fn with_options(options: &HttpOptions) -> Result<Self>
+  pub fn stats(&self) -> StatsSnapshot
+  pub fn session(&self) -> Session
+  pub struct StatsSnapshot { requests, gets, heads, posts, puts, patches, deletes, others, retries, resumes, redirects: u64, retry_tokens: i64 }  (#[non_exhaustive], Copy, Default)
+
+### yggdryl::http::cookie  [rust/src/http/cookie.rs]
+  pub struct Cookie { name: String, value: String, domain: String, host_only: bool, path: String, expires: Option<i64>, secure: bool, http_only: bool }
+  pub fn new(name: impl Into<String>, value: impl Into<String>, domain: &str) -> Self
+  pub fn from_set_cookie(header: &str, url: &Url, now_ns: i64) -> Result<Self>
+  pub fn is_expired(&self, now_ns: i64) -> bool
+  pub fn matches(&self, url: &Url, now_ns: i64) -> bool
+  pub fn header_pair(&self) -> String
+  pub struct CookieJar  (RFC 6265 domain and path matching, expiry)
+  pub fn new() -> Self
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> impl Iterator<Item = &Cookie>
+  pub fn set(&mut self, cookie: Cookie)
+  pub fn set_from_headers(&mut self, url: &Url, headers: &Headers, now_ns: i64) -> usize
+  pub fn header_for(&self, url: &Url, now_ns: i64) -> Option<String>
+  pub fn remove_expired(&mut self, now_ns: i64) -> usize
+  pub fn clear(&mut self)
+
+### yggdryl::http::headers  [rust/src/http/headers.rs]
+  pub struct Headers(Metadata);  (every header under the `HTTP:` protocol key; Clone, Default, Debug, Display (JSON), Eq, Ord, Hash, Serialize, Deserialize, FromStr (JSON), Index<&str>, IntoIterator)
+  pub const MAX_CODINGS: usize = 5;
+  pub fn new() -> Self
+  pub fn from_entries<I, K, V>(pairs: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub fn from_metadata(metadata: Metadata) -> Self
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn get(&self, name: &str) -> Option<&str>
+  pub fn get_all(&self, name: &str) -> impl Iterator<Item = &str>
+  pub fn contains_key(&self, name: &str) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> HeadersIter<'_>
+  pub fn next_entry(&self, after: Option<&str>) -> Option<(&str, &str)>
+  pub fn insert(&mut self, name: &str, value: &str) -> Result<Option<String>>
+  pub fn append(&mut self, name: &str, value: &str) -> Result<()>
+  pub fn remove(&mut self, name: &str) -> Option<String>
+  pub fn merge_with(&self, other: &Self) -> Result<Self>
+  pub fn clear(&mut self)
+  pub fn as_metadata(&self) -> &Metadata
+  pub fn into_metadata(self) -> Metadata
+  pub fn into_json(self) -> Result<String>
+  pub fn stable_hash(&self) -> u64
+  pub fn content_length(&self) -> Result<Option<u64>>
+  pub fn content_type(&self) -> Option<&str>
+  pub fn mime_type(&self) -> Result<MimeType>
+  pub fn media_type(&self) -> Result<MediaType>
+  pub fn charset(&self) -> Result<Option<Charset>>
+  pub fn content_encoding(&self) -> Result<Vec<Codec>>
+  pub fn content_range(&self) -> Result<Option<ContentRange>>
+  pub fn accept_ranges(&self) -> bool
+  pub fn etag(&self) -> Result<Option<ETag>>
+  pub fn last_modified(&self) -> Result<Option<i64>>
+  pub fn date(&self) -> Result<Option<i64>>
+  pub fn location(&self) -> Option<&str>
+  pub fn retry_after(&self, now_ns: i64) -> Result<Option<Duration>>
+  pub fn links(&self) -> Result<Vec<Link>>
+  pub fn next_link(&self) -> Result<Option<&str>>
+  pub fn transfer_encoding_chunked(&self) -> bool
+  pub fn connection_close(&self) -> bool
+  pub fn rate_limit_pause(&self, now_ns: i64) -> Result<Option<Duration>>
+  pub fn set_cookies(&self) -> Vec<&str>
+  pub struct HeadersIter<'a>(PropertyIter<'a, 'static>);  (bare names, lexical order; DoubleEndedIterator, FusedIterator)
+  pub struct HeadersIntoIter(MetadataIntoIter);  (DoubleEndedIterator, ExactSizeIterator, FusedIterator)
+
+### yggdryl::http::headers::date  [rust/src/http/headers/date.rs]
+  pub fn parse_http_date(text: &str) -> Result<i64>  (IMF-fixdate, RFC 850, asctime; UTC nanoseconds)
+  pub fn render_http_date(ns: i64) -> String  (IMF-fixdate)
+
+### yggdryl::http::headers::etag  [rust/src/http/headers/etag.rs]
+  pub struct ETag { opaque: String, weak: bool }  (Display, FromStr)
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn is_weak(&self) -> bool
+  pub fn strong_eq(&self, other: &Self) -> bool
+  pub fn weak_eq(&self, other: &Self) -> bool
+
+### yggdryl::http::headers::link  [rust/src/http/headers/link.rs]
+  pub struct Link { target: String, rel: Vec<SmolStr>, parameters: Vec<(SmolStr, String)> }  (RFC 8288)
+  pub fn has_rel(&self, rel: &str) -> bool
+  pub fn parameter(&self, name: &str) -> Option<&str>
+  pub fn parse_links(value: &str) -> Result<Vec<Link>>
+
+### yggdryl::http::headers::range  [rust/src/http/headers/range.rs]
+  pub fn range_header(start: u64, last: Option<u64>) -> String  (`bytes=start-` or `bytes=start-last`)
+  pub enum ContentRange { Bytes { start: u64, end: u64, total: Option<u64> }, Unsatisfied { total: u64 } }  (Display, FromStr)
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn total(&self) -> Option<u64>
+  pub const fn len(&self) -> u64
+  pub const fn is_empty(&self) -> bool
+
+### yggdryl::http::method  [rust/src/http/method.rs]
+  pub enum Method { Get, Head, Post, Put, Patch, Delete, Options, Trace, Connect }  (AsRef<str>, Display, FromStr, serde as the upper-case name)
+  pub const ALL: [Self; 9]
+  pub fn from_str(value: &str) -> Result<Self>  (case-insensitive)
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_safe(self) -> bool
+  pub const fn is_idempotent(self) -> bool
+  pub const fn has_request_body(self) -> bool
+
+### yggdryl::http::status  [rust/src/http/status.rs]
+  pub struct Status(u16);  (Display `200 OK`, FromStr, TryFrom<u16>, From<Status> for u16, serde as the integer)
+  pub const CONTINUE, OK, CREATED, ACCEPTED, NO_CONTENT, PARTIAL_CONTENT, MOVED_PERMANENTLY, FOUND, SEE_OTHER,
+      NOT_MODIFIED, TEMPORARY_REDIRECT, PERMANENT_REDIRECT, BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND,
+      METHOD_NOT_ALLOWED, REQUEST_TIMEOUT, CONFLICT, PRECONDITION_FAILED, RANGE_NOT_SATISFIABLE, TOO_EARLY,
+      TOO_MANY_REQUESTS, INTERNAL_SERVER_ERROR, NOT_IMPLEMENTED, BAD_GATEWAY, SERVICE_UNAVAILABLE, GATEWAY_TIMEOUT: Self
+  pub const REGISTERED: [(u16, &'static str); 61]
+  pub fn new(code: u16) -> Result<Self>  (100..=599)
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn code(self) -> u16
+  pub fn reason(self) -> &'static str
+  pub const fn is_informational(self) -> bool
+  pub const fn is_success(self) -> bool
+  pub const fn is_redirect(self) -> bool
+  pub const fn is_client_error(self) -> bool
+  pub const fn is_server_error(self) -> bool
+  pub const fn is_retryable(self) -> bool  (408, 425, 429, 500, 502, 503, 504)
+
+### yggdryl::http::options  [rust/src/http/options.rs]
+  pub struct HttpOptions  (Clone, Debug, Default)
+  pub const DEFAULT_TIMEOUT: Duration
+  pub const DEFAULT_CONNECT_TIMEOUT: Duration
+  pub const DEFAULT_MAX_ATTEMPTS: u32
+  pub const DEFAULT_MAX_REDIRECTS: u32
+  pub const DEFAULT_USER_AGENT: &'static str
+  pub const DEFAULT_ACCEPT_ENCODINGS: [Codec; 3]
+  pub const DEFAULT_MAX_BODY_SIZE: u64
+  pub const MAX_DEFAULT_CONCURRENCY: usize
+  pub const DEFAULT_MAX_PAUSE: Duration
+  pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub fn with_properties<I, K, V>(self, properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub fn with_base_url(self, base_url: Url) -> Self
+  pub fn with_headers(self, headers: Headers) -> Self
+  pub fn with_header(self, name: &str, value: &str) -> Result<Self>
+  pub fn with_authorization(self, authorization: Authorization) -> Self
+  pub const fn with_timeout(self, timeout: Duration) -> Self
+  pub const fn with_connect_timeout(self, connect_timeout: Duration) -> Self
+  pub const fn with_max_attempts(self, max_attempts: u32) -> Self
+  pub const fn with_max_redirects(self, max_redirects: u32) -> Self
+  pub const fn with_follow_redirects(self, follow_redirects: bool) -> Self
+  pub fn with_user_agent(self, user_agent: impl Into<String>) -> Self
+  pub fn with_proxy(self, proxy: impl Into<String>) -> Self
+  pub fn with_ca_bundle(self, ca_bundle: impl Into<PathBuf>) -> Self
+  pub fn with_accept_encodings(self, codecs: impl IntoIterator<Item = Codec>) -> Self
+  pub const fn with_read_environment(self, read_environment: bool) -> Self
+  pub const fn with_max_body_size(self, max_body_size: u64) -> Self
+  pub const fn with_stream_batch_size(self, stream_batch_size: usize) -> Self
+  pub const fn with_concurrency(self, concurrency: usize) -> Self
+  pub fn with_pagination(self, pagination: Pagination) -> Self
+  pub fn with_records(self, records: FieldPath) -> Self
+  pub const fn with_page_limit(self, page_limit: Option<usize>) -> Self
+  pub const fn with_cookies(self, cookies: bool) -> Self
+  pub const fn with_max_pause(self, max_pause: Duration) -> Self
+  pub fn base_url(&self) -> Option<&Url>
+  pub fn headers(&self) -> &Headers
+  pub fn authorization(&self) -> Option<&Authorization>
+  pub const fn timeout(&self) -> Duration
+  pub const fn connect_timeout(&self) -> Duration
+  pub const fn max_attempts(&self) -> u32
+  pub const fn max_redirects(&self) -> u32
+  pub const fn follow_redirects(&self) -> bool
+  pub fn user_agent(&self) -> &str
+  pub fn proxy(&self) -> Option<&str>
+  pub fn ca_bundle(&self) -> Option<&Path>
+  pub fn accept_encodings(&self) -> &[Codec]
+  pub const fn read_environment(&self) -> bool
+  pub const fn max_body_size(&self) -> u64
+  pub const fn stream_batch_size(&self) -> usize
+  pub const fn concurrency(&self) -> usize
+  pub const fn pagination(&self) -> &Pagination
+  pub fn records(&self) -> Option<&FieldPath>
+  pub const fn page_limit(&self) -> Option<usize>
+  pub const fn cookies(&self) -> bool
+  pub const fn max_pause(&self) -> Duration
+
+### yggdryl::http::pagination  [rust/src/http/pagination.rs]
+  pub enum Pagination { Auto, None, Link, Header(SmolStr), Url(FieldPath), Cursor { path: FieldPath, parameter: SmolStr }, Offset { parameter: SmolStr, page_size: u64, total: Option<FieldPath> }, Page { parameter: SmolStr, start: u64 } }  (Default Auto; Display, FromStr: `auto`, `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>`, `page:<parameter>:<start>`)
+  pub enum NextPage { Url(Url), Parameter { name: SmolStr, value: String } }
+  pub fn next(&self, url: &Url, headers: &Headers, body: Option<&Scalar>, page_index: u64, rows_on_page: usize) -> Result<Option<NextPage>>
+  pub fn records_path(body: &Scalar, declared: Option<&FieldPath>) -> Option<FieldPath>
+  pub fn from_str(value: &str) -> Result<Self>
+
+### yggdryl::http::pages  [rust/src/http/pages.rs]
+  pub struct Pages  (Iterator<Item = Result<Response>>, FusedIterator; one GET per page)
+  pub fn first_page(&mut self) -> Option<Result<Response>>
+  pub fn into_arrow_reader(self, field: Option<&Field>, batch_row_size: usize) -> Result<BatchReader>  (one batch per page; 0 = no split)
+  pub fn into_serie_reader(self, field: Option<&Field>) -> Result<SerieReader>
+
+### yggdryl::http::request  [rust/src/http/request.rs]
+  pub enum Body { Empty, Bytes(Arc<[u8]>) }  (held whole and replayable; From<Vec<u8>>, From<&[u8]>, From<Arc<[u8]>>, From<String>, From<&str>)
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn json(value: &Scalar) -> Result<Self>
+  pub fn form<I, K, V>(pairs: I) -> Self where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub struct Request  (Clone, Debug; IOBase + IOFile + IOMedia: the leaf the URL names, Holder::HttpRequest)
+  pub fn new(method: Method, url: Url) -> Self
+  pub fn get(url: &str) -> Result<Self>
+  pub fn head(url: &str) -> Result<Self>
+  pub fn post(url: &str, body: impl Into<Body>) -> Result<Self>
+  pub fn put(url: &str, body: impl Into<Body>) -> Result<Self>
+  pub fn patch(url: &str, body: impl Into<Body>) -> Result<Self>
+  pub fn delete(url: &str) -> Result<Self>
+  pub fn from_bytes(wire: &[u8]) -> Result<Self>
+  pub fn into_bytes(&self) -> Result<Vec<u8>>
+  pub fn with_session(self, session: Session) -> Self
+  pub fn with_header(self, name: &str, value: &str) -> Result<Self>
+  pub fn with_headers(self, headers: Headers) -> Self
+  pub fn with_query<I, K, V>(self, pairs: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub fn with_body(self, body: impl Into<Body>) -> Self
+  pub fn with_json(self, value: &Scalar) -> Result<Self>
+  pub fn with_form<I, K, V>(self, pairs: I) -> Self where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub fn with_authorization(self, authorization: Authorization) -> Self
+  pub fn with_timeout(self, timeout: Duration) -> Self
+  pub fn with_follow_redirects(self, follow: bool) -> Self
+  pub fn with_pagination(self, pagination: Pagination) -> Self
+  pub fn with_records(self, path: FieldPath) -> Self
+  pub fn with_media_type(self, media_type: MediaType) -> Self
+  pub fn method(&self) -> Method
+  pub fn url(&self) -> &Url
+  pub fn headers(&self) -> &Headers
+  pub fn body(&self) -> &Body
+  pub fn session(&self) -> &Session
+  pub fn send(&self) -> Result<Response>
+  pub fn stream(&self) -> Result<Response>
+  pub fn send_reader(&self, reader: &mut dyn Read, length: u64) -> Result<Response>
+  pub fn pages(&self) -> Pages
+  pub fn stats(&self) -> StatsSnapshot
+
+### yggdryl::http::response  [rust/src/http/response.rs]
+  pub struct Response  (Debug, Default; IOBase + IOMedia over the body as sent, read-only: Holder::HttpResponse)
+  pub fn new(status: Status) -> Self
+  pub fn with_status(self, status: Status) -> Self
+  pub fn with_header(self, name: &str, value: &str) -> Result<Self>
+  pub fn with_headers(self, headers: Headers) -> Result<Self>
+  pub fn with_body(self, body: impl Into<Body>) -> Self
+  pub fn with_json(self, value: &Scalar) -> Result<Self>
+  pub fn with_text(self, text: &str) -> Self
+  pub fn status(&self) -> Status
+  pub fn headers(&self) -> &Headers
+  pub fn url(&self) -> &Url
+  pub fn request(&self) -> &Request
+  pub fn version(&self) -> HttpVersion
+  pub fn history(&self) -> &[Response]
+  pub fn elapsed(&self) -> Duration
+  pub fn is_ok(&self) -> bool
+  pub fn is_redirect(&self) -> bool
+  pub fn raise_for_status(&self) -> Result<&Self>
+  pub fn bytes(&self) -> Result<Arc<[u8]>>
+  pub fn text(&self) -> Result<String>
+  pub fn scalar(&self) -> Result<Scalar>
+  pub fn scalar_with_field(&self, field: &Field) -> Result<Scalar>
+  pub fn encoding(&self) -> Option<Charset>
+  pub fn media_type(&self) -> &MediaType
+  pub fn content_length(&self) -> Option<u64>
+  pub fn cookies(&self) -> Vec<Cookie>
+  pub fn links(&self) -> Result<Vec<Link>>
+  pub fn next_request(&self) -> Result<Option<Request>>
+  pub fn into_stream(self) -> Result<Stream>
+  pub fn into_holder(self) -> Holder
+  pub fn from_bytes(wire: &[u8]) -> Result<Self>
+  pub fn into_bytes(&self) -> Result<Vec<u8>>
+  pub fn into_scalar(&self) -> Result<Scalar>
+
+### yggdryl::http::session  [rust/src/http/session.rs]
+  pub struct Session  (Clone shares the inner state; Debug, Default; IOBase + IOMedia: a container over the base URL, Holder::HttpSession)
+  pub fn new() -> Self
+  pub fn with_options(options: HttpOptions) -> Result<Self>
+  pub fn with_client(client: Client, options: HttpOptions) -> Result<Self>
+  pub fn options(&self) -> &HttpOptions
+  pub fn client(&self) -> &Client
+  pub fn stats(&self) -> StatsSnapshot
+  pub fn base_url(&self) -> Option<&Url>
+  pub fn request(&self, method: Method, url: &str) -> Result<Request>
+  pub fn get(&self, url: &str) -> Result<Request>
+  pub fn head(&self, url: &str) -> Result<Request>
+  pub fn delete(&self, url: &str) -> Result<Request>
+  pub fn options_request(&self, url: &str) -> Result<Request>
+  pub fn post(&self, url: &str, body: impl Into<Body>) -> Result<Request>
+  pub fn put(&self, url: &str, body: impl Into<Body>) -> Result<Request>
+  pub fn patch(&self, url: &str, body: impl Into<Body>) -> Result<Request>
+  pub fn send(&self, request: &Request) -> Result<Response>
+  pub fn stream(&self, request: &Request) -> Result<Response>
+  pub fn send_all<I>(&self, requests: I, concurrency: Option<usize>) -> impl Iterator<Item = Result<Response>> where I: IntoIterator<Item = Request>, I::IntoIter: Send + 'static
+  pub fn pages(&self, request: Request) -> Pages
+  pub fn cookies(&self) -> Vec<Cookie>
+  pub fn set_cookie(&self, cookie: Cookie)
+  pub fn close(&self)
+
+### yggdryl::http::stream  [rust/src/http/stream.rs]
+  pub struct Stream  (Debug, Read; IOBase + IOMedia read forward, resumed with Range + If-Range, read-only: Holder::HttpStream)
+  pub const MAX_RESUMES: u32 = 256;
+  pub fn delivered(&self) -> u64
+  pub fn total(&self) -> Option<u64>
+  pub fn resumes(&self) -> u32
+  pub fn headers(&self) -> &Headers
+
+### yggdryl::http::wire  [rust/src/http/wire.rs]  (the RFC 9112 message grammar)
+  pub const MAX_LINE_BYTES: usize = 8192;
+  pub const MAX_FIELD_LINES: usize = 256;
+  pub enum HttpVersion { Http10, Http11 }  (Default Http11; AsRef<str>, Display, FromStr, serde)
+  pub const ALL: [Self; 2]
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub struct RequestHead { method: Method, target: String, version: HttpVersion, headers: Headers }
+  pub struct ResponseHead { version: HttpVersion, status: Status, reason: String, headers: Headers }
+  pub fn parse_request(bytes: &[u8]) -> Result<(RequestHead, Vec<u8>)>
+  pub fn parse_response(bytes: &[u8]) -> Result<(ResponseHead, Vec<u8>)>
+  pub fn render_request(head: &RequestHead, body: &[u8]) -> Vec<u8>
+  pub fn render_response(head: &ResponseHead, body: &[u8]) -> Vec<u8>
+  pub fn decode_chunked<R: Read>(reader: R) -> ChunkedReader<R>
+  pub fn encode_chunked<W: Write>(writer: W) -> ChunkedWriter<W>
+  pub struct ChunkedReader<R>  (Read)
+  pub fn new(inner: R) -> Self
+  pub fn trailers(&self) -> Option<&Headers>
+  pub fn is_finished(&self) -> bool
+  pub fn consumed(&self) -> usize
+  pub fn into_inner(self) -> R
+  pub struct ChunkedWriter<W>  (Write)
+  pub fn new(inner: W) -> Self
+  pub fn finish(self) -> io::Result<W>
+  pub fn into_inner(self) -> W
+
+### yggdryl::http::server  [rust/src/http/server.rs]  (a base HTTP/1.1 server hosting IOBase handles and routes; `server/mount.rs` serves a holder, `server/connection.rs` the connection loop)
+  pub type Handler = dyn Fn(&Request) -> Result<Response> + Send + Sync + 'static;
+  pub enum Fault { CutBodyAt(u64), CloseBeforeAnswer, Refuse { status: Status, retry_after: Option<Duration> }, Delay(Duration) }
+  pub struct Recorded { method: Method, target: String, path: String, query: Vec<(String, String)>, headers: Headers, body_len: u64, status: Status }
+  pub fn is_closed(&self) -> bool  (recorded under 499)
+  pub struct ServerOptions  (Clone, Debug, Default)
+  pub fn read_timeout(&self) -> Duration
+  pub fn with_read_timeout(self, read_timeout: Duration) -> Self
+  pub fn write_timeout(&self) -> Duration
+  pub fn with_write_timeout(self, write_timeout: Duration) -> Self
+  pub fn max_connections(&self) -> usize
+  pub fn with_max_connections(self, max_connections: usize) -> Self
+  pub fn max_head_size(&self) -> usize
+  pub fn with_max_head_size(self, max_head_size: usize) -> Self
+  pub fn max_body_size(&self) -> u64
+  pub fn with_max_body_size(self, max_body_size: u64) -> Self
+  pub fn keep_alive(&self) -> bool
+  pub fn with_keep_alive(self, keep_alive: bool) -> Self
+  pub fn recording(&self) -> bool
+  pub fn with_recording(self, recording: bool) -> Self
+  pub fn etag(&self) -> bool
+  pub fn with_etag(self, etag: bool) -> Self
+  pub fn tunnel(&self) -> bool
+  pub fn with_tunnel(self, tunnel: bool) -> Self
+  pub fn server_header(&self) -> &str
+  pub fn with_server_header(self, server_header: impl Into<String>) -> Self
+  pub struct Server  (Debug; Drop shuts down)
+  pub const MAX_RECORDED: usize = 65_536;
+  pub fn bind(address: &str) -> Result<Self>
+  pub fn bind_with(address: &str, options: ServerOptions) -> Result<Self>
+  pub fn address(&self) -> SocketAddr
+  pub fn port(&self) -> u16
+  pub fn url(&self) -> &Url
+  pub fn url_of(&self, path: &str) -> Result<Url>
+  pub fn options(&self) -> &ServerOptions
+  pub fn mount(&self, prefix: &str, holder: Holder) -> Result<()>
+  pub fn unmount(&self, prefix: &str) -> bool
+  pub fn set_media_type(&self, path: &str, media_type: MediaType) -> Result<()>
+  pub fn route(&self, method: Option<Method>, path: &str, handler: impl Fn(&Request) -> Result<Response> + Send + Sync + 'static)
+  pub fn respond(&self, method: Option<Method>, path: &str, response: Response)
+  pub fn unroute(&self, method: Option<Method>, path: &str) -> bool
+  pub fn inject(&self, path: &str, fault: Fault, times: u32)  (0 = every request)
+  pub fn clear_faults(&self)
+  pub fn requests(&self) -> Vec<Recorded>
+  pub fn request_count(&self) -> usize
+  pub fn clear_requests(&self)
+  pub fn set_recording(&self, on: bool)
+  pub fn connections(&self) -> u64
+  pub fn shutdown(self) -> Result<()>
+
 ### yggdryl::zip  [rust/src/zip/mod.rs]
   pub fn mount(handle: Holder) -> Holder
   pub fn from_url(url: &crate::Url) -> crate::Result<Holder>
@@ -1975,6 +2384,7 @@ pub enum Holder
   LocalFolder(crate::local::LocalFolder), LocalPath(crate::local::LocalPath), LocalFile(crate::local::LocalFile)
   FsFolder(crate::fs::FsFolder), FsPath(crate::fs::FsPath), FsFile(crate::fs::FsFile)
   S3Folder(crate::s3::S3Folder), S3Path(crate::s3::S3Path), S3File(crate::s3::S3File)  (behind the `s3` feature)
+  HttpSession(crate::http::Session), HttpRequest(crate::http::Request), HttpResponse(crate::http::Response), HttpStream(crate::http::Stream)  (behind the `http` feature)
   ZipNode(crate::zip::ZipNode), ZipPath(crate::zip::ZipPath), ZipLeaf(crate::zip::ZipLeaf)
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
   pub const fn buffer(buffer: Buffer) -> Self
@@ -2955,6 +3365,7 @@ pub struct MimeType(MimeTypeWire);
   pub const AVRO: Self = Self(MimeTypeWire::Avro);
   pub const ORC: Self = Self(MimeTypeWire::Orc);
   pub const PUFFIN: Self = Self(MimeTypeWire::Puffin);
+  pub const HTTP: Self = Self(MimeTypeWire::Http);  (`message/http`, `.http`)
   pub const PLAIN_TEXT: Self = Self(MimeTypeWire::PlainText);
   pub const KEYVALUE: Self = Self(MimeTypeWire::KeyValue);
   pub const ULLINK: Self = Self(MimeTypeWire::Ullink);
@@ -3076,6 +3487,7 @@ pub struct Scheme(SchemeWire);
   pub const fn is_known(&self) -> bool
   pub const fn default_port(&self) -> Option<u16>
   pub const fn is_s3_tables(&self) -> bool
+  pub const fn is_http(&self) -> bool  (http or https)
   pub const fn has_container(&self) -> bool
   pub const fn is_storage(&self) -> bool
   pub const fn is_compatibility_target(&self) -> bool
@@ -5406,6 +5818,7 @@ pub struct Authority(SmolStr);
   pub fn into_path(self) -> Result<PathBuf>
   pub fn is_local(&self) -> bool
   pub fn join_path(&self, path: impl AsRef<Path>) -> Result<Self>
+  pub fn join_reference(&self, reference: &str) -> Result<Self>  (RFC 3986 section 5.2 reference resolution)
   pub fn exists(&self) -> bool
   pub fn is_dir(&self) -> bool
   pub fn is_file(&self) -> bool

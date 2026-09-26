@@ -84,6 +84,23 @@ fn a_satisfied_range_reads_its_positions_and_total() {
 }
 
 #[test]
+fn a_hand_built_range_the_parser_refuses_still_answers_a_length() {
+    let backwards = ContentRange::Bytes {
+        start: 9,
+        end: 2,
+        total: None,
+    };
+    assert_eq!(backwards.len(), 0);
+    assert!(backwards.is_empty());
+    let whole = ContentRange::Bytes {
+        start: 0,
+        end: u64::MAX,
+        total: None,
+    };
+    assert_eq!(whole.len(), u64::MAX);
+}
+
+#[test]
 fn an_unknown_total_is_the_star() {
     let range = ContentRange::from_str("bytes 100-199/*").unwrap();
     assert_eq!(
