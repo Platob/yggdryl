@@ -464,7 +464,7 @@ impl PyField {
     /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
     /// root and leaves a column holding anything but its canonical default
     /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -476,10 +476,9 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let batch = record_batch_from_pyarrow(value)?;
         let applied = self
             .inner
@@ -493,7 +492,7 @@ impl PyField {
     /// The declarations name every column they add, so the applied shape is a
     /// property of two schemas: nothing is decoded, and a declaration that
     /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -505,10 +504,9 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         let applied = self
             .inner
@@ -521,7 +519,7 @@ impl PyField {
     ///
     /// The applied schema is derived once, so the returned reader answers it
     /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -533,10 +531,9 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner

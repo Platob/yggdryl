@@ -63,13 +63,9 @@ fn chunked_from_ipc(
     ChunkedSerie::from_arrow_arrays(field, arrays, options).map_err(napi_error)
 }
 
-/// The three cast answers JavaScript spells separately, as one native value.
-fn options_of(
-    safe: Option<bool>,
-    nullability: Option<String>,
-    representation: Option<String>,
-) -> Result<ArrowCastOptions> {
-    crate::cast_options(safe, nullability.as_deref(), representation.as_deref())
+/// The two cast answers JavaScript spells separately, as one native value.
+fn options_of(safe: Option<bool>, representation: Option<String>) -> Result<ArrowCastOptions> {
+    crate::cast_options(safe, representation.as_deref())
 }
 
 /// A row count as the number JavaScript reads.
@@ -105,10 +101,9 @@ impl JsChunkedSerie {
         chunks: Vec<ClassInstance<'_, JsSerie>>,
         field: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         ChunkedSerie::from_series(
             field.as_ref().map(|field| &field.inner),
             chunks.iter().map(|chunk| chunk.inner.clone()),
@@ -125,10 +120,9 @@ impl JsChunkedSerie {
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         chunked_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
             .map(Self::from_core)
     }
@@ -140,10 +134,9 @@ impl JsChunkedSerie {
         bytes: Uint8Array,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         let (schema, batches) = arrow_batches(&bytes)?;
         ChunkedSerie::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
@@ -161,10 +154,9 @@ impl JsChunkedSerie {
         mut reader: ClassInstance<'_, JsBatchReader>,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         ChunkedSerie::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
@@ -340,10 +332,9 @@ impl JsChunkedSerie {
         &mut self,
         chunk: &JsSerie,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<()> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         self.inner
             .push_chunk(chunk.inner.clone(), options)
             .map_err(napi_error)
@@ -365,10 +356,9 @@ impl JsChunkedSerie {
         &self,
         target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = options_of(safe, nullability, representation)?;
+        let options = options_of(safe, representation)?;
         let target = match target {
             Either::A(field) => field.inner.clone(),
             Either::B(dtype) => dtype.inner.clone().required_field("value"),

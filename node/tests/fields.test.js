@@ -89,20 +89,30 @@ test('the bits reading crosses every same-width pair', () => {
   assert.equal(empty.type.toString(), 'Int64')
   assert.equal(empty.length, 0)
 
-  // The reading says what the bytes mean; nullability still says what an
-  // absent value means.
+  // The reading says what the bytes mean; the target field's own
+  // nullability still says what an absent value means - a required column
+  // refuses a null, whatever `safe` or `representation` say.
   const required = castArray(
     fields.int64('digest', { nullable: false }),
-    arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+    arrow.vectorFromArray([2n ** 64n - 1n], new arrow.Uint64()),
     bits,
   )
-  assert.deepEqual(Array.from(required), [0n, -1n])
+  assert.deepEqual(Array.from(required), [-1n])
+  assert.throws(
+    () =>
+      castArray(
+        fields.int64('digest', { nullable: false }),
+        arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+        bits,
+      ),
+    /required Arrow field \$\.digest holds 1 null values/,
+  )
   assert.throws(
     () =>
       castArray(
         fields.int64('digest', { nullable: false }),
         arrow.vectorFromArray([null], new arrow.Uint64()),
-        { ...bits, nullability: 'strict' },
+        bits,
       ),
     /required Arrow field \$\.digest holds 1 null values/,
   )
@@ -491,12 +501,11 @@ test('the url factory builds a validated, canonical location column', () => {
   }
   // The empty text names nothing at all, so it is not a spelling to refuse
   // but an absence: null before the reader runs, which the required column
-  // repairs with its default, or refuses by path when strict; the nullable
-  // column keeps the null.
+  // refuses by path, whatever `safe` says; the nullable column keeps the
+  // null.
   const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
-  assert.deepEqual(Array.from(castArray(declared, empty())), ['file:///'])
   assert.throws(
-    () => castArray(declared, empty(), { nullability: 'strict' }),
+    () => castArray(declared, empty()),
     /required Arrow field \$\.location holds 1 null values/,
   )
   assert.deepEqual(Array.from(castArray(location, empty())), [null])
@@ -760,24 +769,25 @@ test('an empty text cell is null before safe is asked', () => {
   assert.deepEqual([...castArray(nullable, empty(), { safe: false })], [null])
   assert.deepEqual([...castArray(nullable, empty(), { safe: true })], [null])
 
-  // A required column then answers its nullability, exactly as it does for a
-  // null the source carried: the default repairs it, strictness refuses it
-  // naming the path and the count.
+  // A required column then answers its own nullability, exactly as it does
+  // for a null the source carried: it refuses by path, naming the count,
+  // whatever `safe` says.
   const required = fields.int32('quantity', { nullable: false })
-  assert.deepEqual([...castArray(required, empty())], [0])
   assert.throws(
-    () => castArray(required, empty(), { nullability: 'strict' }),
+    () => castArray(required, empty()),
+    /required Arrow field \$\.quantity holds 1 null values/,
+  )
+  assert.throws(
+    () => castArray(required, empty(), { safe: false }),
     /required Arrow field \$\.quantity holds 1 null values/,
   )
 
-  // Text is text: into a string column the empty cell is the value it is.
+  // Text is text: into a string column the empty cell is the value it is,
+  // so a required one holds it rather than refusing an absence that never
+  // arose.
   assert.deepEqual([...castArray(fields.utf8('symbol'), empty())], [''])
   assert.deepEqual(
-    [
-      ...castArray(fields.utf8('symbol', { nullable: false }), empty(), {
-        nullability: 'strict',
-      }),
-    ],
+    [...castArray(fields.utf8('symbol', { nullable: false }), empty())],
     [''],
   )
 

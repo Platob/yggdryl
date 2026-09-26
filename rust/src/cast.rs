@@ -33,7 +33,7 @@ use arrow_buffer::BooleanBuffer;
 use arrow_cast::can_cast_types;
 use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef};
 pub(crate) use kernel::arrow_cast_exposed;
-pub use options::{ArrowCastOptions, Nullability, Representation};
+pub use options::{ArrowCastOptions, Representation};
 pub use plan::ArrowCastPlan;
 use smol_str::SmolStr;
 
@@ -220,15 +220,22 @@ mod kernel {
         Ok(output)
     }
 }
-/// What a cast is allowed to do about failure, absence, and representation.
+/// What a cast is allowed to do about failure and representation.
 ///
-/// Three independent questions travel together through every Arrow cast, and
-/// confusing them is what a single `safe` flag invited. `safe` decides whether
-/// a *present* value may be converted; [`Nullability`] decides whether a
-/// declared value may be *absent* at all; [`Representation`] decides what a
-/// same-width pair actually carries. A conversion that fails under `safe`
-/// produces a null, and whether that null is then repaired or refused is the
-/// nullability policy's answer, not the conversion's.
+/// Two independent questions travel together through every Arrow cast:
+/// `safe` decides whether a *present* value may be converted, and
+/// [`Representation`] decides what a same-width pair actually carries.
+/// Whether a value may be *absent* is no option at all: it is the target
+/// field's nullability, and the engine answers it one way everywhere. A
+/// nullable column takes a value it cannot convert as null when `safe`; a
+/// required column refuses that value by name whatever `safe` says, and
+/// refuses a null, an empty text cell entering a non-text column, and a
+/// column the source does not carry by its path, never inventing its
+/// canonical default - except where null is the datatype's own canonical
+/// default. The one repair is internal: a column a declaring protocol fills
+/// after the cast - a digest holder, a `TRANSFORM:` or partition column -
+/// takes its canonical default for the protocol to replace, and the finished
+/// batch is checked again.
 mod options {
     use std::fmt;
     use std::str::FromStr;
@@ -236,85 +243,6 @@ mod options {
     use smol_str::format_smolstr;
 
     use crate::{Error, Result};
-
-    /// What a cast does about a non-nullable target field the source cannot fill.
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub enum Nullability {
-        /// Repair: a required field absent from the source, or null within it,
-        /// takes the target's canonical [default](crate::Field::default_value).
-        #[default]
-        Default,
-        /// Refuse: a required field must be carried by the source and hold a value
-        /// in every exposed row, and the error names its full path. A present
-        /// value a required field cannot convert is refused by that value
-        /// whatever `safe` says, because the null a lenient conversion would
-        /// leave is refused anyway: only a nullable field, or one whose
-        /// datatype holds null as its default, nulls a failed conversion.
-        Strict,
-    }
-
-    impl Nullability {
-        /// Every policy in canonical order.
-        pub const ALL: [Self; 2] = [Self::Default, Self::Strict];
-
-        /// Parse one canonical policy name.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`Error::Parse`] naming the complete accepted vocabulary.
-        #[allow(clippy::should_implement_trait)]
-        pub fn from_str(value: &str) -> Result<Self> {
-            <Self as FromStr>::from_str(value)
-        }
-
-        /// Return the canonical lowercase spelling.
-        pub const fn as_str(self) -> &'static str {
-            match self {
-                Self::Default => "default",
-                Self::Strict => "strict",
-            }
-        }
-
-        /// Returns whether absence is refused rather than repaired.
-        pub const fn is_strict(self) -> bool {
-            matches!(self, Self::Strict)
-        }
-    }
-
-    impl AsRef<str> for Nullability {
-        fn as_ref(&self) -> &str {
-            self.as_str()
-        }
-    }
-
-    impl fmt::Display for Nullability {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str(self.as_str())
-        }
-    }
-
-    impl FromStr for Nullability {
-        type Err = Error;
-
-        fn from_str(value: &str) -> Result<Self> {
-            let normalized = value.trim();
-            Self::ALL
-                .into_iter()
-                .find(|policy| normalized.eq_ignore_ascii_case(policy.as_str()))
-                .ok_or_else(|| Error::Parse {
-                    target: "nullability",
-                    position: 0,
-                    reason: format_smolstr!(
-                        "expected one of {}, got {value:?}",
-                        Self::ALL
-                            .iter()
-                            .map(|policy| policy.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                })
-        }
-    }
 
     /// What a cast carries across two datatypes of the same physical width.
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -399,75 +327,50 @@ mod options {
         }
     }
 
-    /// The three independent decisions every Arrow cast makes.
+    /// The two independent decisions every Arrow cast makes.
     ///
     /// ```
-    /// use yggdryl::{ArrowCastOptions, Nullability, Representation};
+    /// use yggdryl::{ArrowCastOptions, Representation};
     ///
-    /// // The default is today's contract: convert leniently, repair absence, and
-    /// // carry the value rather than the bytes under it.
+    /// // The default converts leniently and carries the value rather than the
+    /// // bytes under it; whether a value may be absent is the target field's.
     /// let lenient = ArrowCastOptions::new();
     /// assert!(lenient.is_safe());
-    /// assert_eq!(lenient.nullability(), Nullability::Default);
     /// assert_eq!(lenient.representation(), Representation::Value);
     ///
-    /// // The three answers move independently.
-    /// let strict = ArrowCastOptions::new()
-    ///     .with_nullability(Nullability::Strict)
+    /// // The two answers move independently.
+    /// let bits = ArrowCastOptions::new()
+    ///     .with_safe(false)
     ///     .with_representation(Representation::Bits);
-    /// assert!(strict.is_safe());
-    /// assert!(strict.nullability().is_strict());
-    /// assert!(strict.representation().is_bits());
+    /// assert!(!bits.is_safe());
+    /// assert!(bits.representation().is_bits());
     /// ```
     #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct ArrowCastOptions {
         safe: bool,
-        nullability: Nullability,
         representation: Representation,
+        /// Whether a required column the source leaves absent takes its
+        /// canonical default: set only by [`Self::deferred`], for the column
+        /// a declaring protocol fills after the cast.
+        repair: bool,
     }
 
     impl ArrowCastOptions {
-        /// The lenient conversion and the repairing nullability policy.
+        /// The lenient conversion, carrying the value.
         pub const fn new() -> Self {
             Self {
                 safe: true,
-                nullability: Nullability::Default,
                 representation: Representation::Value,
+                repair: false,
             }
         }
 
-        /// The cast a declaration runs, and the one place its rule is stated.
-        ///
-        /// A declaration is a column whose datatype a schema states rather
-        /// than a value proves: a `Selector` projection with a datatype, a
-        /// `Plan` `create` section with or without a target, a derived
-        /// `TRANSFORM:` or `PARTITION:` column, the record options' declared
-        /// field on a read or a write, the stored field a write completes
-        /// onto, and an Iceberg table's schema. In each, a nullable column
-        /// takes a present value it cannot convert as null when `safe` - the
-        /// declaring doors' default - and a not-null column refuses it by that
-        /// value; a null, an empty text cell entering a non-text column, and a
-        /// column the source does not carry are refused by a not-null column
-        /// naming its path, never repaired to its canonical default. A column
-        /// a declaring protocol fills is deferred and re-checked once the
-        /// protocols have run. This is [`new`](Self::new) under
-        /// [`Nullability::Strict`], a second constructor rather than a
-        /// `with_*` because it names a rule rather than one answer.
-        pub(crate) const fn declared(safe: bool) -> Self {
-            Self::new()
-                .with_safe(safe)
-                .with_nullability(Nullability::Strict)
-        }
-
         /// Set whether a failed conversion becomes null rather than an error.
+        ///
+        /// Only a column that may hold the null asks: a required column
+        /// refuses a value it cannot convert, naming it, either way.
         pub const fn with_safe(mut self, safe: bool) -> Self {
             self.safe = safe;
-            self
-        }
-
-        /// Set what happens to a required field the source cannot fill.
-        pub const fn with_nullability(mut self, nullability: Nullability) -> Self {
-            self.nullability = nullability;
             self
         }
 
@@ -482,22 +385,25 @@ mod options {
             self
         }
 
-        /// Returns what happens to a required field the source cannot fill.
-        pub const fn nullability(self) -> Nullability {
-            self.nullability
-        }
-
         /// Returns what a same-width pair carries.
         pub const fn representation(self) -> Representation {
             self.representation
         }
 
-        /// Returns this policy with absence repaired rather than refused.
+        /// Returns these options with absence repaired rather than refused.
         ///
         /// A materializing protocol fills its own column after the cast, so the
-        /// cast may not refuse the hole the protocol is about to close.
-        pub(crate) const fn deferred(self) -> Self {
-            self.with_nullability(Nullability::Default)
+        /// cast may not refuse the hole the protocol is about to close; the
+        /// finished batch is checked again once the protocol has run.
+        pub(crate) const fn deferred(mut self) -> Self {
+            self.repair = true;
+            self
+        }
+
+        /// Whether absence is repaired to the canonical default rather than
+        /// refused - only ever for a column a protocol fills after the cast.
+        pub(crate) const fn repairs(self) -> bool {
+            self.repair
         }
     }
 
@@ -603,9 +509,8 @@ mod plan {
         ///
         /// Every failure the two fields alone can produce - an unsupported
         /// conversion, an ambiguous case-insensitive name, a required field no
-        /// source child carries under
-        /// [`Nullability::Strict`](super::Nullability::Strict), a refused
-        /// extension crossing - is raised here, before a single row exists.
+        /// source child carries, a refused extension crossing - is raised
+        /// here, before a single row exists.
         ///
         /// # Errors
         ///
@@ -646,9 +551,13 @@ mod plan {
                 path,
             )?;
             let projection = target.as_arrow_field_ref()?;
-            let identity = !options.nullability().is_strict()
-                && projection.data_type() == source.data_type()
-                && same_extension(projection, source);
+            // An equal layout is the identity only where the source already
+            // states every nullability the target requires: the layout's own
+            // children carry theirs, and a required column over a nullable
+            // one is read for the null it may hold.
+            let identity = projection.data_type() == source.data_type()
+                && same_extension(projection, source)
+                && (target.is_nullable() || !source.is_nullable());
             let target = Arc::new(target.clone());
             let schema = if record {
                 Some(arrow_schema_from_field(&target)?)
@@ -671,7 +580,7 @@ mod plan {
 
         /// Compiles the cast from one batch schema to one non-null Struct root,
         /// leaving the columns a named protocol still has to materialize out of
-        /// the strict nullability check.
+        /// the required-column check.
         pub(crate) fn compile_schema(
             source: &Schema,
             target: &Field,
@@ -696,11 +605,10 @@ mod plan {
             ));
             let mut plan = Self::compile_arrow(&field, target, options, deferred)?;
             let source = Arc::new(source.clone());
-            plan.identity = !options.nullability().is_strict()
-                && plan
-                    .schema
-                    .as_ref()
-                    .is_some_and(|schema| schema.as_ref() == source.as_ref());
+            plan.identity = plan
+                .schema
+                .as_ref()
+                .is_some_and(|schema| schema.as_ref() == source.as_ref());
             plan.source_schema = Some(source);
             Ok(plan)
         }
@@ -722,17 +630,16 @@ mod plan {
             &self.target
         }
 
-        /// The conversion and nullability policy this plan was compiled under.
+        /// The conversion options this plan was compiled under.
         pub const fn as_options(&self) -> &ArrowCastOptions {
             &self.options
         }
 
         /// Whether the plan hands every input of its source layout straight
-        /// back.
-        ///
-        /// Strictness is what makes an equal layout not enough: a non-null
-        /// Arrow field can still carry a logical null inside a nested child,
-        /// and refusing that is the whole point of asking.
+        /// back: the layout is the target's, its nullability included, so the
+        /// source's own schema already states every absence the target
+        /// refuses. A column landed as a [`Serie`] proves that claim at its
+        /// landing; a batch only moved is the producer's claim.
         pub const fn is_identity(&self) -> bool {
             self.identity
         }
@@ -763,8 +670,7 @@ mod plan {
         ///
         /// Returns an error for a run, which has no layout, for a column of
         /// another layout, naming both, for a value the target refuses, and for
-        /// an absent row a required target refuses under
-        /// [`Nullability::Strict`](super::Nullability::Strict).
+        /// an absent row a required target refuses.
         pub fn apply(&self, serie: &Serie) -> Result<Serie> {
             let field = serie.require_field()?;
             self.require_layout(field)?;
@@ -1258,7 +1164,7 @@ pub(crate) mod text {
             crate::serie::value::array_of_rows(&read, &values.iter().collect::<Vec<_>>())?;
         let cast = if refused && can_cast_types(source.data_type(), expected) {
             // Arrow reads what this crate could not at its own risk: a value
-            // neither reading takes stays null, and strict mode reports it below.
+            // neither reading takes stays null, and a required column refuses it below.
             // Arrow refuses a whole column whose target zone it cannot name, so
             // its failure leaves this crate's reading standing rather than
             // sinking it.
@@ -1357,9 +1263,9 @@ enum StructPolicy {
 ///
 /// A column a protocol fills is allowed to arrive absent or holding its
 /// canonical default, because closing that hole is the protocol's job and it
-/// has not run yet. Strictness therefore stops at such a field and resumes for
-/// every other one; the applied batch is checked again once the protocols are
-/// done.
+/// has not run yet. The refusal of absence therefore stops at such a field
+/// and resumes for every other one; the applied batch is checked again once
+/// the protocols are done.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Deferred {
     /// A `TRANSFORM:` or partition declaration derives the column from others.
@@ -1408,7 +1314,7 @@ impl PlanRules {
         self
     }
 
-    /// The rules for one struct child, with strictness dropped where an
+    /// The rules for one struct child, with absence repaired where an
     /// enabled protocol is about to fill the column itself.
     fn child(self, field: &Field) -> Result<Self> {
         let options = if self.deferred.defers(field)? {
@@ -1439,7 +1345,7 @@ pub(crate) struct ArrayCastPlan {
     ///
     /// The empty-cell rule: `""` entering a column that does not keep it is
     /// absence, decided before any spelling is parsed and before `safe` is
-    /// asked, so `nullability` alone says what a required column does with
+    /// asked, so the field's nullability alone says what a column does with
     /// it. The node that reads the values runs it once: a layout node - an
     /// encoding target, a decoded source, a dictionary pair, a run-end pair -
     /// hands the values to a node of its own.
@@ -1449,15 +1355,14 @@ pub(crate) struct ArrayCastPlan {
 impl ArrayCastPlan {
     /// Whether a failed conversion becomes null rather than an error.
     ///
-    /// Under [`Nullability::Strict`] a required field whose datatype does
-    /// not hold null as its default refuses the null a lenient conversion
-    /// would leave, so it converts strictly and the refusal names the value
-    /// rather than the null it would have become.
+    /// A required field whose datatype does not hold null as its default
+    /// refuses the null a lenient conversion would leave, so it converts
+    /// strictly and the refusal names the value rather than the null it
+    /// would have become - unless a protocol fills the column after the
+    /// cast, which repairs the null for that protocol to replace.
     pub(crate) fn safe(&self) -> bool {
         self.options.is_safe()
-            && (self.field.is_nullable()
-                || self.null_default
-                || !self.options.nullability().is_strict())
+            && (self.field.is_nullable() || self.null_default || self.options.repairs())
     }
 
     /// Which target rows this node certifies, in the order the landing
@@ -2104,13 +2009,11 @@ impl ArrayCastPlan {
                                     .to_owned(),
                             ));
                         }
-                        // A required column no source carries is the hole the
-                        // default policy fills and strictness refuses: the
+                        // A required column no source carries is refused -
+                        // unless a protocol fills it after the cast: the
                         // schemas alone answer it, so it fails at compile time
                         // rather than on the first batch.
-                        None if child_rules.options.nullability().is_strict()
-                            && !target.is_nullable() =>
-                        {
+                        None if !child_rules.options.repairs() && !target.is_nullable() => {
                             return Err(Error::RequiredField {
                                 path: SmolStr::from(child_path.render()),
                                 nulls: None,
@@ -2758,7 +2661,7 @@ impl ArrayCastPlan {
 
     /// Whether this node refuses absence rather than repairing it.
     const fn refuses_absence(&self) -> bool {
-        self.options.nullability().is_strict()
+        !self.options.repairs()
     }
 
     /// Names this node's declared path and the nulls it was asked to accept.

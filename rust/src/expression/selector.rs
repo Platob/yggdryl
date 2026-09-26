@@ -1124,7 +1124,7 @@ mod arrow {
                     // value a nullable column cannot hold becomes null, and
                     // a `not null` column refuses that value or a null by
                     // name.
-                    cast.reconcile(field, None, evaluated, ArrowCastOptions::declared(true))
+                    cast.reconcile(field, None, evaluated, ArrowCastOptions::new())
                         .map_err(|error| Error::InvalidRecord {
                             path: smol_str::format_smolstr!("$.{}", field.name()),
                             reason: smol_str::format_smolstr!(

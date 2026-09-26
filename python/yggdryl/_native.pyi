@@ -21,7 +21,6 @@ def refresh_logging() -> None: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
-Nullability = Literal["default", "strict"]
 Representation = Literal["value", "bits"]
 
 # Anything an Iceberg write takes: every Arrow holder the record surface reads,
@@ -455,7 +454,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -464,7 +462,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -473,7 +470,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -490,7 +486,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @property
@@ -534,7 +529,6 @@ class Serie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     def into_arrow_scalar(self) -> pyarrow.Scalar: ...
@@ -650,7 +644,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A stream - a reader, a table, a frame, a dataset, rows - is not pulled
@@ -663,7 +656,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A record column is the batch it is; any other column the one child of
@@ -681,7 +673,6 @@ class SerieReader(Iterator[Serie]):
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     @property
@@ -721,7 +712,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # A `pyarrow.ChunkedArray` is its chunks, an Arrow array its one chunk,
@@ -733,7 +723,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # One chunk per batch of anything that streams batches, none joined.
@@ -743,7 +732,6 @@ class ChunkedSerie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # `Serie.from_`'s ladder read as chunks: a chunked array is its chunks, a
@@ -756,7 +744,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     @property
@@ -786,7 +773,6 @@ class ChunkedSerie:
         chunk: Serie,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     def into_serie(self) -> Serie: ...
@@ -796,7 +782,6 @@ class ChunkedSerie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     def into_arrow_chunked_array(self) -> pyarrow.ChunkedArray: ...
@@ -1683,7 +1668,6 @@ class ArrowCastPlan:
         target: FieldLike,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     @property
@@ -1692,8 +1676,6 @@ class ArrowCastPlan:
     def target(self) -> Field: ...
     @property
     def safe(self) -> bool: ...
-    @property
-    def nullability(self) -> Nullability: ...
     @property
     def representation(self) -> Representation: ...
     @property
@@ -1766,7 +1748,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     # The applied shape, derived from the two schemas without reading a row.
@@ -1778,7 +1759,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.Schema: ...
     def apply_arrow_reader(
@@ -1789,7 +1769,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
     def into_arrow(self) -> Any: ...

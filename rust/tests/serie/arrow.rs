@@ -12,16 +12,12 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Nullability, Scalar, Serie, SerieReader,
-    StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, StructType,
 };
 
-/// The options a refusal is pinned under: a present value is never nulled
-/// and an absent one never repaired.
+/// The options a refusal is pinned under: a present value is never nulled.
 fn strict() -> ArrowCastOptions {
-    ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict)
+    ArrowCastOptions::new().with_safe(false)
 }
 
 /// A public child must remain readable after it loses its parent context.
@@ -423,44 +419,41 @@ fn a_layout_that_is_not_the_fields_is_cast_and_a_value_no_cast_reaches_is_refuse
     assert!(shown.contains("AAPL"), "names the value: {shown}");
     assert!(shown.contains("Int64"), "names the target: {shown}");
 
-    // Under the default options the same value is nulled, and a required
-    // field repairs the null to its canonical default.
-    let column = Serie::from_arrow_array(
+    // Under `safe` a required field still refuses it by the value, since
+    // the null it would become has nowhere to stand; a nullable one takes
+    // that null.
+    let refusal = Serie::from_arrow_array(
         Some(&Field::new("price", DataType::Int64, false)),
+        Arc::clone(&text),
+        ArrowCastOptions::new(),
+    )
+    .expect_err("a required column holds no null");
+    assert!(refusal.to_string().contains("AAPL"), "{refusal}");
+    let column = Serie::from_arrow_array(
+        Some(&Field::new("price", DataType::Int64, true)),
         text,
         ArrowCastOptions::new(),
     )
-    .expect("nulled, then repaired");
-    assert_eq!(column.as_int64().expect("an int64 column").values(), &[0]);
-    assert_eq!(column.null_count(), 0);
+    .expect("nulled");
+    assert_eq!(column.null_count(), 1);
 }
 
 #[test]
 fn an_absent_row_is_refused_under_a_required_field_and_admitted_under_a_nullable_one() {
     let absent: ArrayRef = Arc::new(Int64Array::from(vec![Some(1), None]));
-    let refusal = Serie::from_arrow_array(
-        Some(&Field::new("price", DataType::Int64, false)),
-        Arc::clone(&absent),
-        strict(),
-    )
-    .expect_err("a strict required column admits no absent row");
-    let text = refusal.to_string();
-    assert!(text.contains("$.price"), "names the column: {text}");
-    assert!(text.contains("1 null"), "counts the absent rows: {text}");
-
-    // Under the default nullability the absent row is repaired to the
-    // field's canonical default instead.
-    let repaired = Serie::from_arrow_array(
-        Some(&Field::new("price", DataType::Int64, false)),
-        Arc::clone(&absent),
-        ArrowCastOptions::new(),
-    )
-    .expect("the default nullability repairs absence");
-    assert_eq!(
-        repaired.as_int64().expect("an int64 column").values(),
-        &[1, 0]
-    );
-    assert_eq!(repaired.null_count(), 0);
+    // Whatever `safe` says: the absent row is never repaired to the
+    // field's canonical default.
+    for options in [strict(), ArrowCastOptions::new()] {
+        let refusal = Serie::from_arrow_array(
+            Some(&Field::new("price", DataType::Int64, false)),
+            Arc::clone(&absent),
+            options,
+        )
+        .expect_err("a required column admits no absent row");
+        let text = refusal.to_string();
+        assert!(text.contains("$.price"), "names the column: {text}");
+        assert!(text.contains("1 null"), "counts the absent rows: {text}");
+    }
 
     let column = Serie::from_arrow_array(
         Some(&Field::new("price", DataType::Int64, true)),
@@ -959,17 +952,15 @@ fn a_column_in_hand_casts_once_and_one_under_its_own_field_is_itself() {
     assert_eq!(wide.as_int64().expect("an int64 column").values()[0], 1);
     assert!(wide.is_null(1).unwrap());
 
-    // The absent row is judged again under a required field: refused
-    // strictly, repaired to the default otherwise.
+    // The absent row is judged again under a required field and refused,
+    // whatever `safe` says: no default is invented for it.
     let required = Field::new("id", DataType::Int32, false);
-    let refusal = ids
-        .cast(&required, strict())
-        .expect_err("a strict required column admits no absent row");
-    assert!(refusal.to_string().contains("id"), "{refusal}");
-    let repaired = ids
-        .cast(&required, ArrowCastOptions::new())
-        .expect("the default nullability repairs absence");
-    assert_eq!(repaired.as_int32().unwrap().values(), &[1, 0]);
+    for options in [strict(), ArrowCastOptions::new()] {
+        let refusal = ids
+            .cast(&required, options)
+            .expect_err("a required column admits no absent row");
+        assert!(refusal.to_string().contains("id"), "{refusal}");
+    }
 
     // A run lays out no buffers for a plan to read.
     assert!(
@@ -1781,8 +1772,7 @@ fn a_batch_that_lays_out_as_its_root_lands_as_it_stands_and_a_narrower_one_takes
         narrow.column(0).to_data().buffers()[0].as_ptr()
     );
     // A layout the root does not state - a nullable column under a required
-    // child - takes the plan's answer: repaired by default, refused under
-    // strict nullability.
+    // child - takes the plan's answer: the absent row is refused by path.
     let schema = Arc::new(Schema::new(vec![
         ArrowField::new("id", ArrowDataType::Int64, true),
         ArrowField::new("symbol", ArrowDataType::Utf8, false),
@@ -1795,12 +1785,9 @@ fn a_batch_that_lays_out_as_its_root_lands_as_it_stands_and_a_narrower_one_takes
         ],
     )
     .expect("a batch");
-    let repaired = Serie::from_arrow_batch(Some(&root), &absent, ArrowCastOptions::new())
-        .expect("the default repairs an absent row");
-    assert_eq!(
-        repaired.scalar(1).expect("a row"),
-        Scalar::from_sequence([Scalar::from(0_i64), Scalar::from("MSFT")])
-    );
-    let refused = Serie::from_arrow_batch(Some(&root), &absent, strict()).expect_err("strict");
-    assert!(refused.to_string().contains("id"), "{refused}");
+    for options in [strict(), ArrowCastOptions::new()] {
+        let refused =
+            Serie::from_arrow_batch(Some(&root), &absent, options).expect_err("an absent id");
+        assert!(refused.to_string().contains("id"), "{refused}");
+    }
 }

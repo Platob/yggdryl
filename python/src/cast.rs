@@ -51,18 +51,16 @@ impl PyArrowCastPlan {
     ///
     /// Every failure the two fields alone can produce - an unsupported
     /// conversion, an ambiguous case-insensitive name, a required field the
-    /// source cannot fill under `nullability="strict"` - is raised here
-    /// rather than on the first column.
+    /// source cannot fill - is raised here rather than on the first column.
     #[new]
-    #[pyo3(signature = (source, target, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (source, target, *, safe = true, representation = "value"))]
     fn new(
         source: &Bound<'_, PyAny>,
         target: &Bound<'_, PyAny>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let source = source_of(source)?;
         let target = core_field_from_value(target)?;
         Ok(Self {
@@ -87,12 +85,6 @@ impl PyArrowCastPlan {
     #[getter]
     fn safe(&self) -> bool {
         self.inner.as_options().is_safe()
-    }
-
-    /// The policy for a declared value the source cannot fill.
-    #[getter]
-    fn nullability(&self) -> &'static str {
-        self.inner.as_options().nullability().as_str()
     }
 
     /// What a same-width pair carries.
@@ -160,10 +152,9 @@ impl PyArrowCastPlan {
     fn __repr__(&self) -> String {
         let options = self.inner.as_options();
         format!(
-            "ArrowCastPlan(target={:?}, safe={}, nullability={:?}, representation={:?})",
+            "ArrowCastPlan(target={:?}, safe={}, representation={:?})",
             self.inner.as_target().name(),
             if options.is_safe() { "True" } else { "False" },
-            options.nullability().as_str(),
             options.representation().as_str(),
         )
     }

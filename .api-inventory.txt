@@ -3431,23 +3431,16 @@ pub struct Bytes  (the payload alone, 32 bytes; Deref<Target=[u8]>, AsRef<[u8]>,
 ### yggdryl::cast  [rust/src/cast.rs]  (the one recursive cast engine, reached through Serie::cast, the Serie Arrow doors, SerieReader and a held ArrowCastPlan)
 
 ### yggdryl::cast::options  [rust/src/cast.rs]
-pub enum Nullability
-  pub const ALL: [Self; 2]
-  pub fn from_str(value: &str) -> Result<Self>
-  pub const fn as_str(self) -> &'static str
-  pub const fn is_strict(self) -> bool
 pub enum Representation
   pub const ALL: [Self; 2]
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn is_bits(self) -> bool
-pub struct ArrowCastOptions
+pub struct ArrowCastOptions  (two answers, safe and representation; whether a value may be absent is the target field's nullability, never an option)
   pub const fn new() -> Self
   pub const fn with_safe(mut self, safe: bool) -> Self
-  pub const fn with_nullability(mut self, nullability: Nullability) -> Self
   pub const fn with_representation(mut self, representation: Representation) -> Self
   pub const fn is_safe(self) -> bool
-  pub const fn nullability(self) -> Nullability
   pub const fn representation(self) -> Representation
 
 ### yggdryl::cast::plan  [rust/src/cast.rs]

@@ -21,7 +21,7 @@ One verb, three spellings, where the runtimes name the Arrow values differently:
 
 | Rust | Python | JavaScript |
 | --- | --- | --- |
-| `ChunkedSerie::from_arrow_arrays(field, arrays, options)` | `ChunkedSerie.from_arrow_chunked_array(chunked, field=None, *, safe, nullability, representation)` | `ChunkedSerie.fromArrowArray(vector, field?, options?)` |
+| `ChunkedSerie::from_arrow_arrays(field, arrays, options)` | `ChunkedSerie.from_arrow_chunked_array(chunked, field=None, *, safe, representation)` | `ChunkedSerie.fromArrowArray(vector, field?, options?)` |
 | `ChunkedSerie::from_arrow_reader(root, reader, options)` | `ChunkedSerie.from_arrow_reader(reader, root=None, *, ...)` - a `RecordBatchReader`, a `Table`, a dataset, a scanner, a frame | `ChunkedSerie.fromArrowBatch(batchOrTable, root?, options?)` for a `Table`, `ChunkedSerie.fromArrowReader(reader, root?, options?)` for a native `BatchReader` |
 | `ChunkedSerie::from_series(field, chunks, options)` | `ChunkedSerie.from_series(chunks, field=None, *, ...)` | `ChunkedSerie.fromSeries(chunks, field?, options?)` |
 | `ChunkedSerie::from_serie_reader(reader)` | `ChunkedSerie.from_(reader)`, which also reads every columnar runtime | none |

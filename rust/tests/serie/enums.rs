@@ -6,16 +6,12 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, StringArray};
 use yggdryl::{
-    ArrowCastOptions, DataType, DictionarySerie, Field, Nullability, Scalar, Serie, SerieValue,
-    StructType,
+    ArrowCastOptions, DataType, DictionarySerie, Field, Scalar, Serie, SerieValue, StructType,
 };
 
-/// The options a refusal is pinned under: a present value is never nulled
-/// and an absent one never repaired.
+/// The options a refusal is pinned under: a present value is never nulled.
 fn strict() -> ArrowCastOptions {
-    ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict)
+    ArrowCastOptions::new().with_safe(false)
 }
 
 /// An int8-keyed dictionary of symbols.

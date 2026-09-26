@@ -667,11 +667,12 @@ and never of the data: `apply_arrow_schema` answers it without reading a row, an
 pulled - which is what lets a partitioned read be handed straight to a write. The whole applied
 plan is compiled from those two schemas once, so a stream pays for it once.
 
-`options` carries the [cast policy](cast.md#strict-nullability) the first step runs under, and
-under `strict` nullability it also holds after the protocols have run. A field an enabled protocol
-materializes may arrive absent or holding its canonical default - closing that hole is the
-protocol's job, and it has not run yet - but the applied batch is checked again once every
-protocol is done, so a required column its protocol did not write is still refused by path.
+`options` carries the [conversion](cast.md) the first step runs under. A required column refuses
+a null or a column the source does not carry by path ([Required columns](cast.md#required-columns)),
+and that holds after the protocols have run too. A field an enabled protocol materializes may
+arrive absent or holding its canonical default - closing that hole is the protocol's job, and it
+has not run yet - but the applied batch is checked again once every protocol is done, so a
+required column its protocol did not write is still refused by path.
 
 === "Rust"
 
@@ -762,20 +763,20 @@ protocol is done, so a required column its protocol did not write is still refus
     required_year = Field("year", "int32", nullable=False)
     required_year.partition.sources = ["event"]
     required_year.partition.transform = "year"
-    strict_root = Field(
+    required_root = Field(
         "row",
         DataType.from_fields([Field("event", "date32", nullable=False), required_year]),
         nullable=False,
     )
     # With the partition step on, the column it writes satisfies its own
     # declaration; with it off, nothing is going to write it.
-    assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
+    assert required_root.apply_arrow_batch(batch).num_columns == 2
     try:
-        strict_root.apply_arrow_batch(batch, transform=False, nullability="strict")
+        required_root.apply_arrow_batch(batch, transform=False)
     except ValueError as error:
         assert "$.year" in str(error), error
     else:
-        raise AssertionError("a strict apply must refuse the unwritten column")
+        raise AssertionError("an apply must refuse the unwritten required column")
 
     # The same shape, with no rows read and no batch pulled.
     assert root.apply_arrow_schema(batch.schema) == applied.schema
@@ -995,7 +996,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `apply_arrow_batch(digest=True, cast=False)` -> the digest step reconciles to the root for itself, because a holder is addressed by position.
 - a column holding anything but its canonical default -> left alone by every step, so applying twice changes nothing.
 - `apply_arrow_schema` -> the empty batch through the same steps; a declaration that cannot be satisfied fails here, not on the first batch.
-- `nullability="strict"` -> a field an enabled protocol materializes may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
+- a required field an enabled protocol materializes -> may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
 - `apply_arrow_reader` with all three off -> the reader itself, unwrapped; otherwise the applied schema is derived once and reported before the first pull.
 - a batch that fails inside `apply_arrow_reader` -> that batch's `Err`; the reader is not fused after it.
 

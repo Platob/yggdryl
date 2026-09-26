@@ -111,11 +111,10 @@ class TestArrow:
         column = Serie.from_arrow_array(array, price())
         assert column.into_arrow_array().buffers()[1].address == array.buffers()[1].address
 
-    def test_an_absent_row_is_repaired_by_default_and_refused_when_strict(self) -> None:
+    def test_an_absent_row_in_a_required_column_is_refused(self) -> None:
         absent = pa.array([1, None], pa.int64())
-        assert Serie.from_arrow_array(absent, price()).as_py() == [1, 0]
         with pytest.raises(ValueError, match="price"):
-            Serie.from_arrow_array(absent, price(), nullability="strict")
+            Serie.from_arrow_array(absent, price())
 
     def test_a_refused_value_is_null_when_safe_and_raised_otherwise(self) -> None:
         wide = pa.array([1, 300], pa.int64())
@@ -123,8 +122,6 @@ class TestArrow:
         assert Serie.from_arrow_array(wide, narrow).as_py() == [1, None]
         with pytest.raises(ValueError):
             Serie.from_arrow_array(wide, narrow, safe=False)
-        with pytest.raises(ValueError, match="nullability"):
-            Serie.from_arrow_array(wide, narrow, nullability="lenient")
 
     def test_a_batch_and_a_reader_are_a_record_column_named_row(self) -> None:
         records = Serie.from_arrow_batch(quotes())
@@ -154,7 +151,7 @@ class TestArrow:
 
         strict = Field("row", "struct<id:int64,venue:utf8 not null>", nullable=False)
         with pytest.raises(ValueError, match="venue"):
-            Serie.from_arrow_batch(quotes(), strict, nullability="strict")
+            Serie.from_arrow_batch(quotes(), strict)
 
     def test_from_default_repeats_the_fields_canonical_default(self) -> None:
         assert Serie.from_default(price()).as_py() == [0]
@@ -169,13 +166,11 @@ class TestArrow:
         assert wide.field == Field("id", "int64")
         assert wide.as_py() == [1, None]
 
-        # A datatype is the required column named `value` it declares, so the
-        # absent row is repaired - or refused when asked to be strict.
-        typed = column.cast(DataType("int64"))
-        assert typed.field == Field("value", "int64", nullable=False)
-        assert typed.as_py() == [1, 0]
-        with pytest.raises(ValueError):
-            column.cast(DataType("int64"), nullability="strict")
+        # A datatype is the required column named `value` it declares, so an
+        # absent row is refused by path rather than filled with the
+        # datatype's canonical default.
+        with pytest.raises(ValueError, match="value"):
+            column.cast(DataType("int64"))
 
         # A column already under the target is itself.
         assert column.cast(Field("id", "int32")) == column
@@ -219,7 +214,7 @@ class TestSerieReader:
     def test_a_plan_the_stream_cannot_meet_is_refused_before_a_batch(self) -> None:
         strict = Field("row", "struct<id:int64,venue:utf8 not null>", nullable=False)
         with pytest.raises(ValueError, match="venue"):
-            SerieReader.from_arrow_reader(self.stream(), strict, nullability="strict")
+            SerieReader.from_arrow_reader(self.stream(), strict)
 
     def test_into_arrow_reader_hands_over_the_batches_not_yet_pulled(self) -> None:
         root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
@@ -1359,7 +1354,7 @@ class TestReaderCast:
         held = Serie.from_(quotes())
         reader = SerieReader.from_serie(held)
         with pytest.raises(ValueError):
-            reader.cast(held.field, nullability="whenever")
+            reader.cast(held.field, representation="whenever")
         with pytest.raises(TypeError):
             reader.cast(object())
         (record,) = list(reader.cast(held.field))

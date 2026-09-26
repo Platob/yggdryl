@@ -326,7 +326,7 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
 
 ## Casts
 
-Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient; the declared precision and scale are the target, and `safe` and `nullability` decide what a failure becomes, on [Cast](../cast.md).
+Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient; the declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 

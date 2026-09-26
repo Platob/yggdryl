@@ -26,23 +26,23 @@ declare const table: ArrowTable
 declare const batch: ArrowRecordBatch
 declare const reader: BatchReader
 const root: Field = Field.from('row: struct<id: int64> not null')
-const strictly: ArrowCastOptions = { safe: false, nullability: 'strict' }
+const unsafely: ArrowCastOptions = { safe: false }
 
 // Every Arrow door answers a column, its own field's or the one it was cast into.
 const own: Serie = Serie.fromArrowArray(vector)
-const wide: Serie = Serie.fromArrowArray(vector, fields.int64('id'), strictly)
+const wide: Serie = Serie.fromArrowArray(vector, fields.int64('id'), unsafely)
 const named: Serie = Serie.fromArrowArray(vector, 'id: int64', { representation: 'bits' })
-const records: Serie = Serie.fromArrowBatch(table, root, strictly)
+const records: Serie = Serie.fromArrowBatch(table, root, unsafely)
 const one: Serie = Serie.fromArrowBatch(batch)
 const drained: Serie = Serie.fromArrowReader(reader, root)
 const defaults: Serie = Serie.fromDefault(fields.int32('quantity'), 3)
-const cast: Serie = wide.cast('id: int32', strictly)
+const cast: Serie = wide.cast('id: int32', unsafely)
 const scalar: unknown = defaults.intoArrowScalar()
 const back: ArrowVector = cast.intoArrowArray()
 const rows: ArrowRecordBatch = records.intoArrowBatch()
 
 // A reader yields one record serie per batch and hands its stream back.
-const series: SerieReader = SerieReader.fromArrowReader(reader, root, strictly)
+const series: SerieReader = SerieReader.fromArrowReader(reader, root, unsafely)
 const typedBy: Field = series.field
 for (const serie of series) {
   const landed: Serie = serie
@@ -65,8 +65,8 @@ SerieReader._fromChunkedNative
 
 // @ts-expect-error an Arrow door takes an Arrow Vector, not a JavaScript array
 Serie.fromArrowArray([0])
-// @ts-expect-error `nullability` is a closed vocabulary, not any name
-Serie.fromArrowArray(vector, 'id: int64', { nullability: 'lenient' })
+// @ts-expect-error a cast option is `safe` or `representation`
+Serie.fromArrowArray(vector, 'id: int64', { strict: true })
 // @ts-expect-error `representation` is a closed vocabulary, not any name
 wide.cast('id: int32', { representation: 'raw' })
 // @ts-expect-error the private native bridges are hidden

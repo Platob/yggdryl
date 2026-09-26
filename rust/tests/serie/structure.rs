@@ -8,8 +8,7 @@ use arrow_buffer::NullBuffer;
 use arrow_data::ArrayData;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FieldPath, Nullability, Scalar, Serie, SerieValue,
-    StructType,
+    ArrowCastOptions, DataType, Field, FieldPath, Scalar, Serie, SerieValue, StructType,
 };
 
 /// A nullable record root over an identifier and a flag.
@@ -281,9 +280,7 @@ fn a_required_child_under_a_null_record_row_is_admitted_at_the_door_and_by_a_pus
         ),
         true,
     );
-    let strict = ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict);
+    let strict = ArrowCastOptions::new().with_safe(false);
     let column = Serie::from_arrow_array(Some(&root), records, strict)
         .expect("a hidden absent child, even strictly");
     assert!(column.is_null(1).unwrap());

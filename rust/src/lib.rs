@@ -146,7 +146,7 @@ pub use crate::json::{from_json_scalar, from_json_scalar_with_field, into_json_s
 pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use bytestream::ByteStream;
-pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
+pub use cast::{ArrowCastOptions, ArrowCastPlan, Representation};
 pub use charset::Charset;
 pub use chunked_serie::{ChunkedRows, ChunkedSerie};
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};

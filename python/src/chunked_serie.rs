@@ -185,15 +185,14 @@ impl PyChunkedSerie {
     /// one plan per run of chunks under one source field. No chunk and no
     /// field is refused, because nothing names the field.
     #[staticmethod]
-    #[pyo3(signature = (chunks, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (chunks, field = None, *, safe = true, representation = "value"))]
     fn from_series(
         chunks: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let field = field_of(field)?;
         let chunks = chunks
             .try_iter()?
@@ -223,15 +222,14 @@ impl PyChunkedSerie {
     /// same way. With no field the chunks are the column of the first one's
     /// layout, named `item`, and a chunk of another datatype is refused.
     #[staticmethod]
-    #[pyo3(signature = (chunked, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (chunked, field = None, *, safe = true, representation = "value"))]
     fn from_arrow_chunked_array(
         chunked: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let field = field_of(field)?;
         chunked_from_arrays(chunked, field.as_ref(), options).map(Self::from_inner)
     }
@@ -239,15 +237,14 @@ impl PyChunkedSerie {
     /// Drain a record batch stream into its chunks, one per batch and none
     /// joined: of its own schema, or cast into `root` by one plan.
     #[staticmethod]
-    #[pyo3(signature = (reader, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (reader, root = None, *, safe = true, representation = "value"))]
     fn from_arrow_reader(
         reader: &Bound<'_, PyAny>,
         root: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let root = field_of(root)?;
         let stream = stream_of(reader)?;
         reader
@@ -268,15 +265,14 @@ impl PyChunkedSerie {
     /// Any other value is read as `Serie.from_` reads it, and is one chunk.
     #[staticmethod]
     #[pyo3(name = "from_")]
-    #[pyo3(signature = (value, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (value, field = None, *, safe = true, representation = "value"))]
     fn from_(
         value: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         chunked_from_py(value, field, options).map(Self::from_inner)
     }
 
@@ -401,16 +397,15 @@ impl PyChunkedSerie {
 
     /// Append one chunk: a column under the field as it stands, any other
     /// column cast into it. A refusal leaves this serie as it was.
-    #[pyo3(signature = (chunk, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (chunk, *, safe = true, representation = "value"))]
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
     fn push_chunk(
         &mut self,
         chunk: PyRef<'_, PySerie>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<()> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         self.inner
             .push_chunk(chunk.inner.clone(), options)
             .map_err(value_error)
@@ -431,15 +426,14 @@ impl PyChunkedSerie {
     /// Every chunk under `field`, one plan compiled and applied to each; a
     /// `DataType` is the required column named `value` it declares. The
     /// cast runs off the GIL, as `into_serie` does.
-    #[pyo3(signature = (field, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (field, *, safe = true, representation = "value"))]
     fn cast(
         slf: &Bound<'_, Self>,
         field: &Bound<'_, PyAny>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let target = target_of(field)?;
         let chunked = slf.borrow().inner.clone();
         slf.py()

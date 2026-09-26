@@ -3651,7 +3651,7 @@ fn grouped_batches(
                 ArrowCastPlan::compile_schema(
                     batch.schema_ref(),
                     schema,
-                    ArrowCastOptions::declared(safe),
+                    ArrowCastOptions::new().with_safe(safe),
                     Deferred::default(),
                 )
             })?

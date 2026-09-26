@@ -736,7 +736,7 @@ pub trait IORecordOptions: Sized {
         reader: crate::arrow::BatchReader,
         existing: Option<&Field>,
     ) -> Result<crate::arrow::BatchReader> {
-        let options = ArrowCastOptions::declared(self.safe());
+        let options = ArrowCastOptions::new().with_safe(self.safe());
         let reader = match self.field() {
             Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
             None => reader,
@@ -872,7 +872,7 @@ impl Shaping {
                     true,
                     true,
                     true,
-                    ArrowCastOptions::declared(options.safe()),
+                    ArrowCastOptions::new().with_safe(options.safe()),
                 )?;
                 schema = plan.apply(&RecordBatch::new_empty(schema))?.schema();
                 Some(plan)
@@ -898,7 +898,7 @@ impl Shaping {
                 true,
                 true,
                 true,
-                ArrowCastOptions::declared(options.safe()),
+                ArrowCastOptions::new().with_safe(options.safe()),
             )?),
             None => None,
         };

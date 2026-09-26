@@ -2236,7 +2236,7 @@ fn cast_corpus() -> (Field, [Serie; 2], Field) {
         StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
-            DataType::utf8().required_field("venue"),
+            DataType::utf8().nullable_field("venue"),
         ])
         .map(DataType::from)
         .expect("the root fields are valid"),

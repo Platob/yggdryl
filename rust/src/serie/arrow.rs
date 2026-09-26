@@ -1157,17 +1157,16 @@ impl Serie {
     /// no evidence. With a field, an array already laid out as the field
     /// lands as it stands, proven exactly as the identity plan would prove it
     /// and with no plan compiled; any other layout - or an exact one the
-    /// landing refuses, whose absent rows a required field repairs or whose
-    /// values a safe cast nulls - compiles one [`ArrowCastPlan`] and is
-    /// converted under `options`. A loop over many arrays holds one plan
+    /// landing refuses, whose values a safe cast nulls where the field is
+    /// nullable and names where it is not - compiles one [`ArrowCastPlan`]
+    /// and is converted under `options`. A loop over many arrays holds one plan
     /// instead.
     ///
     /// # Errors
     ///
     /// Returns an error naming the column and the row for a value the field
-    /// refuses (nulled instead under `safe`), an absent row a required field
-    /// refuses under [`Nullability::Strict`](crate::Nullability::Strict), or
-    /// a layout no column holds.
+    /// refuses (nulled instead under `safe` where the field is nullable), an
+    /// absent row a required field refuses, or a layout no column holds.
     pub fn from_arrow_array(
         field: Option<&Field>,
         array: ArrayRef,

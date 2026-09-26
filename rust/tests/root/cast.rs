@@ -468,8 +468,7 @@ mod plans {
     };
     use yggdryl::arrow::BatchReader;
     use yggdryl::{
-        ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, SerieReader,
-        StructType,
+        ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, SerieReader, StructType,
     };
 
     fn stored() -> SchemaRef {
@@ -637,16 +636,37 @@ mod plans {
     }
 
     #[test]
+    fn an_equal_layout_is_no_identity_where_the_target_requires_what_the_source_does_not() {
+        // The layout is the target's, but the source admits the null the
+        // target refuses, so the plan reads for it rather than trusting it.
+        let nullable = DataType::Int64.nullable_field("id");
+        let required = DataType::Int64.required_field("id");
+        let plan = ArrowCastPlan::compile(&nullable, &required, ArrowCastOptions::new()).unwrap();
+        assert!(!plan.is_identity());
+        assert!(
+            ArrowCastPlan::compile(&required, &nullable, ArrowCastOptions::new())
+                .unwrap()
+                .is_identity()
+        );
+
+        let held = Serie::from_scalars(nullable.clone(), [1_i64.into(), 2_i64.into()]).unwrap();
+        assert_eq!(plan.apply(&held).unwrap().field(), Some(&required));
+        let absent = Serie::from_scalars(nullable, [1_i64.into(), yggdryl::Scalar::Null]).unwrap();
+        let refused = plan.apply(&absent).unwrap_err().to_string();
+        assert_eq!(refused, "required Arrow field $.id holds 1 null values");
+    }
+
+    #[test]
     fn preflight_reports_a_schema_failure_and_leaves_the_row_failures_alone() {
         let missing = root([
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("venue"),
         ]);
-        let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+        let options = ArrowCastOptions::new();
 
         // A required column no source carries is a schema failure, so it never
         // reaches preflight: compiling already refused it.
-        assert!(ArrowCastPlan::compile(&source_of(&stored()), &missing, strict).is_err());
+        assert!(ArrowCastPlan::compile(&source_of(&stored()), &missing, options).is_err());
 
         // A null in a required column is a row failure, so an empty preflight
         // passes and the refusal waits for a batch that has rows.
@@ -654,7 +674,7 @@ mod plans {
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("symbol"),
         ]);
-        let plan = ArrowCastPlan::compile(&source_of(&stored()), &required, strict).unwrap();
+        let plan = ArrowCastPlan::compile(&source_of(&stored()), &required, options).unwrap();
         plan.preflight().unwrap();
 
         let with_null = RecordBatch::try_new(
@@ -724,13 +744,10 @@ mod plans {
             DataType::utf8().required_field("symbol"),
         ]);
         let inner = yggdryl::arrow::batch_reader(stored(), [batch(0), broken, batch(9)]);
-        let mut reader = SerieReader::from_arrow_reader(
-            Some(&required),
-            inner,
-            ArrowCastOptions::new().with_nullability(Nullability::Strict),
-        )
-        .unwrap()
-        .into_arrow_reader();
+        let mut reader =
+            SerieReader::from_arrow_reader(Some(&required), inner, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader();
 
         assert!(reader.next().unwrap().is_ok());
         let error = reader.next().unwrap().unwrap_err();
@@ -910,7 +927,7 @@ mod batches {
     }
 
     #[test]
-    fn a_missing_column_is_filled_with_its_canonical_default() {
+    fn a_missing_column_is_null_where_nullable_and_refused_where_required() {
         let source = Arc::new(Schema::new(vec![ArrowField::new(
             "id",
             ArrowDataType::Int32,
@@ -919,19 +936,28 @@ mod batches {
         let batch =
             RecordBatch::try_new(source, vec![Arc::new(Int32Array::from(vec![1, 2]))]).unwrap();
 
-        let target = root([
+        let nullable = root([
             DataType::Int64.required_field("id"),
-            DataType::utf8().required_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ]);
-        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&nullable), &batch, ArrowCastOptions::new())
             .unwrap()
             .into_arrow_batch()
             .unwrap();
-
         assert_eq!(cast.num_columns(), 2);
         assert_eq!(cast.num_rows(), 2);
-        assert_eq!(cast.column(1).len(), 2);
-        assert_eq!(cast.column(1).null_count(), 0);
+        assert_eq!(cast.column(1).null_count(), 2);
+
+        // A required column the source does not carry has no value to hold,
+        // and its canonical default is never invented in its place.
+        let required = root([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().required_field("symbol"),
+        ]);
+        let refused = Serie::from_arrow_batch(Some(&required), &batch, ArrowCastOptions::new())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("$.symbol"), "{refused}");
     }
 
     #[test]
@@ -1178,29 +1204,26 @@ mod typed {
     }
 
     #[test]
-    fn an_unsafe_cast_fails_and_a_safe_one_defaults() {
+    fn a_required_field_refuses_a_value_it_cannot_convert_safe_or_not() {
         let field = Int64Field::new("id", yggdryl::Int64Type, false);
         let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
-        assert!(
-            Serie::from_arrow_array(
+        // The null a safe conversion would leave has nowhere to stand in a
+        // required column, so the refusal names the value either way and no
+        // default is invented for it.
+        for options in [
+            ArrowCastOptions::new().with_safe(false),
+            ArrowCastOptions::new(),
+        ] {
+            let refused = Serie::from_arrow_array(
                 Some(&field.clone().into_field()),
                 Arc::clone(&text),
-                ArrowCastOptions::new().with_safe(false)
+                options,
             )
-            .is_err()
-        );
-
-        // Safe casting nulls the failure, and a non-null field then defaults it.
-        let cast = Serie::from_arrow_array(
-            Some(&field.clone().into_field()),
-            text,
-            ArrowCastOptions::new(),
-        )
-        .unwrap();
-        let ids = cast.as_int64().expect("an int64 column");
-        assert_eq!(ids.values(), &[1, 0]);
-        assert_eq!(ids.array().null_count(), 0);
+            .unwrap_err()
+            .to_string();
+            assert!(refused.contains("not a number"), "{refused}");
+        }
     }
 
     #[test]
@@ -1491,22 +1514,12 @@ mod typed {
         assert!(nullable.is_null(1));
         assert!(nullable.values().inner().ptr_eq(source.values().inner()));
 
-        // The reading says what the bytes mean; the nullability policy still says
-        // what an absent value means.
-        let required = Serie::from_arrow_array(
-            Some(&Int64Field::new("digest", yggdryl::Int64Type, false).into_field()),
-            Arc::new(source.clone()),
-            bits(),
-        )
-        .unwrap();
-        let required = required.as_int64().expect("an int64 column").array();
-        assert_eq!(required.values(), &[-1, 0]);
-        assert_eq!(required.null_count(), 0);
-
+        // The reading says what the bytes mean; the field's nullability still
+        // says what an absent value means, and a required one refuses it.
         let refused = Serie::from_arrow_array(
             Some(&Int64Field::new("digest", yggdryl::Int64Type, false).into_field()),
             Arc::new(source),
-            bits().with_nullability(yggdryl::Nullability::Strict),
+            bits(),
         )
         .unwrap_err()
         .to_string();
@@ -2416,16 +2429,11 @@ mod typed {
 
         use super::cast_into;
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field, Nullability, Scalar, Serie, TimeUnit, Timezone};
+        use yggdryl::{DataType, Field, Scalar, Serie, TimeUnit, Timezone};
 
         /// A failed conversion is an error rather than a null.
         fn conversion_error() -> ArrowCastOptions {
             ArrowCastOptions::new().with_safe(false)
-        }
-
-        /// A required column refuses a null rather than repairing it.
-        fn strict() -> ArrowCastOptions {
-            ArrowCastOptions::new().with_nullability(Nullability::Strict)
         }
 
         const UNITS: [TimeUnit; 4] = [
@@ -2605,40 +2613,32 @@ mod typed {
         }
 
         #[test]
-        fn a_required_column_repairs_or_refuses_an_empty_cell_by_its_nullability() {
+        fn a_required_column_refuses_an_empty_cell_by_its_path() {
+            // The empty cell is absence before any conversion is asked, so a
+            // required column refuses it whatever `safe` says, and never
+            // repairs it to its canonical default.
             for target in non_text_targets() {
                 let field = Field::new("x", target, false);
                 for source in empty_sources() {
-                    let repaired = cast_into(&field, Arc::clone(&source), ArrowCastOptions::new());
-                    match field.default_value() {
-                        Ok(default) => {
-                            let repaired = repaired.unwrap_or_else(|error| {
-                                panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
-                            });
-                            assert_eq!(cell(&field, &repaired), default, "{}", field.dtype());
-                        }
-                        // A code with no neutral member has nothing to repair
-                        // with, so the null the empty cell became is refused.
-                        Err(_) => assert!(repaired.is_err(), "{}", field.dtype()),
+                    for options in [ArrowCastOptions::new(), conversion_error()] {
+                        let refused = cast_into(&field, Arc::clone(&source), options)
+                            .err()
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{:?} -> {} took the empty cell",
+                                    source.data_type(),
+                                    field.dtype()
+                                )
+                            })
+                            .to_string();
+                        assert_eq!(
+                            refused,
+                            "required Arrow field $.x holds 1 null values",
+                            "{:?} -> {}",
+                            source.data_type(),
+                            field.dtype()
+                        );
                     }
-
-                    let refused = cast_into(&field, Arc::clone(&source), strict())
-                        .err()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "{:?} -> {} took the empty cell",
-                                source.data_type(),
-                                field.dtype()
-                            )
-                        })
-                        .to_string();
-                    assert_eq!(
-                        refused,
-                        "required Arrow field $.x holds 1 null values",
-                        "{:?} -> {}",
-                        source.data_type(),
-                        field.dtype()
-                    );
                 }
             }
         }
@@ -2780,7 +2780,7 @@ mod typed {
                 for nullable in [true, false] {
                     let field = Field::new("x", code.clone(), nullable);
                     for source in empty_sources() {
-                        for options in [ArrowCastOptions::new(), conversion_error(), strict()] {
+                        for options in [ArrowCastOptions::new(), conversion_error()] {
                             let cast = cast_into(&field, Arc::clone(&source), options)
                                 .unwrap_or_else(|error| {
                                     panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
@@ -2791,8 +2791,8 @@ mod typed {
                     }
                 }
 
-                // Idempotence: what a required column holds after its own
-                // repair, and its own default array, read back under Strict.
+                // Idempotence: what a required column holds after the empty
+                // cell, and its own default array, read back as they stand.
                 let required = Field::new("x", code.clone(), false);
                 for column in [
                     cast_into(
@@ -2806,7 +2806,7 @@ mod typed {
                         .require_arrow_array()
                         .unwrap(),
                 ] {
-                    let again = cast_into(&required, column, strict())
+                    let again = cast_into(&required, column, ArrowCastOptions::new())
                         .unwrap_or_else(|error| panic!("{code}: {error}"));
                     assert_eq!(cell(&required, &again), member, "{code}");
                 }
@@ -2869,7 +2869,7 @@ mod typed {
     }
 }
 
-mod strict {
+mod required {
     use std::sync::Arc;
 
     use arrow_array::builder::{Int32Builder, ListBuilder, MapBuilder, StringBuilder};
@@ -2879,9 +2879,7 @@ mod strict {
         StructArray,
     };
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-    use yggdryl::{
-        ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType,
-    };
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StructType};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         Field::new(
@@ -2889,10 +2887,6 @@ mod strict {
             DataType::from(StructType::from_fields(fields).unwrap()),
             false,
         )
-    }
-
-    fn strict() -> ArrowCastOptions {
-        ArrowCastOptions::new().with_nullability(Nullability::Strict)
     }
 
     fn schema(fields: Vec<ArrowField>) -> SchemaRef {
@@ -2909,7 +2903,7 @@ mod strict {
     }
 
     fn refusal(target: &Field, batch: RecordBatch) -> String {
-        cast_batch(target, &batch, strict())
+        cast_batch(target, &batch, ArrowCastOptions::new())
             .unwrap_err()
             .to_string()
     }
@@ -2927,11 +2921,6 @@ mod strict {
             DataType::utf8().required_field("symbol"),
         ]);
 
-        // The default policy is unchanged: the hole is filled, not reported.
-        let filled = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        assert_eq!(filled.column(1).null_count(), 0);
-        assert_eq!(filled.num_columns(), 2);
-
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.symbol is missing from the source"
@@ -2940,7 +2929,7 @@ mod strict {
         // The schemas alone decide it, so compiling is where it fails - a reader
         // never pulls a batch to find out.
         let source = Field::from_arrow_schema("row", &source).unwrap();
-        let message = ArrowCastPlan::compile(&source, &target, strict())
+        let message = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
             .unwrap_err()
             .to_string();
         assert_eq!(
@@ -2968,9 +2957,6 @@ mod strict {
             DataType::utf8().required_field("symbol"),
         ]);
 
-        let filled = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        assert_eq!(filled.column(1).null_count(), 0);
-
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.symbol holds 2 null values"
@@ -2978,7 +2964,7 @@ mod strict {
     }
 
     #[test]
-    fn a_missing_nullable_column_stays_all_null_under_both_policies() {
+    fn a_missing_nullable_column_stays_all_null() {
         let source = schema(vec![ArrowField::new("id", ArrowDataType::Int64, false)]);
         let batch =
             RecordBatch::try_new(source, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
@@ -2987,15 +2973,13 @@ mod strict {
             DataType::utf8().nullable_field("symbol"),
         ]);
 
-        for options in [ArrowCastOptions::new(), strict()] {
-            let cast = cast_batch(&target, &batch, options).unwrap();
-            assert_eq!(cast.num_columns(), 2);
-            assert_eq!(cast.column(1).null_count(), 2);
-        }
+        let cast = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
+        assert_eq!(cast.num_columns(), 2);
+        assert_eq!(cast.column(1).null_count(), 2);
     }
 
     #[test]
-    fn an_undeclared_source_column_stays_dropped_under_both_policies() {
+    fn an_undeclared_source_column_stays_dropped() {
         let source = schema(vec![
             ArrowField::new("id", ArrowDataType::Int64, false),
             ArrowField::new("unused", ArrowDataType::Int32, true),
@@ -3010,11 +2994,9 @@ mod strict {
         .unwrap();
         let target = root([DataType::Int64.required_field("id")]);
 
-        for options in [ArrowCastOptions::new(), strict()] {
-            let cast = cast_batch(&target, &batch, options).unwrap();
-            assert_eq!(cast.schema().fields().len(), 1);
-            assert_eq!(cast.schema().field(0).name(), "id");
-        }
+        let cast = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
+        assert_eq!(cast.schema().fields().len(), 1);
+        assert_eq!(cast.schema().field(0).name(), "id");
     }
 
     #[test]
@@ -3144,7 +3126,7 @@ mod strict {
     }
 
     #[test]
-    fn strictness_and_conversion_safety_answer_different_questions() {
+    fn a_required_column_and_conversion_safety_answer_different_questions() {
         let source = schema(vec![ArrowField::new("id", ArrowDataType::Utf8, false)]);
         let batch = RecordBatch::try_new(
             source,
@@ -3153,22 +3135,21 @@ mod strict {
         .unwrap();
         let target = root([DataType::Int64.required_field("id")]);
 
-        // safe: the failed conversion becomes null, and the default policy
-        // repairs that null in a required column.
-        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        assert_eq!(repaired.column(0).null_count(), 0);
-        // Strictness refuses the null a lenient conversion would leave in a
-        // required column, so the conversion is refused by the value itself
-        // rather than by the null it would have become.
-        let strict_message = refusal(&target, batch.clone());
-        assert!(strict_message.contains("not a number"), "{strict_message}");
-        // A nullable column still takes the failed conversion as null.
+        // A required column refuses the null a safe conversion would leave,
+        // so the conversion is refused by the value itself rather than by the
+        // null it would have become - and never repaired to a default.
+        let required_message = refusal(&target, batch.clone());
+        assert!(
+            required_message.contains("not a number"),
+            "{required_message}"
+        );
+        // A nullable column takes the failed conversion as null.
         let nullable = root([DataType::Int64.nullable_field("id")]);
-        let nulled = cast_batch(&nullable, &batch, strict()).unwrap();
+        let nulled = cast_batch(&nullable, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(nulled.column(0).null_count(), 1);
 
-        // Unsafe: the conversion itself refuses, so strictness never sees a null.
-        let unsafe_message = cast_batch(&target, &batch, strict().with_safe(false))
+        // Unsafe: the conversion itself refuses, so no null is ever left.
+        let unsafe_message = cast_batch(&target, &batch, ArrowCastOptions::new().with_safe(false))
             .unwrap_err()
             .to_string();
         assert!(unsafe_message.contains("not a number"), "{unsafe_message}");
@@ -3179,15 +3160,14 @@ mod strict {
         let empty =
             RecordBatch::try_new(source, vec![Arc::new(StringArray::from(vec!["1", ""]))]).unwrap();
         let nullable = root([DataType::Int64.nullable_field("id")]);
-        let passed = cast_batch(&nullable, &empty, strict().with_safe(false)).unwrap();
+        let passed =
+            cast_batch(&nullable, &empty, ArrowCastOptions::new().with_safe(false)).unwrap();
         assert_eq!(passed.column(0).null_count(), 1);
         assert!(passed.column(0).is_null(1));
     }
 
-    /// An empty text cell under a required declaration is a null under it: the
-    /// default policy repairs it with the child's default and the strict one
-    /// refuses it by the whole path, exactly as it does for a null the source
-    /// carried.
+    /// An empty text cell under a required declaration is a null under it,
+    /// refused by the whole path exactly as a null the source carried is.
     #[test]
     fn an_empty_text_cell_in_a_required_child_is_a_null_by_its_path() {
         // A struct child.
@@ -3212,22 +3192,6 @@ mod strict {
                 .unwrap()
                 .required_field("address"),
         ]);
-        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        let address = repaired
-            .column(0)
-            .as_any()
-            .downcast_ref::<StructArray>()
-            .unwrap();
-        assert_eq!(address.column(0).null_count(), 0);
-        assert_eq!(
-            address
-                .column(0)
-                .as_any()
-                .downcast_ref::<Int32Array>()
-                .unwrap()
-                .value(0),
-            0
-        );
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.address.zip holds 1 null values"
@@ -3249,19 +3213,6 @@ mod strict {
             DataType::Serie(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
-        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        let counts = repaired
-            .column(0)
-            .as_any()
-            .downcast_ref::<arrow_array::ListArray>()
-            .unwrap();
-        assert_eq!(counts.values().null_count(), 0);
-        let items = counts
-            .values()
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .unwrap();
-        assert_eq!((items.value(0), items.value(1)), (7, 0));
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.counts[] holds 1 null values"
@@ -3285,21 +3236,6 @@ mod strict {
         let target = root([DataType::map(entries, false)
             .unwrap()
             .nullable_field("tags")]);
-        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        let tags = repaired
-            .column(0)
-            .as_any()
-            .downcast_ref::<arrow_array::MapArray>()
-            .unwrap();
-        assert_eq!(tags.values().null_count(), 0);
-        assert_eq!(
-            tags.values()
-                .as_any()
-                .downcast_ref::<Int32Array>()
-                .unwrap()
-                .value(0),
-            0
-        );
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.tags.entries.values holds 1 null values"
@@ -3307,12 +3243,11 @@ mod strict {
     }
 
     /// A reader that takes only a plain text layout answers a source carrying no
-    /// visible value with a null column, so the null policy - never the reader's
-    /// own default - decides for a required target: repaired under the default
-    /// policy, refused by path under the strict one, for a source null exactly as
-    /// for an empty cell.
+    /// visible value with a null column, so the field - never the reader's own
+    /// default - decides for a required target: refused by path, for a source
+    /// null exactly as for an empty cell.
     #[test]
-    fn a_deferred_reader_hands_an_all_null_column_to_the_null_policy() {
+    fn a_deferred_reader_hands_an_all_null_column_to_the_field() {
         let column: ArrayRef = Arc::new(DictionaryArray::<Int16Type>::from_iter([None::<&str>]));
         let source = schema(vec![ArrowField::new(
             "release",
@@ -3320,22 +3255,8 @@ mod strict {
             true,
         )]);
         let batch = RecordBatch::try_new(source, vec![column]).unwrap();
-        let release = DataType::Version.required_field("release");
-        let target = root([release.clone()]);
+        let target = root([DataType::Version.required_field("release")]);
 
-        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
-        assert_eq!(repaired.column(0).null_count(), 0);
-        assert_eq!(
-            Serie::from_arrow_array(
-                Some(&release),
-                Arc::clone(repaired.column(0)),
-                ArrowCastOptions::default()
-            )
-            .unwrap()
-            .scalar(0)
-            .unwrap(),
-            release.default_value().unwrap()
-        );
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.release holds 1 null values"
@@ -3343,7 +3264,7 @@ mod strict {
     }
 
     #[test]
-    fn extension_and_schema_metadata_survive_a_strict_cast() {
+    fn extension_and_schema_metadata_survive_a_cast() {
         let source = schema(vec![ArrowField::new("id", ArrowDataType::Int32, false)]);
         let batch =
             RecordBatch::try_new(source, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();
@@ -3353,7 +3274,7 @@ mod strict {
         let mut target = root([DataType::Int64.required_field("id"), identifier]);
         target.set_metadata([("source", "book")]).unwrap();
 
-        let cast = cast_batch(&target, &batch, strict()).unwrap();
+        let cast = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         let cast_schema = cast.schema();
         assert_eq!(
             cast_schema.metadata().get("source").map(String::as_str),

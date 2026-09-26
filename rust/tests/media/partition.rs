@@ -1458,21 +1458,16 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
         .unwrap()
         .required_field("row");
 
-    // A required column cannot be null, so a cast fills it with the canonical
-    // default rather than nothing, and that is what "never written" looks like.
-    let placeholder = Serie::from_arrow_batch(Some(&root), &events(), ArrowCastOptions::new())
-        .unwrap()
-        .into_arrow_batch()
-        .unwrap();
-    assert_eq!(
-        placeholder
-            .column(1)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .unwrap()
-            .values(),
-        &[0, 0]
-    );
+    // A required column cannot be null, so one still holding its canonical
+    // default is what "never written" looks like.
+    let placeholder = RecordBatch::try_from_iter([
+        (
+            "event",
+            Arc::new(arrow_array::Date32Array::from(vec![19_723, 20_089])) as ArrayRef,
+        ),
+        ("year", Arc::new(Int32Array::from(vec![0, 0])) as ArrayRef),
+    ])
+    .unwrap();
 
     let filled = root.as_transform().apply_arrow_batch(&placeholder).unwrap();
 

@@ -543,7 +543,7 @@ mod arrow {
                 child,
                 None,
                 bound.evaluate(batch)?,
-                ArrowCastOptions::declared(true),
+                ArrowCastOptions::new(),
             )?;
             match held {
                 Some(index) => columns[index] = array,

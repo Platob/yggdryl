@@ -1189,23 +1189,25 @@ Object.defineProperties(PartitionSpec.prototype, {
   },
 })
 
-// The three answers every cast takes, in the order the native doors read
-// them. An absent answer is skipped and takes the core's default; a key the
-// cast does not know is refused rather than silently doing nothing.
-const CAST_OPTION_NAMES = new Set(['safe', 'nullability', 'representation'])
+// The two answers every cast takes, in the order the native doors read them.
+// Whether a value may be absent is not one of them: it is the target
+// field's own nullability, answered the same way everywhere. An absent
+// answer is skipped and takes the core's default; a key the cast does not
+// know is refused rather than silently doing nothing.
+const CAST_OPTION_NAMES = new Set(['safe', 'representation'])
 function castOptionArgs(options) {
   if (options === undefined || options === null) return []
   if (typeof options !== 'object') {
-    throw new TypeError('cast options must be an object of safe, nullability and representation')
+    throw new TypeError('cast options must be an object of safe and representation')
   }
   for (const key of Object.keys(options)) {
     if (!CAST_OPTION_NAMES.has(key)) {
       throw new TypeError(
-        `cast options take safe, nullability and representation, got ${JSON.stringify(key)}`,
+        `cast options take safe and representation, got ${JSON.stringify(key)}`,
       )
     }
   }
-  return [options.safe, options.nullability, options.representation]
+  return [options.safe, options.representation]
 }
 
 // A field argument: a native Field as it is, any FieldLike through

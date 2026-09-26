@@ -217,7 +217,7 @@ A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current 
 
 ### Options
 
-One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, plus the settings one encoding owns. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default.
+One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, plus the settings one encoding owns. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default.
 
 === "Rust"
 

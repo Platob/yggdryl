@@ -2147,12 +2147,13 @@ mod arrow {
         /// the first pass already wrote. A digest fill reconciles to this root for
         /// itself whatever `cast` says, because a holder is addressed by position.
         ///
-        /// `options` carries the cast policy the first step runs under, and
-        /// under [`Nullability::Strict`](crate::Nullability::Strict) it also holds after the protocols have
-        /// run: a field an enabled protocol materializes may arrive absent or
-        /// holding its canonical default, because closing that hole is the
-        /// protocol's job, but the applied batch is checked again once every
-        /// protocol is done, so what a protocol left null is refused by path.
+        /// `options` carries the conversion the first step runs under. A
+        /// required field refuses a null or an absent column by path, and
+        /// that holds after the protocols have run too: a field an enabled
+        /// protocol materializes may arrive absent or holding its canonical
+        /// default, because closing that hole is the protocol's job, but the
+        /// applied batch is checked again once every protocol is done, so
+        /// what a protocol left null is refused by path.
         ///
         /// ```
         /// use std::sync::Arc;
@@ -2198,8 +2199,7 @@ mod arrow {
         ///
         /// Returns an error when this is not a Struct root, when the batch cannot
         /// be cast to it, when either protocol refuses a declaration it carries, or
-        /// when the applied batch leaves a declared non-null field null under
-        /// [`Nullability::Strict`](crate::Nullability::Strict).
+        /// when the applied batch leaves a declared non-null field null.
         pub fn apply_arrow_batch(
             &self,
             batch: &arrow_array::RecordBatch,
@@ -2807,8 +2807,11 @@ mod arrow {
                     None => Some(ArrowCastPlan::compile_schema(
                         landed.schema_ref(),
                         root,
-                        crate::ArrowCastOptions::new(),
-                        Deferred::default(),
+                        options,
+                        Deferred {
+                            transform: transform.is_some(),
+                            digest: true,
+                        },
                     )?),
                 };
                 Some(DigestStage {
@@ -2823,9 +2826,7 @@ mod arrow {
             let schema = applied.schema();
             // A cast with no protocol behind it already refused every hole, so the
             // re-check exists only where something could still have left one.
-            let verify = if options.nullability().is_strict()
-                && (transform.is_some() || digest.is_some() || cast.is_none())
-            {
+            let verify = if transform.is_some() || digest.is_some() || cast.is_none() {
                 Some(ArrowCastPlan::compile_schema(
                     schema.as_ref(),
                     root,

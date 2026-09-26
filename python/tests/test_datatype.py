@@ -450,15 +450,12 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
             field.arrow_scalar(relative)
 
     # The empty text names nothing at all, so it is not a spelling to refuse
-    # but an absence: null before the reader runs, which this required column
-    # repairs with its default, or refuses by path when strict.
-    assert Serie.from_arrow_array(
-        pa.array([""]), field
-    ).into_arrow_array().to_pylist() == ["file:///"]
+    # but an absence: null before the reader runs, and this required column
+    # refuses it by path rather than filling in a default.
     with pytest.raises(
         ValueError, match=r"required Arrow field \$\.url holds 1 null values"
     ):
-        Serie.from_arrow_array(pa.array([""]), field, nullability="strict").into_arrow_array()
+        Serie.from_arrow_array(pa.array([""]), field).into_arrow_array()
     with pytest.raises(ValueError, match="null"):
         field.arrow_scalar("")
     assert dtype.scalar("").is_null()
@@ -517,11 +514,11 @@ def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
             pa.array(["urn:isbn:0451450523"]), Field("url", DataType("url"), nullable=False)
         ).into_arrow_array()
 
-    # The empty text is an absence, as it is for every non-text column, and
-    # a name has no zero: the default is the nil name.
-    assert Serie.from_arrow_array(
-        pa.array([""]), field
-    ).into_arrow_array().to_pylist() == ["urn:nil:nil"]
+    # The empty text is an absence, as it is for every non-text column, so a
+    # required column refuses it; a name has no zero: the default is the nil
+    # name.
+    with pytest.raises(ValueError, match=r"required Arrow field \$\.urn holds 1 null values"):
+        Serie.from_arrow_array(pa.array([""]), field)
     assert dtype.scalar("").is_null()
     assert field.default_scalar().as_py() == "urn:nil:nil"
 
@@ -947,11 +944,9 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     padded = Serie.from_arrow_array(pa.array(["USD", None]), ccy).into_arrow_array()
     assert padded.type == pa.binary(4)
     assert padded.to_pylist() == [b"USD\x00", None]
-    # A datatype casts as a required column: nulls fill with the default.
-    filled = Serie.from_arrow_array(
-        pa.array(["USD", None]), Field("value", ascii32, nullable=False)
-    ).into_arrow_array()
-    assert filled.to_pylist() == [b"USD\x00", b"\x00" * 4]
+    # A required column refuses a null by path rather than writing its default.
+    with pytest.raises(ValueError, match=r"required Arrow field \$\.value holds 1 null values"):
+        Serie.from_arrow_array(pa.array(["USD", None]), Field("value", ascii32, nullable=False))
 
     row = DataType.from_fields([Field("ccy", "utf8")])
     stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
@@ -959,16 +954,14 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
         stored, Field("row", row, nullable=False)
     ).into_arrow_batch().column(0).to_pylist() == ["USD", None]
 
-    # A safe cast nulls the cell it cannot write - the required column then
-    # fills it with the default - and a strict one names the row.
-    assert Serie.from_arrow_array(
-        pa.array(["EURO!"]), Field("value", ascii32, nullable=False)
-    ).into_arrow_array().to_pylist() == [b"\x00" * 4]
+    # A safe cast nulls the cell a nullable column cannot write; a required
+    # column refuses it by the row, whatever `safe` says.
     assert Serie.from_arrow_array(pa.array(["EURO!"]), ccy).into_arrow_array().to_pylist() == [None]
-    with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
-        Serie.from_arrow_array(
-            pa.array(["EURO!"]), Field("value", ascii32, nullable=False), safe=False
-        ).into_arrow_array()
+    for safe in (True, False):
+        with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
+            Serie.from_arrow_array(
+                pa.array(["EURO!"]), Field("value", ascii32, nullable=False), safe=safe
+            )
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ascii32.arrow_scalar("EURO!")
     with pytest.raises(ValueError, match="non-ASCII"):

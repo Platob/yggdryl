@@ -204,8 +204,6 @@ class TestConstruction:
         assert ChunkedSerie.from_series([text], Field("size", "int64")).as_py() == [None]
         with pytest.raises(ValueError, match="Cannot cast"):
             ChunkedSerie.from_series([text], Field("size", "int64"), safe=False)
-        with pytest.raises(ValueError, match="nullability"):
-            ChunkedSerie.from_series([text], Field("size", "int64"), nullability="lenient")
 
     def test_empty_and_from_serie(self) -> None:
         empty = ChunkedSerie.empty(price())
@@ -444,11 +442,15 @@ class TestCast:
         assert wide.field == Field("price", "float64")
         assert wide.as_py() == [1.0, 2.0, 3.0]
 
-        typed = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [None]])).cast(
+        typed = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [2]])).cast(
             DataType("int64")
         )
         assert typed.field == Field("value", "int64", nullable=False)
-        assert typed.as_py() == [1, 0]
+        assert typed.as_py() == [1, 2]
+        # A datatype target is a required column, so a null is refused by path.
+        absent = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [None]]))
+        with pytest.raises(ValueError, match=r"required Arrow field \$\.value holds 1 null values"):
+            absent.cast(DataType("int64"))
 
         # A chunked serie already under the target is itself, chunks shared.
         same = prices().cast(price())

@@ -405,8 +405,8 @@ mod scalars {
     use arrow_array::types::Int8Type;
     use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Nullability, Scalar, Serie,
-        StructType, TimeUnit, Timezone, UnionMode,
+        ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StructType,
+        TimeUnit, Timezone, UnionMode,
     };
 
     /// Lay one value out as the one-row column `field` types.
@@ -429,12 +429,10 @@ mod scalars {
         read_back_under(field, array, ArrowCastOptions::default())
     }
 
-    /// The door's refusing options: a failed conversion and an absent row a
-    /// required field cannot hold are errors rather than repairs.
+    /// The door's refusing options: a failed conversion is an error rather
+    /// than a null.
     fn refusing() -> ArrowCastOptions {
-        ArrowCastOptions::new()
-            .with_safe(false)
-            .with_nullability(Nullability::Strict)
+        ArrowCastOptions::new().with_safe(false)
     }
 
     fn representative_types() -> Vec<DataType> {
@@ -669,22 +667,22 @@ mod scalars {
         .to_string();
         assert!(error.contains("row 0 is past the 0 rows"), "{error}");
 
-        // A null under a required field is an absent row: repaired to the
-        // field's default by the door's default policy, refused by path under
-        // the strict one.
+        // A null under a required field is an absent row, refused by path
+        // whatever `safe` says - never repaired to the field's default.
         let nullable_child = Serie::from_default(Field::new("child", DataType::Int32, true), 1)
             .unwrap()
             .require_arrow_array()
             .unwrap();
         let required = Field::new("child", DataType::Int32, false);
-        let error = read_back_under(&required, Arc::clone(&nullable_child), refusing())
-            .unwrap_err()
-            .to_string();
-        assert_eq!(error, "required Arrow field $.child holds 1 null values");
-        assert_eq!(
-            read_back(&required, nullable_child).unwrap(),
-            Scalar::from(0_i32)
-        );
+        for error in [
+            read_back_under(&required, Arc::clone(&nullable_child), refusing()),
+            read_back(&required, nullable_child),
+        ] {
+            assert_eq!(
+                error.unwrap_err().to_string(),
+                "required Arrow field $.child holds 1 null values"
+            );
+        }
         assert!(lay_out(&required, &Scalar::Null).is_err());
     }
 
@@ -693,8 +691,8 @@ mod scalars {
         // A dictionary or a run-end pair over the null datatype holds its null
         // default as its one value, and it reads back through a non-nullable
         // Field. A union selecting its null member holds a row the required
-        // field does not accept, so under that field it is an absent row: with
-        // no default to repair it, the default policy refuses it too.
+        // field does not accept, so under that field it is an absent row,
+        // refused by path.
         let dictionary = DataType::dictionary(DataType::Int8, DataType::Null).unwrap();
         let union = DataType::union(
             [(5, Field::new("nothing", DataType::Null, true))],
@@ -706,11 +704,8 @@ mod scalars {
             Field::new("values", DataType::Null, true),
         )
         .unwrap();
-        let refusals = (
-            "invalid DefaultValue datatype: $.value: non-nullable field has only a logical-null default",
-            "required Arrow field $.value holds 1 null values",
-        );
-        for (dtype, refused) in [(dictionary, None), (union, Some(refusals)), (encoded, None)] {
+        let refusal = "required Arrow field $.value holds 1 null values";
+        for (dtype, refused) in [(dictionary, None), (union, Some(refusal)), (encoded, None)] {
             let expected = dtype.default_value().unwrap();
             // A required field whose datatype's only default is null has no
             // default - `Field::default_value` refuses it by design - so the
@@ -726,12 +721,12 @@ mod scalars {
             assert_eq!(read_back(&holder, Arc::clone(&array)).unwrap(), expected);
             match refused {
                 None => assert_eq!(read_back(&field, Arc::clone(&array)).unwrap(), expected),
-                Some((repairing, strict)) => {
-                    let error = read_back(&field, Arc::clone(&array)).unwrap_err();
-                    assert_eq!(error.to_string(), repairing, "{dtype}");
-                    let error =
-                        read_back_under(&field, Arc::clone(&array), refusing()).unwrap_err();
-                    assert_eq!(error.to_string(), strict, "{dtype}");
+                Some(refusal) => {
+                    for options in [ArrowCastOptions::default(), refusing()] {
+                        let error =
+                            read_back_under(&field, Arc::clone(&array), options).unwrap_err();
+                        assert_eq!(error.to_string(), refusal, "{dtype}");
+                    }
                 }
             }
             // A typed pairing is the field's own contract: it refuses the
@@ -762,18 +757,15 @@ mod scalars {
             read_back(&nullable, Arc::clone(&selected_null)).unwrap(),
             union.default_value().unwrap()
         );
-        // Under a required field the selected null is an absent row: repaired
-        // to the union's own default by the default policy, and refused by path
-        // under the strict one - never read back as itself.
-        let required = Field::new("choice", union.clone(), false);
-        assert_eq!(
-            read_back(&required, Arc::clone(&selected_null)).unwrap(),
-            union.default_value().unwrap()
-        );
-        let error = read_back_under(&required, selected_null, refusing())
-            .unwrap_err()
-            .to_string();
-        assert_eq!(error, "required Arrow field $.choice holds 1 null values");
+        // Under a required field the selected null is an absent row, refused
+        // by path - never read back as itself nor as the union's default.
+        let required = Field::new("choice", union, false);
+        for options in [ArrowCastOptions::default(), refusing()] {
+            let error = read_back_under(&required, Arc::clone(&selected_null), options)
+                .unwrap_err()
+                .to_string();
+            assert_eq!(error, "required Arrow field $.choice holds 1 null values");
+        }
     }
 
     #[test]

@@ -741,18 +741,17 @@ impl PySerie {
     ///
     /// With no field the column is named `item` and typed by what the array
     /// proves about itself; with one, an exact layout shares the buffers and
-    /// any other is cast under the three options.
+    /// any other is cast under the two options.
     #[staticmethod]
-    #[pyo3(signature = (array, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (array, field = None, *, safe = true, representation = "value"))]
     fn from_arrow_array(
         py: Python<'_>,
         array: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Py<PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let array = ArrayIntake::from_value(array)?;
         let field = field_of(field)?;
         let serie = py
@@ -764,16 +763,15 @@ impl PySerie {
     /// Take one record batch as a record column: of its own schema, under
     /// the root `row`, or cast into `root`.
     #[staticmethod]
-    #[pyo3(signature = (batch, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (batch, root = None, *, safe = true, representation = "value"))]
     fn from_arrow_batch(
         py: Python<'_>,
         batch: &Bound<'_, PyAny>,
         root: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Py<PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let root = field_of(root)?;
         let batch = record_batch_intake(batch)?;
         let serie = py
@@ -788,16 +786,15 @@ impl PySerie {
     /// Drain a record batch stream into one record column: of its own
     /// schema, or cast into `root` by one plan.
     #[staticmethod]
-    #[pyo3(signature = (reader, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (reader, root = None, *, safe = true, representation = "value"))]
     fn from_arrow_reader(
         py: Python<'_>,
         reader: &Bound<'_, PyAny>,
         root: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Py<PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let root = field_of(root)?;
         let reader = stream_of(reader)?;
         // The whole drain and join run off the GIL; a Python-backed reader
@@ -829,16 +826,15 @@ impl PySerie {
     /// anything else one row.
     #[staticmethod]
     #[pyo3(name = "from_")]
-    #[pyo3(signature = (value, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (value, field = None, *, safe = true, representation = "value"))]
     fn from_(
         py: Python<'_>,
         value: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Py<PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         described(py, serie_from_py(value, field, options)?)
     }
 
@@ -1077,16 +1073,15 @@ impl PySerie {
     /// The cast runs off the GIL over a clone of the column, taken and
     /// released before it starts, so another thread writing this serie waits
     /// for the GIL rather than finding it borrowed.
-    #[pyo3(signature = (field, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (field, *, safe = true, representation = "value"))]
     fn cast(
         slf: &Bound<'_, Self>,
         field: &Bound<'_, PyAny>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Py<PyAny>> {
         let py = slf.py();
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let target = target_of(field)?;
         let serie = slf.borrow().inner.clone();
         let cast = py
@@ -1325,15 +1320,14 @@ impl PySerieReader {
     /// Read `reader`'s batches as record columns: of its own schema, under
     /// the root `row`, or cast into `root` by one plan compiled here.
     #[staticmethod]
-    #[pyo3(signature = (reader, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (reader, root = None, *, safe = true, representation = "value"))]
     fn from_arrow_reader(
         reader: &Bound<'_, PyAny>,
         root: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let root = field_of(root)?;
         let reader = SerieReader::from_arrow_reader(root.as_ref(), stream_of(reader)?, options)
             .map_err(value_error)?;
@@ -1352,15 +1346,14 @@ impl PySerieReader {
     /// become one held item.
     #[staticmethod]
     #[pyo3(name = "from_")]
-    #[pyo3(signature = (value, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (value, root = None, *, safe = true, representation = "value"))]
     fn from_(
         value: &Bound<'_, PyAny>,
         root: Option<&Bound<'_, PyAny>>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         serie_reader_from_py(value, root, options).map(Self::from_inner)
     }
 
@@ -1390,15 +1383,14 @@ impl PySerieReader {
     /// named `value` - as a new reader; this one is spent afterwards. The
     /// options and the target are resolved before the reader is taken, so a
     /// refused one leaves it usable.
-    #[pyo3(signature = (field, *, safe = true, nullability = "default", representation = "value"))]
+    #[pyo3(signature = (field, *, safe = true, representation = "value"))]
     fn cast(
         &mut self,
         field: &Bound<'_, PyAny>,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let target = target_of(field)?;
         let reader = self.take()?;
         reader

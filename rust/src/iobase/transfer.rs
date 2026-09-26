@@ -946,7 +946,7 @@ pub(crate) fn leaf_reader(
             true,
             true,
             true,
-            crate::ArrowCastOptions::declared(options.safe()),
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
         )?),
         None => Ok(reader),
     }

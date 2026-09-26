@@ -8,16 +8,12 @@ use arrow_array::{Array, ArrayRef, Int64Array, StringArray, UnionArray};
 use arrow_buffer::ScalarBuffer;
 use arrow_schema::{DataType as ArrowDataType, UnionFields};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie, SerieValue, UnionMode,
-    UnionSerie,
+    ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, UnionMode, UnionSerie,
 };
 
-/// The options a refusal is pinned under: a present value is never nulled
-/// and an absent one never repaired.
+/// The options a refusal is pinned under: a present value is never nulled.
 fn strict() -> ArrowCastOptions {
-    ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict)
+    ArrowCastOptions::new().with_safe(false)
 }
 
 /// A union of a required identifier and a nullable symbol.

@@ -596,9 +596,7 @@ where
     // missing. The plan is built once per layout the batches carry, and an
     // exact batch never reaches it.
     let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
-    let options = crate::ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(crate::Nullability::Strict);
+    let options = crate::ArrowCastOptions::new().with_safe(false);
     let mut plans = crate::cast::PlanCache::new();
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;

@@ -248,10 +248,9 @@ impl JsSerie {
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         column_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
             .map(Self::from_core)
     }
@@ -263,10 +262,9 @@ impl JsSerie {
         bytes: Uint8Array,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         records_from_ipc(&bytes, root.as_ref().map(|root| &root.inner), options)
             .map(Self::from_core)
     }
@@ -278,10 +276,9 @@ impl JsSerie {
         mut reader: ClassInstance<'_, JsBatchReader>,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         Serie::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
@@ -596,10 +593,9 @@ impl JsSerie {
         &self,
         target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         let target = match target {
             Either::A(field) => field.inner.clone(),
             Either::B(dtype) => dtype.inner.clone().required_field("value"),
@@ -914,10 +910,9 @@ impl JsSerieReader {
         mut reader: ClassInstance<'_, JsBatchReader>,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         let inner = SerieReader::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
@@ -987,10 +982,9 @@ impl JsSerieReader {
         &mut self,
         target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         let target = match target {
             Either::A(field) => field.inner.clone(),
             Either::B(dtype) => dtype.inner.clone().required_field("value"),

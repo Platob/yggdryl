@@ -594,7 +594,7 @@ impl Refine {
                 ArrowCastPlan::compile_schema(
                     batch.schema_ref(),
                     root,
-                    ArrowCastOptions::declared(true),
+                    ArrowCastOptions::new(),
                     Deferred::default(),
                 )
             })?

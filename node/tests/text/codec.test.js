@@ -1190,10 +1190,16 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     const emptyVector = Serie.fromScalars(new Field('value', 'int32', true), empty).intoArrowArray()
     assert.equal(emptyVector.length, 0)
 
+    // A value its column cannot hold is null where the column may hold one,
+    // and refused by that value where it may not.
     const overflowing = arrow.vectorFromArray(Int32Array.of(200))
     assert.deepEqual(
-      Serie.fromArrowArray(overflowing, new Field('value', 'int8', false)).intoScalar().asJs(),
-      [0],
+      Serie.fromArrowArray(overflowing, new Field('value', 'int8', true)).intoScalar().asJs(),
+      [null],
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(overflowing, new Field('value', 'int8', false)),
+      /Can't cast value 200 to type Int8/,
     )
   })
 
@@ -1248,42 +1254,46 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     )
   })
 
-  test('a value landed from Arrow is cast under the three answers the caller gave', () => {
+  test('a value landed from Arrow is cast under the two answers the caller gave; absence is the target field own', () => {
     const overflowing = arrow.vectorFromArray(Int32Array.of(7, 200))
+    // A required column refuses a value it cannot convert, by that value,
+    // whatever `safe` says.
     const quantity = new Field('value', 'int8', false)
-    assert.deepEqual(Serie.fromArrowArray(overflowing, quantity).intoScalar().asJs(), [7, 0])
     assert.throws(
-      () => Serie.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
+      () => Serie.fromArrowArray(overflowing, quantity),
       /Can't cast value 200 to type Int8/,
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(overflowing, quantity, { safe: false }),
+      /Can't cast value 200 to type Int8/,
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity),
+      /Can't cast value 200 to type Int8/,
+    )
+
+    // A nullable target takes the value it cannot convert as null under
+    // `safe`, and refuses it, by that value, once `safe` is false.
+    assert.deepEqual(
+      Serie.fromArrowArray(overflowing, 'value: int8').intoScalar().asJs(),
+      [7, null],
     )
     assert.throws(
       () => Serie.fromArrowArray(overflowing, 'value: int8', { safe: false }),
       /Can't cast value 200 to type Int8/,
     )
-    assert.equal(
-      Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity).scalar(0).asJs(),
-      0,
-    )
-    assert.throws(
-      () =>
-        Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
-          safe: false,
-        }),
-      /Can't cast value 200 to type Int8/,
-    )
 
     const table = arrow.tableFromArrays({ id: Int32Array.from([1, 2]) })
     const root = Field.from('row: struct<id: int64, venue: utf8 not null> not null')
-    assert.deepEqual(Serie.fromArrowBatch(table, root).intoScalar().asJs(), [[1, ''], [2, '']])
     for (const read of [
-      () => Serie.fromArrowBatch(table, root, { nullability: 'strict' }),
-      () => Serie.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
+      () => Serie.fromArrowBatch(table, root),
+      () => Serie.fromArrowBatch(table.batches[0], root),
     ]) {
       assert.throws(read, /required Arrow field \$\.venue is missing from the source/)
     }
     assert.throws(
       () => Serie.fromArrowBatch(table, root, { strict: true }),
-      /cast options take safe, nullability and representation/,
+      /cast options take safe and representation/,
     )
   })
 

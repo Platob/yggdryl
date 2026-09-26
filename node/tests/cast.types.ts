@@ -8,7 +8,7 @@ const root: Field = Field.from('row: struct<id: int64> not null')
 const plan: ArrowCastPlan = ArrowCastPlan.compile(
   fields.int32('id'),
   fields.int64('id'),
-  { nullability: 'strict' },
+  { safe: true },
 )
 const fromSchema: ArrowCastPlan = ArrowCastPlan.compile(schema, root)
 const fromTable: ArrowCastPlan = ArrowCastPlan.compile(table, 'row: struct<id: int64> not null')
@@ -23,11 +23,13 @@ const identity: boolean = plan.isIdentity
 plan.preflight()
 
 // @ts-expect-error the compiled answers are read, never written
-plan.options = { safe: true, nullability: 'default', representation: 'value' }
+plan.options = { safe: true, representation: 'value' }
 // @ts-expect-error `safe` is a boolean
 ArrowCastPlan.compile(fields.int32('id'), fields.int64('id'), { safe: 'yes' })
 // @ts-expect-error the private native bridges are hidden
 ArrowCastPlan._compileNative
+// @ts-expect-error a cast option is `safe` or `representation`
+ArrowCastPlan.compile(fields.int32('id'), fields.int64('id'), { strict: true })
 
 void fromSchema
 void fromTable

@@ -51,11 +51,10 @@ pub enum Error {
         /// What the caller supplied, bounded by the shared error-text limit.
         actual: SmolStr,
     },
-    /// A non-nullable target field the source does not satisfy.
-    ///
-    /// Only [`Nullability::Strict`](crate::Nullability::Strict) produces this:
-    /// the default policy writes the field's canonical
-    /// [default](crate::Field::default_value) instead.
+    /// A non-nullable target field the source does not satisfy: a column
+    /// the source does not carry, or rows it leaves null. A cast never
+    /// writes the field's canonical [default](crate::Field::default_value)
+    /// in their place.
     #[non_exhaustive]
     RequiredField {
         /// Dot/bracket path from the cast root, such as `$.users[].zip`.
@@ -414,7 +413,7 @@ pub(crate) fn appended(
         second: crate::SerieReader::from_arrow_reader(
             Some(field),
             incoming,
-            crate::ArrowCastOptions::declared(safe),
+            crate::ArrowCastOptions::new().with_safe(safe),
         )?
         .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
@@ -472,13 +471,13 @@ pub fn combined_as(
         first: crate::SerieReader::from_arrow_reader(
             Some(field),
             left,
-            crate::ArrowCastOptions::declared(safe),
+            crate::ArrowCastOptions::new().with_safe(safe),
         )?
         .into_arrow_reader(),
         second: crate::SerieReader::from_arrow_reader(
             Some(field),
             right,
-            crate::ArrowCastOptions::declared(safe),
+            crate::ArrowCastOptions::new().with_safe(safe),
         )?
         .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,

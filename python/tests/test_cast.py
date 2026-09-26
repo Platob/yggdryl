@@ -17,7 +17,7 @@ from yggdryl import (
     SerieReader,
     StructSerie,
 )
-from yggdryl.enums import NULLABILITIES, REPRESENTATIONS
+from yggdryl.enums import REPRESENTATIONS
 
 ROOT = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
 SOURCE = pa.schema([pa.field("id", pa.int32()), pa.field("symbol", pa.string())])
@@ -39,7 +39,6 @@ def test_a_plan_answers_the_fields_it_was_compiled_between() -> None:
     assert plan.source.type == pa.struct(list(SOURCE))
     assert not plan.is_identity
     assert plan.safe
-    assert plan.nullability == "default"
     assert plan.representation == "value"
     assert "ArrowCastPlan" in repr(plan)
 
@@ -48,16 +47,16 @@ def test_a_plan_answers_the_fields_it_was_compiled_between() -> None:
     assert column.source == pa.field("id", pa.int32())
     assert ArrowCastPlan(pa.field("id", pa.int32()), "id: int64").target == Field("id", "int64")
 
-    # The three cast answers cross explicitly, and each has a vocabulary.
-    strict = ArrowCastPlan(SOURCE, ROOT, safe=False, nullability="strict", representation="bits")
+    # The two cast answers cross explicitly, and each has a vocabulary.
+    # Whether a value may be absent is not one of them: it is the target
+    # field's own nullability, answered one way everywhere.
+    strict = ArrowCastPlan(SOURCE, ROOT, safe=False, representation="bits")
     assert not strict.safe
-    assert strict.nullability == "strict"
     assert strict.representation == "bits"
-    assert set(NULLABILITIES) == {"default", "strict"}
     assert set(REPRESENTATIONS) == {"value", "bits"}
 
     with pytest.raises(ValueError):
-        ArrowCastPlan(SOURCE, ROOT, nullability="lenient")
+        ArrowCastPlan(SOURCE, ROOT, representation="lenient")
 
 
 def test_one_plan_answers_every_column_of_its_source_layout() -> None:
@@ -140,13 +139,10 @@ def test_a_plan_refuses_at_compile_time_what_two_fields_alone_decide() -> None:
     )
     partial = pa.schema([pa.field("id", pa.int32())])
 
-    # `default` writes the target's own default into the column the source
-    # cannot fill; `strict` refuses, and refuses before any column exists.
-    partial_batch = pa.record_batch({"id": pa.array([1], pa.int32())})
-    filled = ArrowCastPlan(partial, required).apply(partial_batch)
-    assert filled.as_py() == [{"id": 1, "symbol": ""}]
-    with pytest.raises(ValueError):
-        ArrowCastPlan(partial, required, nullability="strict")
+    # A required column the source does not carry at all is refused before
+    # any column exists - the two schemas alone decide it.
+    with pytest.raises(ValueError, match="symbol"):
+        ArrowCastPlan(partial, required)
 
     # A column the target does not declare is dropped rather than refused,
     # so a wider source still compiles against a narrower root.
@@ -208,32 +204,27 @@ def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:
     assert Serie.from_arrow_array(empty, nullable, safe=False).as_py() == [None]
     assert Serie.from_arrow_array(empty, nullable, safe=True).as_py() == [None]
 
-    # A required column then answers its nullability, exactly as it does for
-    # a null the source carried: the default repairs it, strictness refuses
-    # it naming the path and the count.
+    # A required column refuses it by path and count, exactly as it does for
+    # a null the source carried - there is no default to fall back to.
     required = Field("quantity", "int32", nullable=False)
-    assert Serie.from_arrow_array(empty, required).as_py() == [0]
     with pytest.raises(
         ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
     ):
-        Serie.from_arrow_array(empty, required, nullability="strict")
+        Serie.from_arrow_array(empty, required)
 
     # The same plan compiled between two schemas answers the same way.
     source = pa.schema([pa.field("quantity", pa.string())])
     target = Field("row", "struct<quantity:int32 not null>", nullable=False)
     batch = pa.record_batch({"quantity": empty})
-    assert ArrowCastPlan(source, target, safe=False).apply(batch).child(
-        "quantity"
-    ).as_py() == [0]
     with pytest.raises(
         ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
     ):
-        ArrowCastPlan(source, target, nullability="strict").apply(batch)
+        ArrowCastPlan(source, target, safe=False).apply(batch)
 
     # Text is text: into a string column the empty cell is the value it is.
     assert Serie.from_arrow_array(empty, Field("symbol", "utf8")).as_py() == [""]
     assert Serie.from_arrow_array(
-        empty, Field("symbol", "utf8", nullable=False), nullability="strict"
+        empty, Field("symbol", "utf8", nullable=False)
     ).as_py() == [""]
 
     # The scalar door reads the same rule.
@@ -243,8 +234,13 @@ def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:
         Field("quantity", "int32", nullable=False).scalar("")
 
 
-class TestArrowNullability:
-    """What a cast does about a required field the source cannot fill."""
+class TestRequiredFieldRefusals:
+    """What a cast does about a required field the source cannot fill.
+
+    A required column refuses absence by its path, and a present value it
+    cannot convert by naming the value, whatever `safe` says; neither falls
+    back to the datatype's canonical default.
+    """
 
     @staticmethod
     def _root() -> Any:
@@ -256,26 +252,16 @@ class TestArrowNullability:
     def _identifiers() -> Any:
         return pa.record_batch({"id": pa.array([1, 2], pa.int64())})
 
-    def test_a_missing_required_column_is_filled_or_named(self) -> None:
+    def test_a_missing_required_column_is_named_by_its_path(self) -> None:
         root = self._root()
         batch = self._identifiers()
 
-        # Default repairs the hole with the target's canonical default.
-        filled = Serie.from_arrow_batch(batch, root).into_arrow_batch()
-        assert filled.column_names == ["id", "symbol"]
-        assert filled.column("symbol").to_pylist() == ["", ""]
-        assert filled.schema.field("symbol").nullable is False
-
-        # Strict refuses it, from the two schemas alone, and names the path.
+        # Refused, from the two schemas alone, naming the path.
         with pytest.raises(
             ValueError,
             match=r"required Arrow field \$\.symbol is missing from the source",
         ):
-            Serie.from_arrow_batch(batch, root, nullability="strict").into_arrow_batch()
-
-        # The policy is a name, and an unknown one is refused by vocabulary.
-        with pytest.raises(ValueError, match="expected one of default, strict"):
-            Serie.from_arrow_batch(batch, root, nullability="lenient").into_arrow_batch()
+            Serie.from_arrow_batch(batch, root).into_arrow_batch()
 
     def test_a_required_column_holding_null_is_named_with_its_count(self) -> None:
         root = self._root()
@@ -286,30 +272,22 @@ class TestArrowNullability:
             }
         )
 
-        assert Serie.from_arrow_batch(
-            batch, root
-        ).into_arrow_batch().column("symbol").to_pylist() == [
-            "AAPL",
-            "",
-            "",
-        ]
         with pytest.raises(
             ValueError, match=r"required Arrow field \$\.symbol holds 2 null values"
         ):
-            Serie.from_arrow_batch(batch, root, nullability="strict").into_arrow_batch()
+            Serie.from_arrow_batch(batch, root).into_arrow_batch()
 
-    def test_a_nullable_column_the_source_lacks_stays_null_under_both(self) -> None:
-        # Nothing is required here, so strictness has nothing to refuse.
+    def test_a_nullable_column_the_source_lacks_stays_null(self) -> None:
+        # Nothing is required here, so there is nothing to refuse.
         root = Field("row", DataType("struct<id: int64, symbol: string>"), False)
         batch = self._identifiers()
 
-        for nullability in ("default", "strict"):
-            cast = Serie.from_arrow_batch(batch, root, nullability=nullability).into_arrow_batch()
-            assert cast.column_names == ["id", "symbol"]
-            assert cast.column("symbol").null_count == 2
-            assert cast.column("symbol").to_pylist() == [None, None]
+        cast = Serie.from_arrow_batch(batch, root).into_arrow_batch()
+        assert cast.column_names == ["id", "symbol"]
+        assert cast.column("symbol").null_count == 2
+        assert cast.column("symbol").to_pylist() == [None, None]
 
-    def test_an_undeclared_source_column_is_dropped_under_both(self) -> None:
+    def test_an_undeclared_source_column_is_dropped(self) -> None:
         root = self._root()
         batch = pa.record_batch(
             {
@@ -319,11 +297,8 @@ class TestArrowNullability:
             }
         )
 
-        # Strictness is about what the target declares, not about what the
-        # source carries beyond it.
-        for nullability in ("default", "strict"):
-            cast = Serie.from_arrow_batch(batch, root, nullability=nullability).into_arrow_batch()
-            assert cast.column_names == ["id", "symbol"]
+        cast = Serie.from_arrow_batch(batch, root).into_arrow_batch()
+        assert cast.column_names == ["id", "symbol"]
 
     def test_a_nested_required_field_is_named_by_its_whole_path(self) -> None:
         root = Field(
@@ -349,19 +324,16 @@ class TestArrowNullability:
             }
         )
 
-        assert Serie.from_arrow_batch(without_zip, root).into_arrow_batch().to_pylist() == [
-            {"account": {"id": 1, "zip": ""}}
-        ]
         with pytest.raises(
             ValueError,
             match=r"required Arrow field \$\.account\.zip is missing from the source",
         ):
-            Serie.from_arrow_batch(without_zip, root, nullability="strict").into_arrow_batch()
+            Serie.from_arrow_batch(without_zip, root).into_arrow_batch()
         with pytest.raises(
             ValueError,
             match=r"required Arrow field \$\.account\.zip holds 1 null values",
         ):
-            Serie.from_arrow_batch(with_null_zip, root, nullability="strict").into_arrow_batch()
+            Serie.from_arrow_batch(with_null_zip, root).into_arrow_batch()
 
         # A collection is one step of that path too, spelled with brackets.
         listed = Field(
@@ -379,9 +351,9 @@ class TestArrowNullability:
             ValueError,
             match=r"required Arrow field \$\.users\[\]\.zip holds 2 null values",
         ):
-            Serie.from_arrow_batch(rows, listed, nullability="strict").into_arrow_batch()
+            Serie.from_arrow_batch(rows, listed).into_arrow_batch()
 
-    def test_safe_and_strictness_are_two_independent_answers(self) -> None:
+    def test_a_required_column_refuses_a_value_it_cannot_convert(self) -> None:
         root = Field(
             "row", DataType("struct<id: int64, quantity: int8 not null>"), False
         )
@@ -392,26 +364,15 @@ class TestArrowNullability:
             }
         )
 
-        # `safe` turns the value the target cannot hold into a null, which the
-        # default policy then repairs.
-        assert Serie.from_arrow_batch(
-            batch, root
-        ).into_arrow_batch().column("quantity").to_pylist() == [7, 0]
-
-        # Strictness refuses the null a lenient conversion would leave in a
-        # required column, so the conversion is refused by the value itself.
+        # A required column refuses the null a safe conversion would leave,
+        # so the conversion is refused by the value itself - never filled
+        # with a default - whatever `safe` says.
         with pytest.raises(ValueError, match="Can't cast value 130 to type Int8"):
-            Serie.from_arrow_batch(batch, root, nullability="strict").into_arrow_batch()
+            Serie.from_arrow_batch(batch, root).into_arrow_batch()
+        with pytest.raises(ValueError, match="Can't cast value 130 to type Int8"):
+            Serie.from_arrow_batch(batch, root, safe=False).into_arrow_batch()
 
-        # `safe=False` refuses the conversion itself, before any policy about
-        # absence applies - so both policies raise the same conversion error.
-        for nullability in ("default", "strict"):
-            with pytest.raises(ValueError, match="Can't cast value 130 to type Int8"):
-                Serie.from_arrow_batch(
-                    batch, root, safe=False, nullability=nullability
-                ).into_arrow_batch()
-
-    def test_a_strict_reader_refuses_when_the_batch_is_pulled(self) -> None:
+    def test_a_reader_refuses_when_the_batch_is_pulled(self) -> None:
         root = self._root()
         stored = pa.schema(
             [pa.field("id", pa.int64()), pa.field("symbol", pa.string())]
@@ -427,7 +388,7 @@ class TestArrowNullability:
         # A null is a property of rows, so the reader is built and answers its
         # schema before anything refuses it.
         reader = SerieReader.from_arrow_reader(
-            pa.RecordBatchReader.from_batches(stored, [batch]), root, nullability="strict"
+            pa.RecordBatchReader.from_batches(stored, [batch]), root
         ).into_arrow_reader()
         assert reader.schema.names == ["id", "symbol"]
         with pytest.raises(
@@ -444,7 +405,7 @@ class TestArrowNullability:
             match=r"required Arrow field \$\.symbol is missing from the source",
         ):
             SerieReader.from_arrow_reader(
-                pa.RecordBatchReader.from_batches(absent, []), root, nullability="strict"
+                pa.RecordBatchReader.from_batches(absent, []), root
             ).into_arrow_reader()
 
 
@@ -488,19 +449,13 @@ def test_the_bits_reading_crosses_every_same_width_pair() -> None:
         stored, Field("digest", "uint64"), **bits
     ).into_arrow_array().equals(unsigned64)
 
-    # The reading says what the bytes mean; nullability still says what an
-    # absent value means.
-    required = Serie.from_arrow_array(
-        pa.array([None, 2**64 - 1], type=pa.uint64()),
-        Field("digest", "int64", nullable=False),
-        **bits,
-    ).into_arrow_array()
-    assert required.to_pylist() == [0, -1]
+    # The `representation` reading says only what the bytes mean when a
+    # value is present; a required column still refuses an absent one by
+    # its path.
     with pytest.raises(ValueError, match=r"\$\.digest"):
         Serie.from_arrow_array(
-            pa.array([None], type=pa.uint64()),
+            pa.array([None, 2**64 - 1], type=pa.uint64()),
             Field("digest", "int64", nullable=False),
-            nullability="strict",
             **bits,
         ).into_arrow_array()
 

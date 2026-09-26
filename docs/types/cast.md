@@ -6,28 +6,27 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 
 | Key | Value |
 | --- | --- |
-| Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Nullability`, `Representation`; `validate_value` and `canonicalize_value` for rows |
+| Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Representation`; `validate_value` and `canonicalize_value` for rows |
 | Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
 | Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
-| Exact input | The identity plan: the same buffers, and a column already under the target is itself |
-| `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
-| `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
+| Exact input | The identity plan: the same buffers, and a column already under the target is itself - where the source states every nullability the target requires; a nullable source under a required target is read for its nulls |
+| `safe` | Whether a *present* value may be converted into a column that may hold null. `true`: a failed conversion becomes null; `false`: error |
 | `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
-| Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand. Under `strict` a required column refuses a value it cannot convert by that value, since the null it would become is refused anyway |
-| Declared columns | A column a schema declares - a `Selector` projection with a datatype, a `Plan` `create` section, a derived column, the record options' `field`, the stored field a write completes onto, an Iceberg table's schema - casts by one rule: a nullable column takes a value it cannot convert as null when `safe` (the default), and a not-null column refuses that value, a null, an empty text cell and a missing column by name, never writing its canonical default |
-| Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; `nullability` decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
+| Absence | No option: the target field's own nullability, one rule at every door - the engine's, a `Selector` projection with a datatype, a `Plan` `create` section, a derived column, the record options' `field`, the stored field a write completes onto, an Iceberg table's schema. A nullable column holds null; a required one refuses a null, an empty text cell and a column the source does not carry by path, and never writes its canonical default ([Required columns](#required-columns)) |
+| Independent | `safe` and the field compose: a failed conversion becomes null only where the column may hold one, so a required column refuses a value it cannot convert by that value whatever `safe` says; `representation` never changes what absence means |
+| Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; the field's nullability decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
 | Layouts | Every serie layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
-| Bindings | `Serie`, `ChunkedSerie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
+| Bindings | `Serie`, `ChunkedSerie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the two options by name; `Scalar` rows in Rust and Python |
 
 ## Use
 
-An array enters as the column of a field. `safe` decides whether a failed conversion errors or defaults.
+An array enters as the column of a field. `safe` decides whether a failed conversion errors or becomes null, and only a column that may hold a null lets it become one: a required column refuses the value instead ([Required columns](#required-columns)).
 
 === "Rust"
 
@@ -35,34 +34,35 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let field = Field::new("id", DataType::Int64, false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
 
     // One door: the array lands as the column of `field`, cast on the way in.
-    let strict_conversion = ArrowCastOptions::new().with_safe(false);
-    let ids = Serie::from_arrow_array(Some(&field), text, strict_conversion)?;
+    let unsafe_cast = ArrowCastOptions::new().with_safe(false);
+    let ids = Serie::from_arrow_array(Some(&field), text, unsafe_cast)?;
     assert_eq!(ids.field(), Some(&field));
     // A typed read is a narrowing of the column that came out.
     assert_eq!(ids.as_int64().expect("an int64 column").values(), &[1, 2]);
 
-    // safe nulls a failed conversion; the nullability policy then decides
-    // whether that null may stand in for a declared value.
+    // safe nulls a failed conversion where the column may hold a null.
     let broken: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
-    assert!(Serie::from_arrow_array(Some(&field), Arc::clone(&broken), strict_conversion).is_err());
-    let repaired =
-        Serie::from_arrow_array(Some(&field), Arc::clone(&broken), ArrowCastOptions::new())?;
-    assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[1, 0]);
-    assert_eq!(repaired.null_count(), 0);
+    let nullable = Field::new("id", DataType::Int64, true);
+    let nulled =
+        Serie::from_arrow_array(Some(&nullable), Arc::clone(&broken), ArrowCastOptions::new())?;
+    assert_eq!(nulled.null_count(), 1);
+    assert!(nulled.is_null(1)?);
+    assert!(Serie::from_arrow_array(Some(&nullable), Arc::clone(&broken), unsafe_cast).is_err());
 
-    // Strict refuses what the required column cannot hold instead of
-    // defaulting it: the value it cannot convert, by that value.
-    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let refused = Serie::from_arrow_array(Some(&field), broken, strict)
-        .unwrap_err()
-        .to_string();
-    assert!(refused.contains("not a number"), "{refused}");
+    // A required column has nowhere to put that null, so it refuses the
+    // value it cannot convert, by that value, whatever safe says.
+    for options in [ArrowCastOptions::new(), unsafe_cast] {
+        let refused = Serie::from_arrow_array(Some(&field), Arc::clone(&broken), options)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("not a number"), "{refused}");
+    }
 
     // A column in hand casts once under another field.
     let narrow = ids.cast(&Field::new("id", DataType::Int32, false), ArrowCastOptions::new())?;
@@ -81,28 +81,29 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     assert ids.field == field
     assert ids.into_arrow_array().equals(pa.array([1, 2], type=pa.int64()))
 
-    # safe nulls a failed conversion; the nullability policy then decides
-    # whether that null may stand in for a declared value.
+    # safe nulls a failed conversion where the column may hold a null.
     broken = pa.array(["1", "not a number"])
-    repaired = Serie.from_arrow_array(broken, field)
-    assert repaired.as_py() == [1, 0]
-    assert repaired.null_count() == 0
+    nullable = Field("id", "int64")
+    nulled = Serie.from_arrow_array(broken, nullable)
+    assert nulled.as_py() == [1, None]
+    assert nulled.null_count() == 1
 
     try:
-        Serie.from_arrow_array(broken, field, safe=False)
+        Serie.from_arrow_array(broken, nullable, safe=False)
     except ValueError:
         pass
     else:
         raise AssertionError("an unsafe cast must fail")
 
-    # Strict refuses what the required column cannot hold instead of
-    # defaulting it: the value it cannot convert, by that value.
-    try:
-        Serie.from_arrow_array(broken, field, nullability="strict")
-    except ValueError as error:
-        assert "not a number" in str(error)
-    else:
-        raise AssertionError("a strict cast must refuse the value")
+    # A required column has nowhere to put that null, so it refuses the
+    # value it cannot convert, by that value, whatever safe says.
+    for safe in (True, False):
+        try:
+            Serie.from_arrow_array(broken, field, safe=safe)
+        except ValueError as error:
+            assert "not a number" in str(error), error
+        else:
+            raise AssertionError("a required column must refuse the value")
 
     # A column in hand casts once; a DataType is its required `value` field.
     narrow = ids.cast(DataType("int32"))
@@ -127,18 +128,17 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     assert.ok(ids.field.equals(field))
     assert.deepEqual([...ids.intoArrowArray()], [1n, 2n])
 
-    // safe nulls a failed conversion; the nullability policy then decides
-    // whether that null may stand in for a declared value.
+    // safe nulls a failed conversion where the column may hold a null.
     const broken = arrow.vectorFromArray(['1', 'not a number'], new arrow.Utf8())
-    assert.deepEqual(Serie.fromArrowArray(broken, field).asJs(), [1, 0])
-    assert.throws(() => Serie.fromArrowArray(broken, field, { safe: false }), /not a number/)
+    const nullable = fields.int64('id')
+    assert.deepEqual(Serie.fromArrowArray(broken, nullable).asJs(), [1, null])
+    assert.throws(() => Serie.fromArrowArray(broken, nullable, { safe: false }), /not a number/)
 
-    // Strict refuses what the required column cannot hold instead of
-    // defaulting it: the value it cannot convert, by that value.
-    assert.throws(
-      () => Serie.fromArrowArray(broken, field, { nullability: 'strict' }),
-      /not a number/,
-    )
+    // A required column has nowhere to put that null, so it refuses the
+    // value it cannot convert, by that value, whatever safe says.
+    for (const options of [{ safe: true }, { safe: false }]) {
+      assert.throws(() => Serie.fromArrowArray(broken, field, options), /not a number/)
+    }
 
     // A column in hand casts once under another field.
     const narrow = ids.cast(fields.int32('id', { nullable: false }))
@@ -159,8 +159,8 @@ text and a number - takes the ordinary conversion, and a datatype whose values f
 (a [fixed string](text/string.md), a [registered code](codes/index.md), a [UUID](uuid.md), a [version](version.md))
 keeps that rule: four arbitrary bytes are not a currency merely because a currency is four bytes.
 
-Nullability is unaffected: the reading says what the bytes mean, and `nullability` still says
-what an absent value means.
+Absence is unaffected: the reading says what the bytes mean, and the target field's nullability
+still says whether a value may be absent ([Required columns](#required-columns)).
 
 === "Rust"
 
@@ -444,58 +444,96 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
     assert.equal(Serie.fromArrowBatch(source).field.name, 'row')
     ```
 
-## Strict nullability
+## Required columns
 
-`nullability` decides what a cast does about a non-nullable target field the source cannot fill.
-`default` repairs - the canonical [default](field.md) - when a caller asks for it at the engine's
-doors. `strict` refuses, naming the full dot/bracket path from the cast root, and it is what every
-declared column runs: a record read or write, a stored field, a `Selector` or a `Plan` never writes
-a required column's default in place of a value it could not read. The two failures happen at different times: a required field *no source
-column carries* is decided by the fields alone and so is refused when the cast is compiled,
-before any batch exists; a required field *holding null* is a property of the rows and is refused
-when that batch is cast.
+Whether a value may be absent is no option: it is the target field's own nullability, and every
+cast answers it one way. A nullable column holds null - a column the source does not carry is
+all-null, a null stays one, and a value it cannot convert becomes null under `safe`. A required
+column holds a value in every exposed row. It refuses a column the source does not carry, a null,
+and an [empty text cell](#empty-text) entering a non-text column, naming the full dot/bracket path
+from the cast root; and it refuses a present value it cannot convert by that value whatever `safe`
+says, because the null a lenient conversion would leave has nowhere to stand. It never writes its
+canonical [default](datatype.md#default-values) in place of a value it could not read.
 
-A missing *nullable* field is still all-null, and an undeclared source column is still dropped:
-strictness is about declared values that are absent, not about columns nobody declared.
+The failures happen at different times: a required field *no source column carries* is decided by
+the fields alone and so is refused when the cast is compiled, before any batch exists; a required
+field *holding null* is a property of the rows and is refused, with its null count, when that
+batch is cast.
+
+- A datatype whose own canonical default is null - `null`, or an encoding whose values hold only
+  nulls - keeps its nulls under a required field: there null is its value, not an absence.
+- An undeclared source column is dropped: the rule is about what the target declares, not about
+  what the source carries beyond it.
+- The one repair is internal: a column a declaring protocol fills after the cast - a
+  [digest](../hashing.md) holder, a `TRANSFORM:` or `PARTITION:` derived column - may arrive
+  absent for that protocol to fill, and
+  [`apply_arrow_batch`](field.md#applying-a-schemas-declarations) checks the finished batch again.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Int32Array, RecordBatch};
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StructType};
 
-    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+    let options = ArrowCastOptions::new();
     let root = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
     ])?)
     .required_field("row");
 
-    let schema = Arc::new(Schema::new(vec![ArrowField::new(
-        "id",
-        ArrowDataType::Int32,
-        false,
-    )]));
-    let batch = RecordBatch::try_new(
-        Arc::clone(&schema),
-        vec![Arc::new(Int32Array::from(vec![1])) as ArrayRef],
-    )?;
-
-    // Default: the hole is filled with the target's canonical default.
-    let filled = Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())?;
-    assert_eq!(filled.into_arrow_batch()?.num_columns(), 2);
-
-    // Strict: refused, by path - and refused at compile time, because two
-    // fields are all it takes to know.
-    let message = Serie::from_arrow_batch(Some(&root), &batch, strict)
+    // A required column the source does not carry: two fields are all it
+    // takes to know, so it is refused when the plan is compiled.
+    let ids = Arc::new(Schema::new(vec![ArrowField::new("id", ArrowDataType::Int32, false)]));
+    let source = Field::from_arrow_schema("row", &ids)?;
+    let message = ArrowCastPlan::compile(&source, &root, options)
         .unwrap_err()
         .to_string();
     assert_eq!(message, "required Arrow field $.symbol is missing from the source");
-    let source = Field::from_arrow_schema("row", &schema)?;
-    assert!(ArrowCastPlan::compile(&source, &root, strict).is_err());
+
+    // A missing nullable column is all-null instead.
+    let optional = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])?)
+    .required_field("row");
+    let batch = RecordBatch::try_new(
+        Arc::clone(&ids),
+        vec![Arc::new(Int32Array::from(vec![1])) as ArrayRef],
+    )?;
+    let filled = Serie::from_arrow_batch(Some(&optional), &batch, options)?;
+    assert_eq!(filled.child("symbol").map(Serie::null_count), Some(1));
+
+    // A null in a required column is a property of the rows, refused when
+    // that batch is cast, by path and count.
+    let quotes = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            ArrowField::new("id", ArrowDataType::Int32, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, true),
+        ])),
+        vec![
+            Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef,
+            Arc::new(StringArray::from(vec![Some("AAPL"), None])) as ArrayRef,
+        ],
+    )?;
+    let message = Serie::from_arrow_batch(Some(&root), &quotes, options)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(message, "required Arrow field $.symbol holds 1 null values");
+
+    // A value a required column cannot convert is refused by that value,
+    // even under safe; a nullable column takes it as null.
+    let broken: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
+    let required = DataType::Int64.required_field("id");
+    let refused = Serie::from_arrow_array(Some(&required), Arc::clone(&broken), options)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("not a number"), "{refused}");
+    let nullable = DataType::Int64.nullable_field("id");
+    assert!(Serie::from_arrow_array(Some(&nullable), broken, options)?.is_null(1)?);
     ```
 
 === "Python"
@@ -506,24 +544,47 @@ strictness is about declared values that are absent, not about columns nobody de
     from yggdryl import ArrowCastPlan, DataType, Field, Serie
 
     root = Field("row", DataType("struct<id: int64, symbol: string not null>"), False)
-    batch = pa.record_batch({"id": pa.array([1], pa.int32())})
 
-    # Default: the hole is filled with the target's canonical default.
-    assert Serie.from_arrow_batch(batch, root).into_arrow_batch().num_columns == 2
-
-    # Strict: refused, by path - and refused where the plan is compiled.
+    # A required column the source does not carry is refused by path, and
+    # refused where the plan is compiled: two schemas are all it takes.
+    ids = pa.record_batch({"id": pa.array([1], pa.int32())})
     try:
-        Serie.from_arrow_batch(batch, root, nullability="strict")
+        Serie.from_arrow_batch(ids, root)
     except ValueError as error:
         assert str(error) == "required Arrow field $.symbol is missing from the source"
     else:
-        raise AssertionError("a strict cast must refuse the missing column")
+        raise AssertionError("a required column must refuse the missing column")
     try:
-        ArrowCastPlan(batch.schema, root, nullability="strict")
+        ArrowCastPlan(ids.schema, root)
     except ValueError as error:
-        assert "$.symbol" in str(error)
+        assert "$.symbol" in str(error), error
     else:
         raise AssertionError("the plan must refuse the missing column")
+
+    # A missing nullable column is all-null instead.
+    optional = Field("row", DataType("struct<id: int64, symbol: string>"), False)
+    assert Serie.from_arrow_batch(ids, optional).as_py() == [{"id": 1, "symbol": None}]
+
+    # A null in a required column is refused when that batch is cast, by
+    # path and count.
+    quotes = pa.record_batch({"id": pa.array([1, 2], pa.int32()), "symbol": ["AAPL", None]})
+    try:
+        Serie.from_arrow_batch(quotes, root)
+    except ValueError as error:
+        assert str(error) == "required Arrow field $.symbol holds 1 null values"
+    else:
+        raise AssertionError("a required column must refuse the null")
+
+    # A value a required column cannot convert is refused by that value,
+    # even under safe; a nullable column takes it as null.
+    broken = pa.array(["1", "not a number"])
+    try:
+        Serie.from_arrow_array(broken, Field("id", "int64", nullable=False))
+    except ValueError as error:
+        assert "not a number" in str(error), error
+    else:
+        raise AssertionError("a required column must refuse the value")
+    assert Serie.from_arrow_array(broken, Field("id", "int64")).as_py() == [1, None]
     ```
 
 === "JavaScript"
@@ -538,20 +599,41 @@ strictness is about declared values that are absent, not about columns nobody de
       [Field.from('id: int64'), Field.from('symbol: utf8 not null')],
       { nullable: false },
     )
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n], new arrow.Int64()),
-    })
 
-    // Default: the hole is filled with the target's canonical default.
-    assert.equal(Serie.fromArrowBatch(table, root).intoArrowBatch().numCols, 2)
-
-    // Strict: refused, by path - and refused where the plan is compiled.
+    // A required column the source does not carry is refused by path, and
+    // refused where the plan is compiled: two schemas are all it takes.
+    const ids = new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) })
     const missing = /required Arrow field \$\.symbol is missing from the source/
-    assert.throws(() => Serie.fromArrowBatch(table, root, { nullability: 'strict' }), missing)
-    assert.throws(
-      () => ArrowCastPlan.compile(table.schema, root, { nullability: 'strict' }),
-      missing,
+    assert.throws(() => Serie.fromArrowBatch(ids, root), missing)
+    assert.throws(() => ArrowCastPlan.compile(ids.schema, root), missing)
+
+    // A missing nullable column is all-null instead.
+    const optional = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8')],
+      { nullable: false },
     )
+    assert.deepEqual(Serie.fromArrowBatch(ids, optional).child('symbol').asJs(), [null])
+
+    // A null in a required column is refused when that batch is cast, by
+    // path and count.
+    const quotes = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+    })
+    assert.throws(
+      () => Serie.fromArrowBatch(quotes, root),
+      /required Arrow field \$\.symbol holds 1 null values/,
+    )
+
+    // A value a required column cannot convert is refused by that value,
+    // even under safe; a nullable column takes it as null.
+    const broken = arrow.vectorFromArray(['1', 'not a number'], new arrow.Utf8())
+    assert.throws(
+      () => Serie.fromArrowArray(broken, fields.int64('id', { nullable: false })),
+      /not a number/,
+    )
+    assert.deepEqual(Serie.fromArrowArray(broken, fields.int64('id')).asJs(), [1, null])
     ```
 
 ## Empty text
@@ -559,14 +641,15 @@ strictness is about declared values that are absent, not about columns nobody de
 An empty text cell entering a column that does not hold text is no value. It reads as null
 through every door - the Arrow walk and the scalar door alike - before any spelling is parsed
 and before `safe` is consulted: an empty cell is not a failed conversion, because there was
-nothing to convert. `nullability` then decides what a required column does with that null,
-exactly as it does for a null the source carried. Only zero-length text is empty; whitespace is
+nothing to convert. The field's nullability then decides what that null is, exactly as for a
+null the source carried: a nullable column holds it and a required one refuses it by path
+([Required columns](#required-columns)). Only zero-length text is empty; whitespace is
 a spelling no reader takes and keeps the reader's own answer. A string leaf, a byte leaf and an
 interval keep the empty cell as what it is, and so does a code whose neutral member is the
 empty text, which is also that code's canonical default. A reader that takes only a plain text
 layout - version, url, urn, timezone, mimetype, mediatype under a dictionary source - answers a
-column with no visible value as a null column, so a required target under `strict` is refused
-by path there too.
+column with no visible value as a null column, so a required target is refused by path there
+too.
 
 === "Rust"
 
@@ -574,7 +657,7 @@ by path there too.
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Nullability, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie};
 
     let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
     let unsafe_cast = ArrowCastOptions::new().with_safe(false);
@@ -583,15 +666,14 @@ by path there too.
     let nullable = DataType::Int64.nullable_field("count");
     assert!(Serie::from_arrow_array(Some(&nullable), Arc::clone(&empty), unsafe_cast)?.is_null(0)?);
 
-    // Required: the default under `default`, refused by path under `strict`.
+    // Required: refused by path whatever `safe` says, never given its default.
     let required = DataType::Int64.required_field("count");
-    let repaired = Serie::from_arrow_array(Some(&required), Arc::clone(&empty), ArrowCastOptions::new())?;
-    assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[0]);
-    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let message = Serie::from_arrow_array(Some(&required), empty, strict)
-        .unwrap_err()
-        .to_string();
-    assert_eq!(message, "required Arrow field $.count holds 1 null values");
+    for options in [ArrowCastOptions::new(), unsafe_cast] {
+        let message = Serie::from_arrow_array(Some(&required), Arc::clone(&empty), options)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(message, "required Arrow field $.count holds 1 null values");
+    }
 
     // The scalar door answers the same, and a text column keeps the cell.
     assert_eq!(DataType::Int64.scalar("")?, Scalar::Null);
@@ -611,15 +693,15 @@ by path there too.
     nullable = Field("count", "int64")
     assert Serie.from_arrow_array(empty, nullable, safe=False).null_count() == 1
 
-    # Required: the default under default, refused by path under strict.
+    # Required: refused by path whatever safe says, never given its default.
     required = Field("count", "int64", nullable=False)
-    assert Serie.from_arrow_array(empty, required).as_py() == [0]
-    try:
-        Serie.from_arrow_array(empty, required, nullability="strict")
-    except ValueError as error:
-        assert str(error) == "required Arrow field $.count holds 1 null values"
-    else:
-        raise AssertionError("a strict cast must refuse the empty cell")
+    for safe in (True, False):
+        try:
+            Serie.from_arrow_array(empty, required, safe=safe)
+        except ValueError as error:
+            assert str(error) == "required Arrow field $.count holds 1 null values"
+        else:
+            raise AssertionError("a required column must refuse the empty cell")
 
     # The scalar door answers the same, and a text column keeps the cell.
     assert DataType("int64").scalar("").as_py() is None
@@ -639,13 +721,14 @@ by path there too.
     const nullable = fields.int64('count')
     assert.deepEqual(Serie.fromArrowArray(empty, nullable, { safe: false }).asJs(), [null])
 
-    // Required: the default under default, refused by path under strict.
+    // Required: refused by path whatever safe says, never given its default.
     const required = fields.int64('count', { nullable: false })
-    assert.deepEqual(Serie.fromArrowArray(empty, required).asJs(), [0])
-    assert.throws(
-      () => Serie.fromArrowArray(empty, required, { nullability: 'strict' }),
-      /required Arrow field \$\.count holds 1 null values/,
-    )
+    for (const options of [{ safe: true }, { safe: false }]) {
+      assert.throws(
+        () => Serie.fromArrowArray(empty, required, options),
+        /required Arrow field \$\.count holds 1 null values/,
+      )
+    }
 
     // The scalar door answers the same, and a text column keeps the cell.
     assert.equal(DataType.from('int64').scalar('').kind, 'null')
@@ -672,7 +755,7 @@ each column under that tree, so what a landing proves per batch is the buffers a
 validity words, and each row of a leaf whose layout is not its datatype's whole contract. A
 `Serie` Arrow door handed a record root that is exactly the batch's schema lands the same way,
 resolving the tree for that one call. `as_source` answers the Arrow field an input must lay out
-as, `as_target` the field every cast lands under, `as_options` the three answers, and
+as, `as_target` the field every cast lands under, `as_options` the two answers, and
 `is_identity` whether the plan hands every input of its source layout straight back.
 
 === "Rust"
@@ -754,7 +837,7 @@ as, `as_target` the field every cast lands under, `as_options` the three answers
     assert.equal(plan.source.name, 'row')
     assert.ok(plan.target.equals(root))
     assert.equal(plan.isIdentity, false)
-    assert.deepEqual(plan.options, { safe: true, nullability: 'default', representation: 'value' })
+    assert.deepEqual(plan.options, { safe: true, representation: 'value' })
 
     for (const batch of table.batches) {
       assert.deepEqual(plan.apply(Serie.fromArrowBatch(batch)).child('id').asJs(), [1, 2])
@@ -890,7 +973,7 @@ identity plan it is the inner reader, handed back untouched.
     use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::arrow::batch_reader;
-    use yggdryl::{ArrowCastOptions, DataType, Nullability, Serie, SerieReader, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Serie, SerieReader, StructType};
 
     let root = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
@@ -916,15 +999,17 @@ identity plan it is the inner reader, handed back untouched.
         ],
     )?;
 
-    // Eager: the stream is drained here, into one column.
-    let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted.clone()]);
+    // Eager: the stream is drained here, into one column, so a batch the
+    // cast refuses fails the whole call.
+    let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), quoted.clone()]);
     let held = Serie::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
     assert_eq!(held.len(), 2);
+    let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted.clone()]);
+    assert!(Serie::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new()).is_err());
 
     // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
-    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
     let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted, quoted]);
-    let mut series = SerieReader::from_arrow_reader(Some(&root), stream, strict)?;
+    let mut series = SerieReader::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
     assert_eq!(series.field(), &root);
     assert_eq!(series.next().transpose()?.map(|serie| serie.len()), Some(1));
 
@@ -948,14 +1033,19 @@ identity plan it is the inner reader, handed back untouched.
         "symbol": ["AAPL", None],
     })
 
-    # Eager: a table is drained here, into one column.
-    held = Serie.from_arrow_reader(table, root)
-    assert held.as_py() == [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": ""}]
+    # Eager: a table is drained here, into one column, so a null the
+    # required column refuses fails the whole call.
+    held = Serie.from_arrow_reader(table.slice(0, 1), root)
+    assert held.as_py() == [{"id": 1, "symbol": "AAPL"}]
+    try:
+        Serie.from_arrow_reader(table, root)
+    except ValueError as error:
+        assert "$.symbol" in str(error), error
+    else:
+        raise AssertionError("the null must be refused while draining")
 
     # Lazy: one plan compiled now, and nothing cast until a batch is pulled.
-    series = SerieReader.from_arrow_reader(
-        table.to_reader(max_chunksize=1), root, nullability="strict"
-    )
+    series = SerieReader.from_arrow_reader(table.to_reader(max_chunksize=1), root)
     assert series.field == root
     assert next(series).as_py() == [{"id": 1, "symbol": "AAPL"}]
 
@@ -968,7 +1058,7 @@ identity plan it is the inner reader, handed back untouched.
         raise AssertionError("the null must be refused at the pull")
 
     # The transport face is a pyarrow reader that casts as it is read.
-    reader = SerieReader.from_arrow_reader(table, root, nullability="strict").into_arrow_reader()
+    reader = SerieReader.from_arrow_reader(table, root).into_arrow_reader()
     assert reader.schema.names == ["id", "symbol"]
     try:
         reader.read_all()
@@ -997,14 +1087,17 @@ identity plan it is the inner reader, handed back untouched.
       }).batches
     const source = () => new arrow.Table([...batch(1, 'AAPL'), ...batch(2, null)])
 
-    // Eager: the stream is drained here, into one column.
-    const held = Serie.fromArrowReader(BatchReader.from(source()), root)
-    assert.deepEqual(held.child('symbol').asJs(), ['AAPL', ''])
+    // Eager: the stream is drained here, into one column, so a null the
+    // required column refuses fails the whole call.
+    const held = Serie.fromArrowReader(BatchReader.from(new arrow.Table(batch(1, 'AAPL'))), root)
+    assert.deepEqual(held.child('symbol').asJs(), ['AAPL'])
+    assert.throws(
+      () => Serie.fromArrowReader(BatchReader.from(source()), root),
+      /required Arrow field \$\.symbol holds 1 null values/,
+    )
 
     // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
-    const series = SerieReader.fromArrowReader(BatchReader.from(source()), root, {
-      nullability: 'strict',
-    })
+    const series = SerieReader.fromArrowReader(BatchReader.from(source()), root)
     assert.ok(series.field.equals(root))
     const pulled = series[Symbol.iterator]()
     assert.deepEqual(pulled.next().value.child('id').asJs(), [1])
@@ -1034,24 +1127,27 @@ What each binding door accepts, each resolved once at the door:
 === "Rust"
 
     ```rust
-    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
+    let options = ArrowCastOptions::new();
     let ids = Serie::from_scalars(
         Field::new("id", DataType::Int32, true),
         [Scalar::from(1_i32), Scalar::Null],
     )?;
 
-    // A bare datatype is carried as its required `value` field.
+    // A nullable target keeps the null.
+    let wide = ids.cast(&Field::new("id", DataType::Int64, true), options)?;
+    assert_eq!((wide.len(), wide.is_null(1)?), (2, true));
+
+    // A bare datatype is carried as its required `value` field, so the null
+    // is refused by that path.
     let value = DataType::Int64.required_field("value");
-    let wide = ids.cast(&value, ArrowCastOptions::new())?;
-    assert_eq!(wide.as_int64().expect("an int64 column").values(), &[1, 0]);
-    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let message = ids.cast(&value, strict).unwrap_err().to_string();
+    let message = ids.cast(&value, options).unwrap_err().to_string();
     assert_eq!(message, "required Arrow field $.value holds 1 null values");
 
     // The column's own field is the column itself; a run has no layout to cast.
-    assert_eq!(ids.cast(&Field::new("id", DataType::Int32, true), strict)?, ids);
-    assert!(Serie::new(vec![Scalar::from(1_i32)]).cast(&value, strict).is_err());
+    assert_eq!(ids.cast(&Field::new("id", DataType::Int32, true), options)?, ids);
+    assert!(Serie::new(vec![Scalar::from(1_i32)]).cast(&value, options).is_err());
     ```
 
 === "Python"
@@ -1068,15 +1164,16 @@ What each binding door accepts, each resolved once at the door:
     frame = pd.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
     assert Serie.from_arrow_reader(frame, root).child("id").as_py() == [1, 2]
 
-    # A DataType is its required `value` field, and a refusal names it.
+    # A nullable target keeps the null; a DataType is its required `value`
+    # field, and the refusal of the null names it.
     ids = Serie.from_arrow_array(pa.array([1, None], pa.int32()))
-    assert ids.cast(DataType("int64")).as_py() == [1, 0]
+    assert ids.cast(Field("id", "int64")).as_py() == [1, None]
     try:
-        ids.cast(DataType("int64"), nullability="strict")
+        ids.cast(DataType("int64"))
     except ValueError as error:
         assert str(error) == "required Arrow field $.value holds 1 null values"
     else:
-        raise AssertionError("a strict cast must refuse the null")
+        raise AssertionError("a required column must refuse the null")
 
     # A run has no layout to cast.
     try:
@@ -1108,37 +1205,38 @@ What each binding door accepts, each resolved once at the door:
 
 ## Edges
 
-- Extra column -> dropped under both policies; missing nullable -> nulls under both policies.
-- Missing required -> canonical default under `default`; refused at compile time under `strict`.
-- Null in a required column -> canonical default under `default`; refused at that batch under `strict`, with the null count.
-- Null hidden inside a null parent row -> stays hidden; strictness reads only the exposed rows.
-- `safe=True` plus `strict` -> the failed conversion becomes a null and the null is then refused; `safe=False` refuses the conversion first.
-- An empty text cell into a column that holds neither text nor bytes -> null before `safe` is asked, under every text layout and through the scalar door; a required column then defaults it under `default` and refuses it by path under `strict`. Whitespace is a spelling, not an empty cell. Into a string, byte or interval column, or a code whose neutral member is the empty text, it is the value it is.
-- A `Null` datatype under `strict` -> null is its only value, so it is not absence.
+- Extra column -> dropped; missing nullable -> nulls.
+- Missing required -> refused at compile time, naming its path; never its canonical default.
+- Null in a required column -> refused at that batch, with its path and the null count; never its canonical default.
+- Null hidden inside a null parent row -> stays hidden; a required column reads only the exposed rows.
+- A value the target cannot convert -> null in a nullable column under `safe`; refused by that value in a required column whatever `safe` says, and in any column under `safe=False`.
+- An empty text cell into a column that holds neither text nor bytes -> null before `safe` is asked, under every text layout and through the scalar door; a required column then refuses it by path. Whitespace is a spelling, not an empty cell. Into a string, byte or interval column, or a code whose neutral member is the empty text, it is the value it is.
+- A `Null` datatype, or an encoding whose values hold only nulls, under a required field -> null is its canonical default, so it is not absence and stays.
+- A column a declaring protocol fills after the cast - a digest holder, a `TRANSFORM:` or `PARTITION:` column - under `apply_arrow_batch` -> may arrive absent for that protocol, and the finished batch is checked again; nothing else repairs an absence.
 - A `DataType` target -> its required `value` field, so a refusal names `$.value`.
 - `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
-- Nullable field, `safe` -> the null stays.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, serie or binary -> a value change rather than a layout change, refused by name.
-- A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null, under strict the row and column are named.
-- A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
+- A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null in a nullable column; in a required one, or under `safe=False`, the row and column are named.
+- A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is a refused value: null in a nullable column under `safe`, named in a required one. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
 - A code or a UUID source entering a string -> read as the text the code holds and as the canonical spelling of the identifier, under the target's own layout, charset and bound: one `StringIngest`, not a second renderer per source.
 - A fixed-width byte target -> `BytesIngest` too: a cell that does not fill the width exactly is refused naming the field, the row and both lengths, rather than left to Arrow's builder to complain about a slice. A source whose own width is declared and disagrees is refused at plan time instead.
 - A dictionary or run-end target -> its values' own rule runs, then the encoding; a `dictionary<int32, ascii>` refuses what `ascii` refuses.
 - An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
 - A bare null into a `run_end_encoded` -> refused: it spells absence inside its values child, so the value is the entry that carries it.
 - A bare null into a `union` -> the payload of its `null` member, else of the one member that takes a null; with none, or several, it is refused naming the members ([Union](nested/union.md)).
-- A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
+- A reading the declared unit or width cannot hold exactly -> a failed conversion, never a rounded value: null in a nullable column under `safe`, refused otherwise.
 - Twelve-hour clock, and a bare date into a zoned datetime -> Arrow's kernel; a bare date into a naive datetime is that day at midnight on both tiers, compact `YYYYMMDD` included.
 - Temporal to text -> the classic form, zoned instants included.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
-- A required `bits` target over source nulls -> the canonical default under `default`, refused by path under `strict`; the buffer is rebuilt only when a null is actually filled.
+- A required `bits` target over source nulls -> refused by path, exactly as under `value`.
 - A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
 - A column of another layout handed to a compiled plan -> error naming both layouts; a plan is compiled for one source.
-- `SerieReader::into_arrow_reader` whose plan is the identity, under `default` -> the inner reader itself, unwrapped; under `strict` it is wrapped, because a non-null Arrow field can still carry a logical null in a nested child.
+- An equal layout whose source is nullable where the target is required -> not the identity: the plan reads for the null the source may hold.
+- `SerieReader::into_arrow_reader` whose plan is the identity - the target's layout, every nullability included -> the inner reader itself, unwrapped; a batch only moved is its producer's claim, and a `Serie` landed from it is proven at its landing.
 
 ## Commands
 
