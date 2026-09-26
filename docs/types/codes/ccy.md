@@ -285,14 +285,14 @@ Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the 
 - `ascii_packed("USD")` is the same integer a `fixed_ascii(3)` packs, `0x555344`; the padding belongs to the packing, never to the column.
 - The default value is the empty text, answered as a `ccy` scalar, and an empty text cell entering the column reads as it ([Cast](../cast.md#empty-text)).
 - `ccy` beside [`country`](country.md) merges to `sized_ascii(3)` widening and `sized_ascii(2)` narrowing - the bounded text both fit, never one code holding the other's values.
-- A value no ISO listing names is stored: the listing is a vocabulary, and [Side](side.md) and [State](state.md) are the two codes that gate instead.
+- A value no ISO listing names is stored: the listing is a vocabulary, and [Side](side.md) is the code that gates instead, as the [State](../enum/state.md) enum does.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
     ```
 
 === "Python"

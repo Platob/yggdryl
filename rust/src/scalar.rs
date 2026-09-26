@@ -219,7 +219,7 @@ pub enum Scalar {
     Cfi(Cfi),
     /// FIX's side of a trade.
     Side(Side),
-    /// What state one thing is in, ranked so the bytes sort by lifecycle.
+    /// What state one thing is in: a lifecycle-sorted enum, stored as its code.
     State(State),
     /// How long an order stands.
     TimeInForce(TimeInForce),
@@ -417,6 +417,8 @@ impl Serialize for Scalar {
                     &crate::string::StringWire { leaf, text },
                 )
             }
+            // A state writes its stored name under the datatype's name.
+            Self::State(state) => tagged(serializer, DataTypeId::State.as_str(), &state.as_str()),
             // A code writes its text under its own datatype's name.
             code_scalars!() => tagged(
                 serializer,
@@ -1057,7 +1059,6 @@ impl Ord for Scalar {
             | Self::Mic(_)
             | Self::Cfi(_)
             | Self::Side(_)
-            | Self::State(_)
             | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
@@ -1066,6 +1067,8 @@ impl Ord for Scalar {
             | Self::Ric(_)
             | Self::Figi(_)
             | Self::Unit(_) => code_key(self).cmp(&code_key(other)),
+            // A state orders by its code, which is its rank.
+            Self::State(left) => same_kind!(Self::State(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1162,7 +1165,6 @@ impl Hash for Scalar {
             | Self::Mic(_)
             | Self::Cfi(_)
             | Self::Side(_)
-            | Self::State(_)
             | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
@@ -1171,6 +1173,7 @@ impl Hash for Scalar {
             | Self::Ric(_)
             | Self::Figi(_)
             | Self::Unit(_) => code_key(self).hash(state),
+            Self::State(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1250,7 +1253,6 @@ macro_rules! code_scalars {
             | $crate::Scalar::Mic(_)
             | $crate::Scalar::Cfi(_)
             | $crate::Scalar::Side(_)
-            | $crate::Scalar::State(_)
             | $crate::Scalar::TimeInForce(_)
             | $crate::Scalar::Isin(_)
             | $crate::Scalar::Cusip(_)
@@ -1370,7 +1372,6 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Mic(_)
         | Scalar::Cfi(_)
         | Scalar::Side(_)
-        | Scalar::State(_)
         | Scalar::TimeInForce(_)
         | Scalar::Isin(_)
         | Scalar::Cusip(_)
@@ -1391,6 +1392,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         // hold: the bytes say what is inside, and nothing else orders by
         // what they decode to.
         Scalar::Variant(_) => 26,
+        // A state is its own kind, ordered by the rank its code states.
+        Scalar::State(_) => 27,
     }
 }
 
@@ -1824,10 +1827,12 @@ impl Scalar {
         true
     }
 
-    /// The text of a string value of any leaf, or of a registered code.
+    /// The text of a string value of any leaf, of a registered code, or the
+    /// stored name of a state.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             string_scalars!(value) => Some(value.as_str()),
+            Self::State(state) => Some(state.as_str()),
             value => value.code_storage().map(SmolStr::as_str),
         }
     }
@@ -1847,7 +1852,6 @@ impl Scalar {
             Self::Mic(value) => Some(value.storage()),
             Self::Cfi(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
-            Self::State(value) => Some(value.storage()),
             Self::TimeInForce(value) => Some(value.storage()),
             Self::Isin(value) => Some(value.storage()),
             Self::Cusip(value) => Some(value.storage()),

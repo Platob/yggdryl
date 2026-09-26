@@ -6,13 +6,14 @@
 // from its Arrow type: a decimal is its exact text, an instant the decimal
 // text of its nanoseconds, a UUID its hyphenated text, a 64-bit integer its
 // decimal text, a map its `[key, value]` pairs in the native key order - an
-// object would move an integer-like key first and lose a `__proto__` one.
+// object would move an integer-like key first and lose a `__proto__` one - and
+// a `state` column, an `int32` under its extension, its member's name.
 // What is not a column - a book's depth, imbalance, midpoint and hash - is
 // asked of the native object; nothing here computes a market fact.
 
 const { Type, util } = require('apache-arrow')
 
-const { graph } = require('../binding.js')
+const { State, graph } = require('../binding.js')
 
 /** The level counts a book's depth and imbalance are served at. */
 const DEPTHS = Object.freeze([1, 5, 10])
@@ -47,6 +48,9 @@ const HEX = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(
 const UTF8 = new TextDecoder('utf-8', { fatal: true })
 const NANOS = [1_000_000_000n, 1_000_000n, 1_000n, 1n] // Arrow's TimeUnit: SECOND, MILLISECOND, MICROSECOND, NANOSECOND
 
+/** Every `State` member's name, by the code a `state` column stores. */
+const STATE_NAMES = new Map(Object.entries(State).map(([name, code]) => [code, name]))
+
 /** The exact text of `units` scaled by `10^-scale`, trailing fractional zeros trimmed. */
 function decimalText(units, scale) {
   const negative = units < 0n
@@ -71,11 +75,14 @@ function nullable(read) {
 }
 
 /**
- * The reader of one Arrow type: `(data, index) -> JSON value`, where `index`
- * is a slot of the `Data` chunk. Chosen once per column; the per-row path
- * reads buffers.
+ * The reader of one Arrow field: `(data, index) -> JSON value`, where `index`
+ * is a slot of the `Data` chunk. Chosen once per column from its extension
+ * name, else its Arrow type; the per-row path reads buffers.
  */
-function readerOf(type, name) {
+function readerOf({ type, metadata }, name) {
+  if (metadata?.get('ARROW:extension:name') === 'yggdryl.state') {
+    return nullable(({ values }, index) => STATE_NAMES.get(values[index]))
+  }
   switch (type.typeId) {
     case Type.Null:
       return () => null
@@ -126,7 +133,7 @@ function readerOf(type, name) {
     }
     case Type.List:
     case Type.LargeList: {
-      const item = readerOf(type.children[0].type, `${name}[]`)
+      const item = readerOf(type.children[0], `${name}[]`)
       return nullable(({ valueOffsets, children }, index) => {
         const out = []
         for (let at = Number(valueOffsets[index]); at < Number(valueOffsets[index + 1]); at += 1) {
@@ -136,7 +143,7 @@ function readerOf(type, name) {
       })
     }
     case Type.FixedSizeList: {
-      const item = readerOf(type.children[0].type, `${name}[]`)
+      const item = readerOf(type.children[0], `${name}[]`)
       const size = type.listSize
       return nullable(({ children }, index) => {
         const out = []
@@ -146,8 +153,8 @@ function readerOf(type, name) {
     }
     case Type.Map: {
       const [keyField, valueField] = type.children[0].type.children
-      const key = readerOf(keyField.type, `${name}.key`)
-      const value = readerOf(valueField.type, `${name}.value`)
+      const key = readerOf(keyField, `${name}.key`)
+      const value = readerOf(valueField, `${name}.value`)
       return nullable(({ valueOffsets, children }, index) => {
         const [keys, values] = children[0].children
         const out = []
@@ -156,7 +163,7 @@ function readerOf(type, name) {
       })
     }
     case Type.Struct: {
-      const fields = type.children.map((child) => [child.name, readerOf(child.type, `${name}.${child.name}`)])
+      const fields = type.children.map((child) => [child.name, readerOf(child, `${name}.${child.name}`)])
       return nullable(({ children }, index) => {
         const out = {}
         for (let at = 0; at < fields.length; at += 1) out[fields[at][0]] = fields[at][1](children[at], index)
@@ -178,7 +185,7 @@ function rowsOf(reader) {
   const table = reader.intoTable()
   const rows = Array.from({ length: table.numRows }, () => ({}))
   table.schema.fields.forEach((field, column) => {
-    const read = readerOf(field.type, field.name)
+    const read = readerOf(field, field.name)
     let row = 0
     for (const data of table.getChildAt(column).data) {
       for (let index = 0; index < data.length; index += 1) rows[row++][field.name] = read(data, index)

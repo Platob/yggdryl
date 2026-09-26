@@ -800,6 +800,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         code_scalars!() => {
             write_scalar_string(writer, value.as_str().expect("a code borrowed its text"))?;
         }
+        Scalar::State(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Urn(value) => write_scalar_string(writer, &value.to_string())?,

@@ -217,9 +217,9 @@ impl XsdType {
             | DataType::SortedMap(_)
             | DataType::Union(_, _) => return None,
             other if other.bytes_parameters().is_some() => Self::Base64Binary,
-            // Every string leaf, every registered code, an interval with no
-            // one-number spelling, a variant, a version, a zone, a media
-            // type: text.
+            // Every string leaf, every registered code, an enum's member, an
+            // interval with no one-number spelling, a variant, a version, a
+            // zone, a media type: text.
             _ => Self::String,
         })
     }

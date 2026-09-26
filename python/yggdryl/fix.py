@@ -38,7 +38,7 @@ nothing at all when it refuses.
 live in three holders and two extras - the facts the core's graph
 vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
-the lifecycle's ``creaunix``, ``exprtime``, ``execunix``, ``recdunix``,
+the lifecycle's ``creaunix``, ``exprunix``, ``execunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
 ``currency``, ``quantity``, ``unit``, ``side``, its ``securityids`` - one
 code under each source, ISIN, CUSIP, FIGI - its CFI and MIC codes, last,
@@ -246,8 +246,6 @@ from ._native import (
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    global_registry,
-    install_global_registry,
 )
 
 __all__ = [
@@ -263,6 +261,4 @@ __all__ = [
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",
-    "global_registry",
-    "install_global_registry",
 ]

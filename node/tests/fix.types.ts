@@ -195,7 +195,7 @@ const messageExecuted: bigint | null = message.execunix
 const messageRecorded: bigint | null = message.recdunix
 const messagePrevUnix: bigint | null = message.prevunix
 const messageSnap: bigint | null = message.snapunix
-const messageExpiry: bigint | null = message.exprtime
+const messageExpiry: bigint | null = message.exprunix
 // And the same facts on an operation leaf, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creaunix
@@ -203,7 +203,7 @@ const eventExecuted: bigint | null = event.execunix
 const eventRecorded: bigint | null = event.recdunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
-const eventExpiry: bigint | null = event.exprtime
+const eventExpiry: bigint | null = event.exprunix
 const eventMarketOperationId: number | null = event.marketoperationid
 const eventPrice: string | null = event.price
 const eventQuantity: string | null = event.quantity
@@ -380,8 +380,10 @@ message.set(55n, 'MSFT')
 // @ts-expect-error a row is read under a Field, never a number
 fix.FixMsg.fromRow(55, input)
 
-const global: FixRegistry = fix.globalRegistry()
-fix.installGlobalRegistry(global)
+const held: FixRegistry = fix.FixRegistry.fromEnv()
+fix.FixRegistry.installEnv(held)
+const heldCodec: FixCodec = fix.FixCodec.fromEnv({ threads: 1 })
+void [held, heldCodec]
 
 // The typed FIX vocabulary lives on the protocol view a field already answers.
 const branches: string[] = field.fix.branches

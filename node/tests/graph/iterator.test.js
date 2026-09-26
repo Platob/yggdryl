@@ -53,11 +53,11 @@ test('unsorted items are sorted first', () => {
 })
 
 test('alive and the snapshot grid', () => {
-  const walk = new graph.EventIterator([order(CLOCK, 'NEW', { exprtime: CLOCK + 10n })], true, 5)
+  const walk = new graph.EventIterator([order(CLOCK, 'NEW', { exprunix: CLOCK + 10n })], true, 5)
   assert.equal(walk.snapshotNs, 5n)
   const walked = [...walk].map((data) => data.asOrderEvent())
   assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK + 5n, null])
-  assert.equal(walked.at(-1).state, '95EXPIRED')
+  assert.equal(walked.at(-1).state, 'EXPIRED')
   assert.deepEqual(walk.alive(), [])
   const live = new graph.EventIterator([order(CLOCK)])
   assert.equal(live.snapshotNs, null)

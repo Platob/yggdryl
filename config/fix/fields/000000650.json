@@ -243,14 +243,15 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:codeset": "statecodeset",
       "FIX:tag": "65052",
       "FIX:transient": "false",
-      "description": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed.",
+      "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed.",
       "display": "State"
     }
   },
   {
-    "name": "exprtime",
+    "name": "exprunix",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -261,7 +262,7 @@
       "FIX:tag": "65053",
       "FIX:transient": "false",
       "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
-      "display": "ExprTime"
+      "display": "ExprUnix"
     }
   },
   {

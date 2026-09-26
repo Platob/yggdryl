@@ -25,7 +25,7 @@ const {
 
 const EVENT_COLUMNS = [
   'currunix', 'creaunix', 'execunix', 'recdunix',
-  'exprtime', 'prevunix', 'snapunix',
+  'exprunix', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
   'prevuuid', 'seqnum', 'srcuuids', 'state',
 ]

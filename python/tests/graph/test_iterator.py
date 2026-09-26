@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import graph
+from yggdryl import State, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -53,11 +53,11 @@ def test_unsorted_items_are_sorted_first() -> None:
 
 
 def test_alive_and_the_snapshot_grid() -> None:
-    walk = graph.EventIterator([order(CLOCK, exprtime=CLOCK + 10)], snapshot_ns=5)
+    walk = graph.EventIterator([order(CLOCK, exprunix=CLOCK + 10)], snapshot_ns=5)
     assert walk.snapshot_ns == 5
     walked = [data.as_order_event() for data in walk]
     assert [event.snapunix for event in walked if event is not None] == [None, CLOCK, CLOCK + 5, None]
-    assert walked[-1] is not None and walked[-1].state.as_py() == "95EXPIRED"
+    assert walked[-1] is not None and walked[-1].state.as_py() is State.EXPIRED
     assert walk.alive() == []
     live = graph.EventIterator([order(CLOCK)])
     assert live.snapshot_ns is None

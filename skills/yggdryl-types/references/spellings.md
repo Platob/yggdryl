@@ -132,7 +132,8 @@ The same number rule holds: `large_binary(16)` is refused.
 
 | Canonical | Also parsed as | Note |
 | --- | --- | --- |
-| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `side`, `state`, `timeinforce`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | fourteen registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 8, 10, 8, 32 |
+| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `side`, `timeinforce`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | thirteen registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 8, 8, 32 |
+| `state` | - | kind `enum`: the lifecycle-sorted `State`, stored as the `int32` code of its member under `yggdryl.state` |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | `major.minor.patch`, numerically ordered |
 | `mimetype` | `mime` | one `type/subtype` |

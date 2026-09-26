@@ -36,7 +36,7 @@ test('the operations: two tickers, one market order, one trade, one expiry, one 
     ['SELL', '82.5', '30'],
   ])
 
-  const [expired] = leaves.filter((leaf) => leaf.state === '95EXPIRED')
+  const [expired] = leaves.filter((leaf) => leaf.state === 'EXPIRED')
   const [first] = leaves.filter((leaf) => leaf.crosscode === expired.crosscode && leaf !== expired)
   assert.equal(expired.prevuuid, first.curruuid)
 
@@ -59,19 +59,20 @@ test('the scenario is the same on every call', () => {
 })
 
 test('the per-symbol walk: eleven books, pinned by their native hashes', () => {
+  // The hashes digest every event's state as its `int32` code.
   const walked = books()
   assert.deepEqual(hashes(walked), [
-    '16242326805217559900',
-    '16544763427349240156',
-    '5235232494032010052',
-    '1828812868823296846',
-    '5034916044474474282',
-    '7481385549412507034',
-    '17553807238354852533',
-    '3831896887608114243',
-    '10840428696151966888',
-    '3304533786340479661',
-    '9496428554108646693',
+    '12134116927728876324',
+    '1948837484246932780',
+    '14748324727553988236',
+    '8738699681098837376',
+    '12596396684464936786',
+    '2512406615155876254',
+    '17117599677849437215',
+    '15610935616060186366',
+    '15020936496071332081',
+    '16874917826057616008',
+    '11226100986833652445',
   ])
   assert.deepEqual([...new Set(walked.map((book) => book.crosscode))], SYMBOLS)
   // The market order rests at the unpriced limit, last on its side.
@@ -88,15 +89,15 @@ test('the global walk: one GLOBAL book per instant, pinned', () => {
   const walked = books(0, true)
   assert.ok(walked.every((book) => book.crosscode === graph.GLOBAL_SYMBOL))
   assert.deepEqual(hashes(walked), [
-    '2570637125084932438',
-    '6528218759551834422',
-    '5835780611225251832',
-    '13146055324015594326',
-    '10162744597707995629',
-    '14867780961587921349',
-    '12002803448621661912',
-    '8948237090346574842',
-    '3002296415775241335',
+    '13912303688916928263',
+    '15590660138982923340',
+    '1351903172767778939',
+    '7248446536207417329',
+    '14863578545659580262',
+    '2758054018770817390',
+    '15235975123582398460',
+    '8238562214873767668',
+    '6680080629438284768',
   ])
 })
 
@@ -117,8 +118,8 @@ test('a two-millisecond grid adds the ticks the walk emits, and changes no other
   )
   const plain = new Set(hashes(books()))
   assert.deepEqual(hashes(walked).filter((hash) => !plain.has(hash)), [
-    '5253697755473297734',
-    '9021731498757604473',
-    '10641605480225750750',
+    '17020186527711404026',
+    '14678968861820738602',
+    '18061724431166054852',
   ])
 })

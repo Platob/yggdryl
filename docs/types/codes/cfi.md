@@ -284,7 +284,7 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes timeinforce::coded
     ```
 
 === "Python"

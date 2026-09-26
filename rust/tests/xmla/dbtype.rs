@@ -135,7 +135,8 @@ fn by_family(dtype: &DataType) -> DbType {
             Some("duration" | "interval") => DbType::Wstr,
             other => panic!("{dtype}: an unknown temporal family {other:?}"),
         },
-        DataTypeKind::Text | DataTypeKind::Code => DbType::Wstr,
+        // An enum travels as the member it names, never the code it stores.
+        DataTypeKind::Text | DataTypeKind::Code | DataTypeKind::Enum => DbType::Wstr,
         DataTypeKind::Bytes | DataTypeKind::Geospatial => DbType::Bytes,
         DataTypeKind::Uuid => DbType::Guid,
         DataTypeKind::Nested => match dtype {

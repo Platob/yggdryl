@@ -647,6 +647,16 @@ impl FixCodec {
         }
     }
 
+    /// Opens a codec over the registry the process environment names,
+    /// [`FixRegistry::from_env`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FixRegistry::from_env`]'s load failure.
+    pub fn from_env() -> Result<Self> {
+        Ok(Self::new(Arc::clone(FixRegistry::from_env()?)))
+    }
+
     /// The dictionary every message is read against.
     #[must_use]
     pub const fn registry(&self) -> &Arc<FixRegistry> {

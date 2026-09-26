@@ -37,6 +37,14 @@ pub enum DataTypeKind {
     Text,
     /// The registered fixed-width codes: identities with a US-ASCII storage.
     Code,
+    /// A closed vocabulary stored as the `int32` code of its member, the
+    /// codes sorted as the members rank - a state before the ones that come
+    /// after it - so the stored integers order as the vocabulary does.
+    ///
+    /// Not the dictionary encoding, which is a nested layout of any value
+    /// over a key column: an enum leaf *is* its members, and the code a value
+    /// stores is fixed by the leaf rather than by the batch that holds it.
+    Enum,
     /// Byte strings in variable, fixed, large, and view layouts.
     Bytes,
     /// Series, structs, unions, maps, wrappers, and self-describing values.
@@ -60,7 +68,7 @@ pub enum DataTypeKind {
 
 impl DataTypeKind {
     /// Every category in canonical order.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Null,
         Self::Boolean,
         Self::Integer,
@@ -69,6 +77,7 @@ impl DataTypeKind {
         Self::Temporal,
         Self::Text,
         Self::Code,
+        Self::Enum,
         Self::Bytes,
         Self::Nested,
         Self::Geospatial,
@@ -97,6 +106,7 @@ impl DataTypeKind {
             Self::Temporal => "temporal",
             Self::Text => "text",
             Self::Code => "code",
+            Self::Enum => "enum",
             Self::Bytes => "bytes",
             Self::Nested => "nested",
             Self::Geospatial => "geospatial",
@@ -131,6 +141,7 @@ impl DataTypeKind {
             Self::Uuid => 0x80,
             Self::Nested => 0x90,
             Self::Geospatial => 0xb0,
+            Self::Enum => 0xc0,
         }
     }
 
@@ -150,6 +161,7 @@ impl DataTypeKind {
             Self::Uuid => 0x8f,
             Self::Nested => 0xaf,
             Self::Geospatial => 0xbf,
+            Self::Enum => 0xcf,
         }
     }
 

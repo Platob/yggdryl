@@ -1182,10 +1182,10 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert_eq!(walked.len(), 2, "the deadline emits one expiry");
     let live = &walked[0];
     let expired = &walked[1];
-    assert_eq!(expired.get_currunix(), live.get_exprtime().unwrap());
+    assert_eq!(expired.get_currunix(), live.get_exprunix().unwrap());
     assert_eq!(expired.get_prevuuid(), Some(live.get_curruuid()));
     assert_eq!(expired.get_seqnum(), live.get_seqnum() + 1);
-    assert_eq!(expired.get_state().as_str(), "95EXPIRED");
+    assert_eq!(*expired.get_state(), yggdryl::State::Expired);
     assert_eq!(
         live.capture().msgsesseventid(),
         Some("D:SESSION-A:CONTEXT-C:7")
@@ -1572,7 +1572,7 @@ fn lifecycle_expiry_keeps_fix_content_and_retires_at_the_exact_deadline() {
         original.entries(),
         "the yielded source is immutable"
     );
-    assert_eq!(expired.get_currunix(), source.get_exprtime().unwrap());
+    assert_eq!(expired.get_currunix(), source.get_exprunix().unwrap());
     assert!(expired.get_state().is_failed());
     assert_eq!(expired.get_prevuuid(), Some(source.get_curruuid()));
     assert_eq!(expired.get_seqnum(), source.get_seqnum() + 1);
@@ -2410,8 +2410,8 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
 fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
     use arrow_array::cast::AsArray as _;
 
-    // Wider than the ten bytes a state is.
-    const WIDE: &str = "NOT-A-STATE-CODE";
+    // A code no member of the state enum takes.
+    const FOREIGN: i32 = 7;
     let codec = codec();
     let read = batches(codec.parse_text_arrow_reader(source()).unwrap());
     let batch = &read[0];
@@ -2426,13 +2426,18 @@ fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
         .expect("the batch's own rows");
     assert_eq!(intact.len(), batch.num_rows());
 
-    // The state column is text under the state extension, so a code wider
-    // than a state is text the layout holds and the datatype refuses.
+    // The state column is `int32` codes under the state extension, so a
+    // code no member takes is an integer the layout holds and the datatype
+    // refuses.
     let at = batch.schema().index_of("state").expect("a state column");
-    let mut codes: Vec<Option<&str>> = batch.column(at).as_string::<i32>().iter().collect();
-    codes[1] = Some(WIDE);
+    let mut codes: Vec<Option<i32>> = batch
+        .column(at)
+        .as_primitive::<arrow_array::types::Int32Type>()
+        .iter()
+        .collect();
+    codes[1] = Some(FOREIGN);
     let mut columns = batch.columns().to_vec();
-    columns[at] = Arc::new(arrow_array::StringArray::from(codes));
+    columns[at] = Arc::new(arrow_array::Int32Array::from(codes));
     let forged = RecordBatch::try_new(batch.schema(), columns).unwrap();
     let mut messages = codec.messages(yggdryl::arrow::batch_reader(forged.schema(), [forged]));
     let refused = messages
@@ -2444,7 +2449,7 @@ fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
         refused.starts_with("invalid record value at $[1].state: "),
         "{refused}"
     );
-    assert!(refused.contains("at most 10 bytes"), "{refused}");
+    assert!(refused.contains("the code of a state, got 7"), "{refused}");
     assert!(messages.next().is_none(), "the refusal ends the stream");
 
     // A capture carrying a state column lands the same way at the parse door.
@@ -2460,7 +2465,10 @@ fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
         capture.into_arrow_schema().unwrap(),
         vec![
             Arc::new(arrow_array::BinaryArray::from_vec(vec![frame; 2])),
-            Arc::new(arrow_array::StringArray::from(vec!["20NEW", WIDE])),
+            Arc::new(arrow_array::Int32Array::from(vec![
+                yggdryl::State::New.code(),
+                FOREIGN,
+            ])),
         ],
     )
     .unwrap();

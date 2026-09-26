@@ -447,6 +447,7 @@ fn write_leaf<W: Write>(
             value.as_str().expect("a code borrowed its text"),
             escape,
         ),
+        Scalar::State(value) => write_escaped(writer, value.as_str(), escape),
         Scalar::Version(value) => write_escaped(writer, &value.to_string(), escape),
         Scalar::Url(value) => write_escaped(writer, &value.to_string(), escape),
         Scalar::Urn(value) => write_escaped(writer, &value.to_string(), escape),

@@ -19,7 +19,7 @@ pub(crate) const BASE_COLUMNS: [&str; 2] = ["body", "dropped_byte_size"];
 /// column that states the fact is the event's rather than a capture column
 /// beside it. `mtime` feeds the instant the same way, under its own rule.
 pub(crate) const EVENT_CAPTURES: [&str; 8] = [
-    "state", "creaunix", "execunix", "recdunix", "exprtime", "prevunix", "snapunix", "prevuuid",
+    "state", "creaunix", "execunix", "recdunix", "exprunix", "prevunix", "snapunix", "prevuuid",
 ];
 
 /// The event columns no capture can feed, because the line derives them -

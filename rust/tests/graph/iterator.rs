@@ -184,9 +184,9 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
     // An element past its expiration ended the same way; one that expires
     // later than it happened is still alive.
     let mut expired = incarnation("O-100", 20);
-    expired.set_exprtime(Some(at(20)));
+    expired.set_exprunix(Some(at(20)));
     let mut open = incarnation("O-100", 30);
-    open.set_exprtime(Some(at(31)));
+    open.set_exprunix(Some(at(31)));
     let arrived = vec![
         incarnation("O-100", 10),
         expired,
@@ -564,7 +564,7 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     let mut order = incarnation("O-100", 10);
     order.set_execunix(Some(at(8)));
     order.set_recdunix(Some(at(9)));
-    order.set_exprtime(Some(at(20)));
+    order.set_exprunix(Some(at(20)));
     let original = order.clone();
     let walked: Vec<_> = EventIterator::new(
         [order, incarnation("O-900", 30), incarnation("O-100", 40)],
@@ -585,7 +585,7 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
         expired.get_state(),
         &State::from_spelling("expired").unwrap()
     );
-    assert_eq!(expired.get_exprtime(), Some(at(20)));
+    assert_eq!(expired.get_exprunix(), Some(at(20)));
     assert_eq!(
         expired.get_execunix(),
         Some(at(8)),
@@ -605,9 +605,9 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
 #[test]
 fn deadlines_precede_equal_time_sources_and_views_and_eof_drains_in_order() {
     let mut first = incarnation("O-100", 10);
-    first.set_exprtime(Some(at(20)));
+    first.set_exprunix(Some(at(20)));
     let mut second = incarnation("O-900", 20);
-    second.set_exprtime(Some(at(30)));
+    second.set_exprunix(Some(at(30)));
     let walked: Vec<_> = EventIterator::new([first, second], true)
         .with_snapshot_ns(10 * MS)
         .collect();
@@ -636,7 +636,7 @@ fn deadlines_precede_equal_time_sources_and_views_and_eof_drains_in_order() {
 #[test]
 fn eof_keeps_the_deadline_horizon_for_nonexpiring_neighbors() {
     let mut finite = incarnation("O-100", 10);
-    finite.set_exprtime(Some(at(20)));
+    finite.set_exprunix(Some(at(20)));
     let forever = incarnation("O-900", 10);
     let walked: Vec<_> = EventIterator::new([finite, forever], true)
         .with_snapshot_ns(10 * MS)
@@ -670,9 +670,9 @@ fn eof_keeps_the_deadline_horizon_for_nonexpiring_neighbors() {
 #[test]
 fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
     let mut first = incarnation("O-100", 10);
-    first.set_exprtime(Some(at(20)));
+    first.set_exprunix(Some(at(20)));
     let mut replacement = incarnation("O-100", 15);
-    replacement.set_exprtime(Some(at(40)));
+    replacement.set_exprunix(Some(at(40)));
     let mut canceled = incarnation("O-100", 30);
     canceled.set_state(State::from_spelling("canceled").unwrap());
     canceled.finalize();
@@ -700,9 +700,9 @@ fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
     assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
 
     let mut later = incarnation("O-200", 10);
-    later.set_exprtime(Some(at(40)));
+    later.set_exprunix(Some(at(40)));
     let mut shortened = incarnation("O-200", 15);
-    shortened.set_exprtime(Some(at(20)));
+    shortened.set_exprunix(Some(at(20)));
     let walked: Vec<_> = EventIterator::new([later, shortened], true).collect();
     assert_eq!(
         walked
@@ -717,7 +717,7 @@ fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
 #[test]
 fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
     let mut first = incarnation("O-100", 10);
-    first.set_exprtime(Some(at(35)));
+    first.set_exprunix(Some(at(35)));
     let arrived = [first, incarnation("O-900", 15), incarnation("O-100", 25)];
     let walked: Vec<_> = EventIterator::new(arrived, true)
         .with_snapshot_ns(10 * MS)
@@ -769,7 +769,7 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
     assert!(walked.iter().all(|event| {
         event
             .get_snapunix()
-            .is_none_or(|tick| tick <= event.get_exprtime().unwrap_or(i64::MAX))
+            .is_none_or(|tick| tick <= event.get_exprunix().unwrap_or(i64::MAX))
     }));
     assert_eq!(
         walked.last().map(|event| ms(event.get_currunix())),

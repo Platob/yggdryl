@@ -63,7 +63,7 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 use crate::parser::Parser;
 use crate::{
     BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -190,9 +190,12 @@ pub(crate) mod casts {
         BinaryBuilder, BinaryViewBuilder, LargeBinaryBuilder, LargeStringBuilder, StringBuilder,
         StringViewBuilder,
     };
-    use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
+    use arrow_array::{
+        Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, Int32Array, StringArray,
+    };
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
     use arrow_schema::DataType as ArrowDataType;
+    use smol_str::SmolStr;
 
     use crate::arrow::{Error, Result};
     use crate::budget::{MaterializationBudget, reserve_vec_bytes};
@@ -218,6 +221,9 @@ pub(crate) mod casts {
         Code(DataType),
         /// A UUID: sixteen stored bytes, read as the canonical spelling they are.
         Uuid,
+        /// A state: the `int32` codes of its members, each read as the name
+        /// it stands for.
+        State,
         /// Storage with no extension identity.
         Bare,
     }
@@ -273,13 +279,38 @@ pub(crate) mod casts {
                 (StringSource::Uuid, Cell::Text(text)) => {
                     target.admit(Str::from(uuid_text(&uuid_parse(text.as_bytes())?)))
                 }
-                (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
-                    target.admit(Str::from(text))
+                (
+                    StringSource::Code(_) | StringSource::State | StringSource::Bare,
+                    Cell::Text(text),
+                ) => target.admit(Str::from(text)),
+                // A state reaches here only as its name, read off its code.
+                (StringSource::State, Cell::Bytes(_) | Cell::Slot(_)) => {
+                    Err(crate::Error::InvalidDataType {
+                        kind: "state",
+                        reason: SmolStr::new_static("expected a state's code, got bytes"),
+                    })
                 }
                 (StringSource::Bare, Cell::Slot(bytes)) => target.read_text(trim_padding(bytes)),
                 (StringSource::Bare, Cell::Bytes(bytes)) => target.read_text(bytes),
             }
         };
+        if let (StringSource::State, ArrowDataType::Int32) = (source, array.data_type()) {
+            let codes = downcast::<Int32Array>(array.as_ref())?;
+            return string_storage(
+                target,
+                field,
+                codes.len(),
+                safe,
+                exposure,
+                budget,
+                |index| {
+                    codes.is_valid(index).then(|| {
+                        crate::State::read_code(i64::from(codes.value(index)))
+                            .and_then(|state| read(Cell::Text(state.as_str())))
+                    })
+                },
+            );
+        }
         if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
             let cells = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
             return string_storage(
@@ -680,7 +711,6 @@ impl DataType {
         ("cusip", DataType::Cusip, CUSIP_WIDTH),
         ("sedol", DataType::Sedol, SEDOL_WIDTH),
         ("side", DataType::Side, SIDE_WIDTH),
-        ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
         ("bbg", DataType::Bbg, BBG_WIDTH),
         ("figi", DataType::Figi, FIGI_WIDTH),
@@ -2323,91 +2353,6 @@ impl StringEnum {
     /// two things to check at every read and the one a caller forgets.
     pub const DIRECTIONS: &'static [&'static str] = &["RECV", "SENT"];
 
-    /// Every state one thing can be in, ordered from first to last.
-    ///
-    /// One vocabulary over two worlds. FIX names an order's state twice -
-    /// `OrdStatus` says where the order stands and `ExecType` says what the
-    /// report is - and a scheduler names a job's state in ordinary English.
-    /// They are the same shape: a thing is created, it works, and it ends one
-    /// of three ways. A capture and the pipeline that reads it should not need
-    /// two vocabularies and a join to answer "what happened".
-    ///
-    /// # The first two bytes are the rank
-    ///
-    /// A value is two decimal digits of rank then a name of up to eight
-    /// bytes, and the rank is what makes the *stored bytes* sort from first
-    /// state to terminal. That matters because most things that sort a column
-    /// are not this crate: a Parquet row group's min and max, an external
-    /// sort, a `ORDER BY` in whatever reads the file. Ordering by name would
-    /// put `CANCELED` before `NEW`; ordering by these bytes puts every live
-    /// state before every ended one, and that ordering survives every format
-    /// the value crosses.
-    ///
-    /// Ranks run `00`-`99`. Every shipped state sits on a round rank, and the
-    /// digits between two of them - `01`-`09`, `11`-`19`, and so on - are the
-    /// placeholders a state that belongs between two ranks takes, so adding
-    /// one moves nothing already stored:
-    ///
-    /// | rank | meaning |
-    /// | --- | --- |
-    /// | `00` | stated, but not a state anything reached |
-    /// | `10` | asked for, not yet acknowledged |
-    /// | `20` | acknowledged, not yet working |
-    /// | `30` | working |
-    /// | `40` | working, and something has happened |
-    /// | `50` | halted, and able to resume |
-    /// | `60` | a change is outstanding |
-    /// | `70` | changed, and the new thing carries on |
-    /// | `80` | ended, having done what was asked |
-    /// | `90` | ended, because someone stopped it |
-    /// | `95` | ended, because it could not be done |
-    ///
-    /// The three endings are ranked apart deliberately: "did it finish" and
-    /// "did it work" are different questions, and a single terminal rank would
-    /// answer neither without reading the name. Each ending owns a band -
-    /// `80`-`89` done, `90`-`94` cancelled, `95`-`99` failed - and
-    /// [`State::is_done`](crate::State::is_done),
-    /// [`State::is_cancelled`](crate::State::is_cancelled) and
-    /// [`State::is_failed`](crate::State::is_failed) read the band, so
-    /// a placeholder inside one answers as its ending does.
-    pub const STATES: &'static [&'static str] = &[
-        "00UNKNOWN",
-        "10PENDING",
-        "10PENDNEW",
-        "10QUEUED",
-        "20ACCEPTED",
-        "20NEW",
-        "20STARTING",
-        "20SUBMITTD",
-        "30RUNNING",
-        "30STATUS",
-        "30TRIGGER",
-        "40INPROGR",
-        "40PARTFILL",
-        "40TRADE",
-        "40TRDCORR",
-        "40TRDCXL",
-        "40TRDHOLD",
-        "50PAUSED",
-        "50STOPPED",
-        "50SUSPEND",
-        "60PENDCXL",
-        "60PENDRPL",
-        "70REPLACED",
-        "70RESTATED",
-        "80CALCULAT",
-        "80COMPLETE",
-        "80DONEDAY",
-        "80FILLED",
-        "80SUCCESS",
-        "80TRDRELS",
-        "90CANCELED",
-        "95EXPIRED",
-        "95FAILED",
-        "95REJECTED",
-        "95TIMEOUT",
-    ];
-
     /// FIX's `TimeInForceCodeSet` as the shipped registry declares it, sorted.
     ///
     /// The wire values rather than the names, exactly as [`Self::SIDES`] is:
@@ -2431,7 +2376,6 @@ impl StringEnum {
         ("mic", Self::MICS),
         ("exchange", Self::MICS),
         ("side", Self::SIDES),
-        ("state", Self::STATES),
         ("timeinforce", Self::TIMESINFORCE),
     ];
 

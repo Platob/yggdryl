@@ -308,7 +308,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds 39 crate scalar definitions, including the `srcuuids` serie, four normalized identifier codes, the execution and recording clocks, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation, its eight identifiers and its two instrument names, plus one Map group: 6,280 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,789 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset` makes 736 live sets.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds 39 crate scalar definitions, including the `srcuuids` serie, four normalized identifier codes, the execution and recording clocks, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation, its eight identifiers and its two instrument names, plus one Map group: 6,280 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,789 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset` and `statecodeset` make 737 live sets.
 
 Beside those 2,308 the tracked tree carries the crate's own dump, which `commit` writes and a read passes over: `fields/000000650.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
@@ -352,7 +352,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     // The vocabularies are held beside them, one per name, and a field
     // reaches its own through the name it states.
-    assert_eq!(registry.codesets().len(), 736);
+    assert_eq!(registry.codesets().len(), 737);
     let side = registry.codeset_of(registry.field_by_tag(54)?).expect("the Side set");
     assert_eq!(side.name(), "sidecodeset");
     assert_eq!(side.code_name("1"), Some("Buy"));
@@ -392,7 +392,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert registry.msgtype("D").name == "newordersingle"
     # The vocabularies are held beside them, one per name, and a field reaches
     # its own through the name it states.
-    assert len(registry.codeset_names()) == 736
+    assert len(registry.codeset_names()) == 737
     assert registry.field_by_tag(54).fix.codeset == "sidecodeset"
     buy, = (code for code in registry.codeset("sidecodeset") if code["value"] == "1")
     assert buy["name"] == "Buy"
@@ -433,7 +433,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.equal(registry.msgtype('D').name, 'newordersingle')
     // The vocabularies are held beside them, one per name, and a field
     // reaches its own through the name it states.
-    assert.equal(registry.codesetNames().length, 736)
+    assert.equal(registry.codesetNames().length, 737)
     assert.equal(registry.fieldByTag(54).fix.codeset, 'sidecodeset')
     assert.equal(registry.codeName('sidecodeset', '1'), 'Buy')
     ```

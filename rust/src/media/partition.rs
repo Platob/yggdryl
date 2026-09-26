@@ -81,7 +81,8 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     }
     // A string's text is the directory name whatever its column lays out - a
     // fixed width or a charset other than UTF-8 rides binary storage, which
-    // the formatter would spell as hex - and a code is the text it is.
+    // the formatter would spell as hex - a code is the text it is, and a state
+    // is its member's name, the spelling its column reads back.
     match value {
         crate::string_scalars!(text) => return Ok(text.storage().clone()),
         code if code.is_code() => {
@@ -90,6 +91,7 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
                 .expect("a code borrowed its storage")
                 .clone());
         }
+        crate::Scalar::State(state) => return Ok(smol_str::SmolStr::new_static(state.as_str())),
         _ => {}
     }
     // The value is non-null here, so the typed pairing's own projection is the

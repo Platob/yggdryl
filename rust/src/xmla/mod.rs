@@ -20,10 +20,10 @@
 //! | [`options`], [`media`] | the `.xmla` record medium: [`XmlaOptions`] and [`Xmla`] |
 //! | [`definitions`] | the rowsets this crate's provider answers, each as a `Field` with its restriction columns |
 //! | [`catalog`] | a catalog over a folder: its schemas and tables as the leaves and table folders under it |
-//! | [`service`] | the provider: every Discover answered from the catalogs, every Execute run through the expression grammar's `Plan`; under the `http` feature, [`Service::route`] answers it on an [`http::Server`](crate::http::Server) |
+//! | [`service`] | the provider: every Discover answered from the catalogs, every Execute run through the expression grammar's `Plan`; under the `http` feature, `Service::route` answers it on an `http::Server` |
 //!
 //! The SOAP envelope and fault are XML's own, in [`crate::soap`], and the
-//! HTTP it travels over is the crate's [`http`](crate::http) server and
+//! HTTP it travels over is the crate's `http` server and
 //! client; this module speaks XMLA over them.
 //!
 //! The provider is a *tabular* one: its data sources are catalogs of tables,

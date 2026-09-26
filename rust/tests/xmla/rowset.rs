@@ -7,7 +7,9 @@ use yggdryl::xmla::rowset::{ROOT_ELEMENT, ROW_ELEMENT};
 use yggdryl::xmla::{
     EXCEPTION_NAMESPACE, ROWSET_NAMESPACE, Rowset, SQL_NAMESPACE, XsdType, decode_name, encode_name,
 };
-use yggdryl::{DataType, Field, Scalar, Serie, StructType, TimeUnit, Timezone, UnionMode, Uuid};
+use yggdryl::{
+    DataType, Field, Scalar, Serie, State, StructType, TimeUnit, Timezone, UnionMode, Uuid,
+};
 
 // Fixtures.
 
@@ -2550,6 +2552,24 @@ fn an_xsd_integer_column_reads_as_a_scale_free_decimal() {
             ]
         )
     );
+}
+
+#[test]
+fn a_state_column_writes_its_member_and_reads_back_as_the_state() {
+    let field = record([DataType::State.required_field("state")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [row([("state", Scalar::State(State::PartiallyFilled))])],
+    );
+    let text = root_text(&rowset, vec![batch.clone()], true, true);
+    assert!(text.contains("type=\"xsd:string\""), "{text}");
+    assert!(
+        text.contains("<state>PARTIALLY_FILLED</state>"),
+        "the member, never its code: {text}"
+    );
+    let (_, back) = read_root(&text, Some(&field)).expect("the rowset reads back");
+    assert_eq!(back, batch);
 }
 
 #[test]

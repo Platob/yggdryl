@@ -726,7 +726,7 @@ mod text {
         "creaunix",
         "execunix",
         "recdunix",
-        "exprtime",
+        "exprunix",
         "prevunix",
         "snapunix",
         "curruuid",
@@ -937,7 +937,7 @@ mod text {
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.cross_uuid());
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
-            assert_eq!((line.get_creaunix(), line.get_exprtime()), (None, None));
+            assert_eq!((line.get_creaunix(), line.get_exprunix()), (None, None));
             assert_eq!((line.get_execunix(), line.get_recdunix()), (None, None));
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
             // The identity: the instant coupled with the content code, and no
@@ -959,8 +959,9 @@ mod text {
             // when the names an element went by left the event: the named
             // captures are the line's own reading, no longer an event fact
             // `digest_event` feeds, so the code is the state, the place, what
-            // it follows and the body.
-            assert_eq!(line.get_currhashcode(), 12_989_306_360_569_704_928);
+            // it follows and the body. It last moved when the state fed its
+            // `int32` code rather than its ten-byte spelling.
+            assert_eq!(line.get_currhashcode(), 591_008_855_044_230_877);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
             // The one capture left out of the code is the one that dates the
             // line, because the instant is coupled with the code rather than
@@ -1133,7 +1134,7 @@ mod text {
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
-            assert_eq!(line.get_state().as_str(), "00UNKNOWN");
+            assert_eq!(line.get_state().as_str(), "UNKNOWN");
             // The place in the chain is the row number under `start_rownum`,
             // else the physical line number.
             assert_eq!(line.get_seqnum(), 0);
@@ -1358,7 +1359,7 @@ mod text {
             }
             // The trait door cannot refuse: it answers each fact's default.
             assert_eq!(line.get_currunix(), 0);
-            assert_eq!(line.get_state().as_str(), "00UNKNOWN");
+            assert_eq!(line.get_state().as_str(), "UNKNOWN");
             assert_eq!(line.get_seqnum(), 0);
             assert_eq!(line.get_prevuuid(), None);
             // And the column built from the reading refuses the same way.
@@ -1628,10 +1629,10 @@ mod text {
             assert_eq!(
                 cell("state")
                     .as_any()
-                    .downcast_ref::<arrow_array::StringArray>()
+                    .downcast_ref::<arrow_array::Int32Array>()
                     .expect("a state")
                     .value(0),
-                lines[0].get_state().as_str()
+                lines[0].get_state().code()
             );
             // And a line read back out of the batch states every one of them
             // again, the identity a message named as its source included.
@@ -1744,9 +1745,9 @@ fn a_batch_read_proves_each_row_as_it_takes_it() {
     use arrow_array::cast::AsArray as _;
     use yggdryl::text::{TextBytes, TextLine, TextOptions, from_arrow_reader, into_arrow_batch};
 
-    // Wider than the ten bytes a state is: text the layout holds and the
-    // datatype refuses.
-    const WIDE: &str = "NOT-A-STATE-CODE";
+    // An `int32` the layout holds and the datatype refuses: the code of no
+    // state.
+    const NO_STATE: i32 = 7;
     let options = TextOptions::new();
     let lines = (0..3).map(|index| {
         TextLine::from_bytes(
@@ -1758,10 +1759,14 @@ fn a_batch_read_proves_each_row_as_it_takes_it() {
     });
     let batch = into_arrow_batch(lines, &options).unwrap();
     let at = batch.schema().index_of("state").expect("a state column");
-    let mut states: Vec<Option<&str>> = batch.column(at).as_string::<i32>().iter().collect();
-    states[1] = Some(WIDE);
+    let mut states: Vec<Option<i32>> = batch
+        .column(at)
+        .as_primitive::<arrow_array::types::Int32Type>()
+        .iter()
+        .collect();
+    states[1] = Some(NO_STATE);
     let mut columns = batch.columns().to_vec();
-    columns[at] = std::sync::Arc::new(arrow_array::StringArray::from(states));
+    columns[at] = std::sync::Arc::new(arrow_array::Int32Array::from(states));
     let forged = arrow_array::RecordBatch::try_new(batch.schema(), columns).unwrap();
 
     // A line is read one row at a time, so nothing refuses the batch before

@@ -63,7 +63,7 @@ test('rowsOf converts every column by its Arrow type, once per column', () => {
   // A map the book does not state is null; a list an array of its converted items.
   assert.equal(row.securityids, null)
   assert.equal(row.srcuuids, null)
-  assert.equal(row.executions[0].state, '80FILLED')
+  assert.equal(row.executions[0].state, 'FILLED')
   // A list of structs: the limits exactly as the native side answers them,
   // the market order's unpriced limit last.
   assert.deepEqual(row.bidside.limits, book.bid.limits)

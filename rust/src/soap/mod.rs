@@ -36,7 +36,7 @@
 //! envelope and its header, lends the body to the caller, and closes both, so
 //! a response whose body is a stream of rows is written as the rows arrive
 //! rather than held whole. The HTTP a SOAP endpoint is reached over is the
-//! crate's [`http`](crate::http) server and client; what SOAP 1.1 states of
+//! crate's `http` server and client; what SOAP 1.1 states of
 //! its binding - the media type, the `SOAPAction` header - is here.
 
 use std::borrow::Cow;

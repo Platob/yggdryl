@@ -13,8 +13,8 @@ use std::hash::Hasher;
 
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
-use crate::{CodeValue, State, Uuid};
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
+use crate::{State, Uuid};
 
 /// One element of a graph: a node that knows its own identity, the identity
 /// it has elsewhere, the codes it digests to and the identities of the
@@ -645,13 +645,13 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
         |place| this.set_seqnum(place),
     );
     changed |= follow_element(this, previous);
-    let stated_expiry = this.get_exprtime();
+    let stated_expiry = this.get_exprunix();
     changed |= this.fold_lifecycle(previous);
     // A replacement may shorten its lifetime. Folding simultaneous statements
     // still keeps the latest expiry, but a newer explicit deadline is decisive.
     if let Some(expiry) = stated_expiry {
-        changed |= moved(this.get_exprtime(), Some(expiry), |unix| {
-            this.set_exprtime(unix)
+        changed |= moved(this.get_exprunix(), Some(expiry), |unix| {
+            this.set_exprunix(unix)
         });
     }
     changed
@@ -771,7 +771,7 @@ pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// instants: the state, the place in the chain and the predecessor's
 /// identity.
 fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
-    feed(state, "state", this.get_state().as_str().as_bytes());
+    feed(state, "state", &this.get_state().code().to_le_bytes());
     feed(state, "seqnum", &this.get_seqnum().to_le_bytes());
     if let Some(previous) = this.get_prevuuid() {
         feed(state, "prevuuid", &previous.into_bytes());
@@ -792,7 +792,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///
 /// Where the event stands is its [`State`], the crate's ranked lifecycle
 /// code, and every event has one: an event that reached no state says so
-/// with the code that means exactly that, `00UNKNOWN`, never with an
+/// with the code that means exactly that, `UNKNOWN`, never with an
 /// absence. Where it stands in its chain is `seqnum`: the count of events
 /// before it, which following increments and merging keeps the highest of.
 /// Six more instants and one more identity are optional, because an event
@@ -842,7 +842,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     creaunix: Option<i64>,
 ///     execunix: Option<i64>,
 ///     recdunix: Option<i64>,
-///     exprtime: Option<i64>,
+///     exprunix: Option<i64>,
 ///     prevunix: Option<i64>,
 ///     prevuuid: Option<Uuid>,
 ///     snapunix: Option<i64>,
@@ -858,12 +858,12 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             crosshashcode: 0,
 ///             sources: Vec::new(),
 ///             unix,
-///             state: State::from_spelling("New").expect("a shipped state"),
+///             state: State::New,
 ///             seqnum: 0,
 ///             creaunix: None,
 ///             execunix: None,
 ///             recdunix: None,
-///             exprtime: None,
+///             exprunix: None,
 ///             prevunix: None,
 ///             prevuuid: None,
 ///             snapunix: None,
@@ -965,11 +965,11 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     fn set_recdunix(&mut self, unix: Option<i64>) {
 ///         self.recdunix = unix;
 ///     }
-///     fn get_exprtime(&self) -> Option<i64> {
-///         self.exprtime
+///     fn get_exprunix(&self) -> Option<i64> {
+///         self.exprunix
 ///     }
-///     fn set_exprtime(&mut self, unix: Option<i64>) {
-///         self.exprtime = unix;
+///     fn set_exprunix(&mut self, unix: Option<i64>) {
+///         self.exprunix = unix;
 ///     }
 ///     fn get_prevunix(&self) -> Option<i64> {
 ///         self.prevunix
@@ -1032,7 +1032,7 @@ pub trait Event: Element {
 
     /// Where this event stands in its lifecycle: the crate's ranked
     /// [`State`] code, never absent - an event that reached no state says
-    /// `00UNKNOWN`.
+    /// `UNKNOWN`.
     fn get_state(&self) -> &State;
 
     /// Records where this event stands in its lifecycle.
@@ -1079,11 +1079,11 @@ pub trait Event: Element {
 
     /// When this event expires, in the same count as [`Self::get_currunix`], where
     /// it has an expiry.
-    fn get_exprtime(&self) -> Option<i64>;
+    fn get_exprunix(&self) -> Option<i64>;
 
     /// Records when this event expires; `None` states it does not expire,
     /// or does not know.
-    fn set_exprtime(&mut self, unix: Option<i64>);
+    fn set_exprunix(&mut self, unix: Option<i64>);
 
     /// When the event this one follows happened, where it follows one.
     fn get_prevunix(&self) -> Option<i64>;
@@ -1224,7 +1224,7 @@ pub trait Event: Element {
 
     /// Folds another event's lifecycle into this one: the earliest
     /// creation, the latest expiration, the furthest state - the better of
-    /// the two as [`CodeValue::merge_with`] reads a state; whether any of
+    /// the two as [`State::merge_with`] reads a state; whether any of
     /// them moved.
     ///
     /// Provided, and what [`Self::following`] and [`Self::merging`] share.
@@ -1238,14 +1238,12 @@ pub trait Event: Element {
             |unix| self.set_creaunix(unix),
         );
         changed |= moved(
-            self.get_exprtime(),
-            latest(self.get_exprtime(), other.get_exprtime()),
-            |unix| self.set_exprtime(unix),
+            self.get_exprunix(),
+            latest(self.get_exprunix(), other.get_exprunix()),
+            |unix| self.set_exprunix(unix),
         );
-        let state = self.get_state().clone().merge_with(other.get_state());
-        changed |= moved(self.get_state().clone(), state, |state| {
-            self.set_state(state)
-        });
+        let state = self.get_state().merge_with(*other.get_state());
+        changed |= moved(*self.get_state(), state, |state| self.set_state(state));
         changed
     }
 

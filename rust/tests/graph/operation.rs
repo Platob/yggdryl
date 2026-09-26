@@ -418,11 +418,13 @@ fn a_boxed_book_control_is_one_pointer() {
 /// four holders came back: a leaf holds only its role's facts. It moved by
 /// sixteen bytes each when the market facts began to know which
 /// identifiers they only derived: one `u64` mask, padded to the facts'
-/// sixteen-byte alignment.
+/// sixteen-byte alignment. The dated leaf moved back by sixteen bytes when
+/// its `State` became an `i32` member rather than a twenty-four-byte code
+/// string; the undated leaf holds no state and stands.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (880, 1072));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (880, 1056));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
 }

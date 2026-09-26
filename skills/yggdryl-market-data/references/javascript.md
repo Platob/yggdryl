@@ -37,7 +37,7 @@ assert.notEqual(order.crossuuid, order.curruuid, 'the cross code names a chain')
 assert.deepEqual(order.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
 assert.equal(order.bid.price, '189.5')
 assert.equal(order.lastpx, null, 'a price is never a last execution')
-assert.equal(order.state, '00UNKNOWN')
+assert.equal(order.state, 'UNKNOWN')
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -108,7 +108,7 @@ assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `altids`), yields a twin as a restatement rather than a successor,
-retires a chain at a terminal state and emits one `95EXPIRED` at a deadline.
+retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -133,11 +133,11 @@ assert.equal(chained[4].prevuuid, null, 'the fill ended the chain')
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS = 1_000_000n
-const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-3003', exprtime: T + 70n * MS })
+const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-3003', exprunix: T + 70n * MS })
 const timed = [...new graph.EventIterator([expiring], true, 10n * MS)].map((value) => value.asOrderEvent())
 assert.ok(timed.some((held) => held.snapunix === T + 60n * MS))
 const expired = timed[timed.length - 1]
-assert.deepEqual([expired.currunix, expired.state], [T + 70n * MS, '95EXPIRED'])
+assert.deepEqual([expired.currunix, expired.state], [T + 70n * MS, 'EXPIRED'])
 ```
 
 ## Build a composite trade

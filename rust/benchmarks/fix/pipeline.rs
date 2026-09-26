@@ -315,7 +315,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .set_currunix(SNAPSHOT_BASE + i64::try_from(index).expect("sixteen rows") * MINUTE);
             message.set_crosscode(format!("SNAPSHOT-{index}"));
             message.set_state(State::read("new").expect("the shipped new state"));
-            message.set_exprtime(Some(SNAPSHOT_BASE + 60 * MINUTE));
+            message.set_exprunix(Some(SNAPSHOT_BASE + 60 * MINUTE));
             message.set_seqnum(0);
             message.set_prevunix(None);
             message.set_prevuuid(None);

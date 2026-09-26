@@ -49,10 +49,8 @@ from yggdryl.fix import (
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    global_registry,
-    install_global_registry,
 )
-from yggdryl import graph
+from yggdryl import State, graph
 from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
 
@@ -650,7 +648,7 @@ def test_the_bridge_capture_reads_as_market_operations_and_folds_into_books(
     assert last.ticker == "2454"
     assert last.bid.is_empty and last.ask.is_empty
     assert [delta.price for delta in last.ask.deltas] == [None, None]
-    assert last.currhashcode == 4_619_727_780_541_450_139
+    assert last.currhashcode == 7_839_532_806_895_463_521
 
     # No leaf keys a typed fact; the fill line 105 carries states its
     # bridge's own namespaced key.
@@ -1136,7 +1134,11 @@ def test_a_code_set_is_the_dictionarys_and_a_snapshot_preserves_every_definition
     # field names the set it reads by, so a reader holds the sets before it
     # meets a field naming one.
     assert set(document) == {"codesets", "fields", "components", "groups"}
-    assert [held["name"] for held in document["codesets"]] == ["msgcatcodeset", "partyidcodeset"]
+    assert [held["name"] for held in document["codesets"]] == [
+        "msgcatcodeset",
+        "partyidcodeset",
+        "statecodeset",
+    ]
     with pytest.raises(TypeError):
         hash(registry)
 
@@ -1962,7 +1964,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "metadata",
         "srcuuids",
         "state",
-        "exprtime",
+        "exprunix",
         "msgcat",
         "isincode",
         "bloombergcode",
@@ -2009,7 +2011,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "prevunix",
         "creaunix",
         "snapunix",
-        "exprtime",
+        "exprunix",
         "execunix",
         "recdunix",
     ):
@@ -2077,6 +2079,7 @@ def test_a_store_writes_the_whole_row_and_reads_its_own_dump_back(tmp_path: path
     # tag 35 lands in shard 0, tag 5001 in shard 50, the crate's own in 650.
     assert sorted(path.relative_to(root).as_posix() for path in root.rglob("*.json")) == [
         "codesets/msgcatcodeset.json",
+        "codesets/statecodeset.json",
         "components/fixmsg.json",
         "fields/000000000.json",
         "fields/000000050.json",
@@ -2262,7 +2265,7 @@ def test_a_code_set_is_named_once_and_every_field_reads_by_that_name() -> None:
             {"value": "2", "name": "Sell", "description": "the short side"},
         ],
     )
-    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset", "statecodeset"]
     assert registry.codeset("sidecodeset") == [
         {
             "value": "1",
@@ -2323,7 +2326,7 @@ def test_a_code_set_is_named_once_and_every_field_reads_by_that_name() -> None:
     ):
         with pytest.raises(ValueError, match="sidecodeset"):
             taking()
-    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset", "statecodeset"]
 
     # Removed once nothing reads by it, answering the members it held. The
     # reference is dropped by `insert`, which replaces: a merge keeps the
@@ -2336,7 +2339,7 @@ def test_a_code_set_is_named_once_and_every_field_reads_by_that_name() -> None:
         registry.insert(moved)
     taken = registry.remove_codeset("sidecodeset")
     assert taken is not None and [code["value"] for code in taken] == ["1"]
-    assert registry.codeset_names() == ["msgcatcodeset"]
+    assert registry.codeset_names() == ["msgcatcodeset", "statecodeset"]
     assert registry.remove_codeset("sidecodeset") is None
 
 
@@ -2388,7 +2391,12 @@ def test_a_code_set_merge_keeps_what_the_dictionary_already_held() -> None:
 
     # A set no dictionary held yet arrives whole.
     registry.merge_codeset("newcodeset", [{"value": "A", "name": "Arrived"}])
-    assert registry.codeset_names() == ["lastqtycodeset", "msgcatcodeset", "newcodeset"]
+    assert registry.codeset_names() == [
+        "lastqtycodeset",
+        "msgcatcodeset",
+        "newcodeset",
+        "statecodeset",
+    ]
 
 
 def test_registry_mutation_refuses_while_something_shares_it(seed: FixRegistry) -> None:
@@ -2607,7 +2615,8 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert bid.unit is None and bid.spotrate is None and bid.forwardpoints is None
     assert event.seqnum == 0
     assert event.prevuuid is None and event.prevunix is None and event.snapunix is None
-    assert event.state.as_py() == "00UNKNOWN"
+    # A new order stating no status asks for a new order.
+    assert event.state.as_py() is State.PENDING_NEW
     assert not hasattr(message, "isincode")
     assert message.market_operations() == [operation]
 
@@ -2988,22 +2997,22 @@ import pathlib
 import sys
 
 from yggdryl import DataType, Field
-from yggdryl.fix import FixMsg, FixRegistry, global_registry, install_global_registry
+from yggdryl.fix import FixMsg, FixRegistry
 
 seed = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
-install_global_registry(seed)
-assert global_registry() == seed
-assert global_registry().field_by_tag(55).name == "symbol"
+FixRegistry.install_env(seed)
+assert FixRegistry.from_env() == seed
+assert FixRegistry.from_env().field_by_tag(55).name == "symbol"
 
 root = Field(
     "row",
-    DataType.from_fields([global_registry().field_by_tag(55)]),
+    DataType.from_fields([FixRegistry.from_env().field_by_tag(55)]),
     nullable=False,
 )
 assert FixMsg(root, {"symbol": "AAPL"}).registry == seed
 
 try:
-    install_global_registry(FixRegistry())
+    FixRegistry.install_env(FixRegistry())
 except ValueError as error:
     assert "already resolved" in str(error), error
 else:
@@ -3012,7 +3021,7 @@ print("ok")
 """
 
 
-def test_install_global_registry_wins_before_the_default_resolves() -> None:
+def test_install_env_wins_before_the_default_resolves() -> None:
     """Process-wide state, so it is driven in a process of its own."""
     result = subprocess.run(
         [sys.executable, "-c", INSTALL_SCRIPT, str(SEED)],
@@ -3026,9 +3035,9 @@ def test_install_global_registry_wins_before_the_default_resolves() -> None:
 
 
 def test_message_links_the_process_default_when_none_is_named() -> None:
-    default = global_registry()
+    default = FixRegistry.from_env()
     assert isinstance(default, FixRegistry)
-    assert default == global_registry()
+    assert default == FixRegistry.from_env()
 
     root = Field("row", DataType.from_fields([_field("symbol", "utf8", 55)]), nullable=False)
     assert FixMsg(root, {"symbol": "AAPL"}).registry == default
@@ -3318,8 +3327,8 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
     # and no longer a child of the content row.
     assert [name for name, _ in latest].count("lastqty") == 0
     assert latest.lastqty is not None and latest.lastqty.as_py() == 100
-    # The state the event reached, as the crate's ranked spelling.
-    assert latest.state.as_py() == "40PARTFILL"
+    # The state the event reached, as the crate's lifecycle-sorted member.
+    assert latest.state.as_py() is State.PARTIALLY_FILLED
     # And the rules the dictionary licenses: one fill's average is its price.
     assert latest.by_tag(6).as_py() == 10.5
     # The version it was read at is the header's, not a column.
@@ -3378,7 +3387,11 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     # The lifecycle's own creation instant is carried forward.
     assert {held.creaunix for held in walked} == {walked[0].creaunix}
     # The state moves with the messages.
-    assert [held.state.as_py() for held in walked] == ["00UNKNOWN", "20NEW", "40PARTFILL"]
+    assert [held.state.as_py() for held in walked] == [
+        State.PENDING_NEW,
+        State.NEW,
+        State.PARTIALLY_FILLED,
+    ]
 
     # The walk states what a message follows and touches the content of
     # none of them: the row and the entries are the parse's own. The wire is
@@ -3562,7 +3575,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
         b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|"
     )
     entries = expiring.entries()
-    deadline = expiring.exprtime
+    deadline = expiring.exprunix
     assert deadline is not None
     walked = list(snapshot_codec.lifecycle([expiring]))
     assert expiring.entries() == entries
@@ -3575,7 +3588,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     assert expired.entries() == entries
     snapshots = [held for held in walked if held.snapunix is not None]
     assert snapshots
-    assert expired.state.as_py() == "95EXPIRED"
+    assert expired.state.as_py() is State.EXPIRED
     for held in snapshots:
         snapunix = held.snapunix
         assert snapunix is not None

@@ -263,7 +263,6 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Mic, 0x73),
         (DataTypeId::Cfi, 0x74),
         (DataTypeId::Side, 0x75),
-        (DataTypeId::State, 0x76),
         (DataTypeId::TimeInForce, 0x77),
         (DataTypeId::Isin, 0x78),
         (DataTypeId::Cusip, 0x79),
@@ -287,6 +286,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Variant, 0x9c),
         (DataTypeId::Geometry, 0xb1),
         (DataTypeId::Geography, 0xb2),
+        (DataTypeId::State, 0xc1),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
@@ -362,6 +362,7 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
         (K::Uuid, 0x80, 0x8f),
         (K::Nested, 0x90, 0xaf),
         (K::Geospatial, 0xb0, 0xbf),
+        (K::Enum, 0xc0, 0xcf),
     ];
     assert_eq!(ranges.len(), K::ALL.len());
     for (kind, first, last) in ranges {
@@ -383,12 +384,12 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
             owners.first().copied(),
             "{byte:#04x}"
         );
-        assert_eq!(owners.is_empty(), byte > 0xbf, "{byte:#04x}");
+        assert_eq!(owners.is_empty(), byte > 0xcf, "{byte:#04x}");
     }
 
     // Each identifier's family, listed independently of the byte table, so
     // a bound typo that moved a leaf into its neighbour is caught.
-    let members: [(K, &[DataTypeId]); 12] = [
+    let members: [(K, &[DataTypeId]); 13] = [
         (K::Null, &[DataTypeId::Null]),
         (K::Boolean, &[DataTypeId::Boolean]),
         (
@@ -486,7 +487,6 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
                 DataTypeId::Mic,
                 DataTypeId::Cfi,
                 DataTypeId::Side,
-                DataTypeId::State,
                 DataTypeId::TimeInForce,
                 DataTypeId::Isin,
                 DataTypeId::Cusip,
@@ -519,6 +519,7 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
             K::Geospatial,
             &[DataTypeId::Geometry, DataTypeId::Geography],
         ),
+        (K::Enum, &[DataTypeId::State]),
     ];
     let listed: usize = members.iter().map(|(_, ids)| ids.len()).sum();
     assert_eq!(

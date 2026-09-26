@@ -401,7 +401,7 @@ pub(crate) fn column_of(
     use crate::serie::value::{
         duration_reading, read_date32, read_date64, read_datetime, read_day_time, read_decimal32,
         read_decimal64, read_decimal128, read_decimal256, read_month_day_nano, read_native,
-        read_time32, read_time64, read_year_month,
+        read_state, read_time32, read_time64, read_year_month,
     };
 
     let _ = (parent, proof);
@@ -422,6 +422,10 @@ pub(crate) fn column_of(
     match array.data_type() {
         ArrowDataType::Int8 => primitive!(Int8Type, read_native),
         ArrowDataType::Int16 => primitive!(Int16Type, read_native),
+        // A state is the code of its member, read back as the member.
+        ArrowDataType::Int32 if matches!(field.dtype(), crate::DataType::State) => {
+            primitive!(Int32Type, read_state)
+        }
         ArrowDataType::Int32 => primitive!(Int32Type, read_native),
         ArrowDataType::Int64 => primitive!(Int64Type, read_native),
         ArrowDataType::UInt8 => primitive!(UInt8Type, read_native),

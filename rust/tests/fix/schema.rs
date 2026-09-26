@@ -66,7 +66,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::EXPRTIME_TAG_NAME.0,
+            yggdryl::EXPRUNIX_TAG_NAME.0,
             52,
             122,
             60,
@@ -273,7 +273,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
         (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::EXPRTIME_TAG_NAME.0, "ExprTime"),
+        (yggdryl::EXPRUNIX_TAG_NAME.0, "ExprUnix"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");

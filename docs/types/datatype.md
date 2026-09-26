@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `side`, `state`, `timeinforce` and `unit`, each resolving to its own [code](codes/index.md); `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `side`, `timeinforce` and `unit`, each resolving to its own [code](codes/index.md), and `state` to the [State](enum/state.md) enum; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |

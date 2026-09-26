@@ -1075,7 +1075,7 @@ fn build_book_operation(
         let mut crosscode = scope.clone();
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
-        event.set_state(State::read("New").expect("the shipped new state"));
+        event.set_state(State::New);
         // A snapshot control states no operation of its own: the facts a
         // FIX event always states (`marketoperationid` among them) drop.
         return Ok(MarketData::from(SnapshotEvent::from_facts(
@@ -1121,14 +1121,10 @@ fn build_book_operation(
             })?
     };
     let state = match action {
-        MdUpdateAction::Snapshot | MdUpdateAction::New => {
-            State::read("New").expect("the shipped new state")
-        }
-        MdUpdateAction::Change | MdUpdateAction::Overlay => {
-            State::read("Replaced").expect("the shipped replaced state")
-        }
+        MdUpdateAction::Snapshot | MdUpdateAction::New => State::New,
+        MdUpdateAction::Change | MdUpdateAction::Overlay => State::Replaced,
         MdUpdateAction::Delete | MdUpdateAction::DeleteThru | MdUpdateAction::DeleteFrom => {
-            State::read("Canceled").expect("the shipped canceled state")
+            State::Canceled
         }
     };
 

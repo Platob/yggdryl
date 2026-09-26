@@ -1525,7 +1525,6 @@ mod types {
             (DataType::Cfi, "ESVUFR"),
             (DataType::Isin, "US0378331005"),
             (DataType::Side, "BUY"),
-            (DataType::State, "0"),
             (DataType::TimeInForce, "GTC"),
         ] {
             assert!(
@@ -1545,6 +1544,25 @@ mod types {
                 "{dtype}"
             );
         }
+    }
+
+    #[test]
+    fn a_state_bound_is_the_int_its_column_stores() {
+        use yggdryl::internals::iceberg_value::{is_portable, single_to_value, single_value};
+        use yggdryl::{Scalar, State};
+
+        // A state column stores its member's code, so its bounds are Iceberg
+        // ints a planner compares in lifecycle order.
+        let dtype = DataType::State;
+        assert!(is_portable(&dtype));
+        for state in [State::Unknown, State::New, State::Filled, State::Expired] {
+            let exact = Scalar::State(state);
+            let bytes = single_value(&exact, &dtype).expect("a state encodes a bound");
+            assert_eq!(bytes, state.code().to_le_bytes(), "{state}");
+            assert_eq!(single_to_value(&bytes, &dtype), Some(exact), "{state}");
+        }
+        // The code of no state reads as no bound rather than as a member.
+        assert_eq!(single_to_value(&7_i32.to_le_bytes(), &dtype), None);
     }
 
     #[test]

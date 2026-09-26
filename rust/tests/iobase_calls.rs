@@ -64,24 +64,24 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Five documents and four roots: the store's own field shard, the crate's
+    // Six documents and four roots: the store's own field shard, the crate's
     // block on its own shard, its `metadata` group and its `fixmsg` component
     // - a store states the whole row, so the crate's three documents are
-    // written beside the store's one - plus the built-in MsgCat vocabulary.
-    // The three category roots and `codesets/` are each reached once for
-    // pruning. MsgCat adds one document lookup and no root lookup; reading
-    // still resolves exactly four roots.
+    // written beside the store's one - plus the built-in MsgCat and state
+    // vocabularies. The three category roots and `codesets/` are each reached
+    // once for pruning. Each intrinsic set adds one document lookup and no
+    // root lookup; reading still resolves exactly four roots.
     assert_eq!(
         registry
             .codesets()
             .map(|set| set.name())
             .collect::<Vec<_>>(),
-        ["msgcatcodeset"],
+        ["msgcatcodeset", "statecodeset"],
     );
     costs(
-        "five documents, four roots",
+        "six documents, four roots",
         &calls,
-        "child_by_path=9",
+        "child_by_path=10",
         || {
             registry.commit(&mut folder).unwrap();
         },

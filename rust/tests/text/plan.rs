@@ -45,7 +45,7 @@ mod columns {
         "creaunix",
         "execunix",
         "recdunix",
-        "exprtime",
+        "exprunix",
         "prevunix",
         "snapunix",
         "curruuid",

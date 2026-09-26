@@ -75,28 +75,55 @@ use crate::{Error, Field, Result, Scalar};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
 
-/// Leaves ordinary dictionary vocabularies mutable while pinning the one
-/// code set whose values are generic graph identifiers.
+/// Leaves ordinary dictionary vocabularies mutable while pinning the two
+/// code sets the crate fixes: MsgCat's generic graph identifiers and the
+/// state codes a `state` column stores.
 fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
-    if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME) {
+    let (canonical, expected, changed) = if folds_equal(key, super::crated::MSGCAT_CODESET_NAME) {
+        (
+            super::crated::msgcat_codeset(),
+            "the fixed MsgCat operation identifiers",
+            "a changed or removed MsgCat code set",
+        )
+    } else if folds_equal(key, super::crated::STATE_CODESET_NAME) {
+        (
+            super::crated::state_codeset(),
+            "the fixed state codes",
+            "a changed or removed state code set",
+        )
+    } else {
         return Ok(());
-    }
-    let canonical = super::crated::msgcat_codeset()
-        .ok_or_else(|| Error::absent("the intrinsic MsgCat code set", key))?;
+    };
+    let canonical = canonical.ok_or_else(|| Error::absent("an intrinsic code set", key))?;
     if document == Some(canonical.as_ref()) {
         return Ok(());
     }
-    Err(Error::conflict(
-        "the fixed MsgCat operation identifiers",
-        "a changed or removed MsgCat code set",
-        key,
-    ))
+    Err(Error::conflict(expected, changed, key))
 }
 
 /// Refuses an intrinsic merge whose input attempts to remap or widen one
 /// category even when the ordinary vocabulary merge would discard that
 /// conflicting spelling and leave the stored document unchanged.
 fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
+    if folds_equal(key, super::crated::STATE_CODESET_NAME) {
+        let canonical = codes.iter().all(|code| {
+            crate::State::from_name(code.name()).is_some_and(|state| {
+                code.value() == state.code().to_string()
+                    && code.aliases().is_empty()
+                    && code.description() == Some(state.description())
+                    && code.group().is_none()
+            })
+        });
+        return if canonical {
+            Ok(())
+        } else {
+            Err(Error::conflict(
+                "the fixed state codes",
+                "a changed or removed state code set",
+                key,
+            ))
+        };
+    }
     if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME)
         || codes.iter().all(|code| {
             super::constants::MSGCATEGORY_CODES

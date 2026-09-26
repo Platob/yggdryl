@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Scalar, graph
+from yggdryl import Scalar, State, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -43,12 +43,12 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert isinstance(event.currhashcode, int) and isinstance(event.crosshashcode, int)
     assert event.srcuuids == []
     assert event.currunix == CLOCK
-    assert event.state.as_py() == "00UNKNOWN"
+    assert event.state.as_py() is State.UNKNOWN
     assert event.seqnum == 3
     assert event.creaunix == CLOCK - 100_000_000_000
     assert event.execunix is None
     assert event.recdunix == CLOCK - 50_000_000_000
-    assert event.exprtime is None
+    assert event.exprunix is None
     assert event.prevunix is None and event.prevuuid is None
     assert event.snapunix is None
     assert event.price is not None and event.price.as_py() == D("101")

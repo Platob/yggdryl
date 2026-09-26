@@ -2892,6 +2892,78 @@ export declare const yaml: StructuredCodec<TemplateCodecOptions>
  * those strings can be, unpacked from one native listing so it can never
  * drift from the Rust constants it mirrors.
  */
+/**
+ * What state one thing is in: the core's lifecycle-sorted enum, each
+ * member's name under the `int32` code a `state` column stores. The codes
+ * sort from the first state to the terminal ones; a code's hundreds are its
+ * rank.
+ */
+export declare const State: Readonly<{
+  UNKNOWN: 0
+  PENDING: 1000
+  PENDING_NEW: 1001
+  QUEUED: 1002
+  RECEIVED: 1003
+  PENDING_VERIFICATION: 1004
+  PENDING_ALLOCATION: 1005
+  PENDING_APPROVAL: 1006
+  ACCEPTED: 2000
+  NEW: 2001
+  STARTING: 2002
+  SUBMITTED: 2003
+  ACKNOWLEDGED: 2004
+  RUNNING: 3000
+  STATUS: 3001
+  TRIGGERED: 3002
+  ACTIVE: 3003
+  IN_PROGRESS: 4000
+  PARTIALLY_FILLED: 4001
+  TRADE: 4002
+  TRADE_CORRECT: 4003
+  TRADE_CANCEL: 4004
+  TRADE_IN_CLEARING_HOLD: 4005
+  PAUSED: 5000
+  STOPPED: 5001
+  SUSPENDED: 5002
+  LOCKED: 5003
+  DISPUTED: 5004
+  INCOMPLETE: 5005
+  PENDING_CANCEL: 6000
+  PENDING_REPLACE: 6001
+  PENDING_REVERSAL: 6002
+  REPLACED: 7000
+  RESTATED: 7001
+  AMENDED: 7002
+  RELEASED: 7003
+  CALCULATED: 8000
+  COMPLETE: 8001
+  DONE_FOR_DAY: 8002
+  FILLED: 8003
+  SUCCEEDED: 8004
+  TRADE_RELEASED_TO_CLEARING: 8005
+  ALLOCATED: 8006
+  CONFIRMED: 8007
+  AFFIRMED: 8008
+  VERIFIED: 8009
+  CLEARED: 8010
+  SETTLED: 8011
+  CLAIMED: 8012
+  CANCELED: 9000
+  REVERSED: 9001
+  REMOVED: 9002
+  TERMINATED: 9003
+  EXPIRED: 9500
+  FAILED: 9501
+  REJECTED: 9502
+  TIMED_OUT: 9503
+  DONT_KNOW: 9504
+  MISMATCHED: 9505
+  NOT_FOUND: 9506
+}>
+
+/** The stored name of one state. */
+export type StateName = keyof typeof State
+
 export declare const enums: {
   /** Every datatype variant identity, e.g. `'int64'`, `'decimal128'`. */
   readonly dataTypeIds: readonly DataTypeId[]
@@ -4121,10 +4193,6 @@ export interface Fix {
    * (60) clocks.
    */
   crateFields(): Field[]
-  /** The process-wide registry, loading it on the first call. */
-  globalRegistry(): FixRegistry
-  /** Install the process-wide registry before anything resolves it. */
-  installGlobalRegistry(registry: FixRegistry): void
 }
 
 export declare const fix: Fix

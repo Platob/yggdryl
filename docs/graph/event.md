@@ -8,10 +8,10 @@
 | --- | --- |
 | Owner | trait `yggdryl::graph::Event` (`graph::element`); `EventIterator` walk (`graph::iterator`); Rust-only - dated [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `currunix` | `get_currunix`/`set_currunix`: nanoseconds since the Unix epoch, UTC, signed |
-| `state` | `get_state`/`set_state`: the ranked lifecycle [code](../types/codes/state.md), never absent - `00UNKNOWN` where none reached |
-| `is_execution` | provided via `State::is_execution` (`40PARTFILL`, `40TRADE`, `80FILLED`); overridable where lifecycle state and report kind differ |
+| `state` | `get_state`/`set_state`: the lifecycle-sorted [`State`](../types/enum/state.md) member, never absent - `UNKNOWN` where none reached |
+| `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ |
 | `seqnum` | `get_seqnum`/`set_seqnum`: how many came before it in its chain |
-| Clocks | `creaunix`, `execunix`, `recdunix`, `exprtime`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `execunix` the execution instant, `recdunix` the earliest recording (what a merge ranks by), `exprtime` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step |
+| Clocks | `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `execunix` the execution instant, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step |
 | `digest_event` | provided: continues [`Element::digest`](element.md#contract) with the state, chain place and predecessor's identity; no instant fed |
 | `fold_lifecycle` | provided, `(&mut self, &Self) -> bool`: earliest creation, latest expiration, better state ([`CodeValue::merge_with`](../types/codes/index.md#the-code-family-value)) |
 
@@ -85,7 +85,7 @@ An Apple order placed, then partly filled a second later.
     assert_eq!(placed.get_curruuid(), placed.time_uuid()?);
     assert!(placed.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
     assert_eq!(placed.txhash()?.unix(), T);
-    assert_eq!(placed.get_state().as_str(), "20NEW");
+    assert_eq!(placed.get_state().as_str(), "NEW");
 
     let filled = event(T + 1_000_000_000, "PartiallyFilled")?;
     assert!(filled.is_after(&placed) && placed.is_before(&filled));
@@ -127,7 +127,7 @@ An Apple order placed, then partly filled a second later.
     placed = event(T, "NEW")
     # UUIDv7: the millisecond 1_700_000_000_000 leads the identity.
     assert placed.curruuid.as_py().startswith("018bcfe5-6800-7")
-    assert placed.state.as_py() == "20NEW"
+    assert placed.state.as_py().name == "NEW"
 
     filled = event(T + 1_000_000_000, "PARTIALLY_FILLED")
     assert filled.is_after(placed) and placed.is_before(filled)
@@ -164,7 +164,7 @@ An Apple order placed, then partly filled a second later.
     const placed = event(T, 'NEW')
     // UUIDv7: the millisecond 1_700_000_000_000 leads the identity.
     assert.ok(placed.curruuid.startsWith('018bcfe5-6800-7'))
-    assert.equal(placed.state, '20NEW')
+    assert.equal(placed.state, 'NEW')
 
     const filled = event(T + 1_000_000_000n, 'PARTIALLY_FILLED')
     assert.ok(filled.isAfter(placed) && placed.isBefore(filled))
@@ -301,7 +301,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 | Live set, twins | elements still alive (a live state, not past expiration) share the cross identity; an arrival under a live identity - or (if dead) under a `(key, value)` of a live element's `get_altids()` - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead |
 | Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element, refused by it, or unchanged by following, is yielded as it came |
 | Executions | `execunix` defaults to `currunix` pre-placement when `Event::is_execution` holds; following carries the latest execution clock through non-executions, never filling/carrying `recdunix`. FIX counts an initial `35=AE` only if `TradeReportTransType(487)` is absent/New and `ExecType(150)` is absent or execution-like (`F`, legacy `1`/`2`) - never non-New/cancel/correct/reverse/status `AE`, nor `AD`/`AQ`/`AR` |
-| Deadlines, end | a finite `exprtime` emits one owned `95EXPIRED` at that instant, following the live generation, then purges it; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
+| Deadlines, end | a finite `exprunix` emits one owned `EXPIRED` at that instant, following the live generation, then purges it; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
 | Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, changing only `snapunix`, never backdating; `snapshot_ns()` reads it back |
 | `MarketData` | `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` walk; every other variant yields unchanged and never stands live; unsorted, an undated value sorts first |
 | `alive()` | the live elements, in no order |
@@ -351,7 +351,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     const MS: i64 = 1_000_000;
     let mut expiring = OrderEvent::at(T + 50 * MS);
     expiring.set_crosscode("O-3003".to_owned());
-    expiring.set_exprtime(Some(T + 70 * MS));
+    expiring.set_exprunix(Some(T + 70 * MS));
     expiring.finalize();
     let source = expiring.get_curruuid();
     let timed: Vec<OrderEvent> = EventIterator::new([expiring], true).with_snapshot_ns(10 * MS).collect();
@@ -361,7 +361,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
         .expect("the living view at the crossed tick");
     assert_eq!((view.get_curruuid(), view.get_seqnum()), (source, 0));
     let expired = timed.last().expect("the deadline event");
-    assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (T + 70 * MS, "95EXPIRED"));
+    assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (T + 70 * MS, "EXPIRED"));
     assert_eq!((expired.get_prevuuid(), expired.get_seqnum()), (Some(source), 1));
     ```
 
@@ -396,12 +396,12 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
     # A 10 ms grid: a view of the living order at each tick, then its deadline.
     MS = 1_000_000
-    expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-3003", exprtime=T + 70 * MS)
+    expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-3003", exprunix=T + 70 * MS)
     timed = [value.as_order_event() for value in graph.EventIterator([expiring], snapshot_ns=10 * MS)]
     [view] = [held for held in timed if held.snapunix == T + 60 * MS]
     assert (view.curruuid, view.seqnum) == (expiring.curruuid, 0)
     expired = timed[-1]
-    assert (expired.currunix, expired.state.as_py()) == (T + 70 * MS, "95EXPIRED")
+    assert (expired.currunix, expired.state.as_py().name) == (T + 70 * MS, "EXPIRED")
     assert (expired.prevuuid, expired.seqnum) == (expiring.curruuid, 1)
     ```
 
@@ -437,14 +437,14 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
     // A 10 ms grid: a view of the living order at each tick, then its deadline.
     const MS = 1_000_000n
-    const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-3003', exprtime: T + 70n * MS })
+    const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-3003', exprunix: T + 70n * MS })
     const timed = [...new graph.EventIterator([expiring], true, 10n * MS)].map((value) => value.asOrderEvent())
     const view = timed.find((held) => held.snapunix === T + 60n * MS)
     assert.equal(view.curruuid, expiring.curruuid)
     assert.equal(view.seqnum, 0)
     const expired = timed[timed.length - 1]
     assert.equal(expired.currunix, T + 70n * MS)
-    assert.equal(expired.state, '95EXPIRED')
+    assert.equal(expired.state, 'EXPIRED')
     assert.equal(expired.prevuuid, expiring.curruuid)
     assert.equal(expired.seqnum, 1)
     ```

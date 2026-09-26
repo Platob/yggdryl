@@ -63,8 +63,8 @@ test('the ULBridge capture: eleven operations and seven books, the last the Rust
   assert.equal(walked.length, 7)
   const last = walked.at(-1)
   assert.equal(last.ticker, '2454')
-  assert.equal(last.stableHash(), 4_619_727_780_541_450_139n)
-  assert.equal(last.currhashcode, 4_619_727_780_541_450_139n)
+  assert.equal(last.stableHash(), 7_839_532_806_895_463_521n)
+  assert.equal(last.currhashcode, 7_839_532_806_895_463_521n)
   assert.deepEqual(source.symbols, [...new Set(walked.map((book) => book.crosscode))].sort())
 
   // The clock may be named by its text.

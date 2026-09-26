@@ -1076,7 +1076,7 @@ fn renamed_market_entry_expires_using_its_current_identity() {
         ),
         acting(MdUpdateAction::New),
     );
-    op_mut(&mut initial).set_exprtime(Some(4));
+    op_mut(&mut initial).set_exprunix(Some(4));
     initial.finalize();
     let renamed = with_book(
         with_altids(
@@ -1230,13 +1230,13 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
 #[test]
 fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
-    op_mut(&mut live).set_exprtime(Some(3));
+    op_mut(&mut live).set_exprunix(Some(3));
     live.finalize();
     let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")));
     execution.set_state(State::read("Filled").unwrap());
-    execution.set_exprtime(Some(2));
+    execution.set_exprunix(Some(2));
     execution.finalize();
 
     let books = BookIterator::new(
@@ -1270,7 +1270,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
 #[test]
 fn a_failed_equal_time_source_does_not_consume_the_pending_expiration() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
-    op_mut(&mut live).set_exprtime(Some(3));
+    op_mut(&mut live).set_exprunix(Some(3));
     live.finalize();
     let invalid = operation("quote", "IBM", "INVALID", 3, "Unknown", "101", 1, "New");
     let mut books = BookIterator::new([live, invalid].into_iter(), 0, false).unwrap();
@@ -1289,7 +1289,7 @@ fn expiring_one_snapshot_entry_keeps_the_rest_of_its_partition() {
         operation("quote", "IBM", "EXPIRING", 1, "Buy", "101", 1, "New"),
         acting_in(MdUpdateAction::Snapshot, "PRIMARY"),
     );
-    op_mut(&mut expiring).set_exprtime(Some(2));
+    op_mut(&mut expiring).set_exprunix(Some(2));
     expiring.finalize();
     let standing = with_book(
         operation("quote", "IBM", "STANDING", 1, "Buy", "100", 1, "New"),

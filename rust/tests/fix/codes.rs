@@ -58,7 +58,8 @@ fn one_set_is_named_once_however_many_fields_read_by_it() {
     other.as_fix_mut().set_codeset("unitcodeset").unwrap();
     registry.insert(other).unwrap();
 
-    assert_eq!(registry.codesets().len(), 2);
+    // The set named here, beside the crate's MsgCat and state sets.
+    assert_eq!(registry.codesets().len(), 3);
     for tag in [996, 999] {
         let set = registry
             .codeset_of(registry.field_by_tag(tag).unwrap())
@@ -153,14 +154,15 @@ fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
     assert_eq!(set.code_value("Sell"), Some("2"));
     // The incoming name is still a set of its own: a name is an identity,
     // and folding its members into another does not retire it.
-    assert_eq!(held.codesets().len(), 3);
+    assert_eq!(held.codesets().len(), 4);
     assert!(held.get_codeset("venuecodeset").is_some());
 }
 
 #[test]
 fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
-    // The crate's MsgCat vocabulary is registry-owned like every other
-    // set, so even a fresh dictionary persists that one intrinsic set.
+    // The crate's MsgCat and state vocabularies are registry-owned like
+    // every other set, so even a fresh dictionary persists those two
+    // intrinsic sets.
     let path = LocalFolder::temporary()
         .unwrap()
         .path()
@@ -169,7 +171,7 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     let _ = std::fs::remove_dir_all(&path);
     let mut root = Holder::local(path.clone()).unwrap();
     let registry = FixRegistry::new();
-    assert_eq!(registry.codesets().len(), 1);
+    assert_eq!(registry.codesets().len(), 2);
     registry.commit(root.as_io_mut()).unwrap();
     assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
 
@@ -204,13 +206,43 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
 }
 
 #[test]
+fn the_state_set_is_the_crates_own_and_refuses_every_change() {
+    // Every member of `State`, its code the value a `state` column stores.
+    let mut registry = FixRegistry::new();
+    let held = registry.codeset("statecodeset").expect("the intrinsic set");
+    assert_eq!(held.codes().count(), yggdryl::State::ALL.len());
+    assert_eq!(held.code_name("2001"), Some("NEW"));
+    assert_eq!(held.code_value("PARTIALLY_FILLED"), Some("4001"));
+
+    let refusals = [
+        registry
+            .set_codeset("statecodeset", &[FixCode::new("NEW", "2001")])
+            .unwrap_err(),
+        registry
+            .merge_codeset("statecodeset", &[FixCode::new("NEW", "7")])
+            .unwrap_err(),
+        registry.remove_codeset("statecodeset").unwrap_err(),
+    ];
+    for refused in refusals {
+        assert!(
+            refused.to_string().contains("the fixed state codes"),
+            "{refused}"
+        );
+    }
+    assert_eq!(
+        registry.codeset("statecodeset").unwrap().codes().count(),
+        yggdryl::State::ALL.len()
+    );
+}
+
+#[test]
 fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
     let mut registry = FixRegistry::new();
     for name in ["", "..", "one/two", "a b"] {
         let refused = registry.set_codeset(name, &[FixCode::new("Buy", "1")]);
         assert!(refused.is_err() || name.is_empty(), "{name:?}");
     }
-    assert_eq!(registry.codesets().len(), 1);
+    assert_eq!(registry.codesets().len(), 2);
 }
 
 mod party_source {

@@ -45,7 +45,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Charset, DataType, Error, Field, Result, StructType};
+use crate::{Charset, DataType, DataTypeKind, Error, Field, Result, StructType};
 use crate::{TimeUnit, UnionMode};
 
 use crate::bytes::BytesType;
@@ -204,6 +204,16 @@ impl DataType {
         };
         if canonical_text(self) || canonical_text(other) {
             return Err(unmergeable(self, other));
+        }
+        // A state is the `int32` code of its member, so beside an integer the
+        // two meet as the integers they store.
+        match (self, other) {
+            (Self::State, integer) | (integer, Self::State)
+                if DataTypeKind::Integer.contains(integer.id()) =>
+            {
+                return Self::Int32.merge(integer, how, recode);
+            }
+            _ => {}
         }
         if let Some(merged) = merge_encoded(self, other, how, recode)? {
             return Ok(merged);

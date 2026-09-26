@@ -1,6 +1,6 @@
 # Country
 
-ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the fourteen, and the one a securities identifier opens with.
+ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the thirteen, and the one a securities identifier opens with.
 
 ## Contract
 
@@ -187,7 +187,7 @@ The value is the two letters, under the country's identity.
 
 ## Two bytes is the whole width
 
-The width is the narrowest of the fourteen, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
+The width is the narrowest of the thirteen, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
 
 === "Rust"
 
@@ -276,7 +276,7 @@ The width is the narrowest of the fourteen, and every path reads it from the dat
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
     ```
 
 === "Python"

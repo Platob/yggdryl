@@ -431,7 +431,6 @@ test('a registered code is its own datatype over its standard width', () => {
     ['figi', 12],
     // The lifecycle codes are held to the width their spellings need.
     ['side', 8],
-    ['state', 10],
     ['timeinforce', 8],
   ]) {
     const dtype = new DataType(name)
@@ -744,7 +743,6 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
     'exchange',
     'mic',
     'side',
-    'state',
     'timeinforce',
   ])
   // `exchange` is FIX's name for the ISO 10383 code, so it is one list.

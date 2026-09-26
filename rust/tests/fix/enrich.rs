@@ -60,8 +60,8 @@ fn miccode(message: &FixMsg) -> Option<String> {
     message.get_miccode().map(|held| held.as_str().to_owned())
 }
 
-/// The ranked lifecycle state, as the trait derives it from `OrdStatus(39)`
-/// or `ExecType(150)`; `None` where neither says.
+/// The lifecycle state as the trait derives it - off the first status field
+/// that states one, else off the message type; `None` where nothing says.
 fn statecode(message: &FixMsg) -> Option<String> {
     let held = message.get_state();
     (held != &State::unknown()).then(|| held.as_str().to_owned())
@@ -1376,7 +1376,12 @@ fn a_registry_of_a_handful_of_fields_derives_its_market_from_what_it_holds() {
         .expect("a readable line");
     assert_eq!(isincode(&held).as_deref(), Some("US0378331005"));
     assert_eq!(miccode(&held).as_deref(), Some("XNAS"));
-    assert_eq!(statecode(&held), None, "no status and no execution type");
+    // No status field states one, so the state is what a new order asks for.
+    assert_eq!(
+        statecode(&held).as_deref(),
+        Some("PENDING_NEW"),
+        "a new order asks for one"
+    );
 }
 
 #[test]

@@ -72,6 +72,8 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
     matches!(
         dtype,
         DataType::Boolean
+            // A state is the `int32` code of its member, and bounds as one.
+            | DataType::State
             | DataType::Int32
             | DataType::Int64
             | DataType::Float32
@@ -106,6 +108,10 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
     let datum = match dtype {
         DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
         DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
+        DataType::State => OfficialDatum::int(match value {
+            Scalar::State(state) => state.code(),
+            _ => return None,
+        }),
         DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
         DataType::Int64 => OfficialDatum::long(count(value)?),
         #[allow(clippy::cast_possible_truncation)]
@@ -177,6 +183,9 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
     let value = match (dtype, datum.literal()) {
         (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Scalar::from(*value),
         (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Scalar::from(*value),
+        (DataType::State, OfficialPrimitiveLiteral::Int(value)) => {
+            Scalar::State(crate::State::from_code(*value)?)
+        }
         (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Scalar::date32(*value),
         (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Scalar::from(*value),
         (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
@@ -220,7 +229,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
 fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
     let primitive = match dtype {
         DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
-        DataType::Int32 if bytes.len() == 4 => OfficialPrimitiveType::Int,
+        DataType::Int32 | DataType::State if bytes.len() == 4 => OfficialPrimitiveType::Int,
         DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
         DataType::Int64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Long,
         DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,

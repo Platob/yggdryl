@@ -4519,8 +4519,6 @@ const fix = Object.freeze({
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
-  globalRegistry: binding.fixGlobalRegistryNative,
-  installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
 })
 
 // The FIX values are reached through the namespace and nowhere else, so a
@@ -4539,8 +4537,6 @@ for (const name of [
   'JsMsgType',
   'JsFixMessages',
   'fixCrateFields',
-  'fixGlobalRegistryNative',
-  'fixInstallGlobalRegistryNative',
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
@@ -5688,6 +5684,18 @@ binding.yaml = yaml
     marketColumns: Object.freeze(listing.marketColumns),
     operationColumns: Object.freeze(listing.operationColumns),
   })
+}
+
+// What state one thing is in: the core's lifecycle-sorted enum, each member's
+// name under the code a `state` column stores. Unpacked from the native table
+// so it can never drift; the codes sort from the first state to the terminal
+// ones, and a code's hundreds are its rank.
+{
+  const members = binding._stateMembersNative()
+  delete binding._stateMembersNative
+  binding.State = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
 }
 
 module.exports = binding

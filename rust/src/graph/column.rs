@@ -57,7 +57,7 @@ pub enum EventColumn {
     /// When it was recorded, where that is known.
     RecdUnix,
     /// When it stops being good, where it does.
-    ExprTime,
+    ExprUnix,
     /// When the event it follows happened, where it follows one.
     PrevUnix,
     /// The grid instant a walk read it as the snapshot of, where one did.
@@ -80,8 +80,8 @@ pub enum EventColumn {
     SeqNum,
     /// The identities this event was read from: provenance, never its chain.
     SrcUuids,
-    /// The state the event reached, ranked so it sorts by lifecycle:
-    /// `00UNKNOWN` where nothing states one, so never absent on a row an
+    /// The state the event reached, the code of a lifecycle-sorted enum:
+    /// `UNKNOWN` where nothing states one, so never absent on a row an
     /// event wrote; null only where a row states none, because a state has
     /// no neutral member for an empty cell to read as.
     State,
@@ -94,7 +94,7 @@ impl EventColumn {
         Self::CreaUnix,
         Self::ExecUnix,
         Self::RecdUnix,
-        Self::ExprTime,
+        Self::ExprUnix,
         Self::PrevUnix,
         Self::SnapUnix,
         Self::CurrUuid,
@@ -116,7 +116,7 @@ impl EventColumn {
             Self::CreaUnix => "creaunix",
             Self::ExecUnix => "execunix",
             Self::RecdUnix => "recdunix",
-            Self::ExprTime => "exprtime",
+            Self::ExprUnix => "exprunix",
             Self::PrevUnix => "prevunix",
             Self::SnapUnix => "snapunix",
             Self::CurrUuid => "curruuid",
@@ -139,7 +139,7 @@ impl EventColumn {
             Self::CreaUnix => "CreaUnix",
             Self::ExecUnix => "ExecUnix",
             Self::RecdUnix => "RecdUnix",
-            Self::ExprTime => "ExprTime",
+            Self::ExprUnix => "ExprUnix",
             Self::PrevUnix => "PrevUnix",
             Self::SnapUnix => "SnapUnix",
             Self::CurrUuid => "CurrUuid",
@@ -168,7 +168,7 @@ impl EventColumn {
             Self::RecdUnix => {
                 "When this event was recorded, where that is known; the earliest its statements know."
             }
-            Self::ExprTime => {
+            Self::ExprUnix => {
                 "When the event stops being good, where it does; the latest its chain knows once followed."
             }
             Self::PrevUnix => "When the event this one follows happened, where it follows one.",
@@ -194,7 +194,7 @@ impl EventColumn {
                 "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."
             }
             Self::State => {
-                "The state the event reached, ranked so it sorts by lifecycle; 00UNKNOWN where nothing states one, the furthest its chain knows once followed."
+                "The state the event reached, as the code of a lifecycle-sorted enum; UNKNOWN where nothing states one, the furthest its chain knows once followed."
             }
         }
     }
@@ -221,7 +221,7 @@ impl EventColumn {
             | Self::CreaUnix
             | Self::ExecUnix
             | Self::RecdUnix
-            | Self::ExprTime
+            | Self::ExprUnix
             | Self::PrevUnix
             | Self::SnapUnix => clock(),
             Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
@@ -235,7 +235,7 @@ impl EventColumn {
     /// Whether the column may hold a null: the facts the traits answer as
     /// an option or as nothing - an empty code, serie or map, a place of
     /// zero - may, and so may the state, which an event always answers -
-    /// `00UNKNOWN` where nothing states one - but a row may leave unstated,
+    /// `UNKNOWN` where nothing states one - but a row may leave unstated,
     /// a state having no neutral member for an empty cell to read as; the
     /// instant, the identities and the codes are never absent.
     #[must_use]
@@ -291,7 +291,7 @@ impl EventColumn {
             Self::CreaUnix => event.get_creaunix().and_then(instant),
             Self::ExecUnix => event.get_execunix().and_then(instant),
             Self::RecdUnix => event.get_recdunix().and_then(instant),
-            Self::ExprTime => event.get_exprtime().and_then(instant),
+            Self::ExprUnix => event.get_exprunix().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
             Self::CurrUuid => Some(Scalar::Uuid(event.get_curruuid())),
@@ -305,7 +305,7 @@ impl EventColumn {
             Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
             Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
             Self::SrcUuids => uuids_fact(event.get_srcuuids()),
-            Self::State => Some(Scalar::State(event.get_state().clone())),
+            Self::State => Some(Scalar::State(*event.get_state())),
         }
     }
 
@@ -323,7 +323,7 @@ impl EventColumn {
             Self::CreaUnix => event.set_creaunix(instant()),
             Self::ExecUnix => event.set_execunix(instant()),
             Self::RecdUnix => event.set_recdunix(instant()),
-            Self::ExprTime => event.set_exprtime(instant()),
+            Self::ExprUnix => event.set_exprunix(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),
             Self::SnapUnix => event.set_snapunix(instant()),
             Self::CurrUuid => {
@@ -360,11 +360,13 @@ impl EventColumn {
             Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
             Self::SrcUuids => event.set_srcuuids(uuids_of(value)),
             Self::State => event.set_state(match value {
-                Scalar::State(state) => state.clone(),
+                Scalar::State(state) => *state,
                 other => other
-                    .as_str()
-                    .and_then(|text| State::read(text).ok())
-                    .unwrap_or_else(State::unknown),
+                    .as_i128()
+                    .and_then(|code| i32::try_from(code).ok())
+                    .and_then(State::from_code)
+                    .or_else(|| other.as_str().and_then(State::from_spelling))
+                    .unwrap_or_default(),
             }),
         }
     }

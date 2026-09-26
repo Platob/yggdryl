@@ -13,7 +13,8 @@
 //! The service is the protocol without its transport: [`Service::answer`]
 //! writes the response for a parsed request into any sink, and
 //! [`Service::handle`] does the same for the bytes of one message, which is
-//! what [`super::server`] puts on a socket and what a test drives directly.
+//! what `Service::route` puts on a socket under the `http` feature and what
+//! a test drives directly.
 
 use std::io::Write;
 use std::sync::Arc;

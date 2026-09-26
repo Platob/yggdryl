@@ -444,6 +444,12 @@ impl FixRegistry {
                 document,
             );
         }
+        if let Some(document) = super::crated::state_codeset() {
+            registry.codesets.insert(
+                SmolStr::new_static(super::crated::STATE_CODESET_NAME),
+                document,
+            );
+        }
         match super::fix_crate_fields() {
             Ok(fields) => {
                 for field in fields {

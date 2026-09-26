@@ -369,6 +369,12 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                     .unbind(),
             ),
         ),
+        // A state pickles under its stored name, which the reader reads back.
+        Scalar::State(state) => tagged_pickle_state(
+            py,
+            "state",
+            Some(PyString::new(py, state.as_str()).into_any().unbind()),
+        ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
             "uuid",
@@ -720,7 +726,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(Scalar::Side)
             .map_err(value_error),
-        "state" => State::new(payload()?.extract::<String>()?)
+        "state" => State::read(&payload()?.extract::<String>()?)
             .map(Scalar::State)
             .map_err(value_error),
         "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
@@ -1886,6 +1892,8 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         )
         .into_any()
         .unbind()),
+        // A state crosses as the member of `yggdryl.State` its code names.
+        Scalar::State(state) => Ok(classes::state(py)?.call1((state.code(),))?.unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?
@@ -2169,6 +2177,10 @@ impl Encoder {
             ClassKind::Enum => {
                 self.convert(&value.getattr(intern!(value.py(), "value"))?, depth + 1)
             }
+            ClassKind::State => value
+                .extract::<i64>()
+                .and_then(|code| State::read_code(code).map_err(value_error))
+                .map(Scalar::State),
             ClassKind::Stdlib(stdlib) => self.convert_stdlib(value, stdlib, depth),
             ClassKind::Subclass => self.convert_other(value, depth),
             ClassKind::Any => {
@@ -3260,6 +3272,9 @@ enum ClassKind {
     Record(Arc<[Member]>),
     /// An `enum.Enum`: a member converts as the value it names.
     Enum,
+    /// The `yggdryl.State` enum: a member is the state it names, never the
+    /// bare integer its code is.
+    State,
     /// A standard-library value class, named exactly.
     Stdlib(Stdlib),
     /// A subclass of a builtin or standard-library value or collection,
@@ -3392,6 +3407,9 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
         return Ok(ClassKind::Stdlib(stdlib));
     }
     if class.is_subclass(classes::enumeration(py)?)? {
+        if class.is(classes::state(py)?) {
+            return Ok(ClassKind::State);
+        }
         return Ok(ClassKind::Enum);
     }
     let subclass = is_value_subclass(class)?;
@@ -3494,6 +3512,7 @@ mod classes {
 
     classes! {
         enumeration = "enum", "Enum";
+        state = "yggdryl.state", "State";
         decimal = "decimal", "Decimal";
         datetime = "datetime", "datetime";
         date = "datetime", "date";

@@ -844,8 +844,9 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     assert!(root.join("codesets/venuecodeset.json").is_file());
     let loaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(loaded, registry);
-    // The persisted party and venue sets sit beside the built-in MsgCat set.
-    assert_eq!(loaded.codesets().len(), 3);
+    // The persisted party and venue sets sit beside the built-in MsgCat and
+    // state sets.
+    assert_eq!(loaded.codesets().len(), 4);
     assert_eq!(
         loaded.codeset("venuecodeset").unwrap().code_name("V"),
         Some("Venue")
@@ -1028,11 +1029,11 @@ fn enum_codes_belong_to_each_field() {
         .expect("the holder's own set");
     assert_eq!(holder.code_value("VenueBroker"), None);
     assert_eq!(holder.code_value("Broker"), Some("B"));
-    // The two test vocabularies and built-in MsgCat are held once each under
-    // their names. Categories hold Field documents and resolve references,
-    // which is why `codesets` is written beside the three folders rather
-    // than as a fourth.
-    assert_eq!(registry.codesets().len(), 3);
+    // The two test vocabularies and the built-in MsgCat and state sets are
+    // held once each under their names. Categories hold Field documents and
+    // resolve references, which is why `codesets` is written beside the three
+    // folders rather than as a fourth.
+    assert_eq!(registry.codesets().len(), 4);
     assert_eq!(FixCategory::ALL.len(), 3);
     assert!(FixCategory::from_str("codesets").is_err());
 }
@@ -2761,7 +2762,7 @@ mod committed {
         assert_eq!(naive, 369, "local values, stating no zone");
         // Sixty-eight shipped fields, plus the crate's seven clocks: `currunix`,
         // `creaunix`, `prevunix`, `snapunix`, `execunix`, `recdunix` and
-        // `exprtime`.
+        // `exprunix`.
         let crated = registry
             .iter()
             .filter(|field| {
@@ -2939,7 +2940,7 @@ mod committed {
     /// every datatype tag in the hash is the family-laid byte, and `identifiers`
     /// and `metadata` hash their entries as a struct rather than a leaf of their
     /// own. It last moved when the crate's own block gained `state` and
-    /// `exprtime`: the two lifecycle facts a walk folds forward hash as a
+    /// `exprunix`: the two lifecycle facts a walk folds forward hash as a
     /// twenty-first and a twenty-second definition, each at its event column's
     /// datatype - a ranked state and a nanosecond clock - and as members of the
     /// fixed row, the state ahead of `OrdStatus` and the expiry beside the clocks.
@@ -2957,7 +2958,7 @@ mod committed {
     /// so their combined dictionary is the value pinned here. It moved again when
     /// a field's vocabulary became a named code set: `FIX:codeset` now names the
     /// set, and the dictionary hashes every named set once beside its fields.
-    /// It also moved when expiry became `exprtime`, the 181 message components
+    /// It also moved when expiry became `exprunix`, the 181 message components
     /// gained `FIX:msgcat`, and MsgCat plus five normalized identifier definitions
     /// joined the fixed row. CFI keeps standard tag 461; the expiry description
     /// now states that a newer explicit deadline replaces the preceding one.
@@ -3044,10 +3045,16 @@ mod committed {
     /// It last moved when `miccode`'s ladder read FIX 4.2's Reuters exchange
     /// mnemonics beside ISO 10383 MICs: that one description says so, and no
     /// other document, tag or count moved.
+    /// It last moved when `state` became an `int32` lifecycle-sorted enum:
+    /// the crate field reads by the intrinsic `statecodeset`, one more code
+    /// set of sixty members whose values are the stored codes, its
+    /// description names the stored member rather than the ten-byte code,
+    /// and `exprtime` was renamed `exprunix` beside `execunix` - two
+    /// definitions and one set document, no tag and no count of the census.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 1_645_965_135_168_375_719);
+        assert_eq!(registry.stable_hash(), 8_714_931_232_048_759_032);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

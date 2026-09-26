@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyType};
 
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
@@ -239,12 +239,10 @@ impl FixKeyArg {
 /// Every entry point that resolves against a registry - a message, a codec,
 /// a lifecycle, the fixed row - takes the same optional argument and falls
 /// back the same way, so the fallback is spelled here once.
-fn registry_or_global(
-    registry: Option<PyRef<'_, PyFixRegistry>>,
-) -> PyResult<Arc<CoreFixRegistry>> {
+fn registry_or_env(registry: Option<PyRef<'_, PyFixRegistry>>) -> PyResult<Arc<CoreFixRegistry>> {
     match registry {
         Some(held) => Ok(Arc::clone(&held.inner)),
-        None => CoreFixRegistry::global()
+        None => CoreFixRegistry::from_env()
             .map(Arc::clone)
             .map_err(value_error),
     }
@@ -315,13 +313,38 @@ impl PyFixRegistry {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
     }
 
+    /// The registry the process environment names, loaded on the first call.
+    ///
+    /// The order is the core's: a registry installed by `install_env`, then
+    /// the folder `YGGDRYL_FIX_REGISTRY` names, then `~/.config/fix` when it
+    /// exists, then a new registry holding the crate's own fields and the two
+    /// seeded standard clocks. Only the third step treats absence as that
+    /// default; every other failure is a `ValueError` carrying the native
+    /// message, and the default stays unresolved so the next call retries.
+    #[classmethod]
+    fn from_env(_cls: &Bound<'_, PyType>) -> PyResult<Self> {
+        CoreFixRegistry::from_env()
+            .map(|registry| Self::from_arc(Arc::clone(registry)))
+            .map_err(value_error)
+    }
+
+    /// Install `registry` as the one every later `from_env` answers, before
+    /// anything resolves one.
+    ///
+    /// Raises `ValueError` once the default has resolved or been installed,
+    /// so the value every caller saw cannot change underneath them.
+    #[classmethod]
+    fn install_env(_cls: &Bound<'_, PyType>, registry: &Self) -> PyResult<()> {
+        CoreFixRegistry::install_env((*registry.inner).clone()).map_err(value_error)
+    }
+
     /// Build a registry by inserting `fields` in order.
     ///
     /// Each entry is anything `Field` accepts - a native field, a field
     /// string, a dataclass, a `PyArrow` field - and the first refusal fails the
     /// whole build.
-    #[staticmethod]
-    fn from_fields(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[classmethod]
+    fn from_fields(_cls: &Bound<'_, PyType>, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut registry = CoreFixRegistry::new();
         for value in fields.try_iter()? {
             registry
@@ -342,8 +365,8 @@ impl PyFixRegistry {
     /// then leaves in place. A shard that does
     /// not parse, and a root still holding the retired `records/` layout, are
     /// a `ValueError` naming the URL.
-    #[staticmethod]
-    fn from_handle(location: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[classmethod]
+    fn from_handle(_cls: &Bound<'_, PyType>, location: &Bound<'_, PyAny>) -> PyResult<Self> {
         let holder = folder_holder_from_value(location)?;
         CoreFixRegistry::from_handle(&holder)
             .map(|registry| Self::from_arc(Arc::new(registry)))
@@ -362,9 +385,10 @@ impl PyFixRegistry {
     /// A file this cannot be read from is a `ValueError` carrying the native
     /// sentence whole: the byte the reader stopped at, what was expected, what
     /// arrived, and the element the file spells it in.
-    #[staticmethod]
+    #[classmethod]
     #[pyo3(signature = (location, dialect=None))]
     fn from_cfb_file(
+        _cls: &Bound<'_, PyType>,
         location: &Bound<'_, PyAny>,
         dialect: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
@@ -705,8 +729,8 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
-    #[staticmethod]
-    fn from_json(document: &str) -> PyResult<Self> {
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, document: &str) -> PyResult<Self> {
         CoreFixRegistry::from_json(document)
             .map(|inner| Self::from_arc(Arc::new(inner)))
             .map_err(value_error)
@@ -1491,7 +1515,7 @@ impl PyFixMsg {
     ) -> PyResult<Self> {
         let field = core_field_from_value(field)?;
         let value = named_rows(&field, from_py(value)?);
-        CoreFixMsg::with_registry(registry_or_global(registry)?, field, value)
+        CoreFixMsg::with_registry(registry_or_env(registry)?, field, value)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1524,7 +1548,7 @@ impl PyFixMsg {
     ) -> PyResult<Self> {
         let schema = core_field_from_value(schema)?;
         let row = named_rows(&schema, from_py(row)?);
-        CoreFixMsg::from_row(registry_or_global(registry)?, &schema, &row)
+        CoreFixMsg::from_row(registry_or_env(registry)?, &schema, &row)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1939,8 +1963,8 @@ impl PyFixMsg {
 
     /// When the order expires, where it has an expiry.
     #[getter]
-    fn exprtime(&self) -> Option<i64> {
-        self.inner.get_exprtime()
+    fn exprunix(&self) -> Option<i64> {
+        self.inner.get_exprunix()
     }
 
     /// When the message this one follows happened, where it follows one.
@@ -2340,6 +2364,21 @@ impl PyFixCodec {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
+    /// A codec over the registry the process environment names,
+    /// `FixRegistry.from_env()`, pinned by the keywords the constructor
+    /// takes.
+    #[classmethod]
+    #[pyo3(signature = (**pins))]
+    fn from_env<'py>(
+        cls: &Bound<'py, PyType>,
+        pins: Option<&Bound<'py, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let registry = CoreFixRegistry::from_env()
+            .map(|registry| PyFixRegistry::from_arc(Arc::clone(registry)))
+            .map_err(value_error)?;
+        cls.call((registry,), pins)
+    }
+
     #[staticmethod]
     fn infer_msgtype_bytes(py: Python<'_>, body: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
         with_python_bytes(
@@ -2438,7 +2477,7 @@ impl PyFixCodec {
         official_time_delay_ms: Option<i64>,
         market_metadata: bool,
     ) -> PyResult<Self> {
-        let registry = registry_or_global(registry)?;
+        let registry = registry_or_env(registry)?;
         let mut inner =
             CoreFixCodec::new(Arc::clone(&registry)).with_payload_column(payload_column);
         if let Some(held) = direction {
@@ -3058,7 +3097,7 @@ pub(crate) fn fix_schema(
     registry: Option<PyRef<'_, PyFixRegistry>>,
     name: &str,
 ) -> PyResult<PyField> {
-    let registry = registry_or_global(registry)?;
+    let registry = registry_or_env(registry)?;
     yggdryl::fix_schema(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
@@ -3103,7 +3142,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The definitions this crate lists, in tag order from 65003.
 ///
 /// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
-/// `prevunix`, `snapunix`, `exprtime` - its identities - `currhashcode`,
+/// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
@@ -3150,33 +3189,6 @@ impl PyFixMsgIterator {
     fn __length_hint__(&self) -> usize {
         self.field.fields().len().saturating_sub(self.index)
     }
-}
-
-/// The process-wide registry, loading it on the first call.
-///
-/// The order is the core's: a registry installed by
-/// [`install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY` names,
-/// then `~/.config/fix` when it exists, then a new registry holding the
-/// crate's own fields and the two seeded standard clocks. Only the third step
-/// treats absence as that
-/// default; every other failure is a `ValueError` carrying the native
-/// message, and the default stays unresolved so the next call retries.
-#[pyfunction]
-#[pyo3(name = "global_registry")]
-pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {
-    CoreFixRegistry::global()
-        .map(|registry| PyFixRegistry::from_arc(Arc::clone(registry)))
-        .map_err(value_error)
-}
-
-/// Install the process-wide registry before anything resolves it.
-///
-/// Raises `ValueError` once the default has resolved or been installed, so
-/// the value every caller saw cannot change underneath them.
-#[pyfunction]
-#[pyo3(name = "install_global_registry")]
-pub(crate) fn fix_install_global_registry(registry: &PyFixRegistry) -> PyResult<()> {
-    CoreFixRegistry::install_global((*registry.inner).clone()).map_err(value_error)
 }
 
 /// The standard header of one message, typed and held still.

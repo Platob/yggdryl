@@ -2382,6 +2382,8 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
+        /// The `yggdryl.state` enum over the `Int32` codes of its members.
+        State,
         /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
         Decimal,
         /// The `yggdryl.bigdecimal` fixed decimal over `Decimal256(76, 18)`.
@@ -2414,6 +2416,7 @@ mod arrow {
                 }
                 Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
                 Self::Uuid => DataType::Uuid,
+                Self::State => DataType::State,
                 Self::Decimal => DataType::Decimal,
                 Self::BigDecimal => DataType::BigDecimal,
                 Self::Version => DataType::Version,
@@ -2564,6 +2567,9 @@ mod arrow {
                 ArrowDataType::Utf8
             )
             .then_some(RecognizedExtension::MediaType)),
+            crate::STATE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Int32).then_some(RecognizedExtension::State))
+            }
             code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
                 Ok(code_for_extension(code).map(RecognizedExtension::Code))
             }

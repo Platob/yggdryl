@@ -383,9 +383,10 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // A state is the code of its member, which every engine reads.
+        D::State => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -536,9 +537,10 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // A state is the code of its member, which every engine reads.
+        D::State => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -664,9 +666,10 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // A state is the code of its member, which every engine reads.
+        D::State => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -794,9 +797,10 @@ incompatible(
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // A state is the code of its member, which every engine reads.
+        D::State => Ok((D::Int32, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

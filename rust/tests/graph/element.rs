@@ -51,7 +51,7 @@ struct Report {
     creaunix: Option<i64>,
     execunix: Option<i64>,
     recdunix: Option<i64>,
-    exprtime: Option<i64>,
+    exprunix: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
@@ -76,7 +76,7 @@ impl Report {
             creaunix: None,
             execunix: None,
             recdunix: None,
-            exprtime: None,
+            exprunix: None,
             prevunix: None,
             prevuuid: None,
             snapunix: None,
@@ -209,12 +209,12 @@ impl Event for Report {
         self.recdunix = unix;
     }
 
-    fn get_exprtime(&self) -> Option<i64> {
-        self.exprtime
+    fn get_exprunix(&self) -> Option<i64> {
+        self.exprunix
     }
 
-    fn set_exprtime(&mut self, unix: Option<i64>) {
-        self.exprtime = unix;
+    fn set_exprunix(&mut self, unix: Option<i64>) {
+        self.exprunix = unix;
     }
 
     fn get_prevunix(&self) -> Option<i64> {
@@ -568,7 +568,7 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
 
     // A state is never absent: a new event reached none, says so with the
     // code that means exactly that, and moves as the lifecycle does.
-    assert_eq!(event.get_state().as_str(), "00UNKNOWN");
+    assert_eq!(event.get_state().as_str(), "UNKNOWN");
     assert!(!event.is_execution());
     assert!(event.get_state().is_live(), "not ended, so still live");
     event.set_state(filled());
@@ -584,14 +584,11 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
         "the default reads the lifecycle state"
     );
     assert!(event.get_state().is_done());
-    assert!(
-        event.get_state().as_str().ends_with("FILLED"),
-        "{}",
-        event.get_state().as_str()
-    );
-    assert!(
-        event.get_state().rank().is_some(),
-        "a shipped state sits on a rank"
+    assert_eq!(*event.get_state(), State::Filled);
+    assert_eq!(
+        event.get_state().rank(),
+        80,
+        "a filled state sits on the done rank"
     );
     assert_eq!(event.get_seqnum(), 0, "no place in a chain yet");
     event.set_seqnum(4);
@@ -615,7 +612,7 @@ fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     assert_eq!(event.get_creaunix(), None);
     assert_eq!(event.get_execunix(), None);
     assert_eq!(event.get_recdunix(), None);
-    assert_eq!(event.get_exprtime(), None);
+    assert_eq!(event.get_exprunix(), None);
     assert_eq!(event.get_prevunix(), None);
     assert_eq!(event.get_prevuuid(), None);
     assert_eq!(event.get_snapunix(), None);
@@ -623,7 +620,7 @@ fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     event.set_creaunix(Some(35));
     event.set_execunix(Some(37));
     event.set_recdunix(Some(39));
-    event.set_exprtime(Some(100));
+    event.set_exprunix(Some(100));
     event.set_prevunix(Some(30));
     event.set_prevuuid(Some(Uuid::from_v8(3)));
     event.set_snapunix(Some(40));
@@ -631,13 +628,13 @@ fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     assert_eq!(event.get_creaunix(), Some(35));
     assert_eq!(event.get_execunix(), Some(37));
     assert_eq!(event.get_recdunix(), Some(39));
-    assert_eq!(event.get_exprtime(), Some(100));
+    assert_eq!(event.get_exprunix(), Some(100));
     assert_eq!(event.get_prevunix(), Some(30));
     assert_eq!(event.get_prevuuid(), Some(Uuid::from_v8(3)));
 
     // Each fact is unsaid on its own.
-    event.set_exprtime(None);
-    assert_eq!(event.get_exprtime(), None);
+    event.set_exprunix(None);
+    assert_eq!(event.get_exprunix(), None);
     assert_eq!(event.get_creaunix(), Some(35));
 }
 
@@ -694,16 +691,16 @@ fn following_carries_the_lifecycle_forward() {
     // expiry replaces the prior deadline, including when it shortens it.
     let mut previous = Report::at(1, 10);
     previous.set_creaunix(Some(5));
-    previous.set_exprtime(Some(200));
+    previous.set_exprunix(Some(200));
     previous.set_state(filled());
     let mut next = Report::at(2, 20);
     next.set_creaunix(Some(8));
-    next.set_exprtime(Some(100));
+    next.set_exprunix(Some(100));
     let next = next
         .with_previous(&previous)
         .expect("the later one follows");
     assert_eq!(next.get_creaunix(), Some(5));
-    assert_eq!(next.get_exprtime(), Some(100));
+    assert_eq!(next.get_exprunix(), Some(100));
     assert!(
         next.get_state().is_done(),
         "the furthest state carries forward"
@@ -712,11 +709,11 @@ fn following_carries_the_lifecycle_forward() {
     // A previous that knows less leaves what the next one knows alone.
     let mut next = Report::at(3, 30);
     next.set_creaunix(Some(25));
-    next.set_exprtime(Some(300));
+    next.set_exprunix(Some(300));
     let bare = Report::at(4, 20);
     let next = next.with_previous(&bare).expect("follows");
     assert_eq!(next.get_creaunix(), Some(25));
-    assert_eq!(next.get_exprtime(), Some(300));
+    assert_eq!(next.get_exprunix(), Some(300));
     assert!(
         next.get_state().is_live(),
         "a lesser state does not move the next one back"
@@ -725,7 +722,7 @@ fn following_carries_the_lifecycle_forward() {
     // And one that knows more fills what the next one did not state.
     let next = Report::at(5, 40).with_previous(&previous).expect("follows");
     assert_eq!(next.get_creaunix(), Some(5));
-    assert_eq!(next.get_exprtime(), Some(200));
+    assert_eq!(next.get_exprunix(), Some(200));
 
     // What the next element itself says moves nowhere: its instant, its
     // code, its sources, and the cross code it states where the
@@ -978,7 +975,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     twin.set_crosscode("O-999".to_owned());
     twin.set_srcuuids(vec![Uuid::from_v8(71)]);
     twin.set_creaunix(Some(8));
-    twin.set_exprtime(Some(99));
+    twin.set_exprunix(Some(99));
     let twin = twin.restating(&live);
     // The place the live one holds is the twin's: the chain grows by nothing.
     assert_eq!(twin.get_prevuuid(), Some(Uuid::from_v8(1)));
@@ -995,7 +992,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     // The lifecycle folds: the earliest creation, the latest expiration,
     // the furthest state. What it says of itself - its instant - is its own.
     assert_eq!(twin.get_creaunix(), Some(5));
-    assert_eq!(twin.get_exprtime(), Some(99));
+    assert_eq!(twin.get_exprunix(), Some(99));
     assert!(twin.get_state().is_done());
     assert_eq!(twin.get_currunix(), 20);
 
@@ -1085,7 +1082,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     later.set_crosscode("O-10".to_owned());
     later.set_srcuuids(vec![Uuid::from_v8(71), Uuid::from_v8(70)]);
     later.set_creaunix(Some(4));
-    later.set_exprtime(Some(99));
+    later.set_exprunix(Some(99));
     later.set_state(filled());
     later.set_prevuuid(Some(Uuid::from_v8(5)));
     later.set_prevunix(Some(6));
@@ -1113,7 +1110,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     );
     // The lifecycle folds as following folds it.
     assert_eq!(merged.get_creaunix(), Some(4));
-    assert_eq!(merged.get_exprtime(), Some(99));
+    assert_eq!(merged.get_exprunix(), Some(99));
     assert!(merged.get_state().is_done());
     // The predecessor is the reference's where it names one.
     assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(5)));
@@ -1939,7 +1936,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_creaunix(Some(1));
     moved.set_execunix(Some(2));
     moved.set_recdunix(Some(3));
-    moved.set_exprtime(Some(200));
+    moved.set_exprunix(Some(200));
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
     // What an element states moves the code: a cross code, the state, the

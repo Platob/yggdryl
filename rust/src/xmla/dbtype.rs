@@ -148,9 +148,10 @@ impl DbType {
 
     /// The indicator a column of `dtype` is stated as.
     ///
-    /// Every string, code and identifier is `DBTYPE_WSTR`, every byte payload
-    /// `DBTYPE_BYTES`, every decimal `DBTYPE_NUMERIC`, a struct or a sequence
-    /// `DBTYPE_HCHAPTER`, and a union or a variant `DBTYPE_VARIANT`.
+    /// Every string, code, enum member and identifier is `DBTYPE_WSTR` - an
+    /// enum spelled as its member, never the code it stores - every byte
+    /// payload `DBTYPE_BYTES`, every decimal `DBTYPE_NUMERIC`, a struct or a
+    /// sequence `DBTYPE_HCHAPTER`, and a union or a variant `DBTYPE_VARIANT`.
     #[must_use]
     pub fn of(dtype: &DataType) -> Self {
         match dtype {
@@ -189,9 +190,10 @@ impl DbType {
             DataType::RunEndEncoded(encoded) => Self::of(encoded.values().dtype()),
             other if other.bytes_parameters().is_some() => Self::Bytes,
             DataType::Geometry(_) | DataType::Geography(_) => Self::Bytes,
-            // Every string leaf, every registered code, every identifier and
-            // spelled value - a version, a URL, a zone, a media type - and
-            // the durations and intervals OLE DB has no indicator for.
+            // Every string leaf, every registered code, every enum member,
+            // every identifier and spelled value - a version, a URL, a zone,
+            // a media type - and the durations and intervals OLE DB has no
+            // indicator for.
             _ => Self::Wstr,
         }
     }

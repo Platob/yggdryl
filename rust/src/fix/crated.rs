@@ -214,14 +214,46 @@ pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");
 /// from is not what it states.
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");
 
-/// The state the event reached, ranked so the column sorts by lifecycle.
+/// The state the event reached: the `int32` code of a lifecycle-sorted enum,
+/// so the column sorts from the first state to the terminal ones.
 ///
-/// Read off `OrdStatus(39)`, else `ExecType(150)`, as a message is built,
-/// `00UNKNOWN` where neither states one; the furthest its chain knows once
-/// the lifecycle followed it, and a row stating one is the row's word. A
-/// column, because a monitor asking which orders are still live reads a
-/// ranked column rather than two code sets.
+/// Read, as a message is built, off the first status field that states one -
+/// `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`,
+/// `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`,
+/// `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`,
+/// `MassCancelResponse(531)` - else off what the message type asks for, and
+/// `UNKNOWN` where nothing states one; the furthest its chain knows once the
+/// lifecycle followed it, and a row stating one is the row's word. A column,
+/// because a monitor asking which orders are still live reads one ranked
+/// column rather than ten code sets. The intrinsic `statecodeset` names what
+/// each code stands for.
 pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");
+
+/// The crate-owned vocabulary the `state` column reads by: every member of
+/// [`crate::State`], its stored name and the code it stores.
+pub(super) const STATE_CODESET_NAME: &str = "statecodeset";
+
+/// The canonical state document every registry shares.
+static STATE_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
+    let codes = crate::State::ALL
+        .iter()
+        .map(|state| {
+            super::FixCode::new(state.as_str(), state.code().to_string())
+                .with_description(state.description())
+        })
+        .collect::<Vec<_>>();
+    match super::FixCodes::render(&codes) {
+        Ok(document) => Some(Arc::from(document)),
+        Err(error) => {
+            log::warn!("building FIX state code set: {error}");
+            None
+        }
+    }
+});
+
+pub(super) fn state_codeset() -> Option<Arc<str>> {
+    STATE_CODESET.as_ref().map(Arc::clone)
+}
 
 /// When the message stops being good, where it does.
 ///
@@ -229,7 +261,7 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");
 /// `MaturityDate(541)`, the first stated, as a message is built; the
 /// previous deadline when the next event states none; a newer explicit
 /// deadline replaces it, including when it shortens the lifetime.
-pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
+pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_053, "exprunix");
 
 /// The tag and name carrying the fixed business category of the message type.
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
@@ -432,7 +464,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 19] = [
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
-    EXPRTIME_TAG_NAME.0,
+    EXPRUNIX_TAG_NAME.0,
     STATE_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
@@ -450,7 +482,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 19] = [
 /// is settled against, the codes and the identity it settles to.
 ///
 /// The state a message reached is stated on every row a message writes -
-/// `00UNKNOWN` where nothing states one - but the column admits a null,
+/// `UNKNOWN` where nothing states one - but the column admits a null,
 /// because a state has no neutral member for an empty cell to read as, and
 /// a column no default can fill is not one a row can be required to state.
 const ALWAYS_STATED: [i32; 6] = [
@@ -743,12 +775,17 @@ const CRATED: [Crated; 40] = [
          text line it was parsed out of, and none for one parsed from \
          raw bytes. Provenance, never lineage: no walk moves it.",
     ),
-    Crated::event(STATE_TAG_NAME, EventColumn::State).saying(
-        "The state the message reached, ranked so the column sorts by \
-         lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither \
-         states one; the furthest its chain knows once followed.",
-    ),
-    Crated::event(EXPRTIME_TAG_NAME, EventColumn::ExprTime).saying(
+    Crated::event(STATE_TAG_NAME, EventColumn::State)
+        .saying(
+            "The state the message reached, as the code of a lifecycle-sorted \
+             enum: the first of OrdStatus, ExecType, ExecAckStatus, \
+             TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, \
+             AffirmStatus, MassActionResponse or MassCancelResponse that \
+             states one, else what its message type asks for, UNKNOWN where \
+             none does; the furthest its chain knows once followed.",
+        )
+        .reading(STATE_CODESET_NAME),
+    Crated::event(EXPRUNIX_TAG_NAME, EventColumn::ExprUnix).saying(
         "When the message stops being good: ExpireTime, else \
          ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
          deadline replaces the one its chain carried.",

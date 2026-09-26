@@ -2973,7 +2973,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
         (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
         (DataTypeId::Side, Scalar::from("1")),
-        (DataTypeId::State, Scalar::from("20NEW")),
+        (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
@@ -4599,7 +4599,9 @@ struct StageCosts {
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]
 /// in `rust/tests/root/field.rs` pins. A bridge row's plan is found again
 /// by its shape once the alias children it makes share their metadata, so
-/// its parse is as linear as a frame's.
+/// its parse is as linear as a frame's. Each landing fell by four when the
+/// `state` column became the `int32` code of its member: one primitive
+/// buffer where a text column built its offsets and its bytes.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -4609,7 +4611,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 718,
             into_row: 83,
-            landing: 1454,
+            landing: 1450,
             batch: 202,
             digest: 24,
             lifecycle: 38,
@@ -4621,7 +4623,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 254,
             into_row: 55,
-            landing: 1432,
+            landing: 1428,
             batch: 202,
             digest: 24,
             lifecycle: 7,
@@ -4633,7 +4635,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1471,
             into_row: 174,
-            landing: 1483,
+            landing: 1479,
             batch: 202,
             digest: 16,
             lifecycle: 7,

@@ -146,8 +146,8 @@ macro_rules! event_getters {
 
             /// When this expires, where it has an expiry.
             #[getter]
-            fn exprtime(&self) -> Option<i64> {
-                ::yggdryl::graph::Event::get_exprtime(&self.inner)
+            fn exprunix(&self) -> Option<i64> {
+                ::yggdryl::graph::Event::get_exprunix(&self.inner)
             }
 
             /// When the element this one follows happened, where it follows

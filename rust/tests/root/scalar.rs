@@ -781,7 +781,6 @@ fn the_codes_sort_by_which_code_then_by_text() {
         Scalar::Mic(Mic::new("XPAR").unwrap()),
         Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
         Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
-        Scalar::State(yggdryl::State::read("New").unwrap()),
         Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
         Scalar::Isin(Isin::new("US0378331005").unwrap()),
         Scalar::Cusip(Cusip::new("037833100").unwrap()),

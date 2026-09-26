@@ -1281,9 +1281,10 @@ mod arrow {
                 | R::Ric
                 | R::Figi
                 | R::Side
-                | R::State
                 | R::TimeInForce
                 | R::Unit => code::code_arrow_storage(self)?,
+                // A state is the code of its member.
+                R::State => ArrowDataType::Int32,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
@@ -1613,6 +1614,9 @@ mod arrow {
                 Self::Timezone => Some((crate::TIMEZONE_EXTENSION_NAME, String::new())),
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
+                // A state's codes are bare integers without the name that
+                // says which member each stands for.
+                Self::State => Some((crate::STATE_EXTENSION_NAME, String::new())),
                 // A code carries its own name, so the identity survives Arrow:
                 // three bytes under `yggdryl.ccy` read back a currency.
                 code => crate::code_extension_name(code).map(|name| (name, String::new())),

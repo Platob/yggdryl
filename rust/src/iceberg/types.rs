@@ -216,6 +216,9 @@ impl PrimitiveType {
             // code's identity, so every registered code writes as the text
             // it is - asked through the accessor that knows which they are.
             code if code.is_code() => Self::String,
+            // A state is the code of its member: Iceberg's `int` orders the
+            // codes as the members rank.
+            DataType::State => Self::Int,
             // A URL orders by its canonical text, so writing it as text loses
             // nothing but the name of the type - unlike `version`, whose
             // numeric ordering text cannot carry, and which Iceberg therefore

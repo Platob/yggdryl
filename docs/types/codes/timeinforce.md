@@ -12,7 +12,7 @@ How long an order stands: FIX `TimeInForce(59)`, stored as the wire value rather
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A ninth byte or a byte past `0x7F`, naming the width: `at most 8 bytes` |
 
-The standard's values are one character; eight leaves room for a venue's own code, and a value no version defines is held rather than refused. That is the difference from [`side`](side.md) and [`state`](state.md), which read a spelling and refuse what names nothing.
+The standard's values are one character; eight leaves room for a venue's own code, and a value no version defines is held rather than refused. That is the difference from [`side`](side.md) and the [`state`](../enum/state.md) enum, which read a spelling and refuse what names nothing.
 
 ## DataType
 
@@ -266,7 +266,7 @@ The listing is a vocabulary rather than a gate: a value it does not carry - a ve
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
     ```
 
 === "Python"

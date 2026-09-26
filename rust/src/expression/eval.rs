@@ -1021,9 +1021,13 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         | DataType::UInt32
         | DataType::UInt64 => {
             // A float that is not finite names no whole number: `as` would
-            // read `nan` as zero.
+            // read `nan` as zero. A state is the code its column stores.
             let held = unscaled_at(value, 0)
                 .and_then(i256::as_i128)
+                .or_else(|| match value {
+                    Scalar::State(state) => Some(i128::from(state.code())),
+                    _ => None,
+                })
                 .or_else(|| {
                     value
                         .as_f64()
@@ -1060,6 +1064,8 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         crate::string_dtypes!() if value.as_string().is_some() => canonical(value.clone()),
         // A code takes the same tier at the width its own type fixes.
         code if code.is_code() => canonical(value.clone()),
+        // A state reads a member, the code of one or a spelling at its door.
+        DataType::State => canonical(value.clone()),
         DataType::Version => match value {
             Scalar::Version(_) | crate::string_scalars!(_) => canonical(value.clone()),
             _ => refuse("version text"),

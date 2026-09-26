@@ -208,13 +208,15 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// Pinned when the enum replaced the generic envelope; a moved number is a
 /// design answer, never one to re-pin from a whole run. It moved from 1072
 /// when the market facts began to know which identifiers they only derived:
-/// one `u64` mask, padded to sixteen bytes' alignment.
+/// one `u64` mask, padded to sixteen bytes' alignment. It moved back to
+/// 1072 when an event's `State` became an `i32` member rather than a
+/// twenty-four-byte code string, padded to the same alignment.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<TradeEvent>());
     assert!(size_of::<BookEvent>() > size_of::<MarketData>());
-    assert_eq!(size_of::<MarketData>(), 1088);
+    assert_eq!(size_of::<MarketData>(), 1072);
 }
 
 /// An execution follows the order it fills across kinds, through the facts
