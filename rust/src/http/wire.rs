@@ -295,7 +295,11 @@ pub(crate) fn render_response_head(head: &ResponseHead) -> Vec<u8> {
 /// A `1xx`, `204` or `304` response has no body whatever its headers state
 /// (RFC 9112 6.3); a response stating neither `Content-Length` nor
 /// `Transfer-Encoding` reads to the end of the input; the whole input must
-/// be one message.
+/// be one message. Interim answers before the final one - a `100 Continue`,
+/// a `103 Early Hints`, as a server writes them on the wire ahead of its
+/// answer - are read past, as a client reads past them (RFC 9110 15.2); a
+/// `101 Switching Protocols` is final, since HTTP/1.1 ends there, and an
+/// interim answer alone is the message it is.
 ///
 /// # Errors
 ///
@@ -315,9 +319,17 @@ pub(crate) fn render_response_head(head: &ResponseHead) -> Vec<u8> {
 /// assert_eq!(head.headers.get("transfer-encoding"), None);
 /// ```
 pub fn parse_response(bytes: &[u8]) -> Result<(ResponseHead, Vec<u8>)> {
-    let (line, position) = line_at(bytes, 0)?;
-    let (version, status, reason) = parse_status_line(line, 0)?;
-    let (mut headers, framing, end) = parse_field_lines(bytes, position)?;
+    let mut start = 0;
+    let (version, status, reason, mut headers, framing, end) = loop {
+        let (line, position) = line_at(bytes, start)?;
+        let (version, status, reason) = parse_status_line(line, start)?;
+        let (headers, framing, end) = parse_field_lines(bytes, position)?;
+        if status.is_informational() && status.code() != 101 && end < bytes.len() {
+            start = end;
+            continue;
+        }
+        break (version, status, reason, headers, framing, end);
+    };
     let framing = if status_has_no_body(status) {
         Framing::Length(0)
     } else {

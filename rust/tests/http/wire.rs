@@ -649,6 +649,56 @@ mod round_trips {
     }
 }
 
+mod interim_responses {
+    use super::*;
+
+    #[test]
+    fn parse_response_reads_past_an_interim_answer_to_the_final_one() {
+        let wire = b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
+        let (head, body) = parse_response(wire).unwrap();
+        assert_eq!(head.version, HttpVersion::Http11);
+        assert_eq!(head.status, Status::OK);
+        assert_eq!(body, b"ok");
+        assert_eq!(head.headers.get("content-length"), Some("2"));
+    }
+
+    #[test]
+    fn several_interim_answers_in_a_row_are_all_read_past() {
+        let wire = b"HTTP/1.1 100 Continue\r\n\r\n\
+                     HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n\
+                     HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
+        let (head, body) = parse_response(wire).unwrap();
+        assert_eq!(head.status, Status::OK);
+        assert_eq!(body, b"ok");
+        // Only the final head's own fields survive; the interims' do not.
+        assert_eq!(head.headers.get("link"), None);
+    }
+
+    #[test]
+    fn a_101_switching_protocols_answer_is_final_and_trailing_bytes_are_refused() {
+        let head_bytes = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n";
+        let (head, body) = parse_response(head_bytes).unwrap();
+        assert_eq!(head.status.code(), 101);
+        assert_eq!(head.headers.get("upgrade"), Some("websocket"));
+        assert!(body.is_empty());
+
+        let mut wire = head_bytes.to_vec();
+        wire.extend_from_slice(b"extra");
+        let (position, reason) = response_refusal(&wire);
+        assert_eq!(position, head_bytes.len());
+        assert!(reason.contains("bytes after"), "{reason}");
+    }
+
+    #[test]
+    fn an_interim_answer_alone_parses_as_itself() {
+        let wire = b"HTTP/1.1 100 Continue\r\n\r\n";
+        let (head, body) = parse_response(wire).unwrap();
+        assert_eq!(head.status, Status::CONTINUE);
+        assert_eq!(head.version, HttpVersion::Http11);
+        assert!(body.is_empty());
+    }
+}
+
 mod chunked {
     use super::*;
 

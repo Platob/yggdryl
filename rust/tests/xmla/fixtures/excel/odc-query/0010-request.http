@@ -1,0 +1,14 @@
+POST /xmla HTTP/1.1
+Connection: Keep-Alive
+Content-Type: text/xml
+User-Agent: MSOLAP 17.0 Client
+X-AS-ActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-RequestID: 4a5fa773-cc76-419d-bda6-7683a86f88af
+X-AS-CurrentActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-SessionID: 01a0de85-0fc1-7368-afbc-593564db792e
+SOAPAction: urn:schemas-microsoft-com:xml-analysis:Discover
+X-Transport-Caps-Negotiation-Flags: 1,1,0,1,1
+Content-Length: 1111
+Host: 127.0.0.1:8080
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><Session xmlns="urn:schemas-microsoft-com:xml-analysis" SessionId="01a0de85-0fc1-7368-afbc-593564db792e"/></soap:Header><soap:Body><Discover xmlns="urn:schemas-microsoft-com:xml-analysis"><RequestType>DISCOVER_PROPERTIES</RequestType><Restrictions><RestrictionList><PropertyName><Value>ServerName</Value><Value>ProviderVersion</Value><Value>MdpropMdxDdlExtensions</Value><Value>MdpropMdxSubqueries</Value><Value>MdpropMdxDrillFunctions</Value><Value>MdpropMdxNamedSets</Value></PropertyName></RestrictionList></Restrictions><Properties><PropertyList><Catalog>market</Catalog><SafetyOptions>2</SafetyOptions><DbpropMsmdOptimizeResponse>9</DbpropMsmdOptimizeResponse><DbpropMsmdActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdActivityID><DbpropMsmdRequestID>4A5FA773-CC76-419D-BDA6-7683A86F88AF</DbpropMsmdRequestID><DbpropMsmdCurrentActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdCurrentActivityID><LocaleIdentifier>1036</LocaleIdentifier></PropertyList></Properties></Discover></soap:Body></soap:Envelope>

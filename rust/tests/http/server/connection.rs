@@ -422,3 +422,269 @@ fn expect_100_continue_is_acknowledged_before_the_body_is_read() {
         b"body"
     );
 }
+
+#[test]
+fn expect_100_continue_is_acknowledged_before_a_chunked_body_is_read() {
+    let server = served();
+    let mut stream = TcpStream::connect(server.address()).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("timeout");
+    stream
+        .write_all(
+            b"PUT /chunked.bin HTTP/1.1\r\nHost: test\r\nExpect: 100-continue\r\nTransfer-Encoding: chunked\r\n\r\n",
+        )
+        .expect("write");
+    let mut interim = [0_u8; 25];
+    stream.read_exact(&mut interim).expect("the interim answer");
+    assert_eq!(&interim, b"HTTP/1.1 100 Continue\r\n\r\n");
+    stream.write_all(b"4\r\nbody\r\n0\r\n\r\n").expect("write");
+    let (head, _) = read_message(&mut stream);
+    assert_eq!(head.status, Status::CREATED);
+    assert_eq!(
+        &*get(&server, "/chunked.bin").bytes().expect("body"),
+        b"body"
+    );
+}
+
+#[test]
+fn an_http_1_0_request_with_expect_100_continue_gets_no_interim() {
+    let server = served();
+    let bytes = raw_bytes(
+        &server,
+        b"PUT /legacy.bin HTTP/1.0\r\nHost: test\r\nExpect: 100-continue\r\nContent-Length: 4\r\n\r\ntest",
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(!text.contains("100 Continue"), "{text}");
+    let (head, _) = parse_response(&bytes).expect("a message");
+    assert_eq!(head.status, Status::CREATED);
+    assert_eq!(
+        &*get(&server, "/legacy.bin").bytes().expect("body"),
+        b"test"
+    );
+}
+
+#[test]
+fn a_zero_length_body_with_expect_100_continue_gets_no_interim() {
+    let server = served();
+    let bytes = raw_bytes(
+        &server,
+        b"PUT /empty.bin HTTP/1.1\r\nHost: test\r\nConnection: close\r\nExpect: 100-continue\r\nContent-Length: 0\r\n\r\n",
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(!text.contains("100 Continue"), "{text}");
+    let (head, _) = parse_response(&bytes).expect("a message");
+    assert_eq!(head.status, Status::CREATED);
+    assert_eq!(&*get(&server, "/empty.bin").bytes().expect("body"), b"");
+}
+
+#[test]
+fn a_body_over_max_size_with_expect_100_continue_answers_413_without_the_interim() {
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default().with_max_body_size(8),
+    )
+    .expect("bind");
+    server.mount("/", memory_root()).expect("mount");
+    let bytes = raw_bytes(
+        &server,
+        b"PUT /big.bin HTTP/1.1\r\nHost: test\r\nExpect: 100-continue\r\nContent-Length: 9\r\n\r\n123456789",
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(!text.contains("100 Continue"), "{text}");
+    let (head, _) = parse_response(&bytes).expect("a message");
+    assert_eq!(head.status.code(), 413);
+}
+
+#[test]
+fn a_bad_transfer_encoding_with_expect_100_continue_answers_400_without_the_interim() {
+    let server = served();
+    let bytes = raw_bytes(
+        &server,
+        b"PUT /x HTTP/1.1\r\nHost: test\r\nExpect: 100-continue\r\nTransfer-Encoding: gzip\r\n\r\nx",
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(!text.contains("100 Continue"), "{text}");
+    let (head, _) = parse_response(&bytes).expect("a message");
+    assert_eq!(head.status, Status::BAD_REQUEST);
+}
+
+#[test]
+fn an_unmet_expectation_answers_417_and_closes() {
+    let server = served();
+    let (head, body) = raw(
+        &server,
+        b"GET /rows.json HTTP/1.1\r\nHost: test\r\nExpect: something-else\r\n\r\n",
+    );
+    assert_eq!(head.status.code(), 417);
+    assert_eq!(head.headers.get("connection"), Some("close"));
+    assert!(
+        String::from_utf8_lossy(&body)
+            .contains("this server meets no expectation but 100-continue; got \"something-else\""),
+        "{body:?}"
+    );
+    assert_eq!(
+        server.request_count(),
+        0,
+        "a refused expectation reaches no route"
+    );
+}
+
+// --- written bodies ------------------------------------------------------
+
+#[test]
+fn a_written_route_answer_is_chunked_with_no_content_length_and_the_pieces_joined() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/written", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"alpha-")?;
+            body.write_all(b"beta-")?;
+            body.write_all(b"gamma")?;
+            Ok(())
+        }))
+    });
+    let bytes = raw_bytes(&server, &request_line("GET", "/written", ""));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("transfer-encoding: chunked\r\n"), "{text}");
+    assert!(!text.contains("content-length"), "{text}");
+    let (head, body) = parse_response(&bytes).expect("a chunked message");
+    assert_eq!(head.status, Status::OK);
+    assert_eq!(body, b"alpha-beta-gamma");
+}
+
+#[test]
+fn a_head_to_a_written_route_carries_no_body_or_framing() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/written-head", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"never read")?;
+            Ok(())
+        }))
+    });
+    let (status, headers, body) = raw_head(&server, &request_line("HEAD", "/written-head", ""));
+    assert_eq!(status, Status::OK);
+    assert_eq!(headers.get("content-length"), None);
+    assert_eq!(headers.get("transfer-encoding"), None);
+    assert!(body.is_empty());
+}
+
+#[test]
+fn a_writer_that_fails_after_some_bytes_severs_the_transfer() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/writer-fails", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"partial")?;
+            Err(Error::unsupported("writer", "boom"))
+        }))
+    });
+    let bytes = raw_bytes(&server, &request_line("GET", "/writer-fails", ""));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("transfer-encoding: chunked\r\n"), "{text}");
+    assert!(text.contains("partial"), "{text}");
+    assert!(!text.ends_with("0\r\n\r\n"), "{text}");
+}
+
+#[test]
+fn cut_body_at_on_a_written_answer_delivers_exactly_that_many_bytes_then_severs() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/writer-cut", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"0123456789abcdefghij")?;
+            Ok(())
+        }))
+    });
+    server.inject("/writer-cut", Fault::CutBodyAt(5), 1);
+    let bytes = raw_bytes(&server, &request_line("GET", "/writer-cut", ""));
+    let error = parse_response(&bytes).expect_err("a severed chunked body");
+    assert!(
+        error.to_string().contains("unexpected end of chunked body"),
+        "{error}"
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("transfer-encoding: chunked\r\n"), "{text}");
+    assert!(text.ends_with("5\r\n01234\r\n"), "{text}");
+    assert!(!text.ends_with("0\r\n\r\n"), "{text}");
+}
+
+#[test]
+fn a_cut_past_a_chunked_body_s_end_cuts_nothing() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/chunked", |_| {
+        Response::new(Status::OK)
+            .with_header("transfer-encoding", "chunked")
+            .map(|response| response.with_body("chunky"))
+    });
+    server.inject("/chunked", Fault::CutBodyAt(100), 1);
+    let bytes = raw_bytes(&server, &request_line("GET", "/chunked", ""));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.ends_with("6\r\nchunky\r\n0\r\n\r\n"), "{text}");
+    let (_, body) = parse_response(&bytes).expect("a whole chunked message");
+    assert_eq!(body, b"chunky");
+}
+
+#[test]
+fn a_cut_past_a_written_body_s_end_cuts_nothing() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/written", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"whole")?;
+            Ok(())
+        }))
+    });
+    server.inject("/written", Fault::CutBodyAt(1_000), 1);
+    let bytes = raw_bytes(&server, &request_line("GET", "/written", ""));
+    let (_, body) = parse_response(&bytes).expect("a whole chunked message");
+    assert_eq!(body, b"whole");
+}
+
+// --- trace -----------------------------------------------------------------
+
+#[test]
+fn a_trace_writes_the_exchange_byte_for_byte_with_the_interim_included() {
+    let (dir, trace) = trace_folder("basic");
+    let server =
+        Server::bind_with("127.0.0.1:0", ServerOptions::default().with_trace(trace)).expect("bind");
+    server.route(Some(Method::Post), "/traced", |_| {
+        Ok(Response::new(Status::OK))
+    });
+    let request: &[u8] = b"POST /traced HTTP/1.1\r\nHost: test\r\nExpect: 100-continue\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n3\r\nabc\r\n0\r\n\r\n";
+    let answer = raw_bytes(&server, request);
+    let response = wait_for(&dir.join("0000-response.http"), |bytes| {
+        bytes.len() >= answer.len()
+    });
+    assert_eq!(response, answer);
+    assert_eq!(
+        std::fs::read(dir.join("0000-request.http")).expect("request file"),
+        request
+    );
+    assert!(
+        response.starts_with(b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\n"),
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    let parsed = Response::from_bytes(&response).expect("the interim is read past");
+    assert_eq!(parsed.status(), Status::OK);
+    let replayed =
+        Request::from_bytes(&std::fs::read(dir.join("0000-request.http")).expect("request file"))
+            .expect("the traced request parses");
+    assert_eq!(replayed.method(), Method::Post);
+    assert_eq!(replayed.body().as_bytes(), b"abc");
+}
+
+#[test]
+fn a_malformed_request_line_is_traced_with_its_refusal() {
+    let (dir, trace) = trace_folder("malformed");
+    let server =
+        Server::bind_with("127.0.0.1:0", ServerOptions::default().with_trace(trace)).expect("bind");
+    let sent: &[u8] = b"GET\r\n\r\n";
+    let _ = raw_bytes(&server, sent);
+    let response = wait_for(&dir.join("0000-response.http"), |bytes| {
+        bytes.starts_with(b"HTTP/1.1 400")
+    });
+    assert_eq!(
+        std::fs::read(dir.join("0000-request.http")).expect("request file"),
+        sent
+    );
+    let parsed = Response::from_bytes(&response).expect("the refusal parses");
+    assert_eq!(parsed.status(), Status::BAD_REQUEST);
+}

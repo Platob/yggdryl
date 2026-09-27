@@ -1,0 +1,13 @@
+POST /xmla HTTP/1.1
+Connection: Keep-Alive
+Content-Type: text/xml
+User-Agent: MSOLAP 17.0 Client
+X-AS-ActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-RequestID: 21d41798-9bf6-4876-8546-77f7c02a4638
+X-AS-CurrentActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+SOAPAction: urn:schemas-microsoft-com:xml-analysis:Execute
+X-Transport-Caps-Negotiation-Flags: 1,1,0,1,1
+Content-Length: 877
+Host: 127.0.0.1:8080
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><BeginSession xmlns="urn:schemas-microsoft-com:xml-analysis"/><Version xmlns="http://schemas.microsoft.com/analysisservices/2008/engine/100" Sequence="926"/></soap:Header><soap:Body><Execute xmlns="urn:schemas-microsoft-com:xml-analysis"><Command><Statement xmlns="urn:schemas-microsoft-com:xml-analysis"/></Command><Properties><PropertyList><SafetyOptions>2</SafetyOptions><DbpropMsmdOptimizeResponse>9</DbpropMsmdOptimizeResponse><DbpropMsmdActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdActivityID><DbpropMsmdRequestID>21D41798-9BF6-4876-8546-77F7C02A4638</DbpropMsmdRequestID><DbpropMsmdCurrentActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdCurrentActivityID><LocaleIdentifier>1036</LocaleIdentifier></PropertyList></Properties></Execute></soap:Body></soap:Envelope>

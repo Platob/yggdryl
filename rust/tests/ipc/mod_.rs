@@ -146,6 +146,34 @@ mod records {
         yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [batch()])
     }
 
+    #[test]
+    fn a_member_of_a_located_archive_reads_its_own_rows_not_the_archive_s() {
+        // A member is addressed in the archive's URL fragment, so the file name
+        // of its location is the archive's: reopening the member by that name
+        // would read the archive's own bytes as the stream. The member reads
+        // as the rows it holds, from an archive that has a location.
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
+        root.push(format!("yggdryl-ipc-zip-member-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let archive =
+            yggdryl::zip::mount(yggdryl::holder::Holder::local(root.join("day.zip")).unwrap());
+        let mut member = archive.child_by_path("eu/trades.arrows").unwrap();
+        let options = member.record_options().unwrap();
+        member.overwrite_arrow_reader(reader(), &options).unwrap();
+        let member = archive.child_by_path("eu/trades.arrows").unwrap();
+        assert_eq!(member.read_arrow_field(&options).unwrap(), schema());
+        let rows: Vec<RecordBatch> = member
+            .read_arrow_reader(&options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows, vec![batch()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A valid stream with enough incompressible body bytes to expose read-ahead.
     fn large_reader() -> yggdryl::arrow::BatchReader {
         const ROWS: usize = 128 * 1024;

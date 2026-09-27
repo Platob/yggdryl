@@ -1,0 +1,33 @@
+POST /xmla HTTP/1.1
+User-Agent: ADOMD.NET
+X-AS-AcquireTokenStats: AppName=Microsoft.Mashup.Container.Loader.exe,AppVer=2.155.385.0,AppBinaryType=6,HostRuntime='.NET Framework 4.8.1',ManagedVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,ClientLibVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,CacheUsed=1,ConStrId=1
+Content-Type: text/xml
+SOAPAction: "urn:schemas-microsoft-com:xml-analysis:Discover"
+X-Transport-Caps-Negotiation-Flags: 0,0,0,0,1
+X-AS-ActivityID: 7add4c81-8a53-4b02-9c7f-de84695c418c
+Host: 127.0.0.1:8080
+Transfer-Encoding: chunked
+Expect: 100-continue
+
+2BB
+﻿<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+  <Header>
+    <Version Sequence="926" xmlns="http://schemas.microsoft.com/analysisservices/2003/engine/2" />
+  </Header>
+  <Body>
+    <Discover xmlns="urn:schemas-microsoft-com:xml-analysis">
+      <RequestType>DISCOVER_PROPERTIES</RequestType>
+      <Restrictions />
+      <Properties>
+        <PropertyList>
+          <Catalog>market</Catalog>
+          <DbpropMsmdSubqueries>2</DbpropMsmdSubqueries>
+          <LocaleIdentifier>1036</LocaleIdentifier>
+          <DataSourceInfo>Provider=yggdryl;Data Source=yggdryl</DataSourceInfo>
+        </PropertyList>
+      </Properties>
+    </Discover>
+  </Body>
+</Envelope>
+0
+

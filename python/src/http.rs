@@ -30,6 +30,7 @@ use yggdryl::http::{
 use yggdryl::{Charset, Codec, FieldPath, IOBase as _, IOKind};
 
 use crate::holder::fs::storage_error;
+use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, describe};
 use crate::scalar::{PyScalar, as_py, from_py};
 use crate::uri::{PyUri, core_url_from_value, url_object};
@@ -2214,7 +2215,9 @@ impl PyServer {
 impl PyServer {
     /// Bind `address` - `127.0.0.1:0` for any loopback port - and start
     /// accepting. Each option left out keeps the core's default: the
-    /// timeouts in seconds or a `timedelta`, the sizes in bytes.
+    /// timeouts in seconds or a `timedelta`, the sizes in bytes. `trace`
+    /// writes every exchange into that folder - a path, a path-like, or a
+    /// container `IOBase` - as `NNNN-request.http` and `NNNN-response.http`.
     #[staticmethod]
     #[pyo3(signature = (
         address = "127.0.0.1:0",
@@ -2230,6 +2233,7 @@ impl PyServer {
         tunnel = None,
         http3 = None,
         server_header = None,
+        trace = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn bind(
@@ -2246,6 +2250,7 @@ impl PyServer {
         tunnel: Option<bool>,
         http3: Option<bool>,
         server_header: Option<String>,
+        trace: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let mut options = ServerOptions::default();
         if let Some(timeout) = read_timeout {
@@ -2280,6 +2285,9 @@ impl PyServer {
         }
         if let Some(header) = server_header {
             options = options.with_server_header(header);
+        }
+        if let Some(trace) = trace {
+            options = options.with_trace(folder_holder_from_value(trace)?);
         }
         let server = py
             .detach(|| Server::bind_with(address, options))

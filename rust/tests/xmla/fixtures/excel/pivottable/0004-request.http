@@ -1,0 +1,15 @@
+POST /xmla HTTP/1.1
+Connection: Keep-Alive
+Content-Type: text/xml
+User-Agent: MSOLAP 17.0 Client
+SspropInitAppName: Excel
+X-AS-ActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-RequestID: 8fc6f65b-072b-4a20-b5a5-6935e4742a2c
+X-AS-CurrentActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-SessionID: 01a0de6f-2c57-7704-afbc-593564db792e
+SOAPAction: urn:schemas-microsoft-com:xml-analysis:Discover
+X-Transport-Caps-Negotiation-Flags: 1,1,0,1,1
+Content-Length: 1349
+Host: 127.0.0.1:8080
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><Session xmlns="urn:schemas-microsoft-com:xml-analysis" SessionId="01a0de6f-2c57-7704-afbc-593564db792e"/></soap:Header><soap:Body><Discover xmlns="urn:schemas-microsoft-com:xml-analysis"><RequestType>DISCOVER_PROPERTIES</RequestType><Restrictions><RestrictionList><PropertyName><Value>ServerName</Value><Value>ProviderVersion</Value><Value>MdpropMdxDdlExtensions</Value><Value>MdpropMdxSubqueries</Value><Value>MdpropMdxDrillFunctions</Value><Value>MdpropMdxNamedSets</Value></PropertyName></RestrictionList></Restrictions><Properties><PropertyList><Catalog>market</Catalog><SspropInitAppName>Excel</SspropInitAppName><SafetyOptions>2</SafetyOptions><ClientProcessID>25304</ClientProcessID><MdxMissingMemberMode>Error</MdxMissingMemberMode><DbpropMsmdOptimizeResponse>9</DbpropMsmdOptimizeResponse><DbpropMsmdActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdActivityID><DbpropMsmdRequestID>8FC6F65B-072B-4A20-B5A5-6935E4742A2C</DbpropMsmdRequestID><DbpropMsmdCurrentActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdCurrentActivityID><LocaleIdentifier>1036</LocaleIdentifier><DbpropMsmdMDXCompatibility>1</DbpropMsmdMDXCompatibility><DbpropMsmdSubqueries>2</DbpropMsmdSubqueries></PropertyList></Properties></Discover></soap:Body></soap:Envelope>

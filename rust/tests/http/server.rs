@@ -17,9 +17,12 @@ mod h2;
 mod h3;
 #[path = "server/mount.rs"]
 mod mount;
+#[path = "server/trace.rs"]
+mod trace;
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -122,6 +125,37 @@ fn read_message(stream: &mut TcpStream) -> (ResponseHead, Vec<u8>) {
             Err(Error::Parse { reason, .. }) if reason.contains("incomplete body") => continue,
             Err(error) => panic!("{error}: {answer:?}"),
         }
+    }
+}
+
+/// A fresh, empty temporary folder for one trace test, labelled `label` so
+/// two tests never collide, and the `Holder` [`ServerOptions::with_trace`]
+/// writes exchanges into.
+fn trace_folder(label: &str) -> (PathBuf, Holder) {
+    let dir =
+        std::env::temp_dir().join(format!("yggdryl-http-trace-{label}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a trace directory");
+    let holder = Holder::folder(&dir).expect("a trace folder");
+    (dir, holder)
+}
+
+/// The bytes of `path` once `ready` answers true of them, polled for up to
+/// five seconds: a trace's files complete a moment after the connection
+/// thread finishes writing the exchange, after the client already read it.
+fn wait_for(path: &Path, ready: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(bytes) = std::fs::read(path) {
+            if ready(&bytes) {
+                return bytes;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{path:?} never reached the expected state"
+        );
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
 
@@ -307,9 +341,12 @@ fn a_route_answers_with_the_handlers_response_and_wins_over_a_mount() {
     let counter = Arc::clone(&seen);
     server.route(Some(Method::Get), "/rows.json", move |request| {
         counter.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(request.method(), Method::Get);
+        // A HEAD with no route of its own reaches this GET route too.
+        assert!(matches!(request.method(), Method::Get | Method::Head));
         assert_eq!(request.url().path_text(false).expect("path"), "/rows.json");
-        assert_eq!(request.headers().get("x-probe"), Some("yes"));
+        if request.method() == Method::Get {
+            assert_eq!(request.headers().get("x-probe"), Some("yes"));
+        }
         Response::new(Status::OK)
             .with_header("x-answer", "route")
             .map(|response| response.with_text("routed"))
@@ -336,12 +373,9 @@ fn a_route_answers_with_the_handlers_response_and_wins_over_a_mount() {
     assert_eq!(
         status,
         Status::OK,
-        "the route is GET only, HEAD reaches the mount"
+        "a HEAD with no route of its own is answered by the GET route"
     );
-    assert_eq!(
-        headers.content_length().expect("length"),
-        Some(ROWS.len() as u64)
-    );
+    assert_eq!(headers.content_length().expect("length"), Some(6));
     assert!(body.is_empty());
     assert!(server.unroute(Some(Method::Get), "/rows.json"));
     assert!(!server.unroute(Some(Method::Get), "/rows.json"));
@@ -531,6 +565,156 @@ fn the_url_the_address_and_the_options_describe_the_binding() {
     let (head, _) = raw(&server, &request_line("GET", "/", ""));
     assert_eq!(head.headers.get("server"), Some("test/1"));
     assert_eq!(head.status, Status::NOT_FOUND, "nothing mounted");
+}
+
+// --- method-not-allowed and the HEAD fallback --------------------------------
+
+#[test]
+fn a_path_routed_for_other_methods_is_405_naming_them_in_allow() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Post), "/only-post", |_| {
+        Ok(Response::new(Status::NO_CONTENT))
+    });
+    let response = get(&server, "/only-post");
+    assert_eq!(response.status(), Status::METHOD_NOT_ALLOWED);
+    assert_eq!(response.headers().get("allow"), Some("POST"));
+    assert_eq!(
+        response.text().expect("text"),
+        "GET is not answered at /only-post; POST are"
+    );
+}
+
+#[test]
+fn a_head_is_inserted_right_after_get_in_the_405_allow_list() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/both", |_| {
+        Ok(Response::new(Status::OK))
+    });
+    server.route(Some(Method::Post), "/both", |_| {
+        Ok(Response::new(Status::NO_CONTENT))
+    });
+    let response = Request::put(&server.url_of("/both").expect("url").to_string(), "x")
+        .expect("request")
+        .send()
+        .expect("send");
+    assert_eq!(response.status(), Status::METHOD_NOT_ALLOWED);
+    assert_eq!(response.headers().get("allow"), Some("GET, HEAD, POST"));
+    assert_eq!(
+        response.text().expect("text"),
+        "PUT is not answered at /both; GET, HEAD, POST are"
+    );
+}
+
+#[test]
+fn a_path_no_route_or_mount_names_is_404_not_405() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/elsewhere", |_| {
+        Ok(Response::new(Status::OK))
+    });
+    let response = get(&server, "/nothing");
+    assert_eq!(response.status(), Status::NOT_FOUND);
+    assert!(response.headers().get("allow").is_none());
+}
+
+#[test]
+fn an_any_method_route_never_answers_405() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/any", |_| Ok(Response::new(Status::OK)));
+    let response = Request::delete(&server.url_of("/any").expect("url").to_string())
+        .expect("request")
+        .send()
+        .expect("send");
+    assert_eq!(response.status(), Status::OK);
+}
+
+#[test]
+fn a_mount_covering_the_path_answers_what_its_routes_do_not() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.mount("/", memory_root()).expect("mount");
+    server.route(Some(Method::Post), "/rpc", |_| {
+        Ok(Response::new(Status::NO_CONTENT))
+    });
+    // GET at /rpc is not routed, but the root mount covers it: the mount's
+    // own answer for an absent child, never the route's 405.
+    let response = get(&server, "/rpc");
+    assert_eq!(response.status(), Status::NOT_FOUND);
+    assert!(response.headers().get("allow").is_none());
+}
+
+#[test]
+fn a_head_no_route_names_is_answered_by_the_get_route() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/greeting", |_| {
+        Ok(Response::new(Status::OK).with_text("hello"))
+    });
+    let (status, headers, body) = raw_head(&server, &request_line("HEAD", "/greeting", ""));
+    assert_eq!(status, Status::OK);
+    assert_eq!(headers.content_length().expect("length"), Some(5));
+    assert!(body.is_empty());
+}
+
+#[test]
+fn an_explicit_head_route_wins_over_the_get_route() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/greeting", |_| {
+        Ok(Response::new(Status::OK).with_text("hello"))
+    });
+    server.route(Some(Method::Head), "/greeting", |_| {
+        Response::new(Status::OK).with_header("x-head", "yes")
+    });
+    let (status, headers, body) = raw_head(&server, &request_line("HEAD", "/greeting", ""));
+    assert_eq!(status, Status::OK);
+    assert_eq!(headers.get("x-head"), Some("yes"));
+    assert!(body.is_empty());
+}
+
+// --- written bodies and tracing options ---------------------------------------
+
+#[test]
+fn respond_with_a_written_response_writes_it_once_at_registration() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&calls);
+    server.respond(
+        Some(Method::Get),
+        "/written",
+        Response::new(Status::OK).with_writer(move |body| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            body.write_all(b"fixed")?;
+            Ok(())
+        }),
+    );
+    for _ in 0..3 {
+        let response = get(&server, "/written");
+        assert_eq!(response.status(), Status::OK);
+        assert_eq!(&*response.bytes().expect("body"), b"fixed");
+    }
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "the writer ran once, at registration"
+    );
+}
+
+#[test]
+fn respond_with_a_writer_that_fails_answers_the_failure() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.respond(
+        Some(Method::Get),
+        "/broken",
+        Response::new(Status::OK)
+            .with_writer(|_body| Err(Error::Io(std::io::Error::other("no rows today")))),
+    );
+    let answered = get(&server, "/broken");
+    assert_eq!(answered.status(), Status::INTERNAL_SERVER_ERROR);
+    assert!(answered.text().expect("the text").contains("no rows today"));
+}
+
+#[test]
+fn trace_is_none_by_default_and_set_by_with_trace() {
+    assert!(ServerOptions::default().trace().is_none());
+    let options = ServerOptions::default().with_trace(memory_root());
+    assert!(options.trace().is_some());
 }
 
 #[test]

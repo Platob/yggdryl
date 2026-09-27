@@ -7,6 +7,8 @@
 //! only under the `internals` feature, and the file that reaches it is
 //! declared behind that feature here.
 
+#[path = "xml/element.rs"]
+mod element;
 #[path = "xml/mod_.rs"]
 mod mod_;
 #[path = "xml/parser.rs"]

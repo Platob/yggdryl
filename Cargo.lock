@@ -4401,6 +4401,7 @@ dependencies = [
  "regex-syntax",
  "ring",
  "rustls",
+ "ryu",
  "saphyr-parser",
  "serde",
  "serde_json",

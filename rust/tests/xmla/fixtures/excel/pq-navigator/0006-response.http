@@ -1,0 +1,12 @@
+HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Content-Type: text/xml; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0
+
+2e4
+<?xml version="1.0" encoding="utf-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header><Session SessionId="01a0de80-a447-7bdb-877b-3abb6f87acd9" xmlns="urn:schemas-microsoft-com:xml-analysis"/></SOAP-ENV:Header><SOAP-ENV:Body><SOAP-ENV:Fault><faultcode>SOAP-ENV:Client</faultcode><faultstring>invalid expression expression at byte 58: expected an operator or a name, got '$'</faultstring><faultactor>yggdryl</faultactor><detail><Error Description="invalid expression expression at byte 58: expected an operator or a name, got '$'" ErrorCode="6" HelpFile="" Source="yggdryl" xmlns="urn:schemas-microsoft-com:xml-analysis:exception"/></detail></SOAP-ENV:Fault></SOAP-ENV:Body></SOAP-ENV:Envelope>
+0
+

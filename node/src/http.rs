@@ -15,7 +15,9 @@
 
 use std::time::Duration;
 
-use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Null, Result, Uint8Array};
+use napi::bindgen_prelude::{
+    BigInt, Buffer, ClassInstance, Either, Either6, Null, Result, Uint8Array,
+};
 use napi_derive::napi;
 use yggdryl::holder::Holder;
 use yggdryl::http::{
@@ -27,7 +29,7 @@ use yggdryl::{FieldPath, Url};
 
 use crate::enums::{JsMediaType, MediaTypeInput, media_type_from_input};
 use crate::iceberg::{FieldInput, field_from_input};
-use crate::iobase::JsIOBase;
+use crate::iobase::{JsIOBase, folder_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
 use crate::uri::JsUrl;
@@ -1368,6 +1370,9 @@ pub struct HttpServerOptions {
     pub http3: Option<bool>,
     /// The `Server` header every answer carries.
     pub server_header: Option<String>,
+    /// A folder every exchange is written into, as `NNNN-request.http` and
+    /// `NNNN-response.http`: a folder path, or a URL a holder resolves.
+    pub trace: Option<String>,
 }
 
 fn server_options_of(input: HttpServerOptions) -> Result<ServerOptions> {
@@ -1408,6 +1413,9 @@ fn server_options_of(input: HttpServerOptions) -> Result<ServerOptions> {
     }
     if let Some(header) = input.server_header {
         options = options.with_server_header(header);
+    }
+    if let Some(trace) = input.trace {
+        options = options.with_trace(folder_from_input(Either6::F(trace))?);
     }
     Ok(options)
 }

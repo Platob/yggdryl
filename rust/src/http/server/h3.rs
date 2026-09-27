@@ -24,7 +24,11 @@ use bytes::{Buf, Bytes};
 use h3::server::RequestStream;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
-use super::framed::{Chunks, head_of, is_truncated, prepared};
+use super::framed::{
+    Chunks, head_of, is_truncated, prepared, traced_body, traced_head, traced_refusal,
+    traced_request,
+};
+use super::trace::Exchange;
 use super::{Incoming, Inner, Outcome};
 use crate::http::runtime;
 use crate::http::tls::ring;
@@ -183,7 +187,10 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
     let (parts, ()) = request.into_parts();
     let head = match head_of(&parts, HttpVersion::Http3) {
         Ok(head) => head,
-        Err((status, text)) => return refuse(&mut stream, inner, status, &text).await,
+        Err((status, text)) => {
+            let exchange = traced_refusal(inner, &parts, HttpVersion::Http3);
+            return refuse(&mut stream, inner, status, &text, exchange).await;
+        }
     };
     let (max, read_timeout) = (inner.options.max_body_size, inner.options.read_timeout);
     // Each frame is waited for within the read timeout, as each read of an
@@ -213,11 +220,13 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
     let body = match collected {
         Ok(body) => body,
         Err(Some(status)) => {
+            let exchange = traced_refusal(inner, &parts, HttpVersion::Http3);
             return refuse(
                 &mut stream,
                 inner,
                 status,
                 &format!("request body longer than {max} bytes"),
+                exchange,
             )
             .await;
         }
@@ -230,6 +239,7 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
     // steps out of the runtime for them rather than handing the request to
     // another thread and back; a fixed answer is made where it is.
     let incoming = Incoming { head, body };
+    let mut exchange = traced_request(inner, &incoming);
     let routed = inner.route_of(&incoming);
     let dispatched = if routed.may_block() {
         tokio::task::block_in_place(|| inner.answer_routed(routed, incoming))
@@ -243,6 +253,9 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
     };
     let truncated = is_truncated(&answer.body, cut);
     let (response, body) = prepared(answer, head_only, inner.options.server_header());
+    if let Some(exchange) = exchange.as_mut() {
+        traced_head(exchange, &response, HttpVersion::Http3);
+    }
     // A peer that stops taking the answer is let go of at the write timeout,
     // as an HTTP/1.1 one is; the leaf's reader ends with the chunks it can
     // no longer hand over.
@@ -252,7 +265,7 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
         return stream.stop_stream(h3::error::Code::H3_REQUEST_CANCELLED);
     }
     if let Some(body) = body {
-        let mut chunks = Chunks::of(body, cut);
+        let mut chunks = Chunks::of(body, cut, exchange.take());
         while let Some(chunk) = chunks.next(SEND_CHUNK).await {
             let Ok(chunk) = chunk else {
                 return stream.stop_stream(h3::error::Code::H3_INTERNAL_ERROR);
@@ -271,16 +284,26 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
 }
 
 /// Answer `status` with `text` and end the stream.
-async fn refuse(stream: &mut Stream, inner: &Inner, status: Status, text: &str) {
+async fn refuse(
+    stream: &mut Stream,
+    inner: &Inner,
+    status: Status,
+    text: &str,
+    mut exchange: Option<Exchange>,
+) {
     let (response, body) = prepared(
         super::Answer::text(status, text),
         false,
         inner.options.server_header(),
     );
+    if let Some(exchange) = exchange.as_mut() {
+        traced_head(exchange, &response, HttpVersion::Http3);
+    }
     if stream.send_response(response).await.is_err() {
         return;
     }
     if let Some(super::AnswerBody::Bytes(body)) = body {
+        traced_body(exchange, body.as_bytes());
         let _ = stream
             .send_data(Bytes::copy_from_slice(body.as_bytes()))
             .await;

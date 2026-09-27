@@ -1,0 +1,10 @@
+POST /xmla HTTP/1.1
+Connection: Keep-Alive
+Content-Type: text/xml
+User-Agent: MSOLAP 17.0 Client
+SOAPAction: urn:schemas-microsoft-com:xml-analysis:Discover
+X-Transport-Caps-Negotiation-Flags: 0,1,0,1,1
+Content-Length: 664
+Host: 127.0.0.1:8080
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><Version xmlns="http://schemas.microsoft.com/analysisservices/2008/engine/100" Sequence="926"/></soap:Header><soap:Body><Discover xmlns="urn:schemas-microsoft-com:xml-analysis"><RequestType>DISCOVER_PROPERTIES</RequestType><Restrictions><RestrictionList><PropertyName><Value>DbpropMsmdSubqueries</Value><Value>DbpropMsmdOptimizeResponse</Value><Value>DbpropMsmdActivityID</Value><Value>DbpropMsmdCurrentActivityID</Value><Value>ApplicationContext</Value></PropertyName></RestrictionList></Restrictions><Properties><PropertyList/></Properties></Discover></soap:Body></soap:Envelope>

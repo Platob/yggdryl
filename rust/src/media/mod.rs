@@ -81,6 +81,8 @@ pub enum Media {
     Avro(crate::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::text::Text<Holder>),
+    /// An XML for Analysis rowset document.
+    Xmla(crate::xmla::Xmla<Holder>),
 }
 
 impl Media {
@@ -118,9 +120,13 @@ impl Media {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(crate::text::Text::new(handle)));
         }
+        if base == &MimeType::XMLA {
+            return Ok(Self::Xmla(crate::xmla::Xmla::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro, text/plain), got {base}",
+             (application/vnd.apache.arrow.stream{}, application/avro, text/plain, \
+             application/xmla+xml), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -150,6 +156,11 @@ impl Media {
         Self::Text(crate::text::Text::new(handle))
     }
 
+    /// Hold an XML for Analysis rowset document over a handle.
+    pub fn xmla(handle: Holder) -> Self {
+        Self::Xmla(crate::xmla::Xmla::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -159,6 +170,7 @@ impl Media {
             Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
+            Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
         }
     }
 
@@ -174,6 +186,7 @@ impl Media {
             Self::Parquet(inner) => inner.handle(),
             Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
+            Self::Xmla(inner) => inner.handle(),
         }
     }
 
@@ -190,6 +203,7 @@ impl Media {
             Self::Parquet(inner) => inner.into_handle(),
             Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
+            Self::Xmla(inner) => inner.into_handle(),
         }
     }
 
@@ -201,6 +215,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xmla(xmla) => xmla,
         }
     }
 
@@ -212,6 +227,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xmla(xmla) => xmla,
         }
     }
 
@@ -228,6 +244,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xmla(xmla) => xmla,
         }
     }
 
@@ -239,6 +256,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xmla(xmla) => xmla,
         }
     }
 }
@@ -486,5 +504,11 @@ impl From<crate::avro::Avro<Holder>> for Media {
 impl From<crate::text::Text<Holder>> for Media {
     fn from(value: crate::text::Text<Holder>) -> Self {
         Self::Text(value)
+    }
+}
+
+impl From<crate::xmla::Xmla<Holder>> for Media {
+    fn from(value: crate::xmla::Xmla<Holder>) -> Self {
+        Self::Xmla(value)
     }
 }

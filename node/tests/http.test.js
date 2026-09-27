@@ -611,7 +611,10 @@ test('Server serves a mount, fixed answers and faults to an outside client', asy
   assert.equal(fixed.body.toString(), 'short and stout')
   server.respond('/posted', 201, null, null, 'POST')
   assert.equal((await call('POST', `${base}/posted`)).status, 201)
-  assert.equal((await call('GET', `${base}/posted`)).status, 404)
+  // A path routed for POST alone answers another method 405, naming it.
+  const other = await call('GET', `${base}/posted`)
+  assert.equal(other.status, 405)
+  assert.equal(other.headers.allow, 'POST')
   assert.equal(server.unroute('/posted', 'POST'), true)
 
   server.inject('/files/a.txt', { refuse: 503, retryAfter: 2000 })
@@ -648,6 +651,29 @@ test('Server serves a mount, fixed answers and faults to an outside client', asy
   assert.equal(server.closed, true)
   assert.throws(() => server.url, /shut down/)
   server.shutdown()
+})
+
+test('trace writes each exchange as a message/http document', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const server = http.Server.bind(undefined, { trace: root })
+  t.after(() => server.shutdown())
+  server.respond('/fixed', 200, null, 'fine')
+  const base = `http://127.0.0.1:${server.port}`
+
+  assert.equal(http.get(`${base}/fixed`).text(), 'fine')
+
+  // Completed a moment after the client reads the last byte, on the
+  // connection's own thread, so a reader polls for it rather than reading
+  // at once.
+  const requestFile = path.join(root, '0000-request.http')
+  const responseFile = path.join(root, '0000-response.http')
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && !(fs.existsSync(requestFile) && fs.existsSync(responseFile))) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+  }
+  assert.match(fs.readFileSync(requestFile, 'utf8'), /^GET \/fixed HTTP\/1\.1\r\n/)
+  assert.match(fs.readFileSync(responseFile, 'utf8'), /^HTTP\/1\.1 200/)
 })
 
 // Node's own HTTP/2, an outside implementation both ways: its server behind

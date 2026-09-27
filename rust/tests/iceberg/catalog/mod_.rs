@@ -798,147 +798,16 @@ fn table_writes_through_the_views_create_on_first_write() {
 /// that precedent, and the existence audit's whole point is the round trips
 /// that are no longer spent asking questions whose answers were stale.
 mod call_counts {
-    use std::any::Any;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{Catalog, taxi_schema};
-    use yggdryl::Result;
-    use yggdryl::fs::{
-        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, FsFolder,
-        MemoryFileSystem, OutputMetadata, RandomAccessReader,
-    };
-
-    /// A memory filesystem that counts every vtable call reaching it.
-    #[derive(Debug, Default)]
-    struct Counting {
-        inner: MemoryFileSystem,
-        calls: AtomicUsize,
-    }
-
-    impl Counting {
-        fn calls(&self) -> usize {
-            self.calls.load(Ordering::Relaxed)
-        }
-
-        fn count(&self) {
-            self.calls.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    impl FileSystem for Counting {
-        fn type_name(&self) -> &str {
-            self.inner.type_name()
-        }
-
-        fn equals(&self, other: &dyn FileSystem) -> bool {
-            self.count();
-            other
-                .as_any()
-                .downcast_ref::<Self>()
-                .is_some_and(|other| std::ptr::eq(self, other))
-        }
-
-        fn normalize_path(&self, path: &str) -> Result<String> {
-            self.count();
-            self.inner.normalize_path(path)
-        }
-
-        fn file_info(&self, path: &str) -> Result<FileInfo> {
-            self.count();
-            self.inner.file_info(path)
-        }
-
-        fn list(&self, selector: &FileSelector) -> FileInfos {
-            self.count();
-            self.inner.list(selector)
-        }
-
-        fn create_dir(&self, path: &str, recursive: bool) -> Result<()> {
-            self.count();
-            self.inner.create_dir(path, recursive)
-        }
-
-        fn delete_dir(&self, path: &str) -> Result<()> {
-            self.count();
-            self.inner.delete_dir(path)
-        }
-
-        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> Result<()> {
-            self.count();
-            self.inner.delete_dir_contents(path, missing_dir_ok)
-        }
-
-        fn delete_root_dir_contents(&self) -> Result<()> {
-            self.count();
-            self.inner.delete_root_dir_contents()
-        }
-
-        fn delete_file(&self, path: &str) -> Result<()> {
-            self.count();
-            self.inner.delete_file(path)
-        }
-
-        fn copy_file(&self, source: &str, target: &str) -> Result<()> {
-            self.count();
-            self.inner.copy_file(source, target)
-        }
-
-        fn move_file(&self, source: &str, target: &str) -> Result<()> {
-            self.count();
-            self.inner.move_file(source, target)
-        }
-
-        fn open_input_file(&self, path: &str) -> Result<Box<dyn RandomAccessReader>> {
-            self.count();
-            self.inner.open_input_file(path)
-        }
-
-        fn open_input_stream(&self, path: &str) -> Result<Box<dyn ByteReader>> {
-            self.count();
-            self.inner.open_input_stream(path)
-        }
-
-        fn open_output_stream(
-            &self,
-            path: &str,
-            metadata: Option<&OutputMetadata>,
-        ) -> Result<Box<dyn ByteWriter>> {
-            self.count();
-            self.inner.open_output_stream(path, metadata)
-        }
-
-        fn open_append_stream(
-            &self,
-            path: &str,
-            metadata: Option<&OutputMetadata>,
-        ) -> Result<Box<dyn ByteWriter>> {
-            self.count();
-            self.inner.open_append_stream(path, metadata)
-        }
-
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-    }
+    use crate::counting_filesystem::{CountingFileSystem as Counting, counted_folder};
+    use yggdryl::fs::FsFolder;
 
     /// A catalog over a counting warehouse, with the counter beside it.
     fn counted() -> (Arc<Counting>, Catalog<FsFolder>) {
-        let filesystem = Arc::new(Counting::default());
-        let warehouse = FsFolder::from_path(
-            Arc::clone(&filesystem) as Arc<dyn FileSystem>,
-            "warehouse",
-            None,
-        )
-        .expect("a valid location");
+        let (filesystem, warehouse) = counted_folder("warehouse");
         (filesystem, Catalog::new(warehouse))
-    }
-
-    /// One measured run: the calls `operation` makes on a fresh counter.
-    fn cost(filesystem: &Counting, operation: impl FnOnce()) -> usize {
-        let before = filesystem.calls();
-        operation();
-        filesystem.calls() - before
     }
 
     #[test]
@@ -951,7 +820,7 @@ mod call_counts {
 
         // Raw child resolution is local. The retained metadata streams avoid
         // duplicate classification and open calls.
-        let calls = cost(&filesystem, || {
+        let calls = filesystem.cost(|| {
             catalog.tables().get("sales.orders").unwrap();
         });
         assert_eq!(calls, 4, "get on an existing table");
@@ -968,7 +837,7 @@ mod call_counts {
         // The child is derived from the retained raw path without a backend
         // call. One file-info answer says it is absent, so no locate or
         // metadata-directory listing runs.
-        let calls = cost(&filesystem, || {
+        let calls = filesystem.cost(|| {
             catalog.tables().get("sales.nothing").unwrap_err();
         });
         assert_eq!(calls, 1, "get on a missing table");
@@ -982,7 +851,7 @@ mod call_counts {
         // The first output open reports a missing parent, one recursive
         // create repairs it, and the output open is retried exactly once.
         // Raw child resolution never walks ancestor namespaces.
-        let calls = cost(&filesystem, || {
+        let calls = filesystem.cost(|| {
             catalog
                 .tables()
                 .create("a.b.c.orders", taxi_schema())
@@ -1000,7 +869,7 @@ mod call_counts {
 
         // The absent branch: one classification, then the create's writes -
         // exactly what `create` costs, because it is the same attempt.
-        let absent = cost(&filesystem, || {
+        let absent = filesystem.cost(|| {
             catalog
                 .tables()
                 .open_or_create("sales.orders", taxi_schema())
@@ -1011,7 +880,7 @@ mod call_counts {
         // The present branch: one classification, whose locate already opened
         // the table - exactly what `get` costs, because it is the same
         // attempt.
-        let present = cost(&filesystem, || {
+        let present = filesystem.cost(|| {
             catalog
                 .tables()
                 .open_or_create("sales.orders", taxi_schema())

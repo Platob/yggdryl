@@ -1,0 +1,15 @@
+POST /xmla HTTP/1.1
+Connection: Keep-Alive
+Content-Type: text/xml
+User-Agent: MSOLAP 17.0 Client
+SspropInitAppName: Excel
+X-AS-ActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-RequestID: 41da8edb-5b1e-4e63-9837-bc083d3ef5c4
+X-AS-CurrentActivityID: dcb24312-54f8-402c-b846-6d5cdf8f30aa
+X-AS-SessionID: 01a0de6f-2ca9-7e60-a086-c65c91eee243
+SOAPAction: urn:schemas-microsoft-com:xml-analysis:Discover
+X-Transport-Caps-Negotiation-Flags: 1,1,0,1,1
+Content-Length: 1152
+Host: 127.0.0.1:8080
+
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header><Session xmlns="urn:schemas-microsoft-com:xml-analysis" SessionId="01a0de6f-2ca9-7e60-a086-c65c91eee243"/></soap:Header><soap:Body><Discover xmlns="urn:schemas-microsoft-com:xml-analysis"><RequestType>DISCOVER_SCHEMA_ROWSETS</RequestType><Restrictions><RestrictionList><SchemaName>MDSCHEMA_HIERARCHIES</SchemaName></RestrictionList></Restrictions><Properties><PropertyList><Catalog>market</Catalog><VisualMode>1</VisualMode><SspropInitAppName>Excel</SspropInitAppName><SafetyOptions>2</SafetyOptions><ClientProcessID>25304</ClientProcessID><MdxMissingMemberMode>Error</MdxMissingMemberMode><DbpropMsmdOptimizeResponse>9</DbpropMsmdOptimizeResponse><DbpropMsmdActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdActivityID><DbpropMsmdRequestID>41DA8EDB-5B1E-4E63-9837-BC083D3EF5C4</DbpropMsmdRequestID><DbpropMsmdCurrentActivityID>DCB24312-54F8-402C-B846-6D5CDF8F30AA</DbpropMsmdCurrentActivityID><LocaleIdentifier>1036</LocaleIdentifier><DbpropMsmdMDXCompatibility>1</DbpropMsmdMDXCompatibility></PropertyList></Properties></Discover></soap:Body></soap:Envelope>

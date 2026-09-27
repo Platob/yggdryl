@@ -1,0 +1,38 @@
+POST /xmla HTTP/1.1
+User-Agent: ADOMD.NET
+X-AS-AcquireTokenStats: AppName=Microsoft.Mashup.Container.Loader.exe,AppVer=2.155.385.0,AppBinaryType=6,HostRuntime='.NET Framework 4.8.1',ManagedVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,ClientLibVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,CacheUsed=1,ConStrId=1
+Content-Type: text/xml
+SOAPAction: "urn:schemas-microsoft-com:xml-analysis:Execute"
+X-Transport-Caps-Negotiation-Flags: 1,0,0,0,0
+X-AS-ActivityID: 803be071-8bc8-4cd6-8dbd-927d94a57c55
+X-AS-RequestID: da0ea568-ffec-4424-b12a-4d13edfcb6e1
+Host: 127.0.0.1:8080
+Transfer-Encoding: chunked
+Expect: 100-continue
+
+469
+﻿<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+  <Header>
+    <XA:Session soap:mustUnderstand="1" SessionId="01a0de7f-3fcc-75af-877b-3abb6f87acd9" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:XA="urn:schemas-microsoft-com:xml-analysis" />
+  </Header>
+  <Body>
+    <Execute xmlns="urn:schemas-microsoft-com:xml-analysis">
+      <Command>
+        <Cancel xmlns="http://schemas.microsoft.com/analysisservices/2003/engine" />
+      </Command>
+      <Properties>
+        <PropertyList>
+          <Catalog>market</Catalog>
+          <DbpropMsmdSubqueries>2</DbpropMsmdSubqueries>
+          <LocaleIdentifier>1036</LocaleIdentifier>
+          <DataSourceInfo>Provider=yggdryl;Data Source=yggdryl</DataSourceInfo>
+          <DbpropMsmdActivityID>803be071-8bc8-4cd6-8dbd-927d94a57c55</DbpropMsmdActivityID>
+          <DbpropMsmdRequestID>da0ea568-ffec-4424-b12a-4d13edfcb6e1</DbpropMsmdRequestID>
+          <DbpropMsmdCurrentActivityID>803be071-8bc8-4cd6-8dbd-927d94a57c55</DbpropMsmdCurrentActivityID>
+        </PropertyList>
+      </Properties>
+    </Execute>
+  </Body>
+</Envelope>
+0
+

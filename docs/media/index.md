@@ -11,6 +11,8 @@ A handle's name picks the encoding, the compression and the charset; the read an
 | [JSON](#json) | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | default |
 | [YAML](#yaml) | `application/yaml`, `.yaml` | default |
 | [TOML](#toml) | `application/toml`, `.toml` | default |
+| [XML](#xml) | `application/xml`, `.xml` | default |
+| [XML for Analysis](#xml-for-analysis) | `application/xmla+xml`, `.xmla`; the provider serves catalogs over HTTP | default; the provider's route `http` feature |
 | [Iceberg](#iceberg) | a table folder | `iceberg` feature |
 | [HTTP messages](#http-messages) | `message/http`, `.http` | `http` feature |
 | [Compression](#compression) | `.gz`, `.zz`, `.zst` suffix | default |
@@ -1453,6 +1455,205 @@ python/.venv/bin/python python/benchmarks/text.py --iterations 10000
 npm run --prefix node bench:text
 ```
 
+## XML for Analysis
+
+A `.xmla` handle holds one XML for Analysis 1.1 rowset document - the `xsd:schema` naming its columns and one `<row>` element per row, inside the SOAP 1.1 `DiscoverResponse` a provider would answer or as the bare rowset `root` - and reads and writes it through the same calls as every other medium. The schema travels with the rows: a nullable column is `minOccurs="0"` and absent where its cell is null, a sequence column is `maxOccurs="unbounded"` and one element per item, a struct is the element's children, and a column whose name is not an XML name is written under its `_xHHHH_` escape with `sql:field` keeping the original. Every value is spelled as the XML Schema type its datatype maps to (`xsd:long`, `xsd:double`, `xsd:dateTime`, `uuid`, `xsd:base64Binary`), so a client reads the document without this crate. A declared field types a document written without its schema; without one, the document's own schema is what a read answers, and a `dateTime` column whose values spell a zone lands as `datetime64(us, UTC)`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+
+    let field = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])?)
+    .required_field("row");
+    let mut handle = Buffer::new().with_media_type(MimeType::XMLA.into());
+    let options = handle.record_options()?.with_field(field.clone());
+    handle.overwrite_records(
+        [
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+            Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
+        ],
+        &options,
+    )?;
+
+    // The document carries its schema and one `<row>` per row; a null cell
+    // is an absent element.
+    let document = String::from_utf8(handle.read_all_bytes()?)?;
+    assert!(document.contains("<xsd:element sql:field=\"symbol\" name=\"symbol\" type=\"xsd:string\" minOccurs=\"0\"/>"));
+    assert!(document.contains("<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>"));
+
+    // It reads back through the calls every medium answers.
+    let mut rows = 0;
+    for batch in handle.read_arrow_reader(&handle.record_options()?)? {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 2);
+    assert_eq!(handle.read_arrow_field(&handle.record_options()?)?.fields().len(), 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.xmla")
+
+    # The `.xmla` suffix picks the rowset document; a None makes the column nullable.
+    handle.overwrite_records([{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}])
+
+    document = handle.read_bytes().decode()
+    assert "<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>" in document
+    assert list(handle.read_records()) == [
+        {"id": 1, "symbol": "AAPL"},
+        {"id": 2, "symbol": None},
+    ]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.xmla'))
+
+    // The `.xmla` suffix picks the rowset document; a null makes the column nullable.
+    handle.overwriteRecords([{ id: 1n, symbol: 'AAPL' }, { id: 2n, symbol: null }])
+
+    const document = handle.readBytes().toString()
+    assert.ok(document.includes('<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>'))
+    assert.deepEqual([...handle.readRecords()], [
+      { id: 1n, symbol: 'AAPL' },
+      { id: 2n, symbol: null },
+    ])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+### Provider
+
+`yggdryl::xmla` is also the provider side of the protocol, Rust-only: a [`Service`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html) serves catalogs - a folder of record media is a catalog, each file the folder holds a table, each folder inside it a schema of tables, a folder laid out as an Iceberg table a table wherever it sits (refused by name in a build without the `iceberg` feature), and a ZIP archive a catalog of its members - answering `Discover` with the XMLA schema rowsets (`DISCOVER_DATASOURCES`, `DISCOVER_SCHEMA_ROWSETS`, `DBSCHEMA_CATALOGS`, `DBSCHEMA_SCHEMATA`, `DBSCHEMA_TABLES`, `DBSCHEMA_COLUMNS` and the rest, restrictions applied, and one multidimensional rowset, `MDSCHEMA_CUBES`, each catalog its one cube - what MSOLAP asks for between the catalog list and the tables, and the only `MDSCHEMA_*` rowset a tabular provider answers) and `Execute` by running the statement through the [expression grammar](../expression/index.md) against the table it names, `catalog.schema.table` or the `Catalog` property, refusing a write unless the service was made writable. Every refusal is a SOAP fault carrying the XMLA `<Error>` with a code, a description and the source, answered at HTTP `200` the way the reference providers answer and XMLA clients read one; a header block that demands to be understood and is not a session block earns a `MustUnderstand` fault, and a failure once a streamed answer has begun is reported inside the rowset as `<Messages><Error/></Messages>`. [`Service::route`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html#method.route) puts the service on the crate's [`http::Server`](../holder/index.md#serving-a-handle) at a path: a `GET` answers a short text description of the endpoint and a `HEAD` its head; a `POST` is always answered `200` under `text/xml; charset=utf-8` and `X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0` - a body whose declared content type is not XML earns an immediate `Client` fault under those same headers, and any other body, empty included, is handed to `Service::handle`, its answer written as it is sent so a large `Execute` streams; any other method is the server's own `405` naming `GET, HEAD, POST`. `ygg xmla serve` does the same from a terminal, printing the endpoint first.
+
+The binding speaks what the reference clients - MSOLAP, which Excel's Data Connection Wizard and PivotTables use, and ADOMD.NET, which Power Query uses - send: a `Content-Length` or a chunked request body, `Expect: 100-continue`, and MS-SSAS content negotiation. The connection side of that - framing, keep-alive, the interim `100 Continue` answered once the head has passed every check a body is refused on (so a .NET client does not wait its 350 ms), timeouts and bounds, HTTP/2 and HTTP/3, the exchange trace - is the crate's [HTTP server](../holder/index.md#serving-a-handle); what stays XMLA's is the negotiation header itself, stamped on every SOAP answer and never on the `GET` description, plain text XML both ways. A session opens the way those clients open one - an `Execute` carrying `BeginSession` and an empty `<Statement/>`, answered empty under a `Session` block that every later answer carries back, a fault included. `DISCOVER_SCHEMA_ROWSETS` states each rowset's `SchemaGuid` and `RestrictionsMask`, a restriction sent with no value restricts nothing, and `DISCOVER_PROPERTIES` answers the names those clients read before they drive a provider, each with what is true of this one: `ProviderType` 1 (a tabular data provider), `MDXSupport`, `ServerName`, `SQLSupport` 512, `DBMSVersion` `10.50.1600.1` - the SQL Server 2008 R2 RTM build, the release whose XML for Analysis is spoken here and the oldest ADOMD.NET agrees to talk to, `ProviderVersion` staying the crate's own - the `Mdprop*` MDX capability masks - all zero, the statement language being the expression grammar - and the `Dbprop*`/`Ssprop*` properties a client states about itself, echoed back as it set them, a number's own default where it set none, and no cell at all where there is no default - never an empty cell under an `int`. [`ServerOptions::with_trace`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_trace) - `ygg xmla serve --trace <folder>` - writes every exchange as it went over the wire, `NNNN-request.http` as read and `NNNN-response.http` as sent, the interim status and the chunked framing included, numbered from `0000` across every connection: what a client asked is read from the folder, and a request file replays through `Service::handle` with its body.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::xmla::{
+        Catalog, Discover, Execute, Request, RequestType, Response, Service, ServiceOptions,
+    };
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, Serie, StructType};
+
+    let root = std::env::temp_dir().join(format!("yggdryl-xmla-docs-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let field = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("symbol"),
+        DataType::Float64.required_field("price"),
+    ])?)
+    .required_field("row");
+    let mut trades = Holder::folder(&root)?.child_by_path("trades.arrows")?;
+    let options = trades.record_options()?.with_field(field);
+    trades.overwrite_records(
+        [
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(187.5_f64)]),
+            Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(410.25_f64)]),
+        ],
+        &options,
+    )?;
+
+    // A folder is a catalog; the service answers a request's bytes with a
+    // response's bytes, which is what the server puts on the socket.
+    let service = Service::new(ServiceOptions::new())
+        .with_catalog(Catalog::new("market", Holder::folder(&root)?));
+    let discover = Request::from(Discover::new(RequestType::DbschemaTables));
+    let answer = service.handle(&discover.into_bytes()?, Vec::new())?;
+    let tables = Response::from_bytes(&answer, None)?;
+    let names = tables.rows().and_then(|rows| rows.child("TABLE_NAME").cloned());
+    assert_eq!(names.map(|column| column.scalar(0)).transpose()?, Some(Scalar::from("trades")));
+
+    // A statement runs through the expression grammar against the table it names.
+    let execute = Request::from(Execute::statement(
+        "select symbol from market.trades where price > 200",
+    ));
+    let answer = service.handle(&execute.into_bytes()?, Vec::new())?;
+    let selected = Response::from_bytes(&answer, None)?;
+    assert_eq!(selected.rows().map(Serie::len), Some(1));
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+The server is bound the same way in Rust - `let server = http::Server::bind_with("127.0.0.1:8080", ServerOptions::default())?; Arc::new(service).route(&server, "/xmla")?` - and from the command line over any folders a holder resolves, tracing each exchange when asked:
+
+```bash
+ygg xmla serve market=/data/market reference=s3://bucket/reference --bind 0.0.0.0:8080 --path /xmla
+ygg xmla serve market=C:\data\market --trace C:\data\trace
+```
+
+The `ygg` a wheel ships is built with the CLI crate's `iceberg` feature, which `scripts/stage_cli.py` passes, so it reads an Iceberg folder; `cargo build -p yggdryl-cli` alone builds the schema-only core, which lists such a folder as a table and refuses its rows by name.
+
+### Excel
+
+Excel reaches the provider through MSOLAP and through Power Query's ADOMD.NET, and three doors open on a folder catalog `ygg xmla serve` puts on a socket. Each was driven from Excel (Microsoft 365, 16.0.20430) against `market=C:\data\market` - Iceberg tables of ten thousand, a hundred thousand and a million trades, a table of every datatype, a `reference` schema - with the exchanges kept under `rust/tests/xmla/fixtures/excel/<door>/` as they went over the wire and replayed through `Service::handle` by `rust/tests/xmla/service.rs`, each answer checked against the captured one by what a client reads: the kind of answer, the columns, the number of rows, the fault code.
+
+- **Power Query, with a query** (`pq-query`, `refresh`). *Données > Nouvelle requête > À partir d'une base de données > SQL Server Analysis Services*: server `http://127.0.0.1:8080/xmla`, database `market`, and the statement in the *Requête MDX ou DAX* box - `select * from market.trades limit 100`. The text crosses unchanged as the `Execute` statement under `Format=Tabular`, the preview types the columns and *Charger* lands the rows; a refresh runs the query again over the pooled connection. The same in M:
+
+    ```text
+    AnalysisServices.Database("http://127.0.0.1:8080/xmla", "market",
+        [Query = "select * from market.trades limit 100"])
+    ```
+
+- **An `.odc` with a command text** (`odc-query`). `Provider=MSOLAP;Data Source=http://127.0.0.1:8080/xmla;Initial Catalog=market;` with `<odc:CommandType>Query</odc:CommandType>` and the statement as `<odc:CommandText>`: opened, Excel lands the rows as an ordinary table in one session of five requests - the leanest path there is, and no Power Query.
+- **The Data Connection Wizard** (`wizard`). *Données externes > À partir d'autres sources > À partir d'Analysis Services*: MSOLAP asks `DISCOVER_PROPERTIES`, opens a session, then `DISCOVER_SCHEMA_ROWSETS`, `DBSCHEMA_CATALOGS`, `MDSCHEMA_CUBES` and `DBSCHEMA_TABLES`, lists the catalog as its one cube and saves the `.odc`.
+
+What stays closed, and why. The PivotTable the wizard offers next asks the `MDSCHEMA_*` set and then MDX (`pivottable`); Power Query's navigator - the connector with no query - runs a DMV query, `select [CUBE_NAME], [BASE_CUBE_NAME], [CUBE_CAPTION] from $system.mdschema_cubes where [CUBE_SOURCE] = 1`, and then browses as an MDX or a DAX client (`pq-navigator`); a DAX text, `EVALUATE 'trades'`, is refused by the grammar at byte 0 and Power Query shows the refusal (`pq-dax`). MDX and DAX are not spoken here: the statement language is the [expression grammar](../expression/index.md), and a query is the door.
+
+Two facts the clients read before anything else are stated once, in [`ServiceOptions`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.ServiceOptions.html): `DBMSVersion` is `10.50.1600.1` - SQL Server 2008 R2 RTM, the release whose XML for Analysis is spoken here and the oldest ADOMD.NET agrees to talk to - and `ProviderVersion` is the crate's. ADOMD.NET sends every request with `Expect: 100-continue` and chunked, the body opening with a byte-order mark, and a `<Cancel/>` before it reuses a pooled connection, answered empty: no command is ever left running here.
+
+### XML for Analysis performance
+
+Criterion point estimates from a Windows 11 x86_64 release run on an AMD Ryzen 5 150 (6 cores, 23 GiB) with rustc 1.96.1 (2026-09-26). The documents are the ten-thousand-row table of the `media` bench; the provider rows are `Service::handle` over a folder catalog of three IPC tables - the bytes a client sent in, the bytes the server puts on the socket out, with no socket between.
+
+| operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| write a rowset document | 10,000 | 7.56 ms | 1.32M rows/s |
+| read a rowset document | 10,000 | 96.9 ms | 103k rows/s |
+| write a `Discover` request | - | 1.59 us | - |
+| read a `Discover` request | - | 18.5 us | - |
+| `DISCOVER_PROPERTIES` | 53 | 233 us | - |
+| `DBSCHEMA_CATALOGS` | 1 | 139 us | - |
+| `DBSCHEMA_TABLES` | 3 | 1.20 ms | - |
+| `DBSCHEMA_COLUMNS` | every column of the 3 | 5.84 ms | - |
+| `select * from market.trades_10k` | 10,000 | 10.8 ms | 926k rows/s |
+| `select * from market.trades_100k` | 100,000 | 81.4 ms | 1.23M rows/s |
+| `select * from market.trades_1m` | 1,000,000 | 822 ms | 1.22M rows/s |
+
+```bash
+cargo bench -p yggdryl --bench media -- media/xmla
+```
+
+End to end, on the same machine: `ygg xmla serve market=C:\data\market` built in release with the `iceberg` feature and no trace, serving the nine-column Iceberg `trades` tables the Excel captures read, and ADOMD.NET 19.84.1 - the client library Power Query drives - executing `select * from market.<table>` over loopback and reading every cell in compiled .NET, warm. Beside it, pyarrow 25.0.1 reading the same tables' Parquet files straight off the disk.
+
+| table | rows | first row, ADOMD.NET | every cell, ADOMD.NET over XML for Analysis | the Parquet files, pyarrow |
+| --- | ---: | ---: | ---: | ---: |
+| `trades` | 10,000 | 0.02 s | 0.23 s | 0.01 s |
+| `trades_100k` | 100,000 | 0.04 s | 2.1 s | 0.01 s |
+| `trades_1m` | 1,000,000 | 0.07 s | 19.7 s | 0.06 s |
+
+The provider writes the million rows in 0.82 s; the rest is the client reading them as XML text, which is what the protocol carries. Regenerated by hand: serve the folder as above and time `AdomdCommand.ExecuteReader` draining every row, and `pyarrow.dataset.dataset("<table>/data", format="parquet", partitioning="hive").to_table()` for the baseline.
+
 ## Iceberg
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
@@ -1819,7 +2020,10 @@ A recipient reads what RFC 9112 lets it read, and refuses the rest as `Error::Pa
 - `Content-Length` is a decimal every repetition agrees on and never stands beside `Transfer-Encoding`; the one transfer coding read is `chunked`, its extensions ignored and its trailers folded into the headers;
 - a `1xx`, `204` or `304` response has no body whatever its headers state, and a response stating no framing reads to the end of the input; the input must be one message;
 - a field value's obs-text is read through `Charset::transcribe`, so a legacy byte is its windows-1252 character rather than a refusal;
-- a `Content-Encoding` is kept on the body as sent: `bytes`, `text` and `scalar` decode it, `into_bytes` renders it coded, and a coding this crate cannot decode is refused when the message is parsed.
+- a `Content-Encoding` is kept on the body as sent: `bytes`, `text` and `scalar` decode it, `into_bytes` renders it coded, and a coding this crate cannot decode is refused when the message is parsed;
+- `parse_response` reads past every interim `1xx` answer other than `101` to the final one, so `Response::from_bytes` answers the status the exchange ended on and `into_bytes` renders only that last answer; `101` is itself final.
+
+A server's trace folder ([Serving a handle](../holder/index.md#serving-a-handle)) is a folder of these documents, one request and one response per exchange.
 
 ## Compression
 

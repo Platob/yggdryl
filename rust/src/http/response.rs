@@ -1,10 +1,12 @@
 //! `Response`: one HTTP answer - the status, the headers, the final URL, the
 //! redirect history - and its body, held whole or left on the wire.
 //!
-//! The body has two states, behind one lock so every reader takes `&self`
+//! The body has three states, behind one lock so every reader takes `&self`
 //! and two threads may share a handle: *held*, the bytes as they came off
-//! the wire with the decoded form cached beside them once asked for, or
-//! *streaming*, a [`Stream`] still on the wire. [`Response::bytes`] is the
+//! the wire with the decoded form cached beside them once asked for,
+//! *streaming*, a [`Stream`] still on the wire, or *written*, the writer a
+//! handler set with [`Response::with_writer`], run into the connection when
+//! a server sends the answer and into memory when it is read here. [`Response::bytes`] is the
 //! decoded body, [`Response::text`] that body read in the charset the
 //! `Content-Type` declares, [`Response::scalar`] that body parsed under its
 //! media type through the crate's structured-text codecs. As an [`IOBase`]
@@ -15,7 +17,7 @@
 //! read: a streaming body is read through its own [`Stream`], borrowed out
 //! of the lock by reference count.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -74,7 +76,12 @@ pub struct Response {
     materializing: Mutex<()>,
 }
 
-/// The body, held or on the wire.
+/// What writes a body as it is sent: the carrier's writer in - an HTTP/1.1
+/// connection's chunks, an HTTP/2 or HTTP/3 stream's data frames, memory -
+/// and every byte of the body written through it.
+pub(crate) type BodyWriter = Box<dyn FnOnce(&mut dyn Write) -> Result<()> + Send>;
+
+/// The body, held, on the wire, or still to be written.
 enum BodyState {
     /// The bytes as sent, and the decoded form once it was asked for.
     Held {
@@ -83,6 +90,10 @@ enum BodyState {
     },
     /// Still on the wire.
     Streaming(Arc<Stream>),
+    /// Written by a handler's writer when it is sent.
+    Written(BodyWriter),
+    /// A writer that failed, run once: every read answers its failure.
+    Broken(String),
 }
 
 impl Response {
@@ -149,6 +160,45 @@ impl Response {
             Body::Bytes(bytes) => bytes,
         };
         self.with_raw(raw)
+    }
+
+    /// The same response with its body written by `writer` as it is sent:
+    /// into an HTTP/1.1 connection as chunks, into an HTTP/2 or HTTP/3
+    /// stream as data frames, never held whole, its length not known until
+    /// it ends. This is how a [`Server::route`](super::Server::route)
+    /// handler streams an answer - a rowset, an export, a proxied body - of
+    /// any size; the writer runs once, after the handler returned, and a
+    /// failure part way severs the transfer rather than end it cleanly. A
+    /// `HEAD` never runs it.
+    ///
+    /// Read here instead - [`Self::bytes`], [`Self::into_bytes`], the
+    /// response as an [`IOBase`] - the body is written into memory once,
+    /// within the session's `max_body_size`.
+    ///
+    /// ```
+    /// use std::io::Write;
+    /// use yggdryl::http::{Response, Status};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let response = Response::new(Status::OK).with_writer(|body| {
+    ///     for row in 0..3 {
+    ///         writeln!(body, "row {row}")?;
+    ///     }
+    ///     Ok(())
+    /// });
+    /// assert_eq!(response.text()?, "row 0\nrow 1\nrow 2\n");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_writer(
+        self,
+        writer: impl FnOnce(&mut dyn Write) -> Result<()> + Send + 'static,
+    ) -> Self {
+        Self {
+            body: Mutex::new(BodyState::Written(Box::new(writer))),
+            ..self
+        }
     }
 
     /// The same response with `value` as a compact JSON body under
@@ -394,6 +444,7 @@ impl Response {
     pub fn into_stream(self) -> Result<Stream> {
         let url = self.url;
         let headers = self.headers;
+        let limit = self.request.session().options().max_body_size();
         match self.body.into_inner().map_err(|_| poisoned())? {
             BodyState::Held { raw, .. } => Ok(Stream::over_bytes(raw, headers).located_at(url)),
             BodyState::Streaming(stream) => Arc::try_unwrap(stream).map_err(|_| {
@@ -401,6 +452,11 @@ impl Response {
                     "the streaming body is being read by another thread",
                 ))
             }),
+            BodyState::Written(writer) => {
+                let raw = written(writer, limit, &url)?;
+                Ok(Stream::over_bytes(Arc::from(raw), headers).located_at(url))
+            }
+            BodyState::Broken(reason) => Err(broken(&reason)),
         }
     }
 
@@ -589,14 +645,52 @@ impl Response {
     /// The live stream, when the body is one, borrowed out of the lock.
     fn stream(&self) -> Result<Option<Arc<Stream>>> {
         Ok(match &*self.state()? {
-            BodyState::Held { .. } => None,
+            BodyState::Held { .. } | BodyState::Written(_) | BodyState::Broken(_) => None,
             BodyState::Streaming(stream) => Some(Arc::clone(stream)),
         })
     }
 
-    /// Read a streaming body whole, from its first byte, and hold it.
+    /// The writer a handler set, taken out and the body left empty, for a
+    /// server to run into the connection; `None` for any other body.
+    pub(crate) fn take_writer(&self) -> Result<Option<BodyWriter>> {
+        let mut state = self.state()?;
+        let empty = BodyState::Held {
+            raw: Arc::from([]),
+            decoded: None,
+        };
+        match std::mem::replace(&mut *state, empty) {
+            BodyState::Written(writer) => Ok(Some(writer)),
+            other => {
+                *state = other;
+                Ok(None)
+            }
+        }
+    }
+
+    /// Read a streaming body whole, from its first byte, or write a written
+    /// one into memory, and hold it.
     fn materialize(&self) -> Result<()> {
         let _draining = self.materializing.lock().map_err(|_| poisoned())?;
+        if let Some(writer) = self.take_writer()? {
+            return match written(writer, self.max_body_size(), &self.url) {
+                Ok(raw) => {
+                    *self.state()? = BodyState::Held {
+                        raw: Arc::from(raw),
+                        decoded: None,
+                    };
+                    Ok(())
+                }
+                // A writer runs once: a second read answers the same
+                // failure, never an empty body it did not write.
+                Err(error) => {
+                    *self.state()? = BodyState::Broken(error.to_string());
+                    Err(error)
+                }
+            };
+        }
+        if let BodyState::Broken(reason) = &*self.state()? {
+            return Err(broken(reason));
+        }
         let Some(stream) = self.stream()? else {
             return Ok(());
         };
@@ -626,7 +720,8 @@ impl Response {
         self.materialize()?;
         match &*self.state()? {
             BodyState::Held { raw, .. } => Ok(Arc::clone(raw)),
-            BodyState::Streaming(_) => Err(poisoned()),
+            BodyState::Streaming(_) | BodyState::Written(_) => Err(poisoned()),
+            BodyState::Broken(reason) => Err(broken(reason)),
         }
     }
 
@@ -648,6 +743,8 @@ impl std::fmt::Debug for Response {
                 BodyState::Streaming(stream) => {
                     format!("streaming, {} delivered", stream.delivered())
                 }
+                BodyState::Written(_) => "written when sent".to_owned(),
+                BodyState::Broken(reason) => format!("writer failed: {reason}"),
             },
             Err(_) => "poisoned".to_owned(),
         };
@@ -672,6 +769,12 @@ impl IOBase for Response {
     /// ranged `GET` when the resource accepts ranges and refused by name
     /// otherwise.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+        if matches!(
+            &*self.state()?,
+            BodyState::Written(_) | BodyState::Broken(_)
+        ) {
+            self.materialize()?;
+        }
         // A read waits out a whole read in flight and then answers from the
         // bytes it held, rather than asking the drained stream to go back.
         let _draining = self.materializing.lock().map_err(|_| poisoned())?;
@@ -690,6 +793,8 @@ impl IOBase for Response {
                     return Ok(count);
                 }
                 BodyState::Streaming(stream) => Arc::clone(stream),
+                BodyState::Written(_) => return Err(poisoned()),
+                BodyState::Broken(reason) => return Err(broken(reason)),
             }
         };
         stream.pread(offset, buffer)
@@ -718,10 +823,15 @@ impl IOBase for Response {
         if let Some(length) = self.content_length() {
             return length;
         }
+        if matches!(self.state().as_deref(), Ok(BodyState::Written(_))) {
+            // Its length is what writing it yields: written once, then held.
+            let _ = self.materialize();
+        }
         match self.state() {
             Ok(state) => match &*state {
                 BodyState::Held { raw, .. } => raw.len() as u64,
                 BodyState::Streaming(stream) => stream.size(),
+                BodyState::Written(_) | BodyState::Broken(_) => 0,
             },
             Err(_) => 0,
         }
@@ -759,7 +869,8 @@ impl IOBase for Response {
         self.media_type = media_type;
     }
 
-    /// `Memory` for a held body, `File` for a streaming one.
+    /// `Memory` for a held body and a written one, `File` for a streaming
+    /// one.
     /// Re-open a streaming body closed earlier, at its cursor: one ranged
     /// `GET` naming the first answer's validator. A held body has nothing to
     /// open.
@@ -791,7 +902,9 @@ impl IOBase for Response {
     fn kind(&self) -> IOKind {
         match self.state() {
             Ok(state) => match &*state {
-                BodyState::Held { .. } => IOKind::Memory,
+                BodyState::Held { .. } | BodyState::Written(_) | BodyState::Broken(_) => {
+                    IOKind::Memory
+                }
                 BodyState::Streaming(_) => IOKind::File,
             },
             Err(_) => IOKind::Unknown,
@@ -822,6 +935,57 @@ fn placeholder_url() -> Url {
 }
 
 /// A response whose body state is not what its lock promised.
+/// What `writer` writes, into memory, refused past `limit` bytes as a body
+/// read off the wire is.
+fn written(writer: BodyWriter, limit: u64, url: &Url) -> Result<Vec<u8>> {
+    let mut body = Bounded {
+        bytes: Vec::new(),
+        limit,
+    };
+    let wrote = writer(&mut body);
+    // Past the bound the writer met a refusal it may have reported as its
+    // own failure: the bound is the reason, so it is the error.
+    if body.bytes.len() as u64 > limit {
+        return Err(oversized_body(limit, Some(url)));
+    }
+    wrote?;
+    Ok(body.bytes)
+}
+
+/// Memory that takes one byte past its bound and then refuses the rest, so
+/// a writer past the bound stops at once and the bound is reported.
+struct Bounded {
+    bytes: Vec<u8>,
+    limit: u64,
+}
+
+impl Write for Bounded {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let room = self
+            .limit
+            .saturating_add(1)
+            .saturating_sub(self.bytes.len() as u64);
+        if room == 0 {
+            return Err(std::io::ErrorKind::FileTooLarge.into());
+        }
+        let take = usize::try_from(room)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        self.bytes.extend_from_slice(&buffer[..take]);
+        Ok(take)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The failure of a written body's writer, answered again by every read
+/// after the one that ran it.
+fn broken(reason: &str) -> Error {
+    Error::Io(std::io::Error::other(reason.to_owned()))
+}
+
 fn poisoned() -> Error {
     Error::Io(std::io::Error::other(
         "an HTTP response lock was poisoned by a panicking reader",

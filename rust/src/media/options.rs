@@ -367,9 +367,25 @@ pub trait IORecordOptions: Sized {
     /// # Errors
     ///
     /// Returns an error when the `create` section declares a column that
-    /// cannot be typed without rows, or the merge key names a column twice.
+    /// cannot be typed without rows, the merge key names a column twice, or
+    /// the plan carries a section these options have no property for - an
+    /// `order by` - which is refused by name rather than dropped: a plan that
+    /// orders rows is applied to the rows themselves, through the expression
+    /// layer.
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
-        self.set_declared(plan.field()?);
+        // Everything that can refuse does so before the first write, so a
+        // refused plan leaves every section as it was.
+        let declared = plan.field()?;
+        distinct_merge_key(plan.merge_by())?;
+        if !plan.ordering().is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.order_by"),
+                reason: SmolStr::new_static(
+                    "record options hold no `order by` section; apply the plan to the rows instead",
+                ),
+            });
+        }
+        self.set_declared(declared);
         self.set_filter(plan.filter_section().clone());
         self.set_select(plan.selector().clone());
         self.set_merge_by(plan.merge_by().clone());
@@ -379,7 +395,7 @@ pub trait IORecordOptions: Sized {
         if let Some(offset) = plan.row_offset() {
             self.set_row_offset(Some(offset));
         }
-        self.require_merge_by()
+        Ok(())
     }
 
     /// The partition equalities the `where` section spells.
@@ -568,8 +584,11 @@ pub trait IORecordOptions: Sized {
     /// Returns the error [`Selector::from_scalar`] does, or the error
     /// [`require_merge_by`](Self::require_merge_by) does.
     fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()> {
-        self.set_merge_by(Selector::from_scalar(merge_by)?);
-        self.require_merge_by()
+        let merge_by = Selector::from_scalar(merge_by)?;
+        // Validated before it is stored, so a refused key leaves the old one.
+        distinct_merge_key(&merge_by)?;
+        self.set_merge_by(merge_by);
+        Ok(())
     }
 
     /// Return these options with the merge key a scalar spells.
@@ -697,22 +716,7 @@ pub trait IORecordOptions: Sized {
     ///
     /// Returns an error naming the repeated column, or the `unnest`.
     fn require_merge_by(&self) -> Result<()> {
-        self.merge_by().refuse_unnest("in a key")?;
-        let names = self.merge_by().names();
-        for (index, name) in names.iter().enumerate() {
-            if names[..index]
-                .iter()
-                .any(|held| held.eq_ignore_ascii_case(name))
-            {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.merge_by"),
-                    reason: smol_str::format_smolstr!(
-                        "expected each match key column once, got {name:?} twice"
-                    ),
-                });
-            }
-        }
-        Ok(())
+        distinct_merge_key(self.merge_by())
     }
 
     /// Shape one batch the way these options say, completed by what is stored.
@@ -1002,6 +1006,26 @@ impl Shaping {
         }
     }
 }
+/// Refuse a match key that unnests, or names one column twice in any case:
+/// a key is one value per row, where an `unnest` is one row per element.
+fn distinct_merge_key(merge_by: &Selector) -> Result<()> {
+    merge_by.refuse_unnest("in a key")?;
+    let names = merge_by.names();
+    for (index, name) in names.iter().enumerate() {
+        if names[..index]
+            .iter()
+            .any(|held| held.eq_ignore_ascii_case(name))
+        {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.merge_by"),
+                reason: smol_str::format_smolstr!(
+                    "expected each match key column once, got {name:?} twice"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// The `(column, value)` equalities one filter spells, in conjunct order.
 ///
@@ -1169,6 +1193,8 @@ pub enum RecordOptions {
     Avro(crate::avro::AvroOptions),
     /// Plain-text row options.
     Text(Box<crate::text::TextOptions>),
+    /// XML for Analysis rowset document options.
+    Xmla(crate::xmla::XmlaOptions),
 }
 
 impl RecordOptions {
@@ -1181,6 +1207,7 @@ impl RecordOptions {
             Self::Parquet(options) => crate::hashing::stable_hash_of(&("parquet", options)),
             Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
             Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
+            Self::Xmla(options) => crate::hashing::stable_hash_of(&("xmla", options)),
         }
     }
 
@@ -1192,7 +1219,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected text options to set {setting}, got {media_type} options"
@@ -1212,7 +1239,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1233,7 +1260,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected Avro options to set {setting}, got {media_type} options"
@@ -1253,7 +1280,7 @@ impl RecordOptions {
     pub fn avro_block_codec(&self) -> Option<&str> {
         match self {
             Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1284,7 +1311,7 @@ impl RecordOptions {
     pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
         match self {
             Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1322,12 +1349,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Parquet options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Parquet options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
         }
     }
 
@@ -1336,7 +1365,7 @@ impl RecordOptions {
     pub fn parquet_compression_name(&self) -> Option<String> {
         match self {
             Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
         }
     }
 
@@ -1356,14 +1385,14 @@ impl RecordOptions {
     /// A table that already reads or writes several files at once hands each
     /// file its share this way, so the two levels of parallelism never
     /// multiply past what it resolved. Parquet splits its row groups and
-    /// columns across the share and Avro its blocks; Arrow IPC and text
-    /// already decode on one thread.
+    /// columns across the share and Avro its blocks; Arrow IPC, text and an
+    /// XMLA document already decode on one thread.
     pub(crate) fn set_file_threads(&mut self, threads: usize) {
         match self {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.threads = Some(threads.max(1)),
             Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
-            Self::Ipc(_) | Self::Text(_) => {}
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => {}
         }
     }
 
@@ -1372,7 +1401,7 @@ impl RecordOptions {
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
         match self {
             Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
         }
     }
 
@@ -1393,7 +1422,7 @@ impl RecordOptions {
     pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
         match self {
             Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
         }
     }
 
@@ -1521,10 +1550,13 @@ impl RecordOptions {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(Box::default()));
         }
+        if base == &MimeType::XMLA {
+            return Ok(Self::Xmla(crate::xmla::XmlaOptions::new()));
+        }
         let encodings = if cfg!(feature = "parquet") {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml)"
         } else {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain; the `parquet` feature is not enabled)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml; the `parquet` feature is not enabled)"
         };
         // A structured text document is one value around its rows, not a
         // stream of batches: it has doors of its own, and the refusal names
@@ -1554,6 +1586,7 @@ impl RecordOptions {
             Self::Parquet(_) => MimeType::PARQUET,
             Self::Avro(_) => MimeType::AVRO,
             Self::Text(_) => MimeType::PLAIN_TEXT,
+            Self::Xmla(_) => MimeType::XMLA,
         }
     }
 }
@@ -1599,7 +1632,7 @@ pub mod internals {
             #[cfg(feature = "parquet")]
             RecordOptions::Parquet(options) => options.threads,
             RecordOptions::Avro(options) => options.threads.0,
-            RecordOptions::Ipc(_) | RecordOptions::Text(_) => None,
+            RecordOptions::Ipc(_) | RecordOptions::Text(_) | RecordOptions::Xmla(_) => None,
         }
     }
 }

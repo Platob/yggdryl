@@ -604,6 +604,19 @@ fn from_bytes_and_into_bytes_round_trip_a_message_and_into_scalar_describes_it()
 }
 
 #[test]
+fn from_bytes_reads_past_an_interim_answer_to_the_final_one() {
+    let wire = b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
+    let response = Response::from_bytes(wire).expect("a message");
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(response.text().expect("text"), "ok");
+    // `into_bytes` renders the final answer alone, not the interim before it.
+    assert_eq!(
+        response.into_bytes().expect("wire"),
+        b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok"
+    );
+}
+
+#[test]
 fn a_response_is_built_by_hand() {
     let created = Response::new(Status::CREATED).with_text("hi");
     assert_eq!(created.status(), Status::CREATED);
@@ -646,6 +659,82 @@ fn a_response_is_built_by_hand() {
     stream.read_to_end(&mut read).expect("read");
     assert_eq!(read, body(10));
     assert_eq!(stream.total(), Some(10));
+}
+
+// --- a written body ------------------------------------------------------------
+
+#[test]
+fn with_writer_runs_once_and_every_local_reader_sees_what_it_wrote() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let response = Response::new(Status::OK).with_writer(move |body| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        body.write_all(b"row 0\nrow 1\n")?;
+        Ok(())
+    });
+    assert!(format!("{response:?}").contains("written when sent"));
+
+    assert_eq!(response.text().expect("text"), "row 0\nrow 1\n");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    // Read again: held now, the writer does not run a second time.
+    assert_eq!(&*response.bytes().expect("bytes"), b"row 0\nrow 1\n");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn with_writer_is_rendered_by_into_bytes_with_its_head() {
+    let response = Response::new(Status::OK).with_writer(|body| {
+        body.write_all(b"hi")?;
+        Ok(())
+    });
+    let wire = response.into_bytes().expect("wire");
+    assert!(wire.starts_with(b"HTTP/1.1 200 OK\r\n"), "{wire:?}");
+    assert!(wire.ends_with(b"hi"), "{wire:?}");
+}
+
+#[test]
+fn with_writer_is_read_as_an_iobase() {
+    let response = Response::new(Status::OK).with_writer(|body| {
+        body.write_all(b"abcdefgh")?;
+        Ok(())
+    });
+    assert_eq!(response.read_all_bytes().expect("bytes"), b"abcdefgh");
+    assert_eq!(response.size(), 8);
+    let mut buffer = [0_u8; 4];
+    assert_eq!(response.pread(2, &mut buffer).expect("a read"), 4);
+    assert_eq!(&buffer, b"cdef");
+}
+
+#[test]
+fn with_writer_is_read_through_into_stream() {
+    let response = Response::new(Status::OK).with_writer(|body| {
+        body.write_all(b"streamed")?;
+        Ok(())
+    });
+    let mut stream = response.into_stream().expect("a stream");
+    let mut read = Vec::new();
+    stream.read_to_end(&mut read).expect("read");
+    assert_eq!(read, b"streamed");
+}
+
+#[test]
+fn a_writer_returning_err_is_the_error_text_reads() {
+    let response = Response::new(Status::OK)
+        .with_writer(|_body| Err(Error::Io(std::io::Error::other("boom"))));
+    match response.text().expect_err("the writer's error") {
+        Error::Io(error) => assert!(error.to_string().contains("boom"), "{error}"),
+        other => panic!("expected an I/O refusal, got {other:?}"),
+    }
+    // A writer runs once: a second read answers the same failure, never an
+    // empty body the writer did not write.
+    for again in [response.text().err(), response.bytes().err()] {
+        let error = again.expect("the failure again");
+        assert!(error.to_string().contains("boom"), "{error}");
+    }
+    assert!(format!("{response:?}").contains("writer failed"));
 }
 
 // --- streaming bodies --------------------------------------------------------

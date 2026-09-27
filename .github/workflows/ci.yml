@@ -63,6 +63,12 @@ jobs:
         run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
       - name: Tests and benchmark smoke tests
         run: cargo test --locked -p yggdryl --all-targets --no-fail-fast ${{ matrix.flags }}
+      # The CLI's tests start the `ygg` binary and drive it - `ygg fix` over a
+      # dictionary, `ygg xmla serve` over a socket - and the binary links the
+      # default-feature core, so they run in the lane that has already built it.
+      - name: CLI tests and benchmark smoke tests
+        if: matrix.name == 'default features'
+        run: cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast
       # `--all-targets` is `--lib --bins --examples --tests --benches`, and
       # doctests are none of those: the step above has never compiled one.
       # They are the examples the published API pages carry, so they are the

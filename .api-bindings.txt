@@ -105,8 +105,8 @@
     S3Path / S3File / S3Folder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
-  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
-  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
+  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
+  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro and Xmla under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
   text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml, yaml and xml are modules of their own at the root
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
@@ -298,7 +298,7 @@
   http.Client
     instance: session, stats
   http.Server
-    statics: bind(address="127.0.0.1:0", *, read_timeout=None, write_timeout=None, max_connections=None, max_head_size=None, max_body_size=None, keep_alive=None, recording=None, etag=None, tunnel=None, http3=None, server_header=None) - each option left out keeps the core's default; HTTP/2 by prior knowledge is always answered
+    statics: bind(address="127.0.0.1:0", *, read_timeout=None, write_timeout=None, max_connections=None, max_head_size=None, max_body_size=None, keep_alive=None, recording=None, etag=None, tunnel=None, http3=None, server_header=None, trace=None) - each option left out keeps the core's default; HTTP/2 by prior knowledge is always answered; trace is a folder path, writing every exchange under it as NNNN-request.http/NNNN-response.http
     instance: certificate, clear_faults, clear_requests, connections, inject, mount, port, request_count, requests, respond, route, shutdown, unmount, unroute, url, url_of, __enter__, __exit__
     faults: ("cut_body_at", n), "close_before_answer", ("refuse", status[, retry_after]), ("delay", seconds); a route handler runs under the GIL on the server's connection thread
   text.codec
@@ -711,7 +711,7 @@
     instance: acceptRanges, charset, contentEncoding, contentLength, contentRange, contentType, date, entries, equals, etag, get, getAll, has, keys, lastModified, length, links, location, mediaType, nextLink, setCookies, toJSON, toString
     protocol: Iterable<[name, value]>, immutable, names compared ignoring case
   http.Server
-    statics: bind(address = '127.0.0.1:0', { readTimeout, writeTimeout, maxConnections, maxHeadSize, maxBodySize, keepAlive, recording, etag, tunnel, http3, serverHeader }?)
+    statics: bind(address = '127.0.0.1:0', { readTimeout, writeTimeout, maxConnections, maxHeadSize, maxBodySize, keepAlive, recording, etag, tunnel, http3, serverHeader, trace }?) - trace is a folder path, writing every exchange under it as NNNN-request.http/NNNN-response.http
     instance: address, certificate, clearFaults, clearRequests, closed, connections, inject, mount, port, requestCount, requests, respond, setMediaType, setRecording, shutdown, toString, unmount, unroute, url
     no route: a JavaScript handler would run on the server's thread and wait on the JavaScript thread, which deadlocks when that thread is the one sending; Rust and Python only
   codec

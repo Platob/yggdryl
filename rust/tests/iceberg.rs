@@ -9,6 +9,10 @@
 //! `yggdryl::` like any other caller.
 
 #[cfg(feature = "iceberg")]
+#[path = "support/counting_filesystem.rs"]
+mod counting_filesystem;
+
+#[cfg(feature = "iceberg")]
 #[path = "iceberg/catalog/mod_.rs"]
 mod catalog;
 #[cfg(all(feature = "iceberg", feature = "internals"))]

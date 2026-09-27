@@ -5,16 +5,24 @@
 //! The head is read up to the blank line within [`ServerOptions::max_head_size`]
 //! and parsed by the wire grammar; the body is framed by `Content-Length`,
 //! or by `Transfer-Encoding: chunked` through [`decode_chunked`], within
-//! [`ServerOptions::max_body_size`]. `Expect: 100-continue` is acknowledged
-//! before the body is read. Every answer carries `Server` and `Date`.
+//! [`ServerOptions::max_body_size`]. What the head alone refuses a body on -
+//! its framing, a stated length past the bound - is refused before a byte
+//! of it is read, and only then does an HTTP/1.1 `Expect: 100-continue` earn
+//! its `100 Continue` - never for a body of no bytes; a chunked body states
+//! no length, so one past the bound is refused `413` as it is read, after
+//! the `100`. Any other expectation is answered `417`. Every answer carries
+//! `Server` and `Date`; a written body goes out chunked. While the server
+//! traces, the bytes a request consumed and every byte written back are
+//! copied into its exchange.
 
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{PoisonError, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-use super::{ALLOW, Answer, AnswerBody, Incoming, Inner, Mounted, Outcome, Source};
+use super::trace::{Exchange, Trace};
+use super::{ALLOW, Answer, AnswerBody, BodyWriter, Incoming, Inner, Mounted, Outcome, Source};
 use crate::http::headers::render_http_date;
 use crate::http::wire::{
     HttpVersion, RequestHead, ResponseHead, decode_chunked, encode_chunked, parse_request_head,
@@ -82,6 +90,156 @@ impl Read for Deadline {
     }
 }
 
+/// The connection's reader, keeping a copy of every byte a request consumes
+/// while the server traces: what `consume` takes, never what was read ahead,
+/// so a pipelined request's bytes are its own.
+struct Wire {
+    reader: BufReader<Deadline>,
+    tracing: bool,
+    /// The current request's bytes so far, while tracing.
+    kept: Option<Vec<u8>>,
+}
+
+impl Wire {
+    /// Start keeping a new request's bytes, when the server traces.
+    fn keep(&mut self) {
+        self.kept = self.tracing.then(Vec::new);
+    }
+
+    /// Whether a request began: a byte of it past the empty lines a peer
+    /// may send before its request line.
+    fn began(&self) -> bool {
+        self.kept
+            .as_ref()
+            .is_some_and(|kept| kept.iter().any(|byte| !matches!(byte, b'\r' | b'\n')))
+    }
+
+    /// Hand the request's bytes, as far as they were read, to its trace.
+    fn record(&mut self, exchange: Option<&mut Exchange>) {
+        if let (Some(exchange), Some(kept)) = (exchange, self.kept.take()) {
+            exchange.request(&kept);
+        }
+    }
+
+    /// The socket, every byte written to it copied into `exchange`.
+    fn tee<'a>(&'a mut self, exchange: Option<&'a mut Exchange>) -> Tee<'a> {
+        Tee {
+            stream: &mut self.reader.get_mut().stream,
+            exchange,
+        }
+    }
+
+    /// `100 Continue`, inviting the body the head announced.
+    fn invite(&mut self, exchange: Option<&mut Exchange>) -> io::Result<()> {
+        self.tee(exchange)
+            .write_all(b"HTTP/1.1 100 Continue\r\n\r\n")
+    }
+
+    /// The connection ends with no answer - the peer gone or quiet, a fault
+    /// closing it - and what the request sent is traced as far as it went.
+    fn close(&mut self, mut exchange: Option<Exchange>) {
+        self.record(exchange.as_mut());
+        if let Some(exchange) = exchange {
+            exchange.finish();
+        }
+    }
+
+    /// Answer `status` with `text` and close, the request as far as it was
+    /// read and the refusal both traced.
+    fn refuse(&mut self, mut exchange: Option<Exchange>, status: Status, text: &str, server: &str) {
+        self.record(exchange.as_mut());
+        refuse(&mut self.tee(exchange.as_mut()), status, text, server);
+        if let Some(exchange) = exchange {
+            exchange.finish();
+        }
+    }
+}
+
+impl Read for Wire {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.reader.read(buffer)?;
+        if let Some(kept) = &mut self.kept {
+            kept.extend_from_slice(&buffer[..read]);
+        }
+        Ok(read)
+    }
+}
+
+impl BufRead for Wire {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        self.reader.fill_buf()
+    }
+
+    fn consume(&mut self, amount: usize) {
+        if let Some(kept) = &mut self.kept {
+            let buffered = self.reader.buffer();
+            kept.extend_from_slice(&buffered[..amount.min(buffered.len())]);
+        }
+        self.reader.consume(amount);
+    }
+}
+
+/// The socket, every byte written to it copied into the exchange's trace.
+struct Tee<'a> {
+    stream: &'a mut TcpStream,
+    exchange: Option<&'a mut Exchange>,
+}
+
+impl Write for Tee<'_> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let written = self.stream.write(buffer)?;
+        if let Some(exchange) = self.exchange.as_deref_mut() {
+            exchange.response(&buffer[..written]);
+        }
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+/// A writer taking at most `limit` bytes - a fault's cut - and refusing the
+/// rest, so the writer feeding it stops where the cut is.
+pub(super) struct Cut<W> {
+    pub(super) inner: W,
+    remaining: Option<u64>,
+    /// Whether the cut was met.
+    pub(super) reached: bool,
+}
+
+impl<W> Cut<W> {
+    pub(super) fn new(inner: W, limit: Option<u64>) -> Self {
+        Self {
+            inner,
+            remaining: limit,
+            reached: false,
+        }
+    }
+}
+
+impl<W: Write> Write for Cut<W> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let Some(remaining) = self.remaining else {
+            return self.inner.write(buffer);
+        };
+        if remaining == 0 {
+            self.reached = true;
+            return Err(io::ErrorKind::WriteZero.into());
+        }
+        let take = usize::try_from(remaining)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        let written = self.inner.write(&buffer[..take])?;
+        self.remaining = Some(remaining - written as u64);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// Serve `stream` until it closes, is severed, or a request is malformed.
 pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
     let options = &inner.options;
@@ -108,99 +266,97 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
         }
         super::h2::Opening::Http1 => {}
     }
-    let mut reader = BufReader::new(Deadline::new(stream, options.read_timeout));
+    let mut wire = Wire {
+        reader: BufReader::new(Deadline::new(stream, options.read_timeout)),
+        tracing: inner.trace.is_some(),
+        kept: None,
+    };
+    let server = options.server_header();
     loop {
-        reader.get_mut().until = Some(Instant::now() + options.read_timeout);
-        let head = read_head(&mut reader, options.max_head_size);
-        reader.get_mut().until = None;
+        wire.keep();
+        wire.reader.get_mut().until = Some(Instant::now() + options.read_timeout);
+        let head = read_head(&mut wire, options.max_head_size);
+        wire.reader.get_mut().until = None;
+        // An exchange begins with the first byte of a request: a connection
+        // that goes away before sending one asked nothing and wrote nothing.
+        let mut exchange = if wire.began() {
+            inner.trace.as_ref().map(Trace::begin)
+        } else {
+            None
+        };
         let head = match head {
             Ok(Some(head)) => head,
-            Ok(None) | Err(Refusal::Closed) => return,
+            Ok(None) | Err(Refusal::Closed) => return wire.close(exchange),
             Err(Refusal::Malformed(status, text)) => {
-                refuse(
-                    &mut reader.get_mut().stream,
-                    status,
-                    &text,
-                    options.server_header(),
-                );
-                return;
+                return wire.refuse(exchange, status, &text, server);
             }
         };
         let mut head = match parse_request_head(&head) {
             Ok(head) => head,
             Err(error) => {
-                refuse(
-                    &mut reader.get_mut().stream,
-                    Status::BAD_REQUEST,
-                    &error.to_string(),
-                    options.server_header(),
-                );
-                return;
+                return wire.refuse(exchange, Status::BAD_REQUEST, &error.to_string(), server);
             }
         };
         if head.version.is_multiplexed() {
             // HTTP/2 opens with its preface, never a request line naming it,
             // and HTTP/3 is not spoken over TCP at all.
-            refuse(
-                &mut reader.get_mut().stream,
-                Status::new(505).unwrap_or(Status::BAD_REQUEST),
-                &format!(
-                    "{} is not spoken in a request line; open with the HTTP/2 preface",
-                    head.version
-                ),
-                options.server_header(),
+            let text = format!(
+                "{} is not spoken in a request line; open with the HTTP/2 preface",
+                head.version
             );
-            return;
+            let status = Status::new(505).unwrap_or(Status::BAD_REQUEST);
+            return wire.refuse(exchange, status, &text, server);
         }
         if head.method == Method::Connect {
-            tunnel(inner, reader, head);
-            return;
+            return tunnel(inner, wire, head, exchange);
         }
         let keep_alive = options.keep_alive && keeps_alive(&head);
-        if head
-            .headers
-            .get("expect")
-            .is_some_and(|value| value.eq_ignore_ascii_case("100-continue"))
-            && reader
-                .get_mut()
-                .stream
-                .write_all(b"HTTP/1.1 100 Continue\r\n\r\n")
-                .is_err()
-        {
-            return;
-        }
-        let body = match read_body(
-            &mut reader,
-            head.version,
-            &mut head.headers,
-            options.max_body_size,
-        ) {
-            Ok(body) => body,
-            Err(Refusal::Closed) => return,
+        let framing = match framing_of(head.version, &head.headers, options.max_body_size) {
+            Ok(framing) => framing,
+            Err(Refusal::Closed) => return wire.close(exchange),
             Err(Refusal::Malformed(status, text)) => {
-                refuse(
-                    &mut reader.get_mut().stream,
-                    status,
-                    &text,
-                    options.server_header(),
-                );
-                return;
+                return wire.refuse(exchange, status, &text, server);
             }
         };
+        match expectation(&head) {
+            Expectation::Continue if framing.carries_body() => {
+                if wire.invite(exchange.as_mut()).is_err() {
+                    return wire.close(exchange);
+                }
+            }
+            Expectation::Unmet(value) => {
+                let text =
+                    format!("this server meets no expectation but 100-continue; got {value:?}");
+                let status = Status::new(417).unwrap_or(Status::BAD_REQUEST);
+                return wire.refuse(exchange, status, &text, server);
+            }
+            Expectation::Continue | Expectation::None => {}
+        }
+        let body = match read_framed(&mut wire, framing, &mut head.headers, options.max_body_size) {
+            Ok(body) => body,
+            Err(Refusal::Closed) => return wire.close(exchange),
+            Err(Refusal::Malformed(status, text)) => {
+                return wire.refuse(exchange, status, &text, server);
+            }
+        };
+        wire.record(exchange.as_mut());
         let head_only = head.method == Method::Head;
         match inner.dispatch(Incoming { head, body }) {
-            Outcome::Close => return,
+            Outcome::Close => return wire.close(exchange),
             Outcome::Answer { answer, cut } => {
                 let close = !keep_alive || cut.is_some();
                 let written = write_answer(
-                    &mut reader.get_mut().stream,
+                    &mut wire.tee(exchange.as_mut()),
                     head_only,
                     answer,
                     close,
                     cut,
-                    options.server_header(),
+                    server,
                 );
-                if written.is_err() || close {
+                // A trace that could not be written ends the connection
+                // after its answer, rather than go on past the gap.
+                let traced = exchange.is_none_or(Exchange::finish);
+                if written.is_err() || close || !traced {
                     return;
                 }
             }
@@ -216,8 +372,9 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
 /// own; a tunnel quiet both ways for the read timeout, or failing either way,
 /// is closed whole, so neither direction outlives it and its connection slot
 /// is given back.
-fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
+fn tunnel(inner: &Inner, mut wire: Wire, head: RequestHead, mut exchange: Option<Exchange>) {
     let options = &inner.options;
+    wire.record(exchange.as_mut());
     let incoming = Incoming {
         head,
         body: Vec::new(),
@@ -232,13 +389,16 @@ fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
         )
         .with_header("allow", ALLOW);
         let _ = write_answer(
-            &mut reader.get_mut().stream,
+            &mut wire.tee(exchange.as_mut()),
             false,
             answer,
             true,
             None,
             options.server_header(),
         );
+        if let Some(exchange) = exchange {
+            exchange.finish();
+        }
         return;
     }
     // Every address the name resolves to, in turn, as a client dialing it
@@ -262,21 +422,29 @@ fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
     let Some(upstream) = upstream else {
         inner.record(&incoming, "", Vec::new(), Status::BAD_GATEWAY);
         refuse(
-            &mut reader.get_mut().stream,
+            &mut wire.tee(exchange.as_mut()),
             Status::BAD_GATEWAY,
             &format!("could not reach {target}"),
             options.server_header(),
         );
+        if let Some(exchange) = exchange {
+            exchange.finish();
+        }
         return;
     };
     inner.record(&incoming, "", Vec::new(), Status::OK);
-    let client = &mut reader.get_mut().stream;
-    if client
-        .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-        .is_err()
-    {
+    let established = wire
+        .tee(exchange.as_mut())
+        .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
+    // The bytes past the 200 are the tunnel's, not an exchange.
+    if let Some(exchange) = exchange {
+        exchange.finish();
+    }
+    if established.is_err() {
         return;
     }
+    let mut reader = wire.reader;
+    let client = &mut reader.get_mut().stream;
     let (Ok(upstream_reader), Ok(client_writer)) = (upstream.try_clone(), client.try_clone())
     else {
         return;
@@ -366,7 +534,7 @@ fn pipe(mut from: impl Read, mut to: TcpStream, quiet: &Quiet) {
 /// `None` at the end of the stream before any byte of one; empty lines
 /// before the request line are skipped (RFC 9112 2.2).
 fn read_head(
-    reader: &mut BufReader<Deadline>,
+    reader: &mut Wire,
     max_head_size: usize,
 ) -> std::result::Result<Option<Vec<u8>>, Refusal> {
     let mut head = Vec::new();
@@ -433,26 +601,61 @@ fn keeps_alive(head: &RequestHead) -> bool {
     }
 }
 
-/// The body the headers frame: chunked, else `Content-Length`, else none.
-///
-/// A chunked body leaves the headers as a decoded message carries them: the
-/// trailers folded in, `content-length` the decoded length, no
-/// `transfer-encoding`. A `Transfer-Encoding` on an HTTP/1.0 request, or one
-/// whose last coding is not `chunked`, frames nothing this server can trust
-/// and is refused (RFC 9112 6.1 and 6.3): reading it any other way is how a
-/// proxy in front and this server come to disagree on where a request ends.
-fn read_body(
-    reader: &mut BufReader<Deadline>,
-    version: HttpVersion,
-    headers: &mut Headers,
-    max_body_size: u64,
-) -> std::result::Result<Vec<u8>, Refusal> {
-    let too_large = || {
-        Refusal::Malformed(
-            Status::new(413).unwrap_or(Status::BAD_REQUEST),
-            format!("request body longer than {max_body_size} bytes"),
-        )
+/// How a request's body is framed, read off its head alone.
+#[derive(Clone, Copy)]
+enum Framing {
+    Chunked,
+    Length(u64),
+}
+
+impl Framing {
+    /// Whether the body may carry a byte: a chunked one may, whatever it
+    /// turns out to hold.
+    fn carries_body(self) -> bool {
+        !matches!(self, Self::Length(0))
+    }
+}
+
+/// What a request's `Expect` asks of the server.
+enum Expectation {
+    None,
+    /// `100-continue` on HTTP/1.1.
+    Continue,
+    /// Anything else, answered `417`.
+    Unmet(String),
+}
+
+/// The request's expectation: `100-continue` is met on HTTP/1.1 and
+/// ignored on HTTP/1.0, which has no interim answers (RFC 9110 10.1.1); any
+/// other is one this server does not meet.
+fn expectation(head: &RequestHead) -> Expectation {
+    let Some(value) = head.headers.get("expect") else {
+        return Expectation::None;
     };
+    if value.trim().eq_ignore_ascii_case("100-continue") {
+        return if head.version == HttpVersion::Http11 {
+            Expectation::Continue
+        } else {
+            Expectation::None
+        };
+    }
+    Expectation::Unmet(value.to_owned())
+}
+
+/// The framing the head states: chunked, else `Content-Length`, else none.
+///
+/// Everything a body is refused on is refused here, from the head, before a
+/// byte of the body is read or a `100 Continue` invites it. A
+/// `Transfer-Encoding` on an HTTP/1.0 request, or one whose last coding is
+/// not `chunked`, frames nothing this server can trust and is refused (RFC
+/// 9112 6.1 and 6.3): reading it any other way is how a proxy in front and
+/// this server come to disagree on where a request ends. A stated length
+/// past `max_body_size` is refused as the body would be.
+fn framing_of(
+    version: HttpVersion,
+    headers: &Headers,
+    max_body_size: u64,
+) -> std::result::Result<Framing, Refusal> {
     let last = headers
         .get_all("transfer-encoding")
         .last()
@@ -470,55 +673,81 @@ fn read_body(
                 format!("Transfer-Encoding ending in {last:?} rather than chunked"),
             ));
         }
-    }
-    if last.is_some() {
-        let mut decoder = decode_chunked(reader.by_ref());
-        let mut body = Vec::new();
-        match decoder
-            .by_ref()
-            .take(max_body_size.saturating_add(1))
-            .read_to_end(&mut body)
-        {
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
-                return Err(Refusal::Closed);
-            }
-            Err(error) => {
-                return Err(Refusal::Malformed(Status::BAD_REQUEST, error.to_string()));
-            }
-        }
-        if body.len() as u64 > max_body_size {
-            return Err(too_large());
-        }
-        if let Some(trailers) = decoder.trailers() {
-            for (name, value) in trailers.iter() {
-                if headers.append(name, value).is_err() {
-                    return Err(Refusal::Malformed(
-                        Status::BAD_REQUEST,
-                        format!("trailer field {name:?} is not a field the grammar reads"),
-                    ));
-                }
-            }
-        }
-        headers.remove("transfer-encoding");
-        headers.remove("trailer");
-        let _ = headers.insert("content-length", &body.len().to_string());
-        return Ok(body);
+        return Ok(Framing::Chunked);
     }
     let length = match headers.content_length() {
         Ok(length) => length.unwrap_or(0),
         Err(error) => return Err(Refusal::Malformed(Status::BAD_REQUEST, error.to_string())),
     };
     if length > max_body_size {
-        return Err(too_large());
+        return Err(too_large(max_body_size));
     }
-    let mut body = vec![0; usize::try_from(length).map_err(|_| too_large())?];
+    Ok(Framing::Length(length))
+}
+
+/// The body under `framing`, within `max_body_size`.
+///
+/// A chunked body leaves the headers as a decoded message carries them: the
+/// trailers folded in, `content-length` the decoded length, no
+/// `transfer-encoding`.
+fn read_framed(
+    reader: &mut Wire,
+    framing: Framing,
+    headers: &mut Headers,
+    max_body_size: u64,
+) -> std::result::Result<Vec<u8>, Refusal> {
+    let length = match framing {
+        Framing::Length(length) => length,
+        Framing::Chunked => {
+            let mut decoder = decode_chunked(reader.by_ref());
+            let mut body = Vec::new();
+            match decoder
+                .by_ref()
+                .take(max_body_size.saturating_add(1))
+                .read_to_end(&mut body)
+            {
+                Ok(_) => {}
+                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                    return Err(Refusal::Closed);
+                }
+                Err(error) => {
+                    return Err(Refusal::Malformed(Status::BAD_REQUEST, error.to_string()));
+                }
+            }
+            if body.len() as u64 > max_body_size {
+                return Err(too_large(max_body_size));
+            }
+            if let Some(trailers) = decoder.trailers() {
+                for (name, value) in trailers.iter() {
+                    if headers.append(name, value).is_err() {
+                        return Err(Refusal::Malformed(
+                            Status::BAD_REQUEST,
+                            format!("trailer field {name:?} is not a field the grammar reads"),
+                        ));
+                    }
+                }
+            }
+            headers.remove("transfer-encoding");
+            headers.remove("trailer");
+            let _ = headers.insert("content-length", &body.len().to_string());
+            return Ok(body);
+        }
+    };
+    let mut body = vec![0; usize::try_from(length).map_err(|_| too_large(max_body_size))?];
     reader.read_exact(&mut body)?;
     Ok(body)
 }
 
+/// A body longer than `max_body_size`: `413`.
+fn too_large(max_body_size: u64) -> Refusal {
+    Refusal::Malformed(
+        Status::new(413).unwrap_or(Status::BAD_REQUEST),
+        format!("request body longer than {max_body_size} bytes"),
+    )
+}
+
 /// Answer `status` with `text` and close; a failure to write is the peer's.
-fn refuse(stream: &mut TcpStream, status: Status, text: &str, server: &str) {
+fn refuse(stream: &mut impl Write, status: Status, text: &str, server: &str) {
     let answer = Answer::text(status, text);
     let _ = write_answer(stream, false, answer, true, None, server);
 }
@@ -537,11 +766,13 @@ pub(super) fn now_ns() -> i64 {
 ///
 /// A `1xx`, `204` or `304` carries no body and no framing. A body in hand
 /// keeps a `Transfer-Encoding: chunked` the handler stated and is written in
-/// [`DEFAULT_STREAM_BATCH_SIZE`] chunks; otherwise, and for every streamed
-/// leaf, `Content-Length` states the length. A `HEAD` declares the length
-/// its `GET` would carry and never a chunked framing.
+/// [`DEFAULT_STREAM_BATCH_SIZE`] chunks; a written body is always chunked,
+/// its length unknown until it ends; otherwise, and for every streamed leaf,
+/// `Content-Length` states the length. A `HEAD` declares the length its
+/// `GET` would carry - none for a written body - and never a chunked
+/// framing.
 fn write_answer(
-    stream: &mut TcpStream,
+    stream: &mut impl Write,
     head_only: bool,
     answer: Answer,
     close: bool,
@@ -563,18 +794,33 @@ fn write_answer(
         || status == Status::NOT_MODIFIED);
     let chunked = has_body
         && !head_only
-        && matches!(body, AnswerBody::Bytes(_))
-        && headers.transfer_encoding_chunked();
+        && match &body {
+            AnswerBody::Bytes(_) => headers.transfer_encoding_chunked(),
+            AnswerBody::Writer(_) => true,
+            AnswerBody::Stream { .. } => false,
+        };
     if !has_body {
         headers.remove("content-length");
         headers.remove("transfer-encoding");
-    } else if !chunked {
+    } else if chunked {
+        // A sender states one framing, never both (RFC 9112 6.2).
+        headers.remove("content-length");
+        let _ = headers.insert("transfer-encoding", "chunked");
+    } else {
         headers.remove("transfer-encoding");
         let length = match &body {
-            AnswerBody::Bytes(bytes) => bytes.len() as u64,
-            AnswerBody::Stream { length, .. } => *length,
+            AnswerBody::Bytes(bytes) => Some(bytes.len() as u64),
+            AnswerBody::Stream { length, .. } => Some(*length),
+            AnswerBody::Writer(_) => None,
         };
-        let _ = headers.insert("content-length", &length.to_string());
+        match length {
+            Some(length) => {
+                let _ = headers.insert("content-length", &length.to_string());
+            }
+            None => {
+                headers.remove("content-length");
+            }
+        }
     }
     let head = ResponseHead {
         version: HttpVersion::Http11,
@@ -597,7 +843,9 @@ fn write_answer(
                 for chunk in bytes[..limit].chunks(DEFAULT_STREAM_BATCH_SIZE) {
                     encoder.write_all(chunk)?;
                 }
-                if cut.is_none() {
+                // A cut at or past the body's end cuts nothing: the body
+                // ended whole, and says so.
+                if limit == bytes.len() {
                     encoder.finish()?;
                 }
             } else {
@@ -612,8 +860,34 @@ fn write_answer(
             let limit = cut.map_or(length, |at| at.min(length));
             stream_source(stream, source, start, limit)?;
         }
+        AnswerBody::Writer(writer) => write_written(stream, writer, cut)?,
     }
     stream.flush()
+}
+
+/// Write a written body as chunks, [`DEFAULT_STREAM_BATCH_SIZE`] at a time,
+/// and the last chunk once it ended whole - never when a cut was reached,
+/// which leaves the transfer severed as the fault asked; a cut past the
+/// body's end cuts nothing. A writer that fails severs it too: the
+/// connection closes without the last chunk, so the peer reads a cut
+/// transfer rather than a short body it takes for whole.
+fn write_written(stream: &mut impl Write, writer: BodyWriter, cut: Option<u64>) -> io::Result<()> {
+    let mut body = BufWriter::with_capacity(
+        DEFAULT_STREAM_BATCH_SIZE,
+        Cut::new(encode_chunked(&mut *stream), cut),
+    );
+    let wrote = writer(&mut body);
+    let flushed = body.flush();
+    if body.get_ref().reached {
+        return Ok(());
+    }
+    if let Err(error) = wrote {
+        return Err(io::Error::other(error.to_string()));
+    }
+    flushed?;
+    let chunks = body.into_inner().map_err(io::IntoInnerError::into_error)?;
+    chunks.inner.finish()?;
+    Ok(())
 }
 
 /// Write `limit` bytes of `source` from `start`: the one door every version

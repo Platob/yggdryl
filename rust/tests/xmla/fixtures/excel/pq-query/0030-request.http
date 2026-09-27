@@ -1,0 +1,41 @@
+POST /xmla HTTP/1.1
+User-Agent: ADOMD.NET
+X-AS-AcquireTokenStats: AppName=Microsoft.Mashup.Container.Loader.exe,AppVer=2.155.385.0,AppBinaryType=6,HostRuntime='.NET Framework 4.8.1',ManagedVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,ClientLibVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,CacheUsed=1,ConStrId=1
+Content-Type: text/xml
+SOAPAction: "urn:schemas-microsoft-com:xml-analysis:Execute"
+X-Transport-Caps-Negotiation-Flags: 1,0,0,0,0
+X-AS-SessionID: 01a0de7d-c7ea-7cc3-877b-3abb6f87acd9
+X-AS-ActivityID: ceaee575-5795-41de-b63a-709ee113bb6a
+X-AS-RequestID: 87a1e47e-78e1-4cc3-bbc2-555a5772f2a3
+Host: 127.0.0.1:8080
+Transfer-Encoding: chunked
+Expect: 100-continue
+
+4A6
+﻿<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+  <Header>
+    <XA:Session soap:mustUnderstand="1" SessionId="01a0de7d-c7ea-7cc3-877b-3abb6f87acd9" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:XA="urn:schemas-microsoft-com:xml-analysis" />
+  </Header>
+  <Body>
+    <Execute xmlns="urn:schemas-microsoft-com:xml-analysis">
+      <Command>
+        <Statement>select * from market.trades limit 100</Statement>
+      </Command>
+      <Properties>
+        <PropertyList>
+          <Catalog>market</Catalog>
+          <DbpropMsmdSubqueries>2</DbpropMsmdSubqueries>
+          <LocaleIdentifier>1036</LocaleIdentifier>
+          <DataSourceInfo>Provider=yggdryl;Data Source=yggdryl</DataSourceInfo>
+          <Format>Tabular</Format>
+          <Content>SchemaData</Content>
+          <DbpropMsmdActivityID>ceaee575-5795-41de-b63a-709ee113bb6a</DbpropMsmdActivityID>
+          <DbpropMsmdRequestID>87a1e47e-78e1-4cc3-bbc2-555a5772f2a3</DbpropMsmdRequestID>
+          <DbpropMsmdCurrentActivityID>ceaee575-5795-41de-b63a-709ee113bb6a</DbpropMsmdCurrentActivityID>
+        </PropertyList>
+      </Properties>
+    </Execute>
+  </Body>
+</Envelope>
+0
+
