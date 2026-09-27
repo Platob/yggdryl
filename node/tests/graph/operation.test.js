@@ -1,6 +1,6 @@
 'use strict'
 
-// The operation leaves, `Lane` and `BookRef`: `node/src/graph/operation.rs`.
+// The operation leaves and `BookRef`: `node/src/graph/operation.rs`.
 
 const assert = require('node:assert/strict')
 const test = require('node:test')
@@ -23,7 +23,6 @@ function orderEvent(facts = {}) {
     ticker: 'ACME',
     tif: '0',
     altids: { ORDERID: 'O-100' },
-    bid: new graph.Lane({ price: '101', quantity: '5' }),
     ...facts,
   })
 }
@@ -32,7 +31,8 @@ test('an order event reads every fact back typed', () => {
   const event = orderEvent()
   assert.match(event.curruuid, /^[0-9a-f-]{36}$/)
   assert.match(event.crossuuid, /^[0-9a-f-]{36}$/)
-  assert.equal(event.crosscode, 'O-100')
+  // A sided element's cross code carries its side (A17).
+  assert.equal(event.crosscode, 'BUY:O-100')
   assert.equal(typeof event.currhashcode, 'bigint')
   assert.equal(typeof event.crosshashcode, 'bigint')
   assert.deepEqual(event.srcuuids, [])
@@ -52,21 +52,25 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.unit, '')
   assert.equal(event.side, 'BUY')
   assert.deepEqual(event.securityids, {})
+  assert.equal(event.isincode, null)
   assert.equal(event.cficode, null)
   assert.equal(event.miccode, null)
   for (const name of ['lastpx', 'lastqty', 'avgpx', 'cumqty', 'leavesqty', 'prevpx', 'prevqty',
-    'spotrate', 'forwardpoints']) {
+    'spotrate', 'forwardpoints', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
     assert.equal(event[name], null, name)
   }
   assert.equal(event.ticker, 'ACME')
   assert.deepEqual(event.metadata, {})
-  assert.equal(event.marketoperationid, null)
+  assert.deepEqual(event.fxrates, {})
   assert.equal(event.tif, '0')
   assert.equal(event.tradable, null)
-  assert.deepEqual(event.accountids, {})
-  assert.deepEqual(event.userids, {})
   assert.deepEqual(event.altids, { ORDERID: 'O-100' })
   assert.equal(event.kind, 'order')
+  assert.equal(event.marketdatakind, 'ORDR')
+  // A1/A7: the retired facts answer nothing.
+  for (const name of ['marketoperationid', 'accountids', 'userids', 'bid', 'ask']) {
+    assert.equal(name in event, false, name)
+  }
   assert.equal(event.isExecution, false)
   assert.equal(event.book, null)
   assert.equal(event.action, null)
@@ -74,19 +78,22 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.isFullSnapshot, false)
 })
 
-test('bid answers a typed Lane, never a plain object', () => {
-  const event = orderEvent()
-  assert.ok(event.bid instanceof graph.Lane)
-  assert.equal(event.ask, null)
-  assert.equal(event.bid.price, event.price)
-  assert.equal(event.bid.quantity, event.quantity)
-  // A lane given as its own six slots is the same lane.
-  assert.ok(orderEvent({ bid: { price: '101', quantity: '5' } }).equals(event))
+test('the bid and ask facts and the rates read back as plain values', () => {
+  const event = orderEvent({ bidpx: '100', bidqty: 2, bidccy: 'USD', askpx: 101n, askqty: '3', askccy: 'EUR' })
+  assert.deepEqual(
+    ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy'].map((name) => event[name]),
+    ['100', '2', 'USD', '101', '3', 'EUR'],
+  )
+  // Each marketdatakind answers the category of its leaf.
+  assert.deepEqual(
+    [new graph.Order(), new graph.QuoteEvent(CLOCK), new graph.Execution()].map((leaf) => leaf.marketdatakind),
+    ['ORDR', 'QUOT', 'EXEC'],
+  )
 })
 
 test('an undated element states no clock, state or chain', () => {
   const element = new graph.Order({ crosscode: 'O-1', price: '10', side: 'SELL', curruuid: undefined })
-  assert.equal(element.crosscode, 'O-1')
+  assert.equal(element.crosscode, 'SELL:O-1')
   assert.equal(element.kind, 'order')
   assert.equal(element.side, 'SELL')
   for (const name of ['currunix', 'state', 'seqnum', 'prevuuid']) {
@@ -130,10 +137,6 @@ test('a graph value that is no column value is refused by its key', () => {
     { name: 'TypeError', message: 'Order states no fact "foo" as a BookRef' },
   )
   assert.throws(
-    () => new graph.OrderEvent(CLOCK, { foo: new graph.SnapshotPartition({ scope: 'S' }) }),
-    { name: 'TypeError', message: 'OrderEvent states no fact "foo" as a SnapshotPartition' },
-  )
-  assert.throws(
     () => new graph.OrderEvent(CLOCK, { foo: new graph.Order() }),
     { name: 'TypeError', message: 'OrderEvent states no fact "foo" as a Order' },
   )
@@ -144,7 +147,7 @@ test('at dates an element and intoElement undates it', () => {
   const event = element.at(CLOCK)
   assert.ok(event instanceof graph.QuoteEvent)
   assert.equal(event.currunix, CLOCK)
-  assert.equal(event.crosscode, 'Q-1')
+  assert.equal(event.crosscode, 'SELL:Q-1')
   assert.equal(event.price, element.price)
   const back = event.intoElement()
   assert.ok(back instanceof graph.Quote)
@@ -208,9 +211,11 @@ test('following crosses no kind', () => {
 
 for (const [name, build] of [
   ['OrderEvent', () => orderEvent()],
-  ['QuoteEvent', () => new graph.QuoteEvent(CLOCK, { crosscode: 'Q', ask: new graph.Lane({ price: '1', currency: 'EUR' }) })],
+  ['QuoteEvent', () => new graph.QuoteEvent(CLOCK, { crosscode: 'Q', askpx: '1', askccy: 'EUR' })],
   ['ExecutionEvent', () => new graph.ExecutionEvent(CLOCK, { crosscode: 'E', lastpx: '1.5', lastqty: 3, state: 'FILLED' })],
-  ['QuoteEvent with a book', () => new graph.QuoteEvent(CLOCK, { book: new graph.BookRef({ action: '2', scope: 'S', position: 4 }) })],
+  // A1: a row states the book scope alone - the update action and the
+  // entry's position are walk-time facts, never row facts.
+  ['QuoteEvent with a book', () => new graph.QuoteEvent(CLOCK, { book: new graph.BookRef({ scope: 'S' }) })],
   ['Order', () => new graph.Order({ crosscode: 'O', metadata: { k: 'v' } })],
   ['Quote', () => new graph.Quote()],
   ['Execution', () => new graph.Execution({ securityids: { ISIN: 'US0378331005' } })],
@@ -235,49 +240,6 @@ for (const [name, build] of [
 test('fromJSON refuses text that is not one value of its class', () => {
   assert.throws(() => graph.OrderEvent.fromJSON('not base64!'), /expected base64 MarketData text/)
   assert.throws(() => graph.OrderEvent.fromJSON(new graph.Quote().toJSON()), /kind/)
-})
-
-test('Lane: every slot reads back typed', () => {
-  const lane = new graph.Lane({
-    price: '1.5', spotrate: '1.4', forwardpoints: '0.1', currency: 'EUR', quantity: '2', unit: 'SHARES',
-  })
-  assert.equal(lane.price, '1.5')
-  assert.equal(lane.spotrate, '1.4')
-  assert.equal(lane.forwardpoints, '0.1')
-  assert.equal(lane.currency, 'EUR')
-  assert.equal(lane.quantity, '2')
-  assert.equal(lane.unit, 'SHARES')
-  assert.ok(lane.isStated())
-})
-
-test('Lane: undefined and null both state nothing', () => {
-  assert.ok(new graph.Lane().equals(new graph.Lane({ price: null })))
-  assert.ok(new graph.Lane({ price: undefined }).equals(new graph.Lane()))
-  assert.ok(!new graph.Lane().isStated())
-  assert.equal(new graph.Lane().price, null)
-  assert.throws(() => new graph.Lane({ price: 'x' }))
-})
-
-test('Lane: a slot crosses the same door a fact does', () => {
-  // A number or a bigint is the decimal it states, as under an operation's
-  // facts; a fraction is refused the same way there and here.
-  assert.ok(new graph.Lane({ price: 1, quantity: 2n }).equals(new graph.Lane({ price: '1', quantity: '2' })))
-  assert.ok(new graph.Order({ bid: new graph.Lane({ price: 1 }) }).equals(new graph.Order({ bid: { price: 1 } })))
-  assert.throws(() => new graph.Lane({ price: 1.5 }), /\$\.lane\.price: expected a decimal representable at scale 18 within 38 digits, got f64/)
-  assert.throws(() => new graph.Order({ price: 1.5 }), /\$\.price: expected a decimal representable at scale 18 within 38 digits, got f64/)
-  assert.throws(() => new graph.Lane({ bogus: 1 }), /Lane has no slot "bogus"/)
-  assert.ok(new graph.Lane() instanceof graph.Lane)
-})
-
-test('Lane: equals, stableHash, toString, clone and toJSON round trip', () => {
-  const lane = new graph.Lane({ price: '1', currency: 'USD' })
-  assert.ok(new graph.Lane(lane.toJSON()).equals(lane))
-  assert.equal(new graph.Lane(lane.toJSON()).stableHash(), lane.stableHash())
-  assert.ok(lane.clone().equals(lane))
-  assert.equal(
-    lane.toString(),
-    'Lane(price="1", spotrate=null, forwardpoints=null, currency="USD", quantity=null, unit=null)',
-  )
 })
 
 test('BookRef: every slot reads back typed', () => {

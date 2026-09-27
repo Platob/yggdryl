@@ -3,7 +3,7 @@
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``FIX:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``id``,
 ``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``codeset``,
-``description``, ``derivation`` - so nothing here is a second field class. A
+``description`` - so nothing here is a second field class. A
 field is its tag and its name together: ``id`` is the ``int`` the core derives
 from both under the one fold, never stored, and what the dictionaries that
 contributed the field say is ``branches``, a sorted list of names that a caller
@@ -14,7 +14,7 @@ component, a Serie of Structs or a Map a group, a message a component carrying
 ``FIX:msgtype``, each filed by :meth:`FixRegistry.insert` under the shape it
 has - and persists them as JSON shards through any ``IOBase`` location, the
 fixed row among them as ``components/fixmsg.json``. Every registry holds the
-crate's own definitions from construction - its columns from tag 65003 and the
+crate's own definitions from construction - its columns from tag 65001 and the
 Map group ``metadata`` - and seeds the standard clocks
 ``SendingTime`` (52) and ``TransactTime`` (60) beside them as ordinary
 definitions a loaded dictionary may supply itself; ``len`` counts the scalar
@@ -40,19 +40,20 @@ vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``
 ``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
 the lifecycle's ``creaunix``, ``exprunix``, ``execunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
-``currency``, ``quantity``, ``unit``, ``side``, its ``securityids`` - one
-code under each source, ISIN, CUSIP, FIGI - its CFI and MIC codes, last,
-average, cumulative, remaining and previous values, spot rate and forward
-points, ``ticker`` and ``metadata``; the operation's integer
-``marketoperationid``, time in force, tradability, the ``accountids``,
-``userids`` and ``altids`` it names, each under the field that stated it,
-and the ``bid`` and ``ask`` lanes);
+``currency``, ``quantity``, ``unit``, ``side`` - a :class:`yggdryl.Side`,
+``UNKNOWN`` where none is stated - its ``securityids`` - one code under each
+source, ISIN, CUSIP, FIGI - and the ``isincode`` read off them, its CFI and
+MIC codes, last, average, cumulative, remaining and previous values, spot
+rate and forward points, the ``fxrates`` it states, the bid and ask it quotes
+(``bidpx``, ``bidqty``, ``bidccy``, ``askpx``, ``askqty``, ``askccy``),
+``ticker`` and ``metadata``; the operation's time in force, tradability and
+the ``altids`` it names, each under the field that stated it);
 :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
-stable integer business category exposed by both ``msgcat`` and
-``marketoperationid`` (the message type definition keeps the symbolic
-four-byte ``MsgType.msgcat``);
+business category ``msgcat``, the :class:`yggdryl.MarketDataKind` member the
+message type is filed under (``MsgType.msgcat`` answers the same member for
+the definition); the option ``strikepx`` the message identifies;
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,
@@ -62,13 +63,15 @@ about the line, which is held nowhere on a message; the free
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
 groups as series beside their counter, components as structs.
-:meth:`FixMsg.market_operations` answers the typed graph leaves the message
+:meth:`FixMsg.market_data` answers the typed graph leaves the message
 expands to - an order, a quote, an execution, a trade or, for a book ``W`` or
 ``X``, one per entry or one snapshot control - each a
 :class:`yggdryl.graph.MarketData`. A lookup
-by a typed tag - a header tag, a crate column, the event's own ``15``,
-``54``, ``461`` and the four lane tags, ``58`` - answers the holder, typed as
-its column is; any other key reaches the row. :meth:`FixMsg.set` and
+by a typed tag - a header tag, a crate column, one of the fields a message
+lifts (its identifiers, prices, quantities and FX parts), ``58`` - answers
+the holder, typed as its column is; any other key reaches the row, the
+``15``, ``54``, ``461`` and ``132`` to ``135`` the market facts are read from
+included, as the text the message stated. :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` write both the same way, and every write settles the
 identity again: the cross code from the first stated of ``OrderID``,
 ``ClOrdID``, ``OrigClOrdID``, ``QuoteID``, ``QuoteReqID`` and ``MDReqID``, the
@@ -93,9 +96,10 @@ capture is context and stamps nothing; the line's own ``currunix`` - an
 ``mtime`` capture, else its handle's modification time - is the message's
 ``recdunix``. A parse builds the message, lifts
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
-fields to their latest aliases, runs the dictionary's ``FIX:derivation``
-rules, reads the identifier maps off the fields that state them, fills an
-order's lanes, and settles the identity: ``SendingTime`` is the message's own, else
+fields to their latest aliases, runs the crate's native derivations, reads
+the identifier maps off the fields that state them, splits an execution a
+report or a trade states - and a two-sided quote - into sided messages of
+their own, and settles the identity: ``SendingTime`` is the message's own, else
 a row cell reaching tag 52, else the ``currunix`` of the line it was read out
 of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
@@ -124,16 +128,16 @@ converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
 :meth:`FixCodec.book_arrow_reader` streams sorted messages through native
-market operations and books into lifted ``marketdata`` batches, one
-``book_event`` row per book, read back by
-:meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
-selects an epoch-aligned snapshot grid and ``global_`` consolidates symbols
-under ``GLOBAL``. Lifecycle enrichment remains an explicit composition.
-:meth:`FixCodec.market_operations` is the sorted door: it collects a
+market data and books into lifted ``marketdata`` batches, one
+``book_event`` row per book and book key - the ticker, else ``MIC:CFI`` -
+read back by :meth:`yggdryl.graph.MarketData.from_arrow_reader`;
+``snapshot_millis`` selects an epoch-aligned snapshot grid. Lifecycle
+enrichment remains an explicit composition.
+:meth:`FixCodec.market_data` is the sorted door: it collects a
 capture, admits what the book door admits, expands each message and answers
-the operations stably sorted by the instant a book folds them at, an
+the market data stably sorted by the instant a book folds them at, an
 expansion refused first; :meth:`FixCodec.market_arrow_reader` writes them as
-``marketdata`` rows and :meth:`FixCodec.market_operations_arrow_reader` reads
+``marketdata`` rows and :meth:`FixCodec.market_data_arrow_reader` reads
 them off FIX rows. Each leaf carries, in its metadata, what its message
 states that no typed column reads, unless the codec's ``market_metadata`` is
 off.
@@ -144,10 +148,14 @@ field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
 ``payload_column``, ``null_values``, ``direction``, ``batch_byte_size``,
-``snapshot_ns``, ``official_time_delay_ms`` and ``market_metadata`` - is on
-the codec; a positive
-``snapshot_ns`` emits independent living views on its epoch-aligned grid and
-zero, a negative width or ``None`` disables them, while
+``snapshot_ns``, ``sorted_lifecycle``, ``official_time_delay_ms`` and
+``market_metadata`` - is on the codec; a positive
+``snapshot_ns`` emits independent living views on its epoch-aligned grid -
+each the live event as of its tick, dated at it, so its ``curruuid`` is the
+identity that tick derives - and
+zero, a negative width or ``None`` disables them; ``sorted_lifecycle`` states
+that the lifecycle's messages arrive in instant order, so it walks them one
+epoch hour at a time instead of sorting the whole capture, while
 ``official_time_delay_ms`` is how far from ``SendingTime(52)`` an official
 transaction clock may stand and still date the message. A stage is a call, and
 no pin decides a version: a row states one in its ``beginstring`` capture, else
@@ -158,9 +166,11 @@ header, the fields a consumer reads, the four groups worth persisting whole,
 the trailer and ``MsgDirection`` (385) - each spelled by the dictionary's
 folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;
-the tag stays on each column's ``FIX:tag``. One ``fixentries`` serie closes
-the row with the whole content under the ``nofixentries`` that counts it,
-where an unresolved key has tag 0; ``beginstring``, ``currunix``, ``creaunix``,
+the tag stays on each column's ``FIX:tag``. One ``fixentries`` sorted map
+closes the row with the residual content the dictionary resolves, each entry
+under its ``tag:name`` key - the wire text of a leaf, the JSON of a group or
+component - while a key no dictionary resolves lands in ``metadata``;
+``beginstring``, ``currunix``, ``creaunix``,
 ``currhashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
 non-null columns. :func:`fix_schema_carrying` puts a capture's own columns in
 front of them, dropping a capture column whose folded name a FIX column

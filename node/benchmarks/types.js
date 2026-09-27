@@ -7,11 +7,13 @@ const {
   DataType,
   Expression,
   Field,
+  MarketDataKind,
   MediaType,
   MimeType,
   Scalar,
   Serie,
   SerieReader,
+  Side,
   Plan,
   Term,
   StringEnum,
@@ -101,6 +103,12 @@ const releaseField = fields.version('release', { nullable: false })
 const figi = DataType.from('figi')
 const figiField = fields.figi('figi', { nullable: false })
 const figiScalar = figi.scalar('BBG000BLNQ16')
+// An enum member crosses as its stored name in both directions: the frozen
+// objects map a name to its code, a scalar reads back the name.
+const side = DataType.from('side')
+const sideScalar = side.scalar('BUY')
+const kind = DataType.from('marketdatakind')
+const kindScalar = kind.scalar('ORDR')
 
 benchmark('version/native_parts', () => new Version(5, 0, 300))
 benchmark('version/native_parse', () => Version.fromStr('5.0.300'))
@@ -114,6 +122,12 @@ benchmark('version/scalar_as_js', () => releaseScalar.asJs())
 benchmark('figi/into_scalar', () => figi.scalar('BBG000BLNQ16'))
 benchmark('figi/field_into_scalar', () => Scalar.from('BBG000BLNQ16', { field: figiField }))
 benchmark('figi/scalar_as_js', () => figiScalar.asJs())
+benchmark('side/member_lookup', () => Side.SELL)
+benchmark('side/into_scalar', () => side.scalar('SELL'))
+benchmark('side/scalar_as_js', () => sideScalar.asJs())
+benchmark('marketdatakind/member_lookup', () => MarketDataKind.QUOT)
+benchmark('marketdatakind/into_scalar', () => kind.scalar('QUOT'))
+benchmark('marketdatakind/scalar_as_js', () => kindScalar.asJs())
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
 benchmark('serie/from_arrow_array_bits', () =>

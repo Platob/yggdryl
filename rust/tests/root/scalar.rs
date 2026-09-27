@@ -147,7 +147,7 @@ mod internal {
                 16,
             ),
             (Scalar::from("a"), 5),
-            (Scalar::from(Side::new("1").unwrap()), 18),
+            (Scalar::from(Side::new("1").unwrap()), 29),
             (
                 Scalar::Uuid(
                     yggdryl::uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000")
@@ -780,7 +780,6 @@ fn the_codes_sort_by_which_code_then_by_text() {
         Scalar::Ccy(Ccy::new("EUR").unwrap()),
         Scalar::Mic(Mic::new("XPAR").unwrap()),
         Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
-        Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
         Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
         Scalar::Isin(Isin::new("US0378331005").unwrap()),
         Scalar::Cusip(Cusip::new("037833100").unwrap()),
@@ -788,6 +787,7 @@ fn the_codes_sort_by_which_code_then_by_text() {
         Scalar::Bbg(Bbg::new("BBG000B9XRY4").unwrap()),
         Scalar::Figi(Figi::new("BBG000BLNQ16").unwrap()),
         Scalar::Ric(Ric::new("AAPL.OQ").unwrap()),
+        Scalar::Forex(yggdryl::Forex::new("EUR/USD").unwrap()),
     ];
     for pair in ascending.windows(2) {
         assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);
@@ -1548,13 +1548,14 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert_eq!(binary.kind(), "bytes");
     assert_eq!(view.kind(), "binary_view");
 
-    // A code carries its identity: two codes whose bytes agree are two
+    // A code carries its identity: two values whose text agrees are two
     // values, and neither is the string spelling the same bytes.
     let side = Scalar::Side(yggdryl::Side::new("BUY").unwrap());
     let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
     assert_ne!(side, Scalar::from("BUY"));
+    assert_ne!(side, Scalar::from(1_i32));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

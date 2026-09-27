@@ -7,13 +7,14 @@ use std::iter::FusedIterator;
 use std::vec;
 
 use super::Element;
+use super::market::unsided_crosscode;
 use crate::idmap::IdMap;
-use crate::{State, Uuid};
+use crate::{Side, State, Uuid};
 
 mod sealed {
     use super::super::{Element, Event, MarketData, Operation};
-    use crate::State;
     use crate::idmap::IdMap;
+    use crate::{Side, State};
 
     /// What a walk needs of an element beyond [`Element`]: sealed, so only
     /// `E: Event + Operation + Clone` and [`MarketData`] can name it. Every
@@ -33,6 +34,10 @@ mod sealed {
         fn walked_state(&self) -> Option<&State>;
         /// [`Event::set_state`].
         fn walked_set_state(&mut self, state: State);
+        /// [`Event::get_creaunix`].
+        fn walked_creaunix(&self) -> Option<i64>;
+        /// [`Event::set_creaunix`].
+        fn walked_set_creaunix(&mut self, unix: Option<i64>);
         /// [`Event::get_exprunix`].
         fn walked_exprunix(&self) -> Option<i64>;
         /// [`Event::set_execunix`].
@@ -50,6 +55,14 @@ mod sealed {
         fn walked_fill_execution(&mut self);
         /// Whether the walk chains this element at all.
         fn is_walked(&self) -> bool;
+        /// [`Market::get_side`](super::super::Market::get_side);
+        /// `Side::Unknown` for an element the walk does not chain.
+        fn walked_side(&self) -> Side;
+        /// Whether the element may join another chain by a name or a base
+        /// code it shares with it: every chained element but an execution,
+        /// [`Event::is_execution`], which is a chain of its own and follows
+        /// only its own cross code.
+        fn walked_joins(&self) -> bool;
     }
 
     impl<E: Event + Operation + Clone> Walked for E {
@@ -67,6 +80,12 @@ mod sealed {
         }
         fn walked_set_state(&mut self, state: State) {
             self.set_state(state);
+        }
+        fn walked_creaunix(&self) -> Option<i64> {
+            self.get_creaunix()
+        }
+        fn walked_set_creaunix(&mut self, unix: Option<i64>) {
+            self.set_creaunix(unix);
         }
         fn walked_exprunix(&self) -> Option<i64> {
             self.get_exprunix()
@@ -91,6 +110,12 @@ mod sealed {
         }
         fn is_walked(&self) -> bool {
             true
+        }
+        fn walked_side(&self) -> Side {
+            self.get_side()
+        }
+        fn walked_joins(&self) -> bool {
+            !self.is_execution()
         }
     }
 
@@ -118,6 +143,14 @@ mod sealed {
         fn walked_set_state(&mut self, state: State) {
             if let Some(operation) = self.as_event_operation_mut() {
                 operation.set_state(state);
+            }
+        }
+        fn walked_creaunix(&self) -> Option<i64> {
+            self.as_event_operation().and_then(Event::get_creaunix)
+        }
+        fn walked_set_creaunix(&mut self, unix: Option<i64>) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_creaunix(unix);
             }
         }
         fn walked_exprunix(&self) -> Option<i64> {
@@ -185,6 +218,14 @@ mod sealed {
         fn is_walked(&self) -> bool {
             self.as_event_operation().is_some()
         }
+        fn walked_side(&self) -> Side {
+            self.as_event_operation()
+                .map_or(Side::Unknown, |operation| operation.get_side())
+        }
+        fn walked_joins(&self) -> bool {
+            self.as_event_operation()
+                .is_some_and(|operation| !operation.is_execution())
+        }
     }
 }
 
@@ -228,6 +269,13 @@ enum Source<E, I> {
 /// is always the caller's own copy: the live element is a clone the walk
 /// keeps, never a reference into it.
 ///
+/// Every walked element leaves stating when its lifecycle was created: one
+/// stating no creation takes its chain's - the earliest the fold keeps - or,
+/// starting a chain, its own instant; a stated creation is never replaced.
+/// A chain whose first element states no cross code stands under that
+/// element's identity, and every element after it carries that identity as
+/// its cross element, so one chain is one cross element.
+///
 /// An element arriving under the identity the live element *arrived*
 /// under - the same instant, the same content: one message a capture
 /// logged at every hop it passed - is another statement of the live
@@ -251,9 +299,12 @@ enum Source<E, I> {
 ///
 /// Given a grid - [`Self::with_snapshot_ns`], a step in nanoseconds aligned
 /// on the epoch - the walk also yields an owned view of every living identity
-/// at each crossed grid instant. A view carries that instant in
-/// [`Event::get_snapunix`](super::Event::get_snapunix) and otherwise keeps the live event's identity and
-/// content; it does not advance the chain. All source events at an exact
+/// at each crossed grid instant. A view is the live event as of that
+/// instant: dated at it - [`Event::get_currunix`](super::Event::get_currunix) and
+/// [`Event::get_snapunix`](super::Event::get_snapunix) both - so it has the
+/// identity that instant derives, a row of its own wherever rows are keyed by
+/// identity within a time, while its content, its place in the chain and its
+/// cross element are the live event's; it does not advance the chain. All source events at an exact
 /// boundary are read before its views, while expirations at that boundary are
 /// read before either. Source events keep the snapshot fact they stated.
 /// At EOF the grid stops at the greatest remaining finite expiration, or at
@@ -328,11 +379,18 @@ pub struct EventIterator<E, I> {
     source_started: bool,
     alive: HashMap<Uuid, Live<E>>,
     /// Every name a live element goes by, by scheme then name, under the
-    /// identity it is alive under: where an element arrives under no live
-    /// identity, a name it shares with a live element is the chain it
-    /// belongs to. Two levels, so a name is looked up by the borrowed
-    /// scheme and name an element states and never by a copy of them.
-    named: HashMap<String, HashMap<String, Uuid>>,
+    /// identity it is alive under and the side it takes: where an element
+    /// arrives under no live identity, a name it shares with a live element
+    /// of its own side is the chain it belongs to, and an element stating no
+    /// side joins the one side a name is alive on. Two levels, so a name is
+    /// looked up by the borrowed scheme and name an element states and never
+    /// by a copy of them.
+    named: HashMap<String, HashMap<String, Vec<(Side, Uuid)>>>,
+    /// The live identities of each base cross code - the code without the
+    /// side prefix [`Market::sided_crosscode`](super::Market::sided_crosscode)
+    /// gives it - so an element stating no side joins the one side its code
+    /// is alive on.
+    bases: HashMap<String, Vec<Uuid>>,
     /// The names each live identity is known by, so retiring it forgets
     /// exactly those.
     names_of: HashMap<Uuid, Vec<(String, String)>>,
@@ -391,6 +449,7 @@ where
             source_started: false,
             alive: HashMap::new(),
             named: HashMap::new(),
+            bases: HashMap::new(),
             names_of: HashMap::new(),
             expirations: BTreeSet::new(),
             snapshot_ns: 0,
@@ -435,24 +494,55 @@ where
             self.expirations.remove(&(deadline, identity));
         }
         if is_alive(element) {
+            let side = element.walked_side();
             for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
-                let held = self
+                let slots = self
                     .named
                     .entry(scheme.to_owned())
                     .or_default()
-                    .insert(name.to_owned(), identity);
+                    .entry(name.to_owned())
+                    .or_default();
+                // One identity per side a name is alive on.
+                let held = match slots.iter_mut().find(|(held, _)| *held == side) {
+                    Some(slot) => Some(std::mem::replace(&mut slot.1, identity)),
+                    None => {
+                        slots.push((side, identity));
+                        None
+                    }
+                };
                 if held == Some(identity) {
                     continue;
                 }
-                if let Some(known) = held.and_then(|held| self.names_of.get_mut(&held)) {
-                    known.retain(|(held_scheme, held_name)| {
-                        held_scheme.as_str() != scheme || held_name.as_str() != name
-                    });
+                if let Some(held) = held {
+                    let still = slots.iter().any(|(_, other)| *other == held);
+                    if !still {
+                        if let Some(known) = self.names_of.get_mut(&held) {
+                            known.retain(|(held_scheme, held_name)| {
+                                held_scheme.as_str() != scheme || held_name.as_str() != name
+                            });
+                        }
+                    }
                 }
-                self.names_of
-                    .entry(identity)
-                    .or_default()
-                    .push((scheme.to_owned(), name.to_owned()));
+                let known = self.names_of.entry(identity).or_default();
+                if !known
+                    .iter()
+                    .any(|(held_scheme, held_name)| held_scheme == scheme && held_name == name)
+                {
+                    known.push((scheme.to_owned(), name.to_owned()));
+                }
+            }
+            let code = element.get_crosscode();
+            let base = unsided_crosscode(code);
+            if base.len() != code.len() {
+                // Looked up borrowed first: a chain settled again under its
+                // base allocates nothing.
+                match self.bases.get_mut(base) {
+                    Some(live) if live.contains(&identity) => {}
+                    Some(live) => live.push(identity),
+                    None => {
+                        self.bases.insert(base.to_owned(), vec![identity]);
+                    }
+                }
             }
             self.alive.insert(
                 identity,
@@ -477,13 +567,26 @@ where
         }
         for (scheme, name) in self.names_of.remove(&identity).unwrap_or_default() {
             let empty = self.named.get_mut(&scheme).is_some_and(|names| {
-                if names.get(&name) == Some(&identity) {
-                    names.remove(&name);
+                if let Some(slots) = names.get_mut(&name) {
+                    slots.retain(|(_, held)| *held != identity);
+                    if slots.is_empty() {
+                        names.remove(&name);
+                    }
                 }
                 names.is_empty()
             });
             if empty {
                 self.named.remove(&scheme);
+            }
+        }
+        let code = live.element.get_crosscode();
+        let base = unsided_crosscode(code);
+        if base.len() != code.len() {
+            if let Some(held) = self.bases.get_mut(base) {
+                held.retain(|held| *held != identity);
+                if held.is_empty() {
+                    self.bases.remove(base);
+                }
             }
         }
         Some(live)
@@ -532,8 +635,15 @@ where
         while let Some(identity) = self.snapshot_identities.get(self.snapshot_index).copied() {
             self.snapshot_index += 1;
             if let Some(live) = self.alive.get(&identity) {
+                // The live event as of the grid instant: dated at it, so it
+                // derives that instant's identity, and standing under its
+                // chain's cross element whatever that identity derives.
                 let mut snapshot = live.element.clone();
+                let cross = snapshot.get_crossuuid();
+                snapshot.walked_set_currunix(unix);
                 snapshot.walked_set_snapunix(Some(unix));
+                snapshot.finalize();
+                snapshot.set_crossuuid(cross);
                 return Some(snapshot);
             }
         }
@@ -573,21 +683,55 @@ where
         }
         let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
-        let element = match self.alive.get(&identity) {
+        let mut element = match self.alive.get(&identity) {
             Some(live) if live.arrived == arrived => element.walked_restating(&live.element),
             Some(live) if element.is_before(&live.element) => {
                 element.walked_fill_execution();
+                created(&mut element, None);
                 return element;
             }
-            Some(live) => element
-                .clone()
-                .with_previous(&live.element)
-                .unwrap_or(element),
+            Some(live) => {
+                // What the statement said, read before the fold: following
+                // keeps the higher rank of the two, so a `NEW` over a live
+                // `ACTIVE`, `RUNNING` or `REPLACED` no longer reads `NEW`.
+                let stated_new = element.walked_state() == Some(&State::New);
+                let mut element = match element.clone().with_previous(&live.element) {
+                    Some(mut followed) => {
+                        // A chain with no cross code is the chain of its
+                        // first element, whose identity is its cross
+                        // element: every element after it stands under that
+                        // one cross element, not under its own identity.
+                        if followed.get_crosshashcode() == 0 {
+                            followed.set_crossuuid(live.element.get_crossuuid());
+                        }
+                        followed
+                    }
+                    None => element,
+                };
+                // A `NEW` stated over a live element that is itself new -
+                // or carrying on, or restated - is that element updated.
+                if stated_new
+                    && live
+                        .element
+                        .walked_state()
+                        .is_some_and(|held| held.is_new_like())
+                {
+                    element.walked_set_state(State::Updated);
+                    element.finalize();
+                }
+                element
+            }
             None => {
                 element.walked_fill_execution();
                 element
             }
         };
+        created(
+            &mut element,
+            self.alive
+                .get(&identity)
+                .and_then(|live| live.element.walked_creaunix()),
+        );
         let identity = if self.alive.contains_key(&identity) {
             identity
         } else {
@@ -598,27 +742,60 @@ where
     }
 
     /// The live identity `element` belongs to: its own cross element where
-    /// that is alive, else the identity of a live element it shares a name
-    /// with - an element that spells no chain identifier of its own but
-    /// carries the `ClOrdID` a live order was placed under belongs to that
-    /// order - else its own cross element, under which it starts a chain.
+    /// that is alive, else the identity of a live element of its side it
+    /// shares a name with - an element that spells no chain identifier of
+    /// its own but carries the `ClOrdID` a live order was placed under
+    /// belongs to that order - else its own cross element, under which it
+    /// starts a chain.
+    ///
+    /// Chains are keyed by side: the cross code carries the side, so a buy
+    /// and a sell under one `ClOrdID` are two chains, and a name is alive on
+    /// each side apart. An element stating no side joins the one side alive
+    /// under its base cross code, else under the first name it shares with a
+    /// live element, where exactly one side is; where both are, it starts a
+    /// chain of its own. An execution joins nothing by a name or a base: it
+    /// is a chain of its own, followed only under its own cross code.
     fn identity_of(&self, element: &E) -> Uuid {
         let own = element.get_crossuuid();
-        if self.alive.contains_key(&own) {
+        if self.alive.contains_key(&own) || !element.walked_joins() {
             return own;
         }
-        element
-            .walked_altids()
-            .into_iter()
-            .flat_map(IdMap::iter)
-            .find_map(|(scheme, name)| {
-                self.named
-                    .get(scheme)
-                    .and_then(|names| names.get(name))
-                    .copied()
-            })
-            .filter(|identity| self.alive.contains_key(identity))
-            .unwrap_or(own)
+        let side = element.walked_side();
+        let alive = |identity: &Uuid| self.alive.contains_key(identity);
+        if side == Side::Unknown {
+            let code = element.get_crosscode();
+            if let Some([identity]) = (!code.is_empty())
+                .then(|| self.bases.get(code))
+                .flatten()
+                .map(Vec::as_slice)
+            {
+                if alive(identity) {
+                    return *identity;
+                }
+            }
+        }
+        for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
+            let Some(slots) = self.named.get(scheme).and_then(|names| names.get(name)) else {
+                continue;
+            };
+            if side == Side::Unknown {
+                let mut live = slots
+                    .iter()
+                    .map(|(_, identity)| identity)
+                    .filter(|identity| alive(identity));
+                match (live.next(), live.next()) {
+                    (Some(identity), None) => return *identity,
+                    (Some(_), Some(_)) => return own,
+                    _ => {}
+                }
+            } else if let Some((_, identity)) = slots
+                .iter()
+                .find(|(held, identity)| *held == side && alive(identity))
+            {
+                return *identity;
+            }
+        }
+        own
     }
 }
 
@@ -725,6 +902,20 @@ where
 
 /// Whether an element can still be followed: its state can still change,
 /// and it is not past its expiration.
+/// States when `element`'s lifecycle was created where it states none: the
+/// creation of the chain it stands in - `chain`, the earliest the fold kept -
+/// else its own instant, since an element starting a chain is its creation.
+/// A stated creation is never replaced, and the identity does not move: an
+/// instant is no part of what an event digests.
+fn created<E: Walked>(element: &mut E, chain: Option<i64>) {
+    if element.walked_creaunix().is_some() {
+        return;
+    }
+    if let Some(unix) = chain.or_else(|| element.walked_currunix()) {
+        element.walked_set_creaunix(Some(unix));
+    }
+}
+
 fn is_alive<E: Walked>(element: &E) -> bool {
     element.walked_state().is_some_and(|state| state.is_live())
         && element.walked_exprunix().is_none_or(|expiration| {
@@ -794,13 +985,18 @@ pub mod internals {
         walk.named.len()
     }
 
-    /// The identity `scheme`/`name` currently looks up to.
+    /// The identity `scheme`/`name` currently looks up to, on the first
+    /// side it is alive on.
     pub fn named_identity<E, I>(
         walk: &EventIterator<E, I>,
         scheme: &str,
         name: &str,
     ) -> Option<Uuid> {
-        walk.named.get(scheme)?.get(name).copied()
+        walk.named
+            .get(scheme)?
+            .get(name)?
+            .first()
+            .map(|(_, identity)| *identity)
     }
 
     /// How many identities hold a reverse record of the names they go by.

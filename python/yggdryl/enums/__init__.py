@@ -85,7 +85,7 @@ REPRESENTATIONS: tuple[str, ...] = tuple(_LISTING["representations"])
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
 
 #: Every leaf kind a ``graph.MarketData`` may hold, e.g. ``"order_event"``,
-#: ``"book_side"``: the ``MarketData.kinds`` spellings, in declaration order.
+#: ``"book_event"``: the ``MarketData.kinds`` spellings, in declaration order.
 MARKET_KINDS: tuple[str, ...] = tuple(_LISTING["market_kinds"])
 
 #: Every market-data update action a book entry states, FIX's own codes
@@ -95,14 +95,14 @@ MD_UPDATE_ACTIONS: tuple[str, ...] = tuple(_LISTING["md_update_actions"])
 #: The sixteen columns every graph event is stated in, in schema order.
 EVENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["event_columns"])
 
-#: The nineteen columns a market element states, in schema order.
+#: The twenty-seven columns a market element states, in schema order.
 MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
 
-#: The eight columns a market operation states, in schema order.
+#: The three columns a market operation states, in schema order.
 OPERATION_COLUMNS: tuple[str, ...] = tuple(_LISTING["operation_columns"])
 
 #: Every named reading of a ``marketdata`` stream ``graph.MarketData.plan``
-#: and ``apply_view`` take, e.g. ``"orders"``, ``"book_sides"``, in
+#: and ``apply_view`` take, e.g. ``"orders"``, ``"books"``, in
 #: declaration order.
 MARKET_VIEWS: tuple[str, ...] = tuple(_LISTING["market_views"])
 

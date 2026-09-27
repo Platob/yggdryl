@@ -60,7 +60,7 @@ code_leaf!(Mic, MIC_WIDTH);
 
 impl Mic {
     /// ISO 10383's code for no market.
-    const NONE: &str = "XXXX";
+    pub(crate) const NONE: &str = "XXXX";
 
     /// The market stated as none: ISO 10383's `XXXX`, which a merge takes
     /// the other market over.

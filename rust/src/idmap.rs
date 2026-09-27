@@ -1,5 +1,5 @@
-//! Identifiers keyed by name: the accounts, users and alternate ids a market
-//! states beside its instrument codes.
+//! Identifiers keyed by name: the alternate ids a market states beside its
+//! instrument codes.
 
 use std::fmt;
 use std::hash::Hasher;

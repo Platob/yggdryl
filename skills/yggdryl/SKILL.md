@@ -18,7 +18,7 @@ and Python, `camelCase` in JavaScript).
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
 | minimum | Rust 1.85 (1.94 with `iceberg`) | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
 | optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
-| extras | Arrow is `arrow-*` 59 | the `ygg` CLI ships in the wheel | `yggdryl/replay`, `yggdryl/web/*` |
+| extras | Arrow is `arrow-*` 59 | the `yggdryl` CLI ships in the wheel | - |
 
 A Rust build that reads or writes Parquet or Iceberg, touches an object
 store, or reaches a bare `http://`/`https://` resource, must enable that
@@ -50,7 +50,7 @@ answers the task.
 
 | Task | Skill |
 | --- | --- |
-| declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata | `yggdryl-types` |
+| declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
 | Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
@@ -58,8 +58,8 @@ answers the task.
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
-| FIX messages, dictionaries, captures, the `ygg fix` CLI | `yggdryl-fix` |
-| orders, quotes, executions, order books, market data replay | `yggdryl-market-data` |
+| FIX messages, dictionaries, captures, the `yggdryl fix` CLI | `yggdryl-fix` |
+| orders, quotes, executions, order books, market data | `yggdryl-market-data` |
 
 ## Cross-language conventions
 
@@ -122,7 +122,7 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
 8. **Paths are `FieldPath`s.** `a.b[0]['key']` is parsed once by the grammar;
    never split a path string on `.` yourself.
 9. **Errors are the answer.** A refusal names expected, actual and location
-   (`$[3].bid.live[0].miccode`, byte position, column). Fix the input it names;
+   (`$[3].alive[0].miccode`, byte position, column). Fix the input it names;
    do not retry or widen the type to make it pass.
 
 ## Pitfalls

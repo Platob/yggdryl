@@ -12,7 +12,6 @@ const yggdryl = require('yggdryl')
 const { Scalar, enums, graph } = yggdryl
 
 const CLASSES = [
-  'Lane',
   'BookRef',
   'Order',
   'Quote',
@@ -21,8 +20,6 @@ const CLASSES = [
   'QuoteEvent',
   'ExecutionEvent',
   'TradeEvent',
-  'SnapshotPartition',
-  'BookSide',
   'BookEvent',
   'SnapshotEvent',
   'MarketData',
@@ -34,7 +31,7 @@ const CLASSES = [
 test('every native class is reached through the namespace, and only there', () => {
   assert.deepEqual(
     Object.keys(graph).sort(),
-    [...CLASSES, 'GLOBAL_SYMBOL', 'ENTRY_ID', 'ENTRY_REF_ID', 'FOLLOWED_ALTIDS'].sort(),
+    [...CLASSES, 'ENTRY_ID', 'ENTRY_REF_ID', 'FOLLOWED_ALTIDS'].sort(),
   )
   for (const name of CLASSES) {
     assert.equal(typeof graph[name], 'function', name)
@@ -53,6 +50,12 @@ test('no retired name survives', () => {
     'BookInput',
     'BookRowIterator',
     'BookInputRowIterator',
+    // A1/A2/A10: the book is its own readings; the lanes and the side
+    // leaves are gone, and so is the one consolidated book.
+    'Lane',
+    'BookSide',
+    'SnapshotPartition',
+    'GLOBAL_SYMBOL',
   ]) {
     assert.equal(graph[name], undefined, name)
     assert.equal(yggdryl[name], undefined, name)
@@ -62,6 +65,7 @@ test('no retired name survives', () => {
   assert.equal(yggdryl._marketDataArrowReaderNative, undefined)
   assert.equal(graph.BookIterator._bookIteratorNative, undefined)
   assert.equal(graph.EventIterator._eventIteratorNative, undefined)
+  assert.equal(yggdryl._graphGlobalSymbolNative, undefined)
 })
 
 test('the namespace is frozen', () => {
@@ -69,8 +73,7 @@ test('the namespace is frozen', () => {
   assert.throws(() => { graph.Order = null }, TypeError)
 })
 
-test('the four constants are exported, the altids a frozen array', () => {
-  assert.equal(graph.GLOBAL_SYMBOL, 'GLOBAL')
+test('the three constants are exported, the altids a frozen array', () => {
   assert.equal(graph.ENTRY_ID, 'MDENTRYID')
   assert.equal(graph.ENTRY_REF_ID, 'MDENTRYREFID')
   assert.ok(Array.isArray(graph.FOLLOWED_ALTIDS))
@@ -81,12 +84,16 @@ test('the four constants are exported, the altids a frozen array', () => {
 
 test('the enum listings name the column vocabulary and the market kinds', () => {
   assert.deepEqual(enums.marketKinds, graph.MarketData.kinds())
-  assert.equal(enums.marketKinds.length, 10)
+  assert.equal(enums.marketKinds.length, 9)
   assert.ok(Object.isFrozen(enums.marketKinds))
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
   assert.equal(enums.eventColumns.length, 16)
-  assert.equal(enums.marketColumns.length, 19)
-  assert.equal(enums.operationColumns.length, 8)
+  assert.equal(enums.marketColumns.length, 27)
+  assert.equal(enums.operationColumns.length, 3)
+  assert.deepEqual(enums.operationColumns, ['tif', 'tradable', 'altids'])
+  for (const column of ['isincode', 'fxrates', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
+    assert.ok(enums.marketColumns.includes(column), column)
+  }
   // A named fact is a column name: every one the three listings spell is a
   // getter of an operation event.
   const event = new graph.OrderEvent(1, { crosscode: 'O-1' })
@@ -120,6 +127,30 @@ test('a fact is resolved folded, checked by its column and refused by name', () 
   assert.throws(() => new graph.Order({ book: 1 }), /Order states no fact "book"/)
   assert.throws(() => new graph.OrderEvent(1, [1]), /facts must be an object keyed by column name/)
   assert.throws(() => graph.OrderEvent(1), /cannot be invoked without 'new'/)
+})
+
+test('the market facts cross as plain values', () => {
+  const event = new graph.OrderEvent(1, {
+    crosscode: 'O-1',
+    side: 'BUY',
+    securityids: { ISIN: 'US0378331005' },
+    bidpx: '100.5',
+    bidqty: 3,
+    bidccy: 'EUR',
+  })
+  assert.equal(event.isincode, 'US0378331005')
+  assert.equal(event.bidpx, '100.5')
+  assert.equal(event.bidqty, '3')
+  assert.equal(event.bidccy, 'EUR')
+  assert.equal(event.askpx, null)
+  assert.equal(event.askccy, null)
+  // Nothing fills the rates, so an element states none unless given.
+  assert.deepEqual(event.fxrates, {})
+  assert.equal(event.marketdatakind, 'ORDR')
+  // A sided element's cross code carries its side (A17).
+  assert.equal(event.crosscode, 'BUY:O-1')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKNOWN')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
 })
 
 test('a fact record crosses as a Scalar too', () => {

@@ -23,19 +23,18 @@ mod internal {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use yggdryl::fix::{FixCodes, FixReplacement};
+    use yggdryl::fix::FixCodes;
     use yggdryl::internals::fix_catalog::{add_definition, derived_definition_tag, group_by_tag};
     use yggdryl::internals::fix_codes::{create_codeset, render as render_codes};
     use yggdryl::internals::fix_global::autoload;
-    use yggdryl::internals::fix_registry::{control_byte, derivations};
-    use yggdryl::internals::fix_replacements::render as render_replacements;
+    use yggdryl::internals::fix_registry::control_byte;
     use yggdryl::internals::fix_store::shard_of;
     use yggdryl::internals::hashing_stable::stable_hash_of;
     use yggdryl::local::LocalFolder;
 
     use yggdryl::{
         DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
-        FixRegistry, MimeType, Plan, Scalar, StructType, Version,
+        FixRegistry, MimeType, Scalar, StructType, Version,
     };
 
     /// One path, resolved once, as every FIX navigator now takes it.
@@ -3620,17 +3619,14 @@ mod internal {
                 "FIX:directions",
                 r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
             ),
-            (
-                "FIX:replacements",
-                r#"{"replacements":[{"plan":"select 'A' as x"}]}"#,
-            ),
+            ("FIX:idmap", r#"{"idmap":[{"map":"altids","key":"SIDE"}]}"#),
         ] {
             let mut wrapper = DataType::utf8().nullable_field("Side");
             wrapper.set_metadata([(property, wrapped)]).unwrap();
             let view = wrapper.as_fix();
             let error = match property {
                 "FIX:directions" => view.directions().next().unwrap().unwrap_err(),
-                _ => view.replacements().next().unwrap().unwrap_err(),
+                _ => view.idmap().next().unwrap().unwrap_err(),
             };
             assert!(
                 matches!(&error, Error::Parse { position, .. } if *position == 0),
@@ -3881,242 +3877,6 @@ mod internal {
         bare.as_fix_mut().set_tag(32).unwrap();
         field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
         assert_eq!(field, before);
-    }
-
-    /// Fixture C: `Rule80A(47)`, stating every shape a rule has.
-    ///
-    /// Three entries in a deliberate order: a value rule filling two columns, a
-    /// rule scoped to two message types and one repeating group, and a catch-all
-    /// filling a group occurrence whose members read the source, another column,
-    /// and a nested occurrence built from a join.
-    fn rule80a_rules() -> Vec<FixReplacement> {
-        let plan = |text: &str| {
-            text.parse::<Plan>()
-                .unwrap_or_else(|error| panic!("{text}: {error}"))
-        };
-        vec![
-            FixReplacement::new(plan(
-                "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'",
-            ))
-            .with_doc(r#"Program order, non-index arbitrage, for "other" agency"#),
-            FixReplacement::new(plan(
-                "select 'A' as ordercapacity where :msgtype in ('8', 'AE') and :group = 'allocgrp' and rule80a = 'A'",
-            )),
-            FixReplacement::new(plan(concat!(
-                "select [{partyid: rule80a, hopcompid: onbehalfofcompid, partysubids: [{partysubid: ",
-                "concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2))}]}] as parties",
-            ))),
-        ]
-    }
-
-    /// The one text fixture C renders to.
-    const RULE80A_DOCUMENT: &str = concat!(
-        r#"[{"plan":"select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'","#,
-        r#""doc":"Program order, non-index arbitrage, for \"other\" agency"},"#,
-        r#"{"plan":"select 'A' as ordercapacity where :msgtype in ('8', 'AE') and :group = 'allocgrp' and rule80a = 'A'"},"#,
-        r#"{"plan":"select [{partyid: rule80a, hopcompid: onbehalfofcompid, partysubids: [{partysubid: "#,
-        r#"concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2))}]}] as parties"}]"#,
-    );
-
-    fn rule80a() -> Field {
-        let mut field = DataType::utf8().nullable_field("rule80a");
-        field.as_fix_mut().set_tag(47).unwrap();
-        field
-            .as_fix_mut()
-            .set_replacements(&rule80a_rules())
-            .unwrap();
-        field
-    }
-
-    /// A field carrying one hand-written `FIX:replacements` text, unvalidated.
-    fn replacing(document: &str) -> Field {
-        let mut field = DataType::utf8().nullable_field("rule80a");
-        field
-            .set_metadata([("FIX:replacements", document)])
-            .unwrap();
-        field
-    }
-
-    #[test]
-    fn a_replacement_document_round_trips_canonically_and_in_order() {
-        let field = rule80a();
-        assert_eq!(
-            field.get_metadata("FIX:replacements"),
-            Some(RULE80A_DOCUMENT)
-        );
-
-        // The borrowed read hands back every entry as a slice of that text, and
-        // each reads as the plan it was written from, in order.
-        let rules = rule80a_rules();
-        let entries: Vec<_> = field
-            .as_fix()
-            .replacements()
-            .map(|entry| entry.expect("a readable entry"))
-            .collect();
-        assert_eq!(entries.len(), rules.len());
-        for (entry, rule) in entries.iter().zip(&rules) {
-            assert_eq!(&entry.parse_plan().unwrap(), rule.plan());
-            assert_eq!(entry.parse_doc().unwrap().as_deref(), rule.doc());
-        }
-
-        // The owned form is the rule again, so an edit round-trips through the
-        // one text.
-        let owned: Vec<FixReplacement> = entries
-            .iter()
-            .map(|entry| FixReplacement::from(*entry))
-            .collect();
-        assert_eq!(owned, rules);
-        assert_eq!(render_replacements(&owned).unwrap(), RULE80A_DOCUMENT);
-    }
-
-    #[test]
-    fn an_empty_replacement_set_removes_the_property() {
-        let mut field = rule80a();
-        field.as_fix_mut().set_replacements(&[]).unwrap();
-        assert_eq!(field.get_metadata("FIX:replacements"), None);
-        assert_eq!(field.as_fix().replacements().count(), 0);
-        assert!(field.as_fix().replacements().next_ok().is_none());
-        // Removing what is not there is not an error.
-        assert_eq!(field.as_fix_mut().remove_replacements().unwrap(), None);
-    }
-
-    #[test]
-    fn the_replacement_writer_refuses_what_the_document_cannot_state() {
-        // A rule filling no named column restates nothing: `select *` is the
-        // whole row, and a bare `select` names none.
-        for plan in [Plan::new(), "select *".parse::<Plan>().unwrap()] {
-            let error = render_replacements(&[FixReplacement::new(plan)]).unwrap_err();
-            assert!(
-                matches!(&error, Error::Parse { target, .. } if *target == "fix replacements"),
-                "{error}"
-            );
-            assert!(
-                error.to_string().contains("at least one named column"),
-                "{error}"
-            );
-        }
-        // A plan past the expression budget is refused rather than stored.
-        let deep = format!(
-            "select {}rule80a{} as ordercapacity",
-            "(".repeat(40),
-            ")".repeat(40)
-        );
-        let over = deep.parse::<Plan>();
-        assert!(
-            over.is_err() || render_replacements(&[FixReplacement::new(over.unwrap())]).is_err(),
-            "a plan past the budget is refused at parse or at write"
-        );
-    }
-
-    #[test]
-    fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
-        // Each case: the stored text, the reason expected, and the text whose
-        // first byte the refusal must name.
-        for (document, reason, at) in [
-            (
-                r#"[{"doc":"x","plan":"select 'A' as ordercapacity"}]"#,
-                "out of order",
-                Some(r#""plan""#),
-            ),
-            (
-                r#"[{"plan":"select 'A' as ordercapacity","note":"x"}]"#,
-                r#"unknown key "note""#,
-                Some(r#""note""#),
-            ),
-            (r#"[{"doc":"x"}]"#, r#"state "plan""#, None),
-        ] {
-            let field = replacing(document);
-            let error = field.as_fix().replacements().next().unwrap().unwrap_err();
-            assert!(
-                matches!(&error, Error::Parse { target, .. } if *target == "fix replacements"),
-                "{document}: {error}"
-            );
-            assert!(error.to_string().contains(reason), "{document}: {error}");
-            if let Some(at) = at {
-                let position = document.find(at).unwrap();
-                assert!(
-                    matches!(&error, Error::Parse { position: held, .. } if *held == position),
-                    "{document}: {error}"
-                );
-            }
-            // A read that cannot parse answers nothing rather than a wrong answer.
-            assert!(field.as_fix().replacements().next_ok().is_none());
-            // And taking a document a reader refuses away reports the refusal,
-            // having removed it.
-            let mut taken = field.clone();
-            assert!(
-                taken.as_fix_mut().remove_replacements().is_err(),
-                "{document}"
-            );
-            assert_eq!(taken.get_metadata("FIX:replacements"), None, "{document}");
-        }
-
-        // A refusal is fused: the walk ends where it stopped.
-        let field = replacing(r#"[{"doc":"x"},{"plan":"select 'A' as ordercapacity"}]"#);
-        let mut walk = field.as_fix().replacements();
-        assert!(walk.next().unwrap().is_err());
-        assert!(walk.next().is_none());
-
-        // A stored plan the grammar refuses is a readable entry - the document
-        // is well-formed - that refuses to be a plan when asked for one.
-        let field = replacing(r#"[{"plan":"select from where"}]"#);
-        let entry = field.as_fix().replacements().next().unwrap().unwrap();
-        assert!(entry.parse_plan().is_err());
-        // And a rule that reads as nothing is refused when written back, rather
-        // than stored as the empty plan the owned form falls to.
-        assert!(render_replacements(&[FixReplacement::from(entry)]).is_err());
-    }
-
-    #[test]
-    fn a_merge_lets_the_incoming_replacements_win_whole() {
-        let mut stored = DataType::utf8().nullable_field("rule80a");
-        stored.as_fix_mut().set_tag(47).unwrap();
-        stored
-            .as_fix_mut()
-            .set_replacements(&[FixReplacement::new(
-                "select 'W' as ordercapacity".parse().unwrap(),
-            )])
-            .unwrap();
-        let stored_text = stored.get_metadata("FIX:replacements").unwrap().to_owned();
-
-        // Two documents have no order between them, so the incoming one is not
-        // folded entry by entry: it replaces the stored one.
-        let mut incoming = rule80a();
-        incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
-        assert_eq!(
-            incoming.get_metadata("FIX:replacements"),
-            Some(RULE80A_DOCUMENT)
-        );
-
-        // The stored one keeps what only it has.
-        let mut bare = DataType::utf8().nullable_field("rule80a");
-        bare.as_fix_mut().set_tag(47).unwrap();
-        bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
-        assert_eq!(
-            bare.get_metadata("FIX:replacements"),
-            Some(stored_text.as_str())
-        );
-    }
-
-    /// Every column a plan reads or fills is one the dictionary resolves: a
-    /// field by its name, or a repeating group by its.
-    fn assert_plan_resolves(registry: &FixRegistry, plan: &Plan, owner: &str) {
-        let known = |name: &str| {
-            registry.get_field_by_name(name).is_some()
-                || registry.get_definition(FixCategory::Groups, name).is_some()
-        };
-        assert!(
-            !plan.selector().is_all() && !plan.selector().is_empty(),
-            "{owner} fills a named column"
-        );
-        for name in plan.selector().names() {
-            assert!(known(&name), "{owner} fills {name}");
-        }
-        let mut read = plan.selector().columns();
-        read.extend(plan.filter_section().term().columns());
-        for column in read {
-            assert!(known(&column), "{owner} reads {column}");
-        }
     }
 
     fn committed() -> Arc<FixRegistry> {
@@ -4393,14 +4153,14 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 22 categories and the 60 states to the 735
+        // The crate adds MsgCat's 22 categories and the 61 states to the 735
         // published sets.
         assert_eq!(sets, 737, "code sets held");
-        assert_eq!(codes, 7_811, "code records");
+        assert_eq!(codes, 7_812, "code records");
     }
 
     #[test]
-    fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
+    fn the_entry_column_is_one_sorted_map_of_text() {
         let root = yggdryl::fix_schema(&FixRegistry::new(), "row").unwrap();
         let column = yggdryl::fix::FIXENTRIES_COLUMN;
         let held = root
@@ -4408,51 +4168,16 @@ mod internal {
             .iter()
             .find(|field| field.name() == column)
             .unwrap_or_else(|| panic!("a {column} column"));
-        let DataType::Serie(item) = held.dtype() else {
-            panic!("a serie, got {}", held.dtype());
-        };
-        // Exactly three fixentry levels on every root-to-leaf path, each with the
-        // same four members - the tag, the name the dictionary gives it, the
-        // value as the wire spells it - the fourth a fixentries that is a
-        // non-null deeper serie twice and the nullable text leaf at the bottom.
-        let mut held = item;
-        for level in 1..=3 {
-            assert_eq!(held.name(), "fixentry", "{column} level {level}");
-            assert!(!held.is_nullable(), "{column} level {level}");
-            let members = held.dtype().as_fields().expect("an occurrence struct");
-            let names: Vec<&str> = members.iter().map(Field::name).collect();
-            assert_eq!(
-                names,
-                ["tag", "name", "value", "fixentries"],
-                "{column} level {level}",
-            );
-            assert_eq!(
-                members[0].dtype(),
-                &DataType::Int32,
-                "{column} level {level}"
-            );
-            assert!(!members[0].is_nullable(), "{column} level {level} tag");
-            // The name is the other member that cannot be null: a consumer groups
-            // a wire name by it without a dictionary of its own, so an absence
-            // there would be its problem to solve.
-            assert!(!members[1].is_nullable(), "{column} level {level} name");
-            assert!(members[2].is_nullable(), "{column} level {level} value");
-            let tail = &members[3];
-            match tail.dtype() {
-                DataType::Serie(deeper) if level < 3 => {
-                    assert!(!tail.is_nullable(), "{column} level {level} tail");
-                    held = deeper;
-                }
-                leaf if level == 3 && leaf.string_parameters().is_some() => {
-                    // Nullable, because "nothing was folded" is an absence and a
-                    // leaf that spelled it as the empty string could not be told
-                    // from one that folded an empty subtree.
-                    assert!(tail.is_nullable(), "{column} level {level} tail");
-                    break;
-                }
-                other => panic!("{column} level {level}: {other}"),
-            }
-        }
+        // One map, whatever a message holds: each key a field's `tag:name`,
+        // each value text - a scalar's wire text, anything nested its JSON -
+        // so no depth bound and no counter column stand beside it.
+        assert_eq!(
+            held.dtype(),
+            &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+        );
+        assert!(held.is_nullable());
+        assert_eq!(held.as_fix().counter().unwrap(), None);
+        assert!(root.index_of("nofixentries").is_none());
     }
 
     /// A root of `depth` components nested one inside the next, each the sole
@@ -4472,22 +4197,26 @@ mod internal {
         (root, Scalar::from_sequence([value]))
     }
 
-    /// One entry of the arrival column, read as its four members.
-    fn entry_members(entry: &Scalar) -> &[Scalar] {
-        entry.as_sequence().expect("an entry")
-    }
-
-    /// The entry of one tag among the entries of one level.
-    fn entry_tagged(entries: &[Scalar], tag: i32) -> &[Scalar] {
-        entries
+    /// The residual record of one row: each key under the text it holds.
+    fn residual(row: &Scalar, schema: &Field) -> Vec<(String, String)> {
+        let at = schema
+            .index_of(yggdryl::fix::FIXENTRIES_COLUMN)
+            .expect("the residual column");
+        row.as_sequence().expect("a row")[at]
+            .as_mapping()
+            .expect("the residual map")
             .iter()
-            .map(entry_members)
-            .find(|held| held[0] == Scalar::from(tag))
-            .unwrap_or_else(|| panic!("an entry of tag {tag}"))
+            .map(|(key, value)| {
+                (
+                    key.as_str().expect("a text key").to_owned(),
+                    value.as_str().expect("a text value").to_owned(),
+                )
+            })
+            .collect()
     }
 
     #[test]
-    fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
+    fn a_deep_arrival_is_held_whole_and_its_record_is_its_json() {
         let registry = committed();
         let codec = FixCodec::new(Arc::clone(&registry));
         // A party carrying a sub-party: the group entry, its occurrence, the
@@ -4524,8 +4253,7 @@ mod internal {
         assert_eq!(levels, 5, "the record holds what the wire nested");
         assert_eq!((held.tag(), held.value()), (523, Some("x")));
 
-        // The Arrow value materializes exactly three fixentry levels; the fourth
-        // and fifth fold into a non-empty leaf.
+        // Fully projected fields are absent from the residual record.
         let full = yggdryl::fix_schema(&registry, "row").unwrap();
         let row = deep.into_row(&full).unwrap();
         let columns = row.as_sequence().expect("a row");
@@ -4538,21 +4266,16 @@ mod internal {
             columns[full.index_of("symbol").expect("the projected symbol")].as_str(),
             Some("AAPL")
         );
-        let residual = columns[full
-            .index_of(yggdryl::fix::FIXENTRIES_COLUMN)
-            .expect("the residual column")]
-        .as_sequence()
-        .unwrap_or_default();
         assert!(
-            residual
+            residual(&row, &full)
                 .iter()
-                .map(entry_members)
-                .all(|held| { held[0] != Scalar::from(453) && held[0] != Scalar::from(55) }),
+                .all(|(key, _)| !key.starts_with("453:") && !key.starts_with("55:")),
             "fully projected fields are absent from the residual record"
         );
 
         // A projection without the typed group and symbol carries both in the
-        // residual record, where its bounded materialization can be inspected.
+        // residual record: the symbol as its text, the group as the JSON of its
+        // occurrences, every level keyed `tag:name`, whole at any depth.
         let schema = StructType::from_fields(
             full.fields()
                 .iter()
@@ -4563,44 +4286,39 @@ mod internal {
         .unwrap()
         .required_field("row");
         let row = deep.into_row(&schema).unwrap();
-        let columns = row.as_sequence().expect("a row").to_vec();
-        let entries = columns[schema
-            .index_of(yggdryl::fix::FIXENTRIES_COLUMN)
-            .expect("the residual column")]
-        .as_sequence()
-        .expect("the arrival column");
-        let level1 = entry_tagged(entries, 453);
-        let level2 = entry_members(&level1[3].as_sequence().expect("one occurrence")[0]);
-        let level3 = level2[3]
-            .as_sequence()
-            .expect("the party's members")
-            .iter()
-            .map(entry_members)
-            .find(|held| held[1].as_str() == Some("partysubids"))
-            .expect("the nested group entry");
-        let leaf = level3[3].as_str().expect("the folded text leaf");
-        assert!(!leaf.is_empty(), "two levels folded into it");
-
-        // The leaf recovers exactly the folded entries through the one JSON
-        // parser this crate has: level 4 carrying level 5.
-        let decoded = yggdryl::from_json_scalar(leaf.as_bytes()).expect("a decodable leaf");
-        let folded = decoded.as_sequence().expect("the folded children");
-        assert_eq!(folded.len(), 1);
-        let level4 = entry_members(&folded[0]);
-        // A folded entry carries the same four members in the same order as a
-        // materialized one, so a reader walks the decode exactly as it walks the
-        // levels above it.
-        assert_eq!(level4.len(), 4);
-        assert_eq!(level4[2], Scalar::Null, "an occurrence states no value");
-        let level5 = entry_tagged(level4[3].as_sequence().expect("its children"), 523);
-        assert_eq!(level5[1].as_str(), Some("partysubid"));
-        assert_eq!(level5[2].as_str(), Some("x"));
-
-        // A flat sibling's child list is empty: nothing arrived under it and
-        // nothing was folded for it. `Symbol(55)` is an ordinary child, where
-        // `ClOrdID(11)` is a fact the message lifts and holds.
-        let flat = entry_tagged(entries, 55);
-        assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
+        let held = residual(&row, &schema);
+        let text = |key: &str| {
+            held.iter()
+                .find(|(held, _)| held == key)
+                .map(|(_, value)| value.clone())
+                .unwrap_or_else(|| panic!("{key} in {held:?}"))
+        };
+        assert_eq!(text("55:symbol"), "AAPL");
+        let parties = yggdryl::from_json_scalar(text("453:parties").as_bytes())
+            .expect("the group's JSON decodes");
+        let occurrences = parties.as_sequence().expect("the occurrences");
+        assert_eq!(occurrences.len(), 1);
+        let party = occurrences[0]
+            .as_struct()
+            .expect("one occurrence's members");
+        assert_eq!(
+            party.get("448:partyid").and_then(Scalar::as_str),
+            Some("BUYSIDE")
+        );
+        let subs = party
+            .get("802:partysubids")
+            .and_then(Scalar::as_sequence)
+            .expect("the nested group");
+        assert_eq!(
+            subs[0]
+                .as_struct()
+                .and_then(|members| members.get("523:partysubid"))
+                .and_then(Scalar::as_str),
+            Some("x")
+        );
+        // And a row holding it is its own fixed point.
+        let back = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+        assert_eq!(back.into_row(&schema).unwrap(), row);
 
         // Wire emission walks the whole tree pre-order, so what comes back is
         // what went in.
@@ -4608,12 +4326,13 @@ mod internal {
         assert!(text.contains("|453=1|448=BUYSIDE|452=1|"), "{text}");
         assert!(text.contains("|802=1|523=x|"), "{text}");
 
-        // Two messages that differ only below the materialization depth still
-        // hash apart, because the digest walks the untruncated tree.
+        // Two messages that differ deep down still hash apart, because the
+        // digest walks the whole tree.
         assert_ne!(message("x").digest(), message("y").digest());
 
-        // Depth is a materialization concern, never a refusal: thirty levels
-        // read, fold and type without a complaint.
+        // Depth is never a refusal: thirty levels read and render without a
+        // complaint. No dictionary names any of them, so the row states the
+        // tower in its metadata, as the JSON of what it holds.
         let (root, value) = towering(30);
         let towering = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
         let mut held = &towering.entries()[0];
@@ -4624,7 +4343,16 @@ mod internal {
         }
         assert_eq!(levels, 30);
         let row = towering.into_row(&schema).expect("no depth refusal");
-        assert!(row.as_sequence().is_some());
+        assert!(residual(&row, &schema).is_empty());
+        let metadata = &row.as_sequence().expect("a row")[schema.index_of("metadata").unwrap()];
+        let tower = metadata
+            .as_mapping()
+            .expect("the metadata")
+            .iter()
+            .find(|(key, _)| key.as_str() == Some("level1"))
+            .and_then(|(_, value)| value.as_str())
+            .expect("the tower under its own name");
+        assert!(tower.starts_with(r#"{"level2":{"level3":"#), "{tower}");
     }
 
     #[test]
@@ -4701,92 +4429,13 @@ mod internal {
     }
 
     #[test]
-    fn shipped_derivations_stay_native_and_custom_rules_bind_once() {
-        let registry = committed();
-        let compiled = derivations(&registry).unwrap();
-        assert!(
-            compiled.is_native(),
-            "the untouched shipped registry takes the native evaluator"
-        );
-        // One compile per registry, shared by every ask.
-        assert!(
-            Arc::ptr_eq(&compiled, &derivations(&registry).unwrap()),
-            "a second ask answers the same compiled list"
-        );
-        assert!(
-            compiled.schema().is_none() && compiled.derived().count() == 0,
-            "the native plan retains no generic schema or bound term"
-        );
-
-        // A mutation forgets the compiled list, and the next ask compiles the
-        // registry as it stands then.
-        let mut edited = (*registry).clone();
-        assert!(
-            !Arc::ptr_eq(&compiled, &derivations(&edited).unwrap()),
-            "a clone compiles its own"
-        );
-        let mut gross = edited.field_by_tag(381).unwrap().clone();
-        gross
-            .as_fix_mut()
-            // Three exact operands at a third of the scale each, so the product
-            // lands back at eighteen digits with room in front of the point.
-            .set_derivation(
-                &"try_cast(lastqty as decimal128(38,6)) * try_cast(lastpx as decimal128(38,6)) * try_cast(settlcurrfxrate as decimal128(38,6))"
-                    .parse()
-                    .unwrap(),
-            )
-            .unwrap();
-        let before = derivations(&edited).unwrap();
-        edited.update(gross).unwrap();
-        let after = derivations(&edited).unwrap();
-        assert!(!Arc::ptr_eq(&before, &after), "an update recompiles");
-        assert!(
-            !after.is_native(),
-            "one edited rule selects the generic evaluator for the whole registry"
-        );
-        // The custom fallback's working schema is the ordered union of every
-        // column any term reads or fills, typed by the registry's own field.
-        let schema = after.schema().expect("a bound term");
-        let names: Vec<String> = schema
-            .fields()
-            .iter()
-            .map(|field| field.name().to_owned())
-            .collect();
-        for read in [
-            "cumqty",
-            "cxlqty",
-            "securityid",
-            "secaltids",
-            "countryofissue",
-            "possdupflag",
-            "tradingunitperiodmultiplier",
-        ] {
-            assert!(names.iter().any(|name| name == read), "{read}");
-        }
-        let group = schema.get_field("secaltids").expect("the group");
-        assert!(matches!(group.dtype(), DataType::Serie(_)));
-        assert!(names.iter().any(|held| held == "settlcurrfxrate"));
-        // The edit reads a column another rule already read, so the working
-        // schema is no wider.
-        assert_eq!(names.len(), 48, "the edit reads a column another rule read");
-        let derived: Vec<(i32, bool)> = after.derived().collect();
-        assert_eq!(derived.len(), 29);
-        assert!(derived.iter().all(|(_, bound)| *bound), "{derived:?}");
-        assert!(derived.windows(2).all(|pair| pair[0].0 < pair[1].0));
-    }
-
-    #[test]
-    fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
+    fn a_registry_of_the_crates_own_fields_derives_nothing_it_holds_no_field_for() {
         // The crate owns no derived column, so a registry holding only the
-        // crate's own fields compiles an empty list rather than a handful of
-        // terms over columns no message states.
+        // crate's own fields lands no derivation: every target is a standard
+        // field it does not hold. A message still answers its market, because
+        // the traits read the FIX fields rather than a column: the ISIN is
+        // the one the line stated under the source that names it.
         let registry = FixRegistry::new();
-        let compiled = derivations(&registry).unwrap();
-        assert!(!compiled.is_native());
-        assert_eq!(compiled.derived().count(), 0);
-        // And a message still answers its market, because the traits read the
-        // FIX fields rather than a column: nothing here was filled, and the
-        // ISIN is the one the line stated under the source that names it.
         let codec = FixCodec::new(Arc::new(registry));
         let held = codec
             .parse_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|10=0|")
@@ -4798,348 +4447,11 @@ mod internal {
             yggdryl::graph::Market::get_securityids(&held).get("ISIN"),
             Some("US0378331005")
         );
-    }
-
-    /// The plan one of the specification's retirements would be as a
-    /// `FIX:replacements` entry: the same rule, spelled as a registry states one
-    /// of its own.
-    fn plan_of_retirement(
-        registry: &FixRegistry,
-        source: i32,
-        rule: &yggdryl::internals::fix_retired::Rule,
-    ) -> String {
-        use yggdryl::internals::fix_retired::{Fill, Part, When};
-        let name = |tag: i32| {
-            registry
-                .field_by_tag(tag)
-                .expect("a field the retirement names")
-                .name()
-                .to_string()
-        };
-        let quoted = |text: &str| format!("'{}'", text.replace('\'', "''"));
-        fn term(
-            fill: &Fill,
-            source: i32,
-            name: &dyn Fn(i32) -> String,
-            quoted: &dyn Fn(&str) -> String,
-        ) -> (String, String) {
-            match *fill {
-                Fill::Constant { tag, text } => (name(tag), quoted(text)),
-                Fill::Source { tag } => (name(tag), name(source)),
-                Fill::From { tag, source: other } => (name(tag), name(other)),
-                Fill::Join { tag, parts } => {
-                    let parts: Vec<String> = parts
-                        .iter()
-                        .map(|part| match *part {
-                            Part::Text(tag) => name(tag),
-                            Part::TwoDigits(tag) => {
-                                format!("substring(concat('0', cast({} as utf8)), -2)", name(tag))
-                            }
-                        })
-                        .collect();
-                    (name(tag), format!("concat({})", parts.join(", ")))
-                }
-                Fill::Occurrence { group, members } => {
-                    let members: Vec<String> = members
-                        .iter()
-                        .map(|member| {
-                            let (name, term) = term(member, source, name, quoted);
-                            format!("{name}: {term}")
-                        })
-                        .collect();
-                    (group.to_string(), format!("[{{{}}}]", members.join(", ")))
-                }
-            }
-        }
-        let selects: Vec<String> = rule
-            .fills
-            .iter()
-            .map(|fill| {
-                let (target, spelled) = term(fill, source, &name, &quoted);
-                format!("{spelled} as {target}")
-            })
-            .collect();
-        let mut conditions = Vec::new();
-        match rule.msgtypes {
-            [] => {}
-            [one] => conditions.push(format!(":msgtype = {}", quoted(one))),
-            many => conditions.push(format!(
-                ":msgtype in ({})",
-                many.iter()
-                    .map(|held| quoted(held))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )),
-        }
-        if let Some(within) = rule.within {
-            conditions.push(format!(":group = {}", quoted(within)));
-        }
-        match rule.when {
-            When::Any => {}
-            When::Equals(text) => conditions.push(format!("{} = {}", name(source), quoted(text))),
-            When::Contains(text) => {
-                conditions.push(format!("contains({}, {})", name(source), quoted(text)));
-            }
-        }
-        let mut text = format!("select {}", selects.join(", "));
-        if !conditions.is_empty() {
-            text.push_str(" where ");
-            text.push_str(&conditions.join(" and "));
-        }
-        text
-    }
-
-    /// One line per retirement of the table, with the fields it reads beside
-    /// the retired one, and the same line again with every scalar target
-    /// already stated.
-    fn retirement_corpus(registry: &FixRegistry) -> Vec<String> {
-        use yggdryl::internals::fix_retired::{Fill, Part, RULES, When};
-        fn sample(registry: &FixRegistry, tag: i32) -> String {
-            let dtype = registry
-                .field_by_tag(tag)
-                .map(|field| field.dtype().to_string())
-                .unwrap_or_default();
-            match dtype.as_str() {
-                held if held.starts_with("decimal") || held.starts_with("float") => "12.5".into(),
-                held if held.starts_with("int") => "7".into(),
-                held if held.starts_with("datetime") => "20240102-10:15:30".into(),
-                "boolean" => "Y".into(),
-                held if held.contains("fixed") => "202406".into(),
-                _ => "X1".into(),
-            }
-        }
-        fn beside(registry: &FixRegistry, fills: &[Fill], line: &mut String) {
-            for fill in fills {
-                match fill {
-                    Fill::From { source, .. } => {
-                        line.push_str(&format!("|{source}={}", sample(registry, *source)));
-                    }
-                    Fill::Join { parts, .. } => {
-                        for part in parts.iter() {
-                            let (tag, text) = match part {
-                                Part::Text(tag) => (*tag, sample(registry, *tag)),
-                                Part::TwoDigits(tag) => (*tag, "5".to_string()),
-                            };
-                            line.push_str(&format!("|{tag}={text}"));
-                        }
-                    }
-                    Fill::Occurrence { members, .. } => beside(registry, members, line),
-                    Fill::Constant { .. } | Fill::Source { .. } => {}
-                }
-            }
-        }
-        fn scalar_targets(fills: &[Fill], source: i32, out: &mut Vec<i32>) {
-            for fill in fills {
-                match *fill {
-                    Fill::Constant { tag, .. }
-                    | Fill::Source { tag }
-                    | Fill::From { tag, .. }
-                    | Fill::Join { tag, .. } => {
-                        if tag != source {
-                            out.push(tag);
-                        }
-                    }
-                    Fill::Occurrence { .. } => {}
-                }
-            }
-        }
-        let mut lines = Vec::new();
-        for (tag, rules) in RULES {
-            for rule in rules.iter() {
-                let msgtype = rule.msgtypes.first().copied().unwrap_or("D");
-                let values: Vec<String> = match rule.when {
-                    When::Any => vec![sample(registry, *tag)],
-                    When::Equals(text) => vec![text.to_string()],
-                    When::Contains(text) => {
-                        vec![text.to_string(), format!("G {text}"), format!("{text} G")]
-                    }
-                };
-                for value in values {
-                    let mut line = format!("8=FIX.4.2|35={msgtype}|11=A|37=O1");
-                    match rule.within {
-                        Some("allocgrp") => line.push_str(&format!(
-                            "|70=A1|78=1|NoAllocs[0].79=ACCT|NoAllocs[0].{tag}={value}"
-                        )),
-                        Some(other) => panic!("no line shape for an occurrence of {other}"),
-                        None => line.push_str(&format!("|{tag}={value}")),
-                    }
-                    beside(registry, rule.fills, &mut line);
-                    let mut stated = line.clone();
-                    let mut targets = Vec::new();
-                    scalar_targets(rule.fills, *tag, &mut targets);
-                    for target in targets {
-                        stated.push_str(&format!("|{target}={}", sample(registry, target)));
-                    }
-                    for mut held in [line, stated] {
-                        held.push_str("|10=0|");
-                        lines.push(held);
-                    }
-                }
-            }
-        }
-        lines
-    }
-
-    /// The specification's retirements, held as the crate's table, restate a
-    /// message exactly as the same rules stated as a registry's own
-    /// `FIX:replacements` documents would - and a document on a field wins whole
-    /// over the table, which is what makes the two registries here differ in
-    /// how they read and not in what they answer. Every rendered plan resolves
-    /// against the committed dictionary, so a reader applying it never guesses.
-    #[test]
-    fn the_specifications_retirements_restate_as_documents_of_the_same_rules_would() {
-        use yggdryl::internals::fix_retired::RULES;
-        let committed = committed();
-        let snapshot = yggdryl::from_json_scalar(committed.into_json().unwrap()).unwrap();
-        let record = snapshot.as_struct().expect("a registry snapshot");
-        let fields = record[yggdryl::FixCategory::Fields.as_str()]
-            .as_sequence()
-            .expect("the scalar definitions");
-        let mut stripped = Vec::with_capacity(fields.len());
-        let mut stated = Vec::with_capacity(fields.len());
-        let mut touched = 0;
-        for value in fields {
-            let mut field =
-                Field::from_value(yggdryl::internals::fix_document::load(value.clone()).unwrap())
-                    .unwrap();
-            let tag = field.as_fix().tag().unwrap().unwrap_or_default();
-            let Some((_, rules)) = RULES.iter().find(|(held, _)| *held == tag) else {
-                stripped.push(value.clone());
-                stated.push(value.clone());
-                continue;
-            };
-            field
-                .as_fix_mut()
-                .remove_replacements()
-                .expect("replacement metadata can be removed");
-            assert!(
-                field.as_fix().replacements().next().is_none(),
-                "{} is stripped before either fixture is built",
-                field.name()
-            );
-            stripped
-                .push(yggdryl::internals::fix_document::dump(field.clone().into_value()).unwrap());
-
-            let entries: Vec<FixReplacement> = rules
-                .iter()
-                .map(|rule| {
-                    let plan: Plan = plan_of_retirement(&committed, tag, rule)
-                        .parse()
-                        .expect("a retirement spells a plan");
-                    assert_plan_resolves(&committed, &plan, field.name());
-                    FixReplacement::new(plan)
-                })
-                .collect();
-            field
-                .as_fix_mut()
-                .set_replacements(&entries)
-                .expect("a document");
-            stated.push(yggdryl::internals::fix_document::dump(field.into_value()).unwrap());
-            touched += 1;
-        }
-        assert_eq!(touched, 37, "every specification retirement was restated");
-        assert_eq!(touched, RULES.len());
-
-        let with_fields = |fields| {
-            let mut snapshot = record.clone();
-            snapshot.insert(
-                yggdryl::FixCategory::Fields.as_str().into(),
-                Scalar::from_sequence(fields),
-            );
-            Scalar::from_struct(snapshot).expect("a registry snapshot")
-        };
-        let table = Arc::new(
-            FixRegistry::from_json(
-                &yggdryl::into_json_scalar(&with_fields(stripped)).expect("the table snapshot"),
-            )
-            .expect("the table registry"),
+        assert_eq!(
+            held.get_by_tag(470),
+            None,
+            "no CountryOfIssue field to fill"
         );
-        for (tag, _) in RULES {
-            assert!(
-                table
-                    .field_by_tag(*tag)
-                    .expect("a retired tag the table holds")
-                    .as_fix()
-                    .replacements()
-                    .next()
-                    .is_none(),
-                "tag {tag} reaches the specification table"
-            );
-        }
-        let documented = Arc::new(
-            FixRegistry::from_json(
-                &yggdryl::into_json_scalar(&with_fields(stated)).expect("the documented snapshot"),
-            )
-            .expect("the documented registry"),
-        );
-        let clock = yggdryl::Scalar::datetime64(
-            1_704_190_530_000_000_000,
-            yggdryl::TimeUnit::Nanosecond,
-            yggdryl::Timezone::UTC,
-        )
-        .unwrap();
-        let codec = |registry: &Arc<FixRegistry>| {
-            FixCodec::new(Arc::clone(registry))
-                .try_with_default_sending_time(Some(clock.clone()))
-                .unwrap()
-                .with_exclude_msgtypes::<[&str; 0], &str>([])
-        };
-        let by_table = codec(&table);
-        let by_document = codec(&documented);
-        let mut lines: Vec<Vec<u8>> = retirement_corpus(&table)
-            .into_iter()
-            .map(String::into_bytes)
-            .collect();
-        let capture =
-            std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"))
-                .unwrap();
-        lines.extend(
-            capture
-                .split(|byte| *byte == b'\n')
-                .filter(|line| !line.is_empty())
-                .map(<[u8]>::to_vec),
-        );
-        // The row's shape without its metadata, which is the one thing the two
-        // registries differ in: the documents one carries and the other does not.
-        let shape = |msg: &FixMsg| {
-            let names: Vec<(String, bool)> = msg
-                .as_field()
-                .fields()
-                .iter()
-                .map(|field| (field.name().to_string(), field.is_nullable()))
-                .collect();
-            (
-                names,
-                yggdryl::internals::fix_schema::shape_digest(msg.as_field()),
-            )
-        };
-        let mut compared = 0;
-        for line in &lines {
-            let read = |codec: &FixCodec| {
-                codec
-                    .parse_line(line)
-                    .map(|messages| messages.collect::<Vec<_>>())
-                    .unwrap_or_default()
-            };
-            let (tabled, documented) = (read(&by_table), read(&by_document));
-            let shown = String::from_utf8_lossy(line);
-            assert_eq!(tabled.len(), documented.len(), "{shown}");
-            for (tabled, documented) in tabled.iter().zip(&documented) {
-                let (Ok(tabled), Ok(documented)) = (tabled, documented) else {
-                    assert!(tabled.is_err() && documented.is_err(), "{shown}");
-                    continue;
-                };
-                assert_eq!(tabled.as_value(), documented.as_value(), "{shown}");
-                assert_eq!(shape(tabled), shape(documented), "{shown}");
-                assert_eq!(
-                    tabled.into_bytes(b'|'),
-                    documented.into_bytes(b'|'),
-                    "{shown}"
-                );
-                compared += 1;
-            }
-        }
-        assert!(compared > 300, "{compared} messages compared");
     }
 }
 
@@ -5196,14 +4508,19 @@ mod capture {
         TAGGED, WORKING, FILLED, NAMED, FIXML, PLUGIN, PROSE, CHATTER,
     ];
 
-    /// The messages the capture states: one per line but the two silent ones.
+    /// The messages the capture states: one per line but the two silent ones,
+    /// and the execution the parse splits off each of the two fills (A12).
     ///
     /// `PROSE` and `CHATTER` state no message - the first holds no pair at all,
     /// the second holds one no separator was named for - so a message count is
-    /// two under the line count. A line is a text row whatever it holds, which is
-    /// why `CAPTURE.len()` is what a line count is compared against and this is
-    /// what a message count is.
-    const MESSAGES: usize = CAPTURE.len() - 2;
+    /// two under the line count, and `WORKING` and `FILLED` each state two: the
+    /// report and its execution. A line is a text row whatever it holds, which
+    /// is why `CAPTURE.len()` is what a line count is compared against and
+    /// this is what a message count is.
+    const MESSAGES: usize = CAPTURE.len() - 2 + 2;
+
+    /// The capture line each message is read from, in message order.
+    const LINE_OF: [usize; MESSAGES] = [0, 1, 1, 2, 2, 3, 4, 5];
 
     /// The capture as the bytes a log file holds.
     fn corpus() -> Vec<u8> {
@@ -5389,7 +4706,11 @@ mod capture {
         // does not read, stating nothing - and every other row arrived with
         // entries, the FIXML row's `Order` among them.
         for (at, held) in one_at_a_time.iter().enumerate() {
-            assert_eq!(held.entries().is_empty(), CAPTURE[at] == PLUGIN, "row {at}");
+            assert_eq!(
+                held.entries().is_empty(),
+                CAPTURE[LINE_OF[at]] == PLUGIN,
+                "row {at}"
+            );
         }
 
         // Batched: the same capture through the batch door, which is the same
@@ -5425,7 +4746,7 @@ mod capture {
         // the typed-column checks above prove represented facts arrive identically.
         let entries = column(batch, "fixentries");
         assert_eq!(entries.len(), one_at_a_time.len());
-        assert!(entries.iter().all(|entry| entry.as_sequence().is_some()));
+        assert!(entries.iter().all(|entry| entry.as_mapping().is_some()));
 
         // Which way a message moved is FIX's own tag 385, a code of its set,
         // retained once per row and shared by every message that row states.
@@ -5434,8 +4755,8 @@ mod capture {
         // The bridge row wrote `recv` in front of its frame, and a verb the
         // transport wrote wins over everything else; a bare document states
         // nothing of which way it moved, so the batch door's own pin fills it.
-        assert_eq!(directions[3].as_str(), Some("R"));
-        assert_eq!(directions[5].as_str(), Some("S"));
+        assert_eq!(directions[5].as_str(), Some("R"));
+        assert_eq!(directions[7].as_str(), Some("S"));
     }
 
     #[test]
@@ -5646,23 +4967,33 @@ mod capture {
             .next()
             .expect("one batch")
             .expect("a batch");
-        assert_eq!(batch.num_rows(), 2);
+        // The fill's row is its report and the execution its parse splits off
+        // (A12), each carrying the row's own cells.
+        assert_eq!(batch.num_rows(), 3);
         assert_eq!(
             column(&batch, "rownum"),
-            [Scalar::from(41_i64), Scalar::from(42_i64)]
+            [
+                Scalar::from(41_i64),
+                Scalar::from(42_i64),
+                Scalar::from(42_i64)
+            ]
         );
         assert_eq!(
             column(&batch, "url"),
-            vec![Scalar::from("file:///bulk.log"); 2]
+            vec![Scalar::from("file:///bulk.log"); 3]
         );
         assert_eq!(
             column(&batch, "body"),
             [
                 Scalar::from(WILDCARD.as_bytes().to_vec()),
                 Scalar::from(WORKING.as_bytes().to_vec()),
+                Scalar::from(WORKING.as_bytes().to_vec()),
             ]
         );
-        assert_eq!(tag_column(&batch, 35), [Scalar::Null, Scalar::from("8")]);
+        assert_eq!(
+            tag_column(&batch, 35),
+            [Scalar::Null, Scalar::from("8"), Scalar::from("8")]
+        );
     }
 
     #[test]

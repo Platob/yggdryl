@@ -94,6 +94,15 @@ fn no_proxy_reads_ports_addresses_and_networks() {
         ("[::1]:8080", "http://[::1]:8080/", true),
         ("fd00::/8", "http://[fd12::1]/", true),
         ("fd00::/8", "http://10.1.2.3/", false),
+        // A bracketed network keeps its bits: the whole /8, not its one
+        // first address; a port after them narrows it as anywhere else.
+        ("[fd00::]/8", "http://[fd12::1]/", true),
+        ("[fd00::]/8", "http://[fe80::1]/", false),
+        ("[fd00::]/8:8080", "http://[fd12::1]:8080/", true),
+        ("[fd00::]/8:8080", "http://[fd12::1]/", false),
+        // An IPv4-mapped IPv6 host is the IPv4 address it maps.
+        ("10.0.0.0/8", "http://[::ffff:10.1.2.3]/", true),
+        ("::ffff:10.0.0.0/104", "http://10.1.2.3/", true),
     ] {
         let variables = [proxy, ("NO_PROXY", list)];
         assert_eq!(

@@ -45,16 +45,13 @@ def definition_tags(catalog: dict) -> dict:
 def built(document: bytes) -> tuple[dict, dict]:
     """`build` over one hand-written Latest document, and what it answers.
 
-    The replacement and derivation tables name tags of the real specification
-    - tag 20 leads the first, and the second reads the `SecurityType` code
-    set - so neither resolves against a fixture of two fields, and neither is
-    what the code set tests pin.
+    The identifier maps name tags of the real specification, so they do not
+    resolve against a fixture of two fields, and are not what the code set
+    tests pin.
     """
     parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
     parsed["orchestra-latest"] = GENERATOR.parse_orchestra(document)
-    with mock.patch.object(GENERATOR, "attach_replacements"), mock.patch.object(
-        GENERATOR, "attach_identifier_maps"
-    ), mock.patch.object(GENERATOR, "attach_derivations"):
+    with mock.patch.object(GENERATOR, "attach_identifier_maps"):
         return GENERATOR.build(parsed)
 
 
@@ -408,6 +405,40 @@ class FixCatalogGeneration(unittest.TestCase):
             self.assertFalse((out / "codesets" / "quotecodeset.json").exists())
             self.assertTrue((out / "codesets" / "sidecodeset.json").exists())
             self.assertEqual(set(documents), set(hashes))
+
+
+class FixConstantsGeneration(unittest.TestCase):
+    def rendered_constants(self) -> str:
+        """`constants.rs` over a catalog stating nothing."""
+        parsed = {source.source_id: {"header": []} for source in GENERATOR.SOURCES}
+        latest = {"fields": {}, "groups": {}, "components": {}, "messages": {}}
+        return GENERATOR.render_constants(latest, parsed, {"fields": [], "groups": [], "components": []})
+
+    def test_constants_list_no_message_category_the_crate_enum_owns(self) -> None:
+        # `MarketDataKind` is the one owner of the category set: the generator
+        # files each message type under a name and lists the names nowhere.
+        rendered = self.rendered_constants()
+        for retired in ("MSGCATEGORIES", "MSGCATEGORY_CODES", "msgcat_code", "msgcat_name"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, rendered)
+                self.assertFalse(hasattr(GENERATOR, retired))
+        self.assertIn("pub(super) fn msgcat_of(msgtype: &str) -> Option<&'static str> {", rendered)
+        self.assertIn('        "D" => Some("ORDR"),', rendered)
+        self.assertIn('        "8" => Some("EXEC"),', rendered)
+
+    def test_no_rule_is_generated(self) -> None:
+        # The derivations and the replacements are the crate's native rules:
+        # the dictionary carries neither, and the constants sign neither.
+        rendered = self.rendered_constants()
+        self.assertNotIn("SHIPPED_DERIVATIONS", rendered)
+        for retired in (
+            "DERIVATION_RULES",
+            "REPLACEMENT_RULES",
+            "attach_derivations",
+            "attach_replacements",
+        ):
+            with self.subTest(retired=retired):
+                self.assertFalse(hasattr(GENERATOR, retired))
 
 
 if __name__ == "__main__":

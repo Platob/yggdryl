@@ -60,10 +60,8 @@ export {
   type HttpRecorded,
   type HttpServerOptions,
   type HttpStats,
-  type LaneInput,
   type MetadataEntry,
   type PartitionEntry,
-  type SnapshotPartitionInput,
   type StringParameters,
   type StringParametersInput,
   type TimezoneAlias,
@@ -137,7 +135,6 @@ import {
   Snapshot,
   SnapshotRef,
   Table,
-  Lane,
   BookRef,
   Order,
   Quote,
@@ -146,8 +143,6 @@ import {
   QuoteEvent,
   ExecutionEvent,
   TradeEvent,
-  SnapshotPartition,
-  BookSide,
   BookEvent,
   SnapshotEvent,
   MarketData,
@@ -266,7 +261,6 @@ export type {
   Snapshot,
   SnapshotRef,
   Table,
-  Lane,
   BookRef,
   Order,
   Quote,
@@ -275,8 +269,6 @@ export type {
   QuoteEvent,
   ExecutionEvent,
   TradeEvent,
-  SnapshotPartition,
-  BookSide,
   BookEvent,
   SnapshotEvent,
   MarketData,
@@ -392,9 +384,11 @@ export type DataTypeId =
   | 'figi'
   | 'side'
   | 'state'
+  | 'marketdatakind'
   | 'timeinforce'
   | 'unit'
   | 'ric'
+  | 'forex'
   | 'uuid'
   | 'version'
   | 'url'
@@ -454,6 +448,7 @@ export type DataTypeKind =
   | 'temporal'
   | 'text'
   | 'code'
+  | 'enum'
   | 'bytes'
   | 'nested'
   | 'geospatial'
@@ -501,11 +496,13 @@ interface DataTypeKindById {
   sedol: 'code'
   bbg: 'code'
   figi: 'code'
-  side: 'code'
-  state: 'code'
+  side: 'enum'
+  state: 'enum'
+  marketdatakind: 'enum'
   timeinforce: 'code'
   unit: 'code'
   ric: 'code'
+  forex: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -772,7 +769,9 @@ declare module './index' {
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each stated as the one after the live message it follows -
      * its `prevuuid`, `prevunix`, `seqnum` and the chain's `creaunix` - and
-     * settled again.
+     * settled again. The capture is collected and sorted whole, unless
+     * `sortedLifecycle` states it arrives in instant order: then it is read
+     * as it comes, one epoch hour held at a time.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -781,21 +780,21 @@ declare module './index' {
      */
     arrowReader(schema: Field, messages: Iterable<FixMsg>): BatchReader
     /**
-     * Stream sorted messages through native market operations and books into
-     * nested Arrow batches. A positive snapshot width is epoch aligned;
-     * `global` consolidates symbols into one `GLOBAL` book.
+     * Stream sorted messages through native market data and books into
+     * nested Arrow batches, one book per book key and instant. A positive
+     * snapshot width is epoch aligned.
      */
-    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number, global?: boolean): BatchReader
+    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number): BatchReader
     /**
      * The sorted door: a capture collected, what `bookArrowReader` admits
-     * expanded into market operations, stably sorted by `snapunix`, else
+     * expanded into market data, stably sorted by `snapunix`, else
      * `currunix`. Source errors and expansion refusals come first, in
      * source order, each thrown by its own `next`; a failure of the
      * iterable itself is thrown once, in place of the end.
      */
-    marketOperations(messages: Iterable<FixMsg>): MarketDataRowIterator
+    marketData(messages: Iterable<FixMsg>): MarketDataRowIterator
     /**
-     * `marketOperations` as bounded batches of lifted `marketdata` rows; one
+     * `marketData` as bounded batches of lifted `marketdata` rows; one
      * intake failure is the reader's only item.
      */
     marketArrowReader(messages: Iterable<FixMsg>): BatchReader
@@ -814,7 +813,7 @@ declare module './index' {
     /** The batch twins take whatever `BatchReader.from` accepts. */
     parseTextArrowReader(source: BatchSource): BatchReader
     lifecycleArrowReader(source: BatchSource): BatchReader
-    marketOperationsArrowReader(source: BatchSource): BatchReader
+    marketDataArrowReader(source: BatchSource): BatchReader
     formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
@@ -1261,10 +1260,14 @@ export type SedolField = FieldOf<'sedol', string>
 export type BbgField = FieldOf<'bbg', string>
 /** FIGI, the twelve-character Financial Instrument Global Identifier closed by its check digit. */
 export type FigiField = FieldOf<'figi', string>
-/** FIX Side(54), the one-character order side, held to four bytes. */
-export type SideField = FieldOf<'side', string>
-/** An order state ranked from the first to the terminal ones, held to ten bytes. */
+/** FIX Side(54), an enum stored as the `int32` code of its member and crossing as the member's name. */
+export type SideField = FieldOf<'side', SideName>
+/** An order state ranked from the first to the terminal ones, stored as the `int32` code of its member. */
 export type StateField = FieldOf<'state', string>
+/** FIX's MsgCat code set, an enum stored as the `int32` code of its member and crossing as the member's name. */
+export type MarketDataKindField = FieldOf<'marketdatakind', MarketDataKindName>
+/** A currency pair, `CCY/CCY`, stored as its text. */
+export type ForexField = FieldOf<'forex', string>
 /** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
@@ -1571,9 +1574,11 @@ export interface FieldsNamespace {
   figi(name: string, options?: FieldOptions): FigiField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
+  marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
+  forex(name: string, options?: FieldOptions): ForexField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2202,11 +2207,15 @@ export interface FieldsNamespace {
   side<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'side', string, N, O>
+  ): NamedField<'side', SideName, N, O>
   state<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
   ): NamedField<'state', string, N, O>
+  marketdatakind<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'marketdatakind', MarketDataKindName, N, O>
   timeinforce<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -2225,6 +2234,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'ric', string, N, O>
+  forex<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'forex', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -2916,6 +2929,7 @@ export declare const State: Readonly<{
   STATUS: 3001
   TRIGGERED: 3002
   ACTIVE: 3003
+  UPDATED: 3004
   IN_PROGRESS: 4000
   PARTIALLY_FILLED: 4001
   TRADE: 4002
@@ -2964,6 +2978,71 @@ export declare const State: Readonly<{
 /** The stored name of one state. */
 export type StateName = keyof typeof State
 
+/**
+ * What kind of market data an element is: FIX's MsgCat code set, each
+ * member's four-letter name under the `int32` code a `marketdatakind`
+ * column stores - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a
+ * trade `TRAD`, a book `BOOK`, and `UNKN` for a type the dictionary files
+ * under none.
+ */
+export declare const MarketDataKind: Readonly<{
+  UNKN: 0
+  ACCT: 1
+  ALLO: 2
+  BOOK: 3
+  CERT: 4
+  COLL: 5
+  COMM: 6
+  CONF: 7
+  EXEC: 8
+  MKST: 9
+  ORDR: 10
+  PAYM: 11
+  POSN: 12
+  PRTY: 13
+  QUOT: 14
+  REGI: 15
+  RISK: 16
+  SECU: 17
+  SESS: 18
+  SETL: 19
+  STRM: 20
+  TRAD: 21
+}>
+
+/** The stored name of one market data kind. */
+export type MarketDataKindName = keyof typeof MarketDataKind
+
+/**
+ * FIX's `Side(54)`: which side of the market a trade took, each member's
+ * stored name under the `int32` code a `side` column stores - `UNKNOWN` at
+ * zero, then the seventeen sides in FIX's own order, so a code is the
+ * position of its one-character wire code.
+ */
+export declare const Side: Readonly<{
+  UNKNOWN: 0
+  BUY: 1
+  SELL: 2
+  BUYMINUS: 3
+  SELLPLUS: 4
+  SSHORT: 5
+  SSHORTEX: 6
+  UNDISC: 7
+  CROSS: 8
+  CROSSSH: 9
+  CROSSSHX: 10
+  ASDEF: 11
+  OPPOSITE: 12
+  SUBSCR: 13
+  REDEEM: 14
+  LEND: 15
+  BORROW: 16
+  SELLUND: 17
+}>
+
+/** The stored name of one side. */
+export type SideName = keyof typeof Side
+
 export declare const enums: {
   /** Every datatype variant identity, e.g. `'int64'`, `'decimal128'`. */
   readonly dataTypeIds: readonly DataTypeId[]
@@ -2998,16 +3077,23 @@ export declare const enums: {
   readonly marketKinds: readonly string[]
   /**
    * Every named view `graph.MarketData.plan` and `applyView` read, e.g.
-   * `'orders'`, `'book_sides'`, `'lifecycle'`.
+   * `'orders'`, `'books'`, `'lifecycle'`.
    */
   readonly marketViews: readonly string[]
   /** Every `BookRef.action` spelling. */
   readonly mdUpdateActions: readonly string[]
   /** The sixteen event column names, in schema order. */
   readonly eventColumns: readonly string[]
-  /** The nineteen market column names, in schema order. */
+  /**
+   * The twenty-seven market column names, in schema order: `price`,
+   * `currency`, `quantity`, `unit`, `side`, `securityids`, `isincode`,
+   * `cficode`, `miccode`, `lastpx`, `lastqty`, `avgpx`, `cumqty`,
+   * `leavesqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `bidpx`,
+   * `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`,
+   * `metadata`.
+   */
   readonly marketColumns: readonly string[]
-  /** The eight operation column names, in schema order. */
+  /** The three operation column names, in schema order: `tif`, `tradable`, `altids`. */
   readonly operationColumns: readonly string[]
 }
 /** Generic format-inferred byte codec. */
@@ -4176,8 +4262,8 @@ export interface Fix {
   schemaCarrying(carrier: Field, read: Field): Field
   /**
    * One row's tagged columns, in order: the crate's own, the header, the
-   * body, the groups, the trailer, then `385` and the `65027` that counts
-   * the residual `fixentries` group closing the row.
+   * body, the groups, the trailer, then `385`; the residual `fixentries`
+   * map closes the row.
    */
   schemaTags(): number[]
   /**
@@ -4187,7 +4273,8 @@ export interface Fix {
    * the security-identifier views, what a bridge's capture states - `msgctxid`,
    * `msgpluginid`, `msgsessionid` - the capture's own column `sourceurl`,
    * which whoever read the line states on the row and no message holds,
-   * and the `nofixentries` counting the residual record. Every registry
+   * and the instrument, order and bridge facts a message names, numbered
+   * contiguously from `65001`. Every registry
    * holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks.
@@ -4197,13 +4284,12 @@ export interface Fix {
 
 export declare const fix: Fix
 
-/** Any value a market stream carries: a `MarketData` or one of its ten leaves. */
+/** Any value a market stream carries: a `MarketData` or one of its nine leaves. */
 export type MarketItem =
   | MarketData
   | Order
   | Quote
   | Execution
-  | BookSide
   | OrderEvent
   | QuoteEvent
   | ExecutionEvent
@@ -4217,8 +4303,9 @@ export type MarketItem =
  * `crosscode`/`srcuuids`, plus on an event every other event column but
  * `currunix` - case-folded. A derived identity (`curruuid`, `crossuuid`,
  * `currhashcode`, `crosshashcode`) is refused by name. A fact given as
- * `undefined` is not given; `null` clears it; `bid`/`ask` take a `Lane` or
- * its six slots, and any other graph value is refused naming its key.
+ * `undefined` is not given; `null` clears it; `fxrates` takes a plain
+ * object keyed by target currency, and any graph value is refused naming its
+ * key.
  */
 export type OperationFactsInput = Scalar | Record<string, unknown>
 
@@ -4259,7 +4346,7 @@ export interface OperationEventConstructor<T> {
  * streams are; a failure behind the iterable is thrown as itself.
  */
 export interface BookIteratorConstructor {
-  new (items: Iterable<MarketItem>, snapshotMillis?: number, global?: boolean): BookIterator
+  new (items: Iterable<MarketItem>, snapshotMillis?: number): BookIterator
   readonly prototype: BookIterator
 }
 
@@ -4319,15 +4406,13 @@ declare module './index' {
 
 /**
  * `yggdryl::graph`: the typed market leaves - an order, a quote or an
- * execution, undated or dated, a trade, a book, its sides and its snapshot
- * control - `MarketData`, the one value over them, and the two walks.
+ * execution, undated or dated, a trade, a book and its snapshot control -
+ * `MarketData`, the one value over them, and the two walks.
  * Nothing here resolves, folds, merges or validates a fact; every
  * constructor redirects to the native core door named beside it, and a
  * value crosses the boundary through the one generic `Scalar.from` door.
  */
 export interface Graph {
-  /** One lane of a quote: what a party is willing to pay or be paid. */
-  readonly Lane: typeof Lane
   /** The typed book-control facts a market-data entry carries. */
   readonly BookRef: typeof BookRef
   /** An undated order. */
@@ -4344,10 +4429,6 @@ export interface Graph {
   readonly ExecutionEvent: OperationEventConstructor<ExecutionEvent>
   /** A composite trade: one operation event whose executions are the sided fills it is made of. */
   readonly TradeEvent: typeof TradeEvent
-  /** One scope a full snapshot replaces. */
-  readonly SnapshotPartition: typeof SnapshotPartition
-  /** One side of a book: persistent live orders and quotes, beside its pending deltas. */
-  readonly BookSide: typeof BookSide
   /** One coherent view of a market at one exact nanosecond instant. */
   readonly BookEvent: typeof BookEvent
   /** A full-snapshot control: the event a full replacement is, with the scope it replaces. */
@@ -4357,15 +4438,13 @@ export interface Graph {
   /**
    * A stream of `MarketData`: the lazy row-decode walk
    * `MarketData.fromArrowReader` answers, and the sorted operations
-   * `FixCodec.marketOperations` answers.
+   * `FixCodec.marketData` answers.
    */
   readonly MarketDataRowIterator: typeof MarketDataRowIterator
   /** Books from a sorted stream of market items, pulling them lazily. */
   readonly BookIterator: BookIteratorConstructor
   /** A walk that chains each operation event to the live element it follows. */
   readonly EventIterator: EventIteratorConstructor
-  /** The symbol of the one consolidated book a global walk emits. */
-  readonly GLOBAL_SYMBOL: string
   /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */
   readonly ENTRY_ID: string
   /** The alternate-identifier key an entry's `MDEntryRefID(280)` is held under. */

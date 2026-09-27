@@ -335,6 +335,10 @@ assert!(ccy.string_parameters().is_none());
 assert_eq!(ccy.scalar("USD")?.kind(), "ccy");
 assert_ne!(ccy.scalar("USD")?, Scalar::from("USD")); // a code is not a string
 assert!(DataType::Isin.scalar("US0378331006").is_err()); // check digit
+// A currency pair: every spelling a feed writes, one stored `CCY/CCY`.
+assert_eq!(DataType::forex().code_width(), Some(7));
+assert_eq!(DataType::forex().scalar("eurusd")?, DataType::forex().scalar("EUR-USD")?);
+assert!(DataType::forex().scalar("EUR/EUR").is_err());
 
 let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
 let id = DataType::uuid().scalar(text)?;
@@ -343,6 +347,34 @@ assert_eq!(
     DataType::from_str("binary(2)")?.scalar(vec![1_u8, 2])?.as_bytes(),
     Some(&[1_u8, 2][..]),
 );
+```
+
+## Enums: side, marketdatakind, state
+
+`side`, `marketdatakind` and `state` are the `enum` family: each member is an
+`int32` code in a column and its stored name in text, read from every spelling
+its vocabulary has. A side is never absent - `UNKNOWN` (code 0) is unstated.
+
+```rust
+use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
+
+// A side reads its stored name, FIX's wire code or the specification's name.
+assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
+assert_eq!(Side::from_spelling("Sell short"), Some(Side::SShort));
+assert_eq!((Side::Buy.code(), Side::Buy.as_str()), (1, "BUY"));
+assert_eq!(Side::default(), Side::Unknown);
+assert_eq!(DataType::Side.scalar("SELL")?, Scalar::Side(Side::Sell));
+assert_eq!(DataType::Side.kind().as_str(), "enum");
+
+// FIX's MsgCat code set: the category every market data row is filed under.
+assert_eq!(MarketDataKind::from_spelling("quotation"), Some(MarketDataKind::Quotation));
+assert_eq!((MarketDataKind::Trade.code(), MarketDataKind::Trade.as_str()), (21, "TRAD"));
+assert_eq!(MarketDataKind::from_spelling("10"), None, "a stored code is an integer, never text");
+assert!(DataType::marketdatakind().is_enum());
+
+// Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
+assert_eq!(State::Updated.code(), 3004);
+assert!(State::Updated.is_new_like() && State::Updated.is_live());
 ```
 
 ## Nested values: serie, map, union, dictionary

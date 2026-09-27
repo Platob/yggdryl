@@ -1,6 +1,6 @@
 # CLI
 
-`ygg fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees, with `codesets` beside them for the vocabularies they read by; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
+`yggdryl fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees, with `codesets` beside them for the vocabularies they read by; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
 
 ## Contract
 
@@ -27,11 +27,11 @@
 Read or search the committed catalog by category:
 
 ```bash
-ygg fix --root config/fix fields list Party --limit 20
-ygg fix --root config/fix fields read 453 --json
-ygg fix --root config/fix groups read Parties --json
-ygg fix --root config/fix components read Party
-ygg fix --root config/fix components list Order
+yggdryl fix --root config/fix fields list Party --limit 20
+yggdryl fix --root config/fix fields read 453 --json
+yggdryl fix --root config/fix groups read Parties --json
+yggdryl fix --root config/fix components read Party
+yggdryl fix --root config/fix components list Order
 ```
 
 `NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate Serie definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `FIX:msgtype` wire code.
@@ -42,7 +42,7 @@ The published wheel includes the native executable. From a checkout, Cargo runs 
 
 ```bash
 pip install yggdryl
-ygg fix --help
+yggdryl fix --help
 cargo run -p yggdryl-cli -- fix fields list Symbol
 ```
 
@@ -86,18 +86,18 @@ A field key is a decimal tag or a name; named categories use their definition na
 `--input` replaces positional name/type and all definition flags. Quote datatype expressions containing spaces or shell metacharacters; a group occurrence must be a non-null Struct.
 
 ```bash
-ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
-ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
-ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
-ygg fix --root scratch/catalog groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
-ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
-ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
-ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset
-ygg fix --root scratch/catalog codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
-ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
-ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
-ygg fix --root scratch/catalog fields read Desk_Value
-ygg fix --root scratch/catalog fields list --dialect desk
+yggdryl fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
+yggdryl fix --root scratch/catalog fields create PartyID utf8 --tag 448
+yggdryl fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
+yggdryl fix --root scratch/catalog groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
+yggdryl fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
+yggdryl fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+yggdryl fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset
+yggdryl fix --root scratch/catalog codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
+yggdryl fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
+yggdryl fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
+yggdryl fix --root scratch/catalog fields read Desk_Value
+yggdryl fix --root scratch/catalog fields list --dialect desk
 ```
 
 The read shows `identity -630917675`, the signed XXH32 of the tag and the folded name, and `dialects desk, venue`; the listing filtered on `desk` holds that one row. A field's identity is its tag and its name, so a second field on a held tag under another name is a new definition beside the holder: `fields create OtherName int64 --tag 5001` succeeds, `fields read OtherName` answers it, the bare `5001` keeps answering `DeskValue`, whose `names` entry now lists `OtherName`, and `fields list 5001` shows both rows. The same folded name on the same tag - `desk_value` with `--tag 5001` - is the existing identity and is refused, as is a held name on another tag. `update` replaces membership with what it states: an update without `--dialect` leaves the field a member of nothing.
@@ -115,12 +115,12 @@ be combined with `--identifiers`.
 A vocabulary is the dictionary's, not one field's, so it has its own verbs: `list` shows what is held with the size of each set and how many fields read by it, `read` prints the members or the document a store writes, `write` states them, and `delete` takes a set away.
 
 ```bash
-ygg fix --root config/fix codesets list side --limit 20
-ygg fix --root config/fix codesets read sidecodeset
-ygg fix --root config/fix codesets read sidecodeset --json
-ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
-ygg fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"value":"7","name":"Undisclosed"}]'
-ygg fix --root scratch/catalog codesets delete sidecodeset
+yggdryl fix --root config/fix codesets list side --limit 20
+yggdryl fix --root config/fix codesets read sidecodeset
+yggdryl fix --root config/fix codesets read sidecodeset --json
+yggdryl fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+yggdryl fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"value":"7","name":"Undisclosed"}]'
+yggdryl fix --root scratch/catalog codesets delete sidecodeset
 ```
 
 `write` replaces the set; `--merge` folds by wire value instead, keeping what the set already held and adding every name, alias and wording the incoming statement brings, so a counterparty's own listing widens the vocabulary rather than replacing it. The crate-owned `msgcatcodeset` and `statecodeset` are immutable: only a canonical-preserving no-op succeeds, while replacement, widening, remapping or deletion is refused. `read --json` prints the `{"name": ..., "codes": [...]}` document `codesets/<name>.json` holds, which `write --codes` takes back.
@@ -132,20 +132,20 @@ Order matters in one direction only. A set is stated before a field names it, be
 Read JSON, edit the document, then replace it with `update --input`; this retains metadata that a positional replacement would omit. A case-only input name keeps the stored canonical spelling and filename, while a changed identity or referenced datatype is refused atomically.
 
 ```bash
-ygg fix --root scratch/catalog components read Party --json > Party.json
+yggdryl fix --root scratch/catalog components read Party --json > Party.json
 # Edit Party.json, preserving its name, datatype, nullability, and identity.
-ygg fix --root scratch/catalog components update --input Party.json
-ygg fix --root scratch/catalog components read Party --json
+yggdryl fix --root scratch/catalog components update --input Party.json
+yggdryl fix --root scratch/catalog components read Party --json
 ```
 
 Metadata changes refresh resolved references before publication. Delete dependents first; the group refers to its occurrence component and counter:
 
 ```bash
-ygg fix --root scratch/catalog components delete Order
-ygg fix --root scratch/catalog groups delete Parties
-ygg fix --root scratch/catalog components delete Party
-ygg fix --root scratch/catalog fields delete 448
-ygg fix --root scratch/catalog fields delete 453
+yggdryl fix --root scratch/catalog components delete Order
+yggdryl fix --root scratch/catalog groups delete Parties
+yggdryl fix --root scratch/catalog components delete Party
+yggdryl fix --root scratch/catalog fields delete 448
+yggdryl fix --root scratch/catalog fields delete 453
 ```
 
 ## Ingest and sync
@@ -153,11 +153,11 @@ ygg fix --root scratch/catalog fields delete 453
 `ingest` reads an Ullink CBlock into all three categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `FIX:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
 
 ```bash
-ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
-ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
-ygg fix --root scratch/catalog sync ../desk/config/fix
-ygg fix --root scratch/catalog sync cblocks/venue.cfb
-ygg fix --root scratch/catalog sync cblocks/venue.cfb --dialect desk
+yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
+yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
+yggdryl fix --root scratch/catalog sync ../desk/config/fix
+yggdryl fix --root scratch/catalog sync cblocks/venue.cfb
+yggdryl fix --root scratch/catalog sync cblocks/venue.cfb --dialect desk
 ```
 
 After the first line, `fields read 10001` shows `dialects venue` and `fields list --dialect venue` lists every tag the file declared, `8` and `35` among them; the merge under `desk` unions the membership to `desk, venue`. An `ingest` without `--dialect` stamps nothing. A `.cfb` synchronization without `--dialect` takes the file's stem through [`add_cfb_file`](registry.md#folding-a-second-source-in) where it reads as a name - non-empty and opening with a letter - so `venue.cfb` stamps `venue`, and a stem that is not a name stamps nothing rather than refusing. A folder synchronization takes no name: its fields carry the membership they were written with, and the fold unions it onto what the catalog holds. Membership never decides how a tag or a name resolves; the version a CBlock's root declares is read past, and a capture is read at the version its own rows or lines state. Every in-memory fold is atomic, and native [storage](store.md) handles the resulting documents.
@@ -167,20 +167,20 @@ After the first line, `fields read 10001` shows `dialects venue` and `fields lis
 `schema` renders the fixed capture row through [`fix_schema`](capture.md#the-columns-are-the-folded-names), the same native builder the codec and a reader's `schema()` answer with; `--out` writes native JSON. `--rowheader` prepends capture columns inferred from its regular expression, each named group typed by what its syntax can match: a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front and [fills that column](arrow.md#a-column-is-the-caller-speaking-per-row); a `timestamp` capture names no FIX column, so it is carried in front as context and never dates the message, and `yggdryl::ULBRIDGE_ROWHEADER` is a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills) written that way.
 
 ```bash
-ygg fix --root config/fix schema --out fix-message.json
-ygg fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
-ygg fix --root config/fix check
-ygg fix --root config/fix diff ../desk/config/fix --annotate
+yggdryl fix --root config/fix schema --out fix-message.json
+yggdryl fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
+yggdryl fix --root config/fix check
+yggdryl fix --root config/fix diff ../desk/config/fix --annotate
 ```
 
 `check` reports invalid catalog relationships and fails when a finding is an error. It counts each category, then the `codesets` it holds and the `codes` in them, and walks each set once rather than once per field that reads by it - a malformed record is one finding about one vocabulary, not one about each of the hundred fields naming it. A set no field reads by is a note, a value stated twice in one set a warning, and a record the reader stops at a failure, because a borrowed walk ends at a refusal and every code after it is invisible. `diff` compares category definitions and metadata against another catalog; it is read-only.
 
 ## Interactive use
 
-With no command, `ygg fix` opens an interactive shell with the same category and code set operations, flags, and native dispatcher. Completion includes the command names, `codesets` among them, the category operations, definition names, and tags.
+With no command, `yggdryl fix` opens an interactive shell with the same category and code set operations, flags, and native dispatcher. Completion includes the command names, `codesets` among them, the category operations, definition names, and tags.
 
 ```bash
-ygg fix --root config/fix
+yggdryl fix --root config/fix
 ```
 
 The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the command tree, and `quit` or Ctrl-D exits. Leaving unsaved changes reports that fact; one-shot commands save successful changes automatically.
@@ -191,7 +191,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
-- Wire group counters remain separate `int32` fields. The built-in `metadata` (65049) Map group has no scalar counter; a map's length is its cardinality.
+- Wire group counters remain separate `int32` fields. The built-in `metadata` (65030) Map group has no scalar counter; a map's length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
 - `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.

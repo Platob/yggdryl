@@ -167,6 +167,7 @@ async fn serve(inner: Arc<Inner>, incoming: quinn::Incoming) {
     let Ok(connection) = incoming.await else {
         return;
     };
+    let peer = Some(connection.remote_address());
     let Ok(mut session) =
         h3::server::Connection::<_, Bytes>::new(h3_quinn::Connection::new(connection)).await
     else {
@@ -176,14 +177,20 @@ async fn serve(inner: Arc<Inner>, incoming: quinn::Incoming) {
         let inner = Arc::clone(&inner);
         tokio::spawn(async move {
             if let Ok((request, stream)) = resolver.resolve_request().await {
-                answer(&inner, request, stream).await;
+                answer(&inner, request, stream, peer).await;
             }
         });
     }
 }
 
-/// Answer one stream.
-async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream: Stream) {
+/// Answer one stream of the connection from `peer`; QUIC is TLS, so every
+/// request is made under `https`.
+async fn answer(
+    inner: &Arc<Inner>,
+    request: ureq::http::Request<()>,
+    mut stream: Stream,
+    peer: Option<SocketAddr>,
+) {
     let (parts, ()) = request.into_parts();
     let head = match head_of(&parts, HttpVersion::Http3) {
         Ok(head) => head,
@@ -238,7 +245,13 @@ async fn answer(inner: &Arc<Inner>, request: ureq::http::Request<()>, mut stream
     // A handler, a mounted leaf's reads or a pause may block, so the worker
     // steps out of the runtime for them rather than handing the request to
     // another thread and back; a fixed answer is made where it is.
-    let incoming = Incoming { head, body };
+    let incoming = Incoming {
+        head,
+        body,
+        peer,
+        secure: true,
+        scheme: None,
+    };
     let mut exchange = traced_request(inner, &incoming);
     let routed = inner.route_of(&incoming);
     let dispatched = if routed.may_block() {

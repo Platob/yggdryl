@@ -1,6 +1,6 @@
 //! `Limit`: one price limit of a book side - the price, the quantity resting
-//! there and the entries that rest there - with its datatype, its field and
-//! its scalar.
+//! there, the entries that rest there and whether the level can trade - with
+//! its datatype, its field and its scalar.
 
 use smol_str::SmolStr;
 
@@ -8,7 +8,7 @@ use crate::text::expected_got;
 use crate::{DataType, Decimal, Error, Field, Result, Scalar, StructType, Uuid};
 
 /// The cells a limit states, in the order its datatype declares them.
-const NAMES: [&str; 3] = ["price", "quantity", "uuids"];
+const NAMES: [&str; 4] = ["price", "quantity", "uuids", "tradable"];
 
 /// One price limit of a book side: what rests at one price, best first.
 ///
@@ -20,6 +20,13 @@ const NAMES: [&str; 3] = ["price", "quantity", "uuids"];
 /// [`Self::from_scalar`] in that shape or in the ordered row a
 /// datatype's own value door answers.
 ///
+/// `tradable` is the level's entries' own `tradable` facts folded with
+/// `any`, an entry counting unless it states `tradable = false`: `true` when
+/// at least one live entry at that price does not say it cannot trade,
+/// `false` when every one of them says so. An entry stating nothing is a
+/// live order a venue did not halt, so it trades; the entries' own facts are
+/// left as they were stated.
+///
 /// ```
 /// use yggdryl::{Decimal, Limit, Uuid};
 ///
@@ -28,6 +35,7 @@ const NAMES: [&str; 3] = ["price", "quantity", "uuids"];
 ///     price: Some("101.5".parse()?),
 ///     quantity: Decimal::from_int(300),
 ///     uuids: vec![Uuid::from_v8(1), Uuid::from_v8(2)],
+///     tradable: true,
 /// };
 /// // The named struct, and the ordered row the datatype canonicalizes it to.
 /// assert_eq!(Limit::from_scalar(&limit.into_scalar())?, limit);
@@ -47,17 +55,23 @@ pub struct Limit {
     pub quantity: Decimal,
     /// The entries' `curruuid`s in live order (best position first).
     pub uuids: Vec<Uuid>,
+    /// Whether any entry at the level does not state `tradable = false`:
+    /// an entry stating nothing trades, and only a level every entry of
+    /// which states `false` cannot.
+    pub tradable: bool,
 }
 
 impl Limit {
     /// The datatype a limit is: `struct<price: decimal?, quantity: decimal,
-    /// uuids: serie<uuid>>`, each decimal [`DataType::Decimal`].
+    /// uuids: serie<uuid>, tradable: boolean>`, each decimal
+    /// [`DataType::Decimal`].
     #[must_use]
     pub fn dtype() -> DataType {
         DataType::Struct(StructType::from_unique_fields(vec![
             DataType::Decimal.nullable_field(NAMES[0]),
             DataType::Decimal.required_field(NAMES[1]),
             DataType::serie(DataType::Uuid.required_field("uuid")).required_field(NAMES[2]),
+            DataType::Boolean.required_field(NAMES[3]),
         ]))
     }
 
@@ -67,7 +81,7 @@ impl Limit {
         Field::new("limit", Self::dtype(), false)
     }
 
-    /// The limit as the named struct of its three cells, a missing price a
+    /// The limit as the named struct of its four cells, a missing price a
     /// null.
     #[must_use]
     pub fn into_scalar(&self) -> Scalar {
@@ -78,25 +92,28 @@ impl Limit {
                 NAMES[2],
                 Scalar::from_sequence(self.uuids.iter().copied().map(Scalar::Uuid)),
             ),
+            (NAMES[3], Scalar::from(self.tradable)),
         ])
-        .expect("three distinct names")
+        .expect("four distinct names")
     }
 
     /// Reads a limit back from the named struct [`Self::into_scalar`]
-    /// answers or from the ordered row of three cells [`Self::dtype`]'s
+    /// answers or from the ordered row of four cells [`Self::dtype`]'s
     /// value door canonicalizes it to. The value passes that one door first,
     /// through [`Self::field`], so a cell is read exactly as a `limits`
     /// column would hold it - a text or a number the decimal datatype
     /// restates is read as it restates it - except that a name the struct
     /// lacks is a null rather than the default the door fills a required
-    /// cell with: a limit states its quantity, never a zero it was not given.
+    /// cell with: a limit states its quantity and whether it trades, never a
+    /// zero or a `false` it was not given.
     ///
     /// # Errors
     ///
     /// The refusal [`Self::field`]'s [`Field::scalar`] answers, located
     /// under `$.limit`: a price that is no decimal, a null, missing or
     /// non-decimal quantity, entries that are missing or no serie of uuids,
-    /// a name the struct should not hold, a row of another width or a value
+    /// a null, missing or non-boolean `tradable`, a name the struct should
+    /// not hold, a row of another width or a value
     /// of another shape.
     pub fn from_scalar(value: &Scalar) -> Result<Self> {
         let value = match value.as_struct() {
@@ -116,9 +133,10 @@ impl Limit {
         };
         let row = Self::field().scalar(value)?;
         let cells = row.sequence_rows();
-        let Some([price, Scalar::Decimal(quantity), uuids]) = cells.as_deref() else {
+        let Some([price, Scalar::Decimal(quantity), uuids, tradable]) = cells.as_deref() else {
             return Err(unread(&row));
         };
+        let tradable = tradable.as_bool().ok_or_else(|| unread(&row))?;
         let price = match price {
             Scalar::Decimal(price) => Some(*price),
             Scalar::Null => None,
@@ -137,6 +155,7 @@ impl Limit {
             price,
             quantity: *quantity,
             uuids,
+            tradable,
         })
     }
 }

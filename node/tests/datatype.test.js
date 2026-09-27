@@ -429,8 +429,10 @@ test('a registered code is its own datatype over its standard width', () => {
     ['cusip', 9],
     ['sedol', 7],
     ['figi', 12],
-    // The lifecycle codes are held to the width their spellings need.
-    ['side', 8],
+    // A currency pair, `CCY/CCY`.
+    ['forex', 7],
+    // The lifecycle codes are held to the width their spellings need; a
+    // side is an enum now, stored as its member's code.
     ['timeinforce', 8],
   ]) {
     const dtype = new DataType(name)

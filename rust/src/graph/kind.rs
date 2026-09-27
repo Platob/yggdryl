@@ -1,8 +1,10 @@
 //! [`MarketKind`]: which leaf a [`MarketData`](super::MarketData) value is,
 //! and the word every schema and digest that states one spells it under.
 
+use crate::MarketDataKind;
+
 /// Which leaf a [`MarketData`](super::MarketData) value is: an undated
-/// operation or book side, or one of the six dated leaves.
+/// operation, or one of the six dated leaves.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum MarketKind {
@@ -12,8 +14,6 @@ pub enum MarketKind {
     Quote,
     /// An undated execution: [`Execution`](super::Execution).
     Execution,
-    /// A book side summary: [`BookSide`](super::BookSide).
-    BookSide,
     /// A dated order: [`OrderEvent`](super::OrderEvent).
     OrderEvent,
     /// A dated quote: [`QuoteEvent`](super::QuoteEvent).
@@ -30,11 +30,10 @@ pub enum MarketKind {
 
 impl MarketKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::Order,
         Self::Quote,
         Self::Execution,
-        Self::BookSide,
         Self::OrderEvent,
         Self::QuoteEvent,
         Self::ExecutionEvent,
@@ -50,7 +49,6 @@ impl MarketKind {
             Self::Order => "order",
             Self::Quote => "quote",
             Self::Execution => "execution",
-            Self::BookSide => "book_side",
             Self::OrderEvent => "order_event",
             Self::QuoteEvent => "quote_event",
             Self::ExecutionEvent => "execution_event",
@@ -67,6 +65,29 @@ impl MarketKind {
         Self::ALL
             .into_iter()
             .find(|kind| kind.as_str().eq_ignore_ascii_case(text))
+    }
+
+    /// The market data category this leaf stands under, the member its
+    /// `marketdatakind` column states: an order `ORDR`, a quote `QUOT`, an
+    /// execution `EXEC`, a trade `TRAD`, and a book and a snapshot
+    /// control `BOOK`.
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    /// use yggdryl::graph::MarketKind;
+    ///
+    /// assert_eq!(MarketKind::OrderEvent.marketdatakind(), MarketDataKind::Order);
+    /// assert_eq!(MarketKind::SnapshotEvent.marketdatakind(), MarketDataKind::Book);
+    /// ```
+    #[must_use]
+    pub const fn marketdatakind(self) -> MarketDataKind {
+        match self {
+            Self::Order | Self::OrderEvent => MarketDataKind::Order,
+            Self::Quote | Self::QuoteEvent => MarketDataKind::Quotation,
+            Self::Execution | Self::ExecutionEvent => MarketDataKind::Execution,
+            Self::TradeEvent => MarketDataKind::Trade,
+            Self::BookEvent | Self::SnapshotEvent => MarketDataKind::Book,
+        }
     }
 
     /// Whether the kind is one of the six dated leaves.

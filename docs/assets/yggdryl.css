@@ -1004,19 +1004,3 @@
     flex: 1 1 100%;
   }
 }
-
-/* The replay: docs/assets/replay.js runs the package's own page in a frame,
- * which carries the component theme. */
-.ygg-rp {
-  margin: 1em 0 1.6em;
-}
-
-.ygg-rp__frame {
-  display: block;
-  width: 100%;
-  height: min(calc(100vh - 6rem), 56rem);
-  min-height: 32rem;
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-radius: 0.3rem;
-  background-color: var(--md-default-bg-color);
-}

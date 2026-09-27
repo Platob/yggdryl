@@ -33,8 +33,9 @@ use yggdryl::{
 
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
-use crate::graph::operation::PyLane;
-use crate::graph::{code_scalar, decimal_scalar, idmap_dict, securityids_dict, uuid_scalar};
+use crate::graph::{
+    code_scalar, decimal_scalar, fxrates_dict, idmap_dict, member, securityids_dict, uuid_scalar,
+};
 use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
@@ -301,7 +302,7 @@ impl PyFixRegistry {
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
     /// `fix_crate_fields` lists what the crate adds beside the specification:
-    /// its own columns in tag order from 65003 - the clocks, the identities,
+    /// its own columns in tag order from 65001 - the clocks, the identities,
     /// the derived facts and the capture's own - and the Map group
     /// `metadata`. Beside them sit two seeded standard
     /// clocks, `SendingTime` (52) and `TransactTime` (60), each a nanosecond
@@ -633,8 +634,8 @@ impl PyFixRegistry {
 
     /// Every field that names a message by an identifier, one record per
     /// key its `FIX:idmap` states: `{"tag", "map", "key", "follow",
-    /// "role"}`, in tag order. A message rebuilds its `accountids`,
-    /// `userids` and `altids` from these, and an operation that follows
+    /// "role"}`, in tag order. A message rebuilds its `altids` from these,
+    /// and an operation that follows
     /// another carries the `altids` keys whose record follows.
     fn idmap_sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut records = Vec::new();
@@ -764,7 +765,7 @@ impl PyFixRegistry {
     /// more, and answering what moved.
     ///
     /// Shards are named by their tag's hundred, nine digits wide - tag 55
-    /// lands in `fields/000000000.json`, tag 65003 in
+    /// lands in `fields/000000000.json`, tag 65001 in
     /// `fields/000000650.json` - beside `components/` and `groups/`. The
     /// crate's own definitions are written like every other, the fixed row
     /// among them as `components/fixmsg.json`, so a store states the whole
@@ -1098,10 +1099,14 @@ impl PyMsgType {
         self.inner().as_str()
     }
 
-    /// The definition's symbolic business-category name, or `None`.
+    /// The definition's business category, as the `MarketDataKind` member
+    /// the dictionary files the type under, or `None`.
     #[getter]
-    fn msgcat(&self) -> Option<&str> {
-        self.inner().msgcat()
+    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        self.inner()
+            .msgcat()
+            .map(|kind| member(py, kind))
+            .transpose()
     }
 
     /// The definition's own Struct field, read-only.
@@ -1691,7 +1696,7 @@ impl PyFixMsg {
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
     /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
-    /// own column - `sourceurl` (65026), by tag or by name - is a located
+    /// own column - `sourceurl` (65031), by tag or by name - is a located
     /// `ValueError`: a message holds no fact for it, and a row child would
     /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
@@ -1818,13 +1823,13 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.digest().to_be_bytes())
     }
 
-    /// The graph market operations this message expands to: an order, a
-    /// quote, an execution or an initial trade report is one; a book `W` or
-    /// `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
-    /// control for an empty `W` - each a `MarketData`.
-    fn market_operations(&self) -> PyResult<Vec<PyMarketData>> {
+    /// The graph market data this message expands to: an order, a quote, an
+    /// execution or an initial trade report is one; a book `W` or `X` one per
+    /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
+    /// empty `W` - each a `MarketData`.
+    fn market_data(&self) -> PyResult<Vec<PyMarketData>> {
         self.inner
-            .market_operations()
+            .market_data()
             .map(|operations| {
                 operations
                     .into_iter()
@@ -1841,10 +1846,18 @@ impl PyFixMsg {
         }
     }
 
-    /// The stable integer business-category code lifted from the message type.
+    /// The message's business category, as the `MarketDataKind` member its
+    /// type is filed under - `UNKN` for a type filed under none.
     #[getter]
-    fn msgcat(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
+    fn msgcat(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.msgcat())
+    }
+
+    /// The option strike price the message identifies, as a decimal; `None`
+    /// where it states none.
+    #[getter]
+    fn strikepx(&self) -> Option<PyScalar> {
+        self.inner.strikepx().map(decimal_scalar)
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -1925,10 +1938,10 @@ impl PyFixMsg {
         self.inner.get_currunix()
     }
 
-    /// The state the order is in, as the `state` code it is.
+    /// The state the order is in, as the `State` member it is.
     #[getter]
-    fn state(&self) -> PyScalar {
-        code_scalar(self.inner.get_state())
+    fn state(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, *self.inner.get_state())
     }
 
     /// The message's place in its chain: how many came before it.
@@ -2036,12 +2049,11 @@ impl PyFixMsg {
         self.inner.get_unit().as_str()
     }
 
-    /// The side, as the `side` code it is: the one stated, else the lane a
-    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
-    /// else `UNKNOWN`.
+    /// The side, as the `Side` member it is: the one stated, else
+    /// `Side.UNKNOWN` - never `None`.
     #[getter]
-    fn side(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_side()))
+    fn side(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.get_side())
     }
 
     /// The identifiers the instrument is stated under, one code under each
@@ -2051,6 +2063,63 @@ impl PyFixMsg {
     #[getter]
     fn securityids(&self) -> BTreeMap<String, String> {
         securityids_dict(self.inner.get_securityids())
+    }
+
+    /// The ISIN the instrument is stated under - the `ISIN` entry of
+    /// `securityids` - as text; `None` where none.
+    #[getter]
+    fn isincode(&self) -> Option<&str> {
+        self.inner.get_isincode()
+    }
+
+    /// The rates an amount in `currency` is divided by to state it in
+    /// another currency, each decimal under its target currency's code, in
+    /// currency order; empty where the message states none.
+    #[getter]
+    fn fxrates(&self) -> BTreeMap<String, PyScalar> {
+        fxrates_dict(self.inner.get_fxrates())
+    }
+
+    /// The bid price the message states - `BidPx(132)` - as a decimal;
+    /// `None` where none.
+    #[getter]
+    fn bidpx(&self) -> Option<PyScalar> {
+        self.inner.get_bidpx().map(decimal_scalar)
+    }
+
+    /// The bid size the message states - `BidSize(134)` - as a decimal;
+    /// `None` where none.
+    #[getter]
+    fn bidqty(&self) -> Option<PyScalar> {
+        self.inner.get_bidqty().map(decimal_scalar)
+    }
+
+    /// The currency of the bid, as the `ccy` code it is; `None` where the
+    /// message states no bid.
+    #[getter]
+    fn bidccy(&self) -> Option<PyScalar> {
+        self.inner.get_bidccy().map(code_scalar)
+    }
+
+    /// The offer price the message states - `OfferPx(133)` - as a decimal;
+    /// `None` where none.
+    #[getter]
+    fn askpx(&self) -> Option<PyScalar> {
+        self.inner.get_askpx().map(decimal_scalar)
+    }
+
+    /// The offer size the message states - `OfferSize(135)` - as a decimal;
+    /// `None` where none.
+    #[getter]
+    fn askqty(&self) -> Option<PyScalar> {
+        self.inner.get_askqty().map(decimal_scalar)
+    }
+
+    /// The currency of the offer, as the `ccy` code it is; `None` where the
+    /// message states no offer.
+    #[getter]
+    fn askccy(&self) -> Option<PyScalar> {
+        self.inner.get_askccy().map(code_scalar)
     }
 
     /// The instrument's classification, read off `CFICode(461)` and what
@@ -2107,28 +2176,28 @@ impl PyFixMsg {
         self.inner.lifted().lastforwardpoints().map(decimal_scalar)
     }
 
-    /// FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as a decimal; `None` where the message
+    /// FIX's own `BidSpotRate(188)`, the bid's spot rate, as a decimal; `None` where the message
     /// states none.
     #[getter]
     fn bidspotrate(&self) -> Option<PyScalar> {
         self.inner.lifted().bidspotrate().map(decimal_scalar)
     }
 
-    /// FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as a decimal; `None` where the message
+    /// FIX's own `BidForwardPoints(189)`, the bid's forward points, as a decimal; `None` where the message
     /// states none.
     #[getter]
     fn bidforwardpoints(&self) -> Option<PyScalar> {
         self.inner.lifted().bidforwardpoints().map(decimal_scalar)
     }
 
-    /// FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as a decimal; `None` where the message
+    /// FIX's own `OfferSpotRate(190)`, the offer's spot rate, as a decimal; `None` where the message
     /// states none.
     #[getter]
     fn offerspotrate(&self) -> Option<PyScalar> {
         self.inner.lifted().offerspotrate().map(decimal_scalar)
     }
 
-    /// FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as a decimal; `None` where the message
+    /// FIX's own `OfferForwardPoints(191)`, the offer's forward points, as a decimal; `None` where the message
     /// states none.
     #[getter]
     fn offerforwardpoints(&self) -> Option<PyScalar> {
@@ -2187,12 +2256,6 @@ impl PyFixMsg {
         self.inner.get_ticker()
     }
 
-    /// The stable integer category of the market operation, or `None`.
-    #[getter]
-    fn marketoperationid(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
-    }
-
     /// How long the message stands, `TimeInForce(59)`, as the code it
     /// states; `None` where it says nothing. What the code `1` names is
     /// the dictionary's to say.
@@ -2209,42 +2272,12 @@ impl PyFixMsg {
         self.inner.get_tradable()
     }
 
-    /// The accounts the message names - `ACCOUNT` for `Account(1)`, the
-    /// customer-account party - each under the field that stated it, in
-    /// key order; empty where it names none.
-    #[getter]
-    fn accountids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_accountids())
-    }
-
-    /// The users the message names - `SENDERSUBID`, `ONBEHALFOFSUBID`, the
-    /// trader parties - each under the field that stated it, in key order;
-    /// empty where it names none.
-    #[getter]
-    fn userids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_userids())
-    }
-
     /// The names the message goes by - `ORDERID`, `CLORDID`, `EXECID`,
     /// `QUOTEID` - each under the field that stated it, in key order;
     /// empty where it names none.
     #[getter]
     fn altids(&self) -> BTreeMap<String, String> {
         idmap_dict(self.inner.get_altids())
-    }
-
-    /// The bid lane a quote states, typed; `None` where the message states
-    /// no bid.
-    #[getter]
-    fn bid(&self) -> Option<PyLane> {
-        self.inner.get_bid().cloned().map(PyLane::from_core)
-    }
-
-    /// The ask lane, shaped as the bid; `None` where the message states no
-    /// offer.
-    #[getter]
-    fn ask(&self) -> Option<PyLane> {
-        self.inner.get_ask().cloned().map(PyLane::from_core)
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.
@@ -2276,9 +2309,9 @@ impl PyFixMsg {
     /// comparable at all. The capture's own columns answer null - the one
     /// the crate tags, `sourceurl`, and every column no tag and no counter
     /// names - because a message holds no fact for any of them; the capture
-    /// readers state them on the row instead. The `fixentries` serie holds
-    /// only residual content, counted by `nofixentries`; projected values
-    /// remain in their columns. A value a column will not hold is that
+    /// readers state them on the row instead. The `fixentries` map holds
+    /// only residual content, keyed `tag:name`; projected values remain in
+    /// their columns. A value a column will not hold is that
     /// column's null; a column that cannot be null keeps the refusal as a
     /// `ValueError`.
     #[allow(clippy::wrong_self_convention)]
@@ -2432,7 +2465,10 @@ impl PyFixCodec {
     /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
     /// empty `exclude_msgtypes` keeps every type. `snapshot_ns` is an
     /// epoch-aligned lifecycle snapshot width in nanoseconds; `None`, zero
-    /// and a negative width disable snapshots;
+    /// and a negative width disable snapshots; `sorted_lifecycle` states
+    /// that the messages `lifecycle` is handed arrive in instant order, so
+    /// the walk reads them as they come one epoch hour at a time rather than
+    /// collecting and sorting the whole capture, off by default;
     /// `official_time_delay_ms` is how far from `SendingTime(52)` an
     /// official transaction clock may stand and still date the message, the
     /// core's one second when unstated, and a nonpositive delay admits only
@@ -2456,6 +2492,7 @@ impl PyFixCodec {
         exclude_msgtypes=None,
         threads=None,
         snapshot_ns=None,
+        sorted_lifecycle=false,
         official_time_delay_ms=None,
         market_metadata=true,
     ))]
@@ -2474,6 +2511,7 @@ impl PyFixCodec {
         exclude_msgtypes: Option<Vec<String>>,
         threads: Option<usize>,
         snapshot_ns: Option<i64>,
+        sorted_lifecycle: bool,
         official_time_delay_ms: Option<i64>,
         market_metadata: bool,
     ) -> PyResult<Self> {
@@ -2515,6 +2553,7 @@ impl PyFixCodec {
         if let Some(held) = snapshot_ns {
             inner = inner.with_snapshot_ns(held);
         }
+        inner = inner.with_sorted_lifecycle(sorted_lifecycle);
         if let Some(held) = official_time_delay_ms {
             inner = inner.with_official_time_delay_ms(held);
         }
@@ -2588,6 +2627,42 @@ impl PyFixCodec {
     #[getter]
     fn snapshot_ns(&self) -> Option<i64> {
         self.inner.snapshot_ns()
+    }
+
+    /// This codec with its lifecycle snapshot grid set to `snapshot_ns`, an
+    /// epoch-aligned width in nanoseconds: `None`, zero and a negative width
+    /// disable snapshots. Every other setting, the dictionary included, is
+    /// this codec's, so a caller's codec gains a grid without its options
+    /// being listed again.
+    #[pyo3(signature = (snapshot_ns))]
+    fn with_snapshot_ns(&self, snapshot_ns: Option<i64>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_snapshot_ns(snapshot_ns.unwrap_or(0)),
+            registry: Arc::clone(&self.registry),
+        }
+    }
+
+    /// Whether `lifecycle` reads its messages as they come, in instant
+    /// order, one epoch hour at a time, rather than collecting and sorting
+    /// the whole capture.
+    #[getter]
+    fn sorted_lifecycle(&self) -> bool {
+        self.inner.sorted_lifecycle()
+    }
+
+    /// This codec with its lifecycle stating, or no longer stating, that the
+    /// messages it is handed arrive in instant order - a table read hour
+    /// partition by hour partition, sorted by `currunix`. Every other
+    /// setting, the dictionary included, is this codec's.
+    #[pyo3(signature = (sorted))]
+    fn with_sorted_lifecycle(&self, sorted: bool) -> Self {
+        Self {
+            inner: self.inner.clone().with_sorted_lifecycle(sorted),
+            registry: Arc::clone(&self.registry),
+        }
     }
 
     /// How far from `SendingTime(52)` an official transaction clock may
@@ -2848,36 +2923,31 @@ impl PyFixCodec {
     /// are ignored. Source errors and invalid admitted messages still fail,
     /// including unsupported AE corrections, cancellations and status reports.
     ///
-    /// `snapshot_millis` enables epoch-aligned book snapshots; `global_`
-    /// consolidates symbols into the `GLOBAL` book. Lifecycle enrichment is
-    /// explicit: pass `codec.lifecycle(messages)` when it is wanted. Each
+    /// `snapshot_millis` enables epoch-aligned book snapshots; one book is
+    /// kept per book key - the ticker, else `MIC:CFI`. Lifecycle enrichment
+    /// is explicit: pass `codec.lifecycle(messages)` when it is wanted. Each
     /// leaf carries its message's unmapped fields where `market_metadata`
     /// says so.
-    #[pyo3(signature = (messages, snapshot_millis=0, global_=false))]
+    #[pyo3(signature = (messages, snapshot_millis=0))]
     fn book_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         messages: &Bound<'py, PyAny>,
         snapshot_millis: u64,
-        global_: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
         let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
             failed.take().map(|error| Err(python_failure(error)))
         }));
-        Self::reader_to_pyarrow(
-            py,
-            self.inner
-                .book_arrow_reader(messages, snapshot_millis, global_),
-        )
+        Self::reader_to_pyarrow(py, self.inner.book_arrow_reader(messages, snapshot_millis))
     }
 
-    /// A capture of messages as the market operations a book folds, in the
-    /// order it folds them: each a `MarketData`.
+    /// A capture of messages as the market data a book folds, in the order
+    /// it folds them: each a `MarketData`.
     ///
     /// Admits what `book_arrow_reader` admits and expands each admitted
-    /// message as `FixMsg.market_operations` does, each leaf carrying its
+    /// message as `FixMsg.market_data` does, each leaf carrying its
     /// message's unmapped fields where `market_metadata` says so. Neither
     /// the lifecycle nor a message-type filter runs here: pass
     /// `codec.lifecycle(messages)` for the walk. `messages` is any iterable
@@ -2888,16 +2958,16 @@ impl PyFixCodec {
     /// expansion is refused raises `ValueError` first, in source order, and
     /// drops only its own leaves; a failure of the iterable itself raises
     /// as itself once the operations it reached are read.
-    fn market_operations(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyMarketDataRowIterator> {
+    fn market_data(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyMarketDataRowIterator> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
         Ok(PyMarketDataRowIterator::pulling(
-            self.inner.market_operations(pulled),
+            self.inner.market_data(pulled),
             failed,
         ))
     }
 
-    /// `market_operations` as a `pyarrow.RecordBatchReader` of lifted
+    /// `market_data` as a `pyarrow.RecordBatchReader` of lifted
     /// `marketdata` rows, batches closing on `batch_row_size` and
     /// `batch_byte_size`. Every refusal is met before the first operation,
     /// so one - an expansion refused, a bad item, the iterable's own
@@ -2925,13 +2995,13 @@ impl PyFixCodec {
     /// predecessors (its `prevpx` and `prevqty`, a side or a ticker carried
     /// forward, an execution instant) is no cell of the row. A schema making
     /// no FIX row is refused before a row is read.
-    fn market_operations_arrow_reader<'py>(
+    fn market_data_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         source: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.market_operations_arrow_reader(source))
+        Self::reader_to_pyarrow(py, self.inner.market_data_arrow_reader(source))
     }
 
     /// A stream of messages as the rows one message field holds them.
@@ -2994,8 +3064,11 @@ impl PyFixCodec {
 
     /// Chains a stream of messages, lazily: the lifecycle.
     ///
-    /// `messages` is any iterable of `FixMsg`, pulled once, in its own
-    /// order, and nothing is collected. The one walk states each message
+    /// `messages` is any iterable of `FixMsg`, pulled once: collected and
+    /// sorted whole by default, or, where `sorted_lifecycle` states it
+    /// arrives in instant order, read as it comes and held one epoch hour
+    /// at a time, walking an hour once a message two hours past it is read
+    /// - on a sorted source both answer the same walk. The one walk states each message
     /// as the one after the live message it follows - the last message of
     /// its chain, under the cross identity its cross code derives, still
     /// alive - so a chained message carries its predecessor's identity and
@@ -3082,8 +3155,8 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// rest - because a table is read by time and joined by identity; then the
 /// standard header, the fields a consumer reads, the four groups worth
 /// persisting whole, the trailer, `MsgDirection` (385), and the one
-/// `fixentries` serie that closes every row with residual content under the
-/// `nofixentries` that counts it. Projected content stays in its columns.
+/// `fixentries` sorted map that closes every row with residual content keyed
+/// `tag:name`. Projected content stays in its columns.
 /// Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,
@@ -3139,19 +3212,18 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The definitions this crate lists, in tag order from 65003.
+/// The definitions this crate lists, in tag order from 65001.
 ///
 /// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
 /// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
-/// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
-/// the lines it was read from - what a bridge's own log states about a line
-/// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` and the
-/// `msgsesseventid` they join to with the message type and sequence - the
-/// `sourceurl` a line was read from, the `nofixentries` that counts its
-/// content, and the Map group `metadata`, plus the generic
-/// `marketoperationid` shared with market operations. Twenty-eight in all,
-/// each a fact no FIX dictionary publishes, at the datatype its graph column
+/// derive from, its `seqnum` - the `state` it reached and the `msgcat` it is
+/// filed under - the `srcuuids` of the lines it was read from - what a
+/// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,
+/// the `msgsessionid` and the `msgsesseventid` they join to with the message
+/// type and sequence - the normalized instrument codes and the `strikepx`,
+/// the `sourceurl` a line was read from and the Map group `metadata`. Each a
+/// fact no FIX dictionary publishes, at the datatype its graph column
 /// names.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]

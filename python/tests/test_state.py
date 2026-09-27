@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import pickle
+import re
+from pathlib import Path
 
 import pyarrow as pa  # type: ignore[import-untyped]
 import pytest
@@ -23,6 +25,16 @@ def test_the_members_are_the_cores_in_code_order() -> None:
         assert str(state) == state.name
         assert f"{state}" == state.name
         assert state.description
+
+
+def test_the_stub_lists_the_native_table() -> None:
+    stub = (Path(yggdryl.__file__).parent / "state.pyi").read_text()
+    listed = dict(re.findall(r"^    ([A-Z_]+) = (\d+)$", stub, re.MULTILINE))
+    assert {name: int(code) for name, code in listed.items()} == {
+        state.name: int(state) for state in State
+    }
+    # A NEW over a new-like predecessor is stated anew and carrying on.
+    assert State.UPDATED == 3004 and State.UPDATED.is_live()
 
 
 def test_each_band_is_one_question() -> None:

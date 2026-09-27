@@ -90,6 +90,7 @@ line carries and nothing for a line that carries none.
 | a FIXML document | one, whatever prose a transport wrote in front of it |
 | a JSON document | [one, named `unknown`, with no entries](capture.md#a-json-document-is-one-message-stating-nothing): a Jolokia answer, a bulk or wildcard answer, an error-only answer and a bare `{"a":1}` alike, carrying only what the row stated around it |
 | a sentence | none at all |
+| a message reporting a fill, a traded side or two quoted sides | that message, then each message it [reports](message.md#a-parse-splits-what-a-message-reports) - on every stream door, never on the one-body doors |
 
 ## A type nobody asked for is never built
 
@@ -100,7 +101,7 @@ them sits the row that states no type at all - a line a transport wrote that
 carries no message this dictionary knows, read as `unknown`. A codec refuses
 all three until a caller says otherwise, and the refusal is read off the type
 the row *states*, before a message is built: a refused line costs one look at
-its `35=` rather than a build, a restatement, the dictionary's derivations and
+its `35=` rather than a build, a restatement, the crate's derivations and
 a settled identity.
 
 === "Rust"

@@ -3,7 +3,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::book::{BookEvent, BookSide, SnapshotEvent};
+use super::book::{BookEvent, SnapshotEvent};
 use super::facts::OperationEventFacts;
 use super::kind::MarketKind;
 use super::operation::{
@@ -14,7 +14,7 @@ use super::{Element, Market};
 use crate::{Error, Result};
 
 /// One value over every leaf the graph vocabulary ships: an undated
-/// operation, a book side, or one of the six dated leaves. Every operation
+/// operation, or one of the six dated leaves. Every operation
 /// application (Arrow, FIX, a book) reads or writes a `MarketData`, resolved
 /// exactly once at the boundary that built it.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,8 +25,6 @@ pub enum MarketData {
     Quote(Quote),
     /// An undated execution.
     Execution(Execution),
-    /// A book side summary.
-    BookSide(BookSide),
     /// A dated order.
     OrderEvent(OrderEvent),
     /// A dated quote.
@@ -49,7 +47,6 @@ impl MarketData {
             Self::Order(_) => MarketKind::Order,
             Self::Quote(_) => MarketKind::Quote,
             Self::Execution(_) => MarketKind::Execution,
-            Self::BookSide(_) => MarketKind::BookSide,
             Self::OrderEvent(_) => MarketKind::OrderEvent,
             Self::QuoteEvent(_) => MarketKind::QuoteEvent,
             Self::ExecutionEvent(_) => MarketKind::ExecutionEvent,
@@ -57,6 +54,14 @@ impl MarketData {
             Self::BookEvent(_) => MarketKind::BookEvent,
             Self::SnapshotEvent(_) => MarketKind::SnapshotEvent,
         }
+    }
+
+    /// The market data category of this value's leaf: an order `ORDR`, a
+    /// quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a
+    /// snapshot `BOOK` - what the `marketdatakind` column states.
+    #[must_use]
+    pub fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.kind().marketdatakind()
     }
 
     /// Whether this value is one of the six dated leaves.
@@ -78,9 +83,9 @@ impl MarketData {
         }
     }
 
-    /// This value as the operation-event seam book-side internals read
+    /// This value as the operation-event seam a book's internals read
     /// through, where it is a dated order or quote - the only two kinds a
-    /// book side ever holds.
+    /// book holds alive.
     pub(crate) fn as_operation_event(&self) -> Option<&dyn BookOperation> {
         match self {
             Self::OrderEvent(event) => Some(event),
@@ -98,8 +103,6 @@ impl MarketData {
         }
     }
 
-    /// This value's dated order or quote, where it is one; the seam
-    /// book-side internals read through, unwrapped.
     /// The facts of an operation event, whichever kind; none for any other
     /// variant.
     pub(crate) fn operation_event_facts(&self) -> Option<&OperationEventFacts> {
@@ -111,15 +114,17 @@ impl MarketData {
         }
     }
 
+    /// This value's dated order or quote: the seam a book's internals read
+    /// through, unwrapped.
     pub(crate) fn operation_event(&self) -> &dyn BookOperation {
         self.as_operation_event()
-            .expect("a book side holds only dated order or quote events")
+            .expect("a book holds alive only dated order or quote events")
     }
 
     /// [`Self::operation_event`], mutably.
     pub(crate) fn operation_event_mut(&mut self) -> &mut dyn BookOperation {
         self.as_operation_event_mut()
-            .expect("a book side holds only dated order or quote events")
+            .expect("a book holds alive only dated order or quote events")
     }
 }
 
@@ -132,7 +137,6 @@ macro_rules! delegate_by_variant {
             Self::Order(v) => v.$method($($arg),*),
             Self::Quote(v) => v.$method($($arg),*),
             Self::Execution(v) => v.$method($($arg),*),
-            Self::BookSide(v) => v.$method($($arg),*),
             Self::OrderEvent(v) => v.$method($($arg),*),
             Self::QuoteEvent(v) => v.$method($($arg),*),
             Self::ExecutionEvent(v) => v.$method($($arg),*),
@@ -197,7 +201,7 @@ impl Element for MarketData {
     /// Same variant: the leaf's own following. An operation event follows
     /// an operation event of another kind through the facts both hold - an
     /// execution follows the order it fills - keeping its own kind. Else:
-    /// nothing - a book side and a trade, say, do not follow one another.
+    /// nothing - a book and a trade, say, do not follow one another.
     fn with_previous(self, previous: &Self) -> Option<Self> {
         if std::mem::discriminant(&self) != std::mem::discriminant(previous) {
             let facts = previous.operation_event_facts()?;
@@ -213,9 +217,6 @@ impl Element for MarketData {
             (Self::Quote(v), Self::Quote(previous)) => v.with_previous(previous).map(Self::Quote),
             (Self::Execution(v), Self::Execution(previous)) => {
                 v.with_previous(previous).map(Self::Execution)
-            }
-            (Self::BookSide(v), Self::BookSide(previous)) => {
-                v.with_previous(previous).map(Self::BookSide)
             }
             (Self::OrderEvent(v), Self::OrderEvent(previous)) => {
                 v.with_previous(previous).map(Self::OrderEvent)
@@ -247,7 +248,6 @@ impl Element for MarketData {
             (Self::Execution(v), Self::Execution(other)) => {
                 v.merge_with(other).map(Self::Execution)
             }
-            (Self::BookSide(v), Self::BookSide(other)) => v.merge_with(other).map(Self::BookSide),
             (Self::OrderEvent(v), Self::OrderEvent(other)) => {
                 v.merge_with(other).map(Self::OrderEvent)
             }
@@ -395,6 +395,48 @@ impl Market for MarketData {
     fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
         delegate_by_variant!(self, set_metadata, metadata);
     }
+    fn get_fxrates(&self) -> &super::market::FxRates {
+        delegate_by_variant!(self, get_fxrates)
+    }
+    fn set_fxrates(&mut self, rates: super::market::FxRates) {
+        delegate_by_variant!(self, set_fxrates, rates);
+    }
+    fn get_bidpx(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_bidpx)
+    }
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
+        delegate_by_variant!(self, set_bidpx, px);
+    }
+    fn get_bidqty(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_bidqty)
+    }
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
+        delegate_by_variant!(self, set_bidqty, qty);
+    }
+    fn get_bidccy(&self) -> Option<&crate::Ccy> {
+        delegate_by_variant!(self, get_bidccy)
+    }
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
+        delegate_by_variant!(self, set_bidccy, ccy);
+    }
+    fn get_askpx(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_askpx)
+    }
+    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
+        delegate_by_variant!(self, set_askpx, px);
+    }
+    fn get_askqty(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_askqty)
+    }
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
+        delegate_by_variant!(self, set_askqty, qty);
+    }
+    fn get_askccy(&self) -> Option<&crate::Ccy> {
+        delegate_by_variant!(self, get_askccy)
+    }
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
+        delegate_by_variant!(self, set_askccy, ccy);
+    }
 }
 
 impl MarketData {
@@ -415,7 +457,7 @@ impl MarketData {
 
     /// This value as an [`Event`] that is also an [`Operation`] - the four
     /// kinds [`super::EventIterator`] walks: [`OrderEvent`], [`QuoteEvent`],
-    /// [`ExecutionEvent`] and [`TradeEvent`]. `None` for the other six,
+    /// [`ExecutionEvent`] and [`TradeEvent`]. `None` for the other five,
     /// which the walk yields unchanged, in place.
     #[must_use]
     pub(crate) fn as_event_operation(&self) -> Option<&dyn EventOperation> {
@@ -485,7 +527,6 @@ macro_rules! from_leaf {
 from_leaf!(Order, Order);
 from_leaf!(Quote, Quote);
 from_leaf!(Execution, Execution);
-from_leaf!(BookSide, BookSide);
 from_leaf!(OrderEvent, OrderEvent);
 from_leaf!(QuoteEvent, QuoteEvent);
 from_leaf!(ExecutionEvent, ExecutionEvent);
@@ -538,14 +579,6 @@ impl MarketData {
     pub fn as_execution(&self) -> Option<&Execution> {
         match self {
             Self::Execution(value) => Some(value),
-            _ => None,
-        }
-    }
-    /// Borrows this value as a [`BookSide`], where it is one.
-    #[must_use]
-    pub fn as_book_side(&self) -> Option<&BookSide> {
-        match self {
-            Self::BookSide(value) => Some(value),
             _ => None,
         }
     }

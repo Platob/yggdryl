@@ -128,17 +128,18 @@ impl DataType {
         ("bbg", DataType::Bbg),
         ("ric", DataType::Ric),
         ("figi", DataType::Figi),
-        // The remaining codes resolve to themselves. `side` is a FIX code
-        // set the standard itself declares, addressed constantly enough to
-        // earn a packed datatype.
+        // The enum leaves - a side, a state and a market data kind, each the
+        // int32 code of a member of a closed set - and how long an order
+        // stands. None is a word the Arrow or SQL grammar owns.
         ("side", DataType::Side),
-        // What state one thing is in - the lifecycle enum rather than a
-        // code - and how long an order stands. Neither is a word the Arrow or
-        // SQL grammar owns.
         ("state", DataType::State),
+        ("marketdatakind", DataType::MarketDataKind),
         ("timeinforce", DataType::TimeInForce),
         // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.
         ("unit", DataType::Unit),
+        // The currency pair a foreign exchange instrument is: two legs of
+        // `ccy`, the base and the quote.
+        ("forex", DataType::Forex),
         // The rest are names over a fixed US-ASCII width, which is all they
         // need.
         ("language", fixed_ascii(2)),

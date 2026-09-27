@@ -118,15 +118,20 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// carries no message at all, and none for the session traffic and the
     /// documents `DEFAULT_REFUSED_MSGTYPES` keeps out of a live read, which
     /// is what this codec is. What a row costs is the same either way; the
-    /// count is here so that a reader knows what was drained.
-    const ROWS: usize = 79;
+    /// count is here so that a reader knows what was drained. It is 84 where
+    /// it was 79 since the parse splits each fill off its report (A12): five
+    /// filling reports each bring their execution with them.
+    const ROWS: usize = 84;
     /// How many messages the lifecycle walk answers for those rows: a
     /// message arriving under the identity the live one arrived under is the
     /// same message logged at another hop, so it restates that one rather
     /// than joining the chain behind it. This codec reads through a bare
     /// registry, which types almost nothing, so most of the capture's rows
-    /// state the same little and collapse onto each other.
-    const WALKED: usize = 16;
+    /// state the same little and collapse onto each other. It is 21 where it
+    /// was 16 since the parse splits each fill off its report (A12): the five
+    /// executions are each a delivery of their own, `FILLED` ending each
+    /// chain, so a later fill under one `ExecID` starts afresh.
+    const WALKED: usize = 21;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it.
     const DECODE: &str =

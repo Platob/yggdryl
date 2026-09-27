@@ -694,7 +694,7 @@ impl FixRegistry {
         }
         catalog.settle_indexes();
         self.catalog = catalog;
-        self.forget_derivations();
+        self.forget_answers();
         self.refresh_msgtype_aliases();
         Ok(())
     }
@@ -795,7 +795,7 @@ impl FixRegistry {
                     let tag = self.derived_definition_tag(field.name())?;
                     field.as_fix_mut().set_tag(tag)?;
                 }
-                self.forget_derivations();
+                self.forget_answers();
                 self.catalog.insert(category, field)?;
             }
         }

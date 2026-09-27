@@ -26,7 +26,8 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol, Side, State, TimeInForce, Unit,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, Mic, Ric, Sedol, Side, State,
+    TimeInForce, Unit,
 };
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
@@ -369,11 +370,22 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                     .unbind(),
             ),
         ),
-        // A state pickles under its stored name, which the reader reads back.
+        // An enum member pickles under its leaf's name and its own stored
+        // name, which the reader reads back.
         Scalar::State(state) => tagged_pickle_state(
             py,
             "state",
             Some(PyString::new(py, state.as_str()).into_any().unbind()),
+        ),
+        Scalar::MarketDataKind(kind) => tagged_pickle_state(
+            py,
+            "marketdatakind",
+            Some(PyString::new(py, kind.as_str()).into_any().unbind()),
+        ),
+        Scalar::Side(side) => tagged_pickle_state(
+            py,
+            "side",
+            Some(PyString::new(py, side.as_str()).into_any().unbind()),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
@@ -723,11 +735,17 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "figi" => Figi::new(payload()?.extract::<String>()?)
             .map(Scalar::Figi)
             .map_err(value_error),
-        "side" => Side::new(payload()?.extract::<String>()?)
+        "forex" => Forex::new(payload()?.extract::<String>()?)
+            .map(Scalar::Forex)
+            .map_err(value_error),
+        "side" => Side::read(&payload()?.extract::<String>()?)
             .map(Scalar::Side)
             .map_err(value_error),
         "state" => State::read(&payload()?.extract::<String>()?)
             .map(Scalar::State)
+            .map_err(value_error),
+        "marketdatakind" => MarketDataKind::read(&payload()?.extract::<String>()?)
+            .map(Scalar::MarketDataKind)
             .map_err(value_error),
         "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
             .map(Scalar::TimeInForce)
@@ -1892,8 +1910,13 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         )
         .into_any()
         .unbind()),
-        // A state crosses as the member of `yggdryl.State` its code names.
+        // An enum member crosses as the member of its Python enum - `State`,
+        // `MarketDataKind`, `Side` - its code names.
         Scalar::State(state) => Ok(classes::state(py)?.call1((state.code(),))?.unbind()),
+        Scalar::MarketDataKind(kind) => {
+            Ok(classes::marketdatakind(py)?.call1((kind.code(),))?.unbind())
+        }
+        Scalar::Side(side) => Ok(classes::side(py)?.call1((side.code(),))?.unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?
@@ -2177,10 +2200,11 @@ impl Encoder {
             ClassKind::Enum => {
                 self.convert(&value.getattr(intern!(value.py(), "value"))?, depth + 1)
             }
-            ClassKind::State => value
+            // A member of one of the crate's own enums is the member of the
+            // leaf its class names, read through that leaf's value contract.
+            ClassKind::Member(dtype) => value
                 .extract::<i64>()
-                .and_then(|code| State::read_code(code).map_err(value_error))
-                .map(Scalar::State),
+                .and_then(|code| dtype.scalar(Scalar::from(code)).map_err(value_error)),
             ClassKind::Stdlib(stdlib) => self.convert_stdlib(value, stdlib, depth),
             ClassKind::Subclass => self.convert_other(value, depth),
             ClassKind::Any => {
@@ -2752,14 +2776,6 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
         return Some(Scalar::from(&value.inner));
     }
-    // A `Lane` is not a scalar type `DataType::scalar` recognizes on its
-    // own, so it crosses through the core's own `lane_fact` here - the one
-    // ladder every door (`Scalar.from_`, a record's folded column keys, a
-    // nested row) reads a Lane through, rather than a key-name special case
-    // at one door alone.
-    if let Ok(value) = value.extract::<PyRef<'_, crate::graph::operation::PyLane>>() {
-        return Some(yggdryl::graph::operation_column::lane_fact(&value.inner));
-    }
     // Every identifier - a `Uri` and the `Url`, `Urn`, and `Arn` that narrow
     // it - crosses as the canonical text it spells.
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
@@ -3272,9 +3288,10 @@ enum ClassKind {
     Record(Arc<[Member]>),
     /// An `enum.Enum`: a member converts as the value it names.
     Enum,
-    /// The `yggdryl.State` enum: a member is the state it names, never the
-    /// bare integer its code is.
-    State,
+    /// One of the crate's own enums - `yggdryl.State`, `MarketDataKind`,
+    /// `Side` - and the enum leaf it is: a member is the member it names,
+    /// never the bare integer its code is.
+    Member(CoreDataType),
     /// A standard-library value class, named exactly.
     Stdlib(Stdlib),
     /// A subclass of a builtin or standard-library value or collection,
@@ -3407,8 +3424,14 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
         return Ok(ClassKind::Stdlib(stdlib));
     }
     if class.is_subclass(classes::enumeration(py)?)? {
-        if class.is(classes::state(py)?) {
-            return Ok(ClassKind::State);
+        for (native, dtype) in [
+            (classes::state(py)?, CoreDataType::State),
+            (classes::marketdatakind(py)?, CoreDataType::MarketDataKind),
+            (classes::side(py)?, CoreDataType::Side),
+        ] {
+            if class.is(native) {
+                return Ok(ClassKind::Member(dtype));
+            }
         }
         return Ok(ClassKind::Enum);
     }
@@ -3513,6 +3536,8 @@ mod classes {
     classes! {
         enumeration = "enum", "Enum";
         state = "yggdryl.state", "State";
+        marketdatakind = "yggdryl.marketdatakind", "MarketDataKind";
+        side = "yggdryl.side", "Side";
         decimal = "decimal", "Decimal";
         datetime = "datetime", "datetime";
         date = "datetime", "date";

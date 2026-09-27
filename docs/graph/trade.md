@@ -6,16 +6,17 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | `yggdryl::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root |
-| Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `trade_event` row decodes only through it |
+| Owner | `yggdryl::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root, filed under `TRAD` |
+| Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it |
 | Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child on neither side (`.side`), at another instant (`.currunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`) |
-| Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order |
+| Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's cross code carrying its [side](market.md#sides-and-cross-codes) |
 | Root | the maximum child sequence, the earliest creation and recording instants, the latest execution instant; its digest feeds the execution count and each child's `curruuid` - never a child's `currhashcode` or content |
 | `is_execution` | always true |
 | `set_currunix` | rebases the root and every child atomically and re-finalizes them; each child keeps its `execunix` |
 | Following, merging | only under the same root cross code: children combine by execution cross code, then rebase to the resulting instant |
 | In a book | a [book](book.md#books) takes the bounds from the root and lists the children in `executions()`; neither enters depth |
-| Bindings | Python `graph.TradeEvent.from_parts(root, executions)`, JavaScript `graph.TradeEvent.fromParts(root, executions)`; `executions` |
+| From FIX | a trade capture report (`AE`) is no leaf: [`FixMsg::market_data`](../fix/message.md#market-data) refuses it at `MsgType(35)`, and a capture's market data and books skip it; what it reports are the sided executions its parse splits off - one execution message per `NoSides(552)` occurrence stating a side, `EXEC` and `FILLED` - so each fill is stated once; an occurrence stating no side splits nothing and is an anomaly of the trade |
+| Bindings | Python `graph.TradeEvent.from_parts(root, executions)`, JavaScript `graph.TradeEvent.fromParts(root, executions)`; the built trade's `executions` is a property in both, a list (Python) or an array (JavaScript) of `ExecutionEvent` in the canonical order |
 
 ## Example
 
@@ -42,18 +43,20 @@ Apple shares crossed between a buyer and a seller at 189.50.
 
     let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUY", Side::Buy)?])?;
     let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).collect();
-    assert_eq!(codes, ["E-BUY", "E-SELL"]);
+    assert_eq!(codes, ["BUY:E-BUY", "SELL:E-SELL"]);
     assert!(trade.is_execution());
     // Input order cannot change the trade.
     let again = TradeEvent::from_parts(&root, vec![fill("E-BUY", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
     assert_eq!(again.get_curruuid(), trade.get_curruuid());
 
-    // An execution is required, each at the trade's instant.
+    // An execution is required, each at the trade's instant and on a side.
     assert!(TradeEvent::from_parts(&root, Vec::new()).is_err());
     let mut late = fill("E-LATE", Side::Buy)?;
     late.set_currunix(T + 1);
     let error = TradeEvent::from_parts(&root, vec![late]).unwrap_err();
     assert!(error.to_string().contains("$.executions[0].currunix"), "{error}");
+    let error = TradeEvent::from_parts(&root, vec![fill("E-NONE", Side::Unknown)?]).unwrap_err();
+    assert!(error.to_string().contains("$.executions[0].side"), "{error}");
     ```
 
 === "Python"
@@ -70,14 +73,18 @@ Apple shares crossed between a buyer and a seller at 189.50.
 
     root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL")
     trade = graph.TradeEvent.from_parts(root, [fill("E-SELL", "SELL"), fill("E-BUY", "BUY")])
-    assert [execution.crosscode for execution in trade.executions] == ["E-BUY", "E-SELL"]
+    assert [execution.crosscode for execution in trade.executions] == ["BUY:E-BUY", "SELL:E-SELL"]
     assert trade.is_execution
     # Input order cannot change the trade.
     again = graph.TradeEvent.from_parts(root, [fill("E-BUY", "BUY"), fill("E-SELL", "SELL")])
     assert again.curruuid == trade.curruuid
 
-    # An execution is required, each at the trade's instant.
-    for executions, where in (([], "$.executions:"), ([fill("E-LATE", "BUY", T + 1)], "$.executions[0].currunix")):
+    # An execution is required, each at the trade's instant and on a side.
+    for executions, where in (
+        ([], "$.executions:"),
+        ([fill("E-LATE", "BUY", T + 1)], "$.executions[0].currunix"),
+        ([fill("E-NONE", "UNKNOWN")], "$.executions[0].side"),
+    ):
         try:
             graph.TradeEvent.from_parts(root, executions)
         except ValueError as error:
@@ -99,13 +106,14 @@ Apple shares crossed between a buyer and a seller at 189.50.
     const root = new graph.OrderEvent(T, { crosscode: 'T-1', ticker: 'AAPL' })
 
     const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-BUY', 'BUY')])
-    assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['E-BUY', 'E-SELL'])
+    assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['BUY:E-BUY', 'SELL:E-SELL'])
     assert.equal(trade.isExecution, true)
     // Input order cannot change the trade.
     const again = graph.TradeEvent.fromParts(root, [fill('E-BUY', 'BUY'), fill('E-SELL', 'SELL')])
     assert.equal(again.curruuid, trade.curruuid)
 
-    // An execution is required, each at the trade's instant.
+    // An execution is required, each at the trade's instant and on a side.
     assert.throws(() => graph.TradeEvent.fromParts(root, []), /at least one execution/)
     assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUY', T + 1n)]), /\$\.executions\[0\]\.currunix/)
+    assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-NONE', 'UNKNOWN')]), /\$\.executions\[0\]\.side/)
     ```

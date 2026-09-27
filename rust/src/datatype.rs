@@ -166,14 +166,16 @@ pub enum DataType {
     /// ISO 6166: a securities identification number, twelve ASCII bytes
     /// closed by a check digit.
     Isin,
-    /// FIX's side of a trade, four ASCII bytes.
+    /// FIX's side of a trade: an enum stored as the `int32` code of its
+    /// member.
     Side,
-    /// What state one thing is in, eight ASCII bytes.
+    /// What state one thing is in: a lifecycle-sorted enum, stored as the
+    /// `int32` code of its member.
     ///
-    /// A rank character then a name, so the stored bytes sort from the first
-    /// state to the terminal ones wherever they are sorted. One vocabulary
-    /// over FIX's `OrdStatus` and `ExecType` and an ordinary scheduler's
-    /// words, because they describe the same shape.
+    /// The hundreds of the code are the rank, so the stored integers sort
+    /// from the first state to the terminal ones wherever they are sorted.
+    /// One vocabulary over FIX's `OrdStatus` and `ExecType` and an ordinary
+    /// scheduler's words, because they describe the same shape.
     State,
     /// How long an order stands, eight ASCII bytes.
     TimeInForce,
@@ -301,6 +303,11 @@ pub enum DataType {
     /// A Refinitiv Identification Code: a ticker and an exchange mnemonic, up
     /// to thirty-two ASCII bytes.
     Ric,
+    /// What kind of market data an element is: FIX's MsgCat code set, stored
+    /// as the `int32` code of its member.
+    MarketDataKind,
+    /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
+    Forex,
 }
 
 impl DataType {
@@ -412,9 +419,11 @@ impl DataType {
             Self::Sedol => DataTypeId::Sedol,
             Self::Bbg => DataTypeId::Bbg,
             Self::Ric => DataTypeId::Ric,
+            Self::Forex => DataTypeId::Forex,
             Self::Figi => DataTypeId::Figi,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
+            Self::MarketDataKind => DataTypeId::MarketDataKind,
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Unit => DataTypeId::Unit,
             Self::Decimal => DataTypeId::Decimal,
@@ -792,6 +801,8 @@ enum Shape<'a> {
     Decimal,
     BigDecimal,
     Ric,
+    MarketDataKind,
+    Forex,
 }
 
 impl<'a> Shape<'a> {
@@ -868,6 +879,8 @@ impl<'a> Shape<'a> {
             D::Unit => Self::Unit,
             D::Decimal => Self::Decimal,
             D::BigDecimal => Self::BigDecimal,
+            D::MarketDataKind => Self::MarketDataKind,
+            D::Forex => Self::Forex,
         }
     }
 }
@@ -912,7 +925,18 @@ macro_rules! bytes_dtypes {
     };
 }
 
+/// The enum leaves as one pattern over [`DataType`]: a closed set of members
+/// stored as the `int32` code of each. A match that must cover every datatype
+/// spells them through this rather than a guard, which counts for nothing
+/// towards exhaustiveness.
+macro_rules! enum_dtypes {
+    () => {
+        $crate::DataType::State | $crate::DataType::MarketDataKind | $crate::DataType::Side
+    };
+}
+
 pub(crate) use bytes_dtypes;
+pub(crate) use enum_dtypes;
 pub(crate) use string_dtypes;
 
 impl PartialOrd for DataType {
@@ -999,6 +1023,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Decimal => 69,
         DataType::BigDecimal => 70,
         DataType::Ric => 71,
+        DataType::Forex => 72,
+        DataType::MarketDataKind => 73,
     }
 }
 
@@ -1280,11 +1306,11 @@ mod arrow {
                 | R::Bbg
                 | R::Ric
                 | R::Figi
-                | R::Side
                 | R::TimeInForce
-                | R::Unit => code::code_arrow_storage(self)?,
-                // A state is the code of its member.
-                R::State => ArrowDataType::Int32,
+                | R::Unit
+                | R::Forex => code::code_arrow_storage(self)?,
+                // An enum member is the code of its leaf.
+                R::State | R::MarketDataKind | R::Side => ArrowDataType::Int32,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
@@ -1614,9 +1640,11 @@ mod arrow {
                 Self::Timezone => Some((crate::TIMEZONE_EXTENSION_NAME, String::new())),
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
-                // A state's codes are bare integers without the name that
+                // An enum leaf's codes are bare integers without the name that
                 // says which member each stands for.
-                Self::State => Some((crate::STATE_EXTENSION_NAME, String::new())),
+                held if held.is_enum() => {
+                    crate::enums::enum_extension_name(held.id()).map(|name| (name, String::new()))
+                }
                 // A code carries its own name, so the identity survives Arrow:
                 // three bytes under `yggdryl.ccy` read back a currency.
                 code => crate::code_extension_name(code).map(|name| (name, String::new())),

@@ -8,9 +8,9 @@ use yggdryl::{
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
-        use yggdryl::graph::{BookSide, Market};
+        use yggdryl::graph::{Market, Order};
         use yggdryl::securityid::{SecType, SecurityId};
-        use yggdryl::{Cfi, Figi, Isin, Ric};
+        use yggdryl::{Cfi, Figi, Forex, FxSymbol, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
             bench.iter(|| Isin::new(black_box("us0378331005")).unwrap());
@@ -25,6 +25,12 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         codes.bench_function("ric_exchange_code", |bench| {
             bench.iter(|| black_box(&ric).exchange_code());
         });
+        codes.bench_function("forex_new", |bench| {
+            bench.iter(|| Forex::new(black_box("eur-usd")).unwrap());
+        });
+        codes.bench_function("forex_from_symbol", |bench| {
+            bench.iter(|| FxSymbol::from_symbol(black_box("EUR/USD 1M")).unwrap());
+        });
         codes.bench_function("cfi_classification", |bench| {
             bench.iter(|| Cfi::is_classified(black_box("ESVUFR")));
         });
@@ -34,12 +40,72 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {
             bench.iter(|| {
-                let mut element = BookSide::default();
+                let mut element = Order::new();
                 let _ = element.insert_securityid(black_box(&isin).clone());
                 black_box(element)
             });
         });
         codes.finish();
+    }
+    {
+        // A column entering an enum leaf, through the one plan compiled
+        // before the loop: text read as the member's spelling, integers as
+        // its code.
+        use std::sync::Arc;
+
+        use arrow_array::{ArrayRef, Int32Array, StringArray};
+        use yggdryl::{ArrowCastOptions, ArrowCastPlan, Serie};
+
+        const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
+        let mut enums = criterion.benchmark_group("enums");
+        let leaves: [(&str, DataType, [&str; 5], [i32; 5]); 2] = [
+            (
+                "marketdatakind",
+                DataType::MarketDataKind,
+                ["ORDR", "QUOT", "EXEC", "TRAD", "BOOK"],
+                [10, 14, 8, 21, 3],
+            ),
+            (
+                "side",
+                DataType::Side,
+                ["BUY", "SELL", "1", "2", "SellShort"],
+                [1, 2, 5, 1, 2],
+            ),
+        ];
+        for (name, dtype, spellings, codes) in leaves {
+            let target = Field::new(name, dtype, true);
+            let sources: [(&str, ArrayRef); 2] = [
+                (
+                    "utf8",
+                    Arc::new(StringArray::from_iter_values(
+                        (0..ROWS).map(|row| spellings[row % spellings.len()]),
+                    )),
+                ),
+                (
+                    "int",
+                    Arc::new(Int32Array::from_iter_values(
+                        (0..ROWS).map(|row| codes[row % codes.len()]),
+                    )),
+                ),
+            ];
+            for (source_name, array) in sources {
+                let column = Serie::from_arrow_array(None, array, ArrowCastOptions::new())
+                    .expect("the benchmark column lands as itself");
+                let plan = ArrowCastPlan::compile(
+                    column.require_field().expect("a landed column has a field"),
+                    &target,
+                    ArrowCastOptions::new(),
+                )
+                .expect("the benchmark cast is plannable");
+                enums.bench_function(format!("{name}_ingest_{source_name}"), |bench| {
+                    bench.iter(|| {
+                        plan.apply(black_box(&column))
+                            .expect("every benchmark cell names a member")
+                    });
+                });
+            }
+        }
+        enums.finish();
     }
     let record = Scalar::from_struct([
         (

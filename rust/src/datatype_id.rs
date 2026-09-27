@@ -172,8 +172,8 @@ pub enum DataTypeId {
     Mic = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi = 0x74,
-    /// FIX's side of a trade, four ASCII bytes.
-    Side = 0x75,
+    // 0x75 was `side` while a side was a code; it is an enum leaf now, at
+    // 0xc3, and a retired number is never reused.
     /// How long an order stands.
     TimeInForce = 0x77,
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
@@ -194,6 +194,8 @@ pub enum DataTypeId {
     /// A Refinitiv Identification Code: a ticker and an exchange mnemonic,
     /// up to thirty-two ASCII bytes.
     Ric = 0x7e,
+    /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
+    Forex = 0x7f,
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
@@ -231,11 +233,16 @@ pub enum DataTypeId {
     /// What state one thing is in: a lifecycle-sorted enum, stored as the
     /// `int32` code of its member.
     State = 0xc1,
+    /// What kind of market data an element is: FIX's MsgCat code set, stored
+    /// as the `int32` code of its member.
+    MarketDataKind = 0xc2,
+    /// FIX's side of a trade, stored as the `int32` code of its member.
+    Side = 0xc3,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 88] = [
+    pub const ALL: [Self; 90] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -299,7 +306,6 @@ impl DataTypeId {
         Self::Ccy,
         Self::Mic,
         Self::Cfi,
-        Self::Side,
         Self::TimeInForce,
         Self::Isin,
         Self::Cusip,
@@ -308,6 +314,7 @@ impl DataTypeId {
         Self::Figi,
         Self::Unit,
         Self::Ric,
+        Self::Forex,
         Self::Uuid,
         Self::Serie,
         Self::LargeSerie,
@@ -324,6 +331,8 @@ impl DataTypeId {
         Self::Geometry,
         Self::Geography,
         Self::State,
+        Self::MarketDataKind,
+        Self::Side,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -379,9 +388,11 @@ impl DataTypeId {
             Self::Sedol => "sedol",
             Self::Bbg => "bbg",
             Self::Ric => "ric",
+            Self::Forex => "forex",
             Self::Figi => "figi",
             Self::Side => "side",
             Self::State => "state",
+            Self::MarketDataKind => "marketdatakind",
             Self::TimeInForce => "timeinforce",
             Self::Unit => "unit",
             Self::Uuid => "uuid",
@@ -659,8 +670,9 @@ impl DataTypeId {
     /// Return the most bytes one registered code's value may be.
     ///
     /// The number each standard fixes: two for a country, three for a
-    /// currency, four for a market identifier or a side, six for a
-    /// classification, seven for a SEDOL, eight for a time in force, nine
+    /// currency, four for a market identifier, six for a
+    /// classification, seven for a SEDOL or a currency pair, eight for a
+    /// time in force, nine
     /// for a CUSIP, twelve for an ISIN, and thirty-two for
     /// a Bloomberg identifier - the one whose width is only a bound, because
     /// a ticker, a market and a yellow key have no fixed length between
@@ -676,8 +688,8 @@ impl DataTypeId {
             Self::Ccy => Some(3),
             Self::Mic => Some(4),
             Self::Cfi => Some(6),
-            Self::Sedol => Some(7),
-            Self::Side | Self::TimeInForce => Some(8),
+            Self::Sedol | Self::Forex => Some(7),
+            Self::TimeInForce => Some(8),
             Self::Cusip => Some(9),
             Self::Isin | Self::Figi => Some(12),
             Self::Bbg | Self::Unit | Self::Ric => Some(32),

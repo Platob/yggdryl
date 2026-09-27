@@ -146,7 +146,10 @@ fn dated_line(
 /// A row yields none, one or many, so a fixture that carries
 /// exactly one says so here: what the assertions below are about is that one
 /// message, and a fixture that grew a second would otherwise be read as its
-/// first with nobody noticing.
+/// first with nobody noticing. What the parse splits off that message (an
+/// execution, a trade's sided executions, a two-sided quote's sided quotes)
+/// follows it, each naming it as its source, and is not a second message
+/// of the fixture.
 trait SoleMessage {
     fn sole_line(&self, row: &[u8]) -> yggdryl::Result<yggdryl::FixMsg>;
 }
@@ -154,13 +157,16 @@ trait SoleMessage {
 fn sole_message(
     mut messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
 ) -> yggdryl::Result<yggdryl::FixMsg> {
+    use yggdryl::graph::Element;
     let message = messages
         .next()
         .expect("a fixture of one message yields it")?;
-    assert!(
-        messages.next().is_none(),
-        "a fixture of one message yields exactly one"
-    );
+    for split in messages {
+        assert!(
+            split?.get_srcuuids().contains(&message.get_curruuid()),
+            "a fixture of one message yields exactly one, and what it splits into"
+        );
+    }
     Ok(message)
 }
 
@@ -400,6 +406,8 @@ mod document;
 mod enrich;
 #[path = "fix/entry.rs"]
 mod entry;
+#[path = "fix/forex.rs"]
+mod forex;
 #[path = "fix/global.rs"]
 mod global;
 #[cfg(feature = "internals")]
@@ -422,6 +430,8 @@ mod messages;
 mod mod_;
 #[path = "fix/msg.rs"]
 mod msg;
+#[path = "fix/msgtype.rs"]
+mod msgtype;
 #[path = "fix/registry.rs"]
 mod registry;
 #[cfg(feature = "internals")]

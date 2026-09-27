@@ -247,10 +247,15 @@ impl MsgType {
             .expect("a registry message has a validated wire code")
     }
 
-    /// The message definition's business category, where the registry states one.
+    /// The message definition's business category, where the registry
+    /// states one: its `FIX:msgcat`, the member of
+    /// [`MarketDataKind`](crate::MarketDataKind) it names.
     #[must_use]
-    pub fn msgcat(&self) -> Option<&str> {
-        self.field.as_fix().msgcat()
+    pub fn msgcat(&self) -> Option<crate::MarketDataKind> {
+        self.field
+            .as_fix()
+            .msgcat()
+            .and_then(crate::MarketDataKind::from_name)
     }
 
     /// Borrows the unique repeating group the counter `tag` opens in this

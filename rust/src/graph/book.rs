@@ -1,4 +1,4 @@
-//! Typed market operations and a stateful, price-ordered market book.
+//! Typed market data and a stateful, price-ordered market book.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -8,15 +8,14 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::facts::{MarketEventFacts, MarketFacts, OperationEventFacts};
+use super::arrow::{ALIVE, DELTAS};
+use super::facts::{MarketEventFacts, OperationEventFacts};
 use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
 use super::operation::{BookRef, ExecutionEvent, MdUpdateAction, OrderKind, QuoteKind};
 use super::{Element, Event, Market, Operation};
+use crate::xxhash::Xxh3;
 use crate::{Ccy, Decimal, Error, Limit, Result, Side, State, Unit, Uuid};
-
-/// The symbol of the one consolidated book emitted in global mode.
-pub const GLOBAL_SYMBOL: &str = "GLOBAL";
 
 /// The alternate-identifier key an entry's own `MDEntryID(278)` is held under.
 pub const ENTRY_ID: &str = "MDENTRYID";
@@ -165,14 +164,16 @@ struct LiveKey {
     scope: SmolStr,
 }
 
-/// One scope a full snapshot replaces: a symbol - none in global mode -
-/// and the book scope the entries stated.
+/// One scope a full snapshot replaces: a symbol - none where the
+/// operations state no ticker - and the book scope the entries stated. Walk
+/// state: a book remembers the scopes its last snapshot replaced while the
+/// walk folds it, and no row states them.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SnapshotPartition {
+struct SnapshotPartition {
     /// The symbol the snapshot is for, where the operations name one.
-    pub symbol: Option<SmolStr>,
+    symbol: Option<SmolStr>,
     /// The book scope, empty where the operations state none.
-    pub scope: SmolStr,
+    scope: SmolStr,
 }
 
 impl SnapshotPartition {
@@ -238,6 +239,15 @@ impl BookPrice {
 /// A level's quantity: the exact sum of what its entries state, an entry
 /// stating none adding nothing; `None` past decimal. The one place a level
 /// is summed.
+/// Whether a level can trade: one of its entries does not state
+/// `tradable = false` - an entry stating nothing is a live order no venue
+/// halted, so only a level every entry of which states `false` cannot.
+fn is_tradable(level: &[Arc<MarketData>]) -> bool {
+    level
+        .iter()
+        .any(|operation| operation.operation_event().get_tradable() != Some(false))
+}
+
 fn level_quantity(level: &[Arc<MarketData>]) -> Option<Decimal> {
     level.iter().try_fold(Decimal::ZERO, |sum, operation| {
         sum.checked_add(operation.get_quantity().unwrap_or(Decimal::ZERO))
@@ -245,7 +255,8 @@ fn level_quantity(level: &[Arc<MarketData>]) -> Option<Decimal> {
 }
 
 /// The book scope an entry states, empty where it states none: the seam
-/// over [`MarketData::book`] every book-side comparison reads through.
+/// over [`MarketData::book`] every comparison of a book's entries reads
+/// through.
 fn scope_of(operation: &MarketData) -> &str {
     operation
         .book()
@@ -265,7 +276,7 @@ fn promote_to_order(operation: MarketData, data: OperationEventFacts) -> MarketD
     match operation {
         MarketData::OrderEvent(event) => MarketData::OrderEvent(event.with_kind::<OrderKind>(data)),
         MarketData::QuoteEvent(event) => MarketData::OrderEvent(event.with_kind::<OrderKind>(data)),
-        _ => unreachable!("a book side holds only order or quote events"),
+        _ => unreachable!("a book holds alive only order or quote events"),
     }
 }
 
@@ -274,20 +285,24 @@ fn promote_to_quote(operation: MarketData, data: OperationEventFacts) -> MarketD
     match operation {
         MarketData::OrderEvent(event) => MarketData::QuoteEvent(event.with_kind::<QuoteKind>(data)),
         MarketData::QuoteEvent(event) => MarketData::QuoteEvent(event.with_kind::<QuoteKind>(data)),
-        _ => unreachable!("a book side holds only order or quote events"),
+        _ => unreachable!("a book holds alive only order or quote events"),
     }
 }
 
-/// One side of a book: persistent live orders and quotes, price ordered,
-/// beside the deltas applied since the last emitted book.
+/// One side of a book as the walk keeps it: persistent live orders and
+/// quotes, price ordered, beside the deltas applied since the last emitted
+/// book. Walk state rather than a value: a book answers a side as its
+/// price levels through [`BookEvent::limits`] and its entries through
+/// [`BookEvent::alive`] and [`BookEvent::deltas`].
 ///
 /// A live entry is shared: a book emitted per instant is a clone of the one
 /// the walk keeps, and the entries an update did not touch are the same
 /// entries in both, so emitting a deep book costs a reference count per
 /// entry rather than a copy of each.
 #[derive(Clone, Debug)]
-pub struct BookSide {
-    element: MarketFacts,
+struct Ladder {
+    /// `BUY` for the bid side, `SELL` for the ask side.
+    side: Side,
     levels: BTreeMap<BookPrice, Vec<Arc<MarketData>>>,
     /// Derived from `levels` and kept in step by every change, shared with
     /// clones until one changes: a book emitted per instant copies no index,
@@ -295,12 +310,17 @@ pub struct BookSide {
     /// emitted book is gone.
     index: Arc<SideIndex>,
     deltas: Vec<MarketData>,
+    /// The digest of what the side holds, alive and applied, kept in step by
+    /// every refresh: a book finalized per instant reads one word per side
+    /// rather than walking a side thousands deep.
+    hashcode: u64,
 }
 
-/// Two sides are equal by what they hold; the index is derived from it.
-impl PartialEq for BookSide {
+/// Two sides are equal by what they hold; the index and the digest are
+/// derived from it.
+impl PartialEq for Ladder {
     fn eq(&self, other: &Self) -> bool {
-        self.element == other.element && self.levels == other.levels && self.deltas == other.deltas
+        self.side == other.side && self.levels == other.levels && self.deltas == other.deltas
     }
 }
 
@@ -378,7 +398,7 @@ struct RemovedLive {
 }
 
 struct SideJournal {
-    element: MarketFacts,
+    hashcode: u64,
     deltas_len: usize,
     cleared_deltas: Option<Vec<MarketData>>,
     inserted: Vec<LiveKey>,
@@ -386,11 +406,11 @@ struct SideJournal {
 }
 
 impl SideJournal {
-    fn new(side: &mut BookSide, clear_deltas: bool) -> Self {
+    fn new(side: &mut Ladder, clear_deltas: bool) -> Self {
         let deltas_len = side.deltas.len();
         let cleared_deltas = clear_deltas.then(|| std::mem::take(&mut side.deltas));
         Self {
-            element: side.element.clone(),
+            hashcode: side.hashcode,
             deltas_len,
             cleared_deltas,
             inserted: Vec::new(),
@@ -398,7 +418,7 @@ impl SideJournal {
         }
     }
 
-    fn rollback(self, side: &mut BookSide) {
+    fn rollback(self, side: &mut Ladder) {
         for identity in self.inserted.into_iter().rev() {
             let _ = side.take_removed(&identity);
         }
@@ -412,70 +432,46 @@ impl SideJournal {
         } else {
             side.deltas.truncate(self.deltas_len);
         }
-        side.element = self.element;
+        side.hashcode = self.hashcode;
     }
 }
 
-impl BookSide {
-    /// An empty bid or ask side.
-    pub fn new(side: Side) -> Result<Self> {
-        if !side.is_bid() && !side.is_ask() {
-            return Err(invalid(
-                "$.side",
-                format_smolstr!("expected a bid or ask side, got {:?}", side.as_str()),
-            ));
-        }
-        let mut element = MarketFacts::default();
-        element.set_side(side);
-        let mut side = Self {
-            element,
+impl Ladder {
+    /// An empty side: `BUY` is the bid, `SELL` the ask.
+    fn new(side: Side) -> Self {
+        let mut ladder = Self {
+            side,
             levels: BTreeMap::new(),
             index: Arc::default(),
             deltas: Vec::new(),
+            hashcode: 0,
         };
-        side.finalize();
-        Ok(side)
+        ladder.rehash();
+        ladder
     }
 
-    /// Rebuilds one canonical side from its serialized parts without
-    /// replaying the serialized deltas as fresh mutations.
-    pub(crate) fn from_parts(
-        element: MarketFacts,
-        live: Vec<MarketData>,
-        deltas: Vec<MarketData>,
-    ) -> Result<Self> {
-        Self::from_shared_parts(element, live.into_iter().map(Arc::new).collect(), deltas)
-    }
-
-    /// [`Self::from_parts`] over live entries already shared, which a side
-    /// rebuilt around its own entries keeps rather than copies.
+    /// Rebuilds one canonical side from its entries - each beside its
+    /// position in the book's `alive` or `deltas` list, which a refusal
+    /// names - without replaying the deltas as fresh mutations.
     fn from_shared_parts(
-        element: MarketFacts,
-        live: Vec<Arc<MarketData>>,
-        deltas: Vec<MarketData>,
+        side: Side,
+        live: Vec<(usize, Arc<MarketData>)>,
+        deltas: Vec<(usize, MarketData)>,
     ) -> Result<Self> {
-        if !element.get_side().is_bid() && !element.get_side().is_ask() {
-            return Err(invalid(
-                "$.side",
-                format_smolstr!(
-                    "expected a bid or ask side, got {:?}",
-                    element.get_side().as_str()
-                ),
-            ));
-        }
-        let mut side = Self {
-            element,
+        let mut ladder = Self {
+            side,
             levels: BTreeMap::new(),
             index: Arc::default(),
             deltas: Vec::new(),
+            hashcode: 0,
         };
         let mut built = SideIndex {
             positions: HashMap::with_capacity(live.len()),
             entry_ids: HashMap::new(),
         };
-        for (index, operation) in live.into_iter().enumerate() {
-            let path = format_smolstr!("$.live[{index}]");
-            side.validate_component(&operation, &path, true)?;
+        for (index, operation) in live {
+            let path = format_smolstr!("$.{ALIVE}[{index}]");
+            ladder.validate_component(&operation, &path, true)?;
             let price = BookPrice::of(operation.get_side(), operation.get_price())
                 .expect("a validated side has a book price");
             let identity = LiveKey::of(&operation);
@@ -490,115 +486,85 @@ impl BookSide {
                 ));
             }
             built.record(&operation, &identity);
-            side.levels.entry(price).or_default().push(operation);
+            ladder.levels.entry(price).or_default().push(operation);
         }
-        side.index = Arc::new(built);
-        for level in side.levels.values_mut() {
+        ladder.index = Arc::new(built);
+        for level in ladder.levels.values_mut() {
             if level.iter().any(|held| position_of(held).is_some()) {
                 level.sort_by_key(|held| position_of(held).unwrap_or(u64::MAX));
             }
         }
-        for (index, operation) in deltas.iter().enumerate() {
-            side.validate_component(operation, &format_smolstr!("$.deltas[{index}]"), false)?;
+        let mut held = Vec::with_capacity(deltas.len());
+        for (index, operation) in deltas {
+            ladder.validate_component(
+                &operation,
+                &format_smolstr!("$.{DELTAS}[{index}]"),
+                false,
+            )?;
+            held.push(operation);
         }
-        side.deltas = deltas;
-        side.refresh()?;
-        Ok(side)
+        ladder.deltas = held;
+        ladder.refresh()?;
+        Ok(ladder)
     }
 
     /// The live orders and quotes, best price first and every entry
     /// stating no price last.
-    pub fn live(&self) -> impl Iterator<Item = &MarketData> {
+    fn live(&self) -> impl Iterator<Item = &MarketData> {
         self.levels
             .values()
             .flat_map(|level| level.iter().map(Arc::as_ref))
     }
 
-    /// Deltas applied since this side was last cleared.
-    #[must_use]
-    pub fn deltas(&self) -> &[MarketData] {
-        &self.deltas
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.index.positions.len()
     }
 
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.index.positions.is_empty()
-    }
-
-    /// The best live price on this side: the first priced level's, `None`
-    /// for an empty side or one holding only unpriced entries.
-    #[must_use]
-    pub fn best_price(&self) -> Option<Decimal> {
+    /// The best tradable price on this side: the first priced level's that
+    /// [`Self::limits`] answers tradable, `None` for an empty side, one
+    /// holding only unpriced entries, or one no level of which can trade -
+    /// never a price that cannot be traded.
+    fn best_price(&self) -> Option<Decimal> {
         self.best_level().map(|(price, _)| price)
     }
 
     /// The aggregate quantity at the best price: the exact sum of what the
-    /// entries of the first priced level state, an entry stating none adding
-    /// nothing; `None` where [`Self::best_price`] is.
-    #[must_use]
-    pub fn best_quantity(&self) -> Option<Decimal> {
+    /// entries of the first tradable priced level state, an entry stating
+    /// none adding nothing; `None` where [`Self::best_price`] is.
+    fn best_quantity(&self) -> Option<Decimal> {
         self.best_level().map(|(_, level)| {
-            // `canonical_element` refuses a level past decimal at every
-            // refresh, and every change refreshes or rolls back.
+            // `check_levels` refuses a level past decimal at every refresh,
+            // and every change refreshes or rolls back.
             level_quantity(level)
                 .expect("a refreshed side holds no level whose quantity overflows decimal")
         })
     }
 
-    /// The first priced level: the first key, since the unpriced level
-    /// sorts after every priced one.
-    fn best_level(&self) -> Option<(Decimal, &[Arc<MarketData>])> {
+    /// The first entry at the first priced level, tradable or not: the one
+    /// whose currency and unit the side speaks for the book in.
+    fn best_entry(&self) -> Option<&MarketData> {
         let (key, level) = self.levels.first_key_value()?;
-        Some((key.price()?, level))
+        key.price().map(|_| level[0].as_ref())
+    }
+
+    /// The first priced level that can trade: the first key a level's
+    /// entries fold tradable under [`Self::limits`]' rule, the unpriced
+    /// level sorting after every priced one.
+    fn best_level(&self) -> Option<(Decimal, &[Arc<MarketData>])> {
+        self.levels.iter().find_map(|(key, level)| {
+            let price = key.price()?;
+            is_tradable(level).then_some((price, level.as_slice()))
+        })
     }
 
     /// One [`Limit`] per level, best first and the unpriced limit last:
     /// its price, the exact sum of its entries' quantities, and their
-    /// `curruuid`s in position order, ties in arrival order.
-    ///
-    /// One pass over the levels in the order they are held, allocating each
-    /// limit's `uuids` and nothing else.
-    ///
-    /// ```
-    /// use yggdryl::graph::{BookSide, Element, Event, Market, MarketData, OrderEvent};
-    /// use yggdryl::{Decimal, Side, State};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let order = |code: &str, price: Option<i64>, quantity: i64| {
-    ///     let mut order = OrderEvent::at(1);
-    ///     order.set_crosscode(code.to_owned());
-    ///     order.set_side(Side::read("Buy").unwrap());
-    ///     order.set_price(price.map(Decimal::from_int));
-    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
-    ///     order.set_state(State::New);
-    ///     order.finalize();
-    ///     MarketData::from(order)
-    /// };
-    /// let mut side = BookSide::new(Side::read("Buy")?)?;
-    /// side.add_operation(order("A", Some(100), 2))?;
-    /// side.add_operation(order("MARKET", None, 5))?;
-    /// side.add_operation(order("B", Some(101), 3))?;
-    /// side.add_operation(order("C", Some(101), 4))?;
-    ///
-    /// let limits: Vec<_> = side.limits().collect();
-    /// assert_eq!(limits.len(), 3);
-    /// assert_eq!(limits[0].price, Some(Decimal::from_int(101)));
-    /// assert_eq!(limits[0].quantity, Decimal::from_int(7));
-    /// assert_eq!(limits[0].uuids.len(), 2);
-    /// assert_eq!(limits[1].price, Some(Decimal::from_int(100)));
-    /// // The market order rests after every priced level.
-    /// assert_eq!(limits[2].price, None);
-    /// assert_eq!(limits[2].quantity, Decimal::from_int(5));
-    /// assert_eq!(side.best_price(), Some(Decimal::from_int(101)));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn limits(&self) -> impl Iterator<Item = Limit> {
+    /// `curruuid`s in position order, ties in arrival order, and whether
+    /// any of them does not state `tradable = false` - an entry stating
+    /// nothing trades. One pass over the levels in the
+    /// order they are held, allocating each limit's `uuids` and nothing
+    /// else.
+    fn limits(&self) -> impl Iterator<Item = Limit> + '_ {
         self.levels.iter().map(|(key, level)| Limit {
             price: key.price(),
             quantity: level_quantity(level)
@@ -607,6 +573,7 @@ impl BookSide {
                 .iter()
                 .map(|operation| operation.get_curruuid())
                 .collect(),
+            tradable: is_tradable(level),
         })
     }
 
@@ -614,68 +581,13 @@ impl BookSide {
     /// [`Self::limits`] order, the unpriced limit counted where it is
     /// reached: zero for an empty side or no level, `None` only past
     /// decimal.
-    ///
-    /// ```
-    /// use yggdryl::graph::{BookSide, Element, Event, Market, MarketData, OrderEvent};
-    /// use yggdryl::{Decimal, Side, State};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let order = |code: &str, price: Option<i64>, quantity: i64| {
-    ///     let mut order = OrderEvent::at(1);
-    ///     order.set_crosscode(code.to_owned());
-    ///     order.set_side(Side::read("Sell").unwrap());
-    ///     order.set_price(price.map(Decimal::from_int));
-    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
-    ///     order.set_state(State::New);
-    ///     order.finalize();
-    ///     MarketData::from(order)
-    /// };
-    /// let mut side = BookSide::new(Side::read("Sell")?)?;
-    /// side.add_operation(order("A", Some(102), 2))?;
-    /// side.add_operation(order("B", Some(101), 3))?;
-    /// side.add_operation(order("MARKET", None, 5))?;
-    ///
-    /// assert_eq!(side.depth(0), Some(Decimal::ZERO));
-    /// assert_eq!(side.depth(1), Some(Decimal::from_int(3)));
-    /// assert_eq!(side.depth(2), Some(Decimal::from_int(5)));
-    /// assert_eq!(side.depth(3), Some(Decimal::from_int(10)));
-    /// assert_eq!(side.depth(100), Some(Decimal::from_int(10)));
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[must_use]
-    pub fn depth(&self, levels: usize) -> Option<Decimal> {
+    fn depth(&self, levels: usize) -> Option<Decimal> {
         self.levels
             .values()
             .take(levels)
             .try_fold(Decimal::ZERO, |sum, level| {
                 sum.checked_add(level_quantity(level)?)
             })
-    }
-
-    /// Atomically applies one order or quote delta.
-    ///
-    /// An entry stating no price - a market order - is given none: it rests
-    /// at the one unpriced level, after every priced level, so [`Self::live`],
-    /// the side's digest and a delete-from or delete-through position all
-    /// reach it last, and [`Self::limits`] answers it as the last limit.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::InvalidRecord`] for any variant but an order or a quote, an
-    /// entry of the other side, an update the side cannot place, or a level
-    /// whose aggregate quantity would pass decimal (at `$.quantity`); the
-    /// side is unchanged on every error.
-    pub fn add_operation(&mut self, operation: MarketData) -> Result<()> {
-        let mut journal = SideJournal::new(self, false);
-        let result = self
-            .apply_inner(operation, None, Some(&mut journal))
-            .and_then(|()| self.refresh());
-        if let Err(error) = result {
-            journal.rollback(self);
-            return Err(error);
-        }
-        Ok(())
     }
 
     fn validate_component(&self, operation: &MarketData, path: &str, live: bool) -> Result<()> {
@@ -691,14 +603,14 @@ impl BookSide {
                 "expected every live operation to have a live state",
             ));
         }
-        if operation.get_side().is_bid() != self.get_side().is_bid()
+        if operation.get_side().is_bid() != self.side.is_bid()
             || (!operation.get_side().is_bid() && !operation.get_side().is_ask())
         {
             return Err(invalid(
                 format_smolstr!("{path}.side"),
                 format_smolstr!(
                     "expected {:?}, got {:?}",
-                    self.get_side().as_str(),
+                    self.side.as_str(),
                     operation.get_side().as_str()
                 ),
             ));
@@ -725,12 +637,12 @@ impl BookSide {
                 "expected an order or quote on a book side",
             ));
         }
-        if operation.get_side().is_bid() != self.get_side().is_bid() {
+        if operation.get_side().is_bid() != self.side.is_bid() {
             return Err(invalid(
                 "$.operation.side",
                 format_smolstr!(
                     "expected {:?}, got {:?}",
-                    self.get_side().as_str(),
+                    self.side.as_str(),
                     operation.get_side().as_str()
                 ),
             ));
@@ -768,7 +680,7 @@ impl BookSide {
             && occupied_position()
         {
             return Err(invalid(
-                "$.operation.book.mdentrypositionno",
+                "$.operation.book.position",
                 "a new anonymous entry cannot occupy an existing position; state MDEntryID or send a snapshot",
             ));
         }
@@ -807,13 +719,13 @@ impl BookSide {
         if partial && previous.is_none() {
             if entry_px_of(&operation).is_none() {
                 return Err(invalid(
-                    "$.operation.book.mdentrypx",
+                    "$.operation.book.entry_px",
                     "a partial update without a live predecessor must state its price",
                 ));
             }
             if entry_size_of(&operation).is_none() {
                 return Err(invalid(
-                    "$.operation.book.mdentrysize",
+                    "$.operation.book.entry_size",
                     "a partial update without a live predecessor must state its size",
                 ));
             }
@@ -908,7 +820,7 @@ impl BookSide {
                 "$.operation.side",
                 format_smolstr!(
                     "expected the book side {:?}, got {:?}",
-                    self.get_side().as_str(),
+                    self.side.as_str(),
                     operation.get_side().as_str()
                 ),
             ));
@@ -1051,7 +963,7 @@ impl BookSide {
             .collect();
         if position > identities.len() {
             return Err(invalid(
-                "$.operation.book.mdentrypositionno",
+                "$.operation.book.position",
                 format_smolstr!(
                     "expected a position from 1 through {}, got {position}",
                     identities.len()
@@ -1089,27 +1001,24 @@ impl BookSide {
         snapshot: Vec<MarketData>,
         partitions: &BTreeSet<SnapshotPartition>,
     ) -> Result<()> {
-        let mut live = self
+        let live = self
             .levels
             .values()
             .flatten()
             .filter(|operation| !partitions.contains(&SnapshotPartition::of(operation)))
             .cloned()
-            .collect::<Vec<_>>();
-        live.extend(snapshot.into_iter().map(Arc::new));
-        *self = Self::from_shared_parts(self.element.clone(), live, self.deltas.clone())?;
+            .chain(snapshot.into_iter().map(Arc::new))
+            .enumerate()
+            .collect();
+        let deltas = self.deltas.iter().cloned().enumerate().collect();
+        *self = Self::from_shared_parts(self.side, live, deltas)?;
         Ok(())
     }
 
-    pub(super) fn canonical_element(&self) -> Result<MarketFacts> {
-        let mut element = self.element.clone();
-        element.set_price(None);
-        element.set_quantity(None);
-        element.set_currency(Ccy::none());
-        element.set_unit(Unit::none());
-        // Every level is summed, so a refreshed side holds none whose
-        // quantity overflows: `best_quantity` and `limits` rely on it. The
-        // digest below walks every entry anyway, so this stays linear.
+    /// Refuses a level whose aggregate quantity overflows decimal: every
+    /// level is summed, so a checked side holds none, which
+    /// [`Self::best_quantity`] and [`Self::limits`] rely on.
+    fn check_levels(&self) -> Result<()> {
         for (key, level) in &self.levels {
             if level_quantity(level).is_none() {
                 return Err(invalid(
@@ -1125,22 +1034,34 @@ impl BookSide {
                 ));
             }
         }
-        // The summary is the first priced level's; with none, no price and
-        // no quantity are stated - never a zero.
-        if let Some((price, level)) = self.best_level() {
-            let first = &level[0];
-            element.set_price(Some(price));
-            element.set_quantity(level_quantity(level));
-            element.set_currency(first.get_currency().clone());
-            element.set_unit(first.get_unit().clone());
-        }
-        finalize_side_element(&mut element, &self.levels, self.len(), &self.deltas);
-        Ok(element)
+        Ok(())
     }
 
+    /// The side checked and its digest brought in step with what it holds.
     fn refresh(&mut self) -> Result<()> {
-        self.element = self.canonical_element()?;
+        self.check_levels()?;
+        self.rehash();
         Ok(())
+    }
+
+    /// Digests the side: two facts per entry of a side that may be
+    /// thousands deep, staged so the state reads them a chunk at a time.
+    fn rehash(&mut self) {
+        let mut digest = Xxh3::new();
+        {
+            let mut staged = super::element::Staged::new(&mut digest);
+            staged.write(&(self.len() as u64).to_be_bytes());
+            for operation in self.levels.values().flatten() {
+                staged.write(operation.operation_event().operation_word().as_bytes());
+                staged.write(&operation.get_curruuid().get().to_be_bytes());
+            }
+            staged.write(&(self.deltas.len() as u64).to_be_bytes());
+            for operation in &self.deltas {
+                staged.write(operation.operation_event().operation_word().as_bytes());
+                staged.write(&operation.get_curruuid().get().to_be_bytes());
+            }
+        }
+        self.hashcode = digest.finish();
     }
 
     fn clear_deltas(&mut self) {
@@ -1148,178 +1069,46 @@ impl BookSide {
             return;
         }
         self.deltas.clear();
-        self.finalize();
+        self.rehash();
     }
 }
 
-/// The facts a book-side entry's data holds, whichever kind it is - never
+/// The facts a book entry's data holds, whichever kind it is - never
 /// mutated in place through this borrow, only read or cloned for the next
 /// reconstruction.
 fn operation_event_data(operation: &MarketData) -> &OperationEventFacts {
     operation.operation_event().facts()
 }
 
-fn finalize_side_element(
-    element: &mut MarketFacts,
-    levels: &BTreeMap<BookPrice, Vec<Arc<MarketData>>>,
-    live_len: usize,
-    deltas: &[MarketData],
-) {
-    element.fill_market();
-    element.sync_cross();
-    let mut digest = element.digest_market();
-    // Two facts per entry of a side that may be thousands deep, staged so
-    // the state reads them a chunk at a time.
-    {
-        let mut staged = super::element::Staged::new(&mut digest);
-        staged.write(&(live_len as u64).to_be_bytes());
-        for operation in levels.values().flatten() {
-            staged.write(operation.operation_event().operation_word().as_bytes());
-            staged.write(&operation.get_curruuid().get().to_be_bytes());
-        }
-        staged.write(&(deltas.len() as u64).to_be_bytes());
-        for operation in deltas {
-            staged.write(operation.operation_event().operation_word().as_bytes());
-            staged.write(&operation.get_curruuid().get().to_be_bytes());
-        }
-    }
-    let hashcode = digest.finish();
-    element.set_currhashcode(hashcode);
-    element.set_curruuid(Uuid::from_v8(u128::from(hashcode)));
-    element.set_crossuuid(element.cross_uuid());
-}
-
-impl Default for BookSide {
-    fn default() -> Self {
-        Self::new(Side::read("Buy").expect("the shipped Buy side")).expect("Buy is a bid side")
-    }
-}
-
-impl BookSide {
-    /// The side's own facts.
-    pub(crate) fn element(&self) -> &MarketFacts {
-        &self.element
-    }
-}
-
-impl Element for BookSide {
-    fn get_curruuid(&self) -> Uuid {
-        self.element.get_curruuid()
-    }
-
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.element.set_curruuid(uuid);
-    }
-
-    fn get_crossuuid(&self) -> Uuid {
-        self.element.get_crossuuid()
-    }
-
-    fn set_crossuuid(&mut self, uuid: Uuid) {
-        self.element.set_crossuuid(uuid);
-    }
-
-    fn get_crosscode(&self) -> &str {
-        self.element.get_crosscode()
-    }
-
-    /// A side's identity is content-derived, never dated: stores the code
-    /// with no `curruuid` reprojection.
-    fn set_crosscode(&mut self, code: String) {
-        self.element.set_crosscode(code);
-    }
-
-    fn get_currhashcode(&self) -> u64 {
-        self.element.get_currhashcode()
-    }
-
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.element.set_currhashcode(hashcode);
-    }
-
-    fn get_crosshashcode(&self) -> u64 {
-        self.element.get_crosshashcode()
-    }
-
-    fn set_crosshashcode(&mut self, hashcode: u64) {
-        self.element.set_crosshashcode(hashcode);
-    }
-
-    fn get_srcuuids(&self) -> &[Uuid] {
-        self.element.get_srcuuids()
-    }
-
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
-        self.element.set_srcuuids(sources);
-    }
-
-    /// A side has no instant and no predecessor: it states no order.
-    fn is_after(&self, _other: &Self) -> bool {
-        false
-    }
-
-    fn finalize(&mut self) {
-        finalize_side_element(
-            &mut self.element,
-            &self.levels,
-            self.index.positions.len(),
-            &self.deltas,
-        );
-    }
-
-    fn with_previous(mut self, previous: &Self) -> Option<Self> {
-        if self.get_side() != previous.get_side() {
-            return None;
-        }
-        self.element = self.element.with_previous(&previous.element)?;
-        self.finalize();
-        Some(self)
-    }
-
-    fn merge_with(self, other: &Self) -> Option<Self> {
-        if self.get_side() != other.get_side() {
-            return None;
-        }
-        let mut live = self.live().cloned().collect::<Vec<_>>();
-        let mut live_keys = live.iter().map(LiveKey::of).collect::<HashSet<_>>();
-        live.extend(
-            other
-                .live()
-                .filter(|operation| live_keys.insert(LiveKey::of(operation)))
-                .cloned(),
-        );
-        let mut deltas = self.deltas.clone();
-        let mut delta_keys = deltas
-            .iter()
-            .map(|operation| (operation.kind(), operation.get_curruuid()))
-            .collect::<HashSet<_>>();
-        deltas.extend(
-            other
-                .deltas
-                .iter()
-                .filter(|operation| delta_keys.insert((operation.kind(), operation.get_curruuid())))
-                .cloned(),
-        );
-        let element = self
-            .element
-            .clone()
-            .merge_with(&other.element)
-            .unwrap_or_else(|| self.element.clone());
-        let merged = Self::from_parts(element, live, deltas).ok()?;
-        (merged != self).then_some(merged)
-    }
-}
-
-delegate_market!(BookSide, element);
-
-/// One coherent view of a market at one exact nanosecond instant.
-#[derive(Clone, Debug, PartialEq)]
+/// One coherent view of a market at one exact nanosecond instant: the
+/// entries alive on its two sides, the deltas applied since the book before
+/// it, and the executions at its instant.
+///
+/// A book answers each side as the [`Limit`]s its row states under
+/// `bidlimits` and `asklimits` - [`Self::limits`], best first - and the
+/// readings of their first levels: [`Self::best_price`],
+/// [`Self::best_quantity`], [`Self::spread`], [`Self::is_crossed`],
+/// [`Self::is_locked`], [`Self::imbalance`].
+#[derive(Clone, Debug)]
 pub struct BookEvent {
     event: MarketEventFacts,
-    bid: BookSide,
-    ask: BookSide,
+    bid: Ladder,
+    ask: Ladder,
     executions: Vec<ExecutionEvent>,
+    /// The scopes the book's last snapshot replaced: walk state, which no
+    /// row states and neither the digest nor equality reads.
     snapshots: BTreeSet<SnapshotPartition>,
+}
+
+/// Two books are equal by what their rows state: the event, the entries
+/// alive and applied, and the executions - never the walk's snapshot state.
+impl PartialEq for BookEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.event == other.event
+            && self.bid == other.bid
+            && self.ask == other.ask
+            && self.executions == other.executions
+    }
 }
 
 struct BookJournal {
@@ -1420,10 +1209,8 @@ impl BookEvent {
         event.set_state(State::New);
         let mut book = Self {
             event,
-            bid: BookSide::new(Side::read("Buy").expect("the shipped Buy side"))
-                .expect("Buy is a bid"),
-            ask: BookSide::new(Side::read("Sell").expect("the shipped Sell side"))
-                .expect("Sell is an ask"),
+            bid: Ladder::new(Side::Buy),
+            ask: Ladder::new(Side::Sell),
             executions: Vec::new(),
             snapshots: BTreeSet::new(),
         };
@@ -1431,14 +1218,69 @@ impl BookEvent {
         book
     }
 
-    /// Rebuilds one canonical book from its serialized parts - the event,
-    /// the two sides, the executions and the snapshot partitions replaced -
-    /// validating that the sides, the executions and every symbol agree
-    /// with the event, without replaying anything as a fresh mutation.
+    /// An empty book of one category at one nanosecond instant: `key` is
+    /// its crosscode - `{miccode}:{cficode}`, what
+    /// [`Market::book_crosscode`] answers for an input stating no ticker -
+    /// and the book states no ticker, since no input stated one.
+    #[must_use]
+    pub(crate) fn categorized(unix: i64, key: impl Into<String>) -> Self {
+        let mut event = MarketEventFacts::at(unix);
+        event.set_crosscode(key.into());
+        event.set_state(State::New);
+        let mut book = Self {
+            event,
+            bid: Ladder::new(Side::Buy),
+            ask: Ladder::new(Side::Sell),
+            executions: Vec::new(),
+            snapshots: BTreeSet::new(),
+        };
+        book.finalize();
+        book
+    }
+
+    /// Rebuilds one canonical book from what its row states - the event,
+    /// the entries alive on both sides, the deltas and the executions -
+    /// each entry standing on the side it states, validating that the
+    /// entries, the executions and every symbol agree with the event,
+    /// without replaying anything as a fresh mutation.
     pub(crate) fn from_parts(
         event: MarketEventFacts,
-        bid: BookSide,
-        ask: BookSide,
+        alive: Vec<MarketData>,
+        deltas: Vec<MarketData>,
+        executions: Vec<ExecutionEvent>,
+    ) -> Result<Self> {
+        let (mut bid_alive, mut ask_alive) = (Vec::new(), Vec::new());
+        for (index, entry) in alive.into_iter().enumerate() {
+            let held = if entry.get_side().is_bid() {
+                &mut bid_alive
+            } else {
+                &mut ask_alive
+            };
+            held.push((index, Arc::new(entry)));
+        }
+        let (mut bid_deltas, mut ask_deltas) = (Vec::new(), Vec::new());
+        for (index, entry) in deltas.into_iter().enumerate() {
+            let held = if entry.get_side().is_bid() {
+                &mut bid_deltas
+            } else {
+                &mut ask_deltas
+            };
+            held.push((index, entry));
+        }
+        Self::from_ladders(
+            event,
+            Ladder::from_shared_parts(Side::Buy, bid_alive, bid_deltas)?,
+            Ladder::from_shared_parts(Side::Sell, ask_alive, ask_deltas)?,
+            executions,
+            BTreeSet::new(),
+        )
+    }
+
+    /// A book over sides already built, validated and refreshed.
+    fn from_ladders(
+        event: MarketEventFacts,
+        bid: Ladder,
+        ask: Ladder,
         executions: Vec<ExecutionEvent>,
         snapshots: BTreeSet<SnapshotPartition>,
     ) -> Result<Self> {
@@ -1455,12 +1297,6 @@ impl BookEvent {
     }
 
     pub(super) fn validate_parts(&self) -> Result<()> {
-        if !self.bid.get_side().is_bid() {
-            return Err(invalid("$.bid.side", "expected a bid side"));
-        }
-        if !self.ask.get_side().is_ask() {
-            return Err(invalid("$.ask.side", "expected an ask side"));
-        }
         for (index, execution) in self.executions.iter().enumerate() {
             if execution.get_currunix() != self.event.get_currunix() {
                 return Err(invalid(
@@ -1473,51 +1309,192 @@ impl BookEvent {
                 ));
             }
         }
-        let symbol = self.event.get_ticker();
-        validate_symbols(symbol, "bid.live", self.bid.live())?;
-        validate_symbols(symbol, "bid.deltas", self.bid.deltas().iter())?;
-        validate_symbols(symbol, "ask.live", self.ask.live())?;
-        validate_symbols(symbol, "ask.deltas", self.ask.deltas().iter())?;
+        let book = (self.event.get_ticker(), self.event.get_crosscode());
+        validate_symbols(book, ALIVE, self.alive())?;
+        validate_symbols(book, DELTAS, self.deltas())?;
         for (index, execution) in self.executions.iter().enumerate() {
-            validate_symbol(symbol, execution, || {
-                format_smolstr!("$.executions[{index}]")
-            })?;
+            validate_symbol(book, execution, || format_smolstr!("$.executions[{index}]"))?;
         }
         let unix = self.event.get_currunix();
-        validate_component_times(unix, "bid.live", entries(self.bid.live()), true)?;
-        validate_component_times(unix, "bid.deltas", entries(self.bid.deltas()), false)?;
-        validate_component_times(unix, "ask.live", entries(self.ask.live()), true)?;
-        validate_component_times(unix, "ask.deltas", entries(self.ask.deltas()), false)?;
+        validate_component_times(unix, ALIVE, entries(self.alive()), true)?;
+        validate_component_times(unix, DELTAS, entries(self.deltas()), false)?;
         validate_component_times(
             self.event.get_currunix(),
             "executions",
             self.executions.iter(),
             false,
         )?;
-        validate_propagation_bounds(&self.event, "bid.live", entries(self.bid.live()))?;
-        validate_propagation_bounds(&self.event, "bid.deltas", entries(self.bid.deltas()))?;
-        validate_propagation_bounds(&self.event, "ask.live", entries(self.ask.live()))?;
-        validate_propagation_bounds(&self.event, "ask.deltas", entries(self.ask.deltas()))?;
+        validate_propagation_bounds(&self.event, ALIVE, entries(self.alive()))?;
+        validate_propagation_bounds(&self.event, DELTAS, entries(self.deltas()))?;
         validate_propagation_bounds(&self.event, "executions", self.executions.iter())
     }
 
-    #[must_use]
-    pub const fn bid(&self) -> &BookSide {
-        &self.bid
+    /// Every entry alive on the book: the bid side's, best price first and
+    /// every entry stating no price last, then the ask side's the same way.
+    pub fn alive(&self) -> impl Iterator<Item = &MarketData> {
+        self.bid.live().chain(self.ask.live())
     }
 
-    #[must_use]
-    pub const fn ask(&self) -> &BookSide {
-        &self.ask
+    /// The deltas applied since the book before this one: the bid side's in
+    /// the order they were applied, then the ask side's.
+    pub fn deltas(&self) -> impl Iterator<Item = &MarketData> {
+        self.bid.deltas.iter().chain(&self.ask.deltas)
     }
 
+    /// How many entries [`Self::alive`] answers, without walking them.
+    pub(crate) fn alive_len(&self) -> usize {
+        self.bid.len() + self.ask.len()
+    }
+
+    /// How many deltas [`Self::deltas`] answers, without walking them.
+    pub(crate) fn deltas_len(&self) -> usize {
+        self.bid.deltas.len() + self.ask.deltas.len()
+    }
+
+    /// The executions at the book's instant.
     #[must_use]
     pub fn executions(&self) -> &[ExecutionEvent] {
         &self.executions
     }
 
-    /// Whether the best bid is above the best ask; a locked book - the two
-    /// equal - is not crossed, and a side stating no best crosses nothing.
+    /// The side a bid or an ask names; none for a side that is neither.
+    fn ladder(&self, side: Side) -> Option<&Ladder> {
+        if side.is_bid() {
+            Some(&self.bid)
+        } else if side.is_ask() {
+            Some(&self.ask)
+        } else {
+            None
+        }
+    }
+
+    /// The best tradable price on the side `side` takes: the first priced
+    /// level's whose [`Limit::tradable`] holds, `None` for an empty side,
+    /// one holding only unpriced entries, one no level of which can trade,
+    /// or a side that is neither a bid nor an ask. A level that cannot trade
+    /// is skipped, never answered. What the book states as `bidpx` (`BUY`)
+    /// and `askpx` (`SELL`).
+    #[must_use]
+    pub fn best_price(&self, side: Side) -> Option<Decimal> {
+        self.ladder(side).and_then(Ladder::best_price)
+    }
+
+    /// The aggregate quantity at [`Self::best_price`]: the exact sum of
+    /// what the entries of that level state, an entry stating none adding
+    /// nothing.
+    #[must_use]
+    pub fn best_quantity(&self, side: Side) -> Option<Decimal> {
+        self.ladder(side).and_then(Ladder::best_quantity)
+    }
+
+    /// One [`Limit`] per level of the side `side` takes, best first and the
+    /// unpriced limit last: its price, the exact sum of its entries'
+    /// quantities, their `curruuid`s in position order, ties in arrival
+    /// order, and whether any of them does not state `tradable = false` - an
+    /// entry stating nothing trades, and a level every entry of which states
+    /// `false` cannot. Nothing for a
+    /// side that is neither a bid nor an ask. What a book's row states
+    /// under `bidlimits` (`BUY`) and `asklimits` (`SELL`); the first priced
+    /// limit that can trade is [`Self::best_price`] and
+    /// [`Self::best_quantity`].
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, Operation, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, price: Option<i64>, quantity: i64, tradable: Option<bool>| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::Buy);
+    ///     order.set_price(price.map(Decimal::from_int));
+    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
+    ///     order.set_tradable(tradable);
+    ///     order.set_state(State::New);
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([
+    ///     order("A", Some(100), 2, None),
+    ///     order("MARKET", None, 5, Some(false)),
+    ///     order("B", Some(102), 3, Some(false)),
+    ///     order("C", Some(101), 4, Some(true)),
+    ///     order("D", Some(101), 1, Some(false)),
+    /// ])?;
+    ///
+    /// let limits: Vec<_> = book.limits(Side::Buy).collect();
+    /// assert_eq!(limits.len(), 4);
+    /// // The only entry at 102 states it cannot trade.
+    /// assert_eq!(limits[0].price, Some(Decimal::from_int(102)));
+    /// assert!(!limits[0].tradable);
+    /// // One entry at 101 can trade; 100 states nothing, so it trades too.
+    /// assert_eq!(limits[1].price, Some(Decimal::from_int(101)));
+    /// assert_eq!(limits[1].quantity, Decimal::from_int(5));
+    /// assert_eq!(limits[1].uuids.len(), 2);
+    /// assert!(limits[1].tradable && limits[2].tradable);
+    /// // The market order rests after every priced level.
+    /// assert_eq!(limits[3].price, None);
+    /// assert_eq!(limits[3].quantity, Decimal::from_int(5));
+    /// assert!(!limits[3].tradable);
+    /// // The first tradable level is the best bid and the quantity there.
+    /// assert_eq!(book.best_price(Side::Buy), Some(Decimal::from_int(101)));
+    /// assert_eq!(book.get_bidpx(), Some(Decimal::from_int(101)));
+    /// assert_eq!(book.best_quantity(Side::Buy), Some(Decimal::from_int(5)));
+    /// assert_eq!(book.limits(Side::Sell).count(), 0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn limits(&self, side: Side) -> impl Iterator<Item = Limit> + '_ {
+        self.ladder(side)
+            .into_iter()
+            .flat_map(|ladder| ladder.limits())
+    }
+
+    /// The exact sum of the first `levels` limits' quantities of the side
+    /// `side` takes, in [`Self::limits`] order, the unpriced limit counted
+    /// where it is reached: zero for an empty side or no level, `None` past
+    /// decimal or for a side that is neither a bid nor an ask.
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::{Decimal, Side, State};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = |code: &str, price: Option<i64>, quantity: i64| {
+    ///     let mut order = OrderEvent::at(1);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_side(Side::Sell);
+    ///     order.set_price(price.map(Decimal::from_int));
+    ///     order.set_quantity(Some(Decimal::from_int(quantity)));
+    ///     order.set_state(State::New);
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut book = BookEvent::new(1, "ACME");
+    /// book.add_operations([
+    ///     order("A", Some(102), 2),
+    ///     order("B", Some(101), 3),
+    ///     order("MARKET", None, 5),
+    /// ])?;
+    ///
+    /// assert_eq!(book.depth(Side::Sell, 0), Some(Decimal::ZERO));
+    /// assert_eq!(book.depth(Side::Sell, 1), Some(Decimal::from_int(3)));
+    /// assert_eq!(book.depth(Side::Sell, 2), Some(Decimal::from_int(5)));
+    /// assert_eq!(book.depth(Side::Sell, 3), Some(Decimal::from_int(10)));
+    /// assert_eq!(book.depth(Side::Sell, 100), Some(Decimal::from_int(10)));
+    /// assert_eq!(book.depth(Side::Buy, 100), Some(Decimal::ZERO));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn depth(&self, side: Side, levels: usize) -> Option<Decimal> {
+        self.ladder(side)?.depth(levels)
+    }
+
+    /// Whether the best tradable bid is above the best tradable ask; a
+    /// locked book - the two equal - is not crossed, and a side stating no
+    /// best crosses nothing.
     #[must_use]
     pub fn is_crossed(&self) -> bool {
         matches!(
@@ -1526,10 +1503,10 @@ impl BookEvent {
         )
     }
 
-    /// Whether both sides state a best price and the two are equal.
+    /// Whether both sides state a best tradable price and the two are equal.
     ///
     /// ```
-    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, Operation, OrderEvent};
     /// use yggdryl::{Decimal, Side, State};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -1539,6 +1516,7 @@ impl BookEvent {
     ///     order.set_side(Side::read(side).unwrap());
     ///     order.set_price(Some(Decimal::from_int(price)));
     ///     order.set_quantity(Some(Decimal::from_int(1)));
+    ///     order.set_tradable(Some(true));
     ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
@@ -1558,12 +1536,13 @@ impl BookEvent {
         )
     }
 
-    /// The best ask less the best bid: negative on a crossed book, which
+    /// The best tradable ask less the best tradable bid: negative on a
+    /// crossed book, which
     /// [`Self::is_crossed`] names; `None` where a side states no best price
     /// or the difference is past decimal.
     ///
     /// ```
-    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, OrderEvent};
+    /// use yggdryl::graph::{BookEvent, Element, Event, Market, MarketData, Operation, OrderEvent};
     /// use yggdryl::{Decimal, Side, State};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -1573,6 +1552,7 @@ impl BookEvent {
     ///     order.set_side(Side::read(side).unwrap());
     ///     order.set_price(Some(price.parse().unwrap()));
     ///     order.set_quantity(Some(Decimal::from_int(1)));
+    ///     order.set_tradable(Some(true));
     ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
@@ -1595,7 +1575,7 @@ impl BookEvent {
     }
 
     /// The order-book imbalance over the first `levels` limits of each side:
-    /// `(bid - ask) / (bid + ask)` over their [`BookSide::depth`]s, from `1`
+    /// `(bid - ask) / (bid + ask)` over their [`Self::depth`]s, from `1`
     /// for a book resting on the bid alone to `-1` on the ask alone; `None`
     /// where the total is zero - both sides empty, or no level - or past
     /// decimal.
@@ -1646,13 +1626,6 @@ impl BookEvent {
         median_quantity(self.bid.best_quantity(), self.ask.best_quantity())
     }
 
-    fn cached_median_quantity(&self, bid: &MarketFacts, ask: &MarketFacts) -> Option<Decimal> {
-        median_quantity(
-            (!self.bid.is_empty()).then(|| bid.get_quantity()).flatten(),
-            (!self.ask.is_empty()).then(|| ask.get_quantity()).flatten(),
-        )
-    }
-
     /// Atomically applies all operations of one timestamp. Full-snapshot depth
     /// operations and controls first replace only their declared book scope;
     /// executions never control resting membership. A book folds an
@@ -1661,11 +1634,18 @@ impl BookEvent {
     /// [`ExecutionEvent`], a
     /// [`TradeEvent`](super::TradeEvent) and a [`SnapshotEvent`].
     ///
+    /// An entry stating no price - a market order - is given none: it rests
+    /// at the one unpriced level of its side, after every priced level, so
+    /// [`Self::alive`], the book's digest and a delete-from or delete-through
+    /// position all reach it last, and [`Self::limits`] answers it as the
+    /// side's last limit.
+    ///
     /// # Errors
     ///
     /// Returns the first item's own error, and [`Error::InvalidRecord`] for
-    /// any other variant - naming its kind - or an operation the book
-    /// refuses; the book is unchanged on every error.
+    /// any other variant - naming its kind - an operation the book refuses,
+    /// or a level whose aggregate quantity would pass decimal (at
+    /// `$.quantity`); the book is unchanged on every error.
     pub fn add_operations<I>(&mut self, operations: I) -> Result<()>
     where
         I: IntoIterator,
@@ -1811,15 +1791,8 @@ impl BookEvent {
         journal: Option<&mut BookJournal>,
     ) -> Result<ChangedSides> {
         foldable(&input, || SmolStr::new_static("$.operation.kind"))?;
-        let symbol = input.get_ticker();
-        if self.get_ticker() != Some(GLOBAL_SYMBOL)
-            && symbol.is_some()
-            && symbol != self.get_ticker()
-        {
-            return Err(invalid(
-                "$.operation.ticker",
-                format_smolstr!("expected {:?}, got {:?}", self.get_ticker(), symbol),
-            ));
+        if let Some(reason) = book_mismatch(self.get_ticker(), self.get_crosscode(), &input) {
+            return Err(invalid("$.operation.ticker", reason));
         }
         let Some(event_view) = input.as_event() else {
             return Err(invalid(
@@ -1857,7 +1830,7 @@ impl BookEvent {
                 };
                 bounds = EventBounds::of_data(
                     self.bid
-                        .deltas()
+                        .deltas
                         .last()
                         .expect("an applied bid operation is recorded as a delta"),
                 );
@@ -1876,7 +1849,7 @@ impl BookEvent {
                 };
                 bounds = EventBounds::of_data(
                     self.ask
-                        .deltas()
+                        .deltas
                         .last()
                         .expect("an applied ask operation is recorded as a delta"),
                 );
@@ -1907,7 +1880,18 @@ impl BookEvent {
             .set_execunix(latest(self.event.get_execunix(), bounds.execunix));
     }
 
-    pub(super) fn canonical_event(&self, bid: &MarketFacts, ask: &MarketFacts) -> MarketEventFacts {
+    /// The event facts the book settles on, its two sides checked first: a
+    /// level whose aggregate quantity passes decimal is refused.
+    pub(super) fn canonical_event(&self) -> Result<MarketEventFacts> {
+        self.bid.check_levels()?;
+        self.ask.check_levels()?;
+        Ok(self.settled_event())
+    }
+
+    /// The event facts the book settles on over sides already checked: the
+    /// BBO midpoint, the median best quantity, the currency and the unit
+    /// its bests agree on, and the digest.
+    fn settled_event(&self) -> MarketEventFacts {
         let mut event = self.event.clone();
         let midpoint = if self.is_crossed() {
             None
@@ -1916,30 +1900,41 @@ impl BookEvent {
                 .or_else(|| self.bid.best_price().or_else(|| self.ask.best_price()))
         };
         event.set_price(midpoint);
-        event.set_quantity(self.cached_median_quantity(bid, ask));
+        event.set_quantity(self.median_quantity());
         // A side speaks for the book only where it states a best: a side of
         // unpriced entries alone states no currency and no unit, and leaves
         // the other side's standing alone.
-        let (bid_best, ask_best) = (bid.get_price().is_some(), ask.get_price().is_some());
-        let currency = match (
-            bid_best.then(|| bid.get_currency()),
-            ask_best.then(|| ask.get_currency()),
-        ) {
+        let (bid, ask) = (self.bid.best_entry(), self.ask.best_entry());
+        let currency = match (bid.map(Market::get_currency), ask.map(Market::get_currency)) {
             (Some(bid), Some(ask)) if bid == ask => bid.clone(),
             (Some(currency), None) | (None, Some(currency)) => currency.clone(),
             _ => Ccy::none(),
         };
         event.set_currency(currency);
-        let unit = match (
-            bid_best.then(|| bid.get_unit()),
-            ask_best.then(|| ask.get_unit()),
-        ) {
+        let unit = match (bid.map(Market::get_unit), ask.map(Market::get_unit)) {
             (Some(bid), Some(ask)) if bid == ask => bid.clone(),
             (Some(unit), None) | (None, Some(unit)) => unit.clone(),
             _ => Unit::none(),
         };
         event.set_unit(unit);
-        finalize_book_event(&mut event, bid, ask, &self.executions, &self.snapshots);
+        // The best bid and ask are the best tradable levels, each in the
+        // book's currency where it states one: nothing where no level of
+        // the side can trade.
+        let stated = (event.get_currency() != &Ccy::none()).then(|| event.get_currency().clone());
+        for (ladder, bid) in [(&self.bid, true), (&self.ask, false)] {
+            let (px, qty) = (ladder.best_price(), ladder.best_quantity());
+            let ccy = px.and(stated.clone());
+            if bid {
+                event.set_bidpx(px);
+                event.set_bidqty(qty);
+                event.set_bidccy(ccy);
+            } else {
+                event.set_askpx(px);
+                event.set_askqty(qty);
+                event.set_askccy(ccy);
+            }
+        }
+        finalize_book_event(&mut event, &self.bid, &self.ask, &self.executions);
         event
     }
 
@@ -1951,7 +1946,7 @@ impl BookEvent {
             self.ask.refresh()?;
         }
         canonicalize_executions(&mut self.executions);
-        self.event = self.canonical_event(self.bid.element(), self.ask.element());
+        self.event = self.settled_event();
         Ok(())
     }
 
@@ -1966,10 +1961,6 @@ impl BookEvent {
         self.bid.clear_deltas();
         self.ask.clear_deltas();
         self.executions.clear();
-        self.clear_snapshot_partitions();
-    }
-
-    fn clear_snapshot_partitions(&mut self) {
         self.snapshots.clear();
     }
 
@@ -1977,18 +1968,46 @@ impl BookEvent {
         self.snapshots.extend(partitions.iter().cloned());
     }
 
-    /// The scopes the book's last snapshot replaced, empty where the last
-    /// change was an ordinary update.
-    #[must_use]
-    pub fn snapshot_partitions(&self) -> &BTreeSet<SnapshotPartition> {
-        &self.snapshots
-    }
-
     fn set_book_time(&mut self, unix: i64, snapshot: bool) {
         self.event.set_currunix(unix);
         self.event.set_snapunix(snapshot.then_some(unix));
         self.finalize();
     }
+}
+
+/// One instant's inputs of one book in the order their chains place them:
+/// each chain's steps by their place in it, each chain where its first step
+/// arrived. An instant orders nothing by itself, so a source that read two
+/// steps of one chain back in another order - a table sorting a first
+/// step's unstated place after the second's - still folds the chain as it
+/// happened; inputs already in their chains' order are left as they came,
+/// and checking that allocates nothing.
+fn order_chains(operations: &mut Vec<MarketData>) {
+    let place = |operation: &MarketData| operation.as_event().map_or(0, |event| event.get_seqnum());
+    let disordered = operations.iter().enumerate().any(|(at, later)| {
+        operations[..at].iter().any(|earlier| {
+            earlier.get_crossuuid() == later.get_crossuuid() && place(earlier) > place(later)
+        })
+    });
+    if !disordered {
+        return;
+    }
+    let firsts: Vec<usize> = (0..operations.len())
+        .map(|at| {
+            let cross = operations[at].get_crossuuid();
+            operations
+                .iter()
+                .position(|held| held.get_crossuuid() == cross)
+                .unwrap_or(at)
+        })
+        .collect();
+    let mut keyed: Vec<(usize, u64, MarketData)> = operations
+        .drain(..)
+        .zip(firsts)
+        .map(|(operation, first)| (first, place(&operation), operation))
+        .collect();
+    keyed.sort_by_key(|(first, place, _)| (*first, *place));
+    operations.extend(keyed.into_iter().map(|(_, _, operation)| operation));
 }
 
 fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal> {
@@ -2001,27 +2020,18 @@ fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal
 
 fn finalize_book_event(
     event: &mut MarketEventFacts,
-    bid: &MarketFacts,
-    ask: &MarketFacts,
+    bid: &Ladder,
+    ask: &Ladder,
     executions: &[ExecutionEvent],
-    snapshots: &BTreeSet<SnapshotPartition>,
 ) {
     event.sync_cross();
     let mut digest = event.digest_market_event();
     digest.write(&event.get_currunix().to_be_bytes());
     for side in [bid, ask] {
-        digest.write(&side.get_curruuid().get().to_be_bytes());
+        digest.write(&side.hashcode.to_be_bytes());
     }
     for execution in executions {
         digest.write(&execution.get_curruuid().get().to_be_bytes());
-    }
-    // The scopes the last snapshot replaced are part of what the book
-    // states: a book after a replacement is not the book before it.
-    for partition in snapshots {
-        digest.write(partition.symbol.as_deref().unwrap_or("").as_bytes());
-        digest.write(&[0]);
-        digest.write(partition.scope.as_bytes());
-        digest.write(&[0]);
     }
     event.finalized(digest.finish());
 }
@@ -2100,13 +2110,7 @@ impl Element for BookEvent {
     }
 
     fn finalize(&mut self) {
-        finalize_book_event(
-            &mut self.event,
-            self.bid.element(),
-            self.ask.element(),
-            &self.executions,
-            &self.snapshots,
-        );
+        finalize_book_event(&mut self.event, &self.bid, &self.ask, &self.executions);
     }
 
     fn with_previous(mut self, previous: &Self) -> Option<Self> {
@@ -2117,7 +2121,7 @@ impl Element for BookEvent {
         }
         let event = self.event.clone().following_market(&previous.event)?;
         let authoritative = self.get_snapunix().is_some();
-        let replaced = self.snapshot_partitions().clone();
+        let replaced = self.snapshots.clone();
         if !authoritative {
             let bid = self.bid.deltas.clone();
             let ask = self.ask.deltas.clone();
@@ -2139,8 +2143,7 @@ impl Element for BookEvent {
             self.ask.refresh().ok()?;
         }
         self.event = event;
-        self.clear_snapshot_partitions();
-        self.record_snapshot_partitions(&replaced);
+        self.snapshots = replaced;
         self.refresh().ok()?;
         Some(self)
     }
@@ -2157,7 +2160,7 @@ impl Element for BookEvent {
         } else {
             (&self, other)
         };
-        let replaced = reference.snapshot_partitions();
+        let replaced = &reference.snapshots;
         let authoritative = reference.get_snapunix().is_some();
         let bid = merge_book_side(&reference.bid, &supplement.bid, replaced, authoritative)?;
         let ask = merge_book_side(&reference.ask, &supplement.ask, replaced, authoritative)?;
@@ -2177,7 +2180,7 @@ impl Element for BookEvent {
         }
         let mut event = reference.event.clone();
         merge_market_event_into_reference(&mut event, &supplement.event);
-        let merged = Self::from_parts(event, bid, ask, executions, replaced.clone()).ok()?;
+        let merged = Self::from_ladders(event, bid, ask, executions, replaced.clone()).ok()?;
         (merged != self).then_some(merged)
     }
 }
@@ -2196,10 +2199,14 @@ delegate_event!(
     set_currunix = |this: &mut BookEvent, unix: i64| this.event.set_currunix(unix)
 );
 
-/// Books from a sorted operation stream, one per symbol and effective
-/// timestamp, or one consolidated `GLOBAL` book. Each timestamp and symbol is
-/// committed atomically across ordinary deltas, expirations, and explicit
-/// snapshot membership.
+/// Books from a sorted operation stream, one per book crosscode and
+/// effective timestamp. An input's book is [`Market::book_crosscode`]: its
+/// ticker where it states one, else its category `{miccode}:{cficode}`, so
+/// instruments without a ticker still split into books by market and
+/// classification. The first input routed to a key decides whether its
+/// book states that key as its ticker; no book adopts a ticker later. Each
+/// timestamp and book is committed atomically across ordinary deltas,
+/// expirations, and explicit snapshot membership.
 pub struct BookIterator<I>
 where
     I: Iterator,
@@ -2209,8 +2216,10 @@ where
     source_head: Option<Result<MarketData>>,
     source_exhausted: bool,
     books: BTreeMap<String, BookEvent>,
+    /// Per book key, whether the first input routed under it stated a
+    /// ticker: what the new book states as its own. Never overwritten.
+    stated_ticker: BTreeMap<String, bool>,
     pending: VecDeque<Result<BookEvent>>,
-    global: bool,
     snapshot_ns: Option<i64>,
     next_snapshot: Option<i64>,
     expirations: BTreeSet<BookExpiration>,
@@ -2226,7 +2235,7 @@ where
     /// Opens a book walk over operations already sorted by their event order.
     /// Owned operations and their fallible counterparts are accepted directly;
     /// `snapshot_millis == 0` disables grid snapshots.
-    pub fn new(operations: I, snapshot_millis: u64, global: bool) -> Result<Self> {
+    pub fn new(operations: I, snapshot_millis: u64) -> Result<Self> {
         let snapshot_ns = snapshot_millis
             .checked_mul(1_000_000)
             .and_then(|value| i64::try_from(value).ok())
@@ -2243,19 +2252,14 @@ where
             source_head: None,
             source_exhausted: false,
             books: BTreeMap::new(),
+            stated_ticker: BTreeMap::new(),
             pending: VecDeque::new(),
-            global,
             snapshot_ns: (snapshot_ns > 0).then_some(snapshot_ns),
             next_snapshot: None,
             expirations: BTreeSet::new(),
             last_unix: None,
             done: false,
         })
-    }
-
-    #[must_use]
-    pub const fn global(&self) -> bool {
-        self.global
     }
 
     fn fill_source_head(&mut self) {
@@ -2461,17 +2465,10 @@ where
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
                     let input = self.take_source();
-                    let symbol = if self.global {
-                        GLOBAL_SYMBOL.to_owned()
-                    } else if let Some(symbol) = input.get_ticker() {
-                        symbol.to_owned()
-                    } else {
-                        self.pending.push_back(Err(invalid(
-                            "$.operation.ticker",
-                            "expected a symbol outside global mode",
-                        )));
-                        continue;
-                    };
+                    let symbol = input.book_crosscode().into_owned();
+                    self.stated_ticker
+                        .entry(symbol.clone())
+                        .or_insert_with(|| input.get_ticker().is_some_and(|held| !held.is_empty()));
                     touched.insert(symbol.clone());
                     if input
                         .as_event()
@@ -2537,6 +2534,9 @@ where
                 }
             }
 
+            for operations in raw.values_mut() {
+                order_chains(operations);
+            }
             let mut failed = HashSet::new();
             for symbol in &touched {
                 // add_operations is already atomic. Only a group that also
@@ -2554,11 +2554,13 @@ where
                         continue;
                     }
                 }
-                let mut next = self
-                    .books
-                    .get(symbol)
-                    .cloned()
-                    .unwrap_or_else(|| BookEvent::new(unix, symbol.clone()));
+                let mut next = self.books.get(symbol).cloned().unwrap_or_else(|| {
+                    if self.stated_ticker.get(symbol).copied().unwrap_or(true) {
+                        BookEvent::new(unix, symbol.clone())
+                    } else {
+                        BookEvent::categorized(unix, symbol.clone())
+                    }
+                });
                 let mut result = if let Some(error) = source_errors.remove(symbol) {
                     Err(error)
                 } else {
@@ -2701,16 +2703,26 @@ fn is_ordinary_update(input: &MarketData) -> bool {
 }
 
 fn merge_book_side(
-    reference: &BookSide,
-    supplement: &BookSide,
+    reference: &Ladder,
+    supplement: &Ladder,
     replaced: &BTreeSet<SnapshotPartition>,
     authoritative: bool,
-) -> Option<BookSide> {
-    let mut live = reference.live().cloned().collect::<Vec<_>>();
-    let mut live_keys = live.iter().map(LiveKey::of).collect::<HashSet<_>>();
+) -> Option<Ladder> {
+    let mut live = reference
+        .levels
+        .values()
+        .flatten()
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut live_keys = live
+        .iter()
+        .map(|operation| LiveKey::of(operation))
+        .collect::<HashSet<_>>();
     live.extend(
         supplement
-            .live()
+            .levels
+            .values()
+            .flatten()
             .filter(|operation| {
                 !authoritative
                     && !replaced.contains(&SnapshotPartition::of(operation))
@@ -2734,12 +2746,12 @@ fn merge_book_side(
             })
             .cloned(),
     );
-    let element = reference
-        .element
-        .clone()
-        .merge_with(&supplement.element)
-        .unwrap_or_else(|| reference.element.clone());
-    BookSide::from_parts(element, live, deltas).ok()
+    Ladder::from_shared_parts(
+        reference.side,
+        live.into_iter().enumerate().collect(),
+        deltas.into_iter().enumerate().collect(),
+    )
+    .ok()
 }
 
 fn position_of(operation: &MarketData) -> Option<u64> {
@@ -2940,35 +2952,62 @@ fn validate_latest_bound(root: Option<i64>, component: Option<i64>, path: SmolSt
     Ok(())
 }
 
-fn validate_symbols<'a, E, I>(book_symbol: Option<&str>, name: &str, operations: I) -> Result<()>
+/// A book's ticker, where it states one, and its crosscode: what an input
+/// is checked against.
+type BookKey<'a> = (Option<&'a str>, &'a str);
+
+fn validate_symbols<'a, E, I>(book: BookKey<'_>, name: &str, operations: I) -> Result<()>
 where
     E: Market + ?Sized + 'a,
     I: IntoIterator<Item = &'a E>,
 {
     for (index, operation) in operations.into_iter().enumerate() {
-        validate_symbol(book_symbol, operation, || {
-            format_smolstr!("$.{name}[{index}]")
-        })?;
+        validate_symbol(book, operation, || format_smolstr!("$.{name}[{index}]"))?;
     }
     Ok(())
 }
 
 fn validate_symbol<E: Market + ?Sized>(
-    book_symbol: Option<&str>,
+    (ticker, crosscode): BookKey<'_>,
     operation: &E,
     path: impl FnOnce() -> SmolStr,
 ) -> Result<()> {
-    let operation_symbol = operation.get_ticker();
-    if book_symbol != Some(GLOBAL_SYMBOL)
-        && operation_symbol.is_some()
-        && operation_symbol != book_symbol
-    {
-        return Err(invalid(
-            path(),
-            format_smolstr!("expected symbol {book_symbol:?}, got {operation_symbol:?}"),
-        ));
+    match book_mismatch(ticker, crosscode, operation) {
+        Some(reason) => Err(invalid(path(), reason)),
+        None => Ok(()),
     }
-    Ok(())
+}
+
+/// Why `operation` cannot stand in the book whose ticker is `ticker` and
+/// whose crosscode is `crosscode`; `None` where it can. A ticker book takes
+/// an input stating that ticker or none - a hand-built book is fed
+/// ticker-less orders - and refuses another ticker; a categorized book,
+/// stating no ticker, takes only an input keyed to it: a ticker-less input
+/// of its market and classification, or one whose ticker spells its key.
+fn book_mismatch<E: Market + ?Sized>(
+    ticker: Option<&str>,
+    crosscode: &str,
+    operation: &E,
+) -> Option<SmolStr> {
+    let stated = operation.get_ticker().filter(|held| !held.is_empty());
+    match ticker {
+        Some(ticker) => {
+            let stated = stated?;
+            (stated != ticker).then(|| format_smolstr!("expected {ticker:?}, got {stated:?}"))
+        }
+        None => {
+            let key = operation.book_crosscode();
+            if key == crosscode {
+                return None;
+            }
+            Some(match stated {
+                Some(stated) => {
+                    format_smolstr!("expected book crosscode {crosscode:?}, got ticker {stated:?}")
+                }
+                None => format_smolstr!("expected book crosscode {crosscode:?}, got {key:?}"),
+            })
+        }
+    }
 }
 
 fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {

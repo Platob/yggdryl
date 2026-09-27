@@ -10,8 +10,13 @@
 //! of it is read, and only then does an HTTP/1.1 `Expect: 100-continue` earn
 //! its `100 Continue` - never for a body of no bytes; a chunked body states
 //! no length, so one past the bound is refused `413` as it is read, after
-//! the `100`. Any other expectation is answered `417`. Every answer carries
-//! `Server` and `Date`; a written body goes out chunked. While the server
+//! the `100`. Any other expectation is answered `417`. An HTTP/1.1 request
+//! carries exactly one `Host` field, a host and an optional port, or is
+//! refused `400` (RFC 9112 3.2); an HTTP/1.0 one needs none, and one that is
+//! no authority is left unread. Every answer carries `Server` and `Date`; a
+//! written body goes out chunked to an HTTP/1.1 peer and close-delimited to
+//! an HTTP/1.0 one, which reads no chunked coding - and so cannot tell a
+//! body its writer failed part way from a whole one. While the server
 //! traces, the bytes a request consumed and every byte written back are
 //! copied into its exchange.
 
@@ -266,6 +271,7 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
         }
         super::h2::Opening::Http1 => {}
     }
+    let peer = stream.peer_addr().ok();
     let mut wire = Wire {
         reader: BufReader::new(Deadline::new(stream, options.read_timeout)),
         tracing: inner.trace.is_some(),
@@ -308,7 +314,30 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
             return wire.refuse(exchange, status, &text, server);
         }
         if head.method == Method::Connect {
-            return tunnel(inner, wire, head, exchange);
+            return tunnel(inner, wire, head, exchange, peer);
+        }
+        if head.version == HttpVersion::Http11 {
+            // One `Host`, whatever the target form: a proxy in front and this
+            // server must never disagree on which origin a request names
+            // (RFC 9112 3.2).
+            // Two fields were joined into one list by the parser, and an
+            // empty value is no host, so the members are the fields.
+            let hosts = head.headers.get_all("host").count();
+            if hosts != 1 {
+                let text = format!(
+                    "an HTTP/1.1 request carries exactly one Host field; this one carries {hosts}"
+                );
+                return wire.refuse(exchange, Status::BAD_REQUEST, &text, server);
+            }
+            // A Host that is no authority - a path, a query, user
+            // information - is an invalid field value, and would otherwise
+            // rewrite the URL a handler reads under the path it was routed by.
+            let host = head.headers.get("host").map(str::trim).unwrap_or_default();
+            if !super::forwarded::is_authority(host) {
+                let text = "an HTTP/1.1 request's Host field is a host and an optional port, \
+                            with no path, query or user information";
+                return wire.refuse(exchange, Status::BAD_REQUEST, text, server);
+            }
         }
         let keep_alive = options.keep_alive && keeps_alive(&head);
         let framing = match framing_of(head.version, &head.headers, options.max_body_size) {
@@ -341,10 +370,24 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
         };
         wire.record(exchange.as_mut());
         let head_only = head.method == Method::Head;
-        match inner.dispatch(Incoming { head, body }) {
+        let version = head.version;
+        let incoming = Incoming {
+            head,
+            body,
+            peer,
+            secure: false,
+            scheme: None,
+        };
+        match inner.dispatch(incoming) {
             Outcome::Close => return wire.close(exchange),
             Outcome::Answer { answer, cut } => {
-                let close = !keep_alive || cut.is_some();
+                // A written body answering HTTP/1.0 has no framing but the
+                // connection's end, so the connection ends with it.
+                let close = !keep_alive
+                    || cut.is_some()
+                    || (version == HttpVersion::Http10
+                        && !head_only
+                        && matches!(answer.body, AnswerBody::Writer(_)));
                 let written = write_answer(
                     &mut wire.tee(exchange.as_mut()),
                     head_only,
@@ -352,6 +395,7 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
                     close,
                     cut,
                     server,
+                    version,
                 );
                 // A trace that could not be written ends the connection
                 // after its answer, rather than go on past the gap.
@@ -372,16 +416,32 @@ pub(super) fn serve(inner: &std::sync::Arc<Inner>, stream: TcpStream) {
 /// own; a tunnel quiet both ways for the read timeout, or failing either way,
 /// is closed whole, so neither direction outlives it and its connection slot
 /// is given back.
-fn tunnel(inner: &Inner, mut wire: Wire, head: RequestHead, mut exchange: Option<Exchange>) {
+fn tunnel(
+    inner: &Inner,
+    mut wire: Wire,
+    head: RequestHead,
+    mut exchange: Option<Exchange>,
+    peer: Option<std::net::SocketAddr>,
+) {
     let options = &inner.options;
     wire.record(exchange.as_mut());
     let incoming = Incoming {
         head,
         body: Vec::new(),
+        peer,
+        secure: false,
+        scheme: None,
     };
+    let client = peer.map(|peer| peer.ip().to_canonical());
     let target = incoming.head.target.clone();
     if !options.tunnel {
-        inner.record(&incoming, "", Vec::new(), Status::METHOD_NOT_ALLOWED);
+        inner.record(
+            &incoming,
+            "",
+            Vec::new(),
+            Status::METHOD_NOT_ALLOWED,
+            client,
+        );
         // A 405 names the methods that are allowed (RFC 9110 15.5.6).
         let answer = Answer::text(
             Status::METHOD_NOT_ALLOWED,
@@ -395,6 +455,7 @@ fn tunnel(inner: &Inner, mut wire: Wire, head: RequestHead, mut exchange: Option
             true,
             None,
             options.server_header(),
+            HttpVersion::Http11,
         );
         if let Some(exchange) = exchange {
             exchange.finish();
@@ -420,7 +481,7 @@ fn tunnel(inner: &Inner, mut wire: Wire, head: RequestHead, mut exchange: Option
                     .is_ok()
         });
     let Some(upstream) = upstream else {
-        inner.record(&incoming, "", Vec::new(), Status::BAD_GATEWAY);
+        inner.record(&incoming, "", Vec::new(), Status::BAD_GATEWAY, client);
         refuse(
             &mut wire.tee(exchange.as_mut()),
             Status::BAD_GATEWAY,
@@ -432,7 +493,7 @@ fn tunnel(inner: &Inner, mut wire: Wire, head: RequestHead, mut exchange: Option
         }
         return;
     };
-    inner.record(&incoming, "", Vec::new(), Status::OK);
+    inner.record(&incoming, "", Vec::new(), Status::OK, client);
     let established = wire
         .tee(exchange.as_mut())
         .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
@@ -749,7 +810,15 @@ fn too_large(max_body_size: u64) -> Refusal {
 /// Answer `status` with `text` and close; a failure to write is the peer's.
 fn refuse(stream: &mut impl Write, status: Status, text: &str, server: &str) {
     let answer = Answer::text(status, text);
-    let _ = write_answer(stream, false, answer, true, None, server);
+    let _ = write_answer(
+        stream,
+        false,
+        answer,
+        true,
+        None,
+        server,
+        HttpVersion::Http11,
+    );
 }
 
 /// UTC nanoseconds since the epoch.
@@ -761,16 +830,21 @@ pub(super) fn now_ns() -> i64 {
         .unwrap_or(0)
 }
 
-/// Write `answer`: the head with `Server`, `Date` and the framing, then the
-/// body unless `head_only`; `cut` stops the body after that many bytes.
+/// Write `answer` to a request of `version`: the head with `Server`, `Date`
+/// and the framing, then the body unless `head_only`; `cut` stops the body
+/// after that many bytes.
 ///
 /// A `1xx`, `204` or `304` carries no body and no framing. A body in hand
 /// keeps a `Transfer-Encoding: chunked` the handler stated and is written in
-/// [`DEFAULT_STREAM_BATCH_SIZE`] chunks; a written body is always chunked,
-/// its length unknown until it ends; otherwise, and for every streamed leaf,
-/// `Content-Length` states the length. A `HEAD` declares the length its
-/// `GET` would carry - none for a written body - and never a chunked
-/// framing.
+/// [`DEFAULT_STREAM_BATCH_SIZE`] chunks; a written body is chunked, its
+/// length unknown until it ends; otherwise, and for every streamed leaf,
+/// `Content-Length` states the length. An HTTP/1.0 peer reads no chunked
+/// coding (RFC 9112 7.1), so a body in hand is framed by its length there
+/// and a written body by the connection's close, which the caller then
+/// closes. A `HEAD` declares the length its `GET` would carry - none for a
+/// written body - and never a chunked framing. The status line is
+/// `HTTP/1.1` whatever the request's version, the highest this server
+/// conforms to under that major (RFC 9112 2.3).
 fn write_answer(
     stream: &mut impl Write,
     head_only: bool,
@@ -778,6 +852,7 @@ fn write_answer(
     close: bool,
     cut: Option<u64>,
     server: &str,
+    version: HttpVersion,
 ) -> io::Result<()> {
     let Answer {
         status,
@@ -794,6 +869,7 @@ fn write_answer(
         || status == Status::NOT_MODIFIED);
     let chunked = has_body
         && !head_only
+        && version != HttpVersion::Http10
         && match &body {
             AnswerBody::Bytes(_) => headers.transfer_encoding_chunked(),
             AnswerBody::Writer(_) => true,
@@ -860,7 +936,8 @@ fn write_answer(
             let limit = cut.map_or(length, |at| at.min(length));
             stream_source(stream, source, start, limit)?;
         }
-        AnswerBody::Writer(writer) => write_written(stream, writer, cut)?,
+        AnswerBody::Writer(writer) if chunked => write_written(stream, writer, cut)?,
+        AnswerBody::Writer(writer) => write_delimited(stream, writer, cut)?,
     }
     stream.flush()
 }
@@ -888,6 +965,28 @@ fn write_written(stream: &mut impl Write, writer: BodyWriter, cut: Option<u64>) 
     let chunks = body.into_inner().map_err(io::IntoInnerError::into_error)?;
     chunks.inner.finish()?;
     Ok(())
+}
+
+/// Write a written body as it is, delimited by the connection's close, for
+/// an HTTP/1.0 peer: a cut ends it where the fault asked, and a writer that
+/// fails ends it short. Close-delimited framing has no way to say which: the
+/// peer reads either as the whole body, which is why a proxy in front is
+/// told to speak HTTP/1.1 upstream, where the missing last chunk says so.
+fn write_delimited(
+    stream: &mut impl Write,
+    writer: BodyWriter,
+    cut: Option<u64>,
+) -> io::Result<()> {
+    let mut body = BufWriter::with_capacity(DEFAULT_STREAM_BATCH_SIZE, Cut::new(&mut *stream, cut));
+    let wrote = writer(&mut body);
+    let flushed = body.flush();
+    if body.get_ref().reached {
+        return Ok(());
+    }
+    if let Err(error) = wrote {
+        return Err(io::Error::other(error.to_string()));
+    }
+    flushed
 }
 
 /// Write `limit` bytes of `source` from `start`: the one door every version

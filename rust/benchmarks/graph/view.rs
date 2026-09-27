@@ -92,7 +92,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
         ("orders", MarketView::Orders, vec![]),
         ("orders_lifted", MarketView::Orders, vec![isin.clone()]),
         ("trades", MarketView::Trades, vec![]),
-        ("book_sides", MarketView::BookSides, vec![]),
         ("books", MarketView::Books, vec![]),
         (
             "lifecycle",

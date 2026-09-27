@@ -47,6 +47,9 @@ assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
 // The counter names the group it opens; a path reaches through the group.
 assert.equal(registry.fieldByCounter(453).name, 'parties')
 assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
+// A name reads four word pairs either way: offer/ask, size/qty, bid/demand, px/price.
+assert.equal(registry.fieldByName('AskPrice').fix.tag, 133)
+assert.equal(registry.fieldByName('DemandQty').fix.tag, 134)
 
 // The identity is the tag and the folded name; a bare number is never one.
 const held = registry.field(55).fix.id
@@ -159,21 +162,23 @@ const path = require('node:path')
 const { fix } = require('yggdryl')
 
 const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|38=100|44=10.5|10=0|'))
+const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|38=100|44=10.5|202=105|10=0|'))
 
 assert.deepEqual([message.header().beginstring, message.header().msgtype], ['FIX.4.4', 'D'])
+// The category its type files under, and the option strike it identifies.
+assert.deepEqual([message.msgcat, message.strikepx], ['ORDR', '105'])
 // A coded value reads as its name; the wire keeps its code.
 assert.equal(message.byTag(54).asJs(), 'BUY')
 assert.equal(message.side, 'BUY')
 assert.equal(message.quantity, '100')
 assert.equal(message.byName('symbol').asJs(), 'AAPL')
-// The first stated OrderID, ClOrdID, ... names the order's chain.
-assert.equal(message.crosscode, 'A1')
+// The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
+assert.equal(message.crosscode, 'BUY:A1')
 assert.deepEqual(message.altids, { CLORDID: 'A1' })
 // Instants are bigint nanoseconds since the epoch, UTC.
 assert.equal(message.currunix, 1_767_348_930_000_000_000n)
 // The entries are the content row as a tree of { tag, name, value, entries }.
-assert.deepEqual(message.entries().map((entry) => entry.name), ['symbol', 'side', 'timeinforce'])
+assert.deepEqual(message.entries().map((entry) => entry.name), ['symbol', 'side', 'strikeprice', 'timeinforce'])
 ```
 
 ## Compose a message and write facts
@@ -331,12 +336,16 @@ const { IOBase, fix } = require('yggdryl')
 const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
 const codec = new fix.FixCodec(registry, { separator: 124 })
 const schema = fix.schema(registry, 'fix')
-const lines = ['8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|10=0|', '8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|']
+const lines = ['8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|18=G|9999=x|10=0|', '8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|']
 const parsed = [...codec.parseLines(lines)]
 
 // One message as one row, and back; a column is found by name.
 const row = parsed[0].intoRow(schema)
 assert.equal(row.toJSON()[schema.indexOf('msgtype')], 'D')
+// What no column holds is `fixentries`, keyed `tag:name`; a key no dictionary
+// resolves is no field, and lands in `metadata` under its own spelling.
+assert.deepEqual(row.toJSON()[schema.indexOf('fixentries')], { '18:execinst': 'G' })
+assert.deepEqual(row.toJSON()[schema.indexOf('metadata')], { 9999: 'x' })
 assert.ok(fix.FixMsg.fromRow(schema, row, registry).intoRow(schema).equals(row))
 
 // A stream of messages as batches, landed in Parquet without a per-row detour.
@@ -349,7 +358,7 @@ assert.deepEqual(again.map((message) => message.currhashcode), parsed.map((messa
 // And out to the wire, one line per row.
 const chunks = []
 assert.equal(codec.writeArrowReader(stored.readArrowReader(), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
-assert.ok(Buffer.concat(chunks).toString().startsWith('8=FIX.4.4|35=D|11=ORDER-1|9999=x|'))
+assert.ok(Buffer.concat(chunks).toString().startsWith('8=FIX.4.4|35=D|11=ORDER-1|18=G|9999=x|'))
 fs.rmSync(directory, { recursive: true, force: true })
 ```
 
@@ -357,7 +366,12 @@ fs.rmSync(directory, { recursive: true, force: true })
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order under one `crossuuid`.
+its order and side under one `crossuuid`; a report stating no side joins the
+one side alive under its identifiers. A fill's execution, split off at the
+parse, is a chain of its own. A codec pinned `{ sortedLifecycle: true }` reads a source already in
+instant order as it comes, one epoch hour at a time, and answers the same walk.
+A snapshot grid's view is the live message as of its tick: dated at it, so its
+`curruuid` is that instant's, with the live message's content and place.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -374,29 +388,72 @@ const lines = [
 // Parsed, nothing follows anything: each names only the chain it spells.
 const parsed = [...codec.parseLines(lines)]
 assert.ok(parsed.every((held) => held.seqnum === 0 && held.prevuuid === null))
+// Three lines, four messages: the fill's report and the execution it reports.
+assert.equal(parsed.length, 4)
 
-const [order, ack, fill] = codec.lifecycle(parsed)
+const [order, ack, fill, execution] = codec.lifecycle(parsed)
 // Sorted by event time, joined by the identifiers each message went by.
 assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 1, 2])
 assert.equal(ack.prevuuid, order.curruuid)
 assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
-assert.equal(fill.state, 'FILLED')
+// The reports stated no side: they joined the buy alive under A1 and O1.
+assert.ok([ack, fill].every((held) => held.side === 'BUY' && held.crosscode === 'BUY:A1'))
+assert.deepEqual([fill.msgcat, fill.state], ['ORDR', 'FILLED'])
+// Every walked message states when its chain began.
+assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
+assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
+assert.deepEqual([execution.seqnum, execution.prevuuid], [0, null])
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 const rows = codec.arrowReader(fix.schema(registry), codec.parseLines(lines))
 const chained = codec.lifecycleArrowReader(rows).intoTable()
-assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 1)
+// Two chains: the order's, and its fill's execution.
+assert.equal(chained.numRows, 4)
+assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 ```
 
-## Turn FIX into market operations and books
+## Split fills and two-sided quotes at the parse
 
-`marketOperations` admits what a book folds, expands each message into graph
-leaves and sorts them by the instant a book folds them at; `graph.BookIterator`
-then walks them. Compose `lifecycle` in front when predecessor state matters.
-`marketArrowReader` writes the sorted operations as `marketdata` rows, and
-`marketOperationsArrowReader` is its twin over batches of FIX rows already in
-Arrow.
+The parse splits what a message reports, once, so nothing downstream states a
+fill or a side twice: an execution report that fills is its order's report
+(`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
+chained by its `ExecID`; a trade (`AE`) adds one sided execution per
+`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
+a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+const { fix } = require('yggdryl')
+
+const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+
+const fill = '8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|'
+const [report, execution] = codec.parseLine(Buffer.from(fill))
+assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
+assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
+assert.ok(execution.srcuuids.includes(report.curruuid))
+// A sided message stores its cross code under its side; the fill is a chain of its own.
+assert.deepEqual([report.crosscode, execution.crosscode], ['BUY:O-9', 'BUY:ExecID=E-1'])
+
+const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
+const [quote, bid, ask] = codec.parseLine(Buffer.from(stated))
+assert.deepEqual([quote.side, bid.side, ask.side], ['UNKNOWN', 'BUY', 'SELL'])
+assert.deepEqual([bid.crosscode, ask.crosscode], ['BUY:Q1', 'SELL:Q1'])
+// Each side prices at its own level and keeps the pair its source stated.
+assert.deepEqual([bid.price, ask.price, ask.bidpx, bid.bidccy], ['99', '101', '99', 'USD'])
+```
+
+## Turn FIX into market data and books
+
+`marketData` admits what a book folds - orders, one-sided quotes, executions,
+`W`/`X` book messages - reads each as its one graph leaf (a book message one
+per entry) and sorts them by the instant a book folds them at;
+`graph.BookIterator` then walks them. Compose `lifecycle` in front when
+predecessor state matters. `marketArrowReader` writes the sorted leaves as
+`marketdata` rows, and `marketDataArrowReader` is its twin over batches of FIX
+rows already in Arrow.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -411,20 +468,22 @@ const lines = [
   '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
 ]
 const capture = [...codec.parseLines(lines)]
+assert.ok(capture.every((message) => message.msgcat === 'BOOK'))
 
-const operations = [...codec.marketOperations(codec.lifecycle(capture))]
-assert.equal(operations[operations.length - 1].kind, 'execution_event')
-const books = [...new graph.BookIterator(operations)]
+const leaves = [...codec.marketData(codec.lifecycle(capture))]
+assert.equal(leaves.length, 4, 'one leaf per entry')
+assert.equal(leaves[leaves.length - 1].kind, 'execution_event')
+const books = [...new graph.BookIterator(leaves)]
 assert.equal(books.length, 2)
-assert.equal(books[1].bid.bestPrice, '101')
+assert.equal(books[1].bestPrice('BUY'), '101')
 
 // The book door is strict: the same capture out of order is refused.
 assert.throws(() => codec.bookArrowReader(capture).intoTable(), /sorted operation timestamp/)
-// The sorted operations as `marketdata` rows.
+// The sorted leaves as `marketdata` rows.
 assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
-// The same operations off the capture's FIX rows.
+// The same leaves off the capture's FIX rows.
 const fixed = codec.arrowReader(fix.schema(registry, 'fix'), capture)
-assert.equal(codec.marketOperationsArrowReader(fixed).intoTable().numRows, 4)
+assert.equal(codec.marketDataArrowReader(fixed).intoTable().numRows, 4)
 ```
 
 ## Build and commit a dictionary
@@ -479,7 +538,7 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 `FixRegistry.fromCfbFile` reads one Ullink CBlock (`.cfb`) into a registry and
 its declared roots, stamping the dialect on everything it produced. The folds
 into a held registry (`add_cfb_file`, `add_cfb_files`, `merge_with`) are not
-bound here: fold in Rust or Python, or with `ygg fix sync` ([cli](cli.md)).
+bound here: fold in Rust or Python, or with `yggdryl fix sync` ([cli](cli.md)).
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -513,6 +572,9 @@ fs.rmSync(folder, { recursive: true, force: true })
   it truncates every character above U+00FF.
 - Decimals come back as exact text (`'100'`, `'10.5'`), instants and 64-bit
   hashes as `bigint`: compare with `1_767_348_930_000_000_000n`, never a number.
+- `side`, `state` and `msgcat` answer the member's stored name (`'BUY'`,
+  `'FILLED'`, `'ORDR'`); an Arrow column stores its code (`Side.BUY`,
+  `MarketDataKind.ORDR`).
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);
   a refused line throws where the iteration reaches it.
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
@@ -522,3 +584,5 @@ fs.rmSync(folder, { recursive: true, force: true })
   header included, and takes other options or a property bag like every
   record read; `options.captureNames` is what `{ captureNames }` wants.
 - `snapshotNs` is a `bigint`; `null`, zero or negative disables the grid.
+- `sortedLifecycle` is a `boolean`, `false` unless the source is in instant
+  order; `withSortedLifecycle(sorted)` answers a copy of the codec.

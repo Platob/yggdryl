@@ -50,7 +50,9 @@ impl Serialize for JsonRef<'_> {
             code_scalars!() => {
                 serializer.serialize_str(self.0.as_str().expect("a code borrowed its text"))
             }
-            Scalar::State(value) => serializer.serialize_str(value.as_str()),
+            crate::enum_scalars!() => {
+                serializer.serialize_str(self.0.enum_name().expect("an enum member names itself"))
+            }
             Scalar::Version(value) => serializer.collect_str(value),
             Scalar::Url(value) => serializer.collect_str(value),
             Scalar::Urn(value) => serializer.collect_str(value),

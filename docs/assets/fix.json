@@ -1,5 +1,5 @@
 {
-  "version": "0.1.14",
+  "version": "0.1.15",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -96,23 +96,23 @@
     ]
   },
   "kpi": {
-    "fields": 6280,
+    "fields": 6281,
     "groups": 581,
     "enumFields": 2028,
     "codesets": 737,
-    "codes": 7811,
+    "codes": 7812,
     "aliases": 47,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 132,
+    "columns": 133,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 25,
+    "datatypes": 28,
     "dtypes": [
       [
         "int32",
-        2513
+        2511
       ],
       [
         "utf8",
@@ -183,6 +183,10 @@
         1
       ],
       [
+        "decimal",
+        1
+      ],
+      [
         "figi",
         1
       ],
@@ -191,7 +195,15 @@
         1
       ],
       [
+        "forex",
+        1
+      ],
+      [
         "isin",
+        1
+      ],
+      [
+        "marketdatakind",
         1
       ],
       [
@@ -220,12 +232,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "ACCOUNT",
-              "map": "accountids"
-            }
-          ],
           "FIX:tag": "1",
           "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
           "display": "Account"
@@ -290,7 +296,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "case when msgtype in ('8', '9') and cumqty = lastqty and lastqty > 0 then lastpx end",
           "FIX:tag": "6",
           "description": "Calculated average price of all fills on this order.",
           "display": "AvgPx"
@@ -399,7 +404,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "case when msgtype in ('8', '9') and orderqty - leavesqty >= 0 then orderqty - leavesqty end",
           "FIX:tag": "14",
           "description": "Total quantity (e.g. number of shares) filled.",
           "display": "CumQty"
@@ -412,7 +416,6 @@
           "type": "ccy"
         },
         "metadata": {
-          "FIX:derivation": "settlcurrency",
           "FIX:tag": "15",
           "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
           "display": "Currency"
@@ -456,44 +459,6 @@
         },
         "metadata": {
           "FIX:codeset": "execinstcodeset",
-          "FIX:replacements": [
-            {
-              "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')"
-            },
-            {
-              "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '1' as pegpricetype where contains(execinst, 'L')"
-            },
-            {
-              "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '2' as pegpricetype where contains(execinst, 'M')"
-            },
-            {
-              "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '3' as pegpricetype where contains(execinst, 'O')"
-            },
-            {
-              "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '4' as pegpricetype where contains(execinst, 'P')"
-            },
-            {
-              "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '5' as pegpricetype where contains(execinst, 'R')"
-            },
-            {
-              "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '7' as pegpricetype where contains(execinst, 'W')"
-            },
-            {
-              "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '8' as pegpricetype where contains(execinst, 'a')"
-            },
-            {
-              "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '9' as pegpricetype where contains(execinst, 'd')"
-            }
-          ],
           "FIX:tag": "18",
           "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
           "display": "ExecInst"
@@ -519,20 +484,6 @@
         },
         "metadata": {
           "FIX:codeset": "exectranstypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'H' as exectype where exectranstype = '1'"
-            },
-            {
-              "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'G' as exectype where exectranstype = '2'"
-            },
-            {
-              "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as exectype where exectranstype = '3'"
-            }
-          ],
           "FIX:tag": "20",
           "display": "ExecTransType"
         },
@@ -558,7 +509,6 @@
         },
         "metadata": {
           "FIX:codeset": "securityidsourcecodeset",
-          "FIX:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
           "FIX:names": [
             "idsource"
           ],
@@ -679,7 +629,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "lastspotrate + lastforwardpoints",
           "FIX:tag": "31",
           "description": "Price of this (last) fill.",
           "display": "LastPx"
@@ -772,11 +721,6 @@
             "marketorderid",
             "omsdealerorderid"
           ],
-          "FIX:replacements": [
-            {
-              "plan": "select orderid as massactionreportid where :msgtype = 'r'"
-            }
-          ],
           "FIX:tag": "37",
           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
           "display": "OrderID"
@@ -791,7 +735,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
           "FIX:tag": "38",
           "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
           "display": "OrderQty"
@@ -805,7 +748,6 @@
         },
         "metadata": {
           "FIX:codeset": "ordstatuscodeset",
-          "FIX:derivation": "case when msgtype in ('8', '9') and exectype in ('0', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'E') then exectype when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty = 0 then '2' when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty > 0 and cumqty > 0 then '1' end",
           "FIX:tag": "39",
           "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
           "display": "OrdStatus"
@@ -819,32 +761,6 @@
         },
         "metadata": {
           "FIX:codeset": "ordtypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'"
-            },
-            {
-              "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'"
-            },
-            {
-              "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'"
-            },
-            {
-              "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'"
-            },
-            {
-              "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'"
-            },
-            {
-              "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'"
-            }
-          ],
           "FIX:tag": "40",
           "description": "Order type.",
           "display": "OrdType"
@@ -928,11 +844,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "plan": "select relatdsym as symbol"
-            }
-          ],
           "FIX:tag": "46",
           "display": "RelatdSym"
         },
@@ -945,100 +856,6 @@
         },
         "metadata": {
           "FIX:codeset": "rule80acodeset",
-          "FIX:replacements": [
-            {
-              "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where rule80a = 'A'"
-            },
-            {
-              "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where rule80a = 'B'"
-            },
-            {
-              "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'"
-            },
-            {
-              "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'"
-            },
-            {
-              "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where rule80a = 'E'"
-            },
-            {
-              "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity where rule80a = 'F'"
-            },
-            {
-              "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity where rule80a = 'H'"
-            },
-            {
-              "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity where rule80a = 'I'"
-            },
-            {
-              "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'"
-            },
-            {
-              "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'"
-            },
-            {
-              "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'"
-            },
-            {
-              "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'"
-            },
-            {
-              "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'"
-            },
-            {
-              "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'"
-            },
-            {
-              "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where rule80a = 'P'"
-            },
-            {
-              "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'"
-            },
-            {
-              "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'"
-            },
-            {
-              "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'"
-            },
-            {
-              "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'"
-            },
-            {
-              "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity where rule80a = 'W'"
-            },
-            {
-              "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'"
-            },
-            {
-              "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'"
-            },
-            {
-              "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'"
-            }
-          ],
           "FIX:tag": "47",
           "display": "Rule80A"
         },
@@ -1050,7 +867,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
           "FIX:tag": "48",
           "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
           "display": "SecurityID"
@@ -1075,12 +891,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "SENDERSUBID",
-              "map": "userids"
-            }
-          ],
           "FIX:tag": "50",
           "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
           "display": "SenderSubID"
@@ -1149,7 +959,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
           "FIX:tag": "55",
           "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
           "display": "Symbol"
@@ -1199,7 +1008,6 @@
         },
         "metadata": {
           "FIX:codeset": "timeinforcecodeset",
-          "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
           "FIX:tag": "59",
           "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
           "display": "TimeInForce"
@@ -1256,12 +1064,6 @@
           "FIX:codeset": "settltypecodeset",
           "FIX:names": [
             "settlmnttyp"
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as settltype where settltype = 'A'"
-            }
           ],
           "FIX:tag": "63",
           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
@@ -1368,16 +1170,6 @@
         },
         "metadata": {
           "FIX:codeset": "alloctranstypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)",
-              "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'"
-            },
-            {
-              "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)",
-              "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'"
-            }
-          ],
           "FIX:tag": "71",
           "description": "Identifies allocation transaction type *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
           "display": "AllocTransType"
@@ -1442,12 +1234,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties"
-            }
-          ],
           "FIX:tag": "76",
           "display": "ExecBroker"
         },
@@ -1655,12 +1441,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties"
-            }
-          ],
           "FIX:tag": "92",
           "display": "BrokerOfCredit"
         },
@@ -1861,12 +1641,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: clientid, partyrole: '3'}] as parties"
-            }
-          ],
           "FIX:tag": "109",
           "display": "ClientID"
         },
@@ -1895,11 +1669,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "plan": "select maxfloor as displayqty"
-            }
-          ],
           "FIX:tag": "111",
           "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
           "display": "MaxFloor"
@@ -1962,12 +1731,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "ONBEHALFOFSUBID",
-              "map": "userids"
-            }
-          ],
           "FIX:tag": "116",
           "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
           "display": "OnBehalfOfSubID"
@@ -2014,12 +1777,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))",
-          "FIX:replacements": [
-            {
-              "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
-            }
-          ],
           "FIX:tag": "119",
           "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
           "display": "SettlCurrAmt"
@@ -2032,12 +1789,6 @@
           "type": "ccy"
         },
         "metadata": {
-          "FIX:derivation": "currency",
-          "FIX:replacements": [
-            {
-              "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
-            }
-          ],
           "FIX:tag": "120",
           "description": "Currency code of settlement denomination.",
           "display": "SettlCurrency"
@@ -2065,7 +1816,6 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:derivation": "case when possdupflag then sendingtime end",
           "FIX:tag": "122",
           "description": "Original time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\") when transmitting orders as the result of a resend request.",
           "display": "OrigSendingTime"
@@ -2199,7 +1949,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "bidspotrate + bidforwardpoints",
           "FIX:tag": "132",
           "description": "Bid price/rate",
           "display": "BidPx"
@@ -2214,7 +1963,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "offerspotrate + offerforwardpoints",
           "FIX:tag": "133",
           "description": "Offer price/rate",
           "display": "OfferPx"
@@ -2430,16 +2178,6 @@
         },
         "metadata": {
           "FIX:codeset": "exectypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'F' as exectype where exectype = '1'"
-            },
-            {
-              "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'F' as exectype where exectype = '2'"
-            }
-          ],
           "FIX:tag": "150",
           "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
           "display": "ExecType"
@@ -2454,7 +2192,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
           "FIX:tag": "151",
           "description": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14).",
           "display": "LeavesQty"
@@ -2648,36 +2385,6 @@
         },
         "metadata": {
           "FIX:codeset": "settllocationcodeset",
-          "FIX:replacements": [
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties"
-            }
-          ],
           "FIX:tag": "166",
           "display": "SettlLocation"
         },
@@ -2690,17 +2397,6 @@
         },
         "metadata": {
           "FIX:codeset": "securitytypecodeset",
-          "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'"
-            }
-          ],
           "FIX:tag": "167",
           "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
           "display": "SecurityType"
@@ -3090,11 +2786,6 @@
               "map": "altids"
             }
           ],
-          "FIX:replacements": [
-            {
-              "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
-            }
-          ],
           "FIX:tag": "198",
           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
           "display": "SecondaryOrderID"
@@ -3134,7 +2825,6 @@
         },
         "metadata": {
           "FIX:codeset": "putorcallcodeset",
-          "FIX:derivation": "case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end",
           "FIX:tag": "201",
           "description": "Indicates whether an option contract is a put, call, chooser or undetermined.",
           "display": "PutOrCall"
@@ -3175,16 +2865,6 @@
         },
         "metadata": {
           "FIX:codeset": "customerorfirmcodeset",
-          "FIX:replacements": [
-            {
-              "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where customerorfirm = '0'"
-            },
-            {
-              "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where customerorfirm = '1'"
-            }
-          ],
           "FIX:tag": "204",
           "display": "CustomerOrFirm"
         },
@@ -3196,12 +2876,6 @@
           "type": "int8"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)",
-              "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate"
-            }
-          ],
           "FIX:tag": "205",
           "display": "MaturityDay"
         },
@@ -3266,11 +2940,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "plan": "select maxshow as secondarydisplayqty"
-            }
-          ],
           "FIX:tag": "210",
           "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
           "display": "MaxShow"
@@ -3389,44 +3058,6 @@
         },
         "metadata": {
           "FIX:codeset": "benchmarkcodeset",
-          "FIX:replacements": [
-            {
-              "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'"
-            },
-            {
-              "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'"
-            },
-            {
-              "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'"
-            },
-            {
-              "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'"
-            },
-            {
-              "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'"
-            },
-            {
-              "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'"
-            },
-            {
-              "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'"
-            },
-            {
-              "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'"
-            },
-            {
-              "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'"
-            }
-          ],
           "FIX:tag": "219",
           "display": "Benchmark"
         },
@@ -3514,16 +3145,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)",
-              "plan": "select '1' as terminationtype where repurchaseterm = '1'"
-            },
-            {
-              "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)",
-              "plan": "select '2' as terminationtype"
-            }
-          ],
           "FIX:tag": "226",
           "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
           "display": "RepurchaseTerm"
@@ -3537,11 +3158,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select repurchaserate as price"
-            }
-          ],
           "FIX:tag": "227",
           "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
           "display": "RepurchaseRate"
@@ -3695,11 +3311,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select repocollateralsecuritytype as underlyingsecuritytype"
-            }
-          ],
           "FIX:tag": "239",
           "description": "Identifies the collateral used in the transaction.",
           "display": "RepoCollateralSecurityType"
@@ -3714,11 +3325,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select redemptiondate as yieldredemptiondate"
-            }
-          ],
           "FIX:tag": "240",
           "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
           "display": "RedemptionDate"
@@ -4616,16 +4222,6 @@
         },
         "metadata": {
           "FIX:codeset": "underlyingsecuritytypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'"
-            }
-          ],
           "FIX:tag": "310",
           "description": "Underlying security's SecurityType.",
           "display": "UnderlyingSecurityType"
@@ -4677,12 +4273,6 @@
           "type": "int8"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)",
-              "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate"
-            }
-          ],
           "FIX:tag": "314",
           "display": "UnderlyingMaturityDay"
         },
@@ -5399,12 +4989,6 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hops"
-            }
-          ],
           "FIX:tag": "370",
           "display": "OnBehalfOfSendingTime"
         },
@@ -5544,7 +5128,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end",
           "FIX:tag": "381",
           "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
           "display": "GrossTradeAmt"
@@ -6293,12 +5876,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties"
-            }
-          ],
           "FIX:tag": "439",
           "display": "ClearingFirm"
         },
@@ -6310,12 +5887,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyrole: '4', partysubids: [{partysubid: clearingaccount}]}] as parties"
-            }
-          ],
           "FIX:tag": "440",
           "display": "ClearingAccount"
         },
@@ -6415,23 +5986,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "CUSTOMERACCOUNT",
-              "map": "accountids",
-              "role": "24"
-            },
-            {
-              "key": "ENTERINGTRADER",
-              "map": "userids",
-              "role": "36"
-            },
-            {
-              "key": "EXECUTINGTRADER",
-              "map": "userids",
-              "role": "12"
-            }
-          ],
           "FIX:tag": "448",
           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
           "display": "PartyID"
@@ -6583,7 +6137,6 @@
         },
         "metadata": {
           "FIX:codeset": "productcodeset",
-          "FIX:derivation": "case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end",
           "FIX:tag": "460",
           "description": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields.",
           "display": "Product"
@@ -6596,7 +6149,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:derivation": "case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end",
           "FIX:tag": "461",
           "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
           "display": "CFICode"
@@ -6648,24 +6200,6 @@
         },
         "metadata": {
           "FIX:codeset": "quantitytypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)",
-              "plan": "select '1' as qtytype where quantitytype = '6'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '1'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '5'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '8'"
-            }
-          ],
           "FIX:tag": "465",
           "display": "QuantityType"
         },
@@ -6726,7 +6260,6 @@
           "type": "country"
         },
         "metadata": {
-          "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
           "FIX:tag": "470",
           "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
           "display": "CountryOfIssue"
@@ -7606,11 +7139,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select totalaccruedinterestamt as accruedinterestamt"
-            }
-          ],
           "FIX:tag": "540",
           "description": "Total Amount of Accrued Interest for convertible bonds and fixed income",
           "display": "TotalAccruedInterestAmt"
@@ -8060,12 +7588,6 @@
         "metadata": {
           "FIX:codeset": "oddlotcodeset",
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)",
-              "plan": "select '1' as lottype where oddlot = 'Y'"
-            }
-          ],
           "FIX:tag": "575",
           "description": "This trade is to be treated as an odd lot",
           "display": "OddLot"
@@ -8496,16 +8018,6 @@
         },
         "metadata": {
           "FIX:codeset": "legsecuritytypecodeset",
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'"
-            }
-          ],
           "FIX:tag": "609",
           "description": "Refer to definition of SecurityType(167)",
           "display": "LegSecurityType"
@@ -9505,14 +9017,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0.1",
-          "FIX:replacements": [
-            {
-              "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
-            },
-            {
-              "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
-            }
-          ],
           "FIX:tag": "687",
           "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
           "display": "LegQty"
@@ -11434,7 +10938,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))",
           "FIX:tag": "839",
           "description": "The price the order is currently pegged at",
           "display": "PeggedPrice"
@@ -11605,16 +11108,6 @@
         "metadata": {
           "FIX:codeset": "publishtrdindicatorcodeset",
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)",
-              "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'"
-            },
-            {
-              "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)",
-              "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'"
-            }
-          ],
           "FIX:tag": "852",
           "description": "Indicates if a trade should be reported via a market reporting service.",
           "display": "PublishTrdIndicator"
@@ -15338,7 +14831,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "minpriceincrement * contractmultiplier",
           "FIX:tag": "1146",
           "description": "Minimum price increment amount associated with MinPriceIncrement(969). For listed derivatives, the value can be calculated by multiplying MinPriceIncrement(969) with ContractMultiplier(231).",
           "display": "MinPriceIncrementAmount"
@@ -30711,7 +30203,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "lastqty * tradingunitperiodmultiplier",
           "FIX:tag": "2367",
           "description": "Expresses the total quantity traded over the life of the contract when LastQty(32) is repeated periodically over the term of the contract. The value is the product of LastQty(32) and TradingUnitPeriodMultiplier(2353).",
           "display": "TotalTradeQty"
@@ -30726,7 +30217,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(lastqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))",
           "FIX:tag": "2368",
           "description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
           "display": "LastMultipliedQty"
@@ -30741,7 +30231,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(lastpx as decimal128(38,9)) * try_cast(totaltradeqty as decimal128(38,9))",
           "FIX:tag": "2369",
           "description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
           "display": "TotalGrossTradeAmt"
@@ -30756,7 +30245,6 @@
           "type": "decimal128"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(totaltradeqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))",
           "FIX:tag": "2370",
           "description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
           "display": "TotalTradeMultipliedQty"
@@ -37244,7 +36732,6 @@
         },
         "metadata": {
           "FIX:codeset": "currencycodesourcecodeset",
-          "FIX:derivation": "case when currency is not null then '6' end",
           "FIX:tag": "2897",
           "description": "Identifies class or source of the Currency(15) value.",
           "display": "CurrencyCodeSource"
@@ -79431,7 +78918,7 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65003",
+          "FIX:tag": "65001",
           "FIX:transient": "false",
           "description": "When the event happened: the settled instant, UTC.",
           "display": "CurrUnix"
@@ -79441,53 +78928,18 @@
       },
       {
         "dtype": {
-          "type": "string"
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65008",
-          "description": "The message context a bridge handled the message in, as its own log names it.",
-          "display": "MsgCtxId"
-        },
-        "name": "msgctxid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65009",
-          "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
-          "display": "MsgPluginId"
-        },
-        "name": "msgpluginid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "uint64"
-        },
-        "metadata": {
-          "FIX:tag": "65017",
+          "FIX:tag": "65002",
           "FIX:transient": "false",
-          "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-          "display": "CurrHashCode"
+          "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed.",
+          "display": "ExecUnix"
         },
-        "name": "currhashcode",
-        "nullable": false
-      },
-      {
-        "dtype": {
-          "type": "uint64"
-        },
-        "metadata": {
-          "FIX:tag": "65018",
-          "FIX:transient": "false",
-          "description": "The XXH3-64 of the cross code; zero where the event names none.",
-          "display": "CrossHashCode"
-        },
-        "name": "crosshashcode",
-        "nullable": false
+        "name": "execunix",
+        "nullable": true
       },
       {
         "dtype": {
@@ -79496,25 +78948,12 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65021",
+          "FIX:tag": "65003",
           "FIX:transient": "false",
-          "description": "When the event this one follows happened, where it follows one.",
-          "display": "PrevUnix"
+          "description": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know.",
+          "display": "RecdUnix"
         },
-        "name": "prevunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "uuid"
-        },
-        "metadata": {
-          "FIX:tag": "65022",
-          "FIX:transient": "false",
-          "description": "The identity of the event this one follows, where it follows one.",
-          "display": "PrevUuid"
-        },
-        "name": "prevuuid",
+        "name": "recdunix",
         "nullable": true
       },
       {
@@ -79527,7 +78966,7 @@
           "FIX:names": [
             "CreationTime"
           ],
-          "FIX:tag": "65023",
+          "FIX:tag": "65004",
           "FIX:transient": "false",
           "description": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed.",
           "display": "CreaUnix"
@@ -79542,7 +78981,22 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65025",
+          "FIX:tag": "65005",
+          "FIX:transient": "false",
+          "description": "When the event this one follows happened, where it follows one.",
+          "display": "PrevUnix"
+        },
+        "name": "prevunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65006",
           "FIX:transient": "false",
           "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
           "display": "SnapUnix"
@@ -79552,40 +79006,17 @@
       },
       {
         "dtype": {
-          "type": "url"
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65026",
+          "FIX:tag": "65007",
           "FIX:transient": "false",
-          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
-          "display": "SourceUrl"
+          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
+          "display": "ExprUnix"
         },
-        "name": "sourceurl",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "int32"
-        },
-        "metadata": {
-          "FIX:tag": "65027",
-          "FIX:transient": "false",
-          "description": "How many residual entries remain outside the row's projected columns.",
-          "display": "NoFixEntries"
-        },
-        "name": "nofixentries",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65032",
-          "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
-          "display": "MsgSessionId"
-        },
-        "name": "msgsessionid",
+        "name": "exprunix",
         "nullable": true
       },
       {
@@ -79593,7 +79024,7 @@
           "type": "uuid"
         },
         "metadata": {
-          "FIX:tag": "65039",
+          "FIX:tag": "65008",
           "FIX:transient": "false",
           "description": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
           "display": "CurrUuid"
@@ -79606,7 +79037,7 @@
           "type": "uuid"
         },
         "metadata": {
-          "FIX:tag": "65040",
+          "FIX:tag": "65009",
           "FIX:transient": "false",
           "description": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none.",
           "display": "CrossUuid"
@@ -79616,28 +79047,67 @@
       },
       {
         "dtype": {
-          "type": "uint64"
-        },
-        "metadata": {
-          "FIX:tag": "65042",
-          "FIX:transient": "false",
-          "description": "The event's place in its chain: how many came before it.",
-          "display": "SeqNum"
-        },
-        "name": "seqnum",
-        "nullable": true
-      },
-      {
-        "dtype": {
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65048",
+          "FIX:tag": "65010",
           "FIX:transient": "false",
           "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated.",
           "display": "CrossCode"
         },
         "name": "crosscode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "uint64"
+        },
+        "metadata": {
+          "FIX:tag": "65011",
+          "FIX:transient": "false",
+          "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
+          "display": "CurrHashCode"
+        },
+        "name": "currhashcode",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "type": "uint64"
+        },
+        "metadata": {
+          "FIX:tag": "65012",
+          "FIX:transient": "false",
+          "description": "The XXH3-64 of the cross code; zero where the event names none.",
+          "display": "CrossHashCode"
+        },
+        "name": "crosshashcode",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "type": "uuid"
+        },
+        "metadata": {
+          "FIX:tag": "65013",
+          "FIX:transient": "false",
+          "description": "The identity of the event this one follows, where it follows one.",
+          "display": "PrevUuid"
+        },
+        "name": "prevuuid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "uint64"
+        },
+        "metadata": {
+          "FIX:tag": "65014",
+          "FIX:transient": "false",
+          "description": "The event's place in its chain: how many came before it.",
+          "display": "SeqNum"
+        },
+        "name": "seqnum",
         "nullable": true
       },
       {
@@ -79653,7 +79123,7 @@
           "type": "serie"
         },
         "metadata": {
-          "FIX:tag": "65051",
+          "FIX:tag": "65015",
           "FIX:transient": "false",
           "description": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
           "display": "SrcUuids"
@@ -79663,41 +79133,12 @@
       },
       {
         "dtype": {
-          "type": "state"
-        },
-        "metadata": {
-          "FIX:codeset": "statecodeset",
-          "FIX:tag": "65052",
-          "FIX:transient": "false",
-          "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed.",
-          "display": "State"
-        },
-        "name": "state",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65053",
-          "FIX:transient": "false",
-          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
-          "display": "ExprUnix"
-        },
-        "name": "exprunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "int32"
+          "type": "marketdatakind"
         },
         "metadata": {
           "FIX:codeset": "msgcatcodeset",
-          "FIX:tag": "65054",
-          "description": "The stable integer code for the message type's business category.",
+          "FIX:tag": "65016",
+          "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; a row stating one is the row's word.",
           "display": "MsgCat"
         },
         "name": "msgcat",
@@ -79705,83 +79146,14 @@
       },
       {
         "dtype": {
-          "type": "isin"
+          "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65055",
-          "description": "The normalized ISIN the message identifies.",
-          "display": "IsinCode"
+          "FIX:tag": "65017",
+          "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
+          "display": "MsgPluginId"
         },
-        "name": "isincode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "bbg"
-        },
-        "metadata": {
-          "FIX:tag": "65059",
-          "description": "The normalized Bloomberg identifier the message identifies.",
-          "display": "BloombergCode"
-        },
-        "name": "bloombergcode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "mic"
-        },
-        "metadata": {
-          "FIX:names": [
-            "instrument[exchange]"
-          ],
-          "FIX:tag": "65060",
-          "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one; a bridge's INSTRUMENT[EXCHANGE] states it.",
-          "display": "MicCode"
-        },
-        "name": "miccode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "figi"
-        },
-        "metadata": {
-          "FIX:tag": "65061",
-          "description": "The normalized FIGI the message identifies.",
-          "display": "FIGICode"
-        },
-        "name": "figicode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65062",
-          "FIX:transient": "false",
-          "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed.",
-          "display": "ExecUnix"
-        },
-        "name": "execunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65063",
-          "FIX:transient": "false",
-          "description": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know.",
-          "display": "RecdUnix"
-        },
-        "name": "recdunix",
+        "name": "msgpluginid",
         "nullable": true
       },
       {
@@ -79789,7 +79161,43 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65065",
+          "FIX:tag": "65018",
+          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+          "display": "MsgOriginator"
+        },
+        "name": "msgoriginator",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65019",
+          "description": "The message context a bridge handled the message in, as its own log names it.",
+          "display": "MsgCtxId"
+        },
+        "name": "msgctxid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65020",
+          "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
+          "display": "MsgSessionId"
+        },
+        "name": "msgsessionid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65021",
           "FIX:transient": "false",
           "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
           "display": "MsgSessEventId"
@@ -79802,19 +79210,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65066",
-          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
-          "display": "MsgOriginator"
-        },
-        "name": "msgoriginator",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65067",
+          "FIX:tag": "65022",
           "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
           "display": "ConversationId"
         },
@@ -79823,16 +79219,112 @@
       },
       {
         "dtype": {
+          "type": "isin"
+        },
+        "metadata": {
+          "FIX:tag": "65023",
+          "description": "The normalized ISIN the message identifies.",
+          "display": "IsinCode"
+        },
+        "name": "isincode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "forex"
+        },
+        "metadata": {
+          "FIX:tag": "65024",
+          "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written.",
+          "display": "ForexCode"
+        },
+        "name": "forexcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "bbg"
+        },
+        "metadata": {
+          "FIX:tag": "65025",
+          "description": "The normalized Bloomberg identifier the message identifies.",
+          "display": "BloombergCode"
+        },
+        "name": "bloombergcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "figi"
+        },
+        "metadata": {
+          "FIX:tag": "65026",
+          "description": "The normalized FIGI the message identifies.",
+          "display": "FIGICode"
+        },
+        "name": "figicode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "mic"
+        },
+        "metadata": {
+          "FIX:names": [
+            "instrument[exchange]"
+          ],
+          "FIX:tag": "65027",
+          "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one; a bridge's INSTRUMENT[EXCHANGE] states it.",
+          "display": "MicCode"
+        },
+        "name": "miccode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "decimal"
+        },
+        "metadata": {
+          "FIX:tag": "65028",
+          "description": "The option strike price the message identifies: StrikePrice, as the decimal leaf; a row stating one is the row's word.",
+          "display": "StrikePx"
+        },
+        "name": "strikepx",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "state"
+        },
+        "metadata": {
+          "FIX:codeset": "statecodeset",
+          "FIX:tag": "65029",
+          "FIX:transient": "false",
+          "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed.",
+          "display": "State"
+        },
+        "name": "state",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "url"
+        },
+        "metadata": {
+          "FIX:tag": "65031",
+          "FIX:transient": "false",
+          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
+          "display": "SourceUrl"
+        },
+        "name": "sourceurl",
+        "nullable": true
+      },
+      {
+        "dtype": {
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "OMSDEALERACCOUNT",
-              "map": "accountids"
-            }
-          ],
-          "FIX:tag": "65068",
+          "FIX:tag": "65032",
           "description": "The account an OMS dealer books the order to, as the bridge stated it.",
           "display": "OmsDealerAccount"
         },
@@ -79844,13 +79336,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "OMSUSERID",
-              "map": "userids"
-            }
-          ],
-          "FIX:tag": "65069",
+          "FIX:tag": "65033",
           "description": "The OMS user who entered the order, as the bridge stated it.",
           "display": "OmsUserId"
         },
@@ -79869,7 +79355,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65070",
+          "FIX:tag": "65034",
           "description": "The parent order's identifier, as the bridge stated it.",
           "display": "ParentOrderId"
         },
@@ -79888,7 +79374,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65071",
+          "FIX:tag": "65035",
           "description": "The parent order's client identifier, as the bridge stated it.",
           "display": "ParentClOrdId"
         },
@@ -79907,7 +79393,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65072",
+          "FIX:tag": "65036",
           "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
           "display": "OmsDealerParentOrderId"
         },
@@ -79926,7 +79412,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65073",
+          "FIX:tag": "65037",
           "description": "The exchange's client order identifier, as the bridge stated it.",
           "display": "ExchangeClientOrderId"
         },
@@ -79945,7 +79431,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65074",
+          "FIX:tag": "65038",
           "description": "The key a bridge threads one order through every system with, as it stated it.",
           "display": "TransversalKey"
         },
@@ -79963,7 +79449,7 @@
               "map": "altids"
             }
           ],
-          "FIX:tag": "65075",
+          "FIX:tag": "65039",
           "description": "A trading screen's own client order identifier, as the bridge stated it.",
           "display": "UlTraderClOrdId"
         },
@@ -79975,13 +79461,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "OmsInstrumentId names an instrument under the OMSINSTRUMENTID source",
-              "plan": "select [{securityaltid: omsinstrumentid, securityaltidsource: 'OMSINSTRUMENTID'}] as secaltids where length(omsinstrumentid) <= 32"
-            }
-          ],
-          "FIX:tag": "65076",
+          "FIX:tag": "65040",
           "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
           "display": "OmsInstrumentId"
         },
@@ -79996,13 +79476,7 @@
           "FIX:names": [
             "ullink.instrumentid"
           ],
-          "FIX:replacements": [
-            {
-              "doc": "UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source",
-              "plan": "select [{securityaltid: ullinkinstrumentid, securityaltidsource: 'ULLINKINSTRUMENTID'}] as secaltids where length(ullinkinstrumentid) <= 32"
-            }
-          ],
-          "FIX:tag": "65077",
+          "FIX:tag": "65041",
           "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
           "display": "UllinkInstrumentId"
         },
@@ -239265,9 +238739,9 @@
           "type": "map"
         },
         "metadata": {
-          "FIX:counter": "65049",
-          "FIX:tag": "65049",
-          "description": "What a bridge stated under its own namespaces - a `TECH.` or an `AMON.` key - each under the key as the bridge spelled it, folded, in sorted order.",
+          "FIX:counter": "65030",
+          "FIX:tag": "65030",
+          "description": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order.",
           "display": "Metadata"
         },
         "name": "metadata",
@@ -266069,92 +265543,114 @@
     {
       "codes": [
         {
+          "doc": "No published category: a message type the dictionary does not file.",
+          "name": "UNKN",
+          "value": "0"
+        },
+        {
+          "doc": "Account reporting.",
           "name": "ACCT",
           "value": "1"
         },
         {
+          "doc": "Allocation instructions, reports and acknowledgements.",
           "name": "ALLO",
           "value": "2"
         },
         {
+          "doc": "Market data: books, their snapshots, increments and requests.",
           "name": "BOOK",
           "value": "3"
         },
         {
+          "doc": "Certificate handling.",
           "name": "CERT",
           "value": "4"
         },
         {
+          "doc": "Collateral management.",
           "name": "COLL",
           "value": "5"
         },
         {
+          "doc": "Communication: news and email.",
           "name": "COMM",
           "value": "6"
         },
         {
+          "doc": "Confirmation and affirmation.",
           "name": "CONF",
           "value": "7"
         },
         {
+          "doc": "Execution reports and their acknowledgements.",
           "name": "EXEC",
           "value": "8"
         },
         {
+          "doc": "Market structure reference data.",
           "name": "MKST",
           "value": "9"
         },
         {
+          "doc": "Order handling: single, list, cross, multileg and mass.",
           "name": "ORDR",
           "value": "10"
         },
         {
+          "doc": "Pay management.",
           "name": "PAYM",
           "value": "11"
         },
         {
+          "doc": "Position maintenance.",
           "name": "POSN",
           "value": "12"
         },
         {
+          "doc": "Parties reference data and risk limits reporting.",
           "name": "PRTY",
           "value": "13"
         },
         {
+          "doc": "Quotation and negotiation.",
           "name": "QUOT",
           "value": "14"
         },
         {
+          "doc": "Registration instructions.",
           "name": "REGI",
           "value": "15"
         },
         {
+          "doc": "Party risk limits.",
           "name": "RISK",
           "value": "16"
         },
         {
+          "doc": "Securities reference data.",
           "name": "SECU",
           "value": "17"
         },
         {
+          "doc": "Session, application sequencing and business rejects.",
           "name": "SESS",
           "value": "18"
         },
         {
+          "doc": "Settlement instructions and obligations.",
           "name": "SETL",
           "value": "19"
         },
         {
+          "doc": "Stream assignment.",
           "name": "STRM",
           "value": "20"
         },
         {
+          "doc": "Trade capture and matching.",
           "name": "TRAD",
           "value": "21"
-        },
-        {
-          "name": "UNKN",
-          "value": "0"
         }
       ],
       "name": "msgcatcodeset"
@@ -282873,6 +282369,11 @@
           "value": "3003"
         },
         {
+          "doc": "Stated anew over a live predecessor, and carrying on.",
+          "name": "UPDATED",
+          "value": "3004"
+        },
+        {
           "doc": "Working, with some of it done.",
           "name": "IN_PROGRESS",
           "value": "4000"
@@ -291856,49 +291357,49 @@
     "columns": [
       {
         "c": "currunix",
-        "t": 65003,
+        "t": 65001,
         "n": "CurrUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the event happened: the settled instant, UTC."
       },
       {
         "c": "execunix",
-        "t": 65062,
+        "t": 65002,
         "n": "ExecUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed."
       },
       {
         "c": "recdunix",
-        "t": 65063,
+        "t": 65003,
         "n": "RecdUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know."
       },
       {
         "c": "creaunix",
-        "t": 65023,
+        "t": 65004,
         "n": "CreaUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed."
       },
       {
         "c": "prevunix",
-        "t": 65021,
+        "t": 65005,
         "n": "PrevUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the event this one follows happened, where it follows one."
       },
       {
         "c": "snapunix",
-        "t": 65025,
+        "t": 65006,
         "n": "SnapUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
       },
       {
         "c": "exprunix",
-        "t": 65053,
+        "t": 65007,
         "n": "ExprUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried."
@@ -291961,56 +291462,56 @@
       },
       {
         "c": "curruuid",
-        "t": 65039,
+        "t": 65008,
         "n": "CurrUuid",
         "y": "uuid",
         "x": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
       },
       {
         "c": "crossuuid",
-        "t": 65040,
+        "t": 65009,
         "n": "CrossUuid",
         "y": "uuid",
         "x": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
       },
       {
         "c": "crosscode",
-        "t": 65048,
+        "t": 65010,
         "n": "CrossCode",
         "y": "utf8",
         "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated."
       },
       {
         "c": "currhashcode",
-        "t": 65017,
+        "t": 65011,
         "n": "CurrHashCode",
         "y": "uint64",
         "x": "The XXH3-64 of what the event states and the named FIX content behind it."
       },
       {
         "c": "crosshashcode",
-        "t": 65018,
+        "t": 65012,
         "n": "CrossHashCode",
         "y": "uint64",
         "x": "The XXH3-64 of the cross code; zero where the event names none."
       },
       {
         "c": "prevuuid",
-        "t": 65022,
+        "t": 65013,
         "n": "PrevUuid",
         "y": "uuid",
         "x": "The identity of the event this one follows, where it follows one."
       },
       {
         "c": "seqnum",
-        "t": 65042,
+        "t": 65014,
         "n": "SeqNum",
         "y": "uint64",
         "x": "The event's place in its chain: how many came before it."
       },
       {
         "c": "srcuuids",
-        "t": 65051,
+        "t": 65015,
         "n": "SrcUuids",
         "y": "serie(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
         "x": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
@@ -292031,10 +291532,10 @@
       },
       {
         "c": "msgcat",
-        "t": 65054,
+        "t": 65016,
         "n": "MsgCat",
-        "y": "int32",
-        "x": "The stable integer code for the message type's business category."
+        "y": "marketdatakind",
+        "x": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; a row stating one is the row's word."
       },
       {
         "c": "msgseqnum",
@@ -292073,42 +291574,42 @@
       },
       {
         "c": "msgpluginid",
-        "t": 65009,
+        "t": 65017,
         "n": "MsgPluginId",
         "y": "utf8",
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
         "c": "msgoriginator",
-        "t": 65066,
+        "t": 65018,
         "n": "MsgOriginator",
         "y": "utf8",
         "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
       },
       {
         "c": "msgctxid",
-        "t": 65008,
+        "t": 65019,
         "n": "MsgCtxId",
         "y": "utf8",
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
         "c": "msgsessionid",
-        "t": 65032,
+        "t": 65020,
         "n": "MsgSessionId",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
       },
       {
         "c": "msgsesseventid",
-        "t": 65065,
+        "t": 65021,
         "n": "MsgSessEventId",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "conversationid",
-        "t": 65067,
+        "t": 65022,
         "n": "ConversationId",
         "y": "utf8",
         "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
@@ -292136,31 +291637,45 @@
       },
       {
         "c": "isincode",
-        "t": 65055,
+        "t": 65023,
         "n": "IsinCode",
         "y": "isin",
         "x": "The normalized ISIN the message identifies."
       },
       {
+        "c": "forexcode",
+        "t": 65024,
+        "n": "ForexCode",
+        "y": "forex",
+        "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written."
+      },
+      {
         "c": "bloombergcode",
-        "t": 65059,
+        "t": 65025,
         "n": "BloombergCode",
         "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {
         "c": "figicode",
-        "t": 65061,
+        "t": 65026,
         "n": "FIGICode",
         "y": "figi",
         "x": "The normalized FIGI the message identifies."
       },
       {
         "c": "miccode",
-        "t": 65060,
+        "t": 65027,
         "n": "MicCode",
         "y": "mic",
         "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one; a bridge's INSTRUMENT[EXCHANGE] states it."
+      },
+      {
+        "c": "strikepx",
+        "t": 65028,
+        "n": "StrikePx",
+        "y": "decimal",
+        "x": "The option strike price the message identifies: StrikePrice, as the decimal leaf; a row stating one is the row's word."
       },
       {
         "c": "securitytype",
@@ -292507,7 +292022,7 @@
       },
       {
         "c": "state",
-        "t": 65052,
+        "t": 65029,
         "n": "State",
         "y": "state",
         "x": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed."
@@ -292579,7 +292094,7 @@
         "c": "parties",
         "t": 209321,
         "n": "Parties",
-        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:idmap\":\"[{\\\"map\\\":\\\"accountids\\\",\\\"key\\\":\\\"CUSTOMERACCOUNT\\\",\\\"role\\\":\\\"24\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"ENTERINGTRADER\\\",\\\"role\\\":\\\"36\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"EXECUTINGTRADER\\\",\\\"role\\\":\\\"12\\\"}]\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
+        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
         "x": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole"
       },
       {
@@ -292759,24 +292274,17 @@
       },
       {
         "c": "metadata",
-        "t": 65049,
+        "t": 65030,
         "n": "Metadata",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "What a bridge stated under its own namespaces - a `TECH.` or an `AMON.` key - each under the key as the bridge spelled it, folded, in sorted order."
-      },
-      {
-        "c": "nofixentries",
-        "t": 65027,
-        "n": "NoFixEntries",
-        "y": "int32",
-        "x": "How many residual entries remain outside the row's projected columns."
+        "x": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order."
       },
       {
         "c": "fixentries",
         "t": 0,
         "n": "FixEntries",
-        "y": "serie(field(\"fixentry\",struct(field(\"tag\",int32,nullable=false,metadata={\"display\":\"Tag\"}),field(\"name\",utf8,nullable=false,metadata={\"display\":\"Name\"}),field(\"value\",utf8,nullable=true,metadata={\"display\":\"Value\"}),field(\"fixentries\",serie(field(\"fixentry\",struct(field(\"tag\",int32,nullable=false,metadata={\"display\":\"Tag\"}),field(\"name\",utf8,nullable=false,metadata={\"display\":\"Name\"}),field(\"value\",utf8,nullable=true,metadata={\"display\":\"Value\"}),field(\"fixentries\",serie(field(\"fixentry\",struct(field(\"tag\",int32,nullable=false,metadata={\"display\":\"Tag\"}),field(\"name\",utf8,nullable=false,metadata={\"display\":\"Name\"}),field(\"value\",utf8,nullable=true,metadata={\"display\":\"Value\"}),field(\"fixentries\",utf8,nullable=true,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
-        "x": "Content not represented by another column, in arrival order, beside what the dictionary made of it."
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way."
       }
     ],
     "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nfix.schema(registry, 'FixMessage')"
@@ -292807,7 +292315,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -292846,7 +292353,6 @@
               },
               "metadata": {
                 "FIX:codeset": "ordtypecodeset",
-                "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "40",
                 "description": "Order type.",
                 "display": "OrdType"
@@ -292860,7 +292366,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -292972,11 +292477,11 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-41fb-7000-ba17-bf8a358a9e51",
-        "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
-        "crosscode": "ORDER-1",
+        "curruuid": "018d64aa-41fb-7000-9ac8-4a91122a2868",
+        "crossuuid": "00000000-0000-8000-a3a2-5d2e3a379a17",
+        "crosscode": "BUY:ORDER-1",
         "currhashcode": "12847862336424854472",
-        "crosshashcode": "16375975223314930669",
+        "crosshashcode": "16402775245963368983",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -292987,6 +292492,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": "XNAS",
         "lastpx": null,
@@ -292998,25 +292504,20 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
         "altids": {
           "CLORDID": "ORDER-1"
-        },
-        "bid": {
-          "price": "10.5",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293115,7 +292616,6 @@
               },
               "metadata": {
                 "FIX:codeset": "exectypecodeset",
-                "FIX:replacements": "[{\"plan\":\"select 'F' as exectype where exectype = '1'\",\"doc\":\"ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)\"},{\"plan\":\"select 'F' as exectype where exectype = '2'\",\"doc\":\"ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)\"}]",
                 "FIX:tag": "150",
                 "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
                 "display": "ExecType"
@@ -293129,7 +292629,6 @@
               },
               "metadata": {
                 "FIX:codeset": "ordstatuscodeset",
-                "FIX:derivation": "case when msgtype in ('8', '9') and exectype in ('0', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'E') then exectype when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty = 0 then '2' when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty > 0 and cumqty > 0 then '1' end",
                 "FIX:tag": "39",
                 "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
                 "display": "OrdStatus"
@@ -293142,7 +292641,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -293183,7 +292681,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -293198,7 +292695,6 @@
                 "type": "decimal128"
               },
               "metadata": {
-                "FIX:derivation": "case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end",
                 "FIX:tag": "381",
                 "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
                 "display": "GrossTradeAmt"
@@ -293309,11 +292805,11 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-48ec-7000-8f6f-ce37e1fe077f",
-        "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
-        "crosscode": "O-9",
-        "currhashcode": "4616921700614614818",
-        "crosshashcode": "15690705969207961054",
+        "curruuid": "018d64aa-48ec-7000-9cec-711527d2141d",
+        "crossuuid": "00000000-0000-8000-9902-771027aeaffa",
+        "crosscode": "BUY:O-9",
+        "currhashcode": "11147450384783071099",
+        "crosshashcode": "15637191767452725242",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -293324,6 +292820,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": "10.5",
@@ -293335,26 +292832,21 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 8,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
         "altids": {
           "EXECID": "E-1",
           "ORDERID": "O-9"
-        },
-        "bid": {
-          "price": null,
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293458,7 +292950,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -293501,7 +292992,6 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -293652,7 +293142,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -293755,11 +293244,11 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b4ba-def060f81dea",
-        "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
-        "crosscode": "ORDER-2",
+        "curruuid": "018cc9ab-d1d0-7000-9f2e-142ad98bcd52",
+        "crossuuid": "00000000-0000-8000-9d1d-6dfa13bd23be",
+        "crosscode": "BUY:ORDER-2",
         "currhashcode": "9413275736616751156",
-        "crosshashcode": "7987596581457795577",
+        "crosshashcode": "15933011977547097022",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -293770,6 +293259,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -293781,25 +293271,20 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
         "altids": {
           "CLORDID": "ORDER-2"
-        },
-        "bid": {
-          "price": "41.25",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "50",
-          "unit": null
-        },
-        "ask": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293942,7 +293427,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -294329,7 +293813,6 @@
                         },
                         "metadata": {
                           "FIX:codeset": "ordtypecodeset",
-                          "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                           "FIX:tag": "40",
                           "description": "Order type.",
                           "display": "OrdType"
@@ -294342,7 +293825,6 @@
                           "type": "ccy"
                         },
                         "metadata": {
-                          "FIX:derivation": "settlcurrency",
                           "FIX:tag": "15",
                           "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                           "display": "Currency"
@@ -294356,7 +293838,6 @@
                         },
                         "metadata": {
                           "FIX:codeset": "currencycodesourcecodeset",
-                          "FIX:derivation": "case when currency is not null then '6' end",
                           "FIX:tag": "2897",
                           "description": "Identifies class or source of the Currency(15) value.",
                           "display": "CurrencyCodeSource"
@@ -294369,8 +293850,6 @@
                           "type": "ccy"
                         },
                         "metadata": {
-                          "FIX:derivation": "currency",
-                          "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                           "FIX:tag": "120",
                           "description": "Currency code of settlement denomination.",
                           "display": "SettlCurrency"
@@ -294954,7 +294433,6 @@
                         },
                         "metadata": {
                           "FIX:codeset": "timeinforcecodeset",
-                          "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                           "FIX:tag": "59",
                           "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                           "display": "TimeInForce"
@@ -295034,7 +294512,6 @@
                         },
                         "metadata": {
                           "FIX:codeset": "execinstcodeset",
-                          "FIX:replacements": "[{\"plan\":\"select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')\",\"doc\":\"ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as pegpricetype where contains(execinst, 'L')\",\"doc\":\"ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '2' as pegpricetype where contains(execinst, 'M')\",\"doc\":\"ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '3' as pegpricetype where contains(execinst, 'O')\",\"doc\":\"ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '4' as pegpricetype where contains(execinst, 'P')\",\"doc\":\"ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '5' as pegpricetype where contains(execinst, 'R')\",\"doc\":\"ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '7' as pegpricetype where contains(execinst, 'W')\",\"doc\":\"ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '8' as pegpricetype where contains(execinst, 'a')\",\"doc\":\"ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '9' as pegpricetype where contains(execinst, 'd')\",\"doc\":\"ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)\"}]",
                           "FIX:tag": "18",
                           "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
                           "display": "ExecInst"
@@ -295061,7 +294538,6 @@
                         "metadata": {
                           "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"ORDERID\",\"follow\":true}]",
                           "FIX:names": "[\"marketorderid\",\"omsdealerorderid\"]",
-                          "FIX:replacements": "[{\"plan\":\"select orderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "37",
                           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
                           "display": "OrderID"
@@ -295075,7 +294551,6 @@
                         },
                         "metadata": {
                           "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"SECONDARYORDERID\",\"follow\":true}]",
-                          "FIX:replacements": "[{\"plan\":\"select secondaryorderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "198",
                           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
                           "display": "SecondaryOrderID"
@@ -295898,7 +295373,6 @@
                           "type": "decimal128"
                         },
                         "metadata": {
-                          "FIX:derivation": "lastspotrate + lastforwardpoints",
                           "FIX:tag": "31",
                           "description": "Price of this (last) fill.",
                           "display": "LastPx"
@@ -296062,7 +295536,6 @@
                         "metadata": {
                           "FIX:codeset": "settltypecodeset",
                           "FIX:names": "[\"settlmnttyp\"]",
-                          "FIX:replacements": "[{\"plan\":\"select '2' as settltype where settltype = 'A'\",\"doc\":\"SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)\"}]",
                           "FIX:tag": "63",
                           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
                           "display": "SettlType"
@@ -296171,7 +295644,6 @@
                                   },
                                   "metadata": {
                                     "FIX:field": "partyid",
-                                    "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                                     "FIX:tag": "448",
                                     "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                                     "display": "PartyID"
@@ -296888,6 +296360,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -296899,16 +296372,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "marketoperationid": 3,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297033,7 +296508,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -297048,7 +296522,6 @@
                 "type": "decimal128"
               },
               "metadata": {
-                "FIX:derivation": "bidspotrate + bidforwardpoints",
                 "FIX:tag": "132",
                 "description": "Bid price/rate",
                 "display": "BidPx"
@@ -297063,7 +296536,6 @@
                 "type": "decimal128"
               },
               "metadata": {
-                "FIX:derivation": "offerspotrate + offerforwardpoints",
                 "FIX:tag": "133",
                 "description": "Offer price/rate",
                 "display": "OfferPx"
@@ -297188,6 +296660,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -297199,30 +296672,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": "41.2",
+        "bidqty": "500",
+        "bidccy": null,
+        "askpx": "41.3",
+        "askqty": "500",
+        "askccy": null,
+        "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "marketoperationid": 14,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": "41.2",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "500",
-          "unit": null
-        },
-        "ask": {
-          "price": "41.3",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "500",
-          "unit": null
-        }
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297433,6 +296894,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -297444,16 +296906,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297597,6 +297061,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -297608,16 +297073,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.2",
@@ -297791,6 +297258,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -297802,16 +297270,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297897,7 +297367,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -297924,7 +297393,6 @@
               },
               "metadata": {
                 "FIX:codeset": "ordtypecodeset",
-                "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "40",
                 "description": "Order type.",
                 "display": "OrdType"
@@ -297952,7 +297420,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -298037,11 +297504,11 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9159-243ba858912e",
-        "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
-        "crosscode": "O-9",
+        "curruuid": "018cc9ab-d1d0-7000-af2e-0d6a6e398404",
+        "crossuuid": "00000000-0000-8000-9902-771027aeaffa",
+        "crosscode": "BUY:O-9",
         "currhashcode": "2619041182138079547",
-        "crosshashcode": "15690705969207961054",
+        "crosshashcode": "15637191767452725242",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -298052,6 +297519,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -298063,27 +297531,22 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
         "altids": {
           "CLORDID": "ORDER-3",
           "ORDERID": "O-9",
           "ORIGCLORDID": "ORDER-1"
-        },
-        "bid": {
-          "price": "10.75",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "150",
-          "unit": null
-        },
-        "ask": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298175,7 +297638,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -298189,7 +297651,6 @@
               },
               "metadata": {
                 "FIX:codeset": "securityidsourcecodeset",
-                "FIX:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
                 "FIX:names": "[\"idsource\"]",
                 "FIX:tag": "22",
                 "description": "Identifies class or source of the SecurityID(48) value.",
@@ -298228,7 +297689,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "settlcurrency",
                 "FIX:tag": "15",
                 "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                 "display": "Currency"
@@ -298242,7 +297702,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -298255,8 +297714,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "currency",
-                "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                 "FIX:tag": "120",
                 "description": "Currency code of settlement denomination.",
                 "display": "SettlCurrency"
@@ -298269,7 +297726,6 @@
                 "type": "country"
               },
               "metadata": {
-                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
                 "FIX:tag": "470",
                 "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
                 "display": "CountryOfIssue"
@@ -298283,7 +297739,6 @@
               },
               "metadata": {
                 "FIX:codeset": "currencycodesourcecodeset",
-                "FIX:derivation": "case when currency is not null then '6' end",
                 "FIX:tag": "2897",
                 "description": "Identifies class or source of the Currency(15) value.",
                 "display": "CurrencyCodeSource"
@@ -298384,6 +297839,7 @@
           "CUSIP": "037833100",
           "ISIN": "US0378331005"
         },
+        "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
         "lastpx": null,
@@ -298395,23 +297851,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": "10.5",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": "USD",
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298527,7 +297978,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -298541,7 +297991,6 @@
               },
               "metadata": {
                 "FIX:codeset": "securityidsourcecodeset",
-                "FIX:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
                 "FIX:names": "[\"idsource\"]",
                 "FIX:tag": "22",
                 "description": "Identifies class or source of the SecurityID(48) value.",
@@ -298568,7 +298017,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "settlcurrency",
                 "FIX:tag": "15",
                 "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                 "display": "Currency"
@@ -298582,7 +298030,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -298595,8 +298042,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "currency",
-                "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                 "FIX:tag": "120",
                 "description": "Currency code of settlement denomination.",
                 "display": "SettlCurrency"
@@ -298610,7 +298055,6 @@
               },
               "metadata": {
                 "FIX:codeset": "currencycodesourcecodeset",
-                "FIX:derivation": "case when currency is not null then '6' end",
                 "FIX:tag": "2897",
                 "description": "Identifies class or source of the Currency(15) value.",
                 "display": "CurrencyCodeSource"
@@ -298696,6 +298140,7 @@
         "securityids": {
           "FIGI": "BBG000BLNQ16"
         },
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -298707,23 +298152,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": null,
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": "USD",
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298864,7 +298304,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -298877,7 +298316,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -298891,7 +298329,6 @@
               },
               "metadata": {
                 "FIX:codeset": "securityidsourcecodeset",
-                "FIX:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
                 "FIX:names": "[\"idsource\"]",
                 "FIX:tag": "22",
                 "description": "Identifies class or source of the SecurityID(48) value.",
@@ -298906,8 +298343,6 @@
               },
               "metadata": {
                 "FIX:codeset": "securitytypecodeset",
-                "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-                "FIX:replacements": "[{\"plan\":\"select 'TNOTE' as securitytype where securitytype = 'UST'\",\"doc\":\"SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'TBILL' as securitytype where securitytype = 'USTB'\",\"doc\":\"SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "167",
                 "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
                 "display": "SecurityType"
@@ -298932,7 +298367,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "settlcurrency",
                 "FIX:tag": "15",
                 "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                 "display": "Currency"
@@ -298959,8 +298393,6 @@
                 "type": "ccy"
               },
               "metadata": {
-                "FIX:derivation": "currency",
-                "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                 "FIX:tag": "120",
                 "description": "Currency code of settlement denomination.",
                 "display": "SettlCurrency"
@@ -298973,7 +298405,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end",
                 "FIX:tag": "461",
                 "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
                 "display": "CFICode"
@@ -298986,7 +298417,6 @@
                 "type": "country"
               },
               "metadata": {
-                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
                 "FIX:tag": "470",
                 "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
                 "display": "CountryOfIssue"
@@ -299000,7 +298430,6 @@
               },
               "metadata": {
                 "FIX:codeset": "currencycodesourcecodeset",
-                "FIX:derivation": "case when currency is not null then '6' end",
                 "FIX:tag": "2897",
                 "description": "Identifies class or source of the Currency(15) value.",
                 "display": "CurrencyCodeSource"
@@ -299106,6 +298535,7 @@
           "ISIN": "GB00BN7SWP63",
           "SEDOL": "BN7SWP6"
         },
+        "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
         "lastpx": null,
@@ -299117,16 +298547,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "marketoperationid": 17,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299260,7 +298692,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299303,7 +298734,6 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -299428,6 +298858,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -299439,23 +298870,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "TTF",
         "metadata": {},
-        "marketoperationid": 0,
         "tif": null,
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": "41.25",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "1200",
-          "unit": null
-        },
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299555,7 +298981,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299582,7 +299007,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -299641,11 +299065,11 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-ab40-31305cbdf003",
-        "crossuuid": "00000000-0000-8000-a639-a6636194481b",
-        "crosscode": "ORDER-4",
+        "curruuid": "018cc9ab-d1d0-7000-b18d-88d002d9aef4",
+        "crossuuid": "00000000-0000-8000-b9bc-1056254a20fe",
+        "crosscode": "BUY:ORDER-4",
         "currhashcode": "9428068077339662714",
-        "crosshashcode": "7366101611310237723",
+        "crosshashcode": "8771904136389730558",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -299656,6 +299080,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -299667,25 +299092,20 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
         "altids": {
           "CLORDID": "ORDER-4"
-        },
-        "bid": {
-          "price": null,
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299765,7 +299185,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299800,7 +299219,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -299875,6 +299293,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -299886,23 +299305,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": null,
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299988,7 +299402,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -300015,7 +299428,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -300083,6 +299495,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -300094,16 +299507,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -300171,7 +299586,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"ACCOUNT\"}]",
                 "FIX:tag": "1",
                 "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
                 "display": "Account"
@@ -300184,7 +299598,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:replacements": "[{\"plan\":\"select [{partyid: clientid, partyrole: '3'}] as parties\",\"doc\":\"ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)\"}]",
                 "FIX:tag": "109",
                 "display": "ClientID"
               },
@@ -300209,7 +299622,6 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -300308,6 +299720,7 @@
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -300319,18 +299732,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "marketoperationid": 0,
         "tif": null,
         "tradable": null,
-        "accountids": {
-          "ACCOUNT": "ACCT-000117"
-        },
-        "userids": {},
-        "altids": {},
-        "bid": null,
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -300430,7 +299843,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -300457,7 +299869,6 @@
               },
               "metadata": {
                 "FIX:codeset": "timeinforcecodeset",
-                "FIX:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "FIX:tag": "59",
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce"
@@ -300537,6 +299948,7 @@
         "unit": "",
         "side": "BUY",
         "securityids": {},
+        "isincode": null,
         "cficode": null,
         "miccode": null,
         "lastpx": null,
@@ -300548,23 +299960,18 @@
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
+        "bidpx": null,
+        "bidqty": null,
+        "bidccy": null,
+        "askpx": null,
+        "askqty": null,
+        "askccy": null,
+        "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "accountids": {},
-        "userids": {},
-        "altids": {},
-        "bid": {
-          "price": "10.5",
-          "spotrate": null,
-          "forwardpoints": null,
-          "currency": null,
-          "quantity": "100",
-          "unit": null
-        },
-        "ask": null
+        "altids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",

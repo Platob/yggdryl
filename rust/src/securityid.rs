@@ -2,6 +2,7 @@
 //! it, the sorted set a market states, and the associations one ordered
 //! lifecycle learns between them.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -19,7 +20,7 @@ use crate::graph::{Element, Market};
 use crate::idmap::{
     IdMap, entry_refusal, located_at, merge_sorted, sorted_map_scalar, text_entries,
 };
-use crate::{Cfi, Cusip, DataType, Error, Figi, Isin, Result, Ric, Scalar, Sedol};
+use crate::{Cfi, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Scalar, Sedol};
 
 /// The most bytes a source key may be once upper-cased.
 const KEY_WIDTH: usize = 32;
@@ -40,6 +41,11 @@ const UNKNOWN_TAG: u8 = 0x7F;
 /// case or the code set's name folded; any other spelling is kept as the
 /// upper-cased key it states. `TICKER` is never a source: a ticker is the
 /// name a person knows an instrument by, and lives on `set_ticker`.
+///
+/// One key is the crate's own: `FOREX`, the currency pair a foreign exchange
+/// instrument is - a [`Forex`] - which FIX gives no source code. It is read
+/// by `forex`, `forexcode`, `ccypair` and `currencypair` too, and packs as
+/// any key FIX does not know.
 ///
 /// ```
 /// use yggdryl::SecType;
@@ -95,10 +101,17 @@ static NAMES: &[(&str, &str)] = &[
     ("wertpapier", "WKN"),
 ];
 
-/// Every folded spelling that names a known source - each key of
-/// [`SecType::KNOWN`] in lower case, and every name in [`NAMES`] - sorted,
-/// beside the key it names. Built once from those two, so a field name is
-/// resolved by one binary search per spelling it tries.
+/// The keys the crate names beside FIX's, each with its folded spellings:
+/// sources FIX gives no code, which a key alone would otherwise leave as a
+/// stranger's upper-cased text.
+static CRATE: [(&str, &[&str]); 1] =
+    [("FOREX", &["forex", "forexcode", "ccypair", "currencypair"])];
+
+/// Every folded spelling that names a source this crate knows - each key of
+/// [`SecType::KNOWN`] in lower case, every name in [`NAMES`] and every
+/// spelling of a [`CRATE`] key - sorted, beside the key it names. Built once
+/// from those, so a field name is resolved by one binary search per
+/// spelling it tries.
 static FOLDED_ALIASES: LazyLock<Vec<(SmolStr, &'static str)>> = LazyLock::new(|| {
     let mut aliases: Vec<(SmolStr, &'static str)> = SecType::KNOWN
         .iter()
@@ -108,6 +121,11 @@ static FOLDED_ALIASES: LazyLock<Vec<(SmolStr, &'static str)>> = LazyLock::new(||
                 .iter()
                 .map(|(name, key)| (SmolStr::new_static(name), *key)),
         )
+        .chain(CRATE.iter().flat_map(|(key, spellings)| {
+            spellings
+                .iter()
+                .map(|spelling| (SmolStr::new_static(spelling), *key))
+        }))
         .collect();
     aliases.sort_unstable();
     aliases.dedup_by(|later, earlier| later.0 == earlier.0);
@@ -362,7 +380,7 @@ impl SecType {
         match self.as_str() {
             "ISIN" | "FIGI" => 12,
             "CUSIP" | "VALOR" => 9,
-            "SEDOL" => 7,
+            "SEDOL" | "FOREX" => 7,
             "WKN" => 6,
             "ISOCCY" => 3,
             "ISOCTRY" => 2,
@@ -375,20 +393,24 @@ impl SecType {
         matches!(self.as_str(), "ISIN" | "CUSIP" | "SEDOL" | "FIGI" | "WKN")
     }
 
-    /// Whether `code` is a code of this source.
+    /// `code` as this source stores it, once it is a code of this source.
     ///
     /// An ISIN, a CUSIP, a SEDOL and a FIGI must close on their check digit;
     /// a RIC is one token of printable ASCII, its case kept; a WKN is six of
     /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a leading
     /// zero; a Bloomberg identifier keeps its case and its inner spaces;
-    /// every other source takes printable ASCII within
+    /// a `FOREX` code is a currency pair in any spelling [`Forex::new`]
+    /// reads; every other source takes printable ASCII within
     /// [`Self::max_code_width`]. No source takes an empty or null-like code.
+    /// The code is answered borrowed, as it was given, except a pair, which
+    /// is answered as the one canonical spelling it lands as - `eurusd` is
+    /// `EUR/USD`.
     ///
     /// # Errors
     ///
     /// The checked code's own refusal, or one located on the source naming
     /// the rule the code broke.
-    pub fn validate_code(&self, code: &str) -> Result<()> {
+    pub fn canonical_code<'a>(&self, code: &'a str) -> Result<Cow<'a, str>> {
         let refusal = |actual: &dyn fmt::Display| Error::InvalidRecord {
             path: self.0.clone(),
             reason: crate::text::expected_got(format_args!("a {} code", self.as_str()), actual),
@@ -396,19 +418,24 @@ impl SecType {
         if is_null_like(code) {
             return Err(refusal(&format_args!("{code:?}, which states nothing")));
         }
+        let borrowed = Cow::Borrowed(code);
         match self.as_str() {
-            "ISIN" => Isin::new(code).map(drop),
-            "CUSIP" => Cusip::new(code).map(drop),
-            "SEDOL" => Sedol::new(code).map(drop),
-            "FIGI" => Figi::new(code).map(drop),
-            "RIC" => Ric::new(code).map(drop),
+            "ISIN" => Isin::new(code).map(|_| borrowed),
+            "CUSIP" => Cusip::new(code).map(|_| borrowed),
+            "SEDOL" => Sedol::new(code).map(|_| borrowed),
+            "FIGI" => Figi::new(code).map(|_| borrowed),
+            "RIC" => Ric::new(code).map(|_| borrowed),
+            "FOREX" => Forex::new(code).map(|pair| match pair.as_str() == code {
+                true => borrowed,
+                false => Cow::Owned(pair.as_str().to_owned()),
+            }),
             "WKN" => {
                 if code.len() == 6
                     && code
                         .bytes()
                         .all(|byte| matches!(byte.to_ascii_uppercase(), b'0'..=b'9' | b'A'..=b'H' | b'J'..=b'N' | b'P'..=b'Z'))
                 {
-                    Ok(())
+                    Ok(borrowed)
                 } else {
                     Err(refusal(&format_args!(
                         "{code:?}, not six of [0-9A-HJ-NP-Z]"
@@ -420,7 +447,7 @@ impl SecType {
                     && code.bytes().all(|byte| byte.is_ascii_digit())
                     && !code.starts_with('0')
                 {
-                    Ok(())
+                    Ok(borrowed)
                 } else {
                     Err(refusal(&format_args!(
                         "{code:?}, not one to nine digits without a leading zero"
@@ -438,7 +465,7 @@ impl SecType {
                         code.len()
                     )));
                 }
-                Ok(())
+                Ok(borrowed)
             }
         }
     }
@@ -480,10 +507,10 @@ impl SecurityId {
     ///
     /// # Errors
     ///
-    /// What [`SecType::validate_code`] refuses.
+    /// What [`SecType::canonical_code`] refuses.
     pub fn new(key: SecType, code: &str) -> Result<Self> {
         let code = code.trim_matches(|c: char| c.is_ascii_whitespace());
-        key.validate_code(code)?;
+        let code = key.canonical_code(code)?;
         let mut buffer = [0_u8; 2 + KEY_WIDTH + BBG_WIDTH];
         let head = match SecType::known_index(key.as_str()) {
             Some(index) => {

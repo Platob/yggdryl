@@ -1,4 +1,4 @@
-"""Build the ``ygg`` command and stage it for the Python wheel.
+"""Build the ``yggdryl`` command and stage it for the Python wheel.
 
 The wheel carries the compiled CLI beside the extension module: maturin copies
 ``python/wheel-data/scripts/`` into ``yggdryl-<version>.data/scripts/``, which
@@ -27,11 +27,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STAGE = ROOT / "python" / "wheel-data" / "scripts"
 # What cargo calls the binary, and what it is called once staged. Windows keeps
 # the extension because an installer copies the name verbatim onto PATH, and a
-# `ygg` with no `.exe` there is not executable.
-NAME = "ygg.exe" if sys.platform == "win32" else "ygg"
+# `yggdryl` with no `.exe` there is not executable.
+NAME = "yggdryl.exe" if sys.platform == "win32" else "yggdryl"
 # What the manifest calls the bin target, which is the name cargo reports it by
 # on every platform - `NAME` is only what the file is called once it is written.
-BIN = "ygg"
+BIN = "yggdryl"
 
 
 def linked(output: str) -> pathlib.Path | None:
@@ -40,8 +40,8 @@ def linked(output: str) -> pathlib.Path | None:
     `target/<profile>/` is where a binary lands only when nothing moves it, and
     the release matrix moves it three ways: `--target` on a cross build,
     `CARGO_TARGET_DIR` in an environment, and `CARGO_BUILD_TARGET` set by an
-    image. The last is what the musllinux container does, so a build that had
-    already succeeded left `target/<triple>/release/ygg` while a path
+    image. The last is what the musllinux container does, so the 0.1.2
+    release had built the binary into `target/<triple>/release/` while a path
     reconstructed from the profile alone looked in `target/release/` and called
     the build empty:
 
@@ -119,8 +119,8 @@ def main() -> int:
         print(f"cleared {staged.relative_to(ROOT)}")
         return 0
 
-    # The staged binary reads Iceberg tables: `ygg xmla serve` over a table
-    # folder is the reason a wheel ships a `ygg` at all, and the extension
+    # The staged binary reads Iceberg tables: `yggdryl xmla serve` over a table
+    # folder is the reason a wheel ships a `yggdryl` at all, and the extension
     # beside it is built with the same feature.
     command = ["cargo", "build", "-p", "yggdryl-cli", "--features", "iceberg"]
     if not arguments.debug:

@@ -28,7 +28,8 @@ test('fromParts of two executions', () => {
   assert.ok(executions.every((execution) => execution instanceof graph.ExecutionEvent))
   // In canonical side order, whatever order they were handed over in.
   assert.deepEqual(executions.map((execution) => execution.side), ['BUY', 'SELL'])
-  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['BUY-1', 'SELL-1'])
+  // A sided element's cross code carries its side (A17).
+  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['BUY:BUY-1', 'SELL:SELL-1'])
   assert.equal(made.isExecution, true)
 })
 

@@ -585,7 +585,7 @@ mod leaves {
         for accepted in [
             DataType::fixed_ascii(8).unwrap(),
             DataType::fixed_ascii(16).unwrap(),
-            DataType::Side,
+            DataType::TimeInForce,
         ] {
             let field = Field::new("side", accepted.clone(), false)
                 .try_with_string_enum(&sides)
@@ -595,12 +595,15 @@ mod leaves {
                 Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
             assert_eq!(recovered, field, "{accepted}");
         }
+        // A side column stores its members' codes, so it packs nothing and
+        // declares no string listing.
         for refused in [
             DataType::ascii(),
             DataType::from_str("ascii(4)").unwrap(),
             DataType::fixed_ascii(17).unwrap(),
             DataType::fixed_utf8(4).unwrap(),
             DataType::utf8(),
+            DataType::Side,
         ] {
             let message = Field::new("side", refused.clone(), false)
                 .try_with_string_enum(&sides)
@@ -750,7 +753,7 @@ mod fields {
                 .is_ok()
         );
         assert!(
-            DataType::Side
+            DataType::TimeInForce
                 .required_field("side")
                 .try_with_string_enum(&sides)
                 .is_ok()

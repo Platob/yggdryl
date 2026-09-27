@@ -4,8 +4,8 @@
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookEvent, BookRef, BookSide, Element, Event, Execution, ExecutionEvent, Market, MarketData,
-    MarketKind, MdUpdateAction, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent, TradeEvent,
+    BookEvent, BookRef, Element, Event, Execution, ExecutionEvent, Market, MarketData, MarketKind,
+    MdUpdateAction, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent, TradeEvent,
 };
 use yggdryl::{Decimal, Error, Side, State};
 
@@ -34,7 +34,6 @@ fn one_of_every_leaf() -> Vec<MarketData> {
         MarketData::from(Order::new()),
         MarketData::from(Quote::new()),
         MarketData::from(Execution::new()),
-        MarketData::from(BookSide::new(Side::Buy).unwrap()),
         MarketData::from(order(1, "O-1")),
         MarketData::from(QuoteEvent::from(&order(2, "Q-2"))),
         MarketData::from(execution(3, "E-3")),
@@ -57,14 +56,13 @@ fn each_variant_states_its_kind_and_whether_it_is_dated() {
 #[test]
 fn each_borrow_answers_its_own_variant_alone() {
     let values = one_of_every_leaf();
-    let borrowed: Vec<[bool; 10]> = values
+    let borrowed: Vec<[bool; 9]> = values
         .iter()
         .map(|value| {
             [
                 value.as_order().is_some(),
                 value.as_quote().is_some(),
                 value.as_execution().is_some(),
-                value.as_book_side().is_some(),
                 value.as_order_event().is_some(),
                 value.as_quote_event().is_some(),
                 value.as_execution_event().is_some(),
@@ -109,11 +107,6 @@ fn the_readings_are_the_leafs_own() {
     for value in one_of_every_leaf() {
         let (uuid, code, price) = match &value {
             MarketData::OrderEvent(leaf) => (
-                leaf.get_curruuid(),
-                leaf.get_crosscode().to_owned(),
-                leaf.get_price(),
-            ),
-            MarketData::BookSide(leaf) => (
                 leaf.get_curruuid(),
                 leaf.get_crosscode().to_owned(),
                 leaf.get_price(),
@@ -210,19 +203,29 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// when the market facts began to know which identifiers they only derived:
 /// one `u64` mask, padded to sixteen bytes' alignment. It moved back to
 /// 1072 when an event's `State` became an `i32` member rather than a
-/// twenty-four-byte code string, padded to the same alignment.
+/// twenty-four-byte code string, padded to the same alignment. It moved to
+/// 1088 when the dated operation facts moved from 1040 to 1056 - the market
+/// facts' FX rates, sixteen, less the `marketoperationid` they no longer
+/// hold, eight, padded - the trade's executions taking it to 1080, padded
+/// to 1088. It moved to 960 when the dated operation facts moved from 1056
+/// to 928 - the rates a map in the market facts' padding, and two
+/// `IdMap`s fewer - the trade's executions taking it to 952, padded to 960.
+/// It moved to 944 when the dated operation facts moved from 928 to 912 -
+/// the two boxed lanes they no longer hold - the trade's executions taking
+/// it to 936, padded to 944. It moved to 960 when the market facts gained
+/// the boxed bid and ask, the dated operation facts sixteen wider.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<TradeEvent>());
     assert!(size_of::<BookEvent>() > size_of::<MarketData>());
-    assert_eq!(size_of::<MarketData>(), 1072);
+    assert_eq!(size_of::<MarketData>(), 960);
 }
 
 /// An execution follows the order it fills across kinds, through the facts
 /// both hold: it takes the order's place in the chain, keeps its own kind and
-/// digests as an execution; a book side or a trade still follows nothing of
-/// another variant.
+/// digests as an execution; a trade still follows nothing of another
+/// variant.
 #[test]
 fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
     let first = MarketData::from(order(1_000_000, "O-1"));
@@ -246,9 +249,4 @@ fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
             .unwrap(),
     );
     assert!(trade.with_previous(&first).is_none());
-    assert!(
-        MarketData::from(BookSide::new(Side::Buy).unwrap())
-            .with_previous(&first)
-            .is_none()
-    );
 }

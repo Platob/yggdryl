@@ -32,7 +32,7 @@ impl Workspace {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_ygg"))
+        Command::new(env!("CARGO_BIN_EXE_yggdryl"))
             .args(["fix", "--root"])
             .arg(self.root())
             .args(args)

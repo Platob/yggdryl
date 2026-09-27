@@ -41,10 +41,54 @@ static ALLOCATOR: allocations::CountingAllocator = allocations::CountingAllocato
 
 fn requests(criterion: &mut Criterion<Allocations>) {
     ulbridge::stages(criterion, "fix/allocations", 1, Some(1));
+    #[cfg(feature = "internals")]
+    forex(criterion, "fix/allocations/forex");
 }
 
 fn bytes(criterion: &mut Criterion<AllocatedBytes>) {
     ulbridge::stages(criterion, "fix/allocated_bytes", 1, Some(1));
+    #[cfg(feature = "internals")]
+    forex(criterion, "fix/allocated_bytes/forex");
+}
+
+/// FX detection over a parsed message whose symbol the registry's memo
+/// already holds: a symbol naming no pair, and a pair detected again. Both
+/// allocate nothing - a hit clones inline texts, and a detected message's
+/// cells already hold what detection would write. Reached through the
+/// crate's internals, so the row runs where that feature is on.
+#[cfg(feature = "internals")]
+fn forex<M: Measurement>(criterion: &mut Criterion<M>, group: &str) {
+    use std::hint::black_box;
+    use std::sync::Arc;
+
+    use yggdryl::FixCodec;
+    use yggdryl::internals::fix_forex::{derive, memo};
+
+    let codec = FixCodec::new(Arc::new(seed())).with_threads(1);
+    let held = memo();
+    let mut group = criterion.benchmark_group(group);
+    for (name, line) in [
+        (
+            "non_fx",
+            &b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=100|10=0|"[..],
+        ),
+        (
+            "fx_hit",
+            b"8=FIX.4.4|35=D|11=A|55=EUR/USD|54=1|38=100|10=0|",
+        ),
+    ] {
+        let mut message = codec
+            .parse_line(line)
+            .expect("a line")
+            .next()
+            .expect("one message")
+            .expect("an order");
+        derive(&mut message, &held).expect("detects");
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| derive(black_box(&mut message), &held).expect("detects"));
+        });
+    }
+    group.finish();
 }
 
 /// A count needs no warm-up and no long sample: the smallest configuration

@@ -382,11 +382,11 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // A state is the code of its member, which every engine reads.
-        D::State => Ok((D::Int32, true)),
+        | D::Unit
+        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // An enum member is the code of its leaf, which every engine reads.
+        held if held.is_enum() => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -536,11 +536,11 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // A state is the code of its member, which every engine reads.
-        D::State => Ok((D::Int32, true)),
+        | D::Unit
+        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // An enum member is the code of its leaf, which every engine reads.
+        held if held.is_enum() => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -665,11 +665,11 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // A state is the code of its member, which every engine reads.
-        D::State => Ok((D::Int32, true)),
+        | D::Unit
+        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // An enum member is the code of its leaf, which every engine reads.
+        held if held.is_enum() => Ok((D::Int32, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -796,11 +796,11 @@ incompatible(
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
-        // A state is the code of its member, which every engine reads.
-        D::State => Ok((D::Int32, true)),
+        | D::Unit
+        | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
+        // An enum member is the code of its leaf, which every engine reads.
+        held if held.is_enum() => Ok((D::Int32, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

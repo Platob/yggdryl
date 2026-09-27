@@ -273,9 +273,10 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Forty definitions: the event and capture facts, the execution and
-    // recording clocks, the session event a bridge delivered the message as,
-    // where a bridge says it came from, MsgCat, three normalized identifiers
+    // Forty-one definitions, in the fixed row's band order: the event and
+    // capture facts, the execution and recording clocks, the session event a
+    // bridge delivered the message as, where a bridge says it came from,
+    // MsgCat, the option strike, three normalized identifiers
     // - ISIN, Bloomberg, FIGI - whose standard FIX representation is
     // contextual, and the identifiers and instruments a bridge names in
     // words of its own; CUSIP and SEDOL are members of the
@@ -286,35 +287,36 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         names,
         [
             "currunix",
-            "msgctxid",
-            "msgpluginid",
-            "currhashcode",
-            "crosshashcode",
-            "prevunix",
-            "prevuuid",
-            "creaunix",
-            "snapunix",
-            "sourceurl",
-            "nofixentries",
-            "msgsessionid",
-            "curruuid",
-            "crossuuid",
-            "seqnum",
-            "crosscode",
-            "metadata",
-            "srcuuids",
-            "state",
-            "exprunix",
-            "msgcat",
-            "isincode",
-            "bloombergcode",
-            "miccode",
-            "figicode",
             "execunix",
             "recdunix",
-            "msgsesseventid",
+            "creaunix",
+            "prevunix",
+            "snapunix",
+            "exprunix",
+            "curruuid",
+            "crossuuid",
+            "crosscode",
+            "currhashcode",
+            "crosshashcode",
+            "prevuuid",
+            "seqnum",
+            "srcuuids",
+            "msgcat",
+            "msgpluginid",
             "msgoriginator",
+            "msgctxid",
+            "msgsessionid",
+            "msgsesseventid",
             "conversationid",
+            "isincode",
+            "forexcode",
+            "bloombergcode",
+            "figicode",
+            "miccode",
+            "strikepx",
+            "state",
+            "metadata",
+            "sourceurl",
             "omsdealeraccount",
             "omsuserid",
             "parentorderid",
@@ -332,35 +334,36 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         displays,
         [
             Some("CurrUnix"),
-            Some("MsgCtxId"),
-            Some("MsgPluginId"),
-            Some("CurrHashCode"),
-            Some("CrossHashCode"),
-            Some("PrevUnix"),
-            Some("PrevUuid"),
-            Some("CreaUnix"),
-            Some("SnapUnix"),
-            Some("SourceUrl"),
-            Some("NoFixEntries"),
-            Some("MsgSessionId"),
-            Some("CurrUuid"),
-            Some("CrossUuid"),
-            Some("SeqNum"),
-            Some("CrossCode"),
-            Some("Metadata"),
-            Some("SrcUuids"),
-            Some("State"),
-            Some("ExprUnix"),
-            Some("MsgCat"),
-            Some("IsinCode"),
-            Some("BloombergCode"),
-            Some("MicCode"),
-            Some("FIGICode"),
             Some("ExecUnix"),
             Some("RecdUnix"),
-            Some("MsgSessEventId"),
+            Some("CreaUnix"),
+            Some("PrevUnix"),
+            Some("SnapUnix"),
+            Some("ExprUnix"),
+            Some("CurrUuid"),
+            Some("CrossUuid"),
+            Some("CrossCode"),
+            Some("CurrHashCode"),
+            Some("CrossHashCode"),
+            Some("PrevUuid"),
+            Some("SeqNum"),
+            Some("SrcUuids"),
+            Some("MsgCat"),
+            Some("MsgPluginId"),
             Some("MsgOriginator"),
+            Some("MsgCtxId"),
+            Some("MsgSessionId"),
+            Some("MsgSessEventId"),
             Some("ConversationId"),
+            Some("IsinCode"),
+            Some("ForexCode"),
+            Some("BloombergCode"),
+            Some("FIGICode"),
+            Some("MicCode"),
+            Some("StrikePx"),
+            Some("State"),
+            Some("Metadata"),
+            Some("SourceUrl"),
             Some("OmsDealerAccount"),
             Some("OmsUserId"),
             Some("ParentOrderId"),
@@ -450,9 +453,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // a reader resolves it rather than parsing text back into one.
     assert_eq!(typed(yggdryl::SOURCEURL_TAG_NAME.1), &DataType::url());
     assert!(field(yggdryl::SOURCEURL_TAG_NAME.1).is_nullable());
-    // The arrival record is a group, so it has a counter like any other.
-    assert_eq!(typed(yggdryl::NOFIXENTRIES_TAG_NAME.1), &DataType::Int32);
-    assert!(field(yggdryl::NOFIXENTRIES_TAG_NAME.1).is_nullable());
+    // The residual record is a map, its own count, so no counter stands
+    // beside it.
+    assert!(held.iter().all(|field| field.name() != "nofixentries"));
     // What a bridge stated under its own namespaces is the one Map group,
     // with a counter of its own.
     let (tag, name) = yggdryl::METADATA_TAG_NAME;
@@ -467,30 +470,17 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert!(held.iter().all(|field| !field.is_partition()));
     assert!(held.iter().all(|field| field.name() != "timepartition"));
 
-    // Every definition has a tag from 65000 up: one block, in the one namespace
+    // Every definition has a tag from 65001 up: one block, in the one namespace
     // every dictionary resolves through, so a bridge row spelling `MSGPLUGINID`
     // reaches it by name; its identity is its tag and its name, and a
-    // dictionary member it is not. Strictly increasing rather than
-    // contiguous: a retired slot is never reused, so the block has holes
-    // where one was.
-    let tags: Vec<i32> = held
-        .iter()
-        .filter_map(|field| field.as_fix().tag().ok().flatten())
-        .collect();
-    // 65064 held the merge reference's recording clock until the reference
-    // became the latest `recdunix` alone; 65020 the `identifiers` Map, 65057
-    // and 65058 the CUSIP and SEDOL columns.
-    for retired in [
-        65_000, 65_004, 65_016, 65_019, 65_020, 65_024, 65_028, 65_036, 65_057, 65_058, 65_064,
-    ] {
-        assert!(!tags.contains(&retired), "{retired} stays retired");
-    }
+    // dictionary member it is not. Contiguous, in the fixed row's band order:
+    // a retired definition leaves no hole.
     let mut last = yggdryl::CRATE_TAG_MIN;
     for field in held {
         let view = field.as_fix();
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
-        assert!(tag > last, "{tag} follows {last}");
+        assert_eq!(tag, last + 1, "{} follows {last}", field.name());
         assert!(tag < yggdryl::CRATE_TAG_MAX, "{tag} is in the block");
         last = tag;
         assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
@@ -503,14 +493,20 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
-    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_065, "msgsesseventid"));
+    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_010);
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_021, "msgsesseventid"));
+    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_028, "strikepx"));
     assert_eq!(
         [
             yggdryl::OMSINSTRUMENTID_TAG_NAME,
-            yggdryl::ULLINKINSTRUMENTID_TAG_NAME
+            yggdryl::ULLINKINSTRUMENTID_TAG_NAME,
+            yggdryl::FOREXCODE_TAG_NAME
         ],
-        [(65_076, "omsinstrumentid"), (65_077, "ullinkinstrumentid")]
+        [
+            (65_040, "omsinstrumentid"),
+            (65_041, "ullinkinstrumentid"),
+            (65_024, "forexcode")
+        ]
     );
     assert_eq!(
         [
@@ -519,9 +515,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::TRANSVERSALKEY_TAG_NAME
         ],
         [
-            (65_066, "msgoriginator"),
-            (65_067, "conversationid"),
-            (65_074, "transversalkey")
+            (65_018, "msgoriginator"),
+            (65_022, "conversationid"),
+            (65_038, "transversalkey")
         ]
     );
     assert_eq!(
@@ -529,11 +525,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::CURRHASHCODE_TAG_NAME,
             yggdryl::CROSSHASHCODE_TAG_NAME
         ],
-        [(65_017, "currhashcode"), (65_018, "crosshashcode")]
+        [(65_011, "currhashcode"), (65_012, "crosshashcode")]
     );
     assert_eq!(
         [yggdryl::PREVUNIX_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
-        [(65_021, "prevunix"), (65_022, "prevuuid")]
+        [(65_005, "prevunix"), (65_013, "prevuuid")]
     );
     assert_eq!(
         [
@@ -545,17 +541,18 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::EXPRUNIX_TAG_NAME
         ],
         [
-            (65_048, "crosscode"),
-            (65_049, "metadata"),
-            (65_050, "fixmsg"),
-            (65_051, "srcuuids"),
-            (65_052, "state"),
-            (65_053, "exprunix")
+            (65_010, "crosscode"),
+            (65_030, "metadata"),
+            (65_042, "fixmsg"),
+            (65_015, "srcuuids"),
+            (65_029, "state"),
+            (65_007, "exprunix")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:
-    // a store dumps the row under it, and nothing reads it back.
-    assert!(!tags.contains(&yggdryl::FIXMSG_TAG_NAME.0));
+    // a store dumps the row under it, and nothing reads it back. It closes
+    // the block, one past the last field.
+    assert_eq!(yggdryl::FIXMSG_TAG_NAME.0, last + 1);
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MAX));
 
@@ -784,7 +781,7 @@ fn the_line_a_message_was_read_from_is_its_one_source() {
     assert!(streamed.get_srcuuids().is_empty());
     // The wire never carries it.
     let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
-    assert!(!wire.contains("65051="), "{wire}");
+    assert!(!wire.contains("65015="), "{wire}");
     assert_eq!(wire, String::from_utf8(raw.into_bytes(b'|')).unwrap());
     // The row does, and reads it back.
     let at =

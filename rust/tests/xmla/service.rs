@@ -713,7 +713,7 @@ fn a_restriction_sent_with_no_value_restricts_nothing() {
 
 // --- The reference clients' doors --------------------------------------------
 //
-// `fixtures/excel/<door>/` holds what one Excel door sent to `ygg xmla serve
+// `fixtures/excel/<door>/` holds what one Excel door sent to `yggdryl xmla serve
 // --trace` over `C:\data\market` and what it was answered, as it went over the
 // wire: `wizard` is MSOLAP's Data Connection Wizard up to the saved `.odc`,
 // `pivottable` the PivotTable import that follows it, `pq-query` Power Query's

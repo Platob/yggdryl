@@ -526,9 +526,21 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 /// caller that wants an `Option` rather than a refusal naming both sides,
 /// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
-    unwrap_dictionary(left)
-        .merge_exact(unwrap_dictionary(right), crate::Widening::Up)
+    let (left, right) = (unwrap_dictionary(left), unwrap_dictionary(right));
+    left.merge_exact(right, crate::Widening::Up)
         .ok()
+        .or_else(|| member_type(left, right))
+}
+
+/// An enum leaf beside text meets as the enum: the text is a member's name,
+/// which the enum's own door reads - `state = 'NEW'`, `marketdatakind =
+/// 'ORDR'` - and a name it does not know is refused there. Never a schema
+/// merge: two columns, one of names and one of codes, are not one column.
+fn member_type(left: &DataType, right: &DataType) -> Option<DataType> {
+    match (left, right) {
+        (held, text) | (text, held) if held.is_enum() && is_text(text) => Some(held.clone()),
+        _ => None,
+    }
 }
 
 /// The type an arithmetic node produces, or `None` when it has none.

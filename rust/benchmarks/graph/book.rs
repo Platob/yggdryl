@@ -40,14 +40,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("graph/book");
     for levels in [128, crate::bench_profile::corpus(1_024, 16)] {
         let book = book(levels);
-        let side = book.bid();
+        let bid = Side::read("Buy").expect("the shipped buy side");
         group.throughput(Throughput::Elements(u64::try_from(levels).unwrap()));
         // Every limit built and dropped: one vector of identities each.
         group.bench_function(format!("limits_{levels}"), |bencher| {
-            bencher.iter(|| black_box(side).limits().map(black_box).count());
+            bencher.iter(|| black_box(&book).limits(bid).map(black_box).count());
         });
         group.bench_function(format!("depth_{levels}"), |bencher| {
-            bencher.iter(|| black_box(side).depth(black_box(levels)));
+            bencher.iter(|| black_box(&book).depth(bid, black_box(levels)));
         });
         group.bench_function(format!("imbalance_{levels}"), |bencher| {
             bencher.iter(|| black_box(&book).imbalance(black_box(levels)));
@@ -57,17 +57,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&book).spread());
         });
         group.bench_function(format!("best_price_{levels}"), |bencher| {
-            bencher.iter(|| black_box(side).best_price());
+            bencher.iter(|| black_box(&book).best_price(bid));
         });
-        // One replacement of the entry at the touch; the side's clone is
+        // One replacement of the entry at the touch; the book's clone is
         // outside the timer and handed back rather than dropped inside it.
         let update = entry("Buy", 0, 2);
         group.bench_function(format!("add_operation_{levels}"), |bencher| {
             bencher.iter_batched(
-                || (side.clone(), update.clone()),
-                |(mut side, update)| {
-                    side.add_operation(update).expect("one replacement");
-                    side
+                || (book.clone(), update.clone()),
+                |(mut book, update)| {
+                    book.add_operations([update]).expect("one replacement");
+                    book
                 },
                 BatchSize::LargeInput,
             );

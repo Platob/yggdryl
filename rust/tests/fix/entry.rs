@@ -1,6 +1,6 @@
 //! `rust/src/fix/entry.rs`: what a message states, structured - the arrival
-//! tree, the residual a fixed row does not project, and zero for an unresolved
-//! key.
+//! tree, the residual map a fixed row keys by `tag:name`, and the metadata an
+//! unresolved key lands in.
 
 use super::SoleMessage;
 use super::committed_registry;
@@ -42,30 +42,59 @@ mod residual {
             .required_field("fix")
     }
 
-    fn residual_tags(row: &Scalar, field: &Field) -> Vec<i64> {
+    /// The residual record's keys, in the map's order.
+    fn residual_keys(row: &Scalar, field: &Field) -> Vec<String> {
         at(row, field, "fixentries")
-            .as_sequence()
-            .expect("the residual entries")
+            .as_mapping()
+            .expect("the residual map")
             .iter()
-            .map(|entry| {
-                entry.as_sequence().expect("an entry")[0]
-                    .as_i64()
-                    .unwrap_or_default()
-            })
+            .map(|(key, _)| key.as_str().expect("a text key").to_owned())
             .collect()
     }
 
+    /// The text the residual record holds under `key`.
+    fn residual_text<'row>(row: &'row Scalar, field: &Field, key: &str) -> &'row str {
+        at(row, field, "fixentries")
+            .as_mapping()
+            .expect("the residual map")
+            .iter()
+            .find(|(held, _)| held.as_str() == Some(key))
+            .and_then(|(_, value)| value.as_str())
+            .unwrap_or_else(|| panic!("{key} in the residual map"))
+    }
+
+    /// The text the metadata holds under `key`, if it holds one.
+    fn metadata_text<'row>(row: &'row Scalar, field: &Field, key: &str) -> Option<&'row str> {
+        at(row, field, "metadata")
+            .as_mapping()?
+            .iter()
+            .find(|(held, _)| held.as_str() == Some(key))
+            .and_then(|(_, value)| value.as_str())
+    }
+
     #[test]
-    fn fixed_rows_keep_only_unknown_arrival_entries() {
+    fn fixed_rows_keep_no_residual_the_columns_state_and_unmapped_keys_are_metadata() {
         let (registry, codec, schema) = reader();
         let message = codec.sole_line(LINE).expect("one order");
         let row = message.into_row(&schema).expect("the fixed row");
 
-        // Symbol, OrderQty and TimeInForce have fixed columns. The unknown tag is
-        // the one arrival entry the fixed row retains, and its counter agrees.
-        assert_eq!(at(&row, &schema, "nofixentries").as_i128(), Some(1));
-        assert_eq!(residual_tags(&row, &schema), [0]);
+        // Symbol, OrderQty and TimeInForce have fixed columns, so the residual
+        // map is empty; the key no dictionary resolves is no field, and the
+        // metadata states it under its own spelling.
+        assert!(residual_keys(&row, &schema).is_empty());
+        assert_eq!(metadata_text(&row, &schema, "9999"), Some("x"));
+        // Read back, the key is the message's own entry again, as the parse
+        // held it, and the metadata keeps a bridge's statements alone.
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
+        assert!(restored.metadata().is_empty());
+        assert_eq!(
+            restored
+                .entries()
+                .iter()
+                .find(|entry| entry.tag() == 0 && entry.name() == "9999")
+                .and_then(|entry| entry.value()),
+            Some("x")
+        );
         assert_eq!(restored.by_tag(55).expect("Symbol").as_str(), Some("AAPL"));
         assert!(!restored.by_tag(38).expect("OrderQty").is_null());
         assert_eq!(
@@ -191,7 +220,6 @@ mod residual {
                 "sendingtime",
                 "symbol",
                 "fixentries",
-                "nofixentries",
             ],
         );
         let row = codec
@@ -201,9 +229,9 @@ mod residual {
             .expect("the narrow row");
 
         // Symbol is projected, but TimeInForce has no narrow column and stays in
-        // the record beside the unresolved arrival key.
-        assert_eq!(at(&row, &narrow, "nofixentries").as_i128(), Some(2));
-        assert_eq!(residual_tags(&row, &narrow), [59, 0]);
+        // the record; the unresolved key is metadata, which this row does not
+        // carry, and never an entry of the record.
+        assert_eq!(residual_keys(&row, &narrow), ["59:timeinforce"]);
         let restored = FixMsg::from_row(registry, &narrow, &row).expect("the row reads");
         assert_eq!(restored.by_tag(55).expect("Symbol").as_str(), Some("AAPL"));
         assert_eq!(
@@ -222,8 +250,7 @@ mod residual {
             .into_row(&schema)
             .expect("the fixed row");
 
-        assert_eq!(at(&row, &schema, "nofixentries").as_i128(), Some(0));
-        assert!(residual_tags(&row, &schema).is_empty());
+        assert!(residual_keys(&row, &schema).is_empty());
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(2));
         assert_eq!(restored.into_row(&schema).expect("the fixed point"), row);
@@ -251,8 +278,7 @@ mod residual {
         // The full group projection owns the counter entry, including the empty
         // occurrence list, so no residual is needed.
         let full = message.into_row(&schema).expect("the full row");
-        assert_eq!(at(&full, &schema, "nofixentries").as_i128(), Some(0));
-        assert!(residual_tags(&full, &schema).is_empty());
+        assert!(residual_keys(&full, &schema).is_empty());
 
         // Dropping only `parties` leaves its counter scalar. That scalar cannot
         // represent the group shape, even at zero occurrences, so the complete
@@ -268,20 +294,9 @@ mod residual {
         .expect("the narrowed row")
         .required_field("fix");
         let row = message.into_row(&narrow).expect("the narrow row");
-        assert_eq!(at(&row, &narrow, "nofixentries").as_i128(), Some(1));
-        assert_eq!(residual_tags(&row, &narrow), [453]);
-        let entry = at(&row, &narrow, "fixentries")
-            .as_sequence()
-            .expect("one residual entry")[0]
-            .as_sequence()
-            .expect("the party counter entry");
-        assert_eq!(entry[2].as_str(), Some("0"));
-        assert!(
-            entry[3]
-                .as_sequence()
-                .expect("empty occurrences")
-                .is_empty()
-        );
+        assert_eq!(residual_keys(&row, &narrow), ["453:parties"]);
+        // A group of no occurrence states its count and nothing under it.
+        assert_eq!(residual_text(&row, &narrow, "453:parties"), "0");
 
         let restored = FixMsg::from_row(registry, &narrow, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(0));
@@ -307,7 +322,6 @@ mod residual {
                 "sendingtime",
                 "timeinforce",
                 "fixentries",
-                "nofixentries",
             ],
         );
         let row = codec
@@ -316,8 +330,14 @@ mod residual {
             .into_row(&narrow)
             .expect("the narrow row");
 
-        assert_eq!(at(&row, &narrow, "nofixentries").as_i128(), Some(1));
-        assert_eq!(residual_tags(&row, &narrow), [453]);
+        assert_eq!(residual_keys(&row, &narrow), ["453:parties"]);
+        // A group is the JSON array of its occurrences, each the object of its
+        // members keyed `tag:name`.
+        let parties = residual_text(&row, &narrow, "453:parties");
+        assert!(
+            parties.starts_with(r#"[{"447:partyidsource":"D","448:partyid":"P1""#),
+            "{parties}"
+        );
         let restored = FixMsg::from_row(registry, &narrow, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(2));
         assert_eq!(restored.into_row(&narrow).expect("the fixed point"), row);
@@ -357,8 +377,7 @@ mod residual {
 
         // The source group accepts its text role, but the fixed PartyRole column
         // is integer. Its null fitted descendant leaves the entire group residual.
-        assert_eq!(at(&row, &schema, "nofixentries").as_i128(), Some(1));
-        assert_eq!(residual_tags(&row, &schema), [453]);
+        assert_eq!(residual_keys(&row, &schema), ["453:parties"]);
         let mut restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         let rebuilt = restored.into_row(&schema).expect("the fixed point");
         for ((column, before), after) in schema
@@ -384,7 +403,6 @@ mod residual {
             &schema,
             &[
                 "fixentries",
-                "nofixentries",
                 "beginstring",
                 "msgtype",
                 "currunix",
@@ -405,8 +423,7 @@ mod residual {
             .into_row(&reordered)
             .expect("the reordered row");
 
-        assert_eq!(at(&row, &reordered, "nofixentries").as_i128(), Some(2));
-        assert_eq!(residual_tags(&row, &reordered), [59, 0]);
+        assert_eq!(residual_keys(&row, &reordered), ["59:timeinforce"]);
         let restored = FixMsg::from_row(registry, &reordered, &row).expect("the row reads");
         assert_eq!(restored.into_row(&reordered).expect("the fixed point"), row);
     }
@@ -431,8 +448,11 @@ mod residual {
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         let row = message.into_row(&schema).expect("the fixed row");
 
-        assert_eq!(at(&row, &schema, "nofixentries").as_i128(), Some(2));
-        assert_eq!(residual_tags(&row, &schema), [55, 55]);
+        // One tag, two names: two keys, each the child it names.
+        assert_eq!(
+            residual_keys(&row, &schema),
+            ["55:client_symbol", "55:venue_symbol"]
+        );
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         assert_eq!(
             restored.by_name("venue_symbol").expect("left").as_str(),
@@ -446,7 +466,7 @@ mod residual {
     }
 
     #[test]
-    fn unknown_nested_and_repeated_trees_stay_residual() {
+    fn unknown_nested_and_repeated_trees_are_metadata_json() {
         let registry = super::committed_registry();
         let vendor_row = StructType::from_fields([
             DataType::utf8().required_field("name"),
@@ -477,18 +497,31 @@ mod residual {
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         let row = message.into_row(&schema).expect("the fixed row");
 
-        // Neither unknown tree has a projected FIX identity, so the generic
-        // arrival format owns both shapes rather than flattening their leaves.
-        assert_eq!(at(&row, &schema, "nofixentries").as_i128(), Some(2));
-        assert_eq!(residual_tags(&row, &schema), [0, 0]);
-        let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
-        let tags = restored
-            .by_name("vendor_tags")
-            .expect("the repeated unknown leaves");
-        let tags = tags.as_sequence().expect("a repeated sequence");
+        // Neither unknown tree is a field the dictionary resolves, so neither
+        // enters the residual record: the metadata states each under its own
+        // name as the JSON of what it holds - a repeated key the array of its
+        // values in arrival order, an occurrence the object of its members.
+        assert!(residual_keys(&row, &schema).is_empty());
         assert_eq!(
-            tags.iter().map(Scalar::as_str).collect::<Vec<_>>(),
-            [Some("A"), Some("B")]
+            metadata_text(&row, &schema, "vendor_tags"),
+            Some(r#"["A","B"]"#)
+        );
+        assert_eq!(
+            metadata_text(&row, &schema, "vendor_rows"),
+            Some(r#"[{"name":"alpha","value":"one"},{"name":"beta","value":"two"}]"#)
+        );
+        // Read back, each is the message's own tree again - the entries the
+        // original held - and the metadata keeps a bridge's statements alone.
+        let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
+        // The JSON names members, not a serie's own item name, so a repeated
+        // value comes back under its key: `vendor_tags=A`, where the original
+        // item was `tag=A`.
+        assert!(restored.metadata().is_empty());
+        let wire = String::from_utf8(restored.into_bytes(b'|')).expect("a text wire");
+        assert!(
+            wire.contains("name=alpha|value=one|name=beta|value=two|")
+                && wire.contains("vendor_tags=A|vendor_tags=B|"),
+            "{wire}"
         );
         assert_eq!(restored.into_row(&schema).expect("the fixed point"), row);
     }
@@ -513,7 +546,7 @@ mod residual {
             .into_row(&nullable)
             .expect("nullable fit is residual");
         assert!(at(&row, &nullable, "symbol").is_null());
-        assert_eq!(residual_tags(&row, &nullable), [55]);
+        assert_eq!(residual_keys(&row, &nullable), ["55:symbol"]);
         assert_eq!(
             message.entries(),
             before,

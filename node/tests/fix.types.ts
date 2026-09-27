@@ -18,7 +18,6 @@ import {
   type FixValueInput,
   type LocationInput,
   type TextLine,
-  type Lane,
   type MarketData,
   type OrderEvent,
 } from '..'
@@ -155,7 +154,7 @@ const entryValue: string | null = entries[0].value
 const walked: FixEntryView[] = [...message]
 // The typed holders answer one plain object each, and the message expands
 // to the typed leaves it is, each a `MarketData`.
-const operations: MarketData[] = message.marketOperations()
+const operations: MarketData[] = message.marketData()
 const firstOperation: OrderEvent | null = operations[0].asOrderEvent()
 declare const event: OrderEvent
 const header: FixHeaderView = message.header()
@@ -174,8 +173,8 @@ const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
 const srcuuids: string[] = message.srcuuids
 const messageSecurityIds: Record<string, string> = message.securityids
-const messageAccountIds: Record<string, string> = message.accountids
-const messageUserIds: Record<string, string> = message.userids
+const messageIsin: string | null = message.isincode
+const messageFxRates: Record<string, string> = message.fxrates
 const messageAltIds: Record<string, string> = message.altids
 const price: string | null = message.price
 const quantity: string | null = message.quantity
@@ -185,10 +184,10 @@ const currency: string = message.currency
 const ticker: string | null = message.ticker
 const spotrate: string | null = message.spotrate
 const forwardpoints: string | null = message.forwardpoints
-const bid: Lane | null = message.bid
-const ask: Lane | null = message.ask
-const messageCategory: number | null = message.msgcat
-const marketOperationId: number | null = message.marketoperationid
+const bidpx: string | null = message.bidpx
+const askccy: string | null = message.askccy
+const messageCategory: string = message.msgcat
+const strikepx: string | null = message.strikepx
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
@@ -204,7 +203,7 @@ const eventRecorded: bigint | null = event.recdunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprunix
-const eventMarketOperationId: number | null = event.marketoperationid
+const eventCategory: string = event.marketdatakind
 const eventPrice: string | null = event.price
 const eventQuantity: string | null = event.quantity
 const eventLastPx: string | null = event.lastpx
@@ -222,13 +221,14 @@ const eventSecurityIds: Record<string, string> = event.securityids
 const eventSpotRate: string | null = event.spotrate
 const eventForwardPoints: string | null = event.forwardpoints
 const eventMetadata: Record<string, string> = event.metadata
-const eventAccountIds: Record<string, string> = event.accountids
-const eventUserIds: Record<string, string> = event.userids
+const eventIsin: string | null = event.isincode
+const eventFxRates: Record<string, string> = event.fxrates
 const eventAltIds: Record<string, string> = event.altids
-const eventBid: Lane | null = event.bid
-const eventAsk: Lane | null = event.ask
-const eventBidPrice: string | null = eventBid === null ? null : eventBid.price
-const eventAskCurrency: string | null = eventAsk === null ? null : eventAsk.currency
+const eventBidPrice: string | null = event.bidpx
+const eventBidQuantity: string | null = event.bidqty
+const eventAskPrice: string | null = event.askpx
+const eventAskQuantity: string | null = event.askqty
+const eventAskCurrency: string | null = event.askccy
 const eventSources: string[] = event.srcuuids
 const beginstring: string = header.beginstring
 const msgtype: string = header.msgtype
@@ -262,8 +262,8 @@ void prevuuid
 void srcuuids
 void eventSources
 void messageSecurityIds
-void messageAccountIds
-void messageUserIds
+void messageIsin
+void messageFxRates
 void messageAltIds
 void price
 void quantity
@@ -273,10 +273,10 @@ void currency
 void ticker
 void spotrate
 void forwardpoints
-void bid
-void ask
+void bidpx
+void askccy
 void messageCategory
-void marketOperationId
+void strikepx
 void eventCurrunix
 void eventCreated
 void eventExecuted
@@ -284,7 +284,7 @@ void eventRecorded
 void eventPrevUnix
 void eventSnap
 void eventExpiry
-void eventMarketOperationId
+void eventCategory
 void firstOperation
 void messageCreated
 void messageExecuted
@@ -309,12 +309,13 @@ void eventSecurityIds
 void eventSpotRate
 void eventForwardPoints
 void eventMetadata
-void eventAccountIds
-void eventUserIds
+void eventIsin
+void eventFxRates
 void eventAltIds
-void eventBid
-void eventAsk
 void eventBidPrice
+void eventBidQuantity
+void eventAskPrice
+void eventAskQuantity
 void eventAskCurrency
 void beginstring
 void msgtype
@@ -408,10 +409,9 @@ field.fix.nulls = ['<none>']
 const directions: FixDirection[] = field.fix.directions
 field.fix.directions = [{ code: 'S', patterns: ['(?i)^TX\\b'] }, { code: 'R', patterns: ['(?i)^RX\\b'] }]
 field.fix.directions = []
-// A derivation is one term's canonical text, or null where nothing derives the field.
-const derivation: string | null = field.fix.derivation
-field.fix.derivation = 'orderqty - cumqty'
-field.fix.derivation = null
+// A7: a registry carries no derivation rule of its own.
+// @ts-expect-error the derivation property is gone
+void field.fix.derivation
 
 void branches
 void member
@@ -423,7 +423,6 @@ void identifiers
 void description
 void nulls
 void directions
-void derivation
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
@@ -449,8 +448,6 @@ field.fix.identifiers = [, '11']
 field.fix.directions = [{ code: 'S' }]
 // @ts-expect-error the patterns are a list, never one pattern
 field.fix.directions = [{ code: 'S', patterns: '^TX ' }]
-// @ts-expect-error a derivation is text, never a parsed term object
-field.fix.derivation = { term: 'orderqty - cumqty' }
 
 // The codec is a class over one dictionary, with every pin optional and
 // read back as it was given.
@@ -514,22 +511,24 @@ const parsedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromI
 const walkedBatches: BatchReader = reader.lifecycleArrowReader(parsedBatches)
 const readBackStream: FixMessages = reader.messages(walkedBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
-const books: BatchReader = reader.bookArrowReader([fromText], 1000, false)
+const books: BatchReader = reader.bookArrowReader([fromText], 1000)
+// @ts-expect-error a book walk takes no third argument
+reader.bookArrowReader([fromText], 1000, false)
 // The sorted door answers a stream of `MarketData`, and its Arrow twins
 // batches of lifted rows.
-const sortedOperations: IterableIterator<MarketData> = reader.marketOperations([fromText])
-const nextOperation: IteratorResult<MarketData> = reader.marketOperations(stream).next()
+const sortedOperations: IterableIterator<MarketData> = reader.marketData([fromText])
+const nextOperation: IteratorResult<MarketData> = reader.marketData(stream).next()
 const operationRows: BatchReader = reader.marketArrowReader([fromText])
 // The twin reads each row as its own message, so it takes parsed rows; a
 // walked capture reaches the sorted door as messages, never as the rows
 // `lifecycleArrowReader` writes.
 const unwalkedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromIpc(new Uint8Array()))
-const operationBatches: BatchReader = reader.marketOperationsArrowReader(unwalkedBatches)
-const operationTable: BatchReader = reader.marketOperationsArrowReader(new Uint8Array())
+const operationBatches: BatchReader = reader.marketDataArrowReader(unwalkedBatches)
+const operationTable: BatchReader = reader.marketDataArrowReader(new Uint8Array())
 const withMetadata: boolean = reader.marketMetadata
 const withoutMetadata: FixCodec = new fix.FixCodec(loaded, { marketMetadata: false })
 // @ts-expect-error the sorted door takes messages, never one message
-reader.marketOperations(fromText)
+reader.marketData(fromText)
 // @ts-expect-error the metadata switch is a boolean
 new fix.FixCodec(loaded, { marketMetadata: 'no' })
 void [sortedOperations, nextOperation, operationRows, operationBatches, operationTable, withMetadata, withoutMetadata]
@@ -645,6 +644,9 @@ const singletonOrder: number = order.compare(order)
 const snapshotCodec = new fix.FixCodec(loaded, { snapshotNs: 1_000_000_000n })
 const snapshotNs: bigint | null = snapshotCodec.snapshotNs
 const snapshotsDisabled: FixCodec = new fix.FixCodec(loaded, { snapshotNs: null })
+const sortedCodec: FixCodec = new fix.FixCodec(loaded, { sortedLifecycle: true })
+const sortedLifecycle: boolean = sortedCodec.sortedLifecycle
+const wholeCodec: FixCodec = sortedCodec.withSortedLifecycle(false)
 
 const officialDelayCodec = new fix.FixCodec(loaded, { officialTimeDelayMs: 250 })
 const officialTimeDelayMs: number = officialDelayCodec.officialTimeDelayMs

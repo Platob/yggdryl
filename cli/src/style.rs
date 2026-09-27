@@ -83,7 +83,7 @@ fn rules() -> Rules {
 /// Write to standard output, ending the process quietly when the reader has
 /// gone.
 ///
-/// A reader that stops early - `ygg fix schema | head` - closes the pipe, and
+/// A reader that stops early - `yggdryl fix schema | head` - closes the pipe, and
 /// every Unix filter then ends without a word; `print!` panics instead. Any
 /// other write failure still panics as `print!` would, naming the error.
 pub fn write_out(text: std::fmt::Arguments<'_>) {

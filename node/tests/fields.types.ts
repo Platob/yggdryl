@@ -11,6 +11,9 @@ import {
   type DecimalField,
   type DecimalWidthField,
   type FigiField,
+  type ForexField,
+  type MarketDataKindField,
+  type SideField,
   type FixedAsciiField,
   type FixedCp1252Field,
   type FixedUtf8Field,
@@ -101,6 +104,14 @@ const ccyValue: string = ccy.defaultJSValue()
 const figi: FigiField = fields.figi('figi', { nullable: false })
 const figiId: 'figi' = figi.dtype.id
 const figiValue: string = figi.defaultJSValue()
+// An enum leaf crosses as its member's name; a currency pair is a code.
+const side: SideField = fields.side('side', { nullable: false })
+const sideKind: 'enum' = side.dtype.kind
+const kind: MarketDataKindField = fields.marketdatakind('kind', { nullable: false })
+const kindKind: 'enum' = kind.dtype.kind
+const forex: ForexField = fields.forex('pair', { nullable: false })
+const forexKind: 'code' = forex.dtype.kind
+void [side, sideKind, kind, kindKind, forex, forexKind]
 const bbg: BbgField = fields.bbg('bbg', { nullable: false })
 const bbgId: 'bbg' = bbg.dtype.id
 const bbgKind: 'code' = bbg.dtype.kind

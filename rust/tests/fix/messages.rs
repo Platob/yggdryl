@@ -109,7 +109,6 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         "snapunix",
         "sendingtime",
         "fixentries",
-        "nofixentries",
     ];
     let columns: Vec<Field> = keep
         .iter()
@@ -168,7 +167,6 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         "snapunix",
         "sendingtime",
         "fixentries",
-        "nofixentries",
     ];
     let columns: Vec<Field> = keep
         .iter()

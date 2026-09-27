@@ -42,7 +42,7 @@ test file at the matching path.
 
 | Source | Docs tab |
 | --- | --- |
-| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the thirteen codes including `bbg.rs` and `ric.rs`, `state.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
+| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the thirteen codes including `bbg.rs`, `ric.rs` and `forex.rs`, `enums.rs` with the enums `state.rs`, `side.rs` and `marketdatakind.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
 | `rust/src/http/` - the client, sessions, requests, responses, streams, pages and the `Server`; its `wire.rs` message grammar | [Holder: HTTP](holder/index.md#http) and [Media: HTTP messages](media/index.md#http-messages) |
 | `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/index.md#compression) |
@@ -53,7 +53,6 @@ test file at the matching path.
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
 | `rust/src/graph/`, `rust/src/limit.rs` | [Graph](graph/index.md) |
-| `node/replay.js`, `node/replay/`, `node/web/` | [Graph: replay](graph/replay.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 

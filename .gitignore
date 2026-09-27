@@ -42,8 +42,8 @@ rust/tests/docs_examples.rs
 # Staged by scripts/stage_cli.py into the wheel's scripts directory. The
 # folder itself is committed: maturin refuses a `data` directory that is not
 # there.
-python/wheel-data/scripts/ygg
-python/wheel-data/scripts/ygg.exe
+python/wheel-data/scripts/yggdryl
+python/wheel-data/scripts/yggdryl.exe
 
 # Merge-conflict leftovers: `.orig` and `.rej` are never sources.
 *.orig

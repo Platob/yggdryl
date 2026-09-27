@@ -1,4 +1,4 @@
-//! A trade as one market operation composed of its executions.
+//! A trade as one market data element composed of its executions.
 
 use std::collections::{BTreeMap, HashSet};
 use std::hash::Hasher;
@@ -10,7 +10,7 @@ use super::operation::ExecutionEvent;
 use super::{Element, Event, Market, Operation};
 use crate::{Error, Result, Uuid};
 
-/// A composite trade: one market operation event whose executions are the
+/// A composite trade: one operation event whose executions are the
 /// sided fills it is made of.
 ///
 /// The root's identity is derived from its own facts and its executions'
@@ -148,7 +148,6 @@ impl TradeEvent {
             data.set_execunix(latest(data.get_execunix(), execution.get_execunix()));
         }
         data.fill_market();
-        data.fill_operation();
         data.sync_cross();
         let mut digest = data.digest_operation_event();
         digest.write(&(self.executions.len() as u64).to_be_bytes());

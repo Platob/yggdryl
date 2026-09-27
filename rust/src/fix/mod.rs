@@ -18,20 +18,17 @@
 //! | identifiers | `FIX:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | code set | `FIX:codeset` | name | the registry-owned vocabulary this field reads by |
-//! | replacements | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the specification's retirements of the tag |
 //! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
-//! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived where the message states none: the complete shipped set takes the native fixpoint plan, while any custom set is compiled as expressions and keeps the same semantics |
 //! | counter | `FIX:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `FIX:component` | name | the component defining a group occurrence |
 //!
 //! The categories are scalar wire fields, components and groups. A message
 //! is a component carrying `FIX:msgtype`. Serie groups hold non-null Struct
 //! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
-//! 453, while `Parties` contains `Party` values, and `NoFixEntries` is the
-//! crate's own 65027 while `FixEntries` contains `FixEntry` values. A
-//! crate-owned Map group holds its native entries under its own counter,
-//! without a scalar count column. The registry keeps each enumeration once;
-//! fields name it through `FIX:codeset`.
+//! 453, while `Parties` contains `Party` values. A crate-owned Map group
+//! holds its native entries under its own counter, without a scalar count
+//! column. The registry keeps each enumeration once; fields name it through
+//! `FIX:codeset`.
 //!
 //! # Identity
 //!
@@ -68,10 +65,10 @@
 //! What a *value* was is the field's own business and stays: a
 //! [code](FixCode) an older version declared is a code of the set like any
 //! other. What the specification retired, and what stands in for it, is the
-//! crate's own table, and a [`FIX:replacements`](FixReplacement) rule is a
-//! registry's own word on how a field of its is restated, winning whole over
-//! that table for the field - which every [parse](FixCodec::parse_line)
-//! applies.
+//! crate's own table, which every [parse](FixCodec::parse_line) applies; so
+//! are the fields a message implies but did not carry. A registry carries
+//! neither kind of rule: it holds the fields they read and write, and the
+//! rules are the crate's, the same for every dictionary.
 //!
 //! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
 //! separators - so a query spelled in any case or with any separator finds
@@ -154,6 +151,7 @@ pub(crate) mod document;
 pub(crate) mod enrich;
 mod entry;
 mod field;
+pub(super) mod forex;
 pub(crate) mod global;
 pub(crate) mod group_plan;
 pub(crate) mod identity;
@@ -166,7 +164,6 @@ mod msg;
 pub(crate) mod msgtype;
 mod native_derivations;
 pub(crate) mod registry;
-pub(crate) mod replacements;
 pub(crate) mod retired;
 pub(crate) mod schema;
 pub(crate) mod store;
@@ -182,15 +179,15 @@ pub use crated::{
     BLOOMBERGCODE_TAG_NAME, CONVERSATIONID_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN,
     CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
     CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, EXCHANGECLIENTORDERID_TAG_NAME,
-    EXECUNIX_TAG_NAME, EXPRUNIX_TAG_NAME, FIGICODE_TAG_NAME, FIXMSG_TAG_NAME, ISINCODE_TAG_NAME,
-    METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
-    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME, OMSDEALERACCOUNT_TAG_NAME,
+    EXECUNIX_TAG_NAME, EXPRUNIX_TAG_NAME, FIGICODE_TAG_NAME, FIXMSG_TAG_NAME, FOREXCODE_TAG_NAME,
+    ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME,
+    MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME, OMSDEALERACCOUNT_TAG_NAME,
     OMSDEALERPARENTORDERID_TAG_NAME, OMSINSTRUMENTID_TAG_NAME, OMSUSERID_TAG_NAME,
     PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
     RECDUNIX_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME,
-    STATE_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULLINKINSTRUMENTID_TAG_NAME, ULTRADERCLORDID_TAG_NAME,
-    fix_crate_fields, is_crate_tag,
+    STATE_TAG_NAME, STRIKEPX_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULLINKINSTRUMENTID_TAG_NAME,
+    ULTRADERCLORDID_TAG_NAME, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -205,7 +202,6 @@ pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
 pub use registry::{FixFieldIter, FixRegistry};
-pub use replacements::{FixReplacement, FixReplacementEntry, FixReplacements};
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{

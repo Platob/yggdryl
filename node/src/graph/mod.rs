@@ -2,7 +2,7 @@
 //! a quote or an execution, undated ([`operation::JsOrder`] ..) or dated
 //! ([`operation::JsOrderEvent`] ..), a composite trade
 //! ([`trade::JsTradeEvent`]), a book, its sides and its snapshot control
-//! ([`book::JsBookEvent`], [`book::JsBookSide`], [`book::JsSnapshotEvent`])
+//! ([`book::JsBookEvent`], [`book::JsSnapshotEvent`])
 //! - and [`market_data::JsMarketData`], the one value over every leaf.
 //!
 //! Nothing here resolves, folds, merges or validates a fact: a named fact is
@@ -16,7 +16,8 @@
 //! Facts cross as the plain values the rest of the addon uses: a UUID as its
 //! hyphenated text, an instant and a hash as a `bigint`, `seqnum` as a
 //! `number`, a decimal as its text, a code as the text it is, an identifier
-//! map as a `Record<string, string>`, a lane as a [`operation::JsLane`].
+//! map as a `Record<string, string>`, the enum facts - `state`, `side`,
+//! `marketdatakind` - as the member's stored name.
 //!
 //! The fact getters and the verbs every leaf shares are written once, as the
 //! macros below, each emitting its own `#[napi] impl` block for the class it
@@ -25,7 +26,7 @@
 use std::collections::BTreeMap;
 
 use napi::bindgen_prelude::{
-    BigInt, ClassInstance, Either, Either11, FromNapiValue, Null, Result, Unknown,
+    BigInt, ClassInstance, Either, Either10, FromNapiValue, Null, Result, Unknown,
 };
 use napi_derive::napi;
 use yggdryl::graph::{
@@ -181,7 +182,7 @@ macro_rules! event_getters {
     };
 }
 
-/// The nineteen facts [`yggdryl::graph::Market`] answers.
+/// The twenty-seven facts [`yggdryl::graph::Market`] answers.
 macro_rules! market_getters {
     ($class:ident) => {
         #[napi]
@@ -215,7 +216,8 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The side, as the `side` code it is; `UNKNOWN` where none.
+            /// The side, as the `side` member's stored name; `UNKNOWN` where
+            /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {
                 ::yggdryl::graph::Market::get_side(&self.inner)
@@ -230,6 +232,13 @@ macro_rules! market_getters {
                 $crate::graph::securityids_record(::yggdryl::graph::Market::get_securityids(
                     &self.inner,
                 ))
+            }
+
+            /// The instrument's ISIN, borrowed from `securityids`; `null`
+            /// where it states none.
+            #[napi(getter)]
+            pub fn isincode(&self) -> Option<String> {
+                ::yggdryl::graph::Market::get_isincode(&self.inner).map(ToOwned::to_owned)
             }
 
             /// The instrument's classification; `null` where none.
@@ -304,6 +313,57 @@ macro_rules! market_getters {
                 ))
             }
 
+            /// The best bid price stated, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn bidpx(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_bidpx(&self.inner))
+            }
+
+            /// The quantity at the best bid, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn bidqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_bidqty(&self.inner))
+            }
+
+            /// The currency the bid is stated in, as the `ccy` code it is; `null`
+            /// where none.
+            #[napi(getter)]
+            pub fn bidccy(&self) -> Option<String> {
+                ::yggdryl::graph::Market::get_bidccy(&self.inner)
+                    .map(|held| held.as_str().to_owned())
+            }
+
+            /// The best ask price stated, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn askpx(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_askpx(&self.inner))
+            }
+
+            /// The quantity at the best ask, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn askqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_askqty(&self.inner))
+            }
+
+            /// The currency the ask is stated in, as the `ccy` code it is; `null`
+            /// where none.
+            #[napi(getter)]
+            pub fn askccy(&self) -> Option<String> {
+                ::yggdryl::graph::Market::get_askccy(&self.inner)
+                    .map(|held| held.as_str().to_owned())
+            }
+
+            /// The rates an amount in `currency` is divided by to state it in
+            /// each target currency, keyed by the target's `ccy` code, each
+            /// rate as decimal text; empty where none.
+            #[napi(getter, ts_return_type = "Record<string, string>")]
+            pub fn fxrates(&self) -> ::std::collections::BTreeMap<String, String> {
+                ::yggdryl::graph::Market::get_fxrates(&self.inner)
+                    .iter()
+                    .map(|(target, rate)| (target.as_str().to_owned(), rate.to_string()))
+                    .collect()
+            }
+
             /// The ticker a person knows the instrument by; `null` where
             /// none.
             #[napi(getter)]
@@ -324,17 +384,11 @@ macro_rules! market_getters {
     };
 }
 
-/// The eight facts [`yggdryl::graph::Operation`] adds.
+/// The three facts [`yggdryl::graph::Operation`] adds.
 macro_rules! operation_getters {
     ($class:ident) => {
         #[napi]
         impl $class {
-            /// The stable integer market-operation category, or `null`.
-            #[napi(getter)]
-            pub fn marketoperationid(&self) -> Option<i32> {
-                ::yggdryl::graph::Operation::get_marketoperationid(&self.inner)
-            }
-
             /// How long this stands, as the stored code; `null` where
             /// unstated.
             #[napi(getter)]
@@ -350,40 +404,29 @@ macro_rules! operation_getters {
                 ::yggdryl::graph::Operation::get_tradable(&self.inner)
             }
 
-            /// The accounts the operation is for, in key order.
-            #[napi(getter, ts_return_type = "Record<string, string>")]
-            pub fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_accountids(
-                    &self.inner,
-                ))
-            }
-
-            /// The users the operation is by, in key order.
-            #[napi(getter, ts_return_type = "Record<string, string>")]
-            pub fn userids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_userids(&self.inner))
-            }
-
             /// The names the operation goes by, in key order.
             #[napi(getter, ts_return_type = "Record<string, string>")]
             pub fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_record(::yggdryl::graph::Operation::get_altids(&self.inner))
             }
+        }
+    };
+}
 
-            /// The bid lane a quote states; `null` where none.
+/// The `marketdatakind` of a leaf class, the category its `$kind` stands
+/// under, as the member's stored name: `ORDR`, `QUOT`, `EXEC`, `TRAD` or
+/// `BOOK`.
+macro_rules! marketdatakind_getter {
+    ($class:ident, $kind:ident) => {
+        #[napi]
+        impl $class {
+            /// The market data category this leaf stands under, as the
+            /// `marketdatakind` member's stored name.
             #[napi(getter)]
-            pub fn bid(&self) -> Option<$crate::graph::JsLane> {
-                ::yggdryl::graph::Operation::get_bid(&self.inner)
-                    .cloned()
-                    .map($crate::graph::JsLane::from_core)
-            }
-
-            /// The ask lane, shaped as the bid; `null` where none.
-            #[napi(getter)]
-            pub fn ask(&self) -> Option<$crate::graph::JsLane> {
-                ::yggdryl::graph::Operation::get_ask(&self.inner)
-                    .cloned()
-                    .map($crate::graph::JsLane::from_core)
+            pub fn marketdatakind(&self) -> &'static str {
+                ::yggdryl::graph::MarketKind::$kind
+                    .marketdatakind()
+                    .as_str()
             }
         }
     };
@@ -524,26 +567,22 @@ pub(crate) mod market_data;
 mod operation;
 mod trade;
 
-pub use book::{
-    JsBookEvent, JsBookIterator, JsBookSide, JsSnapshotEvent, JsSnapshotPartition,
-    SnapshotPartitionInput,
-};
+pub use book::{BookLimit, JsBookEvent, JsBookIterator, JsSnapshotEvent};
 pub use iterator::JsEventIterator;
 pub use market_data::{JsMarketData, JsMarketDataRowIterator};
 pub use operation::{
-    BookRefInput, JsBookRef, JsExecution, JsExecutionEvent, JsLane, JsOrder, JsOrderEvent, JsQuote,
-    JsQuoteEvent, LaneInput,
+    BookRefInput, JsBookRef, JsExecution, JsExecutionEvent, JsOrder, JsOrderEvent, JsQuote,
+    JsQuoteEvent,
 };
 pub use trade::JsTradeEvent;
 
-/// Any value a market stream carries: a `MarketData` or one of its ten
+/// Any value a market stream carries: a `MarketData` or one of its nine
 /// leaves, read back to the native value it holds by [`market_data_of`].
-pub(crate) type AnyMarketData<'a> = Either11<
+pub(crate) type AnyMarketData<'a> = Either10<
     ClassInstance<'a, JsMarketData>,
     ClassInstance<'a, JsOrder>,
     ClassInstance<'a, JsQuote>,
     ClassInstance<'a, JsExecution>,
-    ClassInstance<'a, JsBookSide>,
     ClassInstance<'a, JsOrderEvent>,
     ClassInstance<'a, JsQuoteEvent>,
     ClassInstance<'a, JsExecutionEvent>,
@@ -556,17 +595,16 @@ pub(crate) type AnyMarketData<'a> = Either11<
 /// through the core's own `From`.
 pub(crate) fn market_data_of(item: &AnyMarketData<'_>) -> CoreMarketData {
     match item {
-        Either11::A(data) => data.inner.clone(),
-        Either11::B(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::C(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::D(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::E(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::F(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::G(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::H(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::I(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::J(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either11::K(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::A(data) => data.inner.clone(),
+        Either10::B(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::C(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::D(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::E(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::F(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::G(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::H(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::I(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either10::J(leaf) => CoreMarketData::from(leaf.inner.clone()),
     }
 }
 
@@ -613,9 +651,8 @@ pub(crate) fn optional<T>(value: Option<Either<T, Null>>) -> Option<T> {
     })
 }
 
-/// An identifier map - the accounts, the users, the names an operation goes
-/// by - as the record JavaScript reads, each value under the key that
-/// stated it, in key order.
+/// An identifier map - the names an operation goes by - as the record
+/// JavaScript reads, each value under the key that stated it, in key order.
 pub(crate) fn idmap_record(ids: &CoreIdMap) -> BTreeMap<String, String> {
     ids.iter()
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
@@ -750,13 +787,6 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
         fact.state(&mut leaf, value)?;
     }
     Ok(leaf)
-}
-
-/// The symbol of the one consolidated book a global walk emits:
-/// `graph.GLOBAL_SYMBOL`'s native half.
-#[napi(js_name = "_graphGlobalSymbolNative", skip_typescript)]
-pub fn graph_global_symbol_native() -> &'static str {
-    graph::GLOBAL_SYMBOL
 }
 
 /// The alternate-identifier key an entry's own `MDEntryID(278)` is held

@@ -591,10 +591,13 @@ enum DataTypeRef<'a> {
     State {},
     // One word on the wire, so it does not take the snake_case the rest
     // of this enum derives.
+    #[serde(rename = "marketdatakind")]
+    MarketDataKind {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Unit {},
     Ric {},
+    Forex {},
     Decimal {},
     #[serde(rename = "bigdecimal")]
     BigDecimal {},
@@ -749,8 +752,10 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Figi => Self::Figi {},
             D::Side => Self::Side {},
             D::State => Self::State {},
+            D::MarketDataKind => Self::MarketDataKind {},
             D::TimeInForce => Self::TimeInForce {},
             D::Unit => Self::Unit {},
+            D::Forex => Self::Forex {},
             D::Decimal => Self::Decimal {},
             D::BigDecimal => Self::BigDecimal {},
             D::Uuid => Self::Uuid {},
@@ -895,10 +900,13 @@ enum DataTypeWire {
     Side {},
     #[serde(rename = "state")]
     State {},
+    #[serde(rename = "marketdatakind")]
+    MarketDataKind {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Unit {},
     Ric {},
+    Forex {},
     Decimal {},
     #[serde(rename = "bigdecimal")]
     BigDecimal {},
@@ -1035,8 +1043,10 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Figi {} => Self::Figi,
             DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
+            DataTypeWire::MarketDataKind {} => Self::MarketDataKind,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
             DataTypeWire::Unit {} => Self::Unit,
+            DataTypeWire::Forex {} => Self::Forex,
             DataTypeWire::Decimal {} => Self::Decimal,
             DataTypeWire::BigDecimal {} => Self::BigDecimal,
             DataTypeWire::Uuid {} => Self::Uuid,
@@ -1175,8 +1185,10 @@ impl DataType {
             D::Figi => tag("figi"),
             D::Side => tag("side"),
             D::State => tag("state"),
+            D::MarketDataKind => tag("marketdatakind"),
             D::TimeInForce => tag("timeinforce"),
             D::Unit => tag("unit"),
+            D::Forex => tag("forex"),
             D::Decimal => tag("decimal"),
             D::BigDecimal => tag("bigdecimal"),
             D::Uuid => tag("uuid"),
@@ -1458,8 +1470,10 @@ impl DataType {
             "figi" => Self::Figi,
             "side" => Self::Side,
             "state" => Self::State,
+            "marketdatakind" => Self::MarketDataKind,
             "timeinforce" => Self::TimeInForce,
             "unit" => Self::Unit,
+            "forex" => Self::Forex,
             "decimal" => Self::Decimal,
             "bigdecimal" => Self::BigDecimal,
             "uuid" => Self::Uuid,

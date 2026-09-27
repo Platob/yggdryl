@@ -387,10 +387,12 @@ function fixedRow(registry) {
 
 /** One captured line, and everything the package answered about it.
  *
- * Every corpus line here carries exactly one message: a line carries one per
- * frame and none where it states no frame, no bridge pair and no document
- *, so a sample that answered none or two would be showing the
- * reader a message the package never built. `After Enrichment -> ACCOUNT=…`
+ * Every corpus line here carries exactly one message of its own: a line
+ * carries one per frame and none where it states no frame, no bridge pair and
+ * no document, so a sample that answered none would be showing the reader a
+ * message the package never built. What the parse splits off that message -
+ * the execution a filling report reports, a two-sided quote's sided quotes -
+ * follows it and is not shown here. `After Enrichment -> ACCOUNT=…`
  * and `no level printed by this plugin` were such samples and are gone; the
  * enriched row is now written the way a bridge writes one, separated.
  */
@@ -398,7 +400,7 @@ function frameCase(registry, reader, schema, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
   const messages = reader.parseLine(bytes)
   const first = messages.next()
-  if (first.done || !messages.next().done) throw new Error(`corpus ${key} must yield one message`)
+  if (first.done) throw new Error(`corpus ${key} must yield its message`)
   const held = first.value
   const row = held.intoRow(schema).toJSON()
 

@@ -298,7 +298,10 @@ fn write_scalar<W: Write>(
         code_scalars!() => {
             write_quoted(writer, value.as_str().expect("a code borrowed its text"))?;
         }
-        Scalar::State(value) => write_quoted(writer, value.as_str())?,
+        crate::enum_scalars!() => write_quoted(
+            writer,
+            value.enum_name().expect("an enum member names itself"),
+        )?,
         Scalar::Version(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Url(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Urn(value) => write_quoted(writer, &value.to_string())?,

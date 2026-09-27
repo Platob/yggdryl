@@ -20,10 +20,21 @@
 //! mounted at the prefix itself through one
 //! [`IOBase::read_range_bytes`](crate::IOBase::read_range_bytes) per batch
 //! under the mount's lock, so no socket write holds it.
+//!
+//! The server is hostable behind a reverse proxy or a redirect: every URL it
+//! states - a handler's [`Request::url`], a mount's listing - is built on the
+//! base the request was made under, which is the
+//! [`ServerOptions::with_public_url`] it was given, else the forwarded fields
+//! [`ServerOptions::with_forwarded_headers`] lists, read from a peer
+//! [`ServerOptions::with_trusted_proxies`] names, else the request's own
+//! `Host`; a prefix the proxy leaves on the path is stripped before routing
+//! ([`ServerOptions::with_path_prefix`]); and a `GET` or `HEAD` of a route's
+//! path with a trailing slash is redirected by a relative `Location`, so it
+//! is right under any prefix.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::thread::JoinHandle;
@@ -38,6 +49,7 @@ use crate::holder::Holder;
 use crate::{Error, MediaType, Result, Url};
 
 mod connection;
+pub(crate) mod forwarded;
 #[cfg(feature = "http2")]
 mod framed;
 #[cfg(feature = "http2")]
@@ -46,6 +58,8 @@ mod h2;
 mod h3;
 mod mount;
 mod trace;
+
+pub use forwarded::{ForwardedHeader, IpNetwork};
 
 /// What a server answers with, before the connection frames it.
 ///
@@ -143,11 +157,20 @@ impl Answer {
     }
 }
 
-/// What one connection hands the server: the parsed head and the body it
-/// framed.
+/// What one connection hands the server: the parsed head, the body it
+/// framed, and the connection it came over.
 pub(super) struct Incoming {
     pub(super) head: RequestHead,
     pub(super) body: Vec<u8>,
+    /// The TCP or QUIC peer, when the socket names one.
+    pub(super) peer: Option<SocketAddr>,
+    /// Whether the connection itself is TLS, so the request was made under
+    /// `https` as far as this server can see.
+    pub(super) secure: bool,
+    /// The `:scheme` a framed request states, `http` or `https`: over a
+    /// cleartext connection a proxy's statement, believed only from a
+    /// trusted peer; `None` over HTTP/1.
+    pub(super) scheme: Option<&'static str>,
 }
 
 /// What the server decided for one request.
@@ -202,6 +225,12 @@ pub struct Recorded {
     /// The status answered; `499` when the connection was closed before any
     /// byte of an answer ([`Fault::CloseBeforeAnswer`]).
     pub status: Status,
+    /// The connection's peer, when the socket names one: the proxy, behind
+    /// one.
+    pub peer: Option<SocketAddr>,
+    /// The client: the address a trusted proxy forwarded
+    /// ([`ServerOptions::with_trusted_proxies`]), else the peer's.
+    pub client: Option<IpAddr>,
 }
 
 impl Recorded {
@@ -274,6 +303,10 @@ pub struct ServerOptions {
     /// Shared, since the options are copied and every connection writes
     /// under the one folder.
     trace: Option<Arc<Holder>>,
+    public_url: Option<Url>,
+    trusted_proxies: Vec<IpNetwork>,
+    forwarded_headers: Vec<ForwardedHeader>,
+    path_prefix: Option<String>,
 }
 
 impl Default for ServerOptions {
@@ -292,17 +325,26 @@ impl Default for ServerOptions {
             http3: false,
             server_header: format!("yggdryl/{}", env!("CARGO_PKG_VERSION")),
             trace: None,
+            public_url: None,
+            trusted_proxies: Vec::new(),
+            forwarded_headers: ForwardedHeader::DEFAULT.to_vec(),
+            path_prefix: None,
         }
     }
 }
 
 impl ServerOptions {
+    /// The longest read or write timeout [`Server::bind_with`] accepts: one
+    /// day. A connection's deadline is the moment it starts plus the
+    /// timeout, and a bound keeps that a moment the clock can name.
+    pub const MAX_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+
     /// How long a connection waits for the next byte of a request, and
     /// the longest one request head may take to arrive whole, before it is
     /// closed (30 seconds): a peer trickling a head a byte at a time holds
     /// its connection no longer than one that sends nothing. A tunnel quiet
-    /// both ways this long is closed. Zero is refused by
-    /// [`Server::bind_with`].
+    /// both ways this long is closed. Zero, and anything past
+    /// [`Self::MAX_TIMEOUT`], is refused by [`Server::bind_with`].
     pub fn read_timeout(&self) -> Duration {
         self.read_timeout
     }
@@ -314,8 +356,8 @@ impl ServerOptions {
     }
 
     /// How long writing an answer waits for the peer to take more bytes
-    /// before the connection is closed (30 seconds). Zero is refused by
-    /// [`Server::bind_with`].
+    /// before the connection is closed (30 seconds). Zero, and anything past
+    /// [`Self::MAX_TIMEOUT`], is refused by [`Server::bind_with`].
     pub fn write_timeout(&self) -> Duration {
         self.write_timeout
     }
@@ -470,6 +512,177 @@ impl ServerOptions {
         self.trace = Some(Arc::new(folder));
         self
     }
+
+    /// The URL clients reach this server at, when one was stated (`None`):
+    /// behind a reverse proxy or a redirect, the scheme, host, port and path
+    /// prefix the proxy answers on. Set, it is the base of every URL the
+    /// server states - a handler's [`Request::url`], a mount's listing,
+    /// [`Server::public_url_of`] - whatever the request's own `Host` or
+    /// forwarded fields say, and no `Alt-Svc` is advertised, since the
+    /// proxy's origin is not this server's. Unset, the base is read from
+    /// the request ([`Self::with_trusted_proxies`]).
+    pub fn public_url(&self) -> Option<&Url> {
+        self.public_url.as_ref()
+    }
+
+    /// This value stating the public URL: `http` or `https`, a host, a port
+    /// when it is not the scheme's own, and the path prefix the proxy adds
+    /// in front of the routed path (`https://data.example.com/olap`). A
+    /// query, a fragment or user information is refused by
+    /// [`Server::bind_with`], as is any other scheme: every URL the server
+    /// states is built on this one, and a credential in it would reach every
+    /// client.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    /// use yggdryl::http::ServerOptions;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let options = ServerOptions::default()
+    ///     .with_public_url(Url::from_str("https://data.example.com/olap")?);
+    /// assert_eq!(
+    ///     options.public_url().map(ToString::to_string).as_deref(),
+    ///     Some("https://data.example.com/olap")
+    /// );
+    /// assert_eq!(ServerOptions::default().public_url(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_public_url(mut self, url: Url) -> Self {
+        self.public_url = Some(url);
+        self
+    }
+
+    /// The peers whose forwarded fields are believed (none), and of those
+    /// only the ones [`Self::forwarded_headers`] lists: a request from any
+    /// other peer is taken as it arrived, so a client cannot state a host or
+    /// a scheme of its own choosing. A `Forwarded` or `X-Forwarded-For`
+    /// chain is walked from the element nearest this server past every
+    /// address that is itself trusted; the first that is not is the client,
+    /// and the host and scheme it stated are the request's. The `:scheme` of
+    /// an HTTP/2 request in the clear is believed from these peers alone.
+    pub fn trusted_proxies(&self) -> &[IpNetwork] {
+        &self.trusted_proxies
+    }
+
+    /// This value trusting `networks`: each an IP address or a CIDR network
+    /// (`10.0.0.5`, `10.0.0.0/8`, `::1`, `fd00::/8`), an IPv4-mapped IPv6
+    /// peer matched as the IPv4 address it maps.
+    ///
+    /// ```
+    /// use std::net::IpAddr;
+    ///
+    /// use yggdryl::http::ServerOptions;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let options = ServerOptions::default().with_trusted_proxies(["10.0.0.0/8", "::1"])?;
+    /// let trusted: Vec<String> = options
+    ///     .trusted_proxies()
+    ///     .iter()
+    ///     .map(ToString::to_string)
+    ///     .collect();
+    /// assert_eq!(trusted, ["10.0.0.0/8", "::1/128"]);
+    /// assert!(options.trusted_proxies()[0].contains("10.20.30.40".parse::<IpAddr>().unwrap()));
+    /// assert!(ServerOptions::default().with_trusted_proxies(["pub.example"]).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] with target `ip network` for an entry that
+    /// is neither ([`IpNetwork::from_str`]).
+    pub fn with_trusted_proxies<I, S>(mut self, networks: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.trusted_proxies = networks
+            .into_iter()
+            .map(|network| IpNetwork::from_str(network.as_ref()))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(self)
+    }
+
+    /// The forwarded fields read from a trusted peer
+    /// ([`ForwardedHeader::DEFAULT`]: `X-Forwarded-For` and
+    /// `X-Forwarded-Proto`, which every documented proxy sets on every
+    /// request). A proxy passes a field it does not set through as the
+    /// client wrote it, so a field listed here that the proxy in front does
+    /// not set or overwrite is the client's to choose.
+    pub fn forwarded_headers(&self) -> &[ForwardedHeader] {
+        &self.forwarded_headers
+    }
+
+    /// This value reading exactly `headers` from a trusted peer, in place of
+    /// the default two: list a field only when the proxy in front sets or
+    /// overwrites it on every request it forwards. `Forwarded` is read
+    /// before the `X-Forwarded-*` field stating the same fact; an empty list
+    /// reads none, the trusted peer's address then being the client.
+    ///
+    /// ```
+    /// use yggdryl::http::{ForwardedHeader, ServerOptions};
+    ///
+    /// let options = ServerOptions::default().with_forwarded_headers([
+    ///     ForwardedHeader::XForwardedPrefix,
+    ///     ForwardedHeader::XForwardedFor,
+    ///     ForwardedHeader::XForwardedProto,
+    /// ]);
+    /// assert_eq!(
+    ///     options.forwarded_headers(),
+    ///     [
+    ///         ForwardedHeader::XForwardedFor,
+    ///         ForwardedHeader::XForwardedProto,
+    ///         ForwardedHeader::XForwardedPrefix,
+    ///     ]
+    /// );
+    /// assert_eq!(ServerOptions::default().forwarded_headers(), ForwardedHeader::DEFAULT);
+    /// ```
+    #[must_use]
+    pub fn with_forwarded_headers(
+        mut self,
+        headers: impl IntoIterator<Item = ForwardedHeader>,
+    ) -> Self {
+        let mut headers: Vec<ForwardedHeader> = headers.into_iter().collect();
+        headers.sort_unstable();
+        headers.dedup();
+        self.forwarded_headers = headers;
+        self
+    }
+
+    /// The path prefix stripped off a request before it is routed (`None`):
+    /// `/olap` when a proxy forwards `/olap/xmla` to a server that routes
+    /// `/xmla`. A request outside the prefix is routed as it is, so the
+    /// routes answer with and without it, and a URL the server states for a
+    /// request under it carries the prefix back.
+    pub fn path_prefix(&self) -> Option<&str> {
+        self.path_prefix.as_deref()
+    }
+
+    /// This value stripping `prefix`, spelled as a route path is; `/` is no
+    /// prefix at all.
+    ///
+    /// ```
+    /// use yggdryl::http::ServerOptions;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let options = ServerOptions::default().with_path_prefix("/olap/")?;
+    /// assert_eq!(options.path_prefix(), Some("/olap"));
+    /// assert_eq!(ServerOptions::default().with_path_prefix("/")?.path_prefix(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] for a prefix holding a query, a fragment or a
+    /// control byte.
+    pub fn with_path_prefix(mut self, prefix: &str) -> Result<Self> {
+        let prefix = normalize_path(prefix)?;
+        self.path_prefix = (prefix != "/").then_some(prefix);
+        Ok(self)
+    }
 }
 
 /// A mounted holder and the media types `PUT` declared for its children.
@@ -566,6 +779,38 @@ impl State {
             Some((mount, rest))
         })
     }
+
+    /// What `path`, spelled with one trailing slash, finds at the route
+    /// path without it: a `GET` or `HEAD` is sent there by a relative
+    /// `Location` - `../name`, the last segment as it was sent, the query
+    /// kept - which resolves right under any prefix a proxy adds; any other
+    /// method is served by that route, since a client that was redirected
+    /// may not repeat its body, and a path routed for other methods alone
+    /// is `405` there. `None` when nothing is routed at either spelling.
+    fn slashed(
+        &self,
+        method: Method,
+        path: &str,
+        raw_last: &str,
+        raw_query: &str,
+    ) -> Option<Found> {
+        let bare = path.strip_suffix('/').filter(|bare| !bare.is_empty())?;
+        if bare.ends_with('/') || raw_last.is_empty() {
+            return None;
+        }
+        let route = self.route(method, bare);
+        let allowed = self.allowed(bare);
+        if route.is_none() && allowed.is_empty() {
+            return None;
+        }
+        if matches!(method, Method::Get | Method::Head) {
+            return Some(Found::Redirect(format!("../{raw_last}{raw_query}")));
+        }
+        Some(match route {
+            Some(route) => Found::Route(route),
+            None => Found::NotAllowed(allowed),
+        })
+    }
 }
 
 /// What the accept thread and every connection thread share.
@@ -607,24 +852,96 @@ impl Inner {
 
     /// Where `incoming` goes - its fault taken, its route or mount found -
     /// with nothing run that may block.
+    ///
+    /// The target is joined onto the server's own URL, which resolves its
+    /// dot segments, and decoded; the options' path prefix comes off the
+    /// decoded path when it lies under it; and the request's URL is built on
+    /// the base the request was made under ([`forwarded::resolve`]), the
+    /// routed path and the query spelled as they were sent.
     pub(super) fn route_of(&self, incoming: &Incoming) -> Routed {
-        let target = self
+        let target = &incoming.head.target;
+        let absolute = !target.starts_with('/') && target.contains("://");
+        let joined = self
             .url
-            .join_reference(&incoming.head.target)
+            .join_reference(target)
             .and_then(|url| decoded_path(&url).map(|path| (url, path)));
-        let (path, query) = match &target {
-            Ok((url, path)) => (
-                path.clone(),
-                url.parameters(true)
+        let (url, path, query, raw_last, raw_query, client, trusted) = match joined {
+            Ok((url, decoded)) => {
+                let (routed, under_prefix) = match &self.options.path_prefix {
+                    Some(prefix) => match path_below(prefix, &decoded) {
+                        Some(rest) => (format!("/{rest}"), true),
+                        None => (decoded.clone(), false),
+                    },
+                    None => (decoded.clone(), false),
+                };
+                let dropped = if under_prefix {
+                    self.options
+                        .path_prefix
+                        .as_deref()
+                        .map_or(0, |prefix| prefix.matches('/').count())
+                } else {
+                    0
+                };
+                // The prefix goes back on the URL as it was sent, escapes
+                // and all: the options hold it decoded, as routes are.
+                let (raw_prefix, raw_path) = url
+                    .path_text(false)
+                    .map(|raw| {
+                        let (prefix, rest) = split_leading_segments(&raw, dropped);
+                        (prefix.to_owned(), rest)
+                    })
+                    .unwrap_or_else(|_| (String::new(), routed.clone()));
+                let addressed = forwarded::resolve(
+                    &self.options,
+                    incoming,
+                    absolute.then_some(&url),
+                    &self.url,
+                    &raw_prefix,
+                );
+                let raw_query = url
+                    .query(false)
+                    .ok()
+                    .flatten()
+                    .map(|query| format!("?{query}"))
+                    .unwrap_or_default();
+                let raw_last = raw_path
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .to_owned();
+                let effective = Url::from_str(&format!(
+                    "{}://{}{}{raw_path}{raw_query}",
+                    addressed.scheme, addressed.authority, addressed.prefix
+                ));
+                let query = url
+                    .parameters(true)
                     .map(|parameters| {
                         parameters
                             .iter()
                             .map(|(name, value)| (name.to_owned(), value.to_owned()))
                             .collect()
                     })
-                    .unwrap_or_default(),
+                    .unwrap_or_default();
+                (
+                    effective,
+                    routed,
+                    query,
+                    raw_last,
+                    raw_query,
+                    addressed.client,
+                    addressed.trusted,
+                )
+            }
+            Err(error) => (
+                Err(error),
+                String::new(),
+                Vec::new(),
+                String::new(),
+                String::new(),
+                incoming.peer.map(|peer| peer.ip().to_canonical()),
+                false,
             ),
-            Err(_) => (String::new(), Vec::new()),
         };
         let (fault, found) = {
             let mut state = self.state();
@@ -634,25 +951,30 @@ impl Inner {
                 None => match state.mount(&path) {
                     Some((mount, rest)) => Some(Found::Mount {
                         shared: Arc::clone(&mount.shared),
-                        prefix: mount.prefix.clone(),
                         rest: rest.to_owned(),
                     }),
                     // A path routed for other methods is there: the method
                     // is what it does not answer (RFC 9110 15.5.6).
                     None => {
                         let allowed = state.allowed(&path);
-                        (!allowed.is_empty()).then_some(Found::NotAllowed(allowed))
+                        if allowed.is_empty() {
+                            state.slashed(incoming.head.method, &path, &raw_last, &raw_query)
+                        } else {
+                            Some(Found::NotAllowed(allowed))
+                        }
                     }
                 },
             };
             (fault, found)
         };
         Routed {
-            url: target.map(|(url, _)| url),
+            url,
             path,
             query,
             fault,
             found,
+            client,
+            trusted,
         }
     }
 
@@ -665,6 +987,8 @@ impl Inner {
             query,
             fault,
             found,
+            client,
+            trusted,
         } = routed;
         let mut cut = None;
         match fault {
@@ -674,6 +998,7 @@ impl Inner {
                     &path,
                     query,
                     Status::new(CLOSED_CODE).unwrap_or(Status::INTERNAL_SERVER_ERROR),
+                    client,
                 );
                 return Outcome::Close;
             }
@@ -685,7 +1010,7 @@ impl Inner {
                 if let Some(pause) = retry_after {
                     answer = answer.with_header("retry-after", &pause.as_secs().to_string());
                 }
-                self.record(&incoming, &path, query, status);
+                self.record(&incoming, &path, query, status, client);
                 return Outcome::Answer { answer, cut };
             }
             Some(Fault::Delay(pause)) => std::thread::sleep(pause),
@@ -705,14 +1030,12 @@ impl Inner {
                     Err(error) => Answer::text(Status::INTERNAL_SERVER_ERROR, &error.to_string()),
                 }
             }
-            (
-                Ok(_),
-                Some(Found::Mount {
-                    shared,
-                    prefix,
-                    rest,
-                }),
-            ) => mount::serve(&shared, &prefix, &rest, &incoming, &self.url, &self.options),
+            (Ok(url), Some(Found::Mount { shared, rest })) => {
+                mount::serve(&shared, &rest, &incoming, &url, &self.options)
+            }
+            (Ok(_), Some(Found::Redirect(location))) => {
+                Answer::status(Status::PERMANENT_REDIRECT).with_header("location", &location)
+            }
             (Ok(_), Some(Found::NotAllowed(allowed))) => {
                 let allow = allowed
                     .iter()
@@ -729,29 +1052,36 @@ impl Inner {
                 .with_header("allow", &allow)
             }
         };
-        self.record(&incoming, &path, query, answer.status);
+        self.record(&incoming, &path, query, answer.status, client);
         #[cfg(feature = "http3")]
         let answer = match &self.h3 {
             // Where else this origin answers, for a client to go there next.
-            // A handler's own `Alt-Svc` stands.
+            // A handler's own `Alt-Svc` stands; behind a stated public URL or
+            // a trusted proxy the origin is the proxy's, which does not answer
+            // on this port.
             Some(h3)
                 if incoming.head.version != super::HttpVersion::Http3
-                    && !answer.headers.contains_key("alt-svc") =>
+                    && !answer.headers.contains_key("alt-svc")
+                    && self.options.public_url.is_none()
+                    && !trusted =>
             {
                 answer.with_header("alt-svc", &format!("h3=\":{}\"; ma=86400", h3.port))
             }
             _ => answer,
         };
+        #[cfg(not(feature = "http3"))]
+        let _ = trusted;
         Outcome::Answer { answer, cut }
     }
 
     /// Count the request and, when recording, log it under `status`.
-    fn record(
+    pub(super) fn record(
         &self,
         incoming: &Incoming,
         path: &str,
         query: Vec<(String, String)>,
         status: Status,
+        client: Option<IpAddr>,
     ) {
         self.count.fetch_add(1, Ordering::Relaxed);
         let mut state = self.state();
@@ -766,6 +1096,8 @@ impl Inner {
             headers: incoming.head.headers.clone(),
             body_len: incoming.body.len() as u64,
             status,
+            peer: incoming.peer,
+            client,
         };
         let size = recorded.size();
         while state.recorded.len() == Server::MAX_RECORDED
@@ -795,22 +1127,29 @@ enum Found {
     Route(Route),
     Mount {
         shared: Arc<RwLock<Mounted>>,
-        prefix: String,
         rest: String,
     },
     /// Routes for other methods, which a `405` names.
     NotAllowed(Vec<Method>),
+    /// A `308` to this relative `Location`: the route's path without the
+    /// trailing slash the request spelled ([`State::slashed`]).
+    Redirect(String),
 }
 
 /// Where one request goes, decided under the state's lock and answered
 /// after it ([`Inner::route_of`], [`Inner::answer_routed`]).
 pub(super) struct Routed {
-    /// The target joined onto the server's URL, or why it would not join.
+    /// The request's URL on the base it was made under, or why the target
+    /// would not resolve.
     url: Result<Url>,
     path: String,
     query: Vec<(String, String)>,
     fault: Option<Fault>,
     found: Option<Found>,
+    /// The client, for the log.
+    client: Option<IpAddr>,
+    /// Whether the peer is a trusted proxy.
+    trusted: bool,
 }
 
 impl Routed {
@@ -839,6 +1178,23 @@ fn path_below<'path>(prefix: &str, path: &'path str) -> Option<&'path str> {
         return Some("");
     }
     rest.strip_prefix('/')
+}
+
+/// The raw path `raw` split after its first `count` segments, both halves
+/// spelled as they were sent: `/my%20olap/x%20y` after one is `/my%20olap`
+/// and `/x%20y`, and a path of nothing but those segments leaves `/`.
+fn split_leading_segments(raw: &str, count: usize) -> (&str, String) {
+    let mut rest = raw;
+    for _ in 0..count {
+        rest = rest.strip_prefix('/').unwrap_or(rest);
+        rest = rest.find('/').map_or("", |at| &rest[at..]);
+    }
+    let prefix = &raw[..raw.len() - rest.len()];
+    if rest.is_empty() {
+        (prefix, "/".to_owned())
+    } else {
+        (prefix, rest.to_owned())
+    }
 }
 
 /// The canonical spelling of a mount prefix or a route path: one leading
@@ -935,27 +1291,59 @@ impl Server {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when a read or write timeout is zero,
+    /// Returns [`Error::Parse`] when a read or write timeout is zero or past
+    /// [`ServerOptions::MAX_TIMEOUT`], or the public URL is not a plain
+    /// `http` or `https` origin with a path and no user information,
     /// [`Error::Io`] when the listener cannot be bound, or a parse error
     /// when the bound address is not a URL host.
     pub fn bind_with(address: &str, options: ServerOptions) -> Result<Self> {
+        let refuse = |reason: smol_str::SmolStr| Error::Parse {
+            target: "http server option",
+            position: 0,
+            reason,
+        };
         for (name, timeout) in [
             ("read_timeout", options.read_timeout),
             ("write_timeout", options.write_timeout),
         ] {
             if timeout.is_zero() {
-                return Err(Error::Parse {
-                    target: "http server option",
-                    position: 0,
-                    reason: format_smolstr!(
-                        "{name}: expected a positive duration, got zero, which no read or write meets"
-                    ),
-                });
+                return Err(refuse(format_smolstr!(
+                    "{name}: expected a positive duration, got zero, which no read or write meets"
+                )));
+            }
+            if timeout > ServerOptions::MAX_TIMEOUT {
+                return Err(refuse(format_smolstr!(
+                    "{name}: expected at most {} seconds, got {} seconds",
+                    ServerOptions::MAX_TIMEOUT.as_secs(),
+                    timeout.as_secs_f64()
+                )));
+            }
+        }
+        if let Some(public) = &options.public_url {
+            let scheme = public.scheme().as_str();
+            if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
+                return Err(refuse(format_smolstr!(
+                    "public_url: expected an http or https URL, got {public}"
+                )));
+            }
+            if public.query(false)?.is_some() || public.fragment(false)?.is_some() {
+                return Err(refuse(format_smolstr!(
+                    "public_url: expected a URL with no query or fragment, got {public}"
+                )));
+            }
+            // Every URL the server states is built on this one, so a
+            // credential in it would be handed to every client; the URL is
+            // not repeated, for the same reason.
+            if public.authority().user().is_some() {
+                return Err(refuse(format_smolstr!(
+                    "public_url: expected a URL with no user information, got one for host {}",
+                    public.authority().host_port()
+                )));
             }
         }
         let listener = TcpListener::bind(address)?;
         let address = listener.local_addr()?;
-        let url = Url::from_str(&format!("http://{address}/"))?;
+        let url = Url::from_str(&format!("http://{}/", loopback_of(address)))?;
         #[cfg(feature = "http3")]
         let h3 = if options.http3 {
             Some(h3::Listener::bind(address, options.read_timeout)?)
@@ -1035,7 +1423,9 @@ impl Server {
         self.inner.address.port()
     }
 
-    /// `http://<address>/`.
+    /// `http://<address>/`, the bound address with an unspecified one
+    /// (`0.0.0.0`, `[::]`) replaced by its loopback, so the URL is one a
+    /// process on this host can dial.
     pub fn url(&self) -> &Url {
         &self.inner.url
     }
@@ -1055,6 +1445,42 @@ impl Server {
     /// Returns what [`Url::join_reference`] refuses.
     pub fn url_of(&self, path: &str) -> Result<Url> {
         self.inner.url.join_reference(path)
+    }
+
+    /// The URL clients reach `path` at: under the options'
+    /// [`public_url`](ServerOptions::public_url) when one was stated - its
+    /// path is the prefix the proxy adds, so `/xmla` under
+    /// `https://data.example.com/olap` is `https://data.example.com/olap/xmla`
+    /// - else [`url_of`](Self::url_of).
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    /// use yggdryl::http::{Server, ServerOptions};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let options = ServerOptions::default()
+    ///     .with_public_url(Url::from_str("https://data.example.com/olap")?);
+    /// let server = Server::bind_with("127.0.0.1:0", options)?;
+    /// assert_eq!(
+    ///     server.public_url_of("/xmla")?.to_string(),
+    ///     "https://data.example.com/olap/xmla"
+    /// );
+    /// assert!(server.url_of("/xmla")?.to_string().starts_with("http://127.0.0.1:"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns what the URL grammar refuses in `path`.
+    pub fn public_url_of(&self, path: &str) -> Result<Url> {
+        let Some(public) = &self.inner.options.public_url else {
+            return self.url_of(path);
+        };
+        let base = public.to_string();
+        let base = base.trim_end_matches('/');
+        let separator = if path.starts_with('/') { "" } else { "/" };
+        Url::from_str(&format!("{base}{separator}{path}"))
     }
 
     /// The options the server was bound with.
@@ -1234,15 +1660,8 @@ impl Server {
         // is made - to the loopback address of the bound family when the
         // bind was to every address, which not every platform dials; the
         // timeout bounds the wait when the listener is gone.
-        let mut wake = self.inner.address;
-        if wake.ip().is_unspecified() {
-            wake.set_ip(match wake {
-                SocketAddr::V4(_) => std::net::Ipv4Addr::LOCALHOST.into(),
-                SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
-            });
-        }
         drop(TcpStream::connect_timeout(
-            &wake,
+            &loopback_of(self.inner.address),
             Duration::from_millis(100),
         ));
         match self.accept.take() {
@@ -1256,6 +1675,18 @@ impl Drop for Server {
     fn drop(&mut self) {
         drop(self.stop());
     }
+}
+
+/// `address` with an unspecified IP (`0.0.0.0`, `[::]`) replaced by the
+/// loopback of its family: the one a process on this host dials.
+fn loopback_of(mut address: SocketAddr) -> SocketAddr {
+    if address.ip().is_unspecified() {
+        address.set_ip(match address {
+            SocketAddr::V4(_) => std::net::Ipv4Addr::LOCALHOST.into(),
+            SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
+        });
+    }
+    address
 }
 
 impl fmt::Debug for Server {

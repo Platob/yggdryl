@@ -1,9 +1,9 @@
 //! Native Python view of the graph vocabulary: the typed leaves - an order,
 //! a quote or an execution, undated ([`operation::PyOrder`] ..) or dated
 //! ([`operation::PyOrderEvent`] ..), a composite trade
-//! ([`trade::PyTradeEvent`]), a book, its sides and its snapshot control
-//! ([`book::PyBookEvent`], [`book::PyBookSide`], [`book::PySnapshotEvent`])
-//! - and [`market_data::PyMarketData`], the one value over every leaf.
+//! ([`trade::PyTradeEvent`]), a book and its snapshot control
+//! ([`book::PyBookEvent`], [`book::PySnapshotEvent`]) - and
+//! [`market_data::PyMarketData`], the one value over every leaf.
 //!
 //! Nothing here resolves, folds, merges or validates a fact: a named fact
 //! is resolved by the column enums' own `of_name`, checked by its column's
@@ -26,8 +26,8 @@ use pyo3::types::{PyDict, PyTuple};
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
-    Event, EventColumn, MarketColumn, Operation, OperationColumn, OperationEvent,
-    OperationKind as CoreOperationKind,
+    Event, EventColumn, FxRates, MarketColumn, MarketKind, Operation, OperationColumn,
+    OperationEvent, OperationKind as CoreOperationKind,
 };
 use yggdryl::idmap::IdMap as CoreIdMap;
 use yggdryl::securityid::SecurityIds as CoreSecurityIds;
@@ -113,10 +113,10 @@ macro_rules! event_getters {
                 ::yggdryl::graph::Event::get_currunix(&self.inner)
             }
 
-            /// The lifecycle state reached, as the `state` code it is.
+            /// The lifecycle state reached, as the `State` member it is.
             #[getter]
-            fn state(&self) -> $crate::scalar::PyScalar {
-                $crate::graph::code_scalar(::yggdryl::graph::Event::get_state(&self.inner))
+            fn state(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
+                $crate::graph::member(py, *::yggdryl::graph::Event::get_state(&self.inner))
             }
 
             /// How many elements came before this one in its chain.
@@ -179,7 +179,7 @@ macro_rules! event_getters {
     };
 }
 
-/// The nineteen facts [`yggdryl::graph::Market`] answers.
+/// The facts [`yggdryl::graph::Market`] answers.
 macro_rules! market_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
@@ -208,12 +208,11 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_unit(&self.inner).as_str()
             }
 
-            /// The side, as the `side` code it is; `UNKNOWN` where none.
+            /// The side, as the `Side` member it is; `Side.UNKNOWN` where
+            /// none is stated, never `None`.
             #[getter]
-            fn side(&self) -> $crate::scalar::PyScalar {
-                $crate::scalar::PyScalar::from_inner(::yggdryl::Scalar::from(
-                    ::yggdryl::graph::Market::get_side(&self.inner),
-                ))
+            fn side(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
+                $crate::graph::member(py, ::yggdryl::graph::Market::get_side(&self.inner))
             }
 
             /// The instrument's identifiers, one code under each source -
@@ -221,6 +220,59 @@ macro_rules! market_getters {
             #[getter]
             fn securityids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::securityids_dict(::yggdryl::graph::Market::get_securityids(&self.inner))
+            }
+
+            /// The ISIN the instrument is stated under - the `ISIN` entry of
+            /// `securityids` - as text; `None` where none.
+            #[getter]
+            fn isincode(&self) -> Option<&str> {
+                ::yggdryl::graph::Market::get_isincode(&self.inner)
+            }
+
+            /// The rates an amount in `currency` is divided by to state it in
+            /// another currency, each decimal under its target currency's
+            /// code, in currency order; empty where none.
+            #[getter]
+            fn fxrates(&self) -> ::std::collections::BTreeMap<String, $crate::scalar::PyScalar> {
+                $crate::graph::fxrates_dict(::yggdryl::graph::Market::get_fxrates(&self.inner))
+            }
+
+            /// The best bid price stated, as a decimal; `None` where none.
+            #[getter]
+            fn bidpx(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_bidpx(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The quantity at the best bid, as a decimal; `None` where none.
+            #[getter]
+            fn bidqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_bidqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The currency of the bid, as the `ccy` code it is; `None` where
+            /// none.
+            #[getter]
+            fn bidccy(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_bidccy(&self.inner).map($crate::graph::code_scalar)
+            }
+
+            /// The best ask price stated, as a decimal; `None` where none.
+            #[getter]
+            fn askpx(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_askpx(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The quantity at the best ask, as a decimal; `None` where none.
+            #[getter]
+            fn askqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_askqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The currency of the ask, as the `ccy` code it is; `None` where
+            /// none.
+            #[getter]
+            fn askccy(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_askccy(&self.inner).map($crate::graph::code_scalar)
             }
 
             /// The instrument's classification; `None` where none.
@@ -310,16 +362,10 @@ macro_rules! market_getters {
     };
 }
 
-/// The eight facts [`yggdryl::graph::Operation`] adds.
+/// The facts [`yggdryl::graph::Operation`] adds.
 macro_rules! operation_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
-            /// The stable integer market-operation category, or `None`.
-            #[getter]
-            fn marketoperationid(&self) -> Option<i32> {
-                ::yggdryl::graph::Operation::get_marketoperationid(&self.inner)
-            }
-
             /// How long this stands, as the stored code; `None` where
             /// unstated.
             #[getter]
@@ -334,38 +380,29 @@ macro_rules! operation_getters {
                 ::yggdryl::graph::Operation::get_tradable(&self.inner)
             }
 
-            /// The accounts the operation is for, in key order.
-            #[getter]
-            fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_accountids(&self.inner))
-            }
-
-            /// The users the operation is by, in key order.
-            #[getter]
-            fn userids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_userids(&self.inner))
-            }
-
             /// The names the operation goes by, in key order.
             #[getter]
             fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_altids(&self.inner))
             }
+        });
+    };
+}
 
-            /// The bid lane a quote states; `None` where none.
+/// The market data kind of a leaf: the `MarketDataKind` member its
+/// [`LeafKind::market_kind`] files it under.
+macro_rules! kind_getters {
+    ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
+        graph_methods!($class, $name; [$($rest),*]; { $($body)*
+            /// The kind of market data this is, as the `MarketDataKind`
+            /// member its leaf is filed under: `ORDR`, `QUOT`, `EXEC`,
+            /// `TRAD` or `BOOK`.
             #[getter]
-            fn bid(&self) -> Option<$crate::graph::operation::PyLane> {
-                ::yggdryl::graph::Operation::get_bid(&self.inner)
-                    .cloned()
-                    .map($crate::graph::operation::PyLane::from_core)
-            }
-
-            /// The ask lane, shaped as the bid; `None` where none.
-            #[getter]
-            fn ask(&self) -> Option<$crate::graph::operation::PyLane> {
-                ::yggdryl::graph::Operation::get_ask(&self.inner)
-                    .cloned()
-                    .map($crate::graph::operation::PyLane::from_core)
+            fn marketdatakind(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
+                $crate::graph::member(
+                    py,
+                    $crate::graph::LeafKind::market_kind(&self.inner).marketdatakind(),
+                )
             }
         });
     };
@@ -512,8 +549,60 @@ pub(crate) fn uuid_scalar(uuid: CoreUuid) -> PyScalar {
     PyScalar::from_inner(Scalar::Uuid(uuid))
 }
 
-/// A native code - a currency, a side, a state, an identifier - as the
-/// code `Scalar` its datatype is.
+/// A native enum fact - a state, a side, a market data kind - as the member
+/// of its Python enum, through the one `Scalar.as_py` door.
+pub(crate) fn member<E>(py: Python<'_>, held: E) -> PyResult<Py<PyAny>>
+where
+    Scalar: From<E>,
+{
+    crate::scalar::as_py(py, &Scalar::from(held))
+}
+
+/// Which leaf a native value is, answered by the leaf types themselves: what
+/// [`kind_getters!`] reads a leaf's `MarketDataKind` through.
+pub(crate) trait LeafKind {
+    /// The leaf kind this value is.
+    fn market_kind(&self) -> MarketKind;
+}
+
+impl<K: CoreOperationKind> LeafKind for yggdryl::graph::OperationElement<K> {
+    fn market_kind(&self) -> MarketKind {
+        self.kind()
+    }
+}
+
+impl<K: CoreOperationKind> LeafKind for OperationEvent<K> {
+    fn market_kind(&self) -> MarketKind {
+        self.kind()
+    }
+}
+
+impl LeafKind for yggdryl::graph::TradeEvent {
+    fn market_kind(&self) -> MarketKind {
+        MarketKind::TradeEvent
+    }
+}
+
+impl LeafKind for yggdryl::graph::BookEvent {
+    fn market_kind(&self) -> MarketKind {
+        MarketKind::BookEvent
+    }
+}
+
+impl LeafKind for yggdryl::graph::SnapshotEvent {
+    fn market_kind(&self) -> MarketKind {
+        MarketKind::SnapshotEvent
+    }
+}
+
+impl LeafKind for yggdryl::graph::MarketData {
+    fn market_kind(&self) -> MarketKind {
+        self.kind()
+    }
+}
+
+/// A native code - a currency, an identifier - as the code `Scalar` its
+/// datatype is.
 pub(crate) fn code_scalar<C>(code: &C) -> PyScalar
 where
     C: Clone,
@@ -527,12 +616,20 @@ pub(crate) fn decimal_scalar(held: Decimal) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
 }
 
-/// An identifier map - the accounts, the users, the names an operation
-/// goes by - as the `dict` Python reads, each value under the key that
-/// stated it, in key order.
+/// An identifier map - the names an operation goes by - as the `dict`
+/// Python reads, each value under the key that stated it, in key order.
 pub(crate) fn idmap_dict(ids: &CoreIdMap) -> BTreeMap<String, String> {
     ids.iter()
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect()
+}
+
+/// The rates an element states, each decimal `Scalar` under its target
+/// currency's code, in currency order.
+pub(crate) fn fxrates_dict(rates: &FxRates) -> BTreeMap<String, PyScalar> {
+    rates
+        .iter()
+        .map(|(target, rate)| (target.as_str().to_owned(), decimal_scalar(*rate)))
         .collect()
 }
 
@@ -683,7 +780,6 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
 
 /// Register every graph class and the module's constants.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<operation::PyLane>()?;
     module.add_class::<operation::PyBookRef>()?;
     module.add_class::<operation::PyOrder>()?;
     module.add_class::<operation::PyQuote>()?;
@@ -692,16 +788,12 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<operation::PyQuoteEvent>()?;
     module.add_class::<operation::PyExecutionEvent>()?;
     module.add_class::<trade::PyTradeEvent>()?;
-    module.add_class::<book::PySnapshotPartition>()?;
-    module.add_class::<book::PyBookSide>()?;
     module.add_class::<book::PyBookEvent>()?;
     module.add_class::<book::PySnapshotEvent>()?;
     module.add_class::<book::PyBookIterator>()?;
     module.add_class::<market_data::PyMarketData>()?;
     module.add_class::<market_data::PyMarketDataRowIterator>()?;
     module.add_class::<iterator::PyEventIterator>()?;
-    // The symbol of the one consolidated book a global walk emits.
-    module.add("GLOBAL_SYMBOL", yggdryl::graph::GLOBAL_SYMBOL)?;
     // The alternate-identifier keys a market-data entry's own identifiers
     // are held under.
     module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID)?;

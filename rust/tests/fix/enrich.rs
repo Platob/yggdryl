@@ -1,23 +1,17 @@
 //! `rust/src/fix/enrich.rs`: the specification's tables read as
-//! implications: each carried by the field it fills as a `FIX:derivation`,
-//! answered once from a hand-written line, refused where the answer is not
-//! certain, and settled in one parse. The committed set takes the shipped
-//! native plan; an edited or additional rule takes the same terms through
-//! the dynamic plan.
+//! implications: each one of the crate's native rules, keyed by the tag it
+//! fills, answered once from a hand-written line, refused where the answer
+//! is not certain, and settled in one parse. A registry carries no rule of
+//! its own: every registry fills by the same rules.
 
 use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::expression::Term;
 use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
-use yggdryl::local::LocalFolder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{
-    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructType, Timezone, Url,
-    fix_schema,
-};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url};
 use yggdryl::{Isin, State};
 
 fn reader() -> FixCodec {
@@ -200,7 +194,7 @@ fn execution_time_uses_the_first_execution_specific_statement() {
     let reader = reader();
     let direct = settled(
         &reader,
-        b"8=FIX.4.4|35=8|65062=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|65002=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
     );
     assert_eq!(direct.get_execunix(), Some(DIRECT));
 
@@ -236,7 +230,20 @@ fn execution_time_uses_the_first_execution_specific_statement() {
             Some(TRANSACTION),
             "{execution_type}"
         );
-        assert!(message.is_execution(), "ExecType {execution_type}");
+        // The report is its order's: the execution is the message its parse
+        // splits off, which dates its fill the same way (A12).
+        assert!(!message.is_execution(), "ExecType {execution_type}");
+        let split: Vec<FixMsg> = reader
+            .parse_line(line.as_bytes())
+            .expect("a readable line")
+            .collect::<yggdryl::Result<_>>()
+            .expect("every message");
+        assert!(split[1].is_execution(), "ExecType {execution_type}");
+        assert_eq!(
+            split[1].get_execunix(),
+            Some(TRANSACTION),
+            "{execution_type}"
+        );
         let walked = reader
             .lifecycle([message])
             .next()
@@ -489,7 +496,7 @@ fn a_cfi_and_a_security_type_state_each_other() {
         (b"8=FIX.4.4|35=D|11=A|167=GO|10=0|", "DNXXXX", Some(11)),
         (b"8=FIX.4.4|35=D|11=A|167=FUT|10=0|", "FXXXXX", None),
         (b"8=FIX.4.4|35=D|11=A|167=ETF|10=0|", "CEXXXX", None),
-        (b"8=FIX.4.4|35=D|11=A|167=FXSPOT|10=0|", "IFXXXX", Some(4)),
+        (b"8=FIX.4.4|35=D|11=A|167=FXSPOT|10=0|", "IFXXXP", Some(4)),
     ] {
         let held = settled(&reader, line);
         let spelled = String::from_utf8_lossy(line);
@@ -687,46 +694,20 @@ fn committed() -> FixRegistry {
     super::committed_registry().as_ref().clone()
 }
 
-/// The shipped rules through the generic evaluator, selected by one inert
-/// custom rule whose target these fixtures never fill.
-fn dynamic_reader() -> FixCodec {
-    let mut registry = committed();
-    let mut custom = DataType::decimal128(38, 18)
-        .expect("the FIX decimal")
-        .nullable_field("deskquantity");
-    custom.as_fix_mut().set_tag(9_381).expect("a custom tag");
-    custom
-        .as_fix_mut()
-        .set_derivation(&"lastqty".parse::<Term>().expect("a term"))
-        .expect("a custom derivation");
-    registry.insert(custom).expect("the custom field is added");
-    super::fixed_codec(Arc::new(registry))
-}
-
 #[test]
-fn the_native_plan_matches_generic_eager_arithmetic_and_unicode_text() {
+fn the_native_plan_evaluates_both_sums_and_folds_unicode_text() {
     let native = reader();
-    let dynamic = dynamic_reader();
-    let cases: &[(&[u8], &[i32])] = &[
-        (
-            b"8=FIX.4.4|35=8|14=99999999999999999999.999999999999999998|151=0.000000000000000001|84=0.000000000000000002|10=0|",
-            &[38],
-        ),
-        ("8=FIX.4.4|35=D|167=Cſ|10=0|".as_bytes(), &[460, 461]),
-        ("8=FIX.4.4|35=D|461=OéFXXX|10=0|".as_bytes(), &[167]),
-    ];
-    for (line, tags) in cases {
-        let native = settled(&native, line);
-        let dynamic = settled(&dynamic, line);
-        for tag in *tags {
-            assert_eq!(
-                native.get_by_tag(*tag),
-                dynamic.get_by_tag(*tag),
-                "native and generic tag {tag} differ for {}",
-                String::from_utf8_lossy(line)
-            );
-        }
-    }
+    // `OrderQty(38)` falls back from `CumQty + LeavesQty` to
+    // `CumQty + CxlQty`, and both sums are evaluated before the first that
+    // is stated answers - here at the widest value the column holds.
+    let widest = settled(
+        &native,
+        b"8=FIX.4.4|35=8|14=99999999999999999999.999999999999999998|151=0.000000000000000001|84=0.000000000000000002|10=0|",
+    );
+    assert_eq!(
+        widest.by_tag(38).unwrap(),
+        super::decimal("99999999999999999999.999999999999999999")
+    );
 
     let security = settled(&native, "8=FIX.4.4|35=D|167=Cſ|10=0|".as_bytes());
     assert_eq!(integer(&security, 460), Some(5));
@@ -735,189 +716,109 @@ fn the_native_plan_matches_generic_eager_arithmetic_and_unicode_text() {
     assert_eq!(text(&cfi, 167).as_deref(), Some("OOF"));
 }
 
+/// The foreign exchange rules: what ISO 10962:2021's non-deliverable
+/// attribute and the two legs of a currency pair call for.
 #[test]
-fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
-    let mut registry = committed();
-    // The shipped rule: what is left is what was ordered minus what was
-    // done. A desk whose venue reports `LeavesQty` in lots of ten edits the
-    // field, and nothing else.
-    let mut leaves = registry.field_by_tag(151).expect("LeavesQty").clone();
-    let shipped = leaves
-        .as_fix()
-        .derivation()
-        .expect("a readable derivation")
-        .expect("a shipped derivation");
-    assert!(shipped.to_string().contains("orderqty - cumqty"));
-    leaves
-        .as_fix_mut()
-        .set_derivation(
-            &"case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"
-                .parse::<Term>()
-                .expect("a term"),
-        )
-        .expect("a derivation is stored");
-    registry.update(leaves).expect("the field updates");
+fn the_native_fx_derivations_answer_the_iso_10962_readings() {
+    let native = reader();
+    // The line's body, the tag read and what the rules answer for it.
+    let cases: &[(&str, i32, Option<&str>)] = &[
+        // Position 6 `N` does not deliver, and neither does a forward
+        // priced forward and settled in cash; a contract for difference
+        // and a spread bet settle in cash and stay forwards.
+        ("461=JFTXFN|", 167, Some("FXNDF")),
+        ("461=jftxfn|", 167, Some("FXNDF")),
+        ("461=JF\u{e9}XFN|", 167, Some("FXNDF")),
+        ("461=JFTXFC|", 167, Some("FXNDF")),
+        ("461=JFTXCC|", 167, Some("FXFWD")),
+        ("461=JFTXSC|", 167, Some("FXFWD")),
+        ("461=JFTXFP|", 167, Some("FXFWD")),
+        ("461=SFXXXN|", 167, Some("FXNDS")),
+        ("461=SFXXXP|", 167, Some("FXSWAP")),
+        ("461=IFXXXP|", 167, Some("FXSPOT")),
+        ("461=OCFXXX|", 167, Some("OOF")),
+        // The other way, down to the delivery.
+        ("167=FXSPOT|", 461, Some("IFXXXP")),
+        ("167=FXFWD|", 461, Some("JFTXFP")),
+        ("167=FXSWAP|", 461, Some("SFXXXP")),
+        ("167=FXNDS|", 461, Some("SFXXXN")),
+        ("55=EUR/USD|167=FXNDF|", 461, Some("JFTXFN")),
+        // A currency product's two currencies are its two legs.
+        ("460=4|15=EUR|", 120, None),
+        ("460=4|120=USD|", 15, None),
+        ("460=1|15=EUR|", 120, Some("EUR")),
+        ("460=1|120=USD|", 15, Some("USD")),
+        ("15=EUR|", 120, Some("EUR")),
+    ];
+    for (body, tag, expected) in cases {
+        let line = format!("8=FIX.4.4|35=D|{body}10=0|");
+        let held = native.sole_line(line.as_bytes()).expect("a readable line");
+        assert_eq!(text(&held, *tag).as_deref(), *expected, "{tag} of {line}");
+    }
 
+    // A non-deliverable forward's CFI is a detailed one, which the market
+    // keeps, and its product is the currency one.
+    let forward = native
+        .sole_line(b"8=FIX.4.4|35=D|55=EUR/USD|167=FXNDF|10=0|")
+        .expect("a readable line");
+    assert_eq!(integer(&forward, 460), Some(4));
+    assert_eq!(
+        forward.get_cficode().map(|cfi| cfi.as_str()),
+        Some("JFTXFN")
+    );
+    assert!(yggdryl::Cfi::is_detailed("JFTXFN"));
+}
+
+#[test]
+fn a_registry_states_no_rule_of_its_own() {
+    // A key a registry stores on a field is inert text: `LeavesQty(151)` is
+    // what was ordered less what was done, whatever the field says.
+    let mut registry = committed();
+    let mut leaves = registry.field_by_tag(151).expect("LeavesQty").clone();
+    leaves
+        .insert_metadata("FIX:derivation", "(orderqty - cumqty) / 10")
+        .expect("any text can be stored on a field");
+    registry.update(leaves).expect("an inert key is stored");
     let reader = super::fixed_codec(Arc::new(registry));
     let held = settled(&reader, b"8=FIX.4.4|35=8|15=CHF|39=0|38=100|14=20|10=0|");
-    assert_eq!(held.by_tag(151).unwrap(), super::decimal("8"));
-    assert_eq!(
-        text(&held, 2897).as_deref(),
-        Some("6"),
-        "the dynamic plan also runs every unchanged shipped rule"
-    );
+    assert_eq!(held.by_tag(151).unwrap(), super::decimal("80"));
+    assert_eq!(text(&held, 2897).as_deref(), Some("6"));
 
-    // Removing it silences the fill. `update` merges, and a stored key the
-    // incoming field omits is kept as every `FIX:` key is, so the removal
-    // lands through `update_definition`, which replaces the definition
-    // whole; a reader built over the registry as it stands then fills by
-    // the registry as it stands then.
-    let mut registry = committed();
-    let mut leaves = registry.field_by_tag(151).expect("LeavesQty").clone();
-    assert!(
-        leaves
-            .as_fix_mut()
-            .remove_derivation()
-            .expect("removable")
-            .is_some()
-    );
-    registry.update(leaves.clone()).expect("the field updates");
-    assert!(
-        registry
-            .field_by_tag(151)
-            .expect("still there")
-            .as_fix()
-            .derivation()
-            .expect("readable")
-            .is_some(),
-        "a merge keeps the stored derivation"
-    );
-    registry
-        .insert(leaves)
-        .expect("the definition is replaced whole");
-    assert!(
-        registry
-            .field_by_tag(151)
-            .expect("still there")
-            .as_fix()
-            .derivation()
-            .expect("readable")
-            .is_none()
-    );
-    let reader = super::fixed_codec(Arc::new(registry));
-    let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
-    assert_eq!(held.get_by_tag(151), None, "nothing derives it now");
-}
-
-#[test]
-fn an_added_custom_derivation_uses_the_dynamic_plan_beside_the_shipped_rules() {
-    let native = reader();
-    let line = b"8=FIX.4.4|35=S|15=CHF|32=10|188=1.25|189=0.125|190=1.5|191=-0.25|211=-0.25|231=2|969=0.5|1095=100.5|10=0|";
-    let expected = settled(&native, line);
-
-    let mut registry = committed();
-    let mut desk_quantity = DataType::decimal128(38, 18)
-        .expect("the FIX decimal")
-        .nullable_field("deskquantity");
-    desk_quantity
-        .as_fix_mut()
-        .set_tag(9_381)
-        .expect("a custom tag");
-    desk_quantity
-        .as_fix_mut()
-        .set_derivation(&"lastqty".parse::<Term>().expect("a term"))
-        .expect("a custom derivation is stored");
-    registry
-        .insert(desk_quantity)
-        .expect("the custom field is added");
-
-    let dynamic = settled(&super::fixed_codec(Arc::new(registry)), line);
-    for tag in [132, 133, 839, 1146, 2897] {
-        assert_eq!(
-            dynamic.get_by_tag(tag),
-            expected.get_by_tag(tag),
-            "shipped tag {tag} has the same answer on the dynamic plan"
-        );
+    // And the committed dictionary carries none: the rules are the crate's.
+    let registry = committed();
+    let crated = yggdryl::fix_crate_fields().expect("the crate's own fields");
+    for field in registry.iter().chain(crated.iter()) {
+        for key in ["FIX:derivation", "FIX:replacements"] {
+            assert!(!field.has_metadata(key), "{} carries {key}", field.name());
+        }
     }
-    assert_eq!(dynamic.by_tag(9_381).unwrap(), super::decimal("10"));
 }
 
 #[test]
-fn a_malformed_derivation_refuses_at_insert_and_update_naming_the_field() {
-    // Insert and update validate as a load does: a text that is not a term
-    // is refused by the registry, naming the field, and the registry stands.
-    let mut registry = committed();
-    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
-    gross
-        .insert_metadata("FIX:derivation", "lastqty *")
-        .expect("any text can be stored on a field");
-    let refused = registry.update(gross).expect_err("a malformed derivation");
-    let rendered = refused.to_string();
-    assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("FIX:derivation"), "{rendered}");
-    assert!(
-        registry
-            .field_by_tag(381)
-            .expect("still there")
-            .as_fix()
-            .derivation()
-            .expect("readable")
-            .is_some(),
-        "the stored field is untouched"
+fn every_registry_fills_by_the_same_rules() {
+    // A registry of five fields holds the targets and the inputs of one
+    // rule, and fills by it exactly as the committed dictionary does; one
+    // lacking the target's field answers nothing there.
+    let committed = committed();
+    let held = |tag: i32| {
+        let mut field = committed
+            .field_by_tag(tag)
+            .expect("a standard field")
+            .clone();
+        field.as_fix_mut().remove_codeset();
+        field
+    };
+    let small =
+        FixRegistry::from_fields([35, 38, 14, 39, 151].map(held)).expect("a small dictionary");
+    let reader = super::fixed_codec(Arc::new(small));
+    let line = b"8=FIX.4.4|35=8|39=0|38=100|14=20|32=10|31=2|10=0|";
+    let message = settled(&reader, line);
+    assert_eq!(message.by_tag(151).unwrap(), super::decimal("80"));
+    assert_eq!(
+        message.get_by_tag(381),
+        None,
+        "no GrossTradeAmt field to fill"
     );
-
-    let mut fresh = DataType::Float64.nullable_field("notional");
-    fresh.as_fix_mut().set_tag(9_381).expect("a tag");
-    fresh
-        .insert_metadata("FIX:derivation", "case when")
-        .expect("stored");
-    let refused = registry.insert(fresh).expect_err("refused at insert");
-    assert!(refused.to_string().contains("notional"), "{refused}");
-    assert!(registry.get_field_by_tag(9_381).is_none());
-
-    // The field's own reader says the same of the same text.
-    let mut broken = DataType::Float64.nullable_field("notional");
-    broken.as_fix_mut().set_tag(9_381).expect("a tag");
-    broken
-        .insert_metadata("FIX:derivation", "lastqty *")
-        .expect("stored");
-    let refused = broken.as_fix().derivation().expect_err("not a term");
-    assert!(refused.to_string().contains("FIX:derivation"), "{refused}");
-}
-
-#[test]
-fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
-    // A name no field or group of the registry answers to is a fact about
-    // the dictionary, not about any message: the first enrichment refuses,
-    // naming the field, and no message is read for it.
-    let mut registry = committed();
-    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
-    gross
-        .as_fix_mut()
-        .set_derivation(&"lastqty * nosuchfield".parse::<Term>().expect("a term"))
-        .expect("a well-formed term is stored");
-    registry.update(gross).expect("the text is a term");
-    let reader = super::fixed_codec(Arc::new(registry));
-    let refused = reader
-        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
-        .expect_err("refused at compile");
-    let rendered = refused.to_string();
-    assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("nosuchfield"), "{rendered}");
-
-    // So is one that names a real field the term cannot read that way.
-    let mut registry = committed();
-    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
-    gross
-        .as_fix_mut()
-        .set_derivation(&"lastqty * symbol".parse::<Term>().expect("a term"))
-        .expect("stored");
-    registry.update(gross).expect("the text is a term");
-    let reader = super::fixed_codec(Arc::new(registry));
-    let refused = reader
-        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
-        .expect_err("refused at compile");
-    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
 }
 
 #[test]
@@ -980,63 +881,6 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
 }
 
 #[test]
-fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads() {
-    // The dictionary stores each term as the grammar prints it, so what a
-    // reader parses is byte for byte what a writer would store; and every
-    // one binds against the registry's own fields for the columns it reads,
-    // a group by its name, so no shipped rule is silent for want of a type.
-    let registry = committed();
-    let mut carried = 0;
-    for field in registry.iter() {
-        let Some(term) = field.as_fix().derivation().expect("readable") else {
-            continue;
-        };
-        carried += 1;
-        assert_eq!(
-            field.get_metadata("FIX:derivation"),
-            Some(term.to_string().as_str()),
-            "{} stores the canonical text",
-            field.name()
-        );
-        let inputs: Vec<_> = term
-            .columns()
-            .iter()
-            .map(|name| {
-                registry
-                    .get_field_by_name(name)
-                    .or_else(|| registry.get_field_by_name(name))
-                    .unwrap_or_else(|| {
-                        panic!("{} reads {name}, which the dictionary names", field.name())
-                    })
-                    .clone()
-            })
-            .collect();
-        let schema = StructType::from_fields(inputs)
-            .map(DataType::from)
-            .expect("distinct columns")
-            .required_field("row");
-        term.bind(&schema).unwrap_or_else(|error| {
-            panic!("{} binds against what it reads: {error}", field.name())
-        });
-    }
-    // Every rule is the dictionary's own: the crate owns no derived
-    // column, because what a message implies about its market is what the
-    // traits answer off the FIX fields it lifted.
-    assert_eq!(carried, 29);
-    for field in yggdryl::fix_crate_fields().expect("the crate's own fields") {
-        assert_eq!(
-            field.as_fix().derivation().expect("readable"),
-            None,
-            "{} derives nothing",
-            field.name()
-        );
-    }
-    let _ = registry
-        .get_field_by_name("secaltids")
-        .expect("the group a rule reads");
-}
-
-#[test]
 fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not() {
     // The row carries its stated FIX children - `SecurityID(48)` under its
     // source, `ExDestination(100)`, `ExecType(150)` - and lifts the normalized
@@ -1069,134 +913,6 @@ fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not()
     assert_eq!(isincode(&filled).as_deref(), Some("US0378331005"));
     assert_eq!(miccode(&filled).as_deref(), Some("XNAS"));
     assert_eq!(statecode(&filled).as_deref(), Some(state("F").as_str()));
-}
-
-/// A refusal's text, which names the field and what was refused.
-fn refusal(error: &yggdryl::Error) -> String {
-    error.to_string()
-}
-
-#[test]
-fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_field() {
-    // The two load doors - a store on disk and a JSON snapshot - validate
-    // the text as insert and update do: a stored `FIX:derivation` that is
-    // not a term refuses the whole load, naming the field that carries it.
-    let mut registry = FixRegistry::new();
-    let mut gross = DataType::Float64.nullable_field("grosstradeamt");
-    gross.as_fix_mut().set_tag(381).expect("a tag");
-    gross
-        .as_fix_mut()
-        .set_derivation(&"lastqty * lastpx".parse::<Term>().expect("a term"))
-        .expect("stored");
-    registry
-        .insert(gross)
-        .expect("a field carrying a derivation");
-
-    let snapshot = registry.into_json().expect("a snapshot");
-    assert!(
-        FixRegistry::from_json(&snapshot).is_ok(),
-        "the snapshot loads as written"
-    );
-    let corrupted = snapshot.replace("lastqty * lastpx", "lastqty *");
-    assert_ne!(corrupted, snapshot, "the derivation is in the snapshot");
-    let refused = FixRegistry::from_json(&corrupted).expect_err("refused at load");
-    let rendered = refusal(&refused);
-    assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("FIX:derivation"), "{rendered}");
-
-    let root = LocalFolder::temporary()
-        .expect("a temporary folder")
-        .path()
-        .expect("a local path")
-        .join(format!(
-            "yggdryl-fix-derivation-load-{}",
-            std::process::id()
-        ));
-    let _ = std::fs::remove_dir_all(&root);
-    let mut folder = LocalFolder::new(&root).expect("a local folder");
-    registry.commit(&mut folder).expect("the store writes");
-    assert!(
-        FixRegistry::from_handle(&folder).is_ok(),
-        "the store loads as written"
-    );
-    let mut corrupted = 0;
-    for entry in std::fs::read_dir(root.join("fields")).expect("the fields shards") {
-        let path = entry.expect("a shard").path();
-        let text = std::fs::read_to_string(&path).expect("a shard is text");
-        if text.contains("lastqty * lastpx") {
-            std::fs::write(&path, text.replace("lastqty * lastpx", "lastqty *"))
-                .expect("rewritten");
-            corrupted += 1;
-        }
-    }
-    assert_eq!(corrupted, 1, "one shard carries the derivation");
-    let refused = FixRegistry::from_handle(&folder).expect_err("refused at load");
-    let rendered = refusal(&refused);
-    assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("FIX:derivation"), "{rendered}");
-    std::fs::remove_dir_all(root).expect("cleaned up");
-}
-
-#[test]
-fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
-    // One derivation naming what the dictionary lacks: the line door, the
-    // stream door, the row door and the batch door refuse alike, naming the
-    // field, rather than one of them nulling the crate columns in silence.
-    let mut registry = committed();
-    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
-    gross
-        .as_fix_mut()
-        .set_derivation(&"lastqty * nosuchfield".parse::<Term>().expect("a term"))
-        .expect("stored");
-    registry.update(gross).expect("the text is a term");
-    let reader = super::fixed_codec(Arc::new(registry));
-    let schema = fix_schema(reader.registry(), "fix").expect("the fixed schema");
-    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    // A parse is one of the doors that refuses, so the message the row and
-    // the batch doors are handed is built rather than read.
-    let root = StructType::from_fields([
-        reader.registry().field_by_tag(37).expect("OrderID").clone(),
-        reader.registry().field_by_tag(32).expect("LastQty").clone(),
-    ])
-    .map(DataType::from)
-    .expect("a struct root")
-    .required_field("8");
-    let value = Scalar::from_struct([
-        ("orderid", Scalar::from("A")),
-        ("lastqty", super::decimal("10")),
-    ])
-    .expect("a record");
-    let read =
-        FixMsg::with_registry(Arc::clone(reader.registry()), root, value).expect("a built message");
-    let names = |rendered: String| {
-        assert!(rendered.contains("grosstradeamt"), "{rendered}");
-        assert!(rendered.contains("nosuchfield"), "{rendered}");
-    };
-    names(refusal(
-        &reader.sole_line(line).expect_err("the line door refuses"),
-    ));
-    names(refusal(
-        &reader
-            .parse_lines([line])
-            .next()
-            .expect("one item")
-            .expect_err("the stream door refuses"),
-    ));
-    names(refusal(
-        &read
-            .clone()
-            .into_row(&schema)
-            .expect_err("the row door refuses"),
-    ));
-    names(
-        reader
-            .arrow_reader(schema, vec![read])
-            .expect("a reader")
-            .next()
-            .expect("one item")
-            .expect_err("the batch door refuses")
-            .to_string(),
-    );
 }
 
 #[test]
@@ -1418,8 +1134,9 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // 94: every JSON document the capture holds - the seven Jolokia
     // answers, the two wildcards and the error among them, and the
     // statistics line - is one `unknown` row, never one per plugin it named
-    // and never none.
-    assert_eq!(messages.len(), 94, "the corpus");
+    // and never none - and 56 more: the execution the parse splits off each
+    // execution report of a fill (A12).
+    assert_eq!(messages.len(), 94 + 56, "the corpus");
     let forward: Vec<FixMsg> = messages.to_vec();
     let mut backward: Vec<FixMsg> = messages.iter().rev().cloned().collect();
     backward.reverse();
@@ -1439,4 +1156,116 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
         streamed, settled,
         "a pass over what was filled changes nothing"
     );
+}
+
+/// Twelve messages over four hours in instant order: three orders placed,
+/// replaced and filled, an hour of each order's life apart.
+fn four_hours() -> Vec<FixMsg> {
+    let codec = super::fixed_codec(super::committed_registry());
+    let mut lines = Vec::new();
+    for hour in 10..14 {
+        for (at, order) in [(5, "A"), (20, "B"), (40, "C")] {
+            let status = if hour == 13 { "2" } else { "0" };
+            lines.push(format!(
+                "8=FIX.4.4|35=8|52=20260102-{hour}:{at:02}:00|37={order}|11={order}-{hour}|17=E-{order}-{hour}|150=0|39={status}|54=1|55=AAPL|38=10|44=5|10=0|"
+            ));
+        }
+    }
+    lines
+        .iter()
+        .map(|line| codec.parse_fix_line(line.as_bytes()).expect("a message"))
+        .collect()
+}
+
+/// What a walk answered, as its chain reads: the identity, the place and
+/// the predecessor of each message.
+fn walked(
+    codec: &FixCodec,
+    messages: Vec<FixMsg>,
+) -> Vec<(yggdryl::Uuid, u64, Option<yggdryl::Uuid>)> {
+    use yggdryl::graph::Element;
+    codec
+        .lifecycle(messages)
+        .map(|message| {
+            let message = message.expect("a walked message");
+            (
+                message.get_curruuid(),
+                message.get_seqnum(),
+                message.get_prevuuid(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_sorted_lifecycle_walks_an_ordered_source_as_the_whole_sort_does() {
+    let codec = super::fixed_codec(super::committed_registry());
+    let whole = walked(&codec, four_hours());
+    let sorted = walked(&codec.clone().with_sorted_lifecycle(true), four_hours());
+    assert!(codec.clone().with_sorted_lifecycle(true).sorted_lifecycle());
+    assert!(!codec.sorted_lifecycle());
+    assert_eq!(whole.len(), 12);
+    assert_eq!(sorted, whole);
+}
+
+#[test]
+fn a_sorted_lifecycle_walks_an_hour_before_it_reads_the_last() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let messages = four_hours();
+    let pulls = Rc::new(Cell::new(0_usize));
+    let counted = Rc::clone(&pulls);
+    let source = messages.into_iter().map(move |message| {
+        counted.set(counted.get() + 1);
+        Ok::<_, yggdryl::Error>(message)
+    });
+    let codec = super::fixed_codec(super::committed_registry()).with_sorted_lifecycle(true);
+    let mut walk = codec.lifecycle(source);
+    walk.next().expect("the first message").expect("walked");
+    // The first hour is walked once the stream has read two hours past it:
+    // its three messages, the next hour's three and the first of the hour
+    // after - never the whole capture.
+    assert_eq!(pulls.get(), 7);
+    assert_eq!(walk.count(), 11);
+    assert_eq!(pulls.get(), 12);
+}
+
+/// A cancel reject stating no `Side(54)` joins the one live side of its
+/// order and states that side from then on: in the message the walk yields
+/// and in the row it lands as, so a book folding the row reads it.
+#[test]
+fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
+    use yggdryl::Side;
+    use yggdryl::graph::Element;
+    let registry = super::committed_registry();
+    let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
+    let lines = [
+        "8=FIX.4.2|35=D|49=B|56=S|34=70|52=20260814-21:50:00|11=C-1|55=2454|54=2|38=100|40=2|44=10|60=20260814-21:50:00|10=0|",
+        "8=FIX.4.2|35=8|49=S|56=B|34=71|52=20260814-21:50:01|11=C-1|37=O-1|17=X1|150=0|39=0|54=2|55=2454|38=100|44=10|151=100|14=0|6=0|60=20260814-21:50:01|10=0|",
+        "8=FIX.4.2|35=9|49=S|56=B|34=72|52=20260814-21:59:47|11=C-2|37=O-1|41=C-1|39=8|434=1|60=20260814-21:59:46|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .map(|line| codec.parse_fix_line(line.as_bytes()).expect("a message"))
+        .collect();
+    assert_eq!(messages[2].get_side(), Side::Unknown);
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let reject = walked.last().expect("the reject");
+    assert!(reject.get_prevuuid().is_some(), "it follows its order");
+    assert_eq!(reject.get_side(), Side::Sell);
+    assert_eq!(reject.get_crosscode(), walked[0].get_crosscode());
+    assert_eq!(text(reject, 54).as_deref(), Some("SELL"));
+    let wire = String::from_utf8(reject.into_bytes(b'|')).expect("a text wire");
+    assert!(wire.contains("|54=2|"), "{wire}");
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
+    let again = FixMsg::from_row(
+        std::sync::Arc::clone(&registry),
+        &schema,
+        &reject.into_row(&schema).expect("a row"),
+    )
+    .expect("the row reads");
+    assert_eq!(again.get_side(), Side::Sell);
 }

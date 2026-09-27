@@ -1,232 +1,42 @@
-//! Native Python view of [`CoreBookEvent`], [`CoreBookSide`],
-//! [`CoreSnapshotEvent`], [`CoreSnapshotPartition`] and the
+//! Native Python view of [`CoreBookEvent`], [`CoreSnapshotEvent`] and the
 //! [`CoreBookIterator`] walk.
 
 use std::sync::{Mutex, PoisonError};
 
-use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
 use yggdryl::graph::{
-    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, BookSide as CoreBookSide,
-    MarketData as CoreMarketData, SnapshotEvent as CoreSnapshotEvent,
-    SnapshotPartition as CoreSnapshotPartition,
+    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, MarketData as CoreMarketData,
+    SnapshotEvent as CoreSnapshotEvent,
 };
-use yggdryl::{Scalar, Side as CoreSide};
+use yggdryl::{DataType, Scalar, Side as CoreSide};
 
+use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};
 use super::operation::{PyBookRef, PyExecutionEvent};
-use super::{decimal_scalar, slot_repr};
-use crate::scalar::PyScalar;
-use crate::{Failed, Pulled, compare, python_failure, value_error};
+use crate::scalar::{PyScalar, from_py};
+use crate::{Failed, Pulled, python_failure, value_error};
 
-/// One scope a full snapshot replaces: a symbol - `None` in global mode -
-/// and the book scope the entries stated.
-#[pyclass(
-    name = "SnapshotPartition",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
-#[derive(Clone)]
-pub(crate) struct PySnapshotPartition {
-    pub(crate) inner: CoreSnapshotPartition,
-}
-
-impl PySnapshotPartition {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreSnapshotPartition) -> Self {
-        Self { inner }
+/// The side one argument names - a `Side` member, its code or any spelling
+/// the core reads - checked through the `side` datatype's own value contract.
+fn side_of(value: &Bound<'_, PyAny>) -> PyResult<CoreSide> {
+    match DataType::Side
+        .scalar(from_py(value)?)
+        .map_err(value_error)?
+    {
+        Scalar::Side(side) => Ok(side),
+        other => Err(PyTypeError::new_err(format!(
+            "expected a side, got {}",
+            other.kind()
+        ))),
     }
 }
 
-#[pymethods]
-impl PySnapshotPartition {
-    /// A partition for `scope`, and `symbol` where the operations named
-    /// one.
-    #[new]
-    #[pyo3(signature = (scope, symbol=None))]
-    fn new(scope: &str, symbol: Option<&str>) -> Self {
-        Self::from_core(CoreSnapshotPartition {
-            symbol: symbol.map(Into::into),
-            scope: scope.into(),
-        })
-    }
-
-    /// Rebuild a partition pickle carried.
-    #[staticmethod]
-    fn _from_pickle(scope: &str, symbol: Option<&str>) -> Self {
-        Self::new(scope, symbol)
-    }
-
-    /// The book scope this partition replaces.
-    #[getter]
-    fn scope(&self) -> &str {
-        &self.inner.scope
-    }
-
-    /// The symbol this partition is for; `None` in global mode.
-    #[getter]
-    fn symbol(&self) -> Option<&str> {
-        self.inner.symbol.as_deref()
-    }
-
-    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return Ok(other.py().NotImplemented());
-        };
-        Ok(compare(self.inner.cmp(&other.inner), operation)
-            .into_pyobject(other.py())?
-            .to_owned()
-            .into_any()
-            .unbind())
-    }
-
-    fn __hash__(&self) -> isize {
-        crate::python_hash(snapshot_partition_hash(&self.inner))
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "SnapshotPartition(scope={:?}, symbol={})",
-            self.inner.scope.as_str(),
-            slot_repr(self.inner.symbol.as_deref())
-        )
-    }
-
-    fn __copy__(&self) -> Self {
-        self.clone()
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, Option<String>))> {
-        Ok((
-            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (
-                self.inner.scope.to_string(),
-                self.inner.symbol.as_ref().map(ToString::to_string),
-            ),
-        ))
-    }
-}
-
-/// One side of a book: persistent live orders and quotes, price ordered,
-/// beside the deltas applied since the last emitted book. Immutable:
-/// `with_operation` and every verb answer a new side.
-#[pyclass(
-    name = "BookSide",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
-#[derive(Clone)]
-pub(crate) struct PyBookSide {
-    pub(crate) inner: CoreBookSide,
-}
-
-impl PyBookSide {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreBookSide) -> Self {
-        Self { inner }
-    }
-}
-
-graph_methods!(PyBookSide, "BookSide"; [
-    element_getters, market_getters, common_verbs, element_repr
-]; {
-    /// An empty bid or ask side; `side` is read through the core `Side`
-    /// vocabulary.
-    #[new]
-    fn new(side: &str) -> PyResult<Self> {
-        let side = CoreSide::read(side).map_err(value_error)?;
-        CoreBookSide::new(side)
-            .map(Self::from_core)
-            .map_err(value_error)
-    }
-
-    /// The live orders and quotes, best price first, each a `MarketData`.
-    #[getter]
-    fn live(&self) -> Vec<PyMarketData> {
-        self.inner
-            .live()
-            .cloned()
-            .map(PyMarketData::from_core)
-            .collect()
-    }
-
-    /// The deltas applied since the last emitted book, each a `MarketData`.
-    #[getter]
-    fn deltas(&self) -> Vec<PyMarketData> {
-        self.inner
-            .deltas()
-            .iter()
-            .cloned()
-            .map(PyMarketData::from_core)
-            .collect()
-    }
-
-    fn __len__(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Whether the side holds no live entry.
-    #[getter]
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// The first priced level's price, as a decimal; `None` for an empty
-    /// side or one holding unpriced entries only.
-    #[getter]
-    fn best_price(&self) -> Option<PyScalar> {
-        self.inner.best_price().map(decimal_scalar)
-    }
-
-    /// The exact aggregate quantity at the best price, an entry stating
-    /// none adding nothing; `None` where `best_price` is.
-    #[getter]
-    fn best_quantity(&self) -> Option<PyScalar> {
-        self.inner.best_quantity().map(decimal_scalar)
-    }
-
-    /// One limit per price this side holds, best first, and one last for
-    /// every entry stating no price: each the struct `Scalar` of its
-    /// `price` (`None` on the unpriced limit), the exact `quantity` resting
-    /// there and the `uuids` of the entries resting there, in live order.
-    #[getter]
-    fn limits(&self) -> Vec<PyScalar> {
-        self.inner
-            .limits()
-            .map(|limit| PyScalar::from_inner(limit.into_scalar()))
-            .collect()
-    }
-
-    /// The exact sum of the first `levels` limits' quantities, the unpriced
-    /// limit counted where reached: zero for an empty side or no level,
-    /// `None` only past what a decimal holds.
-    fn depth(&self, levels: usize) -> Option<PyScalar> {
-        self.inner.depth(levels).map(decimal_scalar)
-    }
-
-    /// This side with one order or quote event - a leaf or a `MarketData` -
-    /// atomically applied.
-    fn with_operation(&self, operation: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let mut side = self.inner.clone();
-        side.add_operation(market_data_of(operation)?)
-            .map_err(value_error)?;
-        Ok(Self::from_core(side))
-    }
-});
-
-/// One coherent view of a market at one exact nanosecond instant: the bid
-/// and ask depth, the executions at that instant and the scopes its last
-/// snapshot replaced. Immutable: `with_operations` and every verb answer a
-/// new book.
+/// One coherent view of a market at one exact nanosecond instant: the live
+/// entries of both sides, the deltas applied since the book before it, the
+/// executions at that instant and each side's price levels. Immutable:
+/// `with_operations` and every verb answer a new book.
 #[pyclass(
     name = "BookEvent",
     module = "yggdryl._native",
@@ -246,7 +56,7 @@ impl PyBookEvent {
 }
 
 graph_methods!(PyBookEvent, "BookEvent"; [
-    element_getters, event_getters, market_getters, common_verbs, event_verbs
+    element_getters, event_getters, market_getters, kind_getters, common_verbs, event_verbs
 ]; {
     /// An empty book for `symbol` at `currunix` nanoseconds since the epoch.
     #[new]
@@ -254,16 +64,28 @@ graph_methods!(PyBookEvent, "BookEvent"; [
         Self::from_core(CoreBookEvent::new(currunix, symbol))
     }
 
-    /// The bid side.
+    /// Every entry alive on the book, each a `MarketData`: the bid side's,
+    /// best price first and every entry stating no price last, then the ask
+    /// side's the same way.
     #[getter]
-    fn bid(&self) -> PyBookSide {
-        PyBookSide::from_core(self.inner.bid().clone())
+    fn alive(&self) -> Vec<PyMarketData> {
+        self.inner
+            .alive()
+            .cloned()
+            .map(PyMarketData::from_core)
+            .collect()
     }
 
-    /// The ask side, shaped as the bid.
+    /// The deltas applied since the book before this one, each a
+    /// `MarketData`: the bid side's in the order they were applied, then the
+    /// ask side's.
     #[getter]
-    fn ask(&self) -> PyBookSide {
-        PyBookSide::from_core(self.inner.ask().clone())
+    fn deltas(&self) -> Vec<PyMarketData> {
+        self.inner
+            .deltas()
+            .cloned()
+            .map(PyMarketData::from_core)
+            .collect()
     }
 
     /// The executions at this book's instant.
@@ -277,31 +99,57 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The scopes this book's last full snapshot replaced.
-    #[getter]
-    fn snapshot_partitions(&self) -> Vec<PySnapshotPartition> {
-        self.inner
-            .snapshot_partitions()
-            .iter()
-            .cloned()
-            .map(PySnapshotPartition::from_core)
-            .collect()
+    /// One limit per level of the side `side` takes - a bid side reads the
+    /// bid, an ask side the ask - best first and the unpriced limit last:
+    /// each the struct `Scalar` of its `price` (`None` on the unpriced
+    /// limit), the exact `quantity` resting there, the `uuids` of the
+    /// entries resting there and whether the level is `tradable`. Empty for
+    /// a side that is neither.
+    fn limits(&self, side: &Bound<'_, PyAny>) -> PyResult<Vec<PyScalar>> {
+        Ok(self
+            .inner
+            .limits(side_of(side)?)
+            .map(|limit| PyScalar::from_inner(limit.into_scalar()))
+            .collect())
     }
 
-    /// Whether the best bid is strictly above the best ask.
+    /// The best tradable price on the side `side` takes, as a decimal: the
+    /// first priced level that can trade; `None` where no level can, or for
+    /// a side that is neither a bid nor an ask.
+    fn best_price(&self, side: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
+        Ok(self.inner.best_price(side_of(side)?).map(decimal_scalar))
+    }
+
+    /// The aggregate quantity at `best_price(side)`, as a decimal; `None`
+    /// where that is.
+    fn best_quantity(&self, side: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
+        Ok(self.inner.best_quantity(side_of(side)?).map(decimal_scalar))
+    }
+
+    /// The exact sum of the first `levels` limits' quantities of the side
+    /// `side` takes, the unpriced limit counted where reached: zero for an
+    /// empty side or no level, `None` past what a decimal holds or for a
+    /// side that is neither a bid nor an ask.
+    fn depth(&self, side: &Bound<'_, PyAny>, levels: usize) -> PyResult<Option<PyScalar>> {
+        Ok(self.inner.depth(side_of(side)?, levels).map(decimal_scalar))
+    }
+
+    /// Whether the best tradable bid is strictly above the best tradable
+    /// ask.
     #[getter]
     fn is_crossed(&self) -> bool {
         self.inner.is_crossed()
     }
 
-    /// Whether both sides state a best price and the two are equal.
+    /// Whether both sides state a best tradable price and the two are
+    /// equal.
     #[getter]
     fn is_locked(&self) -> bool {
         self.inner.is_locked()
     }
 
-    /// The best ask less the best bid, negative when the book is crossed;
-    /// `None` where a side states no best price.
+    /// The best tradable ask less the best tradable bid, negative when the
+    /// book is crossed; `None` where a side states no best price.
     #[getter]
     fn spread(&self) -> Option<PyScalar> {
         self.inner.spread().map(decimal_scalar)
@@ -364,7 +212,7 @@ impl PySnapshotEvent {
 }
 
 graph_methods!(PySnapshotEvent, "SnapshotEvent"; [
-    element_getters, event_getters, market_getters, common_verbs, event_verbs
+    element_getters, event_getters, market_getters, kind_getters, common_verbs, event_verbs
 ]; {
     /// The snapshot control over `event` - any dated leaf, whose event and
     /// market facts are copied - replacing `scope`.
@@ -395,9 +243,9 @@ graph_methods!(PySnapshotEvent, "SnapshotEvent"; [
 /// failure crossing as one typed sentinel.
 type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Send>;
 
-/// Books from a sorted stream of operations, one per symbol and effective
-/// timestamp, or one consolidated `GLOBAL` book, pulling its items lazily
-/// from the caller's iterable. Yields `BookEvent`.
+/// Books from a sorted stream of operations, one per book key and effective
+/// timestamp, pulling its items lazily from the caller's iterable. Yields
+/// `BookEvent`.
 #[pyclass(name = "BookIterator", module = "yggdryl._native")]
 pub(crate) struct PyBookIterator {
     inner: Mutex<CoreBookIterator<BookSource>>,
@@ -407,11 +255,11 @@ pub(crate) struct PyBookIterator {
 #[pymethods]
 impl PyBookIterator {
     /// Opens a book walk over `items` - any leaf or `MarketData`, sorted by
-    /// their own event order; `snapshot_millis == 0` disables grid snapshots
-    /// and `global_` emits one consolidated `GLOBAL` book.
+    /// their own event order; `snapshot_millis == 0` disables grid
+    /// snapshots.
     #[new]
-    #[pyo3(signature = (items, snapshot_millis=0, global_=false))]
-    fn new(items: &Bound<'_, PyAny>, snapshot_millis: u64, global_: bool) -> PyResult<Self> {
+    #[pyo3(signature = (items, snapshot_millis=0))]
+    fn new(items: &Bound<'_, PyAny>, snapshot_millis: u64) -> PyResult<Self> {
         let pulled = Pulled::new(items, market_data_of)?;
         let failed = pulled.failed.clone();
         // The core stage takes a typed error, not a `PyErr`, so a Python
@@ -431,7 +279,7 @@ impl PyBookIterator {
                     .map(|error| Err(python_failure(error)))
             })))
         };
-        let inner = CoreBookIterator::new(source, snapshot_millis, global_).map_err(value_error)?;
+        let inner = CoreBookIterator::new(source, snapshot_millis).map_err(value_error)?;
         Ok(Self {
             inner: Mutex::new(inner),
             failed,
@@ -440,15 +288,6 @@ impl PyBookIterator {
 
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
-
-    /// Whether this walk emits one consolidated `GLOBAL` book.
-    #[getter]
-    fn global_(&self) -> bool {
-        self.inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .global()
-    }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
@@ -474,15 +313,4 @@ impl PyBookIterator {
             },
         }
     }
-}
-
-/// The stable hash of a snapshot partition: its symbol and scope as one
-/// record `Scalar` - no symbol a null - digested by the crate's one
-/// `stable_hash`, so equal partitions hash alike in either language.
-pub(crate) fn snapshot_partition_hash(partition: &CoreSnapshotPartition) -> u64 {
-    Scalar::from_sequence([
-        partition.symbol.clone().map_or(Scalar::Null, Scalar::from),
-        Scalar::from(partition.scope.clone()),
-    ])
-    .stable_hash()
 }

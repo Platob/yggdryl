@@ -1,15 +1,18 @@
-//! The nineteen columns every market element is stated in.
+//! The twenty-seven columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
-//! operation's row, a book's, a side's - states the same columns and a
-//! reader joins them without a mapping.
+//! operation's row, a book's - states the same columns and a reader joins
+//! them without a mapping.
 
 use smol_str::SmolStr;
 
-use super::Market;
-use crate::securityid::SecurityIds;
-use crate::{Ccy, Cfi, DataType, Decimal, Field, Mic, Result, Scalar, Side, TimeInForce, Unit};
+use super::{FxRates, Market};
+use crate::securityid::{SecType, SecurityId, SecurityIds};
+use crate::{
+    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeInForce,
+    Unit,
+};
 
 /// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -26,6 +29,8 @@ pub enum MarketColumn {
     Side,
     /// The security identifiers it names, key to code, sorted.
     SecurityIds,
+    /// The ISIN it names: the `ISIN` security identifier, projected.
+    IsinCode,
     /// The detailed CFI classification.
     CfiCode,
     /// The market it trades on.
@@ -48,6 +53,20 @@ pub enum MarketColumn {
     SpotRate,
     /// The forward points of an FX forward price.
     ForwardPoints,
+    /// The bid price it states.
+    BidPx,
+    /// The quantity bid.
+    BidQty,
+    /// The currency the bid is stated in.
+    BidCcy,
+    /// The ask price it states.
+    AskPx,
+    /// The quantity offered.
+    AskQty,
+    /// The currency the ask is stated in.
+    AskCcy,
+    /// The FX rates it states: target currency to the rate to divide by.
+    FxRates,
     /// The ticker the instrument goes by.
     Ticker,
     /// The free-form facts it carries, key to value, sorted.
@@ -56,13 +75,14 @@ pub enum MarketColumn {
 
 impl MarketColumn {
     /// Every market column in canonical row order.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 27] = [
         Self::Price,
         Self::Currency,
         Self::Quantity,
         Self::Unit,
         Self::Side,
         Self::SecurityIds,
+        Self::IsinCode,
         Self::CfiCode,
         Self::MicCode,
         Self::LastPx,
@@ -74,6 +94,13 @@ impl MarketColumn {
         Self::PrevQty,
         Self::SpotRate,
         Self::ForwardPoints,
+        Self::BidPx,
+        Self::BidQty,
+        Self::BidCcy,
+        Self::AskPx,
+        Self::AskQty,
+        Self::AskCcy,
+        Self::FxRates,
         Self::Ticker,
         Self::Metadata,
     ];
@@ -88,6 +115,7 @@ impl MarketColumn {
             Self::Unit => "unit",
             Self::Side => "side",
             Self::SecurityIds => "securityids",
+            Self::IsinCode => "isincode",
             Self::CfiCode => "cficode",
             Self::MicCode => "miccode",
             Self::LastPx => "lastpx",
@@ -99,6 +127,13 @@ impl MarketColumn {
             Self::PrevQty => "prevqty",
             Self::SpotRate => "spotrate",
             Self::ForwardPoints => "forwardpoints",
+            Self::BidPx => "bidpx",
+            Self::BidQty => "bidqty",
+            Self::BidCcy => "bidccy",
+            Self::AskPx => "askpx",
+            Self::AskQty => "askqty",
+            Self::AskCcy => "askccy",
+            Self::FxRates => "fxrates",
             Self::Ticker => "ticker",
             Self::Metadata => "metadata",
         }
@@ -114,6 +149,7 @@ impl MarketColumn {
             Self::Unit => "Unit",
             Self::Side => "Side",
             Self::SecurityIds => "Security IDs",
+            Self::IsinCode => "ISIN",
             Self::CfiCode => "CFI",
             Self::MicCode => "MIC",
             Self::LastPx => "Last Price",
@@ -125,6 +161,13 @@ impl MarketColumn {
             Self::PrevQty => "Previous Quantity",
             Self::SpotRate => "Spot Rate",
             Self::ForwardPoints => "Forward Points",
+            Self::BidPx => "Bid Price",
+            Self::BidQty => "Bid Quantity",
+            Self::BidCcy => "Bid Currency",
+            Self::AskPx => "Ask Price",
+            Self::AskQty => "Ask Quantity",
+            Self::AskCcy => "Ask Currency",
+            Self::FxRates => "FX Rates",
             Self::Ticker => "Ticker",
             Self::Metadata => "Metadata",
         }
@@ -132,8 +175,9 @@ impl MarketColumn {
 
     /// The one datatype the column is built and read at: the crate's
     /// decimal for every price and quantity, each code's own leaf, a sorted
-    /// `map<utf8, utf8>` for the identifiers and the metadata, and `utf8`
-    /// for the ticker.
+    /// `map<utf8, utf8>` for the identifiers and the metadata, a sorted
+    /// `map<ccy, decimal>` for the rates - keys and values required - and
+    /// `utf8` for the ticker.
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
@@ -147,22 +191,28 @@ impl MarketColumn {
             | Self::PrevPx
             | Self::PrevQty
             | Self::SpotRate
-            | Self::ForwardPoints => DataType::Decimal,
-            Self::Currency => DataType::Ccy,
+            | Self::ForwardPoints
+            | Self::BidPx
+            | Self::BidQty
+            | Self::AskPx
+            | Self::AskQty => DataType::Decimal,
+            Self::Currency | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
             Self::SecurityIds => SecurityIds::dtype(),
+            Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
             Self::MicCode => DataType::Mic,
+            Self::FxRates => fxrates_datatype(),
             Self::Ticker => DataType::utf8(),
             Self::Metadata => DataType::map_of(DataType::utf8(), DataType::utf8(), true)
                 .expect("a sorted utf8 map is a datatype"),
         }
     }
 
-    /// Whether a row may leave the column null: never for the price, the
-    /// currency, the quantity, the unit and the side, which every market
-    /// element states, if only as nothing.
+    /// Whether a row may leave the column null: never for the currency,
+    /// the unit and the side, which every market element states, if only as
+    /// nothing - `XXX`, the empty unit, `UNKNOWN`.
     #[must_use]
     pub const fn nullable(self) -> bool {
         !matches!(self, Self::Currency | Self::Unit | Self::Side)
@@ -209,6 +259,10 @@ impl MarketColumn {
                 let ids = element.get_securityids();
                 (!ids.is_empty()).then(|| ids.to_scalar())
             }
+            Self::IsinCode => element
+                .get_isincode()
+                .and_then(|code| Isin::new(code).ok())
+                .map(Scalar::Isin),
             Self::CfiCode => element.get_cficode().cloned().map(Scalar::from),
             Self::MicCode => element.get_miccode().cloned().map(Scalar::from),
             Self::LastPx => element.get_lastpx().map(Scalar::from),
@@ -220,6 +274,23 @@ impl MarketColumn {
             Self::PrevQty => element.get_prevqty().map(Scalar::from),
             Self::SpotRate => element.get_spotrate().map(Scalar::from),
             Self::ForwardPoints => element.get_forwardpoints().map(Scalar::from),
+            Self::BidPx => element.get_bidpx().map(Scalar::from),
+            Self::BidQty => element.get_bidqty().map(Scalar::from),
+            Self::BidCcy => element.get_bidccy().cloned().map(Scalar::Ccy),
+            Self::AskPx => element.get_askpx().map(Scalar::from),
+            Self::AskQty => element.get_askqty().map(Scalar::from),
+            Self::AskCcy => element.get_askccy().cloned().map(Scalar::Ccy),
+            Self::FxRates => {
+                let rates = element.get_fxrates();
+                (!rates.is_empty()).then(|| {
+                    Scalar::from_mapping(
+                        rates.iter().map(|(target, rate)| {
+                            (Scalar::Ccy(target.clone()), Scalar::from(*rate))
+                        }),
+                    )
+                    .ok()
+                })?
+            }
             Self::Ticker => element.get_ticker().map(Scalar::from),
             Self::Metadata => {
                 let metadata = element.get_metadata();
@@ -234,7 +305,10 @@ impl MarketColumn {
     }
 
     /// Records a cell on `element`, leniently: a null clears an optional
-    /// fact, and an incompatible value is ignored.
+    /// fact, and an incompatible value is ignored. The ISIN is a projection
+    /// of the security identifiers: a cell fills an absent `ISIN` and a
+    /// disagreeing one is ignored, as a null is - the strict door is the
+    /// Arrow reader.
     pub fn record<E: Market + ?Sized>(self, element: &mut E, value: &Scalar) {
         let decimal = || Decimal::from_scalar(value);
         match self {
@@ -272,7 +346,11 @@ impl MarketColumn {
             Self::Side => {
                 if let Some(held) = match value {
                     Scalar::Side(held) => Some(*held),
-                    other => other.as_str().and_then(Side::from_spelling),
+                    other => other
+                        .as_i128()
+                        .and_then(|code| i32::try_from(code).ok())
+                        .and_then(Side::from_code)
+                        .or_else(|| other.as_str().and_then(Side::from_spelling)),
                 } {
                     element.set_side(held);
                 }
@@ -283,6 +361,21 @@ impl MarketColumn {
                     other => SecurityIds::from_scalar(other).ok(),
                 } {
                     let _ = element.set_securityids(ids);
+                }
+            }
+            Self::IsinCode => {
+                let code = match value {
+                    Scalar::Isin(held) => Some(held.clone()),
+                    other => other.as_str().and_then(|text| Isin::new(text).ok()),
+                };
+                if let Some(code) = code {
+                    if element.get_isincode().is_none() {
+                        if let Ok(id) = SecType::read("ISIN")
+                            .and_then(|key| SecurityId::new(key, code.as_str()))
+                        {
+                            let _ = element.insert_securityid(id);
+                        }
+                    }
                 }
             }
             Self::CfiCode => element.set_cficode(match value {
@@ -304,6 +397,25 @@ impl MarketColumn {
             Self::PrevQty => element.set_prevqty(decimal()),
             Self::SpotRate => element.set_spotrate(decimal()),
             Self::ForwardPoints => element.set_forwardpoints(decimal()),
+            Self::BidPx => element.set_bidpx(decimal()),
+            Self::BidQty => element.set_bidqty(decimal()),
+            Self::BidCcy => element.set_bidccy(currency_of(value)),
+            Self::AskPx => element.set_askpx(decimal()),
+            Self::AskQty => element.set_askqty(decimal()),
+            Self::AskCcy => element.set_askccy(currency_of(value)),
+            Self::FxRates => element.set_fxrates(
+                value
+                    .as_mapping()
+                    .map(|entries| {
+                        entries
+                            .iter()
+                            .filter_map(|(target, rate)| {
+                                Some((currency_of(target)?, Decimal::from_scalar(rate)?))
+                            })
+                            .collect::<FxRates>()
+                    })
+                    .unwrap_or_default(),
+            ),
             Self::Ticker => element.set_ticker(value.as_str().map(SmolStr::new)),
             Self::Metadata => element.set_metadata(value.as_mapping().map(|entries| {
                 entries
@@ -317,19 +429,25 @@ impl MarketColumn {
     }
 }
 
+/// The `fxrates` column's datatype: a sorted `map<ccy, decimal>`, its keys
+/// and its values required.
+fn fxrates_datatype() -> DataType {
+    let entries = StructType::from_unique_fields(vec![
+        Field::new("key", DataType::Ccy, false),
+        Field::new("value", DataType::Decimal, false),
+    ]);
+    DataType::map(
+        Field::new("entries", DataType::Struct(entries), false),
+        true,
+    )
+    .expect("a non-null key-value entries field is a map")
+}
+
 /// The currency a cell states, as the code or as text.
 pub(super) fn currency_of(value: &Scalar) -> Option<Ccy> {
     match value {
         Scalar::Ccy(held) => Some(held.clone()),
         other => other.as_str().and_then(|text| Ccy::new(text).ok()),
-    }
-}
-
-/// The unit a cell states, as the code or as text; `None` for a null.
-pub(super) fn unit_of(value: &Scalar) -> Option<Unit> {
-    match value {
-        Scalar::Unit(held) => Some(held.clone()),
-        other => other.as_str().and_then(|text| Unit::new(text).ok()),
     }
 }
 

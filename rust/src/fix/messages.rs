@@ -10,7 +10,8 @@ use crate::text::TextEntries;
 enum Source {
     Empty,
     One(Option<Result<FixMsg>>),
-    /// The messages a row held, read on another thread and carried over.
+    /// The messages a row held, read on another thread and carried over,
+    /// each already split.
     Many(std::vec::IntoIter<Result<FixMsg>>),
     /// The frames one row still holds, read where they open.
     Frames {
@@ -30,47 +31,51 @@ enum Source {
 ///
 /// A row yields none, one or many: a line carrying several
 /// frames yields one per frame, re-entering the frame reader where each
-/// opens over the page the row already holds. Nothing is collected.
-/// An error is yielded once and ends this iterator.
+/// opens over the page the row already holds, and each message read is
+/// followed by the messages it splits into - an order's execution, a
+/// trade's sided executions, an unsided quote's sided quotes - which the
+/// parse splits off once, here. Nothing is collected. An error is yielded
+/// once and ends this iterator.
 pub struct FixMessages {
     source: Source,
+    /// The messages the last one read split off, still to yield.
+    split: std::vec::IntoIter<FixMsg>,
 }
 
 impl FixMessages {
     pub(super) fn one(message: FixMsg) -> Self {
-        Self {
-            source: Source::One(Some(Ok(message))),
-        }
+        Self::of(Source::One(Some(Ok(message))))
     }
 
     /// What a row carrying no message at all answers.
-    pub(super) const fn none() -> Self {
+    pub(super) fn none() -> Self {
+        Self::of(Source::Empty)
+    }
+
+    fn of(source: Source) -> Self {
         Self {
-            source: Source::Empty,
+            source,
+            split: Vec::new().into_iter(),
         }
     }
 
     /// The frames a row holds from `at` on, read one at a time.
-    pub(super) const fn frames(
+    pub(super) fn frames(
         codec: FixCodec,
         entries: TextEntries,
         at: usize,
         stamp: Option<Arc<RowStamp>>,
     ) -> Self {
-        Self {
-            source: Source::Frames {
-                codec,
-                entries,
-                at,
-                stamp,
-            },
-        }
+        Self::of(Source::Frames {
+            codec,
+            entries,
+            at,
+            stamp,
+        })
     }
 
     pub(super) fn from_result(result: Result<Self>) -> Self {
-        result.unwrap_or_else(|error| Self {
-            source: Source::One(Some(Err(error))),
-        })
+        result.unwrap_or_else(|error| Self::of(Source::One(Some(Err(error)))))
     }
 
     /// The same messages, read here and now: what a door reading on
@@ -80,10 +85,11 @@ impl FixMessages {
     /// already read, and is handed back as it is.
     pub(super) fn collected(self) -> Self {
         match self.source {
-            Source::Frames { .. } => Self {
-                source: Source::Many(self.collect::<Vec<_>>().into_iter()),
+            Source::Frames { .. } => Self::of(Source::Many(self.collect::<Vec<_>>().into_iter())),
+            source => Self {
+                source,
+                split: self.split,
             },
-            source => Self { source },
         }
     }
 }
@@ -92,10 +98,14 @@ impl Iterator for FixMessages {
     type Item = Result<FixMsg>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(split) = self.split.next() {
+            return Some(Ok(split));
+        }
         let value = match &mut self.source {
             Source::Empty => None,
             Source::One(value) => value.take(),
-            Source::Many(read) => read.next(),
+            // Already split where it was read.
+            Source::Many(read) => return read.next(),
             Source::Frames {
                 codec,
                 entries,
@@ -109,7 +119,13 @@ impl Iterator for FixMessages {
         if value.as_ref().is_none_or(Result::is_err) {
             self.source = Source::Empty;
         }
-        value
+        value.map(|read| {
+            read.map(|message| {
+                let (message, split) = message.split();
+                self.split = split.into_iter();
+                message
+            })
+        })
     }
 }
 

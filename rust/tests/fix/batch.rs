@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
+
+use super::SoleMessage;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
@@ -196,7 +198,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         132,
         133,
         134,
-        135, // the quote's lanes
+        135, // the quote's bid and offer
         453,
         454,
         768, // the groups
@@ -251,13 +253,13 @@ fn the_entries_column_keeps_only_content_the_columns_did_not_represent() {
     assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
     // Every scalar this fixture states has a fixed column, so its residual
-    // arrival record is present but empty rather than duplicating the row.
+    // record is present but empty rather than duplicating the row.
     let entries = column(&batch, "fixentries");
     assert!(entries.is_valid(0));
     assert_eq!(
         first_value(&batch, "fixentries")
-            .as_sequence()
-            .map(<[Scalar]>::len),
+            .as_mapping()
+            .map(<[(Scalar, Scalar)]>::len),
         Some(0)
     );
 }
@@ -682,8 +684,8 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
         )
         .unwrap()
     };
-    let first = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:30|10=0|");
-    let last = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:31|10=0|");
+    let first = line(b"8=FIX.4.4|35=D|11=A|65099=stream|52=20260102-10:15:30|10=0|");
+    let last = line(b"8=FIX.4.4|35=D|11=A|65099=stream|52=20260102-10:15:31|10=0|");
     let marker = Arc::new(());
     let mut items = [Ok(first), Err(source_failure(&marker)), Ok(last)].into_iter();
     let pulls = std::rc::Rc::new(std::cell::Cell::new(0));
@@ -709,7 +711,11 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     }
     assert_eq!(read.len(), 2);
     assert_eq!(read[1].get_prevuuid(), Some(read[0].get_curruuid()));
+    // One chain, one creation - the first message's own instant - and one
+    // cross element.
+    assert_eq!(read[0].get_creaunix(), Some(read[0].get_currunix()));
     assert_eq!(read[1].get_creaunix(), read[0].get_creaunix());
+    assert_eq!(read[1].get_crossuuid(), read[0].get_crossuuid());
     assert!(pipeline.next().is_none());
     assert!(pipeline.next().is_none());
     assert_eq!(pulls.get(), 4);
@@ -744,10 +750,17 @@ fn a_walked_message_names_its_predecessor_and_keeps_its_own_source() {
         })
         .collect();
     let sources: Vec<_> = lines.iter().map(Element::get_curruuid).collect();
-    let walked: Vec<FixMsg> = codec
+    let every: Vec<FixMsg> = codec
         .lifecycle(codec.parse_text_lines(lines.into_iter().map(Ok::<TextLine, yggdryl::Error>)))
         .map(Result::unwrap)
         .collect();
+    // Each fill's report is its order's, and the execution split off it is
+    // a chain of its own, naming the report beside the line (A12).
+    assert_eq!(every.len(), 5);
+    let (executions, walked): (Vec<FixMsg>, Vec<FixMsg>) = every
+        .iter()
+        .cloned()
+        .partition(|message| message.msgcat() == yggdryl::MarketDataKind::Execution);
     assert_eq!(walked.len(), 3);
     let identities: Vec<_> = walked.iter().map(Element::get_curruuid).collect();
     assert_eq!(
@@ -764,6 +777,18 @@ fn a_walked_message_names_its_predecessor_and_keeps_its_own_source() {
             "a source never travels along the chain"
         );
     }
+    for (execution, (report, source)) in
+        executions.iter().zip(walked[1..].iter().zip(&sources[1..]))
+    {
+        assert_eq!(
+            execution.get_prevuuid(),
+            None,
+            "an execution follows nothing"
+        );
+        assert!(execution.get_srcuuids().contains(source));
+        assert!(execution.get_srcuuids().contains(&report.get_srcuuids()[0]));
+    }
+    let walked = every;
     let again: Vec<FixMsg> = codec
         .lifecycle(walked.clone())
         .map(Result::unwrap)
@@ -1298,8 +1323,10 @@ fn lifecycle_inherits_missing_order_links_from_the_exact_predecessor() {
             b"8=FIX.4.4|35=8|52=20260102-10:15:30|11=CLIENT-A|37=ORDER-A|198=SHARED|39=0|10=0|",
         )
         .unwrap();
+    // A report of a partial fill: the stream door's report, its order's,
+    // the execution it splits off walking a chain of its own (A12).
     let current = codec
-        .parse_fix_line(
+        .sole_line(
             b"8=FIX.4.4|35=8|52=20260102-10:15:31|37=ORDER-B|198=SHARED|parentorderid=|39=1|10=0|",
         )
         .unwrap();
@@ -1334,8 +1361,10 @@ fn lifecycle_inherits_missing_order_links_from_the_exact_predecessor() {
             b"8=FIX.4.4|35=8|52=20260102-10:16:30|11=CLIENT-PREV|37=ORDER-PREV|198=SHARED-STATED|39=0|10=0|",
         )
         .unwrap();
+    // A report of a partial fill: the stream door's report, its order's,
+    // the execution it splits off walking a chain of its own (A12).
     let current = codec
-        .parse_fix_line(
+        .sole_line(
             b"8=FIX.4.4|35=8|52=20260102-10:16:31|11=CLIENT-STATED|37=ORDER-NEXT|198=SHARED-STATED|parentorderid=PARENT-STATED|39=1|10=0|",
         )
         .unwrap();
@@ -1667,11 +1696,10 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     // derived field this fixed schema does not project stays there instead,
     // so reconstructing the row cannot lose it.
     let residual = first_value(&filled, "fixentries");
-    let entries = residual.as_sequence().expect("the residual entries");
+    let entries = residual.as_mapping().expect("the residual map");
     assert_eq!(entries.len(), 1);
-    let entry = entries[0].as_sequence().expect("a residual entry");
-    assert_eq!(entry[0].as_i64(), Some(381));
-    assert_eq!(entry[2].as_str(), Some("420"));
+    assert_eq!(entries[0].0.as_str(), Some("381:grosstradeamt"));
+    assert_eq!(entries[0].1.as_str(), Some("420"));
 }
 
 /// The batch door reads a row as the line it is, and states that line as the
@@ -1740,7 +1768,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     use yggdryl::graph::EventColumn;
 
     const PLACED: &str = "8=FIX.4.4|35=D|11=C-1|37=A|39=0|54=1|38=100|10=0|";
-    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|65063=20240102-10:15:30.100|10=0|";
+    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|65003=20240102-10:15:30.100|10=0|";
     let codec = codec();
     let options = Arc::new(yggdryl::text::TextOptions::new());
     let mut lines: Vec<TextLine> = [PLACED, FILLED]
@@ -1808,9 +1836,16 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         ))
         .map(std::result::Result::unwrap)
         .collect();
-    assert_eq!(messages.len(), 2);
+    // The fill is its order's report and the execution split off it, which
+    // names the report beside the line (A12).
+    assert_eq!(messages.len(), 3);
     assert_eq!(messages[0].get_srcuuids(), &identities[..1]);
     assert_eq!(messages[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
+    assert!(
+        messages[2]
+            .get_srcuuids()
+            .contains(&yggdryl::Uuid::from_v8(7))
+    );
     assert_eq!(messages[0].get_recdunix(), Some(1_704_190_530_000_000_000));
     assert_eq!(messages[1].get_recdunix(), Some(1_704_190_530_100_000_000));
     // The row's own seventeen name the message, never the line it came from.
@@ -1829,7 +1864,11 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         .messages(yggdryl::arrow::batch_reader(walked.schema(), [walked]))
         .map(std::result::Result::unwrap)
         .collect();
-    assert_eq!(chained.len(), 2);
+    assert_eq!(
+        chained.len(),
+        3,
+        "the order, its fill's report, the execution"
+    );
     assert_eq!(chained[1].get_prevuuid(), Some(chained[0].get_curruuid()));
     assert_eq!(chained[1].get_seqnum(), 1);
     assert!(
@@ -2050,7 +2089,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
     let rows: usize = typed.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 0, "a payload of `D` carries no message");
 
-    // The entries column is a serie, not a payload: naming it is refused
+    // The entries column is a map, not a payload: naming it is refused
     // before a row is read rather than answered as rows of nothing.
     let refused = codec
         .with_payload_column("fixentries")
@@ -2085,7 +2124,8 @@ fn a_walk_keeps_each_rows_own_cells_with_its_own_message() {
         .unwrap();
     let schema = parsed.schema();
     let held = batches(parsed);
-    assert_eq!(row_count(&held), 3);
+    // The fill's line is two rows: its report and its execution (A12).
+    assert_eq!(row_count(&held), 4);
 
     // The reader stated the body of each line in the row it made: the parse
     // door is the one door that can, because the message holds none of it.
@@ -2114,22 +2154,25 @@ fn a_walk_keeps_each_rows_own_cells_with_its_own_message() {
         .unwrap();
     assert_eq!(walked.schema(), schema, "the same schema in and out");
     let after = batches(walked);
-    assert_eq!(row_count(&after), 3);
-    let after: Vec<_> = (0..3).map(|row| body_of(&after[0], row)).collect();
+    assert_eq!(row_count(&after), 4);
+    let after: Vec<_> = (0..4).map(|row| body_of(&after[0], row)).collect();
     assert_eq!(
         after.iter().map(|held| held.0.clone()).collect::<Vec<_>>(),
         vec![
             "line-0 ".to_owned() + lines[2].trim_start_matches("line-0 "),
             "line-1 ".to_owned() + lines[1].trim_start_matches("line-1 "),
             "line-2 ".to_owned() + lines[0].trim_start_matches("line-2 "),
+            "line-2 ".to_owned() + lines[0].trim_start_matches("line-2 "),
         ],
         "the walk reordered the rows",
     );
     // And the line each row holds is the line its own message came off: the
-    // order's row carries no ExecID, and the two reports carry their own.
+    // order's row carries no ExecID, the two reports carry their own, and
+    // the execution split off the fill carries its report's line.
     assert_eq!(after[0].1, None, "the order states no ExecID");
     assert_eq!(after[1].1.as_deref(), Some("E1"));
     assert_eq!(after[2].1.as_deref(), Some("E2"));
+    assert_eq!(after[3].1.as_deref(), Some("E2"));
     for held in &after {
         assert_eq!(held.2.as_deref(), Some("WALK-1"));
     }

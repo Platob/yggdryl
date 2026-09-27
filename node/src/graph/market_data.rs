@@ -5,14 +5,14 @@ use std::iter::FusedIterator;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use napi::bindgen_prelude::{ClassInstance, Either, Either10, Env, Function, Result, Unknown};
+use napi::bindgen_prelude::{ClassInstance, Either, Either9, Env, Function, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::FieldPath;
 use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
 
-use super::book::{JsBookEvent, JsBookSide, JsSnapshotEvent};
+use super::book::{JsBookEvent, JsSnapshotEvent};
 use super::operation::{
     JsBookRef, JsExecution, JsExecutionEvent, JsOrder, JsOrderEvent, JsQuote, JsQuoteEvent,
 };
@@ -29,11 +29,10 @@ use crate::{Pulled, exact_u64, javascript_failure, napi_error};
 const ROOT_NAME: &str = "marketdata";
 
 /// The leaf a value holds, as the class of its variant.
-type Leaf = Either10<
+type Leaf = Either9<
     JsOrder,
     JsQuote,
     JsExecution,
-    JsBookSide,
     JsOrderEvent,
     JsQuoteEvent,
     JsExecutionEvent,
@@ -48,13 +47,12 @@ fn leaf_object(data: CoreMarketData) -> Leaf {
         CoreMarketData::Order(leaf) => Leaf::A(JsOrder::from_core(leaf)),
         CoreMarketData::Quote(leaf) => Leaf::B(JsQuote::from_core(leaf)),
         CoreMarketData::Execution(leaf) => Leaf::C(JsExecution::from_core(leaf)),
-        CoreMarketData::BookSide(leaf) => Leaf::D(JsBookSide::from_core(leaf)),
-        CoreMarketData::OrderEvent(leaf) => Leaf::E(JsOrderEvent::from_core(leaf)),
-        CoreMarketData::QuoteEvent(leaf) => Leaf::F(JsQuoteEvent::from_core(leaf)),
-        CoreMarketData::ExecutionEvent(leaf) => Leaf::G(JsExecutionEvent::from_core(leaf)),
-        CoreMarketData::TradeEvent(leaf) => Leaf::H(JsTradeEvent::from_core(leaf)),
-        CoreMarketData::BookEvent(leaf) => Leaf::I(JsBookEvent::from_core(*leaf)),
-        CoreMarketData::SnapshotEvent(leaf) => Leaf::J(JsSnapshotEvent::from_core(leaf)),
+        CoreMarketData::OrderEvent(leaf) => Leaf::D(JsOrderEvent::from_core(leaf)),
+        CoreMarketData::QuoteEvent(leaf) => Leaf::E(JsQuoteEvent::from_core(leaf)),
+        CoreMarketData::ExecutionEvent(leaf) => Leaf::F(JsExecutionEvent::from_core(leaf)),
+        CoreMarketData::TradeEvent(leaf) => Leaf::G(JsTradeEvent::from_core(leaf)),
+        CoreMarketData::BookEvent(leaf) => Leaf::H(JsBookEvent::from_core(*leaf)),
+        CoreMarketData::SnapshotEvent(leaf) => Leaf::I(JsSnapshotEvent::from_core(leaf)),
     }
 }
 
@@ -118,7 +116,7 @@ fn batch_sizes(
 }
 
 /// One value over every market leaf - an order, a quote or an execution,
-/// undated or dated, a book side, a trade, a book or a snapshot control -
+/// undated or dated, a trade, a book or a snapshot control -
 /// answering the element and market facts its leaf answers. Immutable:
 /// every verb answers a new value.
 #[napi(js_name = "MarketData")]
@@ -139,7 +137,7 @@ impl JsMarketData {
     /// Wrap any market leaf, through the core's own `From`.
     #[napi(
         constructor,
-        ts_args_type = "leaf: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
+        ts_args_type = "leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
     )]
     pub fn new(leaf: Unknown<'_>) -> Result<Self> {
         market_data_from(leaf).map(Self::from_core)
@@ -155,6 +153,15 @@ impl JsMarketData {
     #[napi(getter)]
     pub fn kind(&self) -> &'static str {
         self.inner.kind().as_str()
+    }
+
+    /// The market data category of this value's leaf, as the
+    /// `marketdatakind` member's stored name: an order `ORDR`, a quote
+    /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
+    /// `BOOK`.
+    #[napi(getter)]
+    pub fn marketdatakind(&self) -> &'static str {
+        self.inner.marketdatakind().as_str()
     }
 
     /// Whether the leaf is one of the six dated ones.
@@ -189,15 +196,6 @@ impl JsMarketData {
             .as_execution()
             .cloned()
             .map(JsExecution::from_core)
-    }
-
-    /// The book side this value is, else `null`.
-    #[napi]
-    pub fn as_book_side(&self) -> Option<JsBookSide> {
-        self.inner
-            .as_book_side()
-            .cloned()
-            .map(JsBookSide::from_core)
     }
 
     /// The dated order this value is, else `null`.
@@ -256,7 +254,7 @@ impl JsMarketData {
 
     /// The leaf this value holds, as its own class.
     #[napi(
-        ts_return_type = "Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
+        ts_return_type = "Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
     )]
     pub fn into_leaf(&self) -> Leaf {
         leaf_object(self.inner.clone())
@@ -281,7 +279,7 @@ impl JsMarketData {
     }
 
     /// The plan one named view is over a `marketdata` stream - `orders`,
-    /// `quotes`, `executions`, `trades`, `book_sides`, `books`, or the
+    /// `quotes`, `executions`, `trades`, `books`, or the
     /// `lifecycle` of the chain `crosscode` names, the one view that takes
     /// one - read ignoring ASCII case, with each lift, a `FieldPath` read
     /// once, appended as a projection after the view's own columns. Built
@@ -319,7 +317,7 @@ common_verbs!(JsMarketData);
 
 /// A stream of `MarketData`: the lazy row-decode walk
 /// `MarketData.fromArrowReader` answers, and the sorted operations
-/// `FixCodec.marketOperations` answers.
+/// `FixCodec.marketData` answers.
 #[napi(js_name = "MarketDataRowIterator")]
 pub struct JsMarketDataRowIterator {
     inner: Box<dyn FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send>,

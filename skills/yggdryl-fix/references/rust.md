@@ -57,6 +57,9 @@ assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
 // The counter names the group it opens; a path reaches through the group.
 assert_eq!(registry.field_by_counter(453)?.name(), "parties");
 assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+// A name reads four word pairs either way: offer/ask, size/qty, bid/demand, px/price.
+assert_eq!(registry.field_by_name("AskPrice")?.as_fix().tag()?, Some(133));
+assert_eq!(registry.field_by_name("DemandQty")?.as_fix().tag()?, Some(134));
 
 // The identity is the tag and the folded name; a bare integer is never one.
 let id = registry.field(55)?.as_fix().id()?.expect("a tagged field");
@@ -173,25 +176,28 @@ use std::sync::Arc;
 
 use yggdryl::graph::{Element, Event, Market};
 use yggdryl::local::LocalFolder;
-use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
+use yggdryl::{Decimal, FixCodec, FixRegistry, MarketDataKind, Scalar};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
-let message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|38=100|44=10.5|10=0|")?;
+let message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|38=100|44=10.5|202=105|10=0|")?;
 
 assert_eq!((message.header().beginstring(), message.header().msgtype()), ("FIX.4.4", "D"));
+// The category its type files under, and the option strike it identifies.
+assert_eq!(message.msgcat(), MarketDataKind::Order);
+assert_eq!(message.strikepx(), Some(Decimal::from_int(105)));
 // A coded value reads as its name; the wire keeps its code.
 assert_eq!(message.by_tag(54)?.as_str(), Some("BUY"));
 assert_eq!(message.get_side().as_str(), "BUY");
 assert_eq!(message.get_quantity(), Some(Decimal::from_int(100)));
 assert_eq!(message.by_name("symbol")?, Scalar::from("AAPL"));
-// The first stated OrderID, ClOrdID, ... names the order's chain.
-assert_eq!(message.get_crosscode(), "A1");
+// The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
+assert_eq!(message.get_crosscode(), "BUY:A1");
 // Instants are i64 nanoseconds since the epoch, UTC.
 assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
 // The entries are the content row as a tree; the lifted 11, 38 and 44 are not in it.
 let names: Vec<&str> = message.entries().iter().map(yggdryl::FixEntry::name).collect();
-assert_eq!(names, ["symbol", "side", "timeinforce"]);
+assert_eq!(names, ["symbol", "side", "strikeprice", "timeinforce"]);
 ```
 
 ## Compose a message and write facts
@@ -360,7 +366,7 @@ batches back as wire lines.
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_column_of, fix_schema};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_column_of, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -369,11 +375,16 @@ let schema = fix_schema(&registry, "fix")?;
 // Columns are the dictionary's folded names; the tag is on each column.
 assert_eq!(schema.index_of("msgtype"), fix_column_of(&schema, 35));
 
-let lines = ["8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|10=0|", "8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|"];
+let lines = ["8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|18=G|9999=x|10=0|", "8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 
 // One message as one row, and back.
 let row = parsed[0].into_row(&schema)?;
+// What no column holds is `fixentries`, keyed `tag:name`; a key no dictionary
+// resolves is no field, and lands in `metadata` under its own spelling.
+let cell = |name: &str| row.get(schema.index_of(name).expect("a fixed column")).expect("a cell");
+assert_eq!(cell("fixentries").get_key_str("18:execinst").and_then(Scalar::as_str), Some("G"));
+assert_eq!(cell("metadata").get_key_str("9999").and_then(Scalar::as_str), Some("x"));
 assert_eq!(FixMsg::from_row(Arc::clone(&registry), &schema, &row)?.into_row(&schema)?, row);
 
 // A stream of messages as batches, and the batches as messages again.
@@ -385,21 +396,26 @@ assert_eq!(again.len(), 2);
 // And out to the wire, one line per row.
 let mut sink = Vec::new();
 assert_eq!(codec.write_arrow_reader(codec.arrow_reader(schema, again)?, &mut sink)?, 2);
-assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|9999=x|"));
+assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|18=G|9999=x|"));
 ```
 
 ## Chain an order's lifecycle
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order under one `crossuuid`.
+its order and side under one `crossuuid`; a report stating no side joins the
+one side alive under its identifiers. A fill's execution, split off at the
+parse, is a chain of its own. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
+instant order as it comes, one epoch hour at a time, and answers the same walk.
+A snapshot grid's view is the live message as of its tick: dated at it, so its
+`curruuid` is that instant's, with the live message's content and place.
 
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Element, Event, Market};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, State, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -413,36 +429,83 @@ let lines = [
 let parsed: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 assert!(parsed.iter().all(|held| held.get_seqnum() == 0 && held.get_prevuuid().is_none()));
 
-let [order, ack, fill] = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("three");
+// Three lines, four messages: the fill's report and the execution it reports.
+assert_eq!(parsed.len(), 4);
+
+let [order, ack, fill, execution] = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("four");
 // Sorted by event time, joined by the identifiers each message went by.
 assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 1, 2));
 assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
 assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
-assert_eq!(fill.get_state().as_str(), "FILLED");
+// The reports stated no side: they joined the buy alive under A1 and O1.
+assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "BUY:A1"));
+assert_eq!((fill.msgcat(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
+// Every walked message states when its chain began.
+assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
+assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
+assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (0, None));
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 let schema = fix_schema(&registry, "fix")?;
 let rows = codec.arrow_reader(schema, codec.parse_lines(lines))?;
 let chained: usize = codec.lifecycle_arrow_reader(rows)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
-assert_eq!(chained, 3);
+assert_eq!(chained, 4);
 ```
 
-## Turn FIX into market operations and books
+## Split fills and two-sided quotes at the parse
 
-`market_operations` admits what a book folds, expands each message into graph
-leaves and sorts them by the instant a book folds them at; `BookIterator` then
-walks them. Compose `lifecycle` in front when predecessor state matters.
-`market_arrow_reader` writes the sorted operations as `marketdata` rows, and
-`market_operations_arrow_reader` is its twin over batches of FIX rows already
-in Arrow.
+The parse splits what a message reports, once, so nothing downstream states a
+fill or a side twice: an execution report that fills is its order's report
+(`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
+chained by its `ExecID`; a trade (`AE`) adds one sided execution per
+`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
+a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+
+```rust
+use std::sync::Arc;
+
+use yggdryl::graph::{Element, Event, Market};
+use yggdryl::local::LocalFolder;
+use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, State};
+
+let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
+
+let fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|";
+let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("two");
+assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
+assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
+assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
+// A sided message stores its cross code under its side; the fill is a chain of its own.
+assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("BUY:O-9", "BUY:ExecID=E-1"));
+
+let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
+let [quote, bid, ask]: [FixMsg; 3] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("three");
+assert_eq!((quote.get_side(), bid.get_side(), ask.get_side()), (Side::Unknown, Side::Buy, Side::Sell));
+assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("BUY:Q1", "SELL:Q1"));
+// Each side prices at its own level and keeps the pair its source stated.
+assert_eq!((bid.get_price(), ask.get_price()), (Some("99".parse()?), Some("101".parse()?)));
+assert_eq!((ask.get_bidpx(), ask.get_askqty()), (Some("99".parse()?), Some("8".parse()?)));
+assert_eq!(bid.get_bidccy().map(|ccy| ccy.as_str()), Some("USD"));
+```
+
+## Turn FIX into market data and books
+
+`market_data` admits what a book folds - orders, one-sided quotes, executions,
+`W`/`X` book messages - reads each as its one graph leaf (a book message one
+per entry) and sorts them by the instant a book folds them at; `BookIterator`
+then walks them. Compose `lifecycle` in front when predecessor state matters.
+`market_arrow_reader` writes the sorted leaves as `marketdata` rows, and
+`market_data_arrow_reader` is its twin over batches of FIX rows already in
+Arrow.
 
 ```rust
 use std::sync::Arc;
 
 use yggdryl::graph::{BookIterator, MarketData, MarketKind};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -453,21 +516,23 @@ let lines = [
     "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ];
 let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
+assert!(capture.iter().all(|message| message.msgcat() == MarketDataKind::Book));
 
-let operations: Vec<MarketData> = codec.market_operations(codec.lifecycle(capture.clone())).collect::<yggdryl::Result<_>>()?;
-assert_eq!(operations.last().map(MarketData::kind), Some(MarketKind::ExecutionEvent));
-let books = BookIterator::new(operations.into_iter(), 0, false)?.collect::<yggdryl::Result<Vec<_>>>()?;
+let leaves: Vec<MarketData> = codec.market_data(codec.lifecycle(capture.clone())).collect::<yggdryl::Result<_>>()?;
+assert_eq!(leaves.len(), 4, "one leaf per entry");
+assert_eq!(leaves.last().map(MarketData::kind), Some(MarketKind::ExecutionEvent));
+let books = BookIterator::new(leaves.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(books.len(), 2);
-assert_eq!(books[1].bid().best_price().map(|price| price.to_string()).as_deref(), Some("101"));
+assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
 
 // The book door is strict: the same capture out of order is refused.
-assert!(codec.book_arrow_reader(capture.clone(), 0, false)?.any(|batch| batch.is_err()));
-// The sorted operations as `marketdata` rows.
+assert!(codec.book_arrow_reader(capture.clone(), 0)?.any(|batch| batch.is_err()));
+// The sorted leaves as `marketdata` rows.
 let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
-// The same operations off the capture's FIX rows.
+// The same leaves off the capture's FIX rows.
 let fixed = codec.arrow_reader(fix_schema(&registry, "fix")?, capture)?;
-let rows: usize = codec.market_operations_arrow_reader(fixed)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
+let rows: usize = codec.market_data_arrow_reader(fixed)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
 ```
 
@@ -563,7 +628,7 @@ std::fs::remove_dir_all(&path)?;
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:
   `with_exclude_msgtypes::<[&str; 0], &str>([])`.
-- `FixDedup` (drop an adjacent republication) and `registry.with_default_aliases()`
-  are Rust-only.
+- `FixDedup` (drop an adjacent republication) is Rust-only, and so are
+  `FxSymbol` and `FxTenor`, the FX symbol reading the parse runs.
 - `FixRegistry::install_env` fails once the default is resolved; install at
   startup, before any `FixRegistry::from_env()` or `FixMsg::new`.

@@ -1,4 +1,4 @@
-//! `ygg` - the yggdryl command line.
+//! `yggdryl` - the command line.
 //!
 //! One binary over the core's namespaces, each a subcommand that owns its own
 //! verbs and its own state. There are two: [`fix`], the FIX dictionary tool,
@@ -46,7 +46,7 @@ use clap::{Parser, Subcommand};
 
 /// The yggdryl command line.
 #[derive(Parser)]
-#[command(name = "ygg", version, about, long_about = None)]
+#[command(name = "yggdryl", version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Command,

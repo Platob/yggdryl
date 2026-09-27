@@ -8,7 +8,7 @@
 | --- | --- |
 | Owner | trait `yggdryl::graph::Element` (`graph::element`); Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `curruuid` | `get_curruuid`/`set_curruuid`: [`Uuid`](../types/uuid.md) - UUIDv8 over the content code (undated) or [event identity](event.md#identity) (dated) |
-| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated |
+| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; a market element taking a side stores it under that side - `BUY:O-1001` ([Market](market.md#sides-and-cross-codes)) |
 | `crosshashcode`, `crossuuid` | `get_crosshashcode`/`set_crosshashcode`: XXH3-64 of the cross code, zero if none; `get_crossuuid`/`set_crossuuid`: the cross element, never absent - UUIDv8 over the cross hash, else the element's own identity, so every element stands in one chain |
 | `currhashcode` | `get_currhashcode`/`set_currhashcode`: XXH3-64 digest of content |
 | `srcuuids` | `get_srcuuids`/`set_srcuuids`: sorted unique identities this one was read from; provenance, never chain, never digested |
@@ -19,7 +19,7 @@
 | Composite | feeds only nested `curruuid` bytes per occurrence, never `currhashcode`/content, framed by the layout's kind/count |
 | `with_previous` | implementor's: this element after another; events delegate to [`Event::following`](event.md#following) |
 | `merge_with` | provided: folds another same-`curruuid` statement (missing cross code, unioned sources), else no-op; events use [`Event::merging`](event.md#merging) |
-| Not here | operation names: [`Operation::get_altids`](operation.md#identifier-maps); book placement: [book control](order.md#book-control) |
+| Not here | operation names: [`Operation::get_altids`](operation.md#alternate-identifiers); book placement: [book control](order.md#book-control) |
 
 ## Example
 
@@ -122,6 +122,6 @@ An undated order read from two lines: one element, two sources.
 
 - `set_srcuuids(Vec::new())` unsays the sources; a nonempty list sorts/dedups at the setter. Following/restating keep an observation's own; merging alone unions them.
 - `set_crosscode(String::new())` unsays the cross code, reverting the cross element to this identity.
-- A dated leaf's setters recompute UUID/cross element on any change to instant, sequence, content/cross code or hash, keeping identity if the instant lacks UUIDv7 (a book side: a private store, content-derived); a foreign event may keep an assigned identity.
-- `is_after`/`is_before`: never after itself; equal when neither holds, so a stable sort keeps arrival order. Undated elements/book sides state no order; [`MarketData`](market-data.md) only between dated values.
+- A dated leaf's setters recompute UUID/cross element on any change to instant, sequence, content/cross code or hash, keeping identity if the instant lacks UUIDv7; a foreign event may keep an assigned identity.
+- `is_after`/`is_before`: never after itself; equal when neither holds, so a stable sort keeps arrival order. Undated elements state no order; [`MarketData`](market-data.md) only between dated values.
 - The traits validate nothing else: an unanswerable predecessor or source is the holder's to refuse.

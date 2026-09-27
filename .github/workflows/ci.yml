@@ -63,8 +63,8 @@ jobs:
         run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
       - name: Tests and benchmark smoke tests
         run: cargo test --locked -p yggdryl --all-targets --no-fail-fast ${{ matrix.flags }}
-      # The CLI's tests start the `ygg` binary and drive it - `ygg fix` over a
-      # dictionary, `ygg xmla serve` over a socket - and the binary links the
+      # The CLI's tests start the `yggdryl` binary and drive it - `yggdryl fix` over a
+      # dictionary, `yggdryl xmla serve` over a socket - and the binary links the
       # default-feature core, so they run in the lane that has already built it.
       - name: CLI tests and benchmark smoke tests
         if: matrix.name == 'default features'
@@ -153,7 +153,7 @@ jobs:
       # `stable-full` cache. The suites downstream pay roughly a minute more
       # at runtime (1620 tests: 27 s release, 89 s debug) and start ~10
       # minutes sooner.
-      - name: Stage the ygg command
+      - name: Stage the yggdryl command
         run: python scripts/stage_cli.py --debug
       - name: Build wheel
         run: maturin build --locked --profile dev --manifest-path python/Cargo.toml --interpreter python --out python/dist
@@ -175,9 +175,9 @@ jobs:
           scripts = [
               name
               for name in zipfile.ZipFile(wheel).namelist()
-              if name.endswith(".data/scripts/ygg")
+              if ".data/scripts/" in name
           ]
-          assert scripts == [f"yggdryl-{version}.data/scripts/ygg"], scripts
+          assert scripts == [f"yggdryl-{version}.data/scripts/yggdryl"], scripts
           print(f"{wheel} carries {scripts[0]}")
           EOF
       - uses: actions/upload-artifact@v4
@@ -496,4 +496,3 @@ jobs:
         run: |
           node scripts/build_docs_playground.js --check
           node scripts/build_docs_fix.js --check
-          node scripts/build_docs_replay.js --check

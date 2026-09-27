@@ -1524,8 +1524,9 @@ mod types {
             (DataType::Mic, "XPAR"),
             (DataType::Cfi, "ESVUFR"),
             (DataType::Isin, "US0378331005"),
-            (DataType::Side, "BUY"),
             (DataType::TimeInForce, "GTC"),
+            // A pair's bound is the canonical spelling the column holds.
+            (DataType::Forex, "eurusd"),
         ] {
             assert!(
                 yggdryl::internals::iceberg_value::is_portable(&dtype),
@@ -1547,22 +1548,70 @@ mod types {
     }
 
     #[test]
-    fn a_state_bound_is_the_int_its_column_stores() {
+    fn an_enum_bound_is_the_int_its_column_stores() {
         use yggdryl::internals::iceberg_value::{is_portable, single_to_value, single_value};
-        use yggdryl::{Scalar, State};
+        use yggdryl::{MarketDataKind, Scalar, Side, State};
 
-        // A state column stores its member's code, so its bounds are Iceberg
-        // ints a planner compares in lifecycle order.
-        let dtype = DataType::State;
-        assert!(is_portable(&dtype));
-        for state in [State::Unknown, State::New, State::Filled, State::Expired] {
-            let exact = Scalar::State(state);
-            let bytes = single_value(&exact, &dtype).expect("a state encodes a bound");
-            assert_eq!(bytes, state.code().to_le_bytes(), "{state}");
-            assert_eq!(single_to_value(&bytes, &dtype), Some(exact), "{state}");
+        // An enum column stores its member's code, so its bounds are Iceberg
+        // ints a planner compares in code order - a state's in lifecycle
+        // order - and never the name a text codec writes.
+        let members = [
+            (
+                DataType::State,
+                Scalar::State(State::Unknown),
+                State::Unknown.code(),
+            ),
+            (
+                DataType::State,
+                Scalar::State(State::New),
+                State::New.code(),
+            ),
+            (
+                DataType::State,
+                Scalar::State(State::Filled),
+                State::Filled.code(),
+            ),
+            (
+                DataType::State,
+                Scalar::State(State::Expired),
+                State::Expired.code(),
+            ),
+            (
+                DataType::MarketDataKind,
+                Scalar::MarketDataKind(MarketDataKind::Order),
+                10,
+            ),
+            (
+                DataType::MarketDataKind,
+                Scalar::MarketDataKind(MarketDataKind::Unknown),
+                0,
+            ),
+            (DataType::Side, Scalar::Side(Side::Buy), 1),
+            (DataType::Side, Scalar::Side(Side::SellUnd), 17),
+        ];
+        for (dtype, exact, code) in members {
+            assert!(is_portable(&dtype), "{dtype}");
+            assert_eq!(
+                PrimitiveType::from_dtype(&dtype).unwrap(),
+                PrimitiveType::Int
+            );
+            let bytes = single_value(&exact, &dtype).expect("an enum member encodes a bound");
+            assert_eq!(bytes, code.to_le_bytes(), "{exact:?}");
+            assert_eq!(single_to_value(&bytes, &dtype), Some(exact), "{dtype}");
         }
-        // The code of no state reads as no bound rather than as a member.
-        assert_eq!(single_to_value(&7_i32.to_le_bytes(), &dtype), None);
+        // The code of no member reads as no bound rather than as a member.
+        assert_eq!(
+            single_to_value(&7_i32.to_le_bytes(), &DataType::State),
+            None
+        );
+        assert_eq!(
+            single_to_value(&22_i32.to_le_bytes(), &DataType::MarketDataKind),
+            None
+        );
+        assert_eq!(
+            single_to_value(&18_i32.to_le_bytes(), &DataType::Side),
+            None
+        );
     }
 
     #[test]

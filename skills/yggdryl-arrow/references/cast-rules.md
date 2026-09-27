@@ -52,7 +52,7 @@ may arrive absent, and the finished batch is checked again.
 | Child order | the target's order |
 | Missing child | nullable: all-null; required: refused at compile time |
 | Extra child | dropped |
-| Error path | dot/bracket from the cast root: `$.users[].zip`; a landed row as `$[3].bid.live[0].miccode` |
+| Error path | dot/bracket from the cast root: `$.users[].zip`; a landed row as `$[3].alive[0].miccode` |
 | Out as a batch | `into_arrow_batch` / `into_arrow_reader` refuse a record column holding a null **row** (a batch states no row validity) |
 
 ## Representation `bits`

@@ -163,22 +163,23 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
 
 
 def test_the_datatype_identifiers_are_laid_out_by_family():
-    # Eighty-eight, laid out by family: every identifier sits in its
+    # Ninety, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and
     # `urn` follow `version` in the text family, `sized_utf8` follows
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert len(enums.DATA_TYPE_IDS) == 88
+    assert len(enums.DATA_TYPE_IDS) == 90
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
-    # The code family's newest identifier follows the last one before it.
+    # The code family's newest identifiers follow the last one before them.
     assert ids.index("ric") == ids.index("unit") + 1
+    assert ids.index("forex") == ids.index("ric") + 1
     assert ids.index("url") == ids.index("version") + 1
     assert ids.index("urn") == ids.index("url") + 1
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
     # The enum family closes the list after the geospatial pair.
-    assert ids[-3:] == ["geometry", "geography", "state"]
+    assert ids[-5:] == ["geometry", "geography", "state", "marketdatakind", "side"]
     assert ids[:2] == ["null", "boolean"]
 
 

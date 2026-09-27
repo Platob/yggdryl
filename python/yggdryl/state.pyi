@@ -27,6 +27,7 @@ class State(enum.IntEnum):
     STATUS = 3001
     TRIGGERED = 3002
     ACTIVE = 3003
+    UPDATED = 3004
     IN_PROGRESS = 4000
     PARTIALLY_FILLED = 4001
     TRADE = 4002

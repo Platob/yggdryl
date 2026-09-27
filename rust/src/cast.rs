@@ -49,9 +49,9 @@ use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keep
 use crate::decimal::casts::{
     holds_decimal, ingest_float_values, is_float_arrow, render_fixed_text,
 };
+use crate::enums::{enum_refusal, ingest_enum_array};
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::path::{Path, Segment};
-use crate::state::casts::ingest_state_array;
 use crate::string::casts::{StringSource, ingest_code_array, ingest_string_array};
 use crate::string::{is_text_storage, needs_extension};
 use crate::temporal::casts::{
@@ -60,9 +60,9 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
-    code_refusal, recognized_arrow_extension,
+    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, TIMEINFORCE_WIDTH,
+    UNIT_WIDTH, code_refusal, recognized_arrow_extension,
 };
 use crate::{BytesType, DataType, Field, Scalar};
 
@@ -1385,7 +1385,7 @@ impl ArrayCastPlan {
             ArrayCastKind::StringIngest { .. }
             | ArrayCastKind::BytesIngest
             | ArrayCastKind::CodeIngest
-            | ArrayCastKind::StateIngest
+            | ArrayCastKind::EnumIngest
             | ArrayCastKind::UuidIngest
             | ArrayCastKind::UrlIngest
             | ArrayCastKind::UrnIngest
@@ -1454,10 +1454,11 @@ enum ArrayCastKind {
     /// on every row, and a column that already holds what the code promises
     /// is shared rather than copied.
     CodeIngest,
-    /// Values entering a state: an integer source is read as the member codes
-    /// it holds and anything else as the spellings it renders, so every
-    /// exposed value is a member before its code is stored.
-    StateIngest,
+    /// Values entering an enum leaf: an integer source is read as the member
+    /// codes it holds and anything else as the spellings it renders, so every
+    /// exposed value is a member before its code is stored. One match per
+    /// array selects the leaf; every row after it runs against its members.
+    EnumIngest,
     /// Values entering a UUID: every exposed value is validated under the one
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
@@ -1655,11 +1656,13 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            // A state column written as a state holds member codes; bare
-            // integers are codes nothing has checked yet.
-            DataType::State => {
-                !matches!(source_extension.as_ref(), Some(RecognizedExtension::State))
-            }
+            // An enum column written as its own leaf holds member codes; bare
+            // integers, and another leaf's codes, are codes nothing has
+            // checked under this leaf yet.
+            held if held.is_enum() => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Enum(source)) if source == field.dtype()
+            ),
             DataType::Uuid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid)),
             DataType::Version => !matches!(
                 source_extension.as_ref(),
@@ -1815,18 +1818,18 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            // A state reads integers as the codes they are and everything the
-            // kernel renders as text as a spelling; the member rule runs per
-            // value either way.
-            (DataType::State, source) => {
+            // An enum leaf reads integers as the codes they are and everything
+            // the kernel renders as text as a spelling; the member rule runs
+            // per value either way.
+            (held, source) if held.is_enum() => {
                 if source.is_integer() || can_cast_types(source, &ArrowDataType::Utf8) {
-                    ArrayCastKind::StateIngest
+                    ArrayCastKind::EnumIngest
                 } else {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
                             "expected an integer column or a column Arrow renders as utf8 to \
-                             cast into state, got {source:?}"
+                             cast into {held}, got {source:?}"
                         ),
                     });
                 }
@@ -1937,7 +1940,7 @@ impl ArrayCastPlan {
                         Some(
                             RecognizedExtension::String(_)
                                 | RecognizedExtension::Code(_)
-                                | RecognizedExtension::State
+                                | RecognizedExtension::Enum(_)
                                 | RecognizedExtension::Uuid
                         )
                     )) =>
@@ -1964,7 +1967,7 @@ impl ArrayCastPlan {
                             .string_parameters()
                             .map_or(StringSource::Bare, StringSource::String),
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
-                        Some(RecognizedExtension::State) => StringSource::State,
+                        Some(RecognizedExtension::Enum(held)) => StringSource::Enum(held.clone()),
                         Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
                     },
@@ -2418,9 +2421,32 @@ impl ArrayCastPlan {
             ArrayCastKind::BytesIngest => {
                 ingest_bytes_array(&array, self.safe(), &self.field, exposure, budget)?
             }
-            ArrayCastKind::StateIngest => {
-                ingest_state_array(&array, self.safe(), &self.field, exposure, budget)?
-            }
+            // One match per array selects the enum leaf; every row after it
+            // runs against that leaf's members.
+            ArrayCastKind::EnumIngest => match self.field.dtype() {
+                DataType::State => ingest_enum_array::<crate::State>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::MarketDataKind => ingest_enum_array::<crate::MarketDataKind>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Side => ingest_enum_array::<crate::Side>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                other => return Err(enum_refusal(other.id()).into()),
+            },
             ArrayCastKind::UuidIngest => ingest_uuid_array(
                 &array,
                 &self.expected,
@@ -2529,13 +2555,6 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::Side => ingest_code_array::<SIDE_WIDTH>(
-                    &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
                 DataType::TimeInForce => ingest_code_array::<TIMEINFORCE_WIDTH>(
                     &array,
                     self.safe(),
@@ -2544,6 +2563,13 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::Unit => ingest_code_array::<UNIT_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Forex => ingest_code_array::<FOREX_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
@@ -2782,9 +2808,9 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
-        // A state source is member codes: a state target re-reads them, an
+        // An enum source is member codes: an enum target re-reads them, an
         // integer reads the codes, and text spells each member's name.
-        (_, RecognizedExtension::State) => Ok(()),
+        (_, RecognizedExtension::Enum(_)) => Ok(()),
         // A fixed decimal source is its decimal storage with the scale
         // already fixed: every target reads it as it reads that storage,
         // except text, which spells the leaf's own trimmed text.

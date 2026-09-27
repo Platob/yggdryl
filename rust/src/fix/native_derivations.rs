@@ -1,155 +1,59 @@
-//! Native evaluation of the derivations carried by the shipped dictionary.
+//! The derivations every parse runs: the one implementation of the fields a
+//! message implies but did not carry.
 //!
-//! This module is entered only after the registry has proven that all twenty-
-//! nine derivation terms and their fields are the shipped ones. A registry
-//! with any added, removed or edited rule stays on the generic expression
-//! evaluator, so `FIX:derivation` remains the public customization surface.
+//! Twenty-nine rules, each keyed by the tag it fills and read off the
+//! message's own children by tag - `secaltids` by its canonical name - so
+//! they are the same rules whatever registry the message is typed by. A
+//! registry states no rule of its own: its field for a target types the
+//! answer, and a registry lacking that field answers nothing there.
+//!
+//! | target | fills with |
+//! | --- | --- |
+//! | `AvgPx(6)` | `LastPx`, on a report whose `CumQty` equals a positive `LastQty` |
+//! | `CumQty(14)` | `OrderQty - LeavesQty` on a report, never negative |
+//! | `Currency(15)` / `SettlCurrency(120)` | each other, except on a currency product (`Product` 4) |
+//! | `SecurityIDSource(22)` | `4`, `1` or `2` where `SecurityID` closes as an ISIN, a CUSIP or a SEDOL |
+//! | `LastPx(31)`, `BidPx(132)`, `OfferPx(133)` | spot rate plus forward points |
+//! | `OrderQty(38)` | `CumQty + CxlQty` on a canceled report, else `CumQty + LeavesQty`, else `CumQty + CxlQty` |
+//! | `OrdStatus(39)` | the `ExecType` both spell alike, or a trade's filled or partial status |
+//! | `SecurityID(48)` | the first ISIN `secaltids` states |
+//! | `Symbol(55)` | `SecurityID` under source `8` or `A`, else the `secaltids` identifier under `8` |
+//! | `TimeInForce(59)` | `0`, a day order, on a `D`, `G` or `8` message |
+//! | `SettlCurrAmt(119)` | `GrossTradeAmt * SettlCurrFxRate` at scale nine |
+//! | `OrigSendingTime(122)` | `SendingTime` on a possible duplicate |
+//! | `LeavesQty(151)` | `0` on a closed report, `OrderQty - CumQty` on a working one |
+//! | `SecurityType(167)` | the type the CFI code's category names (Appendix 6-D) |
+//! | `PutOrCall(201)` | an option CFI code's call or put |
+//! | `GrossTradeAmt(381)` | `LastQty * LastPx` at scale nine on a report |
+//! | `Product(460)` | the product group the security type is filed under, else the CFI category's |
+//! | `CFICode(461)` | the CFI code a security type names |
+//! | `CountryOfIssue(470)` | an ISIN's ISO 3166 prefix |
+//! | `PeggedPrice(839)` | `PeggedRefPrice + PegOffsetValue` |
+//! | `MinPriceIncrementAmount(1146)` | `MinPriceIncrement * ContractMultiplier` |
+//! | `TotalTradeQty(2367)` | `LastQty * TradingUnitPeriodMultiplier` |
+//! | `LastMultipliedQty(2368)` | `LastQty * ContractMultiplier` at scale nine |
+//! | `TotalGrossTradeAmt(2369)` | `LastPx * TotalTradeQty` at scale nine |
+//! | `TotalTradeMultipliedQty(2370)` | `TotalTradeQty * ContractMultiplier` at scale nine |
+//! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` is stated |
+//!
+//! A report is `MsgType` `8` or `9`. Arithmetic that overflows, a value the
+//! target's field refuses and an input the message does not state are all
+//! silence, never a guess.
 
-use crate::{
-    Cusip, DataType, Decimal, FixCategory, Isin, Result, Scalar, Sedol, StringEnum, TimeUnit,
-    Timezone,
-};
+use crate::{Cusip, DataType, Decimal, Isin, Result, Scalar, Sedol, StringEnum};
 
 use super::msg::FixMsg;
-use super::registry::FixRegistry;
 
-const RULE_COUNT: usize = super::constants::SHIPPED_DERIVATIONS.len();
-// Updated only with a reviewed native evaluator. The generator emits the
-// dictionary term signature separately, so a rule text change selects the
-// generic path until its hard-coded implementation is updated too.
-const NATIVE_DERIVATIONS_SHA256: &str =
-    "953409e8bfabe9a3e26b2272346bffbb470d70ce29820a06a60520160cf5a104";
+/// How many targets [`derive_once`] fills: the bound on the sweeps a
+/// fixpoint takes and the most answers one pass lands.
+const RULE_COUNT: usize = 29;
 const DECIMAL9: DataType = DataType::Decimal128 {
     precision: 38,
     scale: 9,
 };
 const DECIMAL18: DataType = DataType::DECIMAL;
-const DATETIME_NS_UTC: DataType = DataType::DateTime64 {
-    unit: TimeUnit::Nanosecond,
-    timezone: Timezone::UTC,
-};
 
-#[derive(Clone, Copy)]
-enum NativeKind {
-    Boolean,
-    Country,
-    Ccy,
-    DateTimeNsUtc,
-    Decimal,
-    Float64,
-    Int32,
-    String,
-}
-
-impl NativeKind {
-    fn accepts(self, dtype: &DataType) -> bool {
-        match self {
-            Self::Boolean => dtype == &DataType::Boolean,
-            Self::Country => dtype == &DataType::Country,
-            Self::Ccy => dtype == &DataType::Ccy,
-            Self::DateTimeNsUtc => dtype == &DATETIME_NS_UTC,
-            Self::Decimal => dtype == &DECIMAL18,
-            Self::Float64 => dtype == &DataType::Float64,
-            Self::Int32 => dtype == &DataType::Int32,
-            Self::String => dtype == &DataType::utf8(),
-        }
-    }
-}
-
-/// Every scalar the native rules read or fill. Names are checked as well as
-/// tags so an alternate-tag lookup cannot make a different field look native.
-const FIELDS: &[(i32, &str, NativeKind)] = &[
-    (6, "avgpx", NativeKind::Decimal),
-    (14, "cumqty", NativeKind::Decimal),
-    (15, "currency", NativeKind::Ccy),
-    (22, "securityidsource", NativeKind::String),
-    (31, "lastpx", NativeKind::Decimal),
-    (32, "lastqty", NativeKind::Decimal),
-    (35, "msgtype", NativeKind::String),
-    (38, "orderqty", NativeKind::Decimal),
-    (39, "ordstatus", NativeKind::String),
-    (43, "possdupflag", NativeKind::Boolean),
-    (48, "securityid", NativeKind::String),
-    (52, "sendingtime", NativeKind::DateTimeNsUtc),
-    (55, "symbol", NativeKind::String),
-    (59, "timeinforce", NativeKind::String),
-    (84, "cxlqty", NativeKind::Decimal),
-    (119, "settlcurramt", NativeKind::Decimal),
-    (120, "settlcurrency", NativeKind::Ccy),
-    (122, "origsendingtime", NativeKind::DateTimeNsUtc),
-    (132, "bidpx", NativeKind::Decimal),
-    (133, "offerpx", NativeKind::Decimal),
-    (150, "exectype", NativeKind::String),
-    (151, "leavesqty", NativeKind::Decimal),
-    (155, "settlcurrfxrate", NativeKind::Float64),
-    (167, "securitytype", NativeKind::String),
-    (188, "bidspotrate", NativeKind::Decimal),
-    (189, "bidforwardpoints", NativeKind::Decimal),
-    (190, "offerspotrate", NativeKind::Decimal),
-    (191, "offerforwardpoints", NativeKind::Decimal),
-    (194, "lastspotrate", NativeKind::Decimal),
-    (195, "lastforwardpoints", NativeKind::Decimal),
-    (201, "putorcall", NativeKind::Int32),
-    (211, "pegoffsetvalue", NativeKind::Float64),
-    (231, "contractmultiplier", NativeKind::Float64),
-    (381, "grosstradeamt", NativeKind::Decimal),
-    (454, "nosecurityaltid", NativeKind::Int32),
-    (455, "securityaltid", NativeKind::String),
-    (456, "securityaltidsource", NativeKind::String),
-    (460, "product", NativeKind::Int32),
-    (461, "cficode", NativeKind::String),
-    (470, "countryofissue", NativeKind::Country),
-    (839, "peggedprice", NativeKind::Decimal),
-    (969, "minpriceincrement", NativeKind::Float64),
-    (1095, "peggedrefprice", NativeKind::Decimal),
-    (1146, "minpriceincrementamount", NativeKind::Decimal),
-    (2353, "tradingunitperiodmultiplier", NativeKind::Int32),
-    (2367, "totaltradeqty", NativeKind::Decimal),
-    (2368, "lastmultipliedqty", NativeKind::Decimal),
-    (2369, "totalgrosstradeamt", NativeKind::Decimal),
-    (2370, "totaltrademultipliedqty", NativeKind::Decimal),
-    (2897, "currencycodesource", NativeKind::String),
-    (2957, "symbolpositionnumber", NativeKind::Int32),
-];
-
-/// Whether `registry` has exactly the field shapes the hard-coded evaluator
-/// assumes. The caller separately proves the complete canonical term set.
-pub(super) fn supports(registry: &FixRegistry) -> bool {
-    super::constants::SHIPPED_DERIVATIONS_SHA256 == NATIVE_DERIVATIONS_SHA256
-        && FIELDS.iter().all(|(tag, name, kind)| {
-            registry.get_field_by_tag(*tag).is_some_and(|field| {
-                field.name() == *name
-                    && field.as_fix().tag().ok().flatten() == Some(*tag)
-                    && kind.accepts(field.dtype())
-            })
-        })
-        && supports_secaltids(registry)
-}
-
-fn supports_secaltids(registry: &FixRegistry) -> bool {
-    let Some(group) = registry.get_definition(FixCategory::Groups, "secaltids") else {
-        return false;
-    };
-    if group.name() != "secaltids" || group.as_fix().counter().ok().flatten() != Some(454) {
-        return false;
-    }
-    let DataType::Serie(item) = group.dtype() else {
-        return false;
-    };
-    if item.name() != "secaltid" || !matches!(item.dtype(), DataType::Struct(_)) {
-        return false;
-    }
-    let members = item.fields();
-    members.len() == 3
-        && members[0].name() == "securityaltid"
-        && NativeKind::String.accepts(members[0].dtype())
-        && members[1].name() == "securityaltidsource"
-        && NativeKind::String.accepts(members[1].dtype())
-        && members[2].name() == "symbolpositionnumber"
-        && NativeKind::Int32.accepts(members[2].dtype())
-}
-
-/// Fill every shipped derivation to a fixpoint and rebuild the message once.
+/// Fill every derivation to a fixpoint and rebuild the message once.
 pub(super) fn fill_all(msg: &mut FixMsg) -> Result<()> {
     let landed = NativeRow::new(msg).settle();
     if !landed.is_empty() {
@@ -188,7 +92,7 @@ impl<'message> NativeRow<'message> {
     }
 
     /// A non-null answer already landed in this pass, else what the message
-    /// stated. A stated null remains fillable, exactly like the generic row.
+    /// stated. A stated null remains fillable.
     fn get(&self, tag: i32) -> Option<Scalar> {
         self.landed
             .iter()
@@ -227,9 +131,9 @@ impl<'message> NativeRow<'message> {
         Decimal::from_scalar(&self.get(tag)?)
     }
 
-    /// The first alternate identifier under `source`. Group filtering precedes
-    /// `[0]` in the canonical terms, so an absent member on that first matching
-    /// occurrence is absence rather than permission to inspect a later one.
+    /// The first alternate identifier under `source`: the first occurrence
+    /// stating that source answers, so an absent member there is absence
+    /// rather than permission to inspect a later occurrence.
     fn alternate(&self, source_value: &str) -> Option<Scalar> {
         let at = self.msg.as_field().index_of("secaltids")?;
         let column = self.msg.as_field().fields().get(at)?;
@@ -250,8 +154,9 @@ impl<'message> NativeRow<'message> {
         None
     }
 
-    /// Type one answer through its shipped registry field before another rule
-    /// can read it. Invalid identifiers, code values and overflows are silence.
+    /// Type one answer through the registry's field for its tag before
+    /// another rule can read it. Invalid identifiers, code values and
+    /// overflows are silence, and so is a tag the registry holds no field for.
     fn put(&mut self, tag: i32, answer: Option<Scalar>) {
         let Some(answer) = answer.filter(|value| !value.is_null()) else {
             return;
@@ -259,10 +164,10 @@ impl<'message> NativeRow<'message> {
         let Some(field) = self.msg.registry().get_field_by_tag(tag) else {
             return;
         };
-        // The generic evaluator gives a decimal target the exact market
-        // decimal a numeric expression restates as before asking the field.
-        // In particular, MinPriceIncrement * ContractMultiplier is a float
-        // expression whose certain result belongs in decimal128(38,18).
+        // A decimal target takes the exact market decimal a numeric answer
+        // restates as before the field is asked. In particular,
+        // MinPriceIncrement * ContractMultiplier multiplies two floats whose
+        // certain result belongs in decimal128(38,18).
         let answer = if field.dtype() == &DataType::DECIMAL {
             let Some(answer) = Decimal::from_scalar(&answer) else {
                 return;
@@ -296,7 +201,7 @@ fn derive_once(row: &mut NativeRow<'_>) {
 
     fill!(6, average_price(row));
     fill!(14, cumulative_quantity(row));
-    fill!(15, row.get(120));
+    fill!(15, the_other_currency(row, 120));
     fill!(22, security_id_source(row));
     fill!(31, add(row, 194, 195));
     fill!(38, order_quantity(row));
@@ -305,7 +210,7 @@ fn derive_once(row: &mut NativeRow<'_>) {
     fill!(55, symbol(row));
     fill!(59, time_in_force(row));
     fill!(119, scaled_product(row, 381, 155, 9));
-    fill!(120, row.get(15));
+    fill!(120, the_other_currency(row, 15));
     fill!(122, original_sending_time(row));
     fill!(132, add(row, 188, 189));
     fill!(133, add(row, 190, 191));
@@ -343,6 +248,14 @@ fn average_price(row: &NativeRow<'_>) -> Option<Scalar> {
         .flatten()
 }
 
+/// `Currency(15)` and `SettlCurrency(120)` each state the other, except on a
+/// message stated as a currency product (`product is distinct from 4`),
+/// where the two are the two legs of the pair.
+fn the_other_currency(row: &NativeRow<'_>, other: i32) -> Option<Scalar> {
+    let currency_product = row.get(460).and_then(|value| value.as_i128()) == Some(4);
+    (!currency_product).then(|| row.get(other)).flatten()
+}
+
 fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     if !row.text_in(35, REPORTS) {
         return None;
@@ -374,9 +287,9 @@ fn order_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     if canceled.is_some_and(Decimal::is_positive) && leaves.unwrap_or(Decimal::ZERO).is_zero() {
         return add(row, 14, 84);
     }
-    // Expression function arguments are eager: even when the first sum is
-    // non-null, an overflow in the fallback silences the generic rule. Keep
-    // that exact error boundary while avoiding its working scalar array.
+    // Both sums are evaluated: even when the first is stated, an overflow
+    // in the fallback silences the rule, so an answer is never read off
+    // arithmetic that failed beside it.
     let leaves = evaluated_add(row, 14, 151).ok()?;
     let canceled = evaluated_add(row, 14, 84).ok()?;
     leaves.or(canceled)
@@ -454,7 +367,7 @@ fn security_type(row: &NativeRow<'_>) -> Option<Scalar> {
         "ETF"
     } else if starts_case(cfi, "F") {
         "FUT"
-    } else if wildcard_o_f(cfi) {
+    } else if starts_case(cfi, "O?F") {
         "OOF"
     } else if starts_case(cfi, "O") || starts_case(cfi, "H") {
         "OPT"
@@ -472,10 +385,14 @@ fn security_type(row: &NativeRow<'_>) -> Option<Scalar> {
         "CDS"
     } else if starts_case(cfi, "ST") {
         "CMDTYSWAP"
+    } else if starts_case(cfi, "SF???N") {
+        "FXNDS"
     } else if starts_case(cfi, "SF") {
         "FXSWAP"
     } else if starts_case(cfi, "IF") {
         "FXSPOT"
+    } else if starts_case(cfi, "JF???N") || starts_case(cfi, "JF??FC") {
+        "FXNDF"
     } else if starts_case(cfi, "JF") {
         "FXFWD"
     } else if starts_case(cfi, "JR") {
@@ -603,11 +520,15 @@ fn cfi_code(row: &NativeRow<'_>) -> Option<Scalar> {
     } else if member_upper(Some(security), &["CMDTYSWAP"]) {
         "STXXXX"
     } else if member_upper(Some(security), &["FXSWAP"]) {
-        "SFXXXX"
+        "SFXXXP"
     } else if member_upper(Some(security), &["FXSPOT"]) {
-        "IFXXXX"
+        "IFXXXP"
     } else if member_upper(Some(security), &["FXFWD"]) {
-        "JFXXXX"
+        "JFTXFP"
+    } else if member_upper(Some(security), &["FXNDF"]) {
+        "JFTXFN"
+    } else if member_upper(Some(security), &["FXNDS"]) {
+        "SFXXXN"
     } else if member_upper(Some(security), &["FRA"]) {
         "JRXXXX"
     } else if member_upper(Some(security), &["EQFWD"]) {
@@ -692,9 +613,9 @@ fn exact_decimal(row: &NativeRow<'_>, tag: i32, scale: i8) -> Option<Scalar> {
     } else if let Some(integer) = value.as_i128() {
         integer.checked_mul(decimal_factor(scale)?)?
     } else {
-        // This is the expression evaluator's numeric cast: scale the
-        // float and truncate toward zero through the native integer cast.
-        // The target below then checks decimal128's thirty-eight digits.
+        // Scale the float and truncate toward zero through the integer
+        // cast; the target below then checks decimal128's thirty-eight
+        // digits.
         let floating = value.as_f64()?;
         scaled_float(floating, decimal_factor(scale)?)
     };
@@ -725,29 +646,23 @@ fn scaled_float(value: f64, factor: i128) -> i128 {
     (value * factor as f64) as i128
 }
 
-fn starts_case(value: &str, prefix: &str) -> bool {
+/// Whether `value` opens with the ASCII `pattern`, case not counting and `?`
+/// any one character: a CFI code's prefix, read as SQL's `ilike` reads one.
+fn starts_case(value: &str, pattern: &str) -> bool {
     if value.is_ascii() {
-        return value
-            .get(..prefix.len())
-            .is_some_and(|head| head.eq_ignore_ascii_case(prefix));
+        return value.len() >= pattern.len()
+            && value
+                .bytes()
+                .zip(pattern.bytes())
+                .all(|(held, expected)| expected == b'?' || held.eq_ignore_ascii_case(&expected));
     }
     let folded = value.to_lowercase();
     let mut characters = folded.chars();
-    prefix
-        .chars()
-        .all(|expected| characters.next() == Some(expected.to_ascii_lowercase()))
-}
-
-fn wildcard_o_f(value: &str) -> bool {
-    if value.is_ascii() {
-        let bytes = value.as_bytes();
-        return bytes.len() >= 3
-            && bytes[0].eq_ignore_ascii_case(&b'O')
-            && bytes[2].eq_ignore_ascii_case(&b'F');
-    }
-    let folded = value.to_lowercase();
-    let mut characters = folded.chars();
-    characters.next() == Some('o') && characters.nth(1) == Some('f')
+    pattern.chars().all(|expected| {
+        characters
+            .next()
+            .is_some_and(|held| expected == '?' || held == expected.to_ascii_lowercase())
+    })
 }
 
 fn member_upper(value: Option<&str>, members: &[&str]) -> bool {

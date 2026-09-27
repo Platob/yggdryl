@@ -1,121 +1,20 @@
-//! Native Node.js view of [`CoreBookEvent`], [`CoreBookSide`],
-//! [`CoreSnapshotEvent`], [`CoreSnapshotPartition`] and the
+//! Native Node.js view of [`CoreBookEvent`], [`CoreSnapshotEvent`] and the
 //! [`CoreBookIterator`] walk.
 
 use napi::bindgen_prelude::{Array, BigInt, Either, Env, Function, Null, Result, Unknown};
 use napi_derive::napi;
+use yggdryl::Side as CoreSide;
 use yggdryl::graph::{
-    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, BookSide as CoreBookSide, Event,
-    Market, MarketData as CoreMarketData, SnapshotEvent as CoreSnapshotEvent,
-    SnapshotPartition as CoreSnapshotPartition,
+    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, Event, Market,
+    MarketData as CoreMarketData, SnapshotEvent as CoreSnapshotEvent,
 };
-use yggdryl::{Scalar, Side as CoreSide};
 
 use super::market_data::JsMarketData;
 use super::operation::{JsBookRef, JsExecutionEvent};
-use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of, optional};
-use crate::{Failed, Pulled, exact_u64, javascript_failure, napi_error, or_null, ordering_value};
+use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of};
+use crate::{Failed, Pulled, exact_i64, exact_u64, javascript_failure, napi_error, or_null};
 
-/// The two named slots a snapshot-partition object states.
-#[napi(object)]
-#[derive(Clone)]
-pub struct SnapshotPartitionInput {
-    /// The book scope this partition replaces.
-    pub scope: String,
-    /// The symbol this partition is for; `null` in global mode.
-    #[napi(ts_type = "string | null")]
-    pub symbol: Option<Either<String, Null>>,
-}
-
-/// One scope a full snapshot replaces: a symbol - `null` in global mode -
-/// and the book scope the entries stated.
-#[napi(js_name = "SnapshotPartition")]
-#[derive(Clone)]
-pub struct JsSnapshotPartition {
-    pub(crate) inner: CoreSnapshotPartition,
-}
-
-impl JsSnapshotPartition {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreSnapshotPartition) -> Self {
-        Self { inner }
-    }
-}
-
-#[napi]
-impl JsSnapshotPartition {
-    /// A partition for `scope`, and `symbol` where the operations named
-    /// one.
-    #[napi(constructor)]
-    pub fn new(input: SnapshotPartitionInput) -> Self {
-        Self::from_core(CoreSnapshotPartition {
-            symbol: optional(input.symbol).map(Into::into),
-            scope: input.scope.into(),
-        })
-    }
-
-    /// The book scope this partition replaces.
-    #[napi(getter)]
-    pub fn scope(&self) -> String {
-        self.inner.scope.to_string()
-    }
-
-    /// The symbol this partition is for; `null` in global mode.
-    #[napi(getter)]
-    pub fn symbol(&self) -> Option<String> {
-        self.inner.symbol.as_ref().map(ToString::to_string)
-    }
-
-    /// Total native ordering: `-1`, `0`, or `1`.
-    #[napi]
-    pub fn compare(&self, other: &JsSnapshotPartition) -> i32 {
-        ordering_value(self.inner.cmp(&other.inner))
-    }
-
-    /// Whether this partition names the same scope and symbol as `other`.
-    #[napi]
-    pub fn equals(&self, other: &JsSnapshotPartition) -> bool {
-        self.inner == other.inner
-    }
-
-    /// The partition's own stable hash: its symbol and scope, digested as
-    /// one record; equal partitions share it.
-    #[napi]
-    pub fn stable_hash(&self) -> BigInt {
-        BigInt::from(snapshot_partition_hash(&self.inner))
-    }
-
-    /// A cheap native clone.
-    #[napi(js_name = "clone")]
-    pub fn clone_js(&self) -> Self {
-        self.clone()
-    }
-
-    /// `SnapshotPartition(scope=.., symbol=..)`.
-    #[napi(js_name = "toString")]
-    pub fn js_string(&self) -> String {
-        format!(
-            "SnapshotPartition(scope={:?}, symbol={})",
-            self.inner.scope.as_str(),
-            self.inner.symbol.as_ref().map_or_else(
-                || "null".to_owned(),
-                |symbol| format!("{:?}", symbol.as_str())
-            )
-        )
-    }
-
-    /// The partition's own two slots, so it survives `JSON.stringify` and
-    /// is what `new SnapshotPartition(...)` reads back.
-    #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> SnapshotPartitionInput {
-        SnapshotPartitionInput {
-            scope: self.scope(),
-            symbol: Some(self.symbol().map_or(Either::B(Null), Either::A)),
-        }
-    }
-}
-
-/// One price limit of a book side, as the plain object JavaScript reads.
+/// One price level of a book's side, as the plain object JavaScript reads.
 #[napi(object, object_from_js = false)]
 pub struct BookLimit {
     /// The limit's price as decimal text; `null` on the one limit folding
@@ -127,6 +26,9 @@ pub struct BookLimit {
     pub quantity: String,
     /// Its entries' `curruuid`s in live order: position, then arrival.
     pub uuids: Vec<String>,
+    /// Whether the level can trade: any of its entries does not state
+    /// `tradable = false`.
+    pub tradable: bool,
 }
 
 /// A count of limits, checked once: a whole number of at most 2^53.
@@ -134,126 +36,26 @@ fn levels_of(levels: f64) -> Result<usize> {
     Ok(usize::try_from(exact_u64(levels, "levels")?).unwrap_or(usize::MAX))
 }
 
-/// One side of a book: persistent live orders and quotes, price ordered,
-/// beside the deltas applied since the last emitted book. Immutable:
-/// `withOperation` and every verb answer a new side.
-#[napi(js_name = "BookSide")]
-#[derive(Clone)]
-pub struct JsBookSide {
-    pub(crate) inner: CoreBookSide,
+/// The side `side` names: a spelling read through the core `Side`
+/// vocabulary, or a `Side` code - what `Side.BUY` holds - read as the code
+/// a `side` column stores.
+fn side_of(side: Either<String, f64>) -> Result<CoreSide> {
+    match side {
+        Either::A(text) => CoreSide::read(&text),
+        Either::B(code) => CoreSide::read_code(exact_i64(code, "side")?),
+    }
+    .map_err(napi_error)
 }
 
-impl JsBookSide {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreBookSide) -> Self {
-        Self { inner }
-    }
+/// The entries `entries` answers, each a `MarketData`.
+fn market_data_list<'a>(entries: impl Iterator<Item = &'a CoreMarketData>) -> Vec<JsMarketData> {
+    entries.cloned().map(JsMarketData::from_core).collect()
 }
 
-#[napi]
-impl JsBookSide {
-    /// An empty bid or ask side; `side` is read through the core `Side`
-    /// vocabulary.
-    #[napi(constructor)]
-    pub fn new(side: String) -> Result<Self> {
-        let side = CoreSide::read(&side).map_err(napi_error)?;
-        CoreBookSide::new(side)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
-    /// The live orders and quotes, best price first, each a `MarketData`.
-    #[napi(getter)]
-    pub fn live(&self) -> Vec<JsMarketData> {
-        self.inner
-            .live()
-            .cloned()
-            .map(JsMarketData::from_core)
-            .collect()
-    }
-
-    /// The deltas applied since the last emitted book, each a `MarketData`.
-    #[napi(getter)]
-    pub fn deltas(&self) -> Vec<JsMarketData> {
-        self.inner
-            .deltas()
-            .iter()
-            .cloned()
-            .map(JsMarketData::from_core)
-            .collect()
-    }
-
-    /// How many identities are live on this side.
-    #[napi(getter)]
-    pub fn length(&self) -> u32 {
-        u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
-    }
-
-    /// Whether the side holds no live entry.
-    #[napi(getter)]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// The best live price on this side, as decimal text: the first priced
-    /// level's price, `null` for an empty side or one holding only unpriced
-    /// entries.
-    #[napi(getter)]
-    pub fn best_price(&self) -> Option<String> {
-        decimal_text(self.inner.best_price())
-    }
-
-    /// The exact aggregate quantity at the best price, as decimal text, an
-    /// entry stating none adding nothing; `null` where `bestPrice` is.
-    #[napi(getter)]
-    pub fn best_quantity(&self) -> Option<String> {
-        decimal_text(self.inner.best_quantity())
-    }
-
-    /// One limit per price level, best first and the one unpriced limit
-    /// last, each naming its entries' `curruuid`s in position order.
-    #[napi(getter)]
-    pub fn limits(&self) -> Vec<BookLimit> {
-        self.inner
-            .limits()
-            .map(|limit| BookLimit {
-                price: or_null(decimal_text(limit.price)),
-                quantity: limit.quantity.to_string(),
-                uuids: limit.uuids.iter().map(ToString::to_string).collect(),
-            })
-            .collect()
-    }
-
-    /// The exact quantity resting on the first `levels` limits, the
-    /// unpriced one counted where reached, as decimal text: `'0'` for an
-    /// empty side or no level, `null` only past what a decimal holds.
-    #[napi]
-    pub fn depth(&self, levels: f64) -> Result<Option<String>> {
-        Ok(decimal_text(self.inner.depth(levels_of(levels)?)))
-    }
-
-    /// This side with one order or quote event - a leaf or a `MarketData` -
-    /// atomically applied.
-    #[napi(
-        ts_args_type = "operation: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
-    )]
-    pub fn with_operation(&self, operation: Unknown<'_>) -> Result<Self> {
-        let operation = market_data_from(operation)?;
-        let mut side = self.inner.clone();
-        side.add_operation(operation).map_err(napi_error)?;
-        Ok(Self::from_core(side))
-    }
-}
-
-element_getters!(JsBookSide);
-market_getters!(JsBookSide);
-common_verbs!(JsBookSide);
-element_repr!(JsBookSide, "BookSide");
-
-/// One coherent view of a market at one exact nanosecond instant: the bid
-/// and ask depth, the executions at that instant and the scopes its last
-/// snapshot replaced. Immutable: `withOperations` and every verb answer a
-/// new book.
+/// One coherent view of a market at one exact nanosecond instant: every
+/// live entry of both sides, the deltas applied since the book before it,
+/// the executions at that instant, and the price levels of each side.
+/// Immutable: `withOperations` and every verb answer a new book.
 #[napi(js_name = "BookEvent")]
 #[derive(Clone)]
 pub struct JsBookEvent {
@@ -276,20 +78,24 @@ impl JsBookEvent {
         Ok(Self::from_core(CoreBookEvent::new(currunix, symbol)))
     }
 
-    /// The bid side.
-    #[napi(getter)]
-    pub fn bid(&self) -> JsBookSide {
-        JsBookSide::from_core(self.inner.bid().clone())
+    /// Every entry alive on the book, each a `MarketData`: the bid side's,
+    /// best price first and every entry stating no price last, then the ask
+    /// side's the same way.
+    #[napi]
+    pub fn alive(&self) -> Vec<JsMarketData> {
+        market_data_list(self.inner.alive())
     }
 
-    /// The ask side, shaped as the bid.
-    #[napi(getter)]
-    pub fn ask(&self) -> JsBookSide {
-        JsBookSide::from_core(self.inner.ask().clone())
+    /// The deltas applied since the book before this one, each a
+    /// `MarketData`: the bid side's in the order they were applied, then the
+    /// ask side's.
+    #[napi]
+    pub fn deltas(&self) -> Vec<JsMarketData> {
+        market_data_list(self.inner.deltas())
     }
 
     /// The executions at this book's instant.
-    #[napi(getter)]
+    #[napi]
     pub fn executions(&self) -> Vec<JsExecutionEvent> {
         self.inner
             .executions()
@@ -299,31 +105,64 @@ impl JsBookEvent {
             .collect()
     }
 
-    /// The scopes this book's last full snapshot replaced.
-    #[napi(getter)]
-    pub fn snapshot_partitions(&self) -> Vec<JsSnapshotPartition> {
-        self.inner
-            .snapshot_partitions()
-            .iter()
-            .cloned()
-            .map(JsSnapshotPartition::from_core)
-            .collect()
+    /// One limit per price level of the side `side` names - read through
+    /// the `Side` vocabulary - best first and the one unpriced limit last,
+    /// each naming its entries' `curruuid`s in position order; empty for a
+    /// side that is neither a bid nor an ask.
+    #[napi]
+    pub fn limits(&self, side: Either<String, f64>) -> Result<Vec<BookLimit>> {
+        Ok(self
+            .inner
+            .limits(side_of(side)?)
+            .map(|limit| BookLimit {
+                price: or_null(decimal_text(limit.price)),
+                quantity: limit.quantity.to_string(),
+                uuids: limit.uuids.iter().map(ToString::to_string).collect(),
+                tradable: limit.tradable,
+            })
+            .collect())
     }
 
-    /// Whether the best bid is strictly above the best ask.
+    /// The best tradable price on the side `side` names, as decimal text:
+    /// the first priced level that can trade; `null` where none can.
+    #[napi]
+    pub fn best_price(&self, side: Either<String, f64>) -> Result<Option<String>> {
+        Ok(decimal_text(self.inner.best_price(side_of(side)?)))
+    }
+
+    /// The exact aggregate quantity at `bestPrice(side)`, as decimal text,
+    /// an entry stating none adding nothing; `null` where `bestPrice` is.
+    #[napi]
+    pub fn best_quantity(&self, side: Either<String, f64>) -> Result<Option<String>> {
+        Ok(decimal_text(self.inner.best_quantity(side_of(side)?)))
+    }
+
+    /// The exact quantity resting on the first `levels` limits of the side
+    /// `side` names, the unpriced one counted where reached, as decimal
+    /// text: `'0'` for an empty side or no level, `null` past what a decimal
+    /// holds or for a side that is neither a bid nor an ask.
+    #[napi]
+    pub fn depth(&self, side: Either<String, f64>, levels: f64) -> Result<Option<String>> {
+        Ok(decimal_text(
+            self.inner.depth(side_of(side)?, levels_of(levels)?),
+        ))
+    }
+
+    /// Whether the best tradable bid is strictly above the best tradable
+    /// ask.
     #[napi(getter)]
     pub fn is_crossed(&self) -> bool {
         self.inner.is_crossed()
     }
 
-    /// Whether both bests are stated and equal.
+    /// Whether both best tradable prices are stated and equal.
     #[napi(getter)]
     pub fn is_locked(&self) -> bool {
         self.inner.is_locked()
     }
 
-    /// The best ask less the best bid, negative when crossed, as decimal
-    /// text; `null` where a side states no best.
+    /// The best tradable ask less the best tradable bid, negative when
+    /// crossed, as decimal text; `null` where a side states no best.
     #[napi(getter)]
     pub fn spread(&self) -> Option<String> {
         decimal_text(self.inner.spread())
@@ -355,7 +194,7 @@ impl JsBookEvent {
     /// order, quote, execution or trade event, a snapshot control, or a
     /// `MarketData` holding one.
     #[napi(
-        ts_args_type = "operations: Array<MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>"
+        ts_args_type = "operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>"
     )]
     pub fn with_operations(&self, operations: Array<'_>) -> Result<Self> {
         let mut items = Vec::with_capacity(operations.len() as usize);
@@ -378,6 +217,7 @@ impl JsBookEvent {
 element_getters!(JsBookEvent);
 event_getters!(JsBookEvent);
 market_getters!(JsBookEvent);
+marketdatakind_getter!(JsBookEvent, BookEvent);
 common_verbs!(JsBookEvent);
 event_verbs!(JsBookEvent, "BookEvent");
 
@@ -447,6 +287,7 @@ impl JsSnapshotEvent {
 element_getters!(JsSnapshotEvent);
 event_getters!(JsSnapshotEvent);
 market_getters!(JsSnapshotEvent);
+marketdatakind_getter!(JsSnapshotEvent, SnapshotEvent);
 common_verbs!(JsSnapshotEvent);
 event_verbs!(JsSnapshotEvent, "SnapshotEvent");
 
@@ -454,9 +295,9 @@ event_verbs!(JsSnapshotEvent, "SnapshotEvent");
 /// JavaScript failure crossing as one typed sentinel.
 type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Send>;
 
-/// Books from a sorted stream of operations, one per symbol and effective
-/// timestamp, or one consolidated `GLOBAL` book, pulling its items lazily
-/// from the caller's iterable. Yields `BookEvent`.
+/// Books from a sorted stream of operations, one per book key and effective
+/// timestamp, pulling its items lazily from the caller's iterable. Yields
+/// `BookEvent`.
 #[napi(js_name = "BookIterator")]
 pub struct JsBookIterator {
     inner: CoreBookIterator<BookSource>,
@@ -467,14 +308,12 @@ pub struct JsBookIterator {
 impl JsBookIterator {
     /// Opens a book walk over the items `pull` hands over - any leaf or
     /// `MarketData`, sorted by their own event order; `snapshotMillis === 0`
-    /// disables grid snapshots and `global` emits one consolidated `GLOBAL`
-    /// book.
+    /// disables grid snapshots.
     #[napi(factory, js_name = "_bookIteratorNative", skip_typescript)]
     pub fn new_native(
         env: Env,
         pull: Function<'_, (), Option<AnyMarketData<'static>>>,
         snapshot_millis: f64,
-        global: bool,
     ) -> Result<Self> {
         let snapshot_millis = exact_u64(snapshot_millis, "snapshotMillis")?;
         let pulled = Pulled::new(env, pull)?;
@@ -501,14 +340,8 @@ impl JsBookIterator {
                     })),
             )
         };
-        let inner = CoreBookIterator::new(source, snapshot_millis, global).map_err(napi_error)?;
+        let inner = CoreBookIterator::new(source, snapshot_millis).map_err(napi_error)?;
         Ok(Self { inner, failed })
-    }
-
-    /// Whether this walk emits one consolidated `GLOBAL` book.
-    #[napi(getter)]
-    pub fn global(&self) -> bool {
-        self.inner.global()
     }
 
     /// Advance the walk: the next book, or `null` at its end. The loader
@@ -530,15 +363,4 @@ impl JsBookIterator {
             },
         }
     }
-}
-
-/// The stable hash of a snapshot partition: its symbol and scope as one
-/// record `Scalar` - no symbol a null - digested by the crate's one
-/// `stable_hash`, so equal partitions hash alike in either language.
-pub(crate) fn snapshot_partition_hash(partition: &CoreSnapshotPartition) -> u64 {
-    Scalar::from_sequence([
-        partition.symbol.clone().map_or(Scalar::Null, Scalar::from),
-        Scalar::from(partition.scope.clone()),
-    ])
-    .stable_hash()
 }

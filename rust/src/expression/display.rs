@@ -495,7 +495,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::BigDecimal(held) => Some(SmolStr::new(held.to_string())),
         crate::string_scalars!(held) => Some(held.storage().clone()),
         code_scalars!() => value.code_storage().cloned(),
-        Scalar::State(held) => Some(SmolStr::new_static(held.as_str())),
+        crate::enum_scalars!() => value.enum_name().map(SmolStr::new_static),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Urn(held) => Some(SmolStr::new(held.to_string())),

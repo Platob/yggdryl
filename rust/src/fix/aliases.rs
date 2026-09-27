@@ -1,35 +1,27 @@
 //! The spellings every desk uses for the same field.
 //!
 //! A venue writes `OfferPx`, a blotter writes `AskPrice`, a risk system
-//! writes `AskPx`, and FIX publishes exactly one of them. The registry
-//! already resolves a name through one fold and then through aliases
-//! ([`FixFieldMut::set_names`](super::FixFieldMut::set_names)), so the
-//! other spellings are alias rows rather than a second resolver - and this is
-//! where the rows come from.
+//! writes `AskPx`, and FIX publishes exactly one of them. Four word pairs
+//! carry all of them, each a word this industry uses two ways for one thing:
 //!
-//! # They are generated, not listed
-//!
-//! Four substitutions carry all of them, and each is a word this industry
-//! uses two ways for one thing:
-//!
-//! | Canonical | Also written |
+//! | FIX | Also written |
 //! | --- | --- |
-//! | `bid` | `demand` |
 //! | `offer` | `ask` |
-//! | `px` | `price` |
 //! | `size` | `qty` |
+//! | `bid` | `demand` |
+//! | `px` | `price` |
 //!
-//! Every combination applies to every field name, so `offerpx` lends
-//! `askpx`, `offerprice` and `askprice`, and `bidsize` lends `bidqty`,
-//! `demandsize` and `demandqty`, without any of those twelve spellings being
-//! written down. A field whose name contains none of the four lends nothing,
-//! which is almost every field in the dictionary.
-//!
-//! The substitution is one-directional by construction - canonical to
-//! alternate - because the alternate is what arrives and the canonical is
-//! what the registry answers. `askpx` reaching `offerpx` is the whole
-//! contract; `offerpx` was never going to reach `askpx`, because nothing
-//! stores a field under `askpx`.
+//! Every name lookup a registry answers reads them, either way, wherever
+//! one of the words stands in the name as the crate's one fold spells it -
+//! case folded, `_`, `-` and spaces dropped - so `AskPx`, `ASK_PX`, `askpx`
+//! and `AskPrice` reach `OfferPx(133)`, `DemandQty` reaches `BidSize(134)`
+//! and a bridge's `ULLINK.OFFERPRICE` reaches `OfferPx` under its namespace.
+//! Nothing is written into the dictionary: a registry's names are its own,
+//! and the words are read at the lookup, after every name a field holds
+//! exactly, canonically or as an alias. A name a dictionary defines as a
+//! field of its own is that field, so a venue that really has an `AskPx` tag
+//! keeps it; a spelling the words make reaching two different fields reaches
+//! none, because an ambiguous alias is refused rather than chosen.
 //!
 //! # When both spellings arrive
 //!
@@ -38,103 +30,104 @@
 //! `ULLINK.OFFERPRICE=11` disagrees, so composition leaves the canonical field
 //! unfilled and the arrival record keeps both pairs. Agreeing voices fill
 //! once. Direct duplicate flat FIX pairs retain their repeated values.
-//!
-//! A spelling a dictionary already defines as a field of its own is never
-//! taken from it: [`FixRegistry`] refuses to lend an alias another field
-//! answers for, and notes it rather than failing, so a venue that really has
-//! an `AskPx` tag keeps it and only the fields nobody claimed lend theirs.
 
-use smol_str::SmolStr;
-
-use super::FixRegistry;
-use crate::{FixCategory, Result};
-
-/// The word pairs, canonical first.
-///
-/// Ordered longest-canonical first so a name carrying two of them substitutes
-/// each once rather than re-entering a replacement.
-const SPELLINGS: [(&str, &str); 4] = [
+/// The word pairs, FIX's own spelling first.
+const TWINS: [(&str, &str); 4] = [
     ("offer", "ask"),
     ("size", "qty"),
     ("bid", "demand"),
     ("px", "price"),
 ];
 
-/// Every alternate spelling of one canonical name, the name itself excluded.
-///
-/// The power set of the applicable substitutions: a name carrying two of them
-/// lends the three names that change one or both.
-fn spellings_of(name: &str) -> Vec<SmolStr> {
-    let applicable: Vec<&(&str, &str)> = SPELLINGS
-        .iter()
-        .filter(|(canonical, _)| name.contains(canonical))
-        .collect();
-    if applicable.is_empty() {
-        return Vec::new();
-    }
-    // A bit per applicable substitution; zero is the name itself, which is
-    // not an alias of itself.
-    (1..(1_u32 << applicable.len()))
-        .map(|mask| {
-            let mut held = name.to_owned();
-            for (at, (canonical, alternate)) in applicable.iter().enumerate() {
-                if mask & (1 << at) != 0 {
-                    held = held.replace(canonical, alternate);
-                }
-            }
-            SmolStr::new(held)
-        })
-        .collect()
+/// The longest folded name the words are read in; a longer one is no
+/// spelling a desk writes, and stays as it is.
+const MAX_NAME: usize = 64;
+
+/// The most words one name is read with: fifteen other spellings at most.
+const MAX_WORDS: usize = 4;
+
+/// The word of a pair `folded` opens with, as its length and its twin.
+fn word_at(folded: &[u8]) -> Option<(usize, &'static str)> {
+    TWINS.iter().find_map(|(fix, other)| {
+        if folded.starts_with(fix.as_bytes()) {
+            Some((fix.len(), *other))
+        } else if folded.starts_with(other.as_bytes()) {
+            Some((other.len(), *fix))
+        } else {
+            None
+        }
+    })
 }
 
-impl FixRegistry {
-    /// Lends every field the other spellings of its own name.
-    ///
-    /// Registered on demand rather than by [`FixRegistry::new`], because the
-    /// spellings are the *dictionary's* names: a registry with no fields in
-    /// it would lend nothing and still count as done once a dictionary was
-    /// loaded over it.
-    ///
-    /// Idempotent: a field already carrying a spelling keeps the one it has,
-    /// and a spelling another field answers for stays with that field.
-    ///
-    /// Generates the finite spelling catalog once per call, then
-    /// applies every free alias in one indexed pass and one catalog refresh.
-    /// Readers and setters only consult those indexed aliases; they never
-    /// generate spellings while handling a message.
-    ///
-    /// ```
-    /// # fn main() -> yggdryl::Result<()> {
-    /// # use yggdryl::local::LocalFolder;
-    /// # use yggdryl::FixRegistry;
-    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?.with_default_aliases()?;
-    ///
-    /// // One field, reached by every spelling a desk writes.
-    /// for spelled in ["offerpx", "askpx", "offerprice", "askprice"] {
-    ///     assert_eq!(registry.field_by_name(spelled)?.name(), "offerpx", "{spelled}");
-    /// }
-    /// for spelled in ["bidsize", "bidqty", "demandsize", "demandqty"] {
-    ///     assert_eq!(registry.field_by_name(spelled)?.name(), "bidsize", "{spelled}");
-    /// }
-    /// // A name carrying none of the four lends nothing and is still itself.
-    /// assert_eq!(registry.field_by_name("symbol")?.name(), "symbol");
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns the catalog's refusal when one generated spelling does not
-    /// land.
-    pub fn with_default_aliases(self) -> Result<Self> {
-        let mut lending: Vec<(SmolStr, Vec<SmolStr>)> = Vec::new();
-        for field in self.definitions(FixCategory::Fields) {
-            let spellings = spellings_of(field.name());
-            if !spellings.is_empty() {
-                lending.push((SmolStr::new(field.name()), spellings));
-            }
+/// The one answer `find` gives for the other spellings of `name` the word
+/// pairs make, every combination of its words swapped for their twins:
+/// nothing where no spelling finds one, or where two find different ones.
+///
+/// The name is folded and every spelling built on the stack, so a lookup
+/// that finds nothing allocates nothing.
+pub(super) fn aliased<T: PartialEq>(
+    name: &str,
+    mut find: impl FnMut(&str) -> Option<T>,
+) -> Option<T> {
+    let mut folded = [0_u8; MAX_NAME];
+    let mut length = 0;
+    for byte in name.as_bytes() {
+        if matches!(byte, b'_' | b'-' | b' ') {
+            continue;
         }
-        self.lend_field_aliases(lending)
+        *folded.get_mut(length)? = byte.to_ascii_lowercase();
+        length += 1;
     }
+    let folded = &folded[..length];
+    // The words, left to right and never overlapping: where each starts,
+    // how long it is and what it is also written as.
+    let mut words = [(0_usize, 0_usize, ""); MAX_WORDS];
+    let mut count = 0;
+    let mut at = 0;
+    while at < folded.len() {
+        match word_at(&folded[at..]) {
+            Some((width, twin)) => {
+                *words.get_mut(count)? = (at, width, twin);
+                count += 1;
+                at += width;
+            }
+            None => at += 1,
+        }
+    }
+    let words = &words[..count];
+    let mut found = None;
+    for mask in 1_u32..(1 << words.len()) {
+        let mut spelled = [0_u8; MAX_NAME + 3 * MAX_WORDS];
+        let mut held = 0;
+        let mut from = 0;
+        for (bit, (start, width, twin)) in words.iter().enumerate() {
+            let replaced = if mask & (1 << bit) == 0 {
+                &folded[*start..start + width]
+            } else {
+                twin.as_bytes()
+            };
+            for part in [&folded[from..*start], replaced] {
+                spelled[held..held + part.len()].copy_from_slice(part);
+                held += part.len();
+            }
+            from = start + width;
+        }
+        let tail = &folded[from..];
+        spelled[held..held + tail.len()].copy_from_slice(tail);
+        held += tail.len();
+        // Only ASCII words were swapped, at ASCII boundaries, so what was
+        // UTF-8 still is.
+        let Ok(spelled) = std::str::from_utf8(&spelled[..held]) else {
+            continue;
+        };
+        let Some(hit) = find(spelled) else {
+            continue;
+        };
+        match &found {
+            None => found = Some(hit),
+            Some(held) if *held == hit => {}
+            Some(_) => return None,
+        }
+    }
+    found
 }

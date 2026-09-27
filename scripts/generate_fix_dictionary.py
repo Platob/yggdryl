@@ -27,9 +27,9 @@ it. The dictionary holds each set once and a merge folds two statements of one
 set together, so a code named, aliased or documented once is named for every
 field that reads it.
 
-The remaining ``FIX:`` properties that hold a document - ``FIX:replacements``,
-``FIX:directions`` and ``FIX:idmap`` - are written as the JSON arrays they are
-rather than as one escaped line; the crate restates each as its canonical compact text when it
+The remaining ``FIX:`` properties that hold a document - ``FIX:directions``
+and ``FIX:idmap`` - are written as the JSON arrays they are rather than as one
+escaped line; the crate restates each as its canonical compact text when it
 reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
@@ -38,9 +38,9 @@ and every spelling an earlier version used is written beside it in its
 ``FIX:names`` list, so an old name still reaches the field. What a *value*
 was does travel - a code set holds every value an older version declared and
 every older spelling of a surviving one, dated. What the specification retired
-and what stands in for it is not the dictionary's to state: the crate holds
-those retirements as its own table, so no generated field carries a
-``FIX:replacements`` document.
+and what stands in for it, and what a message implies but did not carry, are
+not the dictionary's to state: the crate holds both as native rules of its
+own, so no field carries a rule.
 
 Usage::
 
@@ -59,7 +59,7 @@ import re
 import sys
 import urllib.request
 import xml.etree.ElementTree as ElementTree
-from typing import Any, Iterable, NamedTuple
+from typing import Any, NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "config" / "fix"
@@ -95,33 +95,10 @@ MSGCAT_BY_TYPE = {
     for code in codes.split()
 }
 
-# Generic graph operation identifiers are persistent data, not positions in
-# the current alphabetic category list. New categories receive a new explicit
-# value; existing values never move.
-MSGCATEGORY_CODES = {
-    "UNKN": 0,
-    "ACCT": 1,
-    "ALLO": 2,
-    "BOOK": 3,
-    "CERT": 4,
-    "COLL": 5,
-    "COMM": 6,
-    "CONF": 7,
-    "EXEC": 8,
-    "MKST": 9,
-    "ORDR": 10,
-    "PAYM": 11,
-    "POSN": 12,
-    "PRTY": 13,
-    "QUOT": 14,
-    "REGI": 15,
-    "RISK": 16,
-    "SECU": 17,
-    "SESS": 18,
-    "SETL": 19,
-    "STRM": 20,
-    "TRAD": 21,
-}
+# The category set itself - every name, its code and its description - is
+# `MarketDataKind`'s in `rust/src/marketdatakind.rs`, which renders the
+# `msgcatcodeset` document: this table only files each type under a name,
+# and a name that enum does not know refuses when the dictionary loads.
 
 # Pinned commits. A branch would make the output unreproducible.
 ORCHESTRA_COMMIT = "099914dd0edd49a699326f0441776d6e21cfaf93"
@@ -679,298 +656,17 @@ def fold_legacy_codes(
     return held
 
 
-def quoted(text: str) -> str:
-    """One text literal of the crate's expression grammar."""
-    return "'" + text.replace("'", "''") + "'"
-
-
-def member_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
-    """The term one fill's value spells: a literal, another column, a join,
-    or - with none of them - the source column itself."""
-    if fill.get("value") is not None:
-        return quoted(fill["value"])
-    if fill.get("from") is not None:
-        return name_of[fill["from"]]
-    if fill.get("join") is not None:
-        parts = []
-        for part in fill["join"]:
-            name = name_of[part]
-            # An integer part is spelled with two digits, which is how a day
-            # completes a month-year.
-            if dtype_of[part] in ("int8", "int16", "int32", "int64"):
-                parts.append(f"substring(concat('0', cast({name} as utf8)), -2)")
-            else:
-                parts.append(name)
-        return f"concat({', '.join(parts)})"
-    return source
-
-
-def occurrence_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
-    """One group occurrence: a list of one record, a member per fill."""
-    members = ", ".join(
-        (name_of[member["tag"]] if "tag" in member else member["group"])
-        + ": "
-        + (
-            occurrence_term(member, name_of, dtype_of, source)
-            if "group" in member
-            else member_term(member, name_of, dtype_of, source)
-        )
-        for member in fill["members"]
-    )
-    return f"[{{{members}}}]"
-
-
-def plan_text(
-    entry: dict[str, Any],
-    source_tag: int,
-    name_of: dict[int, str],
-    dtype_of: dict[int, str],
-    multi_valued: set[int],
-) -> str:
-    """One rule as a plan of the crate's expression grammar.
-
-    The `select` names every column the rule fills and the term it takes; the
-    `where` is the rule's condition: the message type as the `:msgtype`
-    parameter, the enclosing group as `:group`, and the held value as an
-    equality on the source column - a containment for a `MultipleCharValue`
-    source, whose value is several codes in one text.
-    """
-    source = name_of[source_tag]
-    selects = ", ".join(
-        f"{occurrence_term(fill, name_of, dtype_of, source)} as {fill['group']}"
-        if "group" in fill
-        else f"{member_term(fill, name_of, dtype_of, source)} as {name_of[fill['tag']]}"
-        for fill in entry["fills"]
-    )
-    conditions = []
-    msgtypes = entry.get("msgtypes") or []
-    if len(msgtypes) == 1:
-        conditions.append(f":msgtype = {quoted(msgtypes[0])}")
-    elif msgtypes:
-        conditions.append(f":msgtype in ({', '.join(quoted(held) for held in msgtypes)})")
-    groups = entry.get("in") or []
-    if len(groups) == 1:
-        conditions.append(f":group = {quoted(groups[0])}")
-    elif groups:
-        conditions.append(f":group in ({', '.join(quoted(held) for held in groups)})")
-    if entry.get("when") is not None:
-        when = quoted(entry["when"])
-        conditions.append(f"contains({source}, {when})" if source_tag in multi_valued else f"{source} = {when}")
-    text = f"select {selects}"
-    if conditions:
-        text += " where " + " and ".join(conditions)
-    return text
-
-
-def replacements_document(
-    entries: list[dict[str, Any]],
-    source_tag: int,
-    name_of: dict[int, str],
-    dtype_of: dict[int, str],
-    multi_valued: set[int],
-) -> list[dict[str, Any]]:
-    """`FIX:replacements`: one plan per entry, its `doc` beside it.
-
-    Entries keep the order the table states them in - the first entry whose
-    condition a message meets answers, so a catch-all without one comes last
-    - and are never sorted.
-    """
-    rendered = []
-    for entry in entries:
-        held = {"plan": plan_text(entry, source_tag, name_of, dtype_of, multi_valued)}
-        if entry.get("doc"):
-            held["doc"] = entry["doc"]
-        rendered.append(held)
-    return rendered
-
-
-def rule(
-    fills: list[dict[str, Any]],
-    *,
-    when: str | None = None,
-    msgtypes: list[str] | None = None,
-    within: list[str] | None = None,
-    doc: str | None = None,
-) -> dict[str, Any]:
-    """One replacement entry, as the table states it before it is compiled to
-    a plan: `within` is the enclosing repeating group."""
-    return {"msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
-
-
-def fill(tag: int, value: str | None = None, *, source: int | None = None, join: list[int] | None = None) -> dict[str, Any]:
-    """One field target: a constant, another tag's value, a join, or - with
-    none of them - the source field's own value."""
-    return {"tag": tag, "value": value, "from": source, "join": join}
-
-
-def party(role: str) -> list[dict[str, Any]]:
-    """The one Parties occurrence a field naming a counterparty becomes."""
-    return [{"group": "parties", "members": [fill(448), fill(452, role)]}]
-
-
-def benchmark(currency: str, curve: str, point: str) -> list[dict[str, Any]]:
-    """The curve one Benchmark(219) value spelled, as its three fields."""
-    return [fill(220, currency), fill(221, curve), fill(222, point)]
-
-
-# Rule80A(47) as OrderCapacity(528) and, where the appendix states them, the
-# OrderRestrictions(529) tokens; a row whose restriction the appendix leaves to
-# Side fills only the capacity.
-RULE80A = {
-    "A": ("A", None), "B": ("A", None), "C": ("P", "1 3"), "D": ("P", "1 2"),
-    "E": ("P", None), "F": ("W", None), "H": ("I", None), "I": ("I", None),
-    "J": ("I", "1 2"), "K": ("I", "1 3"), "L": ("P", "4"), "M": ("W", "1 2"),
-    "N": ("W", "1 3"), "O": ("P", "4"), "P": ("P", None), "R": ("A", "4"),
-    "S": ("P", "5"), "T": ("W", "5"), "U": ("A", "1 2"), "W": ("W", None),
-    "X": ("W", "4"), "Y": ("A", "1 3"), "Z": ("A", "4"),
-}
-
-# The pegging ExecInst(18) values FIX 5.0 moved to PegPriceType(1094).
-PEG_PRICE_TYPES = {"L": "1", "M": "2", "O": "3", "P": "4", "R": "5", "W": "7", "a": "8", "d": "9"}
-
-# Source tag -> entries, in document order. A tag listed twice concatenates,
-# so a family's entries follow the earlier family's. A `doc` cites the
-# appendix only where the mapping is not the same value in the replacement;
-# the appendix's own version is the comment above each family and nothing
-# the document states.
-REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
-    # FIX 4.3 Appendix 6-F, Replaced features.
-    (20, [
-        rule([fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (150, [
-        rule([fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (47, [
-        rule([fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
-            when=code,
-            doc=f"Rule80A {code} is OrderCapacity {capacity}"
-            + (f" with OrderRestrictions {restrictions}" if restrictions else "")
-            + " (FIX 4.3 Appendix 6-F)",
-        )
-        for code, (capacity, restrictions) in RULE80A.items()
-    ]),
-    (204, [
-        rule([fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
-        rule([fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (76, [rule(party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
-    (92, [rule(party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
-    (109, [rule(party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
-    (439, [rule(party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
-    (440, [
-        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "partysubids", "members": [fill(523)]}]}],
-            doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (166, [
-        *(
-            rule([{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
-                when=code,
-                doc="SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-            )
-            for code in ("CED", "DTC", "EUR", "FED", "PNY", "PTC")
-        ),
-        rule([{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
-            doc="SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (46, [rule([fill(55)])]),
-    (205, [rule([fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
-    (314, [rule([fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
-    (370, [
-        rule([{"group": "hops", "members": [fill(629), fill(628, source=115)]}],
-            doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (71, [
-        rule([fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
-        rule([fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
-    ]),
-    # FIX 4.4 Appendix 6-F Replaced features and Appendix 6-E Deprecated features.
-    (40, [
-        rule([fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-    ]),
-    (63, [rule([fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
-    *(
-        (tag, [
-            rule([fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
-            rule([fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
-        ])
-        for tag in (167, 310, 609)
-    ),
-    (18, [
-        rule([fill(835, "1"), fill(840, "1"), fill(18, "R")],
-            when="T",
-            doc="ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
-        ),
-    ]),
-    (219, [
-        rule(benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
-    ]),
-    (540, [rule([fill(159)])]),
-    (119, [rule([fill(737)], within=["allocgrp"])]),
-    (120, [rule([fill(736)], within=["allocgrp"])]),
-    (240, [rule([fill(696)])]),
-    (239, [rule([fill(310)])]),
-    (226, [
-        rule([fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
-        rule([fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
-    ]),
-    (227, [rule([fill(44)])]),
-    (465, [
-        rule([fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
-        *(
-            rule([fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
-            for code in ("1", "5", "8")
-        ),
-    ]),
-    # FIX 5.0 Appendix 6-E, Deprecated features.
-    (111, [rule([fill(1138)])]),
-    (210, [rule([fill(1082)])]),
-    (575, [rule([fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
-    (18, [
-        rule([fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
-        for code, price_type in PEG_PRICE_TYPES.items()
-    ]),
-    (687, [rule([fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
-    # FIX 5.0 SP1 Appendix 6-E, Deprecated features.
-    (687, [rule([fill(1418)], msgtypes=["AE", "AR"])]),
-    (852, [
-        rule([fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
-        rule([fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
-    ]),
-    (37, [rule([fill(1369)], msgtypes=["r"])]),
-    (198, [rule([fill(1369)], msgtypes=["r"])]),
-)
-
-
 # ---- Identifier maps: which key of which map a field names a message by ----
 #
-# A message goes by the names its fields state - the account it is booked
-# to, the user who entered it, the order's own identifiers - and which field
-# states which key is the crate's reading, not the specification's. Each
-# entry is written onto its field as a ``FIX:idmap`` document; the crate's
-# own bridge fields carry theirs in the crate dump. ``follow`` marks an
-# alternate identifier an operation that follows another carries forward, and
-# ``role`` the PartyRole(452) of the Parties occurrence whose PartyID(448)
-# states the key.
+# A message goes by the names its fields state - the order's own
+# identifiers, its quote's, its execution's - and which field states which
+# key is the crate's reading, not the specification's. Each entry is written
+# onto its field as a ``FIX:idmap`` document; the crate's own bridge fields
+# carry theirs in the crate dump. ``follow`` marks an alternate identifier
+# an operation that follows another carries forward, and ``role`` the
+# PartyRole(452) of the Parties occurrence whose PartyID(448) states the key.
+# The accounts and users a message names are no identifier: its parties stay
+# in its metadata.
 
 
 def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = None) -> dict[str, Any]:
@@ -984,22 +680,14 @@ def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = N
 
 
 IDMAP_SOURCES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
-    (1, [idmap("accountids", "ACCOUNT")]),
     (11, [idmap("altids", "CLORDID")]),
     (17, [idmap("altids", "EXECID")]),
     (37, [idmap("altids", "ORDERID", follow=True)]),
     (41, [idmap("altids", "ORIGCLORDID")]),
-    (50, [idmap("userids", "SENDERSUBID")]),
-    (116, [idmap("userids", "ONBEHALFOFSUBID")]),
     (117, [idmap("altids", "QUOTEID")]),
     (131, [idmap("altids", "QUOTEREQID")]),
     (198, [idmap("altids", "SECONDARYORDERID", follow=True)]),
     (262, [idmap("altids", "MDREQID")]),
-    (448, [
-        idmap("accountids", "CUSTOMERACCOUNT", role="24"),
-        idmap("userids", "ENTERINGTRADER", role="36"),
-        idmap("userids", "EXECUTINGTRADER", role="12"),
-    ]),
     (880, [idmap("altids", "TRDMATCHID")]),
     (1003, [idmap("altids", "TRADEID")]),
 )
@@ -1018,21 +706,19 @@ def attach_identifier_maps(
 ) -> None:
     """Write the identifier-map and crate-name tables onto their fields,
     refusing an entry that does not resolve: every tag is a field, a key is
-    one to 32 upper-case letters or digits, ``follow`` sits on an ``altids``
-    entry, a ``role`` sits on PartyID(448) and is a PartyRole(452) code, and a
-    crate name is not already one of the field's."""
+    one to 32 upper-case letters or digits, the map is ``altids``, a
+    ``role`` sits on PartyID(448) and is a PartyRole(452) code, and a crate
+    name is not already one of the field's."""
     by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
     for tag, entries in IDMAP_SOURCES:
         if tag not in by_tag:
             raise ValueError(f"idmap for unknown tag {tag}")
         for entry in entries:
             where = f"idmap of tag {tag}"
-            if entry["map"] not in ("accountids", "userids", "altids"):
+            if entry["map"] != "altids":
                 raise ValueError(f"{where}: unknown map {entry['map']!r}")
             if not re.fullmatch(r"[A-Z0-9]{1,32}", entry["key"]):
                 raise ValueError(f"{where}: key {entry['key']!r} is not upper-case letters or digits")
-            if entry.get("follow") and entry["map"] != "altids":
-                raise ValueError(f"{where}: only an altids entry follows")
             if "role" in entry:
                 if tag != 448:
                     raise ValueError(f"{where}: a role sits on PartyID(448) alone")
@@ -1051,445 +737,6 @@ def attach_identifier_maps(
                 raise ValueError(f"crate name {name!r} of tag {tag} is already one of its names")
         metadata["FIX:names"] = held + names
         by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
-
-
-def attach_replacements(
-    catalog: dict[str, list[dict[str, Any]]],
-    code_values: dict[int, set[str]],
-    multi_valued: set[int],
-) -> dict[int, int]:
-    """Write the rules table onto its source fields, refusing one that does
-    not resolve against the dictionary it is written into.
-
-    A rule is data the crate reads at intake and never re-checks, so every
-    reference it makes is proven here: the source and every target tag are
-    fields, a `when` and every constant are codes of the set they are read
-    against (every space-separated token, for a MultipleCharValue or
-    MultipleStringValue target), group names are groups, message types are
-    messages, and a fill has exactly the shape the reader admits. Answers
-    the number of entries written per source tag.
-    """
-    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
-    name_of = {tag: field["name"] for tag, field in by_tag.items()}
-    dtype_of = {tag: field["dtype"]["type"] for tag, field in by_tag.items()}
-    groups = {field["name"] for field in catalog["groups"]}
-    msgtypes = {field["metadata"]["FIX:msgtype"] for field in catalog["messages"]}
-
-    def check_code(tag: int, value: str, where: str) -> None:
-        codes = code_values.get(tag)
-        if codes is None:
-            return
-        for token in value.split() if tag in multi_valued else [value]:
-            if token not in codes:
-                raise ValueError(f"{where}: {token!r} is not a code of tag {tag}")
-
-    def check_fill(held: dict[str, Any], where: str) -> None:
-        if ("tag" in held) == ("group" in held):
-            raise ValueError(f"{where}: a fill names exactly one of tag or group")
-        if "group" in held:
-            if set(held) - {"group", "members"}:
-                raise ValueError(f"{where}: a group fill holds only members")
-            if held["group"] not in groups:
-                raise ValueError(f"{where}: unknown group {held['group']!r}")
-            if not held.get("members"):
-                raise ValueError(f"{where}: group {held['group']!r} fills no member")
-            for member in held["members"]:
-                check_fill(member, f"{where} in {held['group']}")
-            return
-        target = held["tag"]
-        if target not in by_tag:
-            raise ValueError(f"{where}: unknown target tag {target}")
-        stated = [key for key in ("value", "from", "join") if held.get(key) is not None]
-        if len(stated) > 1 or set(held) - {"tag", "value", "from", "join"}:
-            raise ValueError(f"{where}: tag {target} states more than one source")
-        if held.get("value") is not None:
-            check_code(target, held["value"], f"{where} tag {target}")
-        if held.get("from") is not None and held["from"] not in by_tag:
-            raise ValueError(f"{where}: unknown from tag {held['from']}")
-        if held.get("join") is not None:
-            if len(held["join"]) < 2:
-                raise ValueError(f"{where}: a join of tag {target} needs two tags")
-            for part in held["join"]:
-                if part not in by_tag:
-                    raise ValueError(f"{where}: unknown join tag {part}")
-
-    per_tag: dict[int, list[dict[str, Any]]] = {}
-    for tag, entries in REPLACEMENT_RULES:
-        per_tag.setdefault(tag, []).extend(entries)
-    for tag, entries in per_tag.items():
-        if tag not in by_tag:
-            raise ValueError(f"replacements for unknown tag {tag}")
-        for index, entry in enumerate(entries):
-            where = f"tag {tag} entry {index}"
-            for msgtype in entry.get("msgtypes") or []:
-                if msgtype not in msgtypes:
-                    raise ValueError(f"{where}: unknown MsgType {msgtype!r}")
-            for group in entry.get("in") or []:
-                if group not in groups:
-                    raise ValueError(f"{where}: unknown group {group!r}")
-            if entry.get("when") is not None:
-                check_code(tag, entry["when"], f"{where} when")
-            if not entry["fills"]:
-                raise ValueError(f"{where}: fills nothing")
-            for held in entry["fills"]:
-                check_fill(held, where)
-        metadata = by_tag[tag]["metadata"]
-        metadata["FIX:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
-        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
-    return {tag: len(entries) for tag, entries in per_tag.items()}
-
-
-# ---- Derivations: what a message implies, as expressions -------------------
-#
-# Every field a message implies but need not carry declares how it derives,
-# as one term of the crate's expression grammar in its `FIX:derivation`
-#: the enriching pass evaluates the terms to a fixpoint, so a
-# chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
-# the fields fall. A term reads fields by their canonical folded names, a
-# group by its name (`secaltids[securityaltidsource = '4'][0].securityaltid`
-# is the alternate identifier whose source says ISIN). An absent input is a
-# null the term answers null over, so a rule states only what makes its
-# answer certain. Every name a rule reads is FIX's own: the crate owns no
-# derived column, because a fact a message implies about its market is what
-# the traits answer off the fields it lifted and not a second column beside
-# them.
-
-# The message types that report an order's state, and the ones that carry a
-# `TimeInForce`: an order, a replace and the report on either.
-REPORTS = ("8", "9")
-TIMED = ("D", "G", "8")
-
-# Appendix D's matrices: the statuses that leave quantity still working
-# (`Suspended` too - the order is not working, but its remainder stands),
-# and the ones that leave nothing.
-WORKING = ("0", "1", "6", "E", "5", "7", "9")
-CLOSED = ("2", "3", "4", "8", "C")
-
-# The execution types whose value `OrdStatus` spells with the same meaning.
-# `D` is left out because it is `Restated` in one and `AcceptedForBidding` in
-# the other, and a trade says what happened rather than what the order is.
-AGREED = ("0", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "E")
-TRADES = ("F", "G")
-
-# Appendix 6-D read at its category level: the one `SecurityType` a CFI
-# category or group names, first match answering, so `O?F` - an option on a
-# future - is read before the `O` every other listed option opens with. A
-# category several types share, such as the `DB` of every plain bond, is
-# absent because no one type is certain of it. `?` stands for any one
-# character.
-SECURITYTYPE_OF_CFI = (
-    ("ES", "CS"), ("EP", "PS"), ("ED", "DR"), ("EU", "MF"), ("CE", "ETF"), ("CI", "MF"),
-    ("F", "FUT"), ("O?F", "OOF"), ("O", "OPT"), ("H", "OPT"), ("DC", "CB"), ("DT", "MTN"),
-    ("DA", "ABS"), ("DG", "MBS"), ("SR", "IRS"), ("SC", "CDS"), ("ST", "CMDTYSWAP"),
-    ("SF", "FXSWAP"), ("IF", "FXSPOT"), ("JF", "FXFWD"), ("JR", "FRA"), ("JE", "EQFWD"),
-    ("LR", "REPO"), ("LS", "SECLOAN"), ("TI", "INDEX"),
-)
-
-# The exercise character of a listed or an unlisted option, and what it says
-# about `PutOrCall`.
-PUTORCALL_OF_CFI = (("OC", 1), ("OP", 0), ("HC", 1), ("HP", 0))
-
-# The `Product` a CFI category alone decides: an equity, or a financing.
-PRODUCT_OF_CFI = (("E", 5), ("L", 13))
-
-# The security type families that share one CFI category and group.
-MORTGAGE = ("MBS", "CMBS", "CMO", "TBA", "PFAND", "MPT", "IET", "MIO", "MPO", "MPP", "CMB")
-CORPORATE = ("CORP", "EUCORP", "YANK", "PRCORP", "DUAL", "XLINKD", "DIMSUMCORP")
-FLOATING = ("FRN", "EUFRN", "TFRN")
-GOVERNMENT = ("TBOND", "TNOTE", "SOV", "EUSOV", "BRADY", "PROV", "CAN", "DIMSUMSOV", "TIPS")
-MONEY_MARKET = (
-    "TBILL", "TB", "CTB", "CP", "CD", "BA", "BN", "CL", "DN", "EUCD", "EUCP", "LQN", "ONITE",
-    "PN", "STN", "TD", "XCN", "YCD", "NCD", "NCP", "JCD", "RCD", "TDR", "TLQN", "SLQN", "CPIB",
-    "CLCP", "CAMM", "BAB", "BDN", "BNST", "BOX", "CN", "EUNCP", "EUSTLQN", "EUTD", "MN", "PZFJ",
-)
-MUNICIPAL = (
-    "GO", "REV", "AN", "COFO", "COFP", "MT", "RAN", "SPCLA", "SPCLO", "SPCLT", "TAN", "TAXA",
-    "TECP", "TRAN", "VRDN", "VRDO", "TMB", "TMCP", "MCPIB",
-)
-
-# Appendix 6-D the other way: the CFI a `SecurityType` states, down to the
-# category and group the type names and `X` where it says nothing more. `?`
-# is the exercise character an option's `PutOrCall` supplies.
-CFI_OF_SECURITYTYPE = (
-    (("CS",), "ESXXXX"), (("PS",), "EPXXXX"), (("DR",), "EDXXXX"), (("MF", "MMF"), "CIXXXX"),
-    (("ETF",), "CEXXXX"), (("FUT",), "FXXXXX"), (("OPT", "OOP", "OOC"), "O?XXXX"),
-    (("OOF",), "O?FXXX"), (("CB",), "DCXXXX"), (("MTN", "EUMTN"), "DTXXXX"), (("ABS",), "DAXXXX"),
-    (MORTGAGE, "DGXXXX"), (CORPORATE, "DBXXXX"), (FLOATING, "DBVXXX"), (GOVERNMENT, "DBXXXX"),
-    (MONEY_MARKET, "DYXXXX"), (MUNICIPAL, "DNXXXX"), (("IRS",), "SRXXXX"), (("CDS",), "SCXXXX"),
-    (("CMDTYSWAP",), "STXXXX"), (("FXSWAP",), "SFXXXX"), (("FXSPOT",), "IFXXXX"),
-    (("FXFWD",), "JFXXXX"), (("FRA",), "JRXXXX"), (("EQFWD",), "JEXXXX"), (("REPO",), "LRXXXX"),
-    (("SECLOAN",), "LSXXXX"), (("INDEX",), "TIXXXX"),
-)
-
-# The `Product` code each group of the `SecurityType` code set names. The
-# dictionary files every security type under the group the specification
-# lists it in, and the `Product` code set spells those groups. `Derivatives`
-# and `Other` are absent: the first spans products the specification codes
-# separately, and the second is where the specification put what it could
-# not place.
-PRODUCT_OF_GROUP = (
-    ("Agency", 1), ("Corporate", 3), ("Currency", 4), ("Equity", 5), ("Government", 6),
-    ("Loan", 8), ("Money Market", 9), ("Mortgage", 10), ("Municipal", 11), ("Financing", 13),
-)
-
-# The exercise character an option's `PutOrCall` supplies to its CFI: `1` is
-# a call, `0` a put, and an option stating neither leaves its exercise open,
-# which `X` is the code for.
-EXERCISE = "case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end"
-
-
-def quoted_list(values: Iterable[str]) -> str:
-    """A membership list in the grammar's canonical spelling."""
-    return "(" + ", ".join(f"'{value}'" for value in values) + ")"
-
-
-def case(branches: Iterable[tuple[str, str]]) -> str:
-    """A searched `case` over `(when, then)` pairs, no `else`: an unmatched
-    value answers null, which is the rule staying silent."""
-    return "case " + " ".join(f"when {when} then {then}" for when, then in branches) + " end"
-
-
-def prefix_case(table: Iterable[tuple[str, Any]]) -> str:
-    """A table read by the prefix `cficode` opens with, case not counting:
-    `ilike` reads `?` as `_`, any one character, and the first pattern to
-    match answers, so a longer pattern is listed before the shorter one it
-    refines."""
-    return case(
-        (f"cficode ilike '{pattern.replace('?', '_')}%'", repr(answer) if isinstance(answer, str) else str(answer))
-        for pattern, answer in table
-    )
-
-
-def cfi_case() -> str:
-    """The CFI a security type states, the exercise character supplied by
-    `PutOrCall` where the pattern leaves one open."""
-    branches = []
-    for types, pattern in CFI_OF_SECURITYTYPE:
-        when = f"upper(securitytype) in {quoted_list(types)}"
-        if "?" in pattern:
-            head, tail = pattern.split("?")
-            then = f"concat('{head}', {EXERCISE}, '{tail}')"
-        else:
-            then = f"'{pattern}'"
-        branches.append((when, then))
-    return case(branches)
-
-
-def product_case(codes: list[dict[str, Any]]) -> str:
-    """The `Product` the dictionary's own `SecurityType` groups name, read
-    off the code set the dictionary carries, else the two CFI categories that
-    are one product alone."""
-    by_group: dict[str, list[str]] = {}
-    for code in codes:
-        if code.get("group"):
-            by_group.setdefault(code["group"], []).append(code["value"])
-    branches = []
-    for group, product in PRODUCT_OF_GROUP:
-        members = by_group.get(group)
-        if not members:
-            raise ValueError(f"the SecurityType code set files nothing under {group!r}")
-        branches.append((f"upper(securitytype) in {quoted_list(sorted(members))}", str(product)))
-    branches.extend((f"cficode ilike '{category}%'", str(product)) for category, product in PRODUCT_OF_CFI)
-    return case(branches)
-
-
-# The crate's own registry of ISO 3166-1 alpha-2 codes, `StringEnum::COUNTRIES`
-# in `rust/src/string.rs`: the one list of the assigned codes
-# this repository holds, read here rather than copied, so `CountryOfIssue`
-# answers exactly the prefixes that registry lists. The `country` datatype
-# validates width alone - a stream carrying an unassigned code registers it -
-# so the whitelist is the derivation's to state, and it states it as the
-# registry's own membership.
-COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "string.rs"
-
-
-def crate_countries() -> tuple[str, ...]:
-    """The assigned ISO 3166-1 alpha-2 codes, as the crate's registry lists them."""
-    source = COUNTRIES_SOURCE.read_text(encoding="utf-8")
-    matched = re.search(r"pub const COUNTRIES: &'static \[&'static str\] = &\[(.*?)\];", source, re.DOTALL)
-    if matched is None:
-        raise ValueError(f"{COUNTRIES_SOURCE} declares no COUNTRIES registry")
-    codes = tuple(re.findall(r'"([A-Z]{2})"', matched[1]))
-    if not codes or list(codes) != sorted(set(codes)):
-        raise ValueError("the COUNTRIES registry is not a sorted list of distinct codes")
-    return codes
-
-
-# The alternate identifier whose source says ISO 6166, which is where a
-# message that names an ISIN without stating it as its primary identifier
-# states it. The cast is the validation: ISO 6166 closes a number with a
-# check digit, so a value the `isin` datatype refuses never answers.
-ALTERNATE_ISIN = "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)"
-
-# The ISIN a message states, wherever it states it: the primary identifier
-# under source `4`, else that alternate.
-ISIN_EXPRESSION = (
-    "coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, "
-    f"{ALTERNATE_ISIN})"
-)
-
-
-def country_case() -> str:
-    """`CountryOfIssue` off the ISIN prefix: ISO 6166 opens a number with the
-    ISO 3166 code of the country whose agency numbered it, and only a prefix
-    the crate's registry lists as a country answers - `XS`, `EU` and every
-    unassigned pair are silence."""
-    prefix = f"substring({ISIN_EXPRESSION}, 1, 2)"
-    return case([(f"{prefix} in {quoted_list(crate_countries())}", prefix)])
-
-
-# An exact operand, restated at the scale its arithmetic needs.
-#
-# Every FIX quantity, price, price offset and amount is `decimal128(38, 18)`,
-# and the grammar types a product at the sum of its operands' scales: two
-# such numbers multiply into scale 36, which leaves two integral digits and
-# overflows on any product past ninety-nine. A product therefore states each
-# operand at half the scale, so the product lands back at 18 with twenty
-# integral digits, and a sum states a float operand at the exact scale it is
-# being added to - the grammar shares no type between a decimal and a float.
-# `try_cast` and not `cast`: a number the target scale cannot hold exactly is
-# a derivation that answers nothing, which is what every uncertain rule does,
-# rather than a refusal that would fail the whole message.
-def exact(column: str, scale: int = 9) -> str:
-    """One operand as an exact number of `scale` fractional digits."""
-    return f"try_cast({column} as decimal128(38,{scale}))"
-
-
-# Target tag -> the term, in the grammar's canonical spelling. `Product(460)`
-# is generated from the dictionary's own code set by `attach_derivations`.
-DERIVATION_RULES: tuple[tuple[int, str], ...] = (
-    # The average of one fill is that fill's price, stated only where the
-    # report says the whole done quantity is this fill: an average over two
-    # fills is not derivable from one of them.
-    (6, f"case when msgtype in {quoted_list(REPORTS)} and cumqty = lastqty and lastqty > 0 then lastpx end"),
-    # Appendix D's identity read each way: what was done is what was ordered
-    # minus what is left, what was ordered is what was done plus what is
-    # left - and nothing is left once the order is closed. A negative
-    # remainder means the two inputs were never about one order, and is
-    # silence. What a canceled order asked for is what it did plus what was
-    # canceled: a report with nothing left, stated or unstated, that states a
-    # canceled quantity answers that way, and one that states what is left
-    # answers done plus left whatever it canceled; the canceled quantity is
-    # read last where nothing says what is left.
-    (14, f"case when msgtype in {quoted_list(REPORTS)} and orderqty - leavesqty >= 0 then orderqty - leavesqty end"),
-    # Appendix O: a trade settling in the currency it was dealt in states the
-    # dealt currency once, so each states the other.
-    (15, "settlcurrency"),
-    # The `SecurityIDSource` code set names the standard each code stands
-    # for, and ISO 6166, CUSIP and SEDOL each close an identifier with a
-    # check digit: a `SecurityID` one of them closes names its own source.
-    (22, "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end"),
-    # A forward price is quoted as a spot rate and the points away from it,
-    # and the points are already in price units, so the two add.
-    (31, "lastspotrate + lastforwardpoints"),
-    (38, f"case when msgtype in {quoted_list(REPORTS)} and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in {quoted_list(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
-    # A report stating an execution type the two code sets spell alike has
-    # stated its order status; a trade has stated it in what is left and
-    # what was done: nothing left is filled, something left after something
-    # done is partially filled.
-    (39, f"case when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(AGREED)} then exectype when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(TRADES)} and leavesqty = 0 then '2' when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(TRADES)} and leavesqty > 0 and cumqty > 0 then '1' end"),
-    # A message stating its ISIN and no `SecurityID` - a bridge row's
-    # `ISINCODE`, or an alternate identifier alone - has stated its primary
-    # identifier, whose validation then states the source.
-    (48, ALTERNATE_ISIN),
-    # A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
-    # and so is the `SecurityAltID` an exchange gave.
-    (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)"),
-    # `TimeInForce` defines its own absence: an order, a replace or a report
-    # stating none is a day order.
-    (59, f"case when msgtype in {quoted_list(TIMED)} then '0' end"),
-    # Appendix O: the settled amount is the traded amount at the stated rate.
-    (119, f"{exact('grosstradeamt')} * {exact('settlcurrfxrate')}"),
-    (120, "currency"),
-    # A possible duplicate carries the clock of the send it repeats, and the
-    # session layer says that is what its original sending time is.
-    (122, "case when possdupflag then sendingtime end"),
-    # The forward quoting, read on each side of a two-sided quote.
-    (132, "bidspotrate + bidforwardpoints"),
-    (133, "offerspotrate + offerforwardpoints"),
-    (151, f"case when msgtype in {quoted_list(REPORTS)} and ordstatus in {quoted_list(CLOSED)} then 0 when msgtype in {quoted_list(REPORTS)} and ordstatus in {quoted_list(WORKING)} and orderqty - cumqty >= 0 then orderqty - cumqty end"),
-    # Appendix 6-D, both ways, and the exercise character of an option.
-    (167, prefix_case(SECURITYTYPE_OF_CFI)),
-    (201, prefix_case(PUTORCALL_OF_CFI)),
-    # A fill's worth, which Appendix O settles on and Appendix D's execution
-    # reports carry.
-    (381, f"case when msgtype in {quoted_list(REPORTS)} then {exact('lastqty')} * {exact('lastpx')} end"),
-    (461, cfi_case()),
-    # ISO 6166 opens a number with the ISO 3166 code of the country whose
-    # agency numbered it, where one did: the crate's registry of countries
-    # is the whitelist, read off the Rust source.
-    (470, country_case()),
-    # A pegged order's price is the reference it pegs to plus its own
-    # offset, which is signed: a peg below the reference is a negative one.
-    (839, f"peggedrefprice + {exact('pegoffsetvalue', 18)}"),
-    # A contract's quantity in units is its quantity in contracts times what
-    # one contract multiplies to, an increment in money is the same product
-    # of the increment in price, and a trade covering several trading unit
-    # periods trades its quantity once in each of them.
-    (1146, "minpriceincrement * contractmultiplier"),
-    (2367, "lastqty * tradingunitperiodmultiplier"),
-    (2368, f"{exact('lastqty')} * {exact('contractmultiplier')}"),
-    (2369, f"{exact('lastpx')} * {exact('totaltradeqty')}"),
-    (2370, f"{exact('totaltradeqty')} * {exact('contractmultiplier')}"),
-    # FIX writes a currency as ISO 4217 and in no other source, so a stated
-    # currency states its source too.
-    (2897, "case when currency is not null then '6' end"),
-)
-
-# What the expression grammar spells that is not a column: its keywords,
-# its functions, and the datatype a cast names, which follows `as`.
-EXPRESSION_WORDS = {
-    "and", "as", "between", "case", "cast", "coalesce", "concat", "else", "end", "false",
-    "ilike", "in", "is", "like", "not", "null", "or", "substring", "then", "true", "try_cast",
-    "upper", "when",
-}
-
-
-def expression_columns(text: str) -> list[str]:
-    """The column names one expression reads, in first-seen order: every bare
-    word outside a quoted string that is not a keyword, a function or the
-    datatype a cast names."""
-    unquoted = re.sub(r"'[^']*'", " ", text)
-    columns: list[str] = []
-    previous = ""
-    for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", unquoted):
-        lowered = word.lower()
-        if lowered not in EXPRESSION_WORDS and previous != "as" and lowered not in columns:
-            columns.append(lowered)
-        previous = lowered
-    return columns
-
-
-def attach_derivations(
-    catalog: dict[str, list[dict[str, Any]]], code_records: dict[int, list[dict[str, Any]]]
-) -> dict[int, str]:
-    """Write each derivation onto the field it fills, refusing one that does
-    not resolve against the dictionary it is written into.
-
-    A derivation is read at intake and evaluated on every message, so every
-    reference it makes is proven here: the target tag is a field, and every
-    column the expression names is a field or a group of the dictionary. The crate parses and types the text once more when it loads
-    the dictionary. Answers the text written per target tag.
-    """
-    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
-    names = {field["name"] for field in catalog["fields"]}
-    names.update(field["name"] for field in catalog["groups"])
-    rules = list(DERIVATION_RULES)
-    rules.append((460, product_case(code_records[167])))
-    written: dict[int, str] = {}
-    for tag, text in rules:
-        if tag in written:
-            raise ValueError(f"tag {tag} derives two ways")
-        if tag not in by_tag:
-            raise ValueError(f"derivation for unknown tag {tag}")
-        for column in expression_columns(text):
-            if column not in names:
-                raise ValueError(f"tag {tag}: {column!r} is not a field or a group")
-        metadata = by_tag[tag]["metadata"]
-        metadata["FIX:derivation"] = text
-        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
-        written[tag] = text
-    return written
 
 
 # Longest first so a longer suffix is never shadowed.
@@ -1671,12 +918,9 @@ def build(
                 continue
             entries.append(entry)
 
-    # The wire values every field's set holds at any version, and the fields
-    # whose value is a space-separated list of them: what a replacement rule's
-    # constants and `when` are checked against.
+    # The wire values every field's set holds at any version: what an
+    # identifier map's party role is checked against.
     code_values: dict[int, set[str]] = {}
-    code_records: dict[int, list[dict[str, Any]]] = {}
-    multi_valued: set[int] = set()
     # Every named set, by the name a field's `FIX:codeset` states.
     code_sets: dict[str, list[dict[str, Any]]] = {}
 
@@ -1708,7 +952,6 @@ def build(
     def coded(
         tag: int,
         name: str,
-        fix_type: str,
         codes: list[dict[str, Any]],
         declared: str | None = None,
     ) -> str | None:
@@ -1719,12 +962,9 @@ def build(
         """
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
         folded_codes = party_id_source_aliases(name, declared, folded_codes)
-        if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
-            multi_valued.add(tag)
         if not folded_codes:
             return None
         code_values[tag] = {code["value"] for code in folded_codes}
-        code_records[tag] = folded_codes
         return name_codes(tag, name, declared, codes_document(folded_codes))
 
     fields: list[dict[str, Any]] = []
@@ -1744,7 +984,7 @@ def build(
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
             metadata["FIX:names"] = list(dict.fromkeys(names))
-        codes = coded(tag, name, fix_type, [])
+        codes = coded(tag, name, [])
         if codes is not None:
             metadata["FIX:codeset"] = codes
         fields.append(
@@ -1811,14 +1051,14 @@ def build(
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
         if code_set_name in latest["code_sets"]:
             held = latest["code_sets"][code_set_name]
-            codes = coded(tag, name, held["type"], held["codes"], code_set_name)
+            codes = coded(tag, name, held["codes"], code_set_name)
             if codes is not None:
                 metadata["FIX:codeset"] = codes
         elif listings.get(tag):
             # Latest declares no set, so every value an older version listed
             # is a legacy code: the set is what those versions said, and it
             # is named after the field that reads by it.
-            codes = coded(tag, name, field["type"], [])
+            codes = coded(tag, name, [])
             if codes is not None:
                 metadata["FIX:codeset"] = codes
 
@@ -1831,9 +1071,7 @@ def build(
             }
         )
     catalog = build_catalog(latest, fields)
-    attach_replacements(catalog, code_values, multi_valued)
     attach_identifier_maps(catalog, code_values)
-    attach_derivations(catalog, code_records)
     return catalog, code_sets
 
 
@@ -2312,7 +1550,7 @@ def render_constants(
     parsed: dict[str, dict[str, Any]],
     catalog: dict[str, list[dict[str, Any]]],
 ) -> str:
-    """Render the protocol tag lists and shipped derivations as Rust constants.
+    """Render the protocol tag lists and the standard group names as Rust constants.
 
     `FixMsg` lays a message flat, so both components are tag lists rather than
     nested Structs, and the lists are the union across every scraped version:
@@ -2325,24 +1563,6 @@ def render_constants(
     They are not registry entries: a component has no tag, and a synthetic one
     would put a fiction in the identity space.
     """
-    derivations = sorted(
-        (
-            int(field["metadata"]["FIX:tag"]),
-            field["metadata"]["FIX:derivation"],
-        )
-        for field in catalog["fields"]
-        if "FIX:derivation" in field["metadata"]
-    )
-    if len(derivations) != 29 or len({tag for tag, _ in derivations}) != 29:
-        raise ValueError(
-            "the shipped dictionary must declare 29 distinct derivations, "
-            f"got {len(derivations)}"
-        )
-    derivation_signature = "\n".join(
-        f"{tag}\0{term}" for tag, term in derivations
-    ).encode()
-    derivation_sha256 = hashlib.sha256(derivation_signature).hexdigest()
-
     group_names = []
     groups_by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
     components = {field["name"]: field for field in catalog["components"]}
@@ -2437,65 +1657,8 @@ def render_constants(
                 "",
             ]
         )
-    categories = sorted({*MSGCAT_BY_TYPE.values(), "UNKN"})
-    if set(categories) != set(MSGCATEGORY_CODES):
-        missing = ", ".join(sorted(set(categories) - set(MSGCATEGORY_CODES)))
-        extra = ", ".join(sorted(set(MSGCATEGORY_CODES) - set(categories)))
-        raise ValueError(f"message category IDs differ: missing={missing}; extra={extra}")
-    rendered = ", ".join(f'"{category}"' for category in categories)
-    category_codes = [
-        (category, MSGCATEGORY_CODES[category])
-        for category in categories
-        if category != "UNKN"
-    ]
-    category_codes.append(("UNKN", MSGCATEGORY_CODES["UNKN"]))
-    rendered_codes = ", ".join(
-        f'("{category}", {code}, "{code}")' for category, code in category_codes
-    )
     lines.extend(
         [
-            "/// The fixed categories a FIX message can answer.",
-            "#[rustfmt::skip]",
-            f"pub const MSGCATEGORIES: [&str; {len(categories)}] = [{rendered}];",
-            "",
-            "/// The stable signed identifiers carried by the MsgCat code set.",
-            "/// Zero is the unknown category; published categories are positive.",
-            "#[rustfmt::skip]",
-            f"pub const MSGCATEGORY_CODES: [(&str, i32, &str); {len(category_codes)}] = [{rendered_codes}];",
-            "",
-            "/// The integer identifier for one symbolic message category.",
-            "pub(super) fn msgcat_code(category: &str) -> Option<i32> {",
-            "    MSGCATEGORY_CODES",
-            "        .iter()",
-            "        .find_map(|(name, code, _)| (*name == category).then_some(*code))",
-            "}",
-            "",
-            "/// The symbolic message category for one integer identifier.",
-            "pub(super) fn msgcat_name(code: i32) -> Option<&'static str> {",
-            "    MSGCATEGORY_CODES",
-            "        .iter()",
-            "        .find_map(|(name, held, _)| (*held == code).then_some(*name))",
-            "}",
-            "",
-            "/// The exact derivations generated into the shipped FIX dictionary,",
-            "/// sorted by target tag. A registry matching every pair can use the",
-            "/// native evaluator; any changed, added, or removed rule stays on the",
-            "/// generic expression path.",
-            "#[rustfmt::skip]",
-            f'pub(super) const SHIPPED_DERIVATIONS_SHA256: &str = "{derivation_sha256}";',
-            "",
-            "#[rustfmt::skip]",
-            f"pub(super) const SHIPPED_DERIVATIONS: [(i32, &str); {len(derivations)}] = [",
-        ]
-    )
-    lines.extend(
-        f"    ({tag}, {json.dumps(term, ensure_ascii=False)}),"
-        for tag, term in derivations
-    )
-    lines.extend(
-        [
-            "];",
-            "",
             "/// Resolve one published standard group spelling to the group's",
             "/// canonical/display names and its occurrence component's names.",
             "/// Custom grammars fall back to counter-based inference.",

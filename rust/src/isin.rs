@@ -191,7 +191,25 @@ impl fmt::Display for Isin {
     }
 }
 
-code_value!(Isin, Isin, ISIN_WIDTH);
+impl Isin {
+    /// The better of two numbers for one instrument: this one, unless its
+    /// prefix is `ZZ` and the other's is not.
+    ///
+    /// ISO 6166:2021 gives `ZZ` to derivatives numbered before a country's
+    /// agency or the DSB's `EZ` numbers them, so a `ZZ` number is the
+    /// placeholder a real one replaces. Every other pair of numbers is two
+    /// statements, and this one stands; both are checksum-valid by
+    /// construction.
+    fn merged(self, other: &Self) -> Self {
+        if self.prefix() == "ZZ" && other.prefix() != "ZZ" {
+            other.clone()
+        } else {
+            self
+        }
+    }
+}
+
+code_value!(Isin, Isin, ISIN_WIDTH, merge = Isin::merged);
 
 /// The Arrow extension name of the securities identification number.
 pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";

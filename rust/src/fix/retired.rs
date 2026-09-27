@@ -8,19 +8,18 @@
 //! `1`. Those retirements are facts about FIX itself, the same for every
 //! dictionary that declares the tags, so they are held here as one table
 //! keyed by the retired tag, and the [restatement](super::latest) applies
-//! them as it builds a message - exactly as it applies the rules a registry
-//! states of its own on a field's [`FIX:replacements`](super::replacements),
-//! through the same writes and the same checks, with nothing parsed, bound
-//! or evaluated per message.
+//! them as it builds a message, with nothing parsed, bound or evaluated per
+//! message.
 //!
 //! # One owner
 //!
-//! A field's own `FIX:replacements` document wins whole over this table: a
-//! registry that states what `Rule80A(47)` becomes restates by what it
-//! states, and this table does not fill in behind it. A registry that states
-//! nothing on a retired field restates by the specification. The shipped
-//! dictionary states nothing, so what it carried as documents before lives
-//! here and nowhere else.
+//! This table is every replacement rule there is. A registry states none of
+//! its own: it holds the fields the rules read and write, and a registry
+//! lacking a target's field fills nothing there. The crate's own bridge
+//! fields that name an instrument - `OmsInstrumentId(65040)` and
+//! `UllinkInstrumentId(65041)` - stand here beside the specification's
+//! retirements, because they are restated the same way: into one
+//! `secaltids` occurrence under their own source.
 //!
 //! # Order
 //!
@@ -54,6 +53,10 @@ pub enum When {
     /// One of the value's codes is this one: a `MultipleCharValue` source,
     /// several codes in one text, matched by token.
     Contains(&'static str),
+    /// The value is no longer, in characters, than a code of this
+    /// identifier source may be: a value the source cannot hold stays where
+    /// it arrived.
+    FitsSource(&'static str),
 }
 
 /// One target a rule fills.
@@ -1516,6 +1519,48 @@ pub static RULES: &[(i32, &[Rule])] = &[
             },
         ],
     ),
+    (
+        super::crated::OMSINSTRUMENTID_TAG_NAME.0,
+        &[
+            // OmsInstrumentId names an instrument under the OMSINSTRUMENTID source
+            Rule {
+                when: When::FitsSource(super::crated::OMSINSTRUMENTID_SOURCE),
+                msgtypes: &[],
+                within: None,
+                fills: &[Fill::Occurrence {
+                    group: "secaltids",
+                    members: &[
+                        Fill::Source { tag: 455 },
+                        Fill::Constant {
+                            tag: 456,
+                            text: super::crated::OMSINSTRUMENTID_SOURCE,
+                        },
+                    ],
+                }],
+            },
+        ],
+    ),
+    (
+        super::crated::ULLINKINSTRUMENTID_TAG_NAME.0,
+        &[
+            // UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source
+            Rule {
+                when: When::FitsSource(super::crated::ULLINKINSTRUMENTID_SOURCE),
+                msgtypes: &[],
+                within: None,
+                fills: &[Fill::Occurrence {
+                    group: "secaltids",
+                    members: &[
+                        Fill::Source { tag: 455 },
+                        Fill::Constant {
+                            tag: 456,
+                            text: super::crated::ULLINKINSTRUMENTID_SOURCE,
+                        },
+                    ],
+                }],
+            },
+        ],
+    ),
 ];
 
 #[cfg(feature = "internals")]
@@ -1525,8 +1570,8 @@ pub mod internals {
     //! caller cannot reach.
     //!
     //! The table is the crate's own reading of what the specification retired,
-    //! applied by every parse; a caller sees the restated message and never the
-    //! rules. `fix::retired` is a private module of a published one, so these
+    //! and of how its instrument fields are restated, applied by every parse; a
+    //! caller sees the restated message and never the rules. `fix::retired` is a private module of a published one, so these
     //! being `pub` reaches nobody: this door is the only path to them, and it
     //! exists under the `internals` feature alone.
     pub use super::{Fill, Part, RULES, Rule, When, rules_of};

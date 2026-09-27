@@ -85,7 +85,14 @@ impl Scalar {
                     self.as_str().expect("a code borrowed its text").as_bytes(),
                 ));
             }
-            Self::State(value) => return Some(ValueBytes::inline(&value.code().to_le_bytes())),
+            held @ crate::enum_scalars!() => {
+                return Some(ValueBytes::inline(
+                    &held
+                        .enum_code()
+                        .expect("an enum member stores its code")
+                        .to_le_bytes(),
+                ));
+            }
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             crate::bytes_scalars!(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
@@ -343,11 +350,16 @@ impl Scalar {
                 write_tag(sink, self.id());
                 write_text(sink, self.as_str().expect("a code borrowed its text"));
             }
-            // A state feeds the code it stores, so renaming a member moves no
-            // digest.
-            Self::State(value) => {
-                write_tag(sink, DataTypeId::State);
-                sink.write(&value.code().to_le_bytes());
+            // An enum member feeds the code it stores under its leaf's tag, so
+            // renaming a member moves no digest.
+            held @ crate::enum_scalars!() => {
+                write_tag(sink, held.id());
+                sink.write(
+                    &held
+                        .enum_code()
+                        .expect("an enum member stores its code")
+                        .to_le_bytes(),
+                );
             }
             Self::Uuid(value) => {
                 write_tag(sink, DataTypeId::Uuid);

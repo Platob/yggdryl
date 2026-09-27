@@ -1772,8 +1772,8 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         ),
         crate::string_dtypes!() | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
         code if code.is_code() => Scalar::from(SmolStr::new(text)),
-        // A state literal is a spelling its value door reads.
-        D::State => Scalar::from(SmolStr::new(text)),
+        // An enum literal is a spelling its leaf's value door reads.
+        held if held.is_enum() => Scalar::from(SmolStr::new(text)),
         crate::bytes_dtypes!() => Scalar::from(
             bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
         ),

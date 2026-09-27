@@ -45,15 +45,15 @@ from yggdryl.iceberg import Table
 XMLA = "urn:schemas-microsoft-com:xml-analysis"
 
 
-def ygg() -> str:
-    """The `ygg` the wheel installed beside the interpreter, or on PATH."""
-    beside = pathlib.Path(sys.executable).with_name("ygg")
+def command() -> str:
+    """The `yggdryl` command the wheel installed beside the interpreter, or on PATH."""
+    beside = pathlib.Path(sys.executable).with_name("yggdryl")
     for candidate in (beside, beside.with_suffix(".exe")):
         if candidate.exists():
             return str(candidate)
-    found = shutil.which("ygg")
+    found = shutil.which("yggdryl")
     if found is None:
-        raise SystemExit("the wheel installed no `ygg` beside its interpreter or on PATH")
+        raise SystemExit("the wheel installed no `yggdryl` beside its interpreter or on PATH")
     return found
 
 
@@ -76,14 +76,14 @@ def post(endpoint: str, action: str, body: str) -> str:
 
 
 def serve_over_xmla(warehouse: pathlib.Path) -> None:
-    """`ygg xmla serve` over the folder: the Iceberg table is listed and read.
+    """`yggdryl xmla serve` over the folder: the Iceberg table is listed and read.
 
-    The staged `ygg` is built with the `iceberg` feature; a binary without it
+    The staged `yggdryl` is built with the `iceberg` feature; a binary without it
     lists the table and refuses its columns by name, which is what this
     catches before a wheel ships.
     """
     process = subprocess.Popen(
-        [ygg(), "xmla", "serve", "--bind", "127.0.0.1:0", f"smoke={warehouse}"],
+        [command(), "xmla", "serve", "--bind", "127.0.0.1:0", f"smoke={warehouse}"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf-8",

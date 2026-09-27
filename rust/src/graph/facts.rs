@@ -2,13 +2,13 @@
 //! leaf that wants nothing more.
 //!
 //! [`MarketFacts`] holds every fact [`Element`] and [`Market`] name and no
-//! instant: a book level, a side's summary, an undated entry.
+//! instant: an undated entry.
 //! [`MarketEventFacts`] adds the clocks and the state an [`Event`] answers, so
-//! it is a market event: a book, a level dated at an instant.
-//! [`OperationFacts`] and [`OperationEventFacts`] add the eight
-//! facts an [`Operation`] states - its category, how long it stands,
-//! whether it can trade, its account, user and own identifiers, and its two
-//! lanes - to each, so an undated operation and a dated one embed the
+//! it is a market event: a book, a snapshot control dated at an instant.
+//! [`OperationFacts`] and [`OperationEventFacts`] add the three
+//! facts an [`Operation`] states - how long it stands,
+//! whether it can trade and its own identifiers - to each, so an
+//! undated operation and a dated one embed the
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
@@ -18,14 +18,16 @@
 
 use smol_str::SmolStr;
 
-use super::market::{Lane, Metadata, empty_metadata, restating_operation};
+use super::market::{
+    FxRates, Metadata, empty_fxrates, empty_metadata, restating_operation, sided_crosscode,
+};
 use super::{Element, Event, Market, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::{Ccy, Cfi, Decimal, Mic, Result, Side, State, TimeInForce, Unit, Uuid};
 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
-/// instant: what a book level, a side's summary or an undated entry is.
+/// instant: what an undated entry is.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MarketFacts {
     curruuid: Uuid,
@@ -54,8 +56,38 @@ pub(crate) struct MarketFacts {
     prevqty: Option<Decimal>,
     spotrate: Option<Decimal>,
     forwardpoints: Option<Decimal>,
+    /// Target currency to the rate to divide by; `None` for none, so a
+    /// holder stating no rate pays one pointer and no allocation.
+    fxrates: Option<Box<FxRates>>,
+    /// The bid and the ask, boxed: most elements state neither and pay one
+    /// pointer.
+    bidask: Option<Box<BidAsk>>,
     ticker: Option<SmolStr>,
     metadata: Option<Box<Metadata>>,
+}
+
+/// The six bid and ask facts of a market element, held together because
+/// an element states them together or not at all.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct BidAsk {
+    bidpx: Option<Decimal>,
+    bidqty: Option<Decimal>,
+    bidccy: Option<Ccy>,
+    askpx: Option<Decimal>,
+    askqty: Option<Decimal>,
+    askccy: Option<Ccy>,
+}
+
+impl BidAsk {
+    /// Whether every fact is unstated, which is when the holder drops it.
+    fn is_empty(&self) -> bool {
+        self.bidpx.is_none()
+            && self.bidqty.is_none()
+            && self.bidccy.is_none()
+            && self.askpx.is_none()
+            && self.askqty.is_none()
+            && self.askccy.is_none()
+    }
 }
 
 impl Default for MarketFacts {
@@ -86,6 +118,8 @@ impl Default for MarketFacts {
             prevqty: None,
             spotrate: None,
             forwardpoints: None,
+            fxrates: None,
+            bidask: None,
             ticker: None,
             metadata: None,
         }
@@ -146,6 +180,30 @@ impl Derived {
 }
 
 impl MarketFacts {
+    /// Stores `crosscode` under this element's side: the one place a
+    /// holder's cross code is written.
+    fn state_crosscode(&mut self, crosscode: String) {
+        self.crosscode = match sided_crosscode(self.side, &crosscode) {
+            std::borrow::Cow::Borrowed(_) => crosscode,
+            std::borrow::Cow::Owned(sided) => sided,
+        };
+    }
+
+    /// Writes one bid or ask fact, allocating the holder on the first stated
+    /// one and dropping it when the last is cleared.
+    fn set_bidask(&mut self, write: impl FnOnce(&mut BidAsk)) {
+        let mut held = self.bidask.take().map(|held| *held).unwrap_or_default();
+        write(&mut held);
+        if !held.is_empty() {
+            self.bidask = Some(Box::new(held));
+        }
+    }
+
+    /// The bid and ask facts, or none.
+    fn bidask(&self) -> Option<&BidAsk> {
+        self.bidask.as_deref()
+    }
+
     /// Where `key` stands in the sorted identifiers, or where it would.
     fn slot(&self, key: &str) -> std::result::Result<usize, usize> {
         self.securityids
@@ -181,7 +239,7 @@ impl Element for MarketFacts {
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.crosscode = crosscode;
+        self.state_crosscode(crosscode);
     }
 
     fn get_currhashcode(&self) -> u64 {
@@ -277,8 +335,15 @@ impl Market for MarketFacts {
         self.side
     }
 
+    /// A side taken re-prefixes the cross code, so setting the side after
+    /// the code converges on the code set after the side.
     fn set_side(&mut self, side: Side) {
         self.side = side;
+        if let std::borrow::Cow::Owned(sided) = sided_crosscode(side, &self.crosscode) {
+            self.crosscode = sided;
+            self.crosshashcode = super::element::crosshash(&self.crosscode);
+            self.crossuuid = self.cross_uuid();
+        }
     }
 
     fn get_securityids(&self) -> &SecurityIds {
@@ -443,6 +508,65 @@ impl Market for MarketFacts {
     fn set_metadata(&mut self, metadata: Option<Metadata>) {
         self.metadata = metadata.filter(|held| !held.is_empty()).map(Box::new);
     }
+
+    fn get_fxrates(&self) -> &FxRates {
+        match &self.fxrates {
+            Some(held) => held,
+            None => empty_fxrates(),
+        }
+    }
+
+    fn set_fxrates(&mut self, rates: FxRates) {
+        self.fxrates = (!rates.is_empty()).then(|| Box::new(rates));
+    }
+
+    fn get_bidpx(&self) -> Option<Decimal> {
+        self.bidask().and_then(|held| held.bidpx)
+    }
+
+    fn set_bidpx(&mut self, px: Option<Decimal>) {
+        self.set_bidask(|held| held.bidpx = px);
+    }
+
+    fn get_bidqty(&self) -> Option<Decimal> {
+        self.bidask().and_then(|held| held.bidqty)
+    }
+
+    fn set_bidqty(&mut self, qty: Option<Decimal>) {
+        self.set_bidask(|held| held.bidqty = qty);
+    }
+
+    fn get_bidccy(&self) -> Option<&Ccy> {
+        self.bidask().and_then(|held| held.bidccy.as_ref())
+    }
+
+    fn set_bidccy(&mut self, ccy: Option<Ccy>) {
+        self.set_bidask(|held| held.bidccy = ccy);
+    }
+
+    fn get_askpx(&self) -> Option<Decimal> {
+        self.bidask().and_then(|held| held.askpx)
+    }
+
+    fn set_askpx(&mut self, px: Option<Decimal>) {
+        self.set_bidask(|held| held.askpx = px);
+    }
+
+    fn get_askqty(&self) -> Option<Decimal> {
+        self.bidask().and_then(|held| held.askqty)
+    }
+
+    fn set_askqty(&mut self, qty: Option<Decimal>) {
+        self.set_bidask(|held| held.askqty = qty);
+    }
+
+    fn get_askccy(&self) -> Option<&Ccy> {
+        self.bidask().and_then(|held| held.askccy.as_ref())
+    }
+
+    fn set_askccy(&mut self, ccy: Option<Ccy>) {
+        self.set_bidask(|held| held.askccy = ccy);
+    }
 }
 
 /// [`MarketFacts`] with the clocks and the state an event answers: a market
@@ -534,7 +658,7 @@ impl Element for MarketEventFacts {
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.market.crosscode = crosscode;
+        self.market.state_crosscode(crosscode);
         self.market.crosshashcode = if self.market.crosscode.is_empty() {
             0
         } else {
@@ -685,29 +809,18 @@ impl Event for MarketEventFacts {
 
 delegate_market!(MarketEventFacts, market);
 
-/// The eight facts an operation adds to the market's, as plain fields.
+/// The three facts an operation adds to the market's, as plain fields.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct OperationExtras {
-    marketoperationid: Option<i32>,
     tif: Option<TimeInForce>,
     tradable: Option<bool>,
-    accountids: IdMap,
-    userids: IdMap,
     altids: IdMap,
-    bid: Option<Box<Lane>>,
-    ask: Option<Box<Lane>>,
 }
 
 /// `impl Operation` over an [`OperationExtras`] field.
 macro_rules! operation_extras {
     ($type:ty, $($field:ident).+) => {
         impl Operation for $type {
-            fn get_marketoperationid(&self) -> Option<i32> {
-                self.$($field).+.marketoperationid
-            }
-            fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-                self.$($field).+.marketoperationid = marketoperationid;
-            }
             fn get_tif(&self) -> Option<&TimeInForce> {
                 self.$($field).+.tif.as_ref()
             }
@@ -719,32 +832,6 @@ macro_rules! operation_extras {
             }
             fn set_tradable(&mut self, tradable: Option<bool>) {
                 self.$($field).+.tradable = tradable;
-            }
-            fn get_accountids(&self) -> &IdMap {
-                &self.$($field).+.accountids
-            }
-            fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
-                self.$($field).+.accountids = ids;
-                Ok(())
-            }
-            fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool> {
-                self.$($field).+.accountids.insert(key, value)
-            }
-            fn remove_accountid(&mut self, key: &str) -> Result<bool> {
-                Ok(self.$($field).+.accountids.remove(key).is_some())
-            }
-            fn get_userids(&self) -> &IdMap {
-                &self.$($field).+.userids
-            }
-            fn set_userids(&mut self, ids: IdMap) -> Result<()> {
-                self.$($field).+.userids = ids;
-                Ok(())
-            }
-            fn insert_userid(&mut self, key: &str, value: &str) -> Result<bool> {
-                self.$($field).+.userids.insert(key, value)
-            }
-            fn remove_userid(&mut self, key: &str) -> Result<bool> {
-                Ok(self.$($field).+.userids.remove(key).is_some())
             }
             fn get_altids(&self) -> &IdMap {
                 &self.$($field).+.altids
@@ -758,18 +845,6 @@ macro_rules! operation_extras {
             }
             fn remove_altid(&mut self, key: &str) -> Result<bool> {
                 Ok(self.$($field).+.altids.remove(key).is_some())
-            }
-            fn get_bid(&self) -> Option<&Lane> {
-                self.$($field).+.bid.as_deref()
-            }
-            fn set_bid(&mut self, lane: Option<Lane>) {
-                self.$($field).+.bid = lane.and_then(Lane::stated).map(Box::new);
-            }
-            fn get_ask(&self) -> Option<&Lane> {
-                self.$($field).+.ask.as_deref()
-            }
-            fn set_ask(&mut self, lane: Option<Lane>) {
-                self.$($field).+.ask = lane.and_then(Lane::stated).map(Box::new);
             }
         }
     };
@@ -829,7 +904,7 @@ impl Element for OperationFacts {
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.market.crosscode = crosscode;
+        self.market.state_crosscode(crosscode);
     }
 
     fn get_currhashcode(&self) -> u64 {
@@ -861,9 +936,9 @@ impl Element for OperationFacts {
         false
     }
 
+    /// The market filled, then digested with the operation's facts.
     fn finalize(&mut self) {
         self.fill_market();
-        self.fill_operation();
         self.sync_cross();
         self.market.currhashcode = self.digest_operation().as_u64();
         self.market.curruuid = Uuid::from_v8(u128::from(self.market.currhashcode));
@@ -875,7 +950,7 @@ impl Element for OperationFacts {
             return None;
         }
         let mut changed = super::element::follow_element(&mut self, previous);
-        changed |= super::market::follow_market_of_operation(&mut self, previous);
+        changed |= super::market::follow_market(&mut self, previous);
         changed |= super::market::follow_operation(&mut self, previous);
         if !changed {
             return None;
@@ -996,9 +1071,10 @@ impl Element for OperationEventFacts {
         self.event.is_after(&other.event)
     }
 
+    /// The market filled, then digested with the event's and the
+    /// operation's facts.
     fn finalize(&mut self) {
         self.fill_market();
-        self.fill_operation();
         self.sync_cross();
         let hashcode = self.digest_operation_event().as_u64();
         self.finalized(hashcode);
@@ -1064,19 +1140,21 @@ fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) 
     this.set_prevqty(other.get_prevqty());
     this.set_spotrate(other.get_spotrate());
     this.set_forwardpoints(other.get_forwardpoints());
+    this.set_fxrates(other.get_fxrates().clone());
+    this.set_bidpx(other.get_bidpx());
+    this.set_bidqty(other.get_bidqty());
+    this.set_bidccy(other.get_bidccy().cloned());
+    this.set_askpx(other.get_askpx());
+    this.set_askqty(other.get_askqty());
+    this.set_askccy(other.get_askccy().cloned());
     this.set_ticker(other.get_ticker().map(SmolStr::new));
     this.set_metadata(Some(other.get_metadata().clone()));
 }
 
 fn copy_operation<T: Operation + ?Sized, E: Operation + ?Sized>(this: &mut T, other: &E) {
-    this.set_marketoperationid(other.get_marketoperationid());
     this.set_tif(other.get_tif().cloned());
     this.set_tradable(other.get_tradable());
-    let _ = this.set_accountids(other.get_accountids().clone());
-    let _ = this.set_userids(other.get_userids().clone());
     let _ = this.set_altids(other.get_altids().clone());
-    this.set_bid(other.get_bid().cloned());
-    this.set_ask(other.get_ask().cloned());
 }
 
 impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {

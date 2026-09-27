@@ -4727,6 +4727,171 @@ A written body is Rust-only; the `HEAD` answered by the `GET` route, the `405` n
     std::fs::remove_dir_all(&trace_dir)?;
     ```
 
+### Behind a reverse proxy
+
+A server behind a reverse proxy sees the proxy's connection, not the client's: the peer is the proxy, `Host` is whatever the proxy put there, the scheme is plain HTTP where the client spoke TLS, and the path may carry a prefix the proxy routes on. Four `ServerOptions` say what the server may believe about that, and every URL it states - a handler's [`Request::url`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Request.html#method.url), a mount's listing, [`Server::public_url_of`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Server.html#method.public_url_of) - is made under the base they resolve, in this order:
+
+| base | read from |
+| --- | --- |
+| [`with_public_url`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_public_url) | the URL the server was given - `http` or `https`, a host, a port when it is not the scheme's own, the prefix the proxy adds - whatever the request says; `bind_with` refuses a query, a fragment, user information (it would reach every client) or another scheme, and no `Alt-Svc` is advertised behind it, since the proxy's origin is not this server's |
+| the forwarded fields of a trusted peer | only the fields [`with_forwarded_headers`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_forwarded_headers) names, `X-Forwarded-For` and `X-Forwarded-Proto` by default. `Forwarded` (RFC 7239), once named: the `for` chain walked from the element nearest the server past every address that is itself a trusted proxy, the first that is not being the client and its `host` and `proto` the base; it states a fact before the `X-Forwarded-*` field stating the same one. `X-Forwarded-For` is walked the same way, and every other `X-Forwarded-*` list is read at the client's position when it has as many members, else at its last - never at its first, which is the client's own when a proxy appends. A `proto` that is neither `http` nor `https`, a host that is no authority, or a prefix holding a byte the path grammar refuses (a space, a quote, `<`) is left unread rather than failing the request; the `:scheme` of an HTTP/2 request in the clear counts as a forwarded `proto`, from a trusted peer alone |
+| an absolute-form target | its authority, `GET http://elsewhere.example/echo HTTP/1.1` |
+| `Host` | the request's own, `https` when the connection itself is TLS; an HTTP/1.1 request with no `Host`, two, or one that is no host and optional port - a path, a query, user information - is `400` before anything is routed or recorded (RFC 9112 3.2), and HTTP/1.0 needs none, one that is no authority being left unread |
+| the bound address | with an unspecified one (`0.0.0.0`, `[::]`) replaced by its loopback, so `Server::url()` of a server bound everywhere is one a process on the host can dial |
+
+[`with_trusted_proxies`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_trusted_proxies) names the peers - IP addresses or CIDR networks, `10.0.0.5`, `10.0.0.0/8`, `::1`, `fd00::/8`, an IPv4-mapped IPv6 peer matched as the IPv4 address it maps and a mapped network's bits counting the 96 of the mapping, so `::ffff:10.0.0.0/104` is `10.0.0.0/8` - whose forwarded fields are believed; none are by default, because any client can write those fields, so a request from any other peer is taken as it arrived and cannot state a host or a scheme of its own choosing. A proxy sets some forwarded fields and passes the rest through as the client wrote them, so even a trusted peer is believed only for the fields [`with_forwarded_headers`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_forwarded_headers) names, each a [`ForwardedHeader`](https://docs.rs/yggdryl/latest/yggdryl/http/enum.ForwardedHeader.html): name one only when the proxy sets or overwrites it on every request. An `X-Forwarded-Prefix`, once named, goes on the public path before this server's own prefix. [`with_path_prefix`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_path_prefix) is the path a proxy leaves in front of the routed one - `/olap` when the proxy forwards `/olap/xmla` to a server routing `/xmla` - stripped before routing and carried back on the URLs the server states; a request outside the prefix is routed as it is, so the routes answer with and without it, and a recorded request keeps `path` as routed and `target` as sent. Every recorded request also names its `peer` - the connection's address, the proxy's behind one - and its `client`, the address a trusted proxy forwarded, else the peer's.
+
+Two more things a proxy sends that a server on its own never sees. A `GET` or `HEAD` of a routed path with one trailing slash added - `/olap/xmla/` for a route `/olap/xmla`, which a proxy's `location /olap/` or a client's habit produces - is a `308` whose `Location` is relative, `../xmla`, the query kept, so it is right under any prefix; a `POST` to that path is served by the route and never redirected, because a client posting a body may not follow a redirect with it, and a method the bare path does not route is `405` there as it would be without the slash. And a proxy that speaks HTTP/1.0 upstream - nginx does unless `proxy_http_version 1.1` is set - is answered without chunking: a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs is written close-delimited, `Connection: close` and neither `Transfer-Encoding` nor `Content-Length`, and a held body carries its length as it always did; it works, and costs a connection per request. What it cannot do is say a written body ended short: a writer that fails part way ends the body at the close, which an HTTP/1.0 peer reads as whole, where over HTTP/1.1 the missing last chunk tells it the transfer was cut. What a proxy in front of the XML for Analysis provider is configured with, nginx, Caddy, IIS or a cloud load balancer, is spelled out [there](../media/index.md#behind-a-reverse-proxy).
+
+=== "Rust"
+
+    ```rust
+    use std::net::IpAddr;
+    use yggdryl::Url;
+    use yggdryl::http::{self, ForwardedHeader, Response, Server, ServerOptions, Status};
+
+    // Loopback is trusted here because the request below plays the proxy,
+    // which sets the three fields named.
+    let options = ServerOptions::default()
+        .with_trusted_proxies(["127.0.0.1", "::1"])?
+        .with_forwarded_headers([
+            ForwardedHeader::XForwardedFor,
+            ForwardedHeader::XForwardedProto,
+            ForwardedHeader::XForwardedHost,
+        ])
+        .with_path_prefix("/olap")?;
+    let server = Server::bind_with("127.0.0.1:0", options)?;
+    server.route(None, "/echo", |request| {
+        Ok(Response::new(Status::OK).with_text(&request.url().to_string()))
+    });
+
+    // The proxy forwarded `/olap/echo` and said what the client used: the
+    // prefix comes off before routing and goes back on the URL the handler sees.
+    let response = http::Request::get(&server.url_of("/olap/echo?x=1")?.to_string())?
+        .with_header("X-Forwarded-Proto", "https")?
+        .with_header("X-Forwarded-Host", "data.example.com")?
+        .with_header("X-Forwarded-For", "203.0.113.9, 127.0.0.1")?
+        .send()?;
+    assert_eq!(response.text()?, "https://data.example.com/olap/echo?x=1");
+    let recorded = &server.requests()[0];
+    assert_eq!((recorded.path.as_str(), recorded.target.as_str()), ("/echo", "/olap/echo?x=1"));
+    assert_eq!(recorded.client, Some(IpAddr::from([203, 0, 113, 9])));
+
+    // An untrusted peer's fields are not believed.
+    let plain = Server::bind("127.0.0.1:0")?;
+    plain.route(None, "/echo", |request| {
+        Ok(Response::new(Status::OK).with_text(&request.url().to_string()))
+    });
+    let response = http::Request::get(&plain.url_of("/echo")?.to_string())?
+        .with_header("X-Forwarded-Host", "data.example.com")?
+        .send()?;
+    assert_eq!(response.text()?, plain.url_of("/echo")?.to_string());
+
+    // A public URL is the base whatever the request says, and what
+    // `public_url_of` answers.
+    let options = ServerOptions::default()
+        .with_public_url(Url::from_str("https://data.example.com/olap")?);
+    let published = Server::bind_with("127.0.0.1:0", options)?;
+    assert_eq!(published.public_url_of("/xmla")?.to_string(), "https://data.example.com/olap/xmla");
+    assert!(published.url_of("/xmla")?.to_string().starts_with("http://127.0.0.1:"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import http
+
+    # Loopback is trusted here because the request below plays the proxy,
+    # which sets the three fields named.
+    with http.Server.bind(
+        trusted_proxies=["127.0.0.1", "::1"],
+        forwarded_headers=["X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host"],
+        path_prefix="/olap",
+    ) as server:
+        server.route("/echo", lambda request: (200, None, str(request.url)))
+
+        # The proxy forwarded `/olap/echo` and said what the client used: the
+        # prefix comes off before routing and goes back on the URL the handler sees.
+        response = http.get(
+            server.url_of("/olap/echo?x=1"),
+            headers={
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Host": "data.example.com",
+                "X-Forwarded-For": "203.0.113.9, 127.0.0.1",
+            },
+        )
+        assert response.text == "https://data.example.com/olap/echo?x=1"
+        recorded = server.requests[0]
+        assert (recorded["path"], recorded["target"]) == ("/echo", "/olap/echo?x=1")
+        assert recorded["client"] == "203.0.113.9"
+
+    # An untrusted peer's fields are not believed.
+    with http.Server.bind() as plain:
+        plain.route("/echo", lambda request: (200, None, str(request.url)))
+        response = http.get(plain.url_of("/echo"), headers={"X-Forwarded-Host": "data.example.com"})
+        assert response.text == str(plain.url_of("/echo"))
+
+    # A public URL is the base whatever the request says, and what
+    # public_url_of answers.
+    with http.Server.bind(public_url="https://data.example.com/olap") as published:
+        assert str(published.public_url_of("/xmla")) == "https://data.example.com/olap/xmla"
+        assert str(published.url_of("/xmla")).startswith("http://127.0.0.1:")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, http } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-proxy-'))
+    fs.mkdirSync(path.join(root, 'dir'))
+    fs.writeFileSync(path.join(root, 'dir', 'a.txt'), 'alpha')
+
+    // Loopback is trusted here because the request below plays the proxy,
+    // which sets the three fields named.
+    const server = http.Server.bind(undefined, {
+      trustedProxies: ['127.0.0.1', '::1'],
+      forwardedHeaders: ['X-Forwarded-For', 'X-Forwarded-Proto', 'X-Forwarded-Host'],
+      pathPrefix: '/files',
+    })
+    server.mount('/', new IOBase(root))
+
+    // The proxy forwarded `/files/dir` and said what the client used: the
+    // prefix comes off before routing and goes back on the URLs the listing states.
+    const listed = http.get(new URL('files/dir', server.url.toString()).toString(), {
+      headers: {
+        'X-Forwarded-Proto': 'https',
+        'X-Forwarded-Host': 'data.example.com',
+        'X-Forwarded-For': '203.0.113.9, 127.0.0.1',
+      },
+    })
+    assert.equal(listed.statusCode, 200)
+    assert.ok(listed.text().includes('"url":"https://data.example.com/files/dir/a.txt"'))
+    const [recorded] = server.requests
+    assert.deepEqual([recorded.path, recorded.target, recorded.client], ['/dir', '/files/dir', '203.0.113.9'])
+
+    // An untrusted peer's fields are not believed.
+    const plain = http.Server.bind()
+    plain.mount('/', new IOBase(root))
+    const ignored = http.get(`${plain.url}dir`, { headers: { 'X-Forwarded-Host': 'data.example.com' } })
+    assert.ok(ignored.text().includes(`"url":"${plain.url}dir/a.txt"`))
+
+    // A public URL is the base whatever the request says, and what
+    // publicUrlOf answers.
+    const published = http.Server.bind(undefined, { publicUrl: 'https://data.example.com/olap' })
+    assert.equal(published.publicUrlOf('/files').toString(), 'https://data.example.com/olap/files')
+    assert.match(published.url.toString(), /^http:\/\/127\.0\.0\.1:\d+\/$/)
+
+    server.shutdown()
+    plain.shutdown()
+    published.shutdown()
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 ### HTTP/2 and HTTP/3
 
 Which version a request speaks is the options' `http_version`, read against what the client already learned of the origin; a version the origin turns down falls back to the next one down in the same attempt and is remembered, so it is asked once:

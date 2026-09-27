@@ -3,9 +3,9 @@
 //! Five `FIX:` properties hold more than one text can say. Three are
 //! documents of entries: the [code set](super::codes), the
 //! [directions](super::directions) a line is read under and the
-//! [replacements](super::replacements) a value is restated through. Two are
-//! bare lists: the alternate [names](super::FixField::names) a field answers
-//! to and the alternate [tags](super::FixField::tags) it holds. All are JSON,
+//! identifier-map keys a field names a message by. Two are bare lists: the
+//! alternate [names](super::FixField::names) a field answers to and the
+//! alternate [tags](super::FixField::tags) it holds. All are JSON,
 //! because a metadata value may hold no control character and so cannot be
 //! separator-framed, and all are read on hot paths where building a parse
 //! tree per ask would cost more than the lookup.
@@ -700,7 +700,7 @@ impl Writer {
 
 /// One `FIX:` property whose stored value is a canonical document.
 ///
-/// Five properties hold one - three arrays of entries and two bare lists -
+/// Four properties hold one - two arrays of entries and two bare lists -
 /// and this is what names one of them to the pair a store crosses:
 /// [`Self::value_of`] reads the document as the JSON it is,
 /// [`Self::text_of`] restates that JSON as the canonical text.
@@ -708,8 +708,6 @@ impl Writer {
 pub(super) enum Kind {
     /// [`super::directions`], under `FIX:directions`.
     Directions,
-    /// [`super::replacements`], under `FIX:replacements`.
-    Replacements,
     /// [`super::idmap`], under `FIX:idmap`.
     IdMap,
     /// [`FixField::names`](super::FixField::names), under `FIX:names`.
@@ -731,19 +729,12 @@ enum Shape {
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 5] = [
-        Self::Directions,
-        Self::Replacements,
-        Self::IdMap,
-        Self::Names,
-        Self::Tags,
-    ];
+    pub(super) const ALL: [Self; 4] = [Self::Directions, Self::IdMap, Self::Names, Self::Tags];
 
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
         match self {
             Self::Directions => "FIX:directions",
-            Self::Replacements => "FIX:replacements",
             Self::IdMap => "FIX:idmap",
             Self::Names => "FIX:names",
             Self::Tags => "FIX:tags",
@@ -759,7 +750,6 @@ impl Kind {
     const fn target(self) -> &'static str {
         match self {
             Self::Directions => "fix directions",
-            Self::Replacements => "fix replacements",
             Self::IdMap => "fix idmap",
             Self::Names => "fix names",
             Self::Tags => "fix tags",
@@ -775,7 +765,6 @@ impl Kind {
     const fn shape(self) -> Shape {
         match self {
             Self::Directions => Shape::Entries(&super::directions::KEYS),
-            Self::Replacements => Shape::Entries(&super::replacements::KEYS),
             Self::IdMap => Shape::Entries(&super::idmap::KEYS),
             Self::Names => Shape::Words,
             Self::Tags => Shape::Tags,
@@ -981,8 +970,8 @@ fn refused(target: &'static str, reason: impl fmt::Display) -> Error {
 /// The shape [`FixRegistry::commit`](super::FixRegistry::commit) and
 /// [`FixRegistry::into_json`](super::FixRegistry::into_json) write and
 /// [`from_fix_document`] reads, exposed on its own so a caller editing one
-/// document out of a store - what `ygg fix read --json` prints and
-/// `ygg fix ... --input` takes - writes the same shape the store does. It is
+/// document out of a store - what `yggdryl fix read --json` prints and
+/// `yggdryl fix ... --input` takes - writes the same shape the store does. It is
 /// the FIX spelling of [`Field::into_value`](crate::Field::into_value), and
 /// the only difference between them is those four properties.
 ///

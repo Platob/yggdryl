@@ -249,7 +249,7 @@ assert!(!Cfi::is_detailed("XXXXXX"));
 
 ## Two statements of one instrument
 
-`Cfi::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the `CodeValue` leaf contract states it - the merged code where the two describe one instrument, this code as it is where they do not. Rust only.
+`Cfi::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the `CodeValue` leaf contract states it - an unclassified code, all `X` or a letter no group accepts, yields whole to a classified other; otherwise the merged code where the two describe one instrument, and this code as it is where they do not. Rust only.
 
 ```rust
 use yggdryl::{Cfi, CodeValue};
@@ -264,7 +264,9 @@ assert_eq!(Cfi::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
 assert_eq!(Cfi::merged("ESVUFR", "DBFNFB"), None);
 assert_eq!(Cfi::merged("ESVUFR", "EPVNFR"), None);
 
-// The leaf contract reads the same rule, keeping this code where they do not.
+// The leaf contract reads the same rule, keeping this code where they do not,
+// and an unclassified code takes a classified one whole.
+assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
 assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
 assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
 ```
@@ -276,7 +278,7 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 - The default value is the empty text, answered as a `cfi` scalar ([Cast](../cast.md#empty-text)).
 - `Cfi::merged` answers `None` for anything that is not two well-formed codes; `merge_with` turns that `None` back into this code.
 - Python declares the vocabulary over the width as `yggdryl.enums.CFI`, over the `yggdryl.enums.Cfi` base a caller subclasses for a vocabulary of its own; `StringEnum::from_logical_name("cfi")` answers an enum of no members, because the grid is a rule rather than a listing.
-- `CFICode(461)` is the standard classification field, so no crate tag 65056 exists ([FIX message definitions](index.md#fix-message-definitions)).
+- `CFICode(461)` is the standard classification field, so no crate column carries one ([FIX message definitions](index.md#fix-message-definitions)).
 - A lifecycle may learn a missing CFI attribute only under an already-valid [ISIN](isin.md) in its own [graph walk](../../graph/event.md#lifecycle-walk).
 
 ## Commands

@@ -183,7 +183,7 @@ if (parsed.altids.CLORDID !== 'ORDER-000000') {
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
 }
-if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 10 || parsed.marketoperationid !== 10 || snapshotCodec.snapshotNs !== 1_000_000_000n) {
+if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
   throw new Error('FIX category and exact snapshot boundary mismatch')
 }
 const parsedRow = parsed.intoRow(fixedSchema)
@@ -248,7 +248,9 @@ try {
   benchmark('fix/message_header', () => parsed.header())
   benchmark('fix/message_capture', () => parsed.capture())
   // The graph leaves a message expands to, built per call.
-  benchmark('fix/message_market_operations', () => parsed.marketOperations())
+  benchmark('fix/message_market_data', () => parsed.marketData())
+  benchmark('fix/message_isincode', () => parsed.isincode)
+  benchmark('fix/message_fxrates', () => parsed.fxrates)
   benchmark('fix/message_altids', () => parsed.altids)
   benchmark('fix/message_securityids', () => parsed.securityids)
   benchmark('fix/message_metadata', () => parsed.metadata)
@@ -342,17 +344,17 @@ try {
   // answer them in that order: the sorted door places them, where the book
   // reader would refuse the regression.
   const MESSAGES = [...seedCodec.parseLines(LINES)]
-  if (drain(seedCodec.marketOperations(MESSAGES)) !== LINES.length) {
+  if (drain(seedCodec.marketData(MESSAGES)) !== LINES.length) {
     throw new Error('one market operation per order')
   }
-  benchmarkStreams(`fix/market_operations_drain/${LINES.length}`, streams, () =>
-    drain(seedCodec.marketOperations(MESSAGES)),
+  benchmarkStreams(`fix/market_data_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.marketData(MESSAGES)),
   )
   benchmarkStreams(`fix/market_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.marketArrowReader(MESSAGES).intoTable().numRows,
   )
-  benchmarkStreams(`fix/market_operations_arrow_reader/${LINES.length}`, streams, () =>
-    seedCodec.marketOperationsArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
+  benchmarkStreams(`fix/market_data_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.marketDataArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
   )
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>

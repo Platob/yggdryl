@@ -1,6 +1,6 @@
 ---
 name: yggdryl-types
-description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin codes, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
+description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin/forex codes, the side, marketdatakind and state enums, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
 ---
 
 # Types: DataType, Field, Scalar
@@ -47,6 +47,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
+| a registered enum (`side`, `marketdatakind`, `state`) | `DataType::Side.scalar("BUY")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()` | `yggdryl.side(name)`, `Side.BUY` (an `IntEnum`), `MarketDataKind.from_spelling("order")` | `fields.side(name)`, `Side.BUY` (a frozen name-to-code object) |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
@@ -103,7 +104,7 @@ string and byte leaves, the legacy `list` words - is in
    and a plain string of the same bytes are different values.
 8. **Branch on identity strings, not on classes.** `DataType.kind` and
    `Scalar.family` name the family (`integer`, `temporal`, `text`, `code`,
-   `nested`, ...); `id` names the exact leaf (`time32`, `decimal128`);
+   `enum`, `nested`, ...); `id` names the exact leaf (`time32`, `decimal128`);
    `Scalar.kind` names the width tag (`i32`, `d128`, `sized_ascii`).
 9. **Arithmetic is checked and exact.** Overflow, division by zero, an inexact
    decimal quotient and an undefined operand pair are four distinct errors
@@ -174,9 +175,18 @@ string and byte leaves, the legacy `list` words - is in
 - A `StringEnum` (`FIELD:enum`) is only accepted on a `fixed_ascii(n)` field
   with n <= 16 or on a registered code; on `utf8` it is refused ("at most 16
   bytes"). It is a declared vocabulary, not a validator: `field.scalar("X")`
-  is accepted on a `Side` enum field. Check membership yourself
-  (`side.get_member(v)` / `getMember(v)` answers the member name or none)
-  when non-members must fail.
+  is accepted on the `StringEnum("Side", ...)` field above. Check membership
+  yourself (`side.get_member(v)` / `getMember(v)` answers the member name or
+  none) when non-members must fail.
+- `side`, `marketdatakind` and `state` are not text: each is an `int32`
+  column of member codes (kind `enum`), which a value reads as the member -
+  Python's `IntEnum` (`Side.BUY`), JavaScript's name (`'BUY'`), Rust's variant
+  (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUY`); a
+  `marketdatakind` code is an integer, never the text `"10"`.
+- `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
+  currencies, however a feed spells it. A symbol with a tenor or a RIC
+  suffix (`EUR/USD 1M`, `EURUSD=`) is no `forex` value; reading one is
+  `FxSymbol::from_symbol`, Rust-only.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
 - `DataType.from_arrow(extension_type)` loses the extension name (a bare Arrow
@@ -219,6 +229,11 @@ string and byte leaves, the legacy `list` words - is in
   [strings & bytes](https://platob.github.io/yggdryl/types/text/),
   [string](https://platob.github.io/yggdryl/types/text/string/),
   [codes](https://platob.github.io/yggdryl/types/codes/),
+  [forex](https://platob.github.io/yggdryl/types/codes/forex/),
+  [enums](https://platob.github.io/yggdryl/types/enum/),
+  [side](https://platob.github.io/yggdryl/types/enum/side/),
+  [market data kind](https://platob.github.io/yggdryl/types/enum/marketdatakind/),
+  [state](https://platob.github.io/yggdryl/types/enum/state/),
   [nested](https://platob.github.io/yggdryl/types/nested/),
   [union](https://platob.github.io/yggdryl/types/nested/union/),
   [geospatial](https://platob.github.io/yggdryl/types/geospatial/)

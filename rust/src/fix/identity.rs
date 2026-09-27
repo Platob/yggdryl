@@ -8,7 +8,7 @@ use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::securityid::{SecType, SecurityId};
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Isin, Mic, Result, Scalar, TimeUnit, Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, Isin, Mic, Result, Scalar, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -380,6 +380,10 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// registry's. A group listed here, by its counter, is read whole.
 pub(super) const MARKET_TAGS: [i32; 39] = [
     54,              // Side: side
+    132,             // BidPx: bidpx, and a bid quote's price
+    133,             // OfferPx: askpx, and an ask quote's price
+    134,             // BidSize: bidqty, and a bid quote's quantity
+    135,             // OfferSize: askqty, and an ask quote's quantity
     15,              // Currency: currency
     120,             // SettlCurrency: currency, where 15 states none
     996,             // UnitOfMeasure: unit
@@ -414,10 +418,6 @@ pub(super) const MARKET_TAGS: [i32; 39] = [
     60,              // TransactTime: execunix, and currunix within the delay
     768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
     140,             // PrevClosePx: prevpx
-    132,             // BidPx: the bid lane's price
-    133,             // OfferPx: the ask lane's price
-    134,             // BidSize: the bid lane's quantity
-    135,             // OfferSize: the ask lane's quantity
 ];
 
 /// Every tag a book entry's own facts are read from, at any depth of its
@@ -429,8 +429,8 @@ pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     269,  // MDEntryType: the leaf's kind, and a level's side
     278,  // MDEntryID: crosscode, and the MDENTRYID alternate identifier
     280,  // MDEntryRefID: crosscode, and the MDENTRYREFID alternate identifier
-    270,  // MDEntryPx: price, a lane's price, and the control's entry price
-    271,  // MDEntrySize: quantity, a lane's, and the control's entry size
+    270,  // MDEntryPx: price, and the control's entry price
+    271,  // MDEntrySize: quantity, and the control's entry size
     1026, // MDEntrySpotRate: spotrate
     1027, // MDEntryForwardPoints: forwardpoints
     272,  // MDEntryDate: currunix, creaunix or execunix
@@ -471,21 +471,21 @@ pub(super) const BOOK_ROOT_TAGS: [i32; 11] = [
 
 /// Every tag a trade side's execution is read from, at any depth of its
 /// `NoSides(552)` occurrence, one line per tag naming what it feeds: the
-/// reads of `trade_execution` in `market.rs`.
-pub(super) const TRADE_SIDE_TAGS: [i32; 13] = [
+/// reads of `trade_sides` in `market.rs`, each written at the root of the
+/// execution the trade splits off, or keying its chain.
+pub(super) const TRADE_SIDE_TAGS: [i32; 12] = [
     54,   // Side: side
-    1009, // SideLastQty: lastqty
-    1852, // SideAvgPx: avgpx
-    1154, // SideCurrency: currency
-    1427, // SideExecID: SIDEEXECID, and the side's stable key
-    1005, // SideTradeReportID: SIDETRADEREPORTID, and the stable key
-    1506, // SideTradeID: SIDETRADEID, and the stable key
-    1507, // SideOrigTradeID: SIDEORIGTRADEID
-    37,   // OrderID: ORDERID, the stable key and the side's chain
-    198,  // SecondaryOrderID: SECONDARYORDERID
-    11,   // ClOrdID: CLORDID, the stable key and the side's chain
-    526,  // SecondaryClOrdID: SECONDARYCLORDID
-    41,   // OrigClOrdID: ORIGCLORDID, and the side's chain
+    1009, // SideLastQty: LastQty(32), lastqty
+    1852, // SideAvgPx: AvgPx(6), avgpx
+    1154, // SideCurrency: Currency(15), currency
+    1427, // SideExecID: ExecID(17), and the side's stable key
+    1005, // SideTradeReportID: the stable key
+    1506, // SideTradeID: the stable key
+    37,   // OrderID: the stable key and the side's chain
+    198,  // SecondaryOrderID
+    11,   // ClOrdID: the stable key and the side's chain
+    526,  // SecondaryClOrdID
+    41,   // OrigClOrdID: the side's chain
 ];
 
 /// The FIX fields a message lifts out of its row and holds typed.
@@ -571,7 +571,7 @@ pub struct FixLifted {
 }
 
 /// The six FX parts of a price a message lifted: the spot rate and the
-/// forward points of its last price and of each of its two lanes, FIX's own
+/// forward points of its last price, its bid and its offer, FIX's own
 /// `LastSpotRate(194)`, `LastForwardPoints(195)`, `BidSpotRate(188)`,
 /// `BidForwardPoints(189)`, `OfferSpotRate(190)` and `OfferForwardPoints(191)`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -1025,6 +1025,13 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
                 .map(|code| code.as_str().to_owned())
                 .or_else(|| value.as_str().map(str::to_owned)),
         ),
+        tag if tag == super::FOREXCODE_TAG_NAME.0 => record_securityid(
+            event,
+            "FOREX",
+            Forex::from_scalar(value)
+                .map(|code| code.as_str().to_owned())
+                .or_else(|| value.as_str().map(str::to_owned)),
+        ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             Mic::from_scalar(value)
                 .cloned()
@@ -1032,10 +1039,6 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
         ),
         _ => {
             if let Some(column) = super::crated::event_column_of(tag) {
-                column.record(event, value);
-                return true;
-            }
-            if let Some(column) = super::crated::market_column_of(tag) {
                 column.record(event, value);
                 return true;
             }
@@ -1050,9 +1053,6 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
 /// an absent instant, identity or code.
 pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar> {
     if let Some(column) = super::crated::event_column_of(tag) {
-        return column.fact(event);
-    }
-    if let Some(column) = super::crated::market_column_of(tag) {
         return column.fact(event);
     }
     match tag {
@@ -1071,6 +1071,11 @@ pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar
             .get("FIGI")
             .and_then(|code| Figi::new(code).ok())
             .map(Scalar::Figi),
+        tag if tag == super::FOREXCODE_TAG_NAME.0 => event
+            .get_securityids()
+            .get("FOREX")
+            .and_then(|code| Forex::new(code).ok())
+            .map(Scalar::Forex),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.get_miccode().cloned().map(Scalar::Mic),
         _ => None,
     }

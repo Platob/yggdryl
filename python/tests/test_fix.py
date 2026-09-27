@@ -50,7 +50,7 @@ from yggdryl.fix import (
     fix_schema_carrying,
     fix_schema_tags,
 )
-from yggdryl import State, graph
+from yggdryl import MarketDataKind, Side, State, graph
 from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
 
@@ -172,7 +172,7 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed_batch: FixRegistry) -> N
     assert len(read) == len(CARRYING)
     assert all(held.capture().msgpluginid == "ULB" for held in read)
     # A line's own captures are facts about the capture, never entries.
-    assert all(all(tag != 65009 for tag, _, _, _ in held.entries()) for held in read)
+    assert all(all(tag != MSGPLUGINID_TAG for tag, _, _, _ in held.entries()) for held in read)
 
 
 def test_the_codec_answers_the_pins_it_was_given(seed_batch: FixRegistry) -> None:
@@ -289,7 +289,8 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed_batch: FixRegis
     for named in ("beginstring", "msgtype", "sendingtime", "symbol", "fixentries"):
         assert names.count(named) == 1, named
     # The one record closes the row, under the counter that counts it.
-    assert names[-2:] == ["nofixentries", "fixentries"]
+    # `fixentries` is a tag:name map that counts itself; no counter column (A8).
+    assert names[-2:] == ["metadata", "fixentries"]
     assert reader.schema.field("msgtype").metadata[b"FIX:tag"] == b"35"
     # The identities cross as what a lake reads: a UUID and a 64-bit integer.
     assert reader.schema.field("curruuid").type == pa.uuid()
@@ -390,52 +391,59 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
         b"279=0|269=2|278=T1|270=101|271=2|10=0|"
     )
 
-    reader = codec.book_arrow_reader([snapshot, update], snapshot_millis=0, global_=False)
+    reader = codec.book_arrow_reader([snapshot, update], snapshot_millis=0)
     assert isinstance(reader, pa.RecordBatchReader)
     # The one lifted `marketdata` schema every leaf is written under: the
-    # kind, then every fact a column of its own, the book's sides as structs.
+    # kind, then every fact a column of its own, the book's entries, deltas,
+    # executions and price levels nested.
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
-    assert names[0] == "kind"
-    assert {"bidside", "askside", "executions", "snapshotpartitions"} <= set(names)
+    assert names[0] == "marketdatakind"
+    assert {"alive", "deltas", "executions", "bidlimits", "asklimits"} <= set(names)
+    assert not {"bidside", "askside", "snapshotpartitions", "kind"} & set(names)
     assert "price" in names and "quantity" in names
     assert "px" not in names and "qty" not in names
 
     table = reader.read_all()
     rows = table.to_pylist()
     assert len(rows) == 2
-    assert [row["kind"] for row in rows] == ["book_event", "book_event"]
+    assert [row["marketdatakind"] for row in rows] == [MarketDataKind.BOOK] * 2
     assert [row["ticker"] for row in rows] == ["AAPL", "AAPL"]
     assert [row["price"] for row in rows] == [decimal.Decimal("101"), decimal.Decimal("101.5")]
-    assert rows[0]["bidside"]["live"][0]["price"] == decimal.Decimal("100")
-    assert rows[1]["bidside"]["live"][0]["price"] == decimal.Decimal("101")
-    assert rows[1]["bidside"]["live"][0]["marketoperationid"] == 3
+    # The book states its best tradable levels as its own bid and ask.
+    assert [row["bidpx"] for row in rows] == [decimal.Decimal("100"), decimal.Decimal("101")]
+    assert [row["askpx"] for row in rows] == [decimal.Decimal("102"), decimal.Decimal("102")]
+    assert rows[0]["alive"][0]["price"] == decimal.Decimal("100")
+    assert rows[1]["alive"][0]["price"] == decimal.Decimal("101")
+    # Every entry of a W or X is a quote, filed under QUOT.
+    assert rows[1]["alive"][0]["marketdatakind"] == MarketDataKind.QUOT
+    assert [entry["side"] for entry in rows[1]["alive"]] == [Side.BUY, Side.SELL]
+    assert len(rows[1]["deltas"]) == 1
     assert len(rows[1]["executions"]) == 1
-    assert rows[1]["executions"][0]["marketoperationid"] == 3
-    # An operation row names its entry under `MDENTRYID` and states its own
-    # lane; the book states the scopes its snapshot replaced, and none for
-    # an update.
-    assert dict(rows[1]["bidside"]["live"][0]["altids"]) == {"MDENTRYID": "B1"}
-    assert rows[1]["bidside"]["live"][0]["bid"]["quantity"] == decimal.Decimal("11")
-    assert rows[1]["bidside"]["live"][0]["ask"] is None
-    assert rows[0]["snapshotpartitions"] == [{"symbol": "AAPL", "scope": "Symbol=AAPL"}]
-    assert rows[1]["snapshotpartitions"] is None
+    assert rows[1]["executions"][0]["marketdatakind"] == MarketDataKind.EXEC
+    # An operation row names its entry under `MDENTRYID`; the levels are
+    # the book's, best first, each stating whether it trades.
+    assert dict(rows[1]["alive"][0]["altids"]) == {"MDENTRYID": "B1"}
+    [bid] = rows[1]["bidlimits"]
+    assert (bid["price"], bid["quantity"], bid["tradable"]) == (
+        decimal.Decimal("101"),
+        decimal.Decimal("11"),
+        True,
+    )
+    assert [level["price"] for level in rows[1]["asklimits"]] == [decimal.Decimal("102")]
 
     # The rows read back as the typed books they were written from.
     books = [data.as_book_event() for data in MarketData.from_arrow_reader(table)]
     assert all(isinstance(book, BookEvent) for book in books)
     first, second = (book for book in books if book is not None)
-    assert first.bid.best_price is not None
-    assert first.bid.best_price.as_py() == decimal.Decimal("100")
-    assert second.bid.best_price is not None
-    assert second.bid.best_price.as_py() == decimal.Decimal("101")
-    assert [partition.scope for partition in first.snapshot_partitions] == ["Symbol=AAPL"]
-    assert second.snapshot_partitions == []
+    assert first.best_price(Side.BUY) is not None
+    assert first.best_price(Side.BUY).as_py() == decimal.Decimal("100")
+    assert second.best_price(Side.BUY) is not None
+    assert second.best_price(Side.BUY).as_py() == decimal.Decimal("101")
     assert len(second.executions) == 1
-    live = second.bid.live[0].as_quote_event()
+    live = second.alive[0].as_quote_event()
     assert live is not None and live.altids == {"MDENTRYID": "B1"}
-    assert live.bid is not None and live.bid.quantity is not None
-    assert live.bid.quantity.as_py() == decimal.Decimal("11")
+    assert live.quantity is not None and live.quantity.as_py() == decimal.Decimal("11")
 
 
 # One message of each dated leaf a capture expands into, in time order: an
@@ -458,7 +466,7 @@ UNMAPPED_ORDER = (
 )
 
 
-def test_market_operations_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) -> None:
+def test_market_data_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch)
     unsorted = [
         codec.parse_fix_line(line)
@@ -469,13 +477,14 @@ def test_market_operations_answer_the_sorted_captures_leaves(seed_batch: FixRegi
         )
     ]
     ordered = sorted(unsorted, key=lambda message: message.currunix)
-    operations = codec.market_operations(iter(unsorted))
+    operations = codec.market_data(iter(unsorted))
     assert isinstance(operations, graph.MarketDataRowIterator)
     assert iter(operations) is operations
     leaves = list(operations)
     # The same leaves the message door answers over the sorted capture.
-    assert leaves == [leaf for message in ordered for leaf in message.market_operations()]
-    assert [leaf.crosscode for leaf in leaves][1:] == ["C1", "C2"]
+    assert leaves == [leaf for message in ordered for leaf in message.market_data()]
+    # A sided message's cross code states its side (A17).
+    assert [leaf.crosscode for leaf in leaves][1:] == ["BUY:C1", "BUY:C2"]
     assert next(operations, None) is None
     # The book door stays strict over the same unsorted capture, and the
     # sorted operations fold through the stateful book, one book a leaf.
@@ -484,7 +493,7 @@ def test_market_operations_answer_the_sorted_captures_leaves(seed_batch: FixRegi
     assert len(list(graph.BookIterator(leaves))) == 3
 
 
-def test_market_operations_place_an_entry_clock_before_an_earlier_message(
+def test_market_data_place_an_entry_clock_before_an_earlier_message(
     seed_batch: FixRegistry,
 ) -> None:
     codec = _fixed_batch(seed_batch)
@@ -497,7 +506,7 @@ def test_market_operations_place_an_entry_clock_before_an_earlier_message(
             b"|272=20260921|273=10:00:00.500|10=0|"
         ),
     ]
-    leaves = list(codec.market_operations(capture))
+    leaves = list(codec.market_data(capture))
     assert [leaf.kind for leaf in leaves] == ["quote_event", "order_event"]
     assert len(list(graph.BookIterator(leaves))) == 2
 
@@ -509,7 +518,7 @@ def test_a_refused_expansion_raises_first_and_drops_only_its_message(seed_batch:
         codec.parse_fix_line(b"8=FIX.4.4|35=W|52=20260921-10:00:02|55=AAPL|10=0|"),
         codec.parse_fix_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|"),
     ]
-    operations = codec.market_operations(capture)
+    operations = codec.market_data(capture)
     with pytest.raises(ValueError, match=r"NoMDEntries\(268\)"):
         next(operations)
     assert [leaf.kind for leaf in operations] == ["quote_event", "order_event"]
@@ -526,7 +535,7 @@ def test_a_python_failure_ends_the_capture_and_surfaces_at_its_end(seed_batch: F
         yield codec.parse_fix_line(EVERY_KIND[0])
         raise RuntimeError("the source gave up")
 
-    operations = codec.market_operations(messages())
+    operations = codec.market_data(messages())
     assert next(operations).kind == "order_event"
     with pytest.raises(RuntimeError, match="the source gave up"):
         next(operations)
@@ -536,9 +545,9 @@ def test_a_python_failure_ends_the_capture_and_surfaces_at_its_end(seed_batch: F
         codec.market_arrow_reader(messages()).read_all()
     # An item that is not a message is the pull's own failure.
     with pytest.raises(TypeError):
-        list(codec.market_operations([17]))
+        list(codec.market_data([17]))
     with pytest.raises(TypeError):
-        codec.market_operations(5)
+        codec.market_data(5)
 
 
 def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batch: FixRegistry) -> None:
@@ -548,21 +557,22 @@ def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batc
     assert isinstance(reader, pa.RecordBatchReader)
     assert reader.schema == MarketData.field().into_arrow_schema()
     batches = list(reader)
-    assert [batch.num_rows for batch in batches] == [2, 2, 1]
+    # A two-sided quote and a trade split into sided messages at the parse
+    # (A12, A13): the source message a line reads as is no leaf of its own,
+    # so the order, the fill and the snapshot are what reach the book.
+    assert [batch.num_rows for batch in batches] == [2, 1]
     table = pa.Table.from_batches(batches)
-    assert table.column("kind").to_pylist() == [
-        "order_event",
-        "quote_event",
-        "execution_event",
-        "trade_event",
-        "snapshot_event",
+    assert table.column("marketdatakind").to_pylist() == [
+        MarketDataKind.ORDR,
+        MarketDataKind.EXEC,
+        MarketDataKind.BOOK,
     ]
-    direct = list(codec.market_operations(capture))
+    direct = list(codec.market_data(capture))
     assert list(MarketData.from_arrow_reader(table)) == direct
 
     # The Arrow twin reads each FIX row as the message it holds.
     rows = codec.arrow_reader(fix_schema(seed_batch), capture)
-    twin = codec.market_operations_arrow_reader(rows)
+    twin = codec.market_data_arrow_reader(rows)
     assert twin.schema == reader.schema
     assert list(MarketData.from_arrow_reader(twin)) == direct
 
@@ -572,7 +582,7 @@ def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batc
         return pa.Table.from_arrays([pa.array([1]), pa.array([2])], names=["a", "a"])
 
     with pytest.raises(ValueError) as refused:
-        codec.market_operations_arrow_reader(foreign())
+        codec.market_data_arrow_reader(foreign())
     with pytest.raises(ValueError) as lifecycle:
         codec.lifecycle_arrow_reader(foreign())
     assert str(refused.value) == str(lifecycle.value)
@@ -587,9 +597,12 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     message = on.parse_fix_line(UNMAPPED_ORDER)
     # The message itself holds no metadata: the map is computed per leaf.
     assert message.metadata == {}
-    [stated] = on.market_operations([message])
-    [bare] = off.market_operations([message])
+    [stated] = on.market_data([message])
+    [bare] = off.market_data([message])
     assert stated.metadata == {
+        # Account(1) feeds no identifier map since A1: it is content the
+        # leaf carries like any other.
+        "account": "ACC1",
         # A quantity spells its decimal at the scale it is stored at.
         "displayqty": "3.000000000000000000",
         "execinst": "G",
@@ -601,16 +614,16 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert stated.curruuid != bare.curruuid
     assert stated.currhashcode != bare.currhashcode
     # The message door always carries it; the book door honours the switch.
-    assert message.market_operations() == [stated]
+    assert message.market_data() == [stated]
     [book] = MarketData.from_arrow_reader(off.book_arrow_reader([message]))
-    [live] = book.as_book_event().bid.live  # type: ignore[union-attr]
+    [live] = book.as_book_event().alive  # type: ignore[union-attr]
     assert live.metadata == {}
 
 
 ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "fix" / "ulbridge.log"
 
 
-def test_the_bridge_capture_reads_as_market_operations_and_folds_into_books(
+def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     seed_batch: FixRegistry,
 ) -> None:
     # The capture exactly as the bridge wrote it, read off an in-memory
@@ -625,35 +638,35 @@ def test_the_bridge_capture_reads_as_market_operations_and_folds_into_books(
     assert len(lines) == 144
     codec = _fixed_batch(seed_batch, capture_names=list(options.capture_names))
     messages = list(codec.parse_text_lines(lines))
-    assert len(messages) == 94
+    # Executions and two-sided quotes split once, at the parse (A12, A13).
+    assert len(messages) == 150
     walked = list(codec.lifecycle(messages))
-    assert len(walked) == 28
+    assert len(walked) == 36
 
-    # Eleven deliveries reach a book - eight fills and three orders - and
-    # the one admitted message refused, the trade capture of line 112 whose
-    # single side states no Side(54), leads.
-    stream = codec.market_operations(walked)
-    with pytest.raises(ValueError, match=r"\$\.NoSides\(552\)\[0\]\.Side\(54\): expected a bid or ask side"):
-        next(stream)
-    operations = list(stream)
-    assert len(operations) == 11
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 3
+    # Nineteen deliveries reach a book - eight fills and eleven order
+    # reports - and none is refused: a trade whose side states no Side(54)
+    # splits into no fill rather than into one a book cannot place.
+    operations = list(codec.market_data(walked))
+    assert len(operations) == 19
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 11
 
     # Every operation folds; the unpriced sell order of 2454 rests at its
     # side's unpriced level and leaves at the same instant, so the last of
-    # the seven books holds nothing and states both as deltas.
+    # the seven books holds nothing and states both as deltas. The hash moved
+    # with the split fills, the sided cross codes and the book's own bid and
+    # ask facts (A12, A17, A20).
     books = list(graph.BookIterator(operations))
     assert len(books) == 7
     last = books[-1]
     assert last.ticker == "2454"
-    assert last.bid.is_empty and last.ask.is_empty
-    assert [delta.price for delta in last.ask.deltas] == [None, None]
-    assert last.currhashcode == 7_839_532_806_895_463_521
+    assert last.alive == []
+    assert [delta.price for delta in last.deltas] == [None, None]
+    assert last.currhashcode == 16_200_745_769_023_081_660
 
-    # No leaf keys a typed fact; the fill line 105 carries states its
-    # bridge's own namespaced key.
+    # No leaf keys a typed fact - Account(1) is no typed fact since A1 - and
+    # the fill line 105 carries states its bridge's own namespaced key.
     for operation in operations:
-        for typed in ("symbol", "side", "price", "orderqty", "clordid", "account", "sendingtime"):
+        for typed in ("symbol", "side", "price", "orderqty", "clordid", "sendingtime"):
             assert typed not in operation.metadata
     assert any(operation.metadata.get("tech.clientid") == "OMSX1" for operation in operations)
 
@@ -662,22 +675,34 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     seed_batch: FixRegistry,
 ) -> None:
     codec = _fixed_batch(seed_batch, batch_row_size=1)
-    trade = codec.parse_fix_line(
-        b"8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|"
-        b"571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|"
-        b"54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|"
-        b"54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|"
+    messages = list(
+        codec.parse_line(
+            b"8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|"
+            b"571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|"
+            b"54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|"
+            b"54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|"
+        )
     )
+    # The parse splits the trade once: the report keeps its own state beside
+    # one filled execution per NoSides(552) occurrence, each sourced from it
+    # (A12, A14).
+    source, *fills = messages
+    assert (source.state, source.side) == (State.TRADE, Side.UNKNOWN)
+    assert [(fill.state, fill.side) for fill in fills] == [
+        (State.FILLED, Side.BUY),
+        (State.FILLED, Side.SELL),
+    ]
+    assert all(source.curruuid in fill.srcuuids for fill in fills)
 
     rows = codec.book_arrow_reader(
-        codec.lifecycle([trade]), snapshot_millis=0, global_=False
+        codec.lifecycle(messages), snapshot_millis=0
     ).read_all().to_pylist()
 
     assert len(rows) == 1
     book = rows[0]
     by_side = {execution["side"]: execution for execution in book["executions"]}
-    assert set(by_side) == {"BUY", "SELL"}
-    buy, sell = by_side["BUY"], by_side["SELL"]
+    assert set(by_side) == {Side.BUY, Side.SELL}
+    buy, sell = by_side[Side.BUY], by_side[Side.SELL]
     # A trade-capture side states no price and no quantity: its last
     # executed price and quantity are lastpx and lastqty, and the two
     # nullable columns carry the null.
@@ -692,51 +717,46 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
         decimal.Decimal("6"),
     )
     assert all(
-        execution["marketoperationid"] == 21
+        execution["marketdatakind"] == MarketDataKind.EXEC
         and execution["ticker"] == "AAPL"
         and execution["currunix"] == book["currunix"]
         for execution in by_side.values()
     )
     buy_ids, sell_ids = dict(buy["altids"]), dict(sell["altids"])
-    assert buy_ids["SIDEEXECID"] == "BUY-EXEC"
-    assert sell_ids["SIDEEXECID"] == "SELL-EXEC"
+    assert buy_ids["EXECID"] == "BUY-EXEC"
+    assert sell_ids["EXECID"] == "SELL-EXEC"
     assert buy_ids["ORDERID"] == "BUY-ORDER"
     assert sell_ids["ORDERID"] == "SELL-ORDER"
     assert buy_ids["CLORDID"] == "BUY-CLIENT"
     assert sell_ids["CLORDID"] == "SELL-CLIENT"
     assert buy["curruuid"] != sell["curruuid"]
     assert buy["crossuuid"] != sell["crossuuid"]
-    assert buy["crosscode"] != sell["crosscode"]
-    assert book["kind"] == "book_event"
-    assert book["bidside"]["live"] == book["askside"]["live"] == []
-    assert book["bidside"]["deltas"] == book["askside"]["deltas"] == []
+    # Each fill's cross code states its side (A17).
+    assert buy["crosscode"].startswith("BUY:") and sell["crosscode"].startswith("SELL:")
+    assert book["marketdatakind"] == MarketDataKind.BOOK
+    assert book["alive"] == [] and book["deltas"] == []
 
 
 @pytest.mark.parametrize(
-    ("body", "reason"),
+    "body",
     [
-        (
-            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
-            b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
-            b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
-            r"NoSides\(552\)\[0\]\.Side\(54\)",
-        ),
-        (
-            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
-            b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
-            "at least one sided execution",
-        ),
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+        b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
+        b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+        b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
     ],
 )
-def test_trade_book_reader_surfaces_native_sided_refusals(
-    seed_batch: FixRegistry, body: bytes, reason: str
+def test_a_trade_stating_no_sided_execution_splits_into_nothing_a_book_folds(
+    seed_batch: FixRegistry, body: bytes
 ) -> None:
+    # The executions split once, at the parse (A12): a trade whose sides
+    # state no Side(54) - or no side at all - yields no fill, and the report
+    # itself is no leaf of a book.
     codec = _fixed_batch(seed_batch)
-    trade = codec.parse_fix_line(body)
-    reader = codec.book_arrow_reader([trade], snapshot_millis=0, global_=False)
-
-    with pytest.raises(Exception, match=reason):
-        reader.read_all()
+    [trade] = codec.parse_line(body)
+    assert (trade.state, trade.side) == (State.TRADE, Side.UNKNOWN)
+    assert codec.book_arrow_reader([trade], snapshot_millis=0).read_all().num_rows == 0
 
 
 def test_messages_pull_from_the_reader_one_batch_at_a_time(seed_batch: FixRegistry) -> None:
@@ -816,10 +836,10 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed_batch: FixRegistry)
     # A recorded identity must not suppress derivation of projected market
     # facts when the row is reconstructed.
     sided = _one(codec, b"8=FIX.4.4|35=D|11=SIDE-1|55=AAPL|54=1|38=100|10=0|")
-    assert sided.side.as_py() == "BUY"
+    assert sided.side is Side.BUY
     restored = FixMsg.from_row(schema, sided.into_row(schema), seed_batch)
-    assert restored.side.as_py() == "BUY"
-    assert restored.by_tag(54).as_py() == "BUY"
+    assert restored.side is Side.BUY
+    assert restored.by_tag(54).as_py() is Side.BUY
 
     # The process default is the registry when none is named.
     assert FixMsg.from_row(schema, row).registry is not None
@@ -833,9 +853,12 @@ def test_rows_prune_projected_scalars_and_complete_groups_from_residual_entries(
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|",
     )
     row = message.into_row(schema)
+    # `fixentries` is a sorted map keyed `tag:name` (A8): what a column
+    # projects is no entry of it, and a key no dictionary resolves lives in
+    # the row's metadata under its own spelling rather than as an entry (A9).
     residual = row.as_py()[schema.index_of("fixentries")]
-    assert all(entry[0] not in (55, 453) for entry in residual)
-    assert any(entry[0] == 0 for entry in residual)
+    assert not any(key.split(":")[0] in ("55", "453") for key in residual)
+    assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
     rebuilt = FixMsg.from_row(schema, row, seed_batch)
     assert rebuilt.by_tag(55).as_py() == "AAPL"
     assert rebuilt.by_tag(453).as_py() == 1
@@ -940,14 +963,16 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry
     table = codec.arrow_reader(schema, parsed).read_all()
     # A parse chains nothing: the place in the chain and the predecessor are
     # what the walk states.
-    assert _column(table, "seqnum") == [None, None, None]
-    assert _column(table, "prevuuid") == [None, None, None]
+    # The fill splits into its report and an execution of its own (A12).
+    assert _column(table, "seqnum") == [None, None, None, None]
+    assert _column(table, "prevuuid") == [None, None, None, None]
 
     walked = codec.lifecycle_arrow_reader(table).read_all()
     assert walked.schema == table.schema, "the same schema in and out"
-    assert _column(walked, "seqnum") == [None, 1, 2], "the first of a chain is where it starts"
-    assert _column(walked, "prevuuid")[0] is None
-    assert all(held is not None for held in _column(walked, "prevuuid")[1:])
+    # The execution walks a chain of its own, where it starts.
+    assert _column(walked, "seqnum") == [None, 1, 2, None], "the first of a chain is where it starts"
+    assert _column(walked, "prevuuid")[0] is None and _column(walked, "prevuuid")[3] is None
+    assert all(held is not None for held in _column(walked, "prevuuid")[1:3])
     assert _column(walked, "fixentries") == _column(table, "fixentries"), "the record is untouched"
 
     # The rows the twin wrote are the messages the stream walk answers.
@@ -971,7 +996,8 @@ def test_format_answers_the_rows_one_message_field_holds(seed_batch: FixRegistry
     assert len(rows) == 1
     held = rows[0].as_py()
     assert held[target.index_of("symbol")] == "AAPL"
-    assert held[target.index_of("fixentries")]
+    # The keys no dictionary resolves are the row's metadata (A9).
+    assert held[target.index_of("metadata")]
 
     # The Arrow twin answers the same row, deciding its schema before a row
     # is read.
@@ -998,7 +1024,6 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed_batch: F
         "curruuid",
         "crossuuid",
         "fixentries",
-        "nofixentries",
     )
     narrow = Field(
         "fix",
@@ -1108,7 +1133,7 @@ def test_update_merges_a_definition_and_remove_keeps_a_referenced_one() -> None:
     # Only what every registry is built with is left.
     assert len(registry) == len(FixRegistry())
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
-    assert registry.field_by_counter(65049).name == "metadata"
+    assert registry.field_by_counter(METADATA_TAG).name == "metadata"
 
 
 def test_a_code_set_is_the_dictionarys_and_a_snapshot_preserves_every_definition() -> None:
@@ -1432,7 +1457,7 @@ def test_numeric_groups_resolve_through_the_one_namespace(scoped: bool) -> None:
 
 def test_the_crate_map_group_is_a_group_a_message_may_reference(tmp_path: Any) -> None:
     registry = FixRegistry()
-    mapping = registry.field_by_counter(65049)
+    mapping = registry.field_by_counter(METADATA_TAG)
     assert mapping.name == "metadata"
     mapping.fix.group = "metadata"
     registry.insert(_message("bridged", "ID", [mapping]))
@@ -1446,27 +1471,28 @@ def test_the_crate_map_group_is_a_group_a_message_may_reference(tmp_path: Any) -
     assert (location / "groups" / "metadata.json").exists()
     assert FixRegistry.from_handle(location) == registry
 
-    # The retired identifiers group (65020) reaches nothing: a retired tag
-    # is never reused.
+    # The group's number before A11 renumbered the crate's tags (65049)
+    # reaches nothing: no alias keeps an old number.
     with pytest.raises(KeyError):
-        registry.field_by_counter(65020)
+        registry.field_by_counter(65049)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 40 definitions in tag
-# order from 65003, 39 scalar graph/category/identifier facts and one Map
-# group. ISIN, Bloomberg, FIGI and MIC are crate columns, the first three
-# views of the message's security identifiers; a bridge's originating plugin
-# and conversation are columns too, while its eight identifiers and two
+# What the crate itself adds beside the specification: 41 definitions in tag
+# order from 65001 - contiguous since A11 renumbered them and added
+# ``strikepx`` - 40 scalar graph/category/identifier facts and one Map group.
+# ISIN, Forex, Bloomberg, FIGI and MIC are crate columns, views of the
+# message's security identifiers; a bridge's originating plugin and
+# conversation are columns too, while its eight identifiers and two
 # instrument names stay content; CFI remains FIX's standard tag 461, as do
-# prices, quantities and lanes.
-CRATED = 40
-# What ``FixRegistry()`` holds: those 39 scalar crate fields, SendingTime (52)
+# prices and quantities.
+CRATED = 41
+# What ``FixRegistry()`` holds: those 40 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the Map group. ``len`` counts groups; iteration
-# walks the 41 scalars alone.
-SEEDED = 42
-SEEDED_SCALARS = 41
+# walks the 42 scalars alone.
+SEEDED = 43
+SEEDED_SCALARS = 42
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1474,22 +1500,42 @@ CLOCK_NS = 1_704_190_530_000_000_000
 CLOCK = DataType('datetime64(ns,"UTC")').scalar(CLOCK_NS)
 CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 
-# The crate's own tags the message answers as typed facts.
-UNIX_TAG = 65003
-HASHCODE_TAG = 65017
-CROSSHASHCODE_TAG = 65018
-PREVUNIX_TAG = 65021
-PREVUUID_TAG = 65022
-CREAUNIX_TAG = 65023
-SNAPUNIX_TAG = 65025
-NOFIXENTRIES_TAG = 65027
-CURRUUID_TAG = 65039
-CROSSUUID_TAG = 65040
-SEQNUM_TAG = 65042
-CROSSCODE_TAG = 65048
-METADATA_TAG = 65049
-SRCUUIDS_TAG = 65051
-STATE_TAG = 65052
+# The crate's own tags the message answers as typed facts, renumbered
+# contiguously from 65001 in the fixed row's band order (A11).
+UNIX_TAG = 65001
+EXECUNIX_TAG = 65002
+RECDUNIX_TAG = 65003
+CREAUNIX_TAG = 65004
+PREVUNIX_TAG = 65005
+SNAPUNIX_TAG = 65006
+EXPRUNIX_TAG = 65007
+CURRUUID_TAG = 65008
+CROSSUUID_TAG = 65009
+CROSSCODE_TAG = 65010
+HASHCODE_TAG = 65011
+CROSSHASHCODE_TAG = 65012
+PREVUUID_TAG = 65013
+SEQNUM_TAG = 65014
+SRCUUIDS_TAG = 65015
+MSGCAT_TAG = 65016
+MSGPLUGINID_TAG = 65017
+MSGCTXID_TAG = 65019
+MSGSESSIONID_TAG = 65020
+MSGSESSEVENTID_TAG = 65021
+ISINCODE_TAG = 65023
+FOREXCODE_TAG = 65024
+BLOOMBERGCODE_TAG = 65025
+FIGICODE_TAG = 65026
+MICCODE_TAG = 65027
+STRIKEPX_TAG = 65028
+STATE_TAG = 65029
+METADATA_TAG = 65030
+SOURCEURL_TAG = 65031
+OMSDEALERACCOUNT_TAG = 65032
+OMSUSERID_TAG = 65033
+PARENTORDERID_TAG = 65034
+MSGORIGINATOR_TAG = 65018
+CONVERSATIONID_TAG = 65022
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -1620,38 +1666,15 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
             view.tag = 55
         with pytest.raises(TypeError, match=scheme):
             view.add_branch("cme")
-        with pytest.raises(TypeError, match=scheme):
-            view.derivation
     # The mapping protocol still works on every view, including this one.
     assert field.protocol("fix")["tag"] == "55"
 
 
-def test_a_derivation_crosses_as_canonical_text(seed: FixRegistry) -> None:
-    """One term over the message's fields, stored as its canonical spelling."""
+def test_a_field_carries_no_derivation_rule() -> None:
+    """The fills are the crate's native code: no field states a rule (A7)."""
     field = Field("leavesqty", "float64")
     field.fix.tag = 151
-    assert field.fix.derivation is None
-
-    field.fix.derivation = "orderqty-cumqty"
-    assert field.fix.derivation == "orderqty - cumqty"
-    assert field.metadata["FIX:derivation"] == "orderqty - cumqty"
-
-    with pytest.raises(ValueError):
-        field.fix.derivation = "orderqty -"
-    assert field.fix.derivation == "orderqty - cumqty"
-
-    # An edited derivation is what a parse fills by: the rules run inside the
-    # parse rather than in a pass of their own.
-    leaves = seed.get_field_by_tag(151)
-    assert leaves is not None
-    leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
-    seed.update(leaves)
-    held = _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|")
-    assert held.by_tag(151).as_py() == 200.0
-
-    field.fix.derivation = None
-    assert field.fix.derivation is None
-    assert "FIX:derivation" not in field.metadata
+    assert not hasattr(field.fix, "derivation")
 
 
 def test_direction_rules_cross_as_a_list() -> None:
@@ -1698,7 +1721,8 @@ def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
 
     # A follow flag belongs to an alternate identifier alone, and a refused
     # list leaves the field as it was.
-    with pytest.raises(ValueError, match="altids only"):
+    # `altids` is the one map left since A1 deleted the accounts and users.
+    with pytest.raises(ValueError, match='expected "map" to be altids'):
         field.fix.idmap = [{"map": "accountids", "key": "ORDERID", "follow": True}]
     with pytest.raises(ValueError, match="upper-case"):
         field.fix.idmap = [{"map": "altids", "key": "orderid"}]
@@ -1707,19 +1731,16 @@ def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
     assert "FIX:idmap" not in field.metadata
 
     # The committed dictionary compiles every field's once: OrderID follows,
-    # PartyID names three maps by the role of the occurrence stating it.
+    # and PartyID feeds no map since A1 - a party is metadata.
     table = seed.idmap_sources()
     assert {"tag": 37, "map": "altids", "key": "ORDERID", "follow": True, "role": None} in table
-    assert [(row["map"], row["key"], row["role"]) for row in table if row["tag"] == 448] == [
-        ("accountids", "CUSTOMERACCOUNT", "24"),
-        ("userids", "ENTERINGTRADER", "36"),
-        ("userids", "EXECUTINGTRADER", "12"),
-    ]
-    assert seed.get_field_by_tag(65070).fix.idmap == [
+    assert [row for row in table if row["tag"] == 448] == []
+    assert seed.get_field_by_tag(PARENTORDERID_TAG).fix.idmap == [
         {"map": "altids", "key": "PARENTORDERID", "follow": True, "role": None}
     ]
 
-    # A bridge's own identifiers land in the maps their fields name.
+    # A bridge's own identifiers land in the maps their fields name; its
+    # account and user are crate columns of their own.
     codec = _fixed(seed)
     message = next(
         codec.parse_line(
@@ -1727,8 +1748,8 @@ def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
             b"PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|"
         )
     )
-    assert message.accountids == {"OMSDEALERACCOUNT": "ACC1"}
-    assert message.userids == {"OMSUSERID": "trader1"}
+    assert message.by_tag(OMSDEALERACCOUNT_TAG).as_py() == "ACC1"
+    assert message.by_tag(OMSUSERID_TAG).as_py() == "trader1"
     assert message.altids == {
         "EXECID": "E1",
         "ORDERID": "O1",
@@ -1751,8 +1772,8 @@ def test_a_bridge_line_names_the_plugin_and_conversation_on_the_capture(
     )
     assert named.capture().msgoriginator == "PLUGIN_A"
     assert named.capture().conversationid == "c-1"
-    assert named.by_tag(65066).as_py() == "PLUGIN_A"
-    assert named.by_tag(65067).as_py() == "c-1"
+    assert named.by_tag(MSGORIGINATOR_TAG).as_py() == "PLUGIN_A"
+    assert named.by_tag(CONVERSATIONID_TAG).as_py() == "c-1"
     assert bare.capture().msgoriginator is None
     assert bare.capture().conversationid is None
     assert named.into_bytes(124) == bare.into_bytes(124)
@@ -1937,44 +1958,44 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 39 scalar event, category,
-    # normalized-identifier, bridge-provenance, bridge-identifier and
-    # bridge-instrument facts plus the one Map. ISIN, Bloomberg, FIGI
-    # and MIC are crate columns; CUSIP (65057), SEDOL (65058) and the
-    # identifiers Map (65020) are retired, their tags never reused; CFI
-    # keeps FIX's standard tag 461. Price, quantity and lanes remain their
-    # standard FIX fields.
+    # In tag order, one contiguous block from 65001 in the fixed row's band
+    # order (A11): 40 scalar event, category, normalized-identifier,
+    # bridge-provenance, bridge-identifier and bridge-instrument facts plus
+    # the one Map. ISIN, Forex, Bloomberg, FIGI and MIC are crate columns
+    # beside the option's strike price; CFI keeps FIX's standard tag 461.
+    # Price and quantity remain their standard FIX fields.
     assert list(fields) == [
         "currunix",
-        "msgctxid",
-        "msgpluginid",
-        "currhashcode",
-        "crosshashcode",
-        "prevunix",
-        "prevuuid",
-        "creaunix",
-        "snapunix",
-        "sourceurl",
-        "nofixentries",
-        "msgsessionid",
-        "curruuid",
-        "crossuuid",
-        "seqnum",
-        "crosscode",
-        "metadata",
-        "srcuuids",
-        "state",
-        "exprunix",
-        "msgcat",
-        "isincode",
-        "bloombergcode",
-        "miccode",
-        "figicode",
         "execunix",
         "recdunix",
-        "msgsesseventid",
+        "creaunix",
+        "prevunix",
+        "snapunix",
+        "exprunix",
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "crosshashcode",
+        "prevuuid",
+        "seqnum",
+        "srcuuids",
+        "msgcat",
+        "msgpluginid",
         "msgoriginator",
+        "msgctxid",
+        "msgsessionid",
+        "msgsesseventid",
         "conversationid",
+        "isincode",
+        "forexcode",
+        "bloombergcode",
+        "figicode",
+        "miccode",
+        "strikepx",
+        "state",
+        "metadata",
+        "sourceurl",
         "omsdealeraccount",
         "omsuserid",
         "parentorderid",
@@ -1988,7 +2009,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65077
+    assert tags[0] == UNIX_TAG and tags[-1] == 65041
+    assert tags == list(range(65001, 65042))
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -1996,11 +2018,11 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # nullable, because a message that carried nothing there answers null.
     assert [name for name, field in fields.items() if not field.nullable] == [
         "currunix",
-        "currhashcode",
-        "crosshashcode",
         "creaunix",
         "curruuid",
         "crossuuid",
+        "currhashcode",
+        "crosshashcode",
     ]
 
     # The clocks are instants in UTC, to the nanosecond; the identities are
@@ -2017,7 +2039,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
-    assert fields["msgcat"].dtype == DataType("int32")
+    assert fields["msgcat"].dtype == DataType("marketdatakind")
+    assert fields["forexcode"].dtype == DataType("forex")
+    assert fields["strikepx"].dtype == DataType("decimal")
     for name, dtype in (
         ("isincode", "isin"),
         ("bloombergcode", "bbg"),
@@ -2033,7 +2057,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The session event a bridge delivered the message as is the text its
     # four values join to.
     assert fields["msgsesseventid"].dtype == DataType("utf8")
-    assert fields["nofixentries"].dtype == DataType("int32")
+    assert "nofixentries" not in fields
     # How a layout is cut is the target's: no partition column.
     assert all(not field.is_partition for field in fields.values())
     # The Map carries what a bridge said under its own namespaces.
@@ -2565,7 +2589,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # The message answers every fact the graph vocabulary states as its own
     # property, and expands to the one typed leaf it is.
     event = message
-    [operation] = message.market_operations()
+    [operation] = message.market_data()
     assert isinstance(operation, MarketData)
     assert operation.kind == "order_event"
     leaf = operation.as_order_event()
@@ -2578,7 +2602,9 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert event.execunix is None
     assert event.recdunix is None
     assert not hasattr(event, "refrecdunix")
-    assert event.marketoperationid == 10
+    assert not hasattr(event, "marketoperationid")
+    assert event.msgcat is MarketDataKind.ORDR
+    assert event.strikepx is None
     assert event.price.as_py() == 10.5
     assert event.quantity.as_py() == 100
     assert event.lastpx is not None and event.lastpx.as_py() == decimal.Decimal("10.25")
@@ -2597,50 +2623,48 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert not hasattr(event, "identifiers")
     assert event.currency.as_py() == "USD"
     assert event.unit == ""
-    assert event.side.as_py() == "BUY"
-    assert event.crosscode == "A1"
+    assert event.side is Side.BUY
+    # A sided message's cross code states its side (A17).
+    assert event.crosscode == "BUY:A1"
     # The names the order goes by, each under the field that stated it.
     assert event.altids == {"CLORDID": "A1"}
-    assert event.accountids == {} and event.userids == {}
+    assert not hasattr(event, "accountids") and not hasattr(event, "userids")
     # An order states no instrument code, no bridge metadata and no FX legs.
     assert event.securityids == {}
     assert event.cficode is None and event.miccode is None
     assert event.metadata == {}
     assert event.spotrate is None and event.forwardpoints is None
-    # A buy order's own lane is its bid; it offers nothing.
-    bid = event.bid
-    assert bid is not None and event.ask is None
-    assert bid.price == event.price and bid.quantity == event.quantity
-    assert bid.currency == event.currency
-    assert bid.unit is None and bid.spotrate is None and bid.forwardpoints is None
+    # An order quotes no bid and no ask of its own, and states no rate.
+    assert not hasattr(event, "bid") and not hasattr(event, "ask")
+    assert event.bidpx is None and event.bidqty is None and event.bidccy is None
+    assert event.askpx is None and event.askqty is None and event.askccy is None
+    assert event.fxrates == {}
     assert event.seqnum == 0
     assert event.prevuuid is None and event.prevunix is None and event.snapunix is None
     # A new order stating no status asks for a new order.
-    assert event.state.as_py() is State.PENDING_NEW
-    assert not hasattr(message, "isincode")
-    assert message.market_operations() == [operation]
+    assert event.state is State.PENDING_NEW
+    assert message.isincode is None
+    assert message.market_data() == [operation]
 
     # The leaf the message expands to states the facts the message states.
     assert leaf.currunix == message.currunix
     assert leaf.crossuuid == message.crossuuid
     assert leaf.crosscode == message.crosscode
     assert (leaf.price, leaf.quantity, leaf.side) == (message.price, message.quantity, message.side)
-    assert leaf.bid == message.bid and leaf.altids == message.altids
+    assert leaf.altids == message.altids and leaf.bidpx == message.bidpx
     assert message.crosscode == event.crosscode
     assert message.currhashcode == event.currhashcode
     assert message.crosshashcode == event.crosshashcode
     assert message.altids == event.altids
-    assert message.accountids == event.accountids
-    assert message.userids == event.userids
     assert message.securityids == event.securityids
     assert message.unit == event.unit
     assert message.ticker == event.ticker
     assert message.tif == event.tif
     assert message.tradable == event.tradable
-    assert message.bid == event.bid and message.ask == event.ask
+    assert message.fxrates == event.fxrates
     assert message.spotrate == event.spotrate and message.forwardpoints == event.forwardpoints
     assert message.metadata == event.metadata
-    assert message.msgcat == message.marketoperationid == event.marketoperationid == 10
+    assert message.msgcat == event.msgcat == 10
     assert message.srcuuids == event.srcuuids == []
     assert message.state == event.state
     assert message.seqnum == event.seqnum
@@ -2669,7 +2693,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # key reaches the row.
     assert message.by_tag(35).as_py() == "D"
     assert message.by_tag(52) == CLOCK
-    assert message.by_tag(54).as_py() == "BUY"
+    assert message.by_tag(54).as_py() is Side.BUY
     assert message.by_tag(58).as_py() == "note"
     assert message.by_tag(HASHCODE_TAG).as_py() == message.currhashcode
     assert message.by_tag(CURRUUID_TAG) == message.curruuid
@@ -2678,8 +2702,9 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(UNIX_TAG).as_py() == dt.datetime.fromtimestamp(
         (CLOCK_NS + 1_000_000_000) / 1e9, dt.timezone.utc
     )
-    assert message.by_tag(CROSSCODE_TAG).as_py() == "A1"
-    assert message.by_name("crosscode").as_py() == "A1"
+    # A sided message's cross code states its side (A17).
+    assert message.by_tag(CROSSCODE_TAG).as_py() == "BUY:A1"
+    assert message.by_name("crosscode").as_py() == "BUY:A1"
     assert message.get_by_tag(SNAPUNIX_TAG) is None
     # None of them is a row child: the content row holds the rest, the side
     # and the currency among it, and the day order the dictionary derived.
@@ -2754,7 +2779,7 @@ def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content
     # goes by.
     assert message.crosscode == "ORDER-1"
     assert message.capture().msgsesseventid == "8:SESSION-1:CONTEXT-1:7"
-    assert message.get_by_tag(65065).as_py() == "8:SESSION-1:CONTEXT-1:7"
+    assert message.get_by_tag(MSGSESSEVENTID_TAG).as_py() == "8:SESSION-1:CONTEXT-1:7"
     assert message.altids == {"CLORDID": "CLIENT-1", "ORDERID": "ORDER-1"}
     assert message.get_by_tag(55) is None
     assert message.get_by_name("venueownthing") is None
@@ -2802,7 +2827,7 @@ def test_a_lines_session_event_joins_its_four_values_as_stated(seed: FixRegistry
     # Joined by `:` with nothing in front of a part, and held by the capture
     # rather than among the names the message goes by.
     assert capture.msgsesseventid == "8:e7256476:9effef3e6a:1094"
-    assert message.by_tag(65065).as_py() == "8:e7256476:9effef3e6a:1094"
+    assert message.by_tag(MSGSESSEVENTID_TAG).as_py() == "8:e7256476:9effef3e6a:1094"
     assert "msgsesseventid" not in message.altids
 
     # A part missing is no session event at all.
@@ -2842,8 +2867,8 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
     assert len(message) == before
     # The side is an ordinary child, so writing it grows the row once.
     message.set(54, "2")
-    assert message.side.as_py() == "SELL"
-    assert message.by_tag(54).as_py() == "SELL"
+    assert message.side is Side.SELL
+    assert message.by_tag(54).as_py() is Side.SELL
     message.set(58, "note")
     assert message.text == "note"
     message.set("metadata", {"tech.clientid": "A"})
@@ -2851,7 +2876,6 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
     # The identifier maps are read off the fields that state them: a write
     # to `ClOrdID(11)` restates `altids`, and there is no map key to write.
     assert message.altids == {"CLORDID": "A1"}
-    assert message.accountids == {"ACCOUNT": "ACC-1"}
     message.set(11, "C-2")
     assert message.altids == {"CLORDID": "C-2"}
     with pytest.raises(KeyError):
@@ -2861,7 +2885,7 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
 
     # `None` clears a typed fact and is stored as a stated null in the row.
     assert message.remove(54) is not None
-    assert message.side.as_py() == "UNKNOWN"
+    assert message.side is Side.UNKNOWN
     assert message.remove(54) is None
     message.set(58, None)
     assert message.text is None
@@ -2973,11 +2997,11 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored == message
     assert restored.registry == seed
     assert restored.header() == message.header()
-    assert (restored.currunix, restored.creaunix, restored.recdunix, restored.bid) == (
+    assert (restored.currunix, restored.creaunix, restored.recdunix, restored.side) == (
         message.currunix,
         message.creaunix,
         message.recdunix,
-        message.bid,
+        message.side,
     )
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
@@ -3074,7 +3098,7 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     assert bridge.by_tag(55).as_py() == "TTF"
     assert bridge.price.as_py() == 41.25
     assert bridge.quantity.as_py() == 1200
-    assert bridge.side.as_py() == "BUY"
+    assert bridge.side is Side.BUY
     assert bridge.by_path("parties[0].partyid").as_py() == "BUYSIDE"
 
     # A line carrying two frames is two messages; a sentence is none.
@@ -3207,30 +3231,40 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
     assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").currunix == CLOCK_NS
 
 
-def test_a_single_sided_quote_reads_as_its_lanes_side(seed: FixRegistry) -> None:
-    """A quote stating one lane and no ``Side`` is that lane's side."""
+def test_a_quote_states_its_bid_and_offer_and_splits_when_two_sided(seed: FixRegistry) -> None:
+    """A quote's bid and offer are facts of their own; two sides split (A13, A20)."""
     codec = _fixed(seed)
 
-    # A bid alone is a buy at the bid: the price, the quantity and the lane's
-    # currency read off it, and none of it reaches the wire.
+    # A bid alone states the bid and no side: no side is invented from it.
     bid = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|")
-    assert bid.side.as_py() == "BUY"
-    assert bid.price.as_py() == decimal.Decimal("101.5")
-    assert bid.quantity.as_py() == 200
-    assert bid.currency.as_py() == "USD"
-    assert b"|54=" not in bid.into_bytes(ord("|"))
+    assert bid.side is Side.UNKNOWN and bid.price is None
+    assert bid.bidpx is not None and bid.bidpx.as_py() == decimal.Decimal("101.5")
+    assert bid.bidqty is not None and bid.bidqty.as_py() == 200
+    assert bid.bidccy is not None and bid.bidccy.as_py() == "USD"
+    assert bid.askpx is None and bid.askqty is None and bid.askccy is None
+    assert bid.crosscode == "Q1"
 
-    # An offer alone is a sell at the offer.
+    # An offer alone states the ask.
     offer = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|")
-    assert offer.side.as_py() == "SELL"
-    assert offer.price.as_py() == 102
-    assert offer.quantity.as_py() == 50
+    assert offer.side is Side.UNKNOWN
+    assert offer.askpx is not None and offer.askpx.as_py() == 102
+    assert offer.askqty is not None and offer.askqty.as_py() == 50
 
-    # Both lanes name no side; a stated side stands whatever lane it quotes.
-    two = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
-    assert two.side.as_py() == "UNKNOWN"
-    stated = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|")
-    assert stated.side.as_py() == "SELL"
+    # Both sides split at the parse into a buy at the bid and a sell at the
+    # offer, each keeping the pair its source stated and chaining per side.
+    source, buy, sell = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
+    assert source.side is Side.UNKNOWN
+    assert (buy.side, sell.side) == (Side.BUY, Side.SELL)
+    assert buy.price is not None and buy.price.as_py() == 101
+    assert sell.price is not None and sell.price.as_py() == 102
+    assert (buy.crosscode, sell.crosscode) == ("BUY:Q3", "SELL:Q3")
+    assert buy.bidpx == sell.bidpx == source.bidpx
+    assert buy.askpx == sell.askpx == source.askpx
+    assert buy.srcuuids == sell.srcuuids == [source.curruuid]
+
+    # A stated side stands, and a one-sided quote stays one message.
+    [stated] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|")
+    assert stated.side is Side.SELL and stated.crosscode == "SELL:Q4"
 
 
 def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
@@ -3251,8 +3285,12 @@ def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
     assert row.as_py()[schema.index_of("execunix")] == CLOCK_INSTANT
     assert FixMsg.from_row(schema, row, seed).execunix == CLOCK_NS
     # On a dated line, that instant is the line's clock.
-    (dated,) = list(codec.parse_text_line(_dated_line(b"8=FIX.4.4|35=8|150=F|39=2|10=0|")))
-    assert dated.execunix == RECORDED_NS
+    # A fill splits into its report and one execution sourced from it (A12);
+    # both executed at the line's clock.
+    dated, execution = list(codec.parse_text_line(_dated_line(b"8=FIX.4.4|35=8|150=F|39=2|10=0|")))
+    assert dated.execunix == execution.execunix == RECORDED_NS
+    # Read from the line and from the report it split out of.
+    assert len(execution.srcuuids) == 2 and dated.curruuid in execution.srcuuids
 
     # A trade's own TransactTime is its execution clock.
     traded = codec.parse_fix_line(
@@ -3328,7 +3366,7 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
     assert [name for name, _ in latest].count("lastqty") == 0
     assert latest.lastqty is not None and latest.lastqty.as_py() == 100
     # The state the event reached, as the crate's lifecycle-sorted member.
-    assert latest.state.as_py() is State.PARTIALLY_FILLED
+    assert latest.state is State.PARTIALLY_FILLED
     # And the rules the dictionary licenses: one fill's average is its price.
     assert latest.by_tag(6).as_py() == 10.5
     # The version it was read at is the header's, not a column.
@@ -3359,9 +3397,19 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
     assert raw.curruuid == message.curruuid
     assert raw.currhashcode == message.currhashcode
     # A walk links the chain by predecessor and leaves every source its own.
-    walked = list(codec.lifecycle(codec.parse_text_lines(lines)))
-    assert [held.srcuuids for held in walked] == [[line.curruuid] for line in lines]
-    assert walked[-1].prevuuid == walked[-2].curruuid
+    parsed = list(codec.parse_text_lines(lines))
+    walked = list(codec.lifecycle(parsed))
+    assert [held.srcuuids for held in walked[:3]] == [[line.curruuid] for line in lines]
+    assert walked[2].prevuuid == walked[1].curruuid
+    # The fill's execution was read from the line and from the report it
+    # split out of, as the parse identified it (A12), and starts a chain of
+    # its own.
+    execution = walked[3]
+    assert execution.state is State.FILLED and execution.prevuuid is None
+    assert {held.as_py() for held in execution.srcuuids} == {
+        lines[2].curruuid.as_py(),
+        parsed[2].curruuid.as_py(),
+    }
 
 
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
@@ -3374,32 +3422,44 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     stream = codec.lifecycle(parsed)
     assert isinstance(stream, FixMessages)
     walked = list(stream)
-    assert len(walked) == len(LIFE)
+    # The partial fill splits into its report and one execution (A12).
+    assert len(walked) == len(LIFE) + 1
 
-    # One chain: the acknowledgement and the fill follow the order under the
-    # cross identity its client identifier derives.
-    assert len({held.crossuuid.as_py() for held in walked}) == 1
-    assert [held.seqnum for held in walked] == [0, 1, 2]
-    assert walked[0].prevuuid is None
-    for earlier, later in zip(walked, walked[1:]):
+    # One chain: the acknowledgement and the report follow the order under
+    # the cross identity its client identifier and side derive (A17); the
+    # execution walks a chain of its own.
+    order_chain, execution = walked[:3], walked[3]
+    assert len({held.crossuuid.as_py() for held in order_chain}) == 1
+    assert execution.crossuuid not in {held.crossuuid for held in order_chain}
+    assert [held.seqnum for held in walked] == [0, 1, 2, 0]
+    assert walked[0].prevuuid is None and execution.prevuuid is None
+    for earlier, later in zip(order_chain, order_chain[1:]):
         assert later.prevuuid == earlier.curruuid
         assert later.prevunix == earlier.currunix
     # The lifecycle's own creation instant is carried forward.
-    assert {held.creaunix for held in walked} == {walked[0].creaunix}
-    # The state moves with the messages.
-    assert [held.state.as_py() for held in walked] == [
+    assert {held.creaunix for held in order_chain} == {walked[0].creaunix}
+    # The state moves with the messages, and an execution is filled (A14).
+    assert [held.state for held in walked] == [
         State.PENDING_NEW,
         State.NEW,
         State.PARTIALLY_FILLED,
+        State.FILLED,
     ]
 
-    # The walk states what a message follows and touches the content of
-    # none of them: the row and the entries are the parse's own. The wire is
-    # not, and deliberately - a message that named no side is about the side
-    # the order it follows named, and re-emits it.
+    # The walk states what a message follows and restates no content but
+    # what it lacks: a message that named no side takes the side of the order
+    # it follows into its content - as it takes a missing order link - so its
+    # row states the side its cross code carries. Every other entry is the
+    # parse's own, and a message that stated its side is untouched.
+    side = (54, "side", walked[0].side.fix_code, [])
     for before, after in zip(parsed, walked):
-        assert after.entries() == before.entries()
-        assert after.value == before.value
+        if any(entry[0] == 54 for entry in before.entries()):
+            assert after.entries() == before.entries()
+            assert after.value == before.value
+        else:
+            added = [entry for entry in after.entries() if entry not in before.entries()]
+            assert added in ([], [side]), added
+            assert [entry for entry in after.entries() if entry != side] == before.entries()
 
     # A second walk over a walked stream changes nothing.
     assert list(codec.lifecycle(walked)) == walked
@@ -3449,7 +3509,7 @@ def test_figi_redirects_through_datatype_sources_and_the_fixed_row(seed: FixRegi
     bloomberg = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|")
     assert bloomberg.securityids == {"BLOOMBERG": "AAPL US Equity"}
     direct = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=X|10=0|")
-    direct.set(65061, "BBG000BLNQ16")
+    direct.set(FIGICODE_TAG, "BBG000BLNQ16")
     assert direct.securityids == {"FIGI": "BBG000BLNQ16"}
 
 
@@ -3519,6 +3579,33 @@ def test_lifecycle_learns_a_later_missing_instrument_code(seed: FixRegistry) -> 
     assert rebuilt.securityids["BLOOMBERG"] == "AAPL US Equity"
 
 
+# Two chains in instant order across four epoch hours: the second order's
+# acknowledgement and fill each land hours after it.
+HOURS = [
+    *LIFE,
+    b"8=FIX.4.4|35=D|52=20260102-11:40:00.000|11=B1|55=AAPL|207=XNAS|15=USD|54=2|38=10|44=13|10=0|",
+    b"8=FIX.4.4|35=8|52=20260102-12:05:00.000|11=B1|37=O2|17=E3|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=10|14=0|151=10|10=0|",
+    b"8=FIX.4.4|35=8|52=20260102-14:30:00.000|11=B1|37=O2|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=10|14=10|151=0|32=10|31=13|10=0|",
+]
+
+
+def test_a_sorted_lifecycle_walks_one_hour_at_a_time_as_the_whole_capture(seed: FixRegistry) -> None:
+    """A capture in instant order walks alike held one hour at a time."""
+    codec = _fixed(seed)
+    messages = sorted(codec.parse_lines(HOURS), key=lambda held: held.currunix)
+
+    def walk(codec: FixCodec) -> list[tuple[Any, int, Any]]:
+        return [(held.curruuid, held.seqnum, held.prevuuid) for held in codec.lifecycle(messages)]
+
+    whole = walk(codec)
+    # Each fill splits into its report and one execution (A12).
+    assert len(whole) == len(HOURS) + 2
+    # The second chain follows its order across the hours it spans.
+    assert max(seqnum for _, seqnum, _ in whole) == 2
+    assert walk(codec.with_sorted_lifecycle(True)) == whole
+    assert walk(_fixed(seed, sorted_lifecycle=True)) == whole
+
+
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
     """Python forwards the settled lifecycle contract without changing sources."""
     intrinsic = FixRegistry()
@@ -3537,7 +3624,25 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     codec = _fixed(seed)
     snapshot_codec = _fixed(seed, snapshot_ns=1_000_000_000)
     assert snapshot_codec.snapshot_ns == 1_000_000_000
-    assert seed.msgtype("D").msgcat == "ORDR"
+    # A grid set on a codec in hand keeps every other setting of it.
+    regridded = codec.with_snapshot_ns(3_600_000_000_000)
+    assert regridded.snapshot_ns == 3_600_000_000_000
+    assert regridded.default_sending_time == codec.default_sending_time
+    assert regridded.exclude_msgtypes == codec.exclude_msgtypes
+    assert codec.snapshot_ns is None
+    assert snapshot_codec.with_snapshot_ns(None).snapshot_ns is None
+    # The sorted pin is off by default, set by keyword or on a codec in hand,
+    # and keeps every other setting.
+    assert codec.sorted_lifecycle is False
+    assert FixCodec(seed, sorted_lifecycle=True).sorted_lifecycle is True
+    assert FixCodec.from_env(sorted_lifecycle=True).sorted_lifecycle is True
+    sorted_codec = snapshot_codec.with_sorted_lifecycle(True)
+    assert sorted_codec.sorted_lifecycle is True
+    assert sorted_codec.snapshot_ns == snapshot_codec.snapshot_ns
+    assert sorted_codec.default_sending_time == snapshot_codec.default_sending_time
+    assert snapshot_codec.sorted_lifecycle is False
+    assert sorted_codec.with_sorted_lifecycle(False).sorted_lifecycle is False
+    assert seed.msgtype("D").msgcat is MarketDataKind.ORDR
 
     original = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|"
@@ -3548,7 +3653,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     distinct = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|"
     )
-    assert original.msgcat == original.marketoperationid == 10
+    assert original.msgcat is MarketDataKind.ORDR and original.msgcat == 10
     deduplicated = list(codec.lifecycle([original, copy.copy(original), replay, distinct]))
     assert [held.header().msgseqnum for held in deduplicated] == [7, 8]
     assert [held.seqnum for held in deduplicated] == [0, 1]
@@ -3588,11 +3693,26 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     assert expired.entries() == entries
     snapshots = [held for held in walked if held.snapunix is not None]
     assert snapshots
-    assert expired.state.as_py() is State.EXPIRED
+    assert expired.state is State.EXPIRED
+    [live] = [held for held in walked if held.snapunix is None and held.currunix < deadline]
+    # A view is the live message as of its tick: dated at it, so its identity
+    # is the one that tick derives, while its content, its place and its cross
+    # element are the live message's.
+    assert [held.snapunix for held in snapshots] == [
+        live.currunix,
+        live.currunix + 1_000_000_000,
+    ]
     for held in snapshots:
         snapunix = held.snapunix
         assert snapunix is not None
-        assert held.currunix <= snapunix < deadline
+        assert held.currunix == snapunix < deadline
+        assert held.currhashcode == live.currhashcode
+        assert (held.seqnum, held.prevuuid, held.crossuuid) == (
+            live.seqnum,
+            live.prevuuid,
+            live.crossuuid,
+        )
+        assert (held.curruuid == live.curruuid) == (snapunix == live.currunix)
 
 
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:
@@ -3610,8 +3730,9 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # The crate's own clocks open the row - a table is read by time - and
     # the one arrival record closes it under the counter that counts it.
     assert columns[0] == "currunix"
-    assert columns[-2:] == ["nofixentries", "fixentries"]
-    assert [child.fix.tag for child in schema][-2:] == [NOFIXENTRIES_TAG, None]
+    # `fixentries` is a tag:name map that counts itself; no counter column (A8).
+    assert columns[-2:] == ["metadata", "fixentries"]
+    assert [child.fix.tag for child in schema][-2:] == [METADATA_TAG, None]
     assert columns.count("msgdirection") == 1
 
     # A column is found by the name the dictionary spells, never by digits.
@@ -3646,7 +3767,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     at = schema.index_of("msgsessionid")
     assert at is not None
     assert columns[at + 1] == "msgsesseventid"
-    assert schema[at + 1].fix.tag == 65065
+    assert schema[at + 1].fix.tag == MSGSESSEVENTID_TAG
 
     # The retired columns are gone rather than renamed.
     for retired in (
@@ -3685,14 +3806,14 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("ordstatus")] is None
     assert row[schema.index_of("prevunix")] is None
     assert row[schema.index_of("msgsessionid")] is None
-    assert row[schema.index_of("nofixentries")] == len(row[schema.index_of("fixentries")])
+    assert schema.index_of("nofixentries") is None
 
-    # The residual record holds only names no projected column represents.
-    # `ClOrdID(11)` is lifted and `TimeInForce(59)` is projected, so neither
-    # reaches it; the two unknown names remain under tag 0.
-    arrived = row[schema.index_of("fixentries")]
-    assert [entry[0] for entry in arrived] == [0, 0]
-    assert [entry[1] for entry in arrived if entry[0] == 0] == ["9999", "venueownthing"]
+    # The residual map holds only names no projected column represents, and
+    # only names a dictionary resolves (A8): `ClOrdID(11)` is lifted and
+    # `TimeInForce(59)` is projected, so neither reaches it, and the two
+    # unknown names are the row's metadata under their own spelling (A9).
+    assert row[schema.index_of("fixentries")] == {}
+    assert sorted(dict(row[schema.index_of("metadata")])) == ["9999", "venueownthing"]
     assert FixMsg.from_row(schema, row, seed).into_row(schema).as_py() == row
 
 
@@ -3780,7 +3901,8 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert names[:2] == ["timestamp", "body"]
     for once in ("timestamp", "msgsessionid", "msgseqnum"):
         assert names.count(once) == 1, once
-    assert names[-2:] == ["nofixentries", "fixentries"]
+    # `fixentries` is a tag:name map that counts itself; no counter column (A8).
+    assert names[-2:] == ["metadata", "fixentries"]
 
     # The capture's clock stamps nothing: the wire's own clock settles the
     # message, else - with no `currunix` column dating the row's line - the
@@ -3822,7 +3944,7 @@ def test_a_rows_msgpluginid_fills_its_field_and_selects_nothing(seed: FixRegistr
     # The plugin selects nothing: the venue key remains residual because the
     # fixed schema has no column for it; derived TimeInForce is projected.
     for row in parsed.column("fixentries").to_pylist():
-        assert [entry["tag"] for entry in row] == [5001]
+        assert [key for key, _ in row] == ["5001:VenueTag"]
 
     # One line read alone answers exactly what the batch did, and the plugin
     # is a fact about the capture rather than an entry.
@@ -3831,7 +3953,7 @@ def test_a_rows_msgpluginid_fills_its_field_and_selects_nothing(seed: FixRegistr
         message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
         assert message.by_tag(5001).as_py() == "dark", spelled
         assert message.capture().msgpluginid == spelled, spelled
-        assert all(tag != 65009 for tag, _, _, _ in message.entries()), spelled
+        assert all(tag != MSGPLUGINID_TAG for tag, _, _, _ in message.entries()), spelled
 
     # A stated `msgdirection` column is the row's direction, read once and
     # carried by the header.

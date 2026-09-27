@@ -38,7 +38,11 @@ impl JsEventIterator {
     /// collects and sorts them first - which pulls the whole source right
     /// here, so a failure partway through it is thrown now rather than once
     /// the sorted prefix is exhausted. `snapshotNs`, given, is the grid step
-    /// in nanoseconds the walk also yields living-identity snapshots at.
+    /// in nanoseconds the walk also yields living-identity snapshots at: a
+    /// view is the live event as of its tick, dated at it - `currunix` and
+    /// `snapunix` both, so its `curruuid` is the one that tick derives -
+    /// while its content, `seqnum`, `prevuuid` and `crossuuid` are the live
+    /// event's; it does not advance the chain.
     #[napi(factory, js_name = "_eventIteratorNative", skip_typescript)]
     pub fn new_native(
         env: Env,

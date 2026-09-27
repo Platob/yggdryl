@@ -126,16 +126,12 @@ fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
     }
     if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME)
         || codes.iter().all(|code| {
-            super::constants::MSGCATEGORY_CODES
-                .iter()
-                .any(|(name, _, canonical)| {
-                    let is_same_spelling = |spelling: &str| folds_equal(name, spelling);
-                    code.value() == *canonical
-                        && is_same_spelling(code.name())
-                        && code.aliases().iter().all(|alias| is_same_spelling(alias))
-                        && code.description().is_none()
-                        && code.group().is_none()
-                })
+            crate::MarketDataKind::from_name(code.name()).is_some_and(|kind| {
+                code.value() == kind.code().to_string()
+                    && code.aliases().is_empty()
+                    && code.description() == Some(kind.description())
+                    && code.group().is_none()
+            })
         })
     {
         return Ok(());
@@ -1295,7 +1291,7 @@ impl FixRegistry {
     /// decides which message a bare code answers, so both are re-derived
     /// after an edit rather than answered from a set no longer held.
     fn forget_codesets(&mut self) {
-        self.forget_derivations();
+        self.forget_answers();
         self.refresh_msgtype_aliases();
     }
 }

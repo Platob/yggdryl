@@ -37,8 +37,6 @@ fn full<K: OperationKind>() -> OperationEvent<K> {
     data.set_prevqty(Some(Decimal::from_int(12)));
     data.insert_altid("ORDERID", "O-100")
         .expect("an operation takes every key");
-    data.insert_accountid("ACCOUNT", "ACC-1")
-        .expect("an operation takes every key");
     data.finalize();
     data
 }
@@ -107,7 +105,6 @@ fn an_operation_of_another_kind_copies_every_fact_and_no_book_control() {
     assert_eq!(operation.get_prevqty(), source.get_prevqty());
     assert_eq!(operation.get_unit(), source.get_unit());
     assert_eq!(operation.get_altids(), source.get_altids());
-    assert_eq!(operation.get_accountids(), source.get_accountids());
     assert_eq!(
         operation.get_curruuid(),
         source.get_curruuid(),
@@ -132,7 +129,7 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(element.get_ticker(), Some("BRN"));
     assert_eq!(element.get_tif(), operation.get_tif());
     assert_eq!(element.get_altids(), operation.get_altids());
-    assert_eq!(element.get_crosscode(), "O-100");
+    assert_eq!(element.get_crosscode(), "BUY:O-100");
     // The element keeps the identity the operation derived - its kind is in
     // it - until it is finalized as an element.
     assert_eq!(element.get_curruuid(), operation.get_curruuid());
@@ -195,7 +192,7 @@ fn the_same_facts_as_two_kinds_are_two_elements() {
 }
 
 #[test]
-fn the_book_control_rides_typed_beside_the_operation_and_digests_into_it() {
+fn the_book_control_rides_typed_beside_the_operation_and_its_scope_digests_into_it() {
     let bare = full_order();
     assert_eq!(bare.book(), None);
     assert_eq!(bare.action(), None);
@@ -232,8 +229,17 @@ fn the_book_control_rides_typed_beside_the_operation_and_digests_into_it() {
     assert_ne!(
         controlled.get_curruuid(),
         finalized_bare.get_curruuid(),
-        "the control is part of what the operation states"
+        "the scope is part of what the operation states"
     );
+    // The rest of the control is walk-time: an action, a position and the
+    // price and size an entry stated for itself digest nothing.
+    let mut walked = bare.clone().with_book(BookRef {
+        scope: Some(SmolStr::new("PRIMARY")),
+        ..BookRef::default()
+    });
+    walked.finalize();
+    assert_eq!(walked.get_curruuid(), controlled.get_curruuid());
+    assert_ne!(walked, controlled, "the control itself still differs");
     // Undated, the control stays behind: the two elements finalize alike.
     let mut controlled_element = controlled.clone().into_element();
     controlled_element.finalize();
@@ -420,11 +426,82 @@ fn a_boxed_book_control_is_one_pointer() {
 /// identifiers they only derived: one `u64` mask, padded to the facts'
 /// sixteen-byte alignment. The dated leaf moved back by sixteen bytes when
 /// its `State` became an `i32` member rather than a twenty-four-byte code
-/// string; the undated leaf holds no state and stands.
+/// string; the undated leaf holds no state and stands. Both moved by
+/// sixteen bytes when the market facts gained their FX rates - an
+/// `Option<Box<[FxRate]>>`, sixteen - and the operation facts lost their
+/// `marketoperationid` - an `Option<i32>`, eight: the operation facts went
+/// from 224 bytes to 216, the undated holder from 880 to 672 + 216 = 888,
+/// padded to 896, and the dated one from 1040 to 832 + 216 = 1048, padded to
+/// 1056, which the boxed control takes to 1064, padded to 1072. Both moved
+/// by 128 when the rates became a map - an `Option<Box<FxRates>>`, eight,
+/// inside the market facts' padding - and the accounts and users left the
+/// operation facts - two `IdMap`s, fifty-six each: the operation facts went
+/// from 216 bytes to 104, the undated holder to 656 + 104 = 760, padded to
+/// 768, and the dated one to 816 + 104 = 920, padded to 928, which the boxed
+/// control takes to 936, padded to 944. Both moved by sixteen when the bid
+/// and ask lanes left the operation facts - two `Option<Box<Lane>>`, eight
+/// each: the operation facts went from 104 bytes to 88, the undated holder
+/// to 656 + 88 = 744, padded to 752, and the dated one to 816 + 88 = 904,
+/// padded to 912, which the boxed control takes to 920, padded to 928.
+/// Both moved by sixteen again when the market facts gained the bid and
+/// the ask - one `Option<Box<BidAsk>>`, eight, padded to sixteen: the
+/// undated holder to 768 and the dated one, with the control, to 944.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (880, 1056));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (768, 944));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
+}
+
+/// An execution stating only what it last executed states no price: not
+/// after finalizing twice, not after an Arrow round trip, and not after
+/// following a priced predecessor.
+#[test]
+fn an_execution_stating_only_its_last_price_never_states_a_price() {
+    let mut fill = ExecutionEvent::at(1_000);
+    fill.set_crosscode("O-1".to_owned());
+    fill.set_side(Side::read("Buy").expect("a side"));
+    fill.set_lastpx(Some(Decimal::from_int(81)));
+    fill.set_lastqty(Some(Decimal::from_int(2)));
+    fill.finalize();
+    fill.finalize();
+    assert_eq!(fill.get_price(), None);
+    assert_eq!(fill.get_lastpx(), Some(Decimal::from_int(81)));
+
+    let encoded = yggdryl::graph::MarketData::arrow_reader(
+        vec![yggdryl::graph::MarketData::from(fill.clone())],
+        None,
+        None,
+    )
+    .unwrap();
+    let read: Vec<yggdryl::graph::MarketData> =
+        yggdryl::graph::MarketData::from_arrow_reader(encoded)
+            .unwrap()
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+    let read = read[0].as_execution_event().expect("an execution event");
+    assert_eq!(read, &fill);
+    assert_eq!(read.get_price(), None);
+
+    let mut priced = ExecutionEvent::at(500);
+    priced.set_crosscode("O-1".to_owned());
+    priced.set_side(Side::read("Buy").expect("a side"));
+    priced.set_price(Some(Decimal::from_int(80)));
+    priced.set_lastpx(Some(Decimal::from_int(80)));
+    priced.finalize();
+    let followed = fill
+        .with_previous(&priced)
+        .expect("a later execution follows");
+    assert_eq!(followed.get_price(), None);
+    assert_eq!(followed.get_prevpx(), Some(Decimal::from_int(80)));
+}
+
+/// An operation's identity is fed its category's code, so an order and a
+/// quote stating the same facts are two operations.
+#[test]
+fn an_operation_digests_its_marketdatakind() {
+    let order: OrderEvent = full();
+    let quote: QuoteEvent = full();
+    assert_ne!(order.get_currhashcode(), quote.get_currhashcode());
 }

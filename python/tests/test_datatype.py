@@ -1483,6 +1483,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "mediatype": yggdryl.mediatype("value"),
         "side": yggdryl.side("value"),
         "state": yggdryl.state("value"),
+        "marketdatakind": yggdryl.marketdatakind("value"),
+        "forex": yggdryl.forex("value"),
         "timeinforce": yggdryl.timeinforce("value"),
         "unit": yggdryl.unit("value"),
         "geometry": yggdryl.geometry("value"),

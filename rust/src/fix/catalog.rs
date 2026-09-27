@@ -841,10 +841,9 @@ impl FixRegistry {
             *self = staged;
             return Ok(prior);
         }
-        // A group a derivation reads through is a column of the widened
-        // root, so what was compiled before this definition landed is
-        // forgotten with it.
-        self.forget_derivations();
+        // What was answered before this definition landed is forgotten
+        // with it: a group widens the root the answers were read against.
+        self.forget_answers();
         self.catalog.insert(category, field)
     }
 
@@ -1390,9 +1389,9 @@ impl FixRegistry {
                 // derived one, which is what the block above `CRATE_TAG_MAX`
                 // is for. This crate's own definitions are the exception: a
                 // crate tag is reserved, unique and already the identity the
-                // fixed row reaches the column by, so `identifiers` answers
-                // to 65020 rather than to a second identity nothing else
-                // spells.
+                // fixed row reaches the column by, so `metadata` answers
+                // to its crate tag rather than to a second identity nothing
+                // else spells.
                 if !map_group && !FixId::is_definition_tag(tag) && !super::is_crate_tag(tag) {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
@@ -1453,14 +1452,6 @@ impl FixRegistry {
                 return Err(Error::absent("codesets", name));
             }
         }
-        // A derivation is read at every enrichment and never re-checked, so
-        // a text that is not a term, or one past the budget, is refused here
-        // naming the field that carries it - at insert, update and load
-        // alike.
-        view.derivation().map_err(|error| Error::InvalidRecord {
-            path: field.name().into(),
-            reason: format_smolstr!("{error}"),
-        })?;
         if view.field_ref().is_some() && (view.component().is_some() || view.group().is_some()) {
             return Err(invalid(
                 field,

@@ -1,92 +1,114 @@
 {
   "codes": [
     {
+      "doc": "No published category: a message type the dictionary does not file.",
+      "name": "UNKN",
+      "value": "0"
+    },
+    {
+      "doc": "Account reporting.",
       "name": "ACCT",
       "value": "1"
     },
     {
+      "doc": "Allocation instructions, reports and acknowledgements.",
       "name": "ALLO",
       "value": "2"
     },
     {
+      "doc": "Market data: books, their snapshots, increments and requests.",
       "name": "BOOK",
       "value": "3"
     },
     {
+      "doc": "Certificate handling.",
       "name": "CERT",
       "value": "4"
     },
     {
+      "doc": "Collateral management.",
       "name": "COLL",
       "value": "5"
     },
     {
+      "doc": "Communication: news and email.",
       "name": "COMM",
       "value": "6"
     },
     {
+      "doc": "Confirmation and affirmation.",
       "name": "CONF",
       "value": "7"
     },
     {
+      "doc": "Execution reports and their acknowledgements.",
       "name": "EXEC",
       "value": "8"
     },
     {
+      "doc": "Market structure reference data.",
       "name": "MKST",
       "value": "9"
     },
     {
+      "doc": "Order handling: single, list, cross, multileg and mass.",
       "name": "ORDR",
       "value": "10"
     },
     {
+      "doc": "Pay management.",
       "name": "PAYM",
       "value": "11"
     },
     {
+      "doc": "Position maintenance.",
       "name": "POSN",
       "value": "12"
     },
     {
+      "doc": "Parties reference data and risk limits reporting.",
       "name": "PRTY",
       "value": "13"
     },
     {
+      "doc": "Quotation and negotiation.",
       "name": "QUOT",
       "value": "14"
     },
     {
+      "doc": "Registration instructions.",
       "name": "REGI",
       "value": "15"
     },
     {
+      "doc": "Party risk limits.",
       "name": "RISK",
       "value": "16"
     },
     {
+      "doc": "Securities reference data.",
       "name": "SECU",
       "value": "17"
     },
     {
+      "doc": "Session, application sequencing and business rejects.",
       "name": "SESS",
       "value": "18"
     },
     {
+      "doc": "Settlement instructions and obligations.",
       "name": "SETL",
       "value": "19"
     },
     {
+      "doc": "Stream assignment.",
       "name": "STRM",
       "value": "20"
     },
     {
+      "doc": "Trade capture and matching.",
       "name": "TRAD",
       "value": "21"
-    },
-    {
-      "name": "UNKN",
-      "value": "0"
     }
   ],
   "name": "msgcatcodeset"

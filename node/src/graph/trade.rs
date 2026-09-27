@@ -84,5 +84,6 @@ element_getters!(JsTradeEvent);
 event_getters!(JsTradeEvent);
 market_getters!(JsTradeEvent);
 operation_getters!(JsTradeEvent);
+marketdatakind_getter!(JsTradeEvent, TradeEvent);
 common_verbs!(JsTradeEvent);
 event_verbs!(JsTradeEvent, "TradeEvent");

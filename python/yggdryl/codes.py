@@ -2,7 +2,8 @@
 
 The registered codes - ``country``, ``ccy``, ``mic``, ``cfi``, the six
 securities identifiers ``isin``, ``cusip``, ``sedol``, ``bbg``, ``ric`` and
-``figi``, FIX's own ``side`` and ``timeinforce``, and ``unit`` - are
+``figi``, FIX's own ``timeinforce``, ``unit`` and the currency pair
+``forex`` - are
 datatypes of their own, each storing as the ASCII text it is and held to the
 width its standard fixes, so a code factory is not a bounded string wearing a
 name: the field it builds carries the code's identity across Arrow under its
@@ -34,13 +35,13 @@ if TYPE_CHECKING:
     BbgField: TypeAlias = TypedField[Literal["bbg"], str]
     RicField: TypeAlias = TypedField[Literal["ric"], str]
     FigiField: TypeAlias = TypedField[Literal["figi"], str]
-    SideField: TypeAlias = TypedField[Literal["side"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
     UnitField: TypeAlias = TypedField[Literal["unit"], str]
+    ForexField: TypeAlias = TypedField[Literal["forex"], str]
 else:
     CountryField = CcyField = MicField = CfiField = IsinField = CusipField = SedolField = (
         BbgField
-    ) = RicField = FigiField = SideField = TimeInForceField = UnitField = Field
+    ) = RicField = FigiField = TimeInForceField = UnitField = ForexField = Field
 
 _COUNTRY = simple_dtype("country")
 _CCY = simple_dtype("ccy")
@@ -52,9 +53,9 @@ _SEDOL = simple_dtype("sedol")
 _BBG = simple_dtype("bbg")
 _RIC = simple_dtype("ric")
 _FIGI = simple_dtype("figi")
-_SIDE = simple_dtype("side")
 _TIMEINFORCE = simple_dtype("timeinforce")
 _UNIT = simple_dtype("unit")
+_FOREX = simple_dtype("forex")
 
 
 def country(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CountryField:
@@ -125,12 +126,6 @@ def figi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(FigiField, name, _FIGI, nullable, metadata)
 
 
-def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
-    """FIX ``Side(54)``, the wire value rather than a name for it."""
-
-    return new_field(SideField, name, _SIDE, nullable, metadata)
-
-
 def timeinforce(
     name: str,
     *,
@@ -148,10 +143,21 @@ def unit(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(UnitField, name, _UNIT, nullable, metadata)
 
 
+def forex(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> ForexField:
+    """A currency pair, ``CCY/CCY``: two ISO 4217 codes, the base then the quote.
+
+    Stored as its canonical text, ``EUR/USD``, whichever spelling - ``EURUSD``,
+    ``eur-usd`` - a value arrives in.
+    """
+
+    return new_field(ForexField, name, _FOREX, nullable, metadata)
+
+
 __all__ = [
     "BbgField",
     "CfiField",
     "FigiField",
+    "ForexField",
     "CountryField",
     "CcyField",
     "CusipField",
@@ -159,7 +165,6 @@ __all__ = [
     "MicField",
     "RicField",
     "SedolField",
-    "SideField",
     "TimeInForceField",
     "UnitField",
     "bbg",
@@ -167,12 +172,12 @@ __all__ = [
     "country",
     "ccy",
     "figi",
+    "forex",
     "cusip",
     "isin",
     "mic",
     "ric",
     "sedol",
-    "side",
     "timeinforce",
     "unit",
 ]

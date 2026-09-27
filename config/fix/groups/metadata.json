@@ -32,9 +32,9 @@
   },
   "nullable": true,
   "metadata": {
-    "FIX:counter": "65049",
-    "FIX:tag": "65049",
-    "description": "What a bridge stated under its own namespaces - a `TECH.` or an `AMON.` key - each under the key as the bridge spelled it, folded, in sorted order.",
+    "FIX:counter": "65030",
+    "FIX:tag": "65030",
+    "description": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order.",
     "display": "Metadata"
   }
 }

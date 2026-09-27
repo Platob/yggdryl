@@ -6,6 +6,8 @@
 
 #[path = "server/connection.rs"]
 mod connection;
+#[path = "server/forwarded.rs"]
+mod forwarded;
 #[cfg(feature = "http2")]
 #[path = "server/framed.rs"]
 mod framed;
@@ -266,20 +268,75 @@ fn a_handler_error_answers_500_with_its_text() {
 
 // --- binding, paths and mounts -----------------------------------------------
 
+/// The reason `bind_with` refuses `options` with, as an `http server option`.
+fn refused_at_bind(options: ServerOptions) -> String {
+    match Server::bind_with("127.0.0.1:0", options).map(|_| ()) {
+        Err(Error::Parse { target, reason, .. }) => {
+            assert_eq!(target, "http server option");
+            reason.to_string()
+        }
+        other => panic!("expected a parse refusal, got {other:?}"),
+    }
+}
+
 #[test]
-fn a_zero_read_or_write_timeout_is_refused_by_bind() {
-    for options in [
-        ServerOptions::default().with_read_timeout(Duration::ZERO),
-        ServerOptions::default().with_write_timeout(Duration::ZERO),
+fn a_zero_or_unbounded_read_or_write_timeout_is_refused_by_bind() {
+    for timeout in [
+        Duration::ZERO,
+        ServerOptions::MAX_TIMEOUT + Duration::from_nanos(1),
     ] {
-        match Server::bind_with("127.0.0.1:0", options).expect_err("a refusal") {
-            Error::Parse { target, reason, .. } => {
-                assert_eq!(target, "http server option");
-                assert!(reason.contains("timeout"), "{reason}");
-            }
-            other => panic!("expected a parse refusal, got {other:?}"),
+        for (name, options) in [
+            (
+                "read_timeout",
+                ServerOptions::default().with_read_timeout(timeout),
+            ),
+            (
+                "write_timeout",
+                ServerOptions::default().with_write_timeout(timeout),
+            ),
+        ] {
+            let reason = refused_at_bind(options);
+            assert!(reason.starts_with(name), "{reason}");
         }
     }
+    // A timeout no deadline can hold is refused, never a connection that
+    // panics adding it to the clock.
+    let reason =
+        refused_at_bind(ServerOptions::default().with_read_timeout(Duration::from_secs(u64::MAX)));
+    assert!(reason.contains("at most 86400 seconds"), "{reason}");
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default()
+            .with_read_timeout(ServerOptions::MAX_TIMEOUT)
+            .with_write_timeout(ServerOptions::MAX_TIMEOUT),
+    )
+    .expect("the bound itself binds");
+    server.mount("/", memory_root()).expect("mount");
+    assert_eq!(get(&server, "/nothing").status(), Status::NOT_FOUND);
+}
+
+#[test]
+fn a_public_url_that_is_no_plain_http_origin_is_refused_by_bind() {
+    for public in [
+        "ftp://data.example.com/",
+        "https://data.example.com/olap?x=1",
+        "https://data.example.com/olap#top",
+        "https://user:secret@data.example.com/olap",
+        "https://user@data.example.com/",
+    ] {
+        let options = ServerOptions::default()
+            .with_public_url(yggdryl::Url::from_str(public).expect("a URL"));
+        assert_eq!(
+            options.public_url().map(ToString::to_string),
+            Some(public.to_owned())
+        );
+        let reason = refused_at_bind(options);
+        assert!(reason.starts_with("public_url"), "{public}: {reason}");
+        // A refused credential is not repeated in the refusal.
+        assert!(!reason.contains("secret"), "{reason}");
+    }
+    let refused = ServerOptions::default().with_path_prefix("/olap?x=1");
+    assert!(matches!(refused, Err(Error::Parse { .. })));
 }
 
 #[test]
@@ -565,6 +622,75 @@ fn the_url_the_address_and_the_options_describe_the_binding() {
     let (head, _) = raw(&server, &request_line("GET", "/", ""));
     assert_eq!(head.headers.get("server"), Some("test/1"));
     assert_eq!(head.status, Status::NOT_FOUND, "nothing mounted");
+}
+
+#[test]
+fn a_server_bound_to_every_address_states_its_loopback_url() {
+    let server = Server::bind("0.0.0.0:0").expect("bind");
+    assert_eq!(
+        server.url().to_string(),
+        format!("http://127.0.0.1:{}/", server.port())
+    );
+    assert!(server.address().ip().is_unspecified());
+    let response = get(&server, "/nothing");
+    assert_eq!(response.status(), Status::NOT_FOUND);
+}
+
+// --- the trailing-slash redirect ---------------------------------------------
+
+#[test]
+fn a_get_or_head_of_a_routes_path_with_a_trailing_slash_is_308_to_the_relative_path() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.respond(
+        Some(Method::Get),
+        "/olap/xmla",
+        Response::new(Status::OK).with_text("described"),
+    );
+    server.route(Some(Method::Post), "/olap/xmla", |request| {
+        Ok(Response::new(Status::OK).with_text(&format!(
+            "posted {} to {}",
+            String::from_utf8_lossy(request.body().as_bytes()),
+            request.url().path_text(false).expect("a path")
+        )))
+    });
+    let (head, body) = raw(&server, &request_line("GET", "/olap/xmla/?x=1", ""));
+    assert_eq!(head.status, Status::PERMANENT_REDIRECT);
+    assert_eq!(head.headers.get("location"), Some("../xmla?x=1"));
+    assert!(body.is_empty());
+    let (status, headers, _) = raw_head(&server, &request_line("HEAD", "/olap/xmla/", ""));
+    assert_eq!(status, Status::PERMANENT_REDIRECT);
+    assert_eq!(headers.get("location"), Some("../xmla"));
+
+    // A POST is served by the route, never redirected.
+    let (head, body) = raw(
+        &server,
+        b"POST /olap/xmla/ HTTP/1.1\r\nHost: test\r\nConnection: close\r\nContent-Length: 4\r\n\r\nbody",
+    );
+    assert_eq!(head.status, Status::OK);
+    assert_eq!(String::from_utf8_lossy(&body), "posted body to /olap/xmla/");
+
+    // A method the bare path does not route is 405 there, as it would be
+    // without the slash; a path routed nowhere stays 404.
+    let (head, _) = raw(&server, &request_line("DELETE", "/olap/xmla/", ""));
+    assert_eq!(head.status, Status::METHOD_NOT_ALLOWED);
+    assert_eq!(head.headers.get("allow"), Some("GET, HEAD, POST"));
+    let (head, _) = raw(&server, &request_line("GET", "/nothing/", ""));
+    assert_eq!(head.status, Status::NOT_FOUND);
+    let (head, _) = raw(&server, &request_line("GET", "/olap/xmla//", ""));
+    assert_eq!(
+        head.status,
+        Status::NOT_FOUND,
+        "one trailing slash, not two"
+    );
+
+    // The crate's client follows the relative Location to the route.
+    let response = get(&server, "/olap/xmla/");
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(response.text().expect("text"), "described");
+    let recorded = server.requests();
+    let last = &recorded[recorded.len() - 2..];
+    assert_eq!(last[0].status, Status::PERMANENT_REDIRECT);
+    assert_eq!(last[1].path, "/olap/xmla");
 }
 
 // --- method-not-allowed and the HEAD fallback --------------------------------

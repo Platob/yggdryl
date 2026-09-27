@@ -109,7 +109,7 @@ from .codes import (
     MicField,
     RicField,
     SedolField,
-    SideField,
+    ForexField,
     TimeInForceField,
     UnitField,
     bbg,
@@ -122,7 +122,7 @@ from .codes import (
     mic,
     ric,
     sedol,
-    side,
+    forex,
     timeinforce,
     unit,
 )
@@ -195,6 +195,8 @@ from .nested import (
 from .boolean import BooleanField, NullField, boolean, null
 from .scalar import Scalar, scalar
 from .state import State, StateField, state
+from .marketdatakind import MarketDataKind, MarketDataKindField, marketdatakind
+from .side import Side, SideField, side
 from .serie import (
     ChunkedSerie,
     FixedSizeSerieField,
@@ -303,6 +305,7 @@ __all__ = [
     "Duration64Field",
     "Expression",
     "FigiField",
+    "ForexField",
     "Field",
     "FieldPath",
     "Filter",
@@ -348,6 +351,9 @@ __all__ = [
     "RunEndEncodedField",
     "Scalar",
     "State",
+    "MarketDataKind",
+    "MarketDataKindField",
+    "Side",
     "SedolField",
     "Selector",
     "Serie",
@@ -430,6 +436,7 @@ __all__ = [
     "expression",
     "field",
     "figi",
+    "forex",
     "fix",
     "fixed_ascii",
     "fixed_cp1252",
@@ -487,6 +494,7 @@ __all__ = [
     "sized_cp1252",
     "sized_utf8",
     "state",
+    "marketdatakind",
     "string",
     "struct",
     "temporal",

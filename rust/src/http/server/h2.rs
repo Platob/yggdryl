@@ -23,6 +23,7 @@ use bytes::Bytes;
 use h2::server::SendResponse;
 use ureq::http;
 
+use super::forwarded::scheme_of;
 use super::framed::{
     Chunks, head_of, is_truncated, prepared, traced_body, traced_head, traced_refusal,
     traced_request,
@@ -97,6 +98,8 @@ pub(super) fn serve(inner: &Arc<Inner>, stream: TcpStream, tls: Option<Arc<rustl
     };
     let inner = Arc::clone(inner);
     let read_timeout = inner.options.read_timeout;
+    let peer = stream.peer_addr().ok();
+    let secure = tls.is_some();
     // The connection is driven by a runtime task, where its socket's
     // readiness lands, so no frame crosses a thread to be read or written;
     // this thread waits on it, which is what counts it against the cap.
@@ -105,7 +108,7 @@ pub(super) fn serve(inner: &Arc<Inner>, stream: TcpStream, tls: Option<Arc<rustl
             return;
         };
         match tls {
-            None => drive(&inner, io).await,
+            None => drive(&inner, io, peer, secure).await,
             Some(config) => {
                 let accepted = tokio::time::timeout(
                     read_timeout,
@@ -113,7 +116,7 @@ pub(super) fn serve(inner: &Arc<Inner>, stream: TcpStream, tls: Option<Arc<rustl
                 )
                 .await;
                 if let Ok(Ok(io)) = accepted {
-                    drive(&inner, io).await;
+                    drive(&inner, io, peer, secure).await;
                 }
             }
         }
@@ -121,8 +124,9 @@ pub(super) fn serve(inner: &Arc<Inner>, stream: TcpStream, tls: Option<Arc<rustl
     let _ = runtime::wait(driven);
 }
 
-/// Serve HTTP/2 over `io` until the connection closes.
-async fn drive<T>(inner: &Arc<Inner>, io: T)
+/// Serve HTTP/2 over `io` - from `peer`, over TLS when `secure` - until the
+/// connection closes.
+async fn drive<T>(inner: &Arc<Inner>, io: T, peer: Option<std::net::SocketAddr>, secure: bool)
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
 {
@@ -146,7 +150,7 @@ where
                 open.fetch_add(1, Ordering::AcqRel);
                 let (inner, open) = (Arc::clone(inner), Arc::clone(&open));
                 tokio::spawn(async move {
-                    answer(&inner, request, respond).await;
+                    answer(&inner, request, respond, peer, secure).await;
                     open.fetch_sub(1, Ordering::AcqRel);
                 });
             }
@@ -161,7 +165,9 @@ where
                     tokio::time::timeout(read_timeout, connection.accept()).await
                 {
                     let inner = Arc::clone(inner);
-                    tokio::spawn(async move { answer(&inner, request, respond).await });
+                    tokio::spawn(
+                        async move { answer(&inner, request, respond, peer, secure).await },
+                    );
                 }
                 return;
             }
@@ -170,11 +176,13 @@ where
     }
 }
 
-/// Answer one stream.
+/// Answer one stream of a connection from `peer`, over TLS when `secure`.
 async fn answer(
     inner: &Arc<Inner>,
     request: http::Request<h2::RecvStream>,
     mut respond: SendResponse<Bytes>,
+    peer: Option<std::net::SocketAddr>,
+    secure: bool,
 ) {
     let (parts, mut recv) = request.into_parts();
     let head = match head_of(&parts, HttpVersion::Http2) {
@@ -224,7 +232,13 @@ async fn answer(
     // A handler, a mounted leaf's reads or a pause may block, so the worker
     // steps out of the runtime for them rather than handing the request to
     // another thread and back; a fixed answer is made where it is.
-    let incoming = Incoming { head, body };
+    let incoming = Incoming {
+        head,
+        body,
+        peer,
+        secure,
+        scheme: parts.uri.scheme_str().and_then(scheme_of),
+    };
     let mut exchange = traced_request(inner, &incoming);
     let routed = inner.route_of(&incoming);
     let dispatched = if routed.may_block() {

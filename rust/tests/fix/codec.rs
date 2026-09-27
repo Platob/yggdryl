@@ -102,7 +102,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
     let direct = TextLine::from_bytes(
         0,
         TextBytes::from_bytes(
-            b"8=FIX.4.4|35=8|65063=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
+            b"8=FIX.4.4|35=8|65003=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
         )
         .unwrap(),
         options,
@@ -119,7 +119,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
     // 65064 once carried the merge reference's recording clock; the slot is
     // retired now that the reference is the latest `recdunix` alone, so a
     // frame still spelling it states no clock at all - not the recording,
-    // which stays the stated 65063, and no value, entry or wire byte either,
+    // which stays the stated 65003, and no value, entry or wire byte either,
     // as any crate tag with no definition behind it.
     assert_ne!(message.get_recdunix(), Some(REFERENCE));
     assert!(message.by_tag(65_064).is_err());
@@ -1625,8 +1625,8 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     // The wire is the message as the crate holds it, not the line it came
     // from: the frame leads, then the fields it lifted in tag order, then
     // the row - the side, the symbol and the day order the dictionary
-    // derives - and the trailer closes it. The bid lane a buy of a hundred
-    // implies is derived and so emitted nowhere.
+    // derives - and the trailer closes it. What a buy of a hundred implies
+    // is derived and so emitted nowhere.
     let emitted = "8=FIX.4.4|35=D|11=ORDER-1|38=100|55=AAPL|54=1|59=0|10=000|";
     let bytes = message.into_bytes(b'|');
     assert_eq!(String::from_utf8(bytes.clone()).unwrap(), emitted);
@@ -3259,7 +3259,6 @@ mod equivalence {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use yggdryl::fix::FIXENTRIES_COLUMN;
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -3397,10 +3396,12 @@ mod equivalence {
                 },
                 Err(refused) => self.unread.push(format!("{at}: {refused}")),
             }
+            // Every stated cell is pinned, the residual map included: its keys
+            // are `tag:name` and its values text, so it renders as it reads.
             let values = row.as_sequence().expect("a row is a sequence");
             for (column, value) in schema.fields().iter().zip(values) {
                 let name = column.name();
-                if name == FIXENTRIES_COLUMN || value.is_null() {
+                if value.is_null() {
                     continue;
                 }
                 self.push(

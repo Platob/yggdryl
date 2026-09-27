@@ -16,7 +16,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the code's own name; Python `ValueError`; JavaScript throws |
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
-| Value rank | The thirteen share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
+| Value rank | The thirteen share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Forex("EUR/USD")` and `Bbg("EUR/USD")` are two values |
 | Rust only | `DataType::CODES`, the thirteen leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
 
 The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the thirteen is then one file of its own, holding its datatype, its field marker and its value in that order.
@@ -35,7 +35,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 | [Bbg](bbg.md) | A Bloomberg terminal identifier no standard closes | 32 | `yggdryl.bbg` |
 | [FIGI](figi.md) | ANSI X9.145, closed by a check digit | 12 | `yggdryl.figi` |
 | [RIC](ric.md) | LSEG's Refinitiv Identification Code, one token no standard closes | 32 | `yggdryl.ric` |
-| [Side](side.md) | FIX `Side(54)`, read by spelling | 8 | `yggdryl.side` |
+| [Forex](forex.md) | ISO 4217 currency pair, `CCY/CCY` | 7 | `yggdryl.forex` |
 | [TimeInForce](timeinforce.md) | FIX `TimeInForce(59)`, the wire value | 8 | `yggdryl.timeinforce` |
 | [Unit](unit.md) | FIX `UnitOfMeasure(996)`, the text it is | 32 | `yggdryl.unit` |
 
@@ -72,12 +72,12 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
             ("isin", DataType::Isin, 12),
             ("cusip", DataType::Cusip, 9),
             ("sedol", DataType::Sedol, 7),
-            ("side", DataType::Side, 8),
             ("timeinforce", DataType::TimeInForce, 8),
             ("bbg", DataType::Bbg, 32),
             ("figi", DataType::Figi, 12),
             ("unit", DataType::Unit, 32),
             ("ric", DataType::Ric, 32),
+            ("forex", DataType::Forex, 7),
         ]
     );
 
@@ -86,7 +86,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert_eq!(usd.as_str(), Some("USD"));
     assert_eq!(usd.kind(), "ccy");
     assert!(usd.is_code());
-    assert_ne!(DataType::Side.scalar("BUY")?, DataType::TimeInForce.scalar("BUY")?);
+    assert_ne!(DataType::Forex.scalar("EUR/USD")?, DataType::Bbg.scalar("EUR/USD")?);
     // A plain string of the same bytes is a string.
     assert_eq!(Scalar::from("USD").kind(), "string");
     ```
@@ -110,10 +110,10 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "ccy", "mic", "cfi", "isin", "cusip", "sedol",
-             "side", "timeinforce", "bbg", "figi", "unit", "ric")] == [
+             "timeinforce", "bbg", "figi", "unit", "ric", "forex")] == [
         ("country", 2), ("ccy", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
-        ("cusip", 9), ("sedol", 7), ("side", 8), ("timeinforce", 8),
-        ("bbg", 32), ("figi", 12), ("unit", 32), ("ric", 32),
+        ("cusip", 9), ("sedol", 7), ("timeinforce", 8), ("bbg", 32),
+        ("figi", 12), ("unit", 32), ("ric", 32), ("forex", 7),
     ]
 
     # A value is the text, and carries its identity.
@@ -121,7 +121,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert usd.as_str() == "USD"
     assert usd.kind == "ccy"
     assert usd.family == "code"
-    assert DataType("side").scalar("BUY") != DataType("timeinforce").scalar("BUY")
+    assert DataType("forex").scalar("EUR/USD") != DataType("bbg").scalar("EUR/USD")
     assert Scalar.from_("USD").kind == "string"
     ```
 
@@ -143,9 +143,9 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'timeinforce', 'bbg', 'figi', 'unit', 'ric']
+      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'timeinforce', 'bbg', 'figi', 'unit', 'ric', 'forex']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 8, 8, 32, 12, 32, 32],
+      [2, 3, 4, 6, 12, 9, 7, 8, 32, 12, 32, 32, 7],
     )
 
     // A value is the text, and carries its identity.
@@ -160,10 +160,10 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 The thirteen share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `side` `UNKNOWN`, a `ccy` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. What "less" means is each code's own: a `ccy` `XXX`, a `mic` `XXXX` and a `unit` stated as none take the other; an unclassified `cfi` yields whole to a classified one, and otherwise fills every `X` from the other where the two describe one instrument; an `isin` numbered `ZZ` - ISO 6166's placeholder for a derivative no agency has numbered yet - yields to another prefix; and every other identifier stands as it is. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Ccy, DataTypeKind, Isin, Mic, Scalar};
+use yggdryl::{CodeValue, Ccy, Cfi, DataTypeKind, Isin, Mic, Scalar};
 
 // A code is its own leaf, in the code family's range; its text is not a code.
 let usd = Scalar::Ccy(Ccy::new("USD")?);
@@ -175,8 +175,13 @@ assert_eq!(Ccy::none().merge_with(&Ccy::new("USD")?).as_str(), "USD");
 assert_eq!(Ccy::new("USD")?.merge_with(&Ccy::new("EUR")?).as_str(), "USD");
 assert_eq!(Mic::none().merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
 
-// An identifier has nothing partial about it: this one stands.
+// An unclassified code yields to a classified one.
+assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
+
+// A `ZZ` number is a placeholder a real one replaces ...
 let apple = Isin::new("US0378331005")?;
+assert_eq!(Isin::new("ZZ0000000008")?.merge_with(&apple), apple);
+// ... and two real numbers are two statements: this one stands.
 assert_eq!(apple.clone().merge_with(&Isin::new("US5949181045")?), apple);
 ```
 
@@ -472,28 +477,31 @@ subclasses for a vocabulary of its own: `Ccy`, `Country`, `Mic` and `Cfi`;
 ## FIX message definitions
 
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
-The [FIX registry](../../fix/registry.md)
-owns `MsgType`: the registry's immutable message Struct definition, a component
-carrying `FIX:msgtype` and optional symbolic four-character `FIX:msgcat` metadata, obtained through registry
-lookup. Its wire code stays intact; message definitions have no generic datatype
-or code field helper. A fixed row carries the corresponding `int32` `msgcat`
-market-operation ID at crate tag 65054 and its
-four normalized identifier columns: `isincode(65055)`, `bloombergcode(65059)`,
-`miccode(65060)` and `figicode(65061)`; `cusipcode(65057)` and `sedolcode(65058)`
-are retired slots, a CUSIP or a SEDOL being one more security identifier under
-its own key. `CFICode(461)` is the standard classification field, so no
-crate 65056 exists. `SecurityIDSource(22)=S` and
-`SecurityAltIDSource(456)=S` lift a valid FIGI; source `A` remains Bloomberg,
-and source `5` is a [RIC](ric.md), held to that code's own rule.
+The [FIX registry](../../fix/registry.md) owns `MsgType`: the registry's
+immutable message Struct definition, a component carrying `FIX:msgtype` and
+an optional four-character `FIX:msgcat`, which `MsgType::msgcat` reads as the
+[`MarketDataKind`](../enum/marketdatakind.md) member it names. Its wire code
+stays intact; message definitions have no generic datatype or code field
+helper. A fixed row carries that member in its `marketdatakind`-typed `msgcat`
+column at crate tag 65016, and five normalized identifier columns:
+`isincode(65023)`, `forexcode(65024)`, `bloombergcode(65025)`,
+`figicode(65026)` and `miccode(65027)` ([the crate's own
+columns](../../fix/capture.md#the-crates-own-columns)). A CUSIP or a SEDOL is
+one more security identifier under its own key, with no column of its own, and
+`CFICode(461)` is the standard classification field, so no crate column
+carries one. `SecurityIDSource(22)=S` and `SecurityAltIDSource(456)=S` lift a
+valid FIGI; source `A` remains Bloomberg, and source `5` is a [RIC](ric.md),
+held to that code's own rule. A currency pair has no FIX source: it is the
+crate's own [`FOREX`](forex.md#the-forex-security-identifier) key.
 
 ## Edges
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> the text itself, so nothing is padded and nothing has to be trimmed back. A cast from a fixed-width column still trims the NUL that column's slot wrote; the padding was the slot's, never the value's. Text carrying trailing NULs canonicalizes to the trimmed value.
-- `Scalar::kind()` -> the code's id: `ccy`, `side`, `timeinforce`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
-- A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values.
+- `Scalar::kind()` -> the code's id: `ccy`, `forex`, `timeinforce`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
+- A code's equality, order and hash carry the identity first, then the text: `Forex("EUR/USD") != Bbg("EUR/USD")`. A code and a plain string of the same bytes are two values.
 - `utf8` under `yggdryl.ccy` -> `ccy`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.ccy` over any other storage imports as that storage.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md) and [RIC](ric.md) are the exceptions, because their value door gates the space rather than holding it, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID. [Side](side.md) gates the same way but is not an exception: `UNKNOWN` (`Side::Unknown`) stands in for the neutral member its vocabulary otherwise lacks, so `default_value` answers it - like [`state`](../enum/state.md#edges)'s - while an empty text cell entering the column still reads null, never `UNKNOWN`.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md) and [Forex](forex.md) are the exceptions, because their value door gates the space rather than holding it, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> the row and the column, never the default, for a code exactly as for a string ([Cast](../cast.md#required-columns)).
 - [Merged](../field.md#merging-two-schemas) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string. Narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
 - `ccy` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
@@ -504,7 +512,7 @@ and source `5` is a [RIC](ric.md), held to that code's own rule.
 - An Arrow cast out of a code -> every string leaf and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`; otherwise an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`. The `FIELD:enum` document never carries the width, so one enum is one canonical text.
-- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `tenor` or any of the six securities identifiers, -> an empty enum.
+- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `tenor`, `forex` or any of the six securities identifiers, -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so a code column arrives as the text it stores, under no identity.
 - A dictionary-encoded code keeps its identity: Arrow's dictionary holds a bare datatype for its values, so the field is where the extension name rides.
 - Digests: a code value feeds its own id as the tag, so a stored digest of a code cell differs from the same bytes under `fixed_ascii(n)`.
@@ -514,7 +522,7 @@ and source `5` is a [RIC](ric.md), held to that code's own rule.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves bbg::value bbg::datatype cfi::coded code::datatypes code::securities cusip::securities figi::securities ric::value:: ric::datatype:: sedol::securities string::enumerated string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves bbg::value bbg::datatype cfi::coded code::datatypes forex:: code::securities cusip::securities figi::securities ric::value:: ric::datatype:: sedol::securities string::enumerated string::listings timeinforce::coded
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- string::codes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```

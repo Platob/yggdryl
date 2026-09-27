@@ -14,30 +14,34 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
-| [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
-| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_operations`, `market_arrow_reader`, `market_operations_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - including sided executions projected from an accepted initial TradeCaptureReport `35=AE` and its `NoSides(552)` - or back to the wire under bounded Arrow batches |
+| [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, the market data it is, what a parse splits off it, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
+| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - each execution and each quoted side a parse split off folded once - or back to the wire under bounded Arrow batches |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
-| [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
+| [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
-`MsgType(35)` has an `int32` `MsgCat(65054)` companion in the fixed row: the
-stable numeric market-operation category. Each committed message component
-still carries its exhaustive four-character `FIX:msgcat` metadata, and the
-builtin `msgcatcodeset` maps those names to the row integers (`UNKN=0`,
-`ORDR=10`, `QUOT=14`, and so on). The normalized instrument columns are `isincode(65055)`,
-`bloombergcode(65059)`, `miccode(65060)` and `figicode(65061)` - the first, the
-second and the last views of the message's security identifiers; CFI remains
-standard `CFICode(461)`, with no tag 65056, and `cusipcode(65057)` and
-`sedolcode(65058)` are retired slots: a CUSIP or a SEDOL is one more security
-identifier under its own key.
+`MsgType(35)` has a `msgcat(65016)` companion in the fixed row: the
+[`MarketDataKind`](../types/enum/marketdatakind.md) member the dictionary
+files the type under, stored as its `int32` code. Each committed message
+component carries its four-character `FIX:msgcat` metadata, and the builtin
+`msgcatcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
+`EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, and so on). The normalized
+instrument columns are `isincode(65023)`, `forexcode(65024)`,
+`bloombergcode(65025)`, `figicode(65026)` and `miccode(65027)` - the first
+four views of the message's security identifiers, the last its market -
+beside the strike `strikepx(65028)`; CFI remains standard `CFICode(461)`,
+and a CUSIP or a SEDOL is one more security identifier under its own key.
 
 The protocol view exposes the category beside the message type: Rust
 `field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
-`field.fix.msgcat`. Set it with Rust `field.as_fix_mut().set_msgcat("ORDR")?`
-or the corresponding Python/JavaScript property. The closed category set
-includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and `BOOK`; `MsgType.msgcat` exposes
-that definition name, while `FixMsg.msgcat` and `marketoperationid` expose its
-resolved integer in both bindings.
+`field.fix.msgcat`, each the four-character text. Set it with Rust
+`field.as_fix_mut().set_msgcat("ORDR")?` or the corresponding Python/JavaScript
+property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and
+`BOOK`; `MsgType::msgcat` answers the definition's member - Rust
+`Option<MarketDataKind>`, Python the `MarketDataKind` member or `None`,
+JavaScript its name or `null` - and `FixMsg::msgcat` the message's own, which
+a [market data leaf](message.md#market-data) states again as its
+`marketdatakind`.
 
 ## Contract
 
@@ -210,8 +214,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `int32` `MsgCat(65054)` field |
-| `replacements` | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the [specification's own retirements](registry.md#what-the-specification-retired) of the tag; see [Registry](registry.md#a-field-carries-what-replaced-it) |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `msgcat(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## Identity is a tag and a name
@@ -391,14 +394,14 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 and groups are the three registry categories, a message being a component that
 carries `FIX:msgtype`.
 
-The crate's `metadata(65049)` is also a group: a nullable, sorted-key
+The crate's `metadata(65030)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
 [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
-a bridge wrote, while ordinary Serie/LargeSerie groups keep their existing
-counter rules; the `identifiers(65020)` group is retired, and the names a
-message goes by are its [identifier maps](message.md#the-identifier-maps).
+a bridge wrote, and a row from every key no dictionary resolved, while
+ordinary Serie/LargeSerie groups keep their existing counter rules; the names
+a message goes by are its [alternate identifiers](message.md#the-identifier-maps).
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
@@ -424,10 +427,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let metadata = registry.field_by_counter(65_049)?;
+    let metadata = registry.field_by_counter(65_030)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_049));
-    assert!(registry.get_field_by_tag(65_049).is_none(), "a Map group is no scalar");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_030));
+    assert!(registry.get_field_by_tag(65_030).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -446,10 +449,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    metadata = registry.field_by_counter(65_049)
+    metadata = registry.field_by_counter(65_030)
     assert metadata.name == "metadata"
-    assert metadata.fix.counter == 65_049
-    assert registry.get_field_by_tag(65_049) is None, "a Map group is no scalar"
+    assert metadata.fix.counter == 65_030
+    assert registry.get_field_by_tag(65_030) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -469,10 +472,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const metadata = registry.fieldByCounter(65049)
+    const metadata = registry.fieldByCounter(65030)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.counter, 65049)
-    assert.equal(registry.getFieldByTag(65049), null, 'a Map group is no scalar')
+    assert.equal(metadata.fix.counter, 65030)
+    assert.equal(registry.getFieldByTag(65030), null, 'a Map group is no scalar')
     ```
 
 ## Edges

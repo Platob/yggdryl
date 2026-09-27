@@ -43,11 +43,13 @@ mod http;
 mod iceberg;
 mod iobase;
 mod iomedia;
+mod marketdatakind;
 mod media;
 mod parameters;
 mod protocol;
 mod scalar;
 mod serie;
+mod side;
 mod state;
 mod text;
 mod timezone;
@@ -583,13 +585,30 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// Register the native value and iterator classes.
-fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<PyDataType>()?;
+/// Register the member tables the three enum-family classes are built from
+/// at import: `State`, `MarketDataKind` and `Side`.
+fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_fix_status, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_fix_msgtype, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        marketdatakind::marketdatakind_members,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        marketdatakind::marketdatakind_from_spelling,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(side::side_members, module)?)?;
+    module.add_function(wrap_pyfunction!(side::side_from_spelling, module)?)?;
+    Ok(())
+}
+
+/// Register the native value and iterator classes.
+fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PyDataType>()?;
+    register_enum_members(module)?;
     module.add_class::<PyStringEnum>()?;
     module.add_class::<parameters::PyStringParameters>()?;
     module.add_class::<parameters::PyBytesParameters>()?;

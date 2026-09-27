@@ -1,6 +1,6 @@
-# yggdryl-fix: the `ygg fix` command line
+# yggdryl-fix: the `yggdryl fix` command line
 
-`ygg` is a compiled Rust executable shipped inside the Python wheel
+`yggdryl` is a compiled Rust executable shipped inside the Python wheel
 (`pip install yggdryl` puts it on `PATH`); from a checkout, `cargo run -p
 yggdryl-cli -- fix ...` runs the same binary. It manages a stored dictionary -
 the shard tree `FixRegistry::from_handle` reads - and validates it; it does not
@@ -20,13 +20,13 @@ changes nothing.
 ## Read and search
 
 ```bash
-ygg fix --root config/fix fields list Party --limit 20
-ygg fix --root config/fix fields read 453 --json
-ygg fix --root scratch/catalog fields read Desk_Value
-ygg fix --root config/fix groups read Parties --json
-ygg fix --root config/fix components read Party
-ygg fix --root config/fix components list Order
-ygg fix --root scratch/catalog fields list --dialect venue
+yggdryl fix --root config/fix fields list Party --limit 20
+yggdryl fix --root config/fix fields read 453 --json
+yggdryl fix --root scratch/catalog fields read Desk_Value
+yggdryl fix --root config/fix groups read Parties --json
+yggdryl fix --root config/fix components read Party
+yggdryl fix --root config/fix components list Order
+yggdryl fix --root scratch/catalog fields list --dialect venue
 ```
 
 A field key is a decimal tag or a name folded like every lookup (`Desk_Value`,
@@ -38,12 +38,12 @@ name. A decimal key is always a tag, never an identity; a path such as
 ## Create, update, delete
 
 ```bash
-ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
-ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
-ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
-ygg fix --root scratch/catalog groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
-ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
-ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect desk
+yggdryl fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
+yggdryl fix --root scratch/catalog fields create PartyID utf8 --tag 448
+yggdryl fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
+yggdryl fix --root scratch/catalog groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
+yggdryl fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
+yggdryl fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect desk
 ```
 
 | Flag | Applies to |
@@ -62,18 +62,18 @@ ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialec
 the `read --json` document and feed it back:
 
 ```bash
-ygg fix --root scratch/catalog components read Party --json > Party.json
-ygg fix --root scratch/catalog components update --input Party.json
+yggdryl fix --root scratch/catalog components read Party --json > Party.json
+yggdryl fix --root scratch/catalog components update --input Party.json
 ```
 
 Delete dependents before what they reference; a referenced definition is
 refused:
 
 ```bash
-ygg fix --root scratch/catalog components delete Order
-ygg fix --root scratch/catalog groups delete Parties
-ygg fix --root scratch/catalog components delete Party
-ygg fix --root scratch/catalog fields delete 448
+yggdryl fix --root scratch/catalog components delete Order
+yggdryl fix --root scratch/catalog groups delete Parties
+yggdryl fix --root scratch/catalog components delete Party
+yggdryl fix --root scratch/catalog fields delete 448
 ```
 
 ## Code sets
@@ -82,11 +82,11 @@ A vocabulary is the dictionary's, stated once under its name and before any
 field names it:
 
 ```bash
-ygg fix --root config/fix codesets list side --limit 20
-ygg fix --root config/fix codesets read sidecodeset --json
-ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
-ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset
-ygg fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"value":"7","name":"Undisclosed"}]'
+yggdryl fix --root config/fix codesets list side --limit 20
+yggdryl fix --root config/fix codesets read sidecodeset --json
+yggdryl fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+yggdryl fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset
+yggdryl fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"value":"7","name":"Undisclosed"}]'
 ```
 
 `write` replaces a set; `--merge` folds by wire value and keeps every spelling
@@ -96,13 +96,13 @@ that field. The crate-owned `msgcatcodeset` and `statecodeset` are immutable.
 ## Ingest, sync, schema, check, diff
 
 ```bash
-ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
-ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
-ygg fix --root scratch/catalog sync ../desk/config/fix
-ygg fix --root config/fix schema --out fix-message.json
-ygg fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
-ygg fix --root config/fix check
-ygg fix --root config/fix diff ../desk/config/fix --annotate
+yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
+yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
+yggdryl fix --root scratch/catalog sync ../desk/config/fix
+yggdryl fix --root config/fix schema --out fix-message.json
+yggdryl fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
+yggdryl fix --root config/fix check
+yggdryl fix --root config/fix diff ../desk/config/fix --annotate
 ```
 
 | Command | Does |

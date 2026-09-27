@@ -48,10 +48,13 @@ const REPEATS: usize = crate::bench_profile::corpus(8, 1);
 /// How many messages one copy of the capture carries.
 ///
 /// The codec below refuses nothing, so this is the whole capture and not the
-/// 79 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
+/// 135 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
 /// keepalives and the rows that state no type, and those are shapes this
 /// corpus exists to measure.
-const MESSAGES: usize = 94;
+///
+/// It is the 94 messages the capture carries plus the 56 executions its
+/// parse splits off the reports that report a fill, one each (A12).
+const MESSAGES: usize = 94 + 56;
 
 /// The text options a bridge log is read under: the bridge's own row
 /// header framed, its clock read in UTC, each line numbered and classified.
@@ -180,9 +183,7 @@ pub(crate) fn stages<M: Measurement>(
     group.bench_function("market", |bencher| {
         bencher.iter(|| {
             black_box(&codec)
-                .market_operations(
-                    codec.lifecycle(codec.parse_text_lines(black_box(&lines).iter())),
-                )
+                .market_data(codec.lifecycle(codec.parse_text_lines(black_box(&lines).iter())))
                 .count()
         });
     });
@@ -194,7 +195,7 @@ pub(crate) fn stages<M: Measurement>(
     let admissible: Vec<FixMsg> = codec
         .lifecycle(messages.clone())
         .filter_map(Result::ok)
-        .filter(|message| message.market_operations().is_ok())
+        .filter(|message| message.market_data().is_ok())
         .collect();
     let market_rows = codec
         .market_arrow_reader(admissible.clone())

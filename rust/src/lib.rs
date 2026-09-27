@@ -57,6 +57,7 @@ mod field;
 pub mod figi;
 pub mod fix;
 pub mod floating;
+pub mod forex;
 pub mod fs;
 pub mod geospatial;
 pub mod graph;
@@ -89,6 +90,7 @@ pub mod limit;
 mod listing;
 pub mod local;
 pub mod mapping;
+pub mod marketdatakind;
 pub mod media;
 mod media_type;
 mod merge;
@@ -170,19 +172,20 @@ pub use fix::{
     CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, DEFAULT_NULL_VALUES,
     DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, EXCHANGECLIENTORDERID_TAG_NAME,
     EXECUNIX_TAG_NAME, EXPRUNIX_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME,
-    FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec, FixCodes, FixDedup,
-    FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId,
-    FixIdMapKind, FixIdSource, FixIdSources, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns,
-    FixRegistry, FixSpellings, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME,
-    MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME,
+    FOREXCODE_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
+    FixCodes, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter,
+    FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources, FixKey, FixLifted, FixMessages,
+    FixMsg, FixPatterns, FixRegistry, FixSpellings, ISINCODE_TAG_NAME, METADATA_TAG_NAME,
+    MICCODE_TAG_NAME, MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
     OMSDEALERACCOUNT_TAG_NAME, OMSDEALERPARENTORDERID_TAG_NAME, OMSINSTRUMENTID_TAG_NAME,
     OMSUSERID_TAG_NAME, PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME, PREVUNIX_TAG_NAME,
     PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
     SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
-    STATE_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULBRIDGE_ROWHEADER, ULLINKINSTRUMENTID_TAG_NAME,
-    ULTRADERCLORDID_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
+    STATE_TAG_NAME, STRIKEPX_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULBRIDGE_ROWHEADER,
+    ULLINKINSTRUMENTID_TAG_NAME, ULTRADERCLORDID_TAG_NAME, Words, fix_column_of, fix_column_tags,
+    fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
+    into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -234,7 +237,7 @@ pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use cusip::*;
 pub use datatype::{DataType, VariantType};
-pub(crate) use datatype::{bytes_dtypes, string_dtypes};
+pub(crate) use datatype::{bytes_dtypes, enum_dtypes, string_dtypes};
 pub(crate) use datatype::{invalid, validate_non_negative};
 pub use date::*;
 pub use datetime::*;
@@ -250,6 +253,7 @@ pub use enums::*;
 pub use field::*;
 pub use figi::*;
 pub use floating::*;
+pub use forex::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
@@ -260,6 +264,7 @@ pub use interval::*;
 pub use isin::*;
 pub use limit::Limit;
 pub use mapping::*;
+pub use marketdatakind::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
@@ -272,7 +277,7 @@ pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;
 pub use scalar::Scalar;
-pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
+pub(crate) use scalar::{bytes_scalars, code_scalars, enum_scalars, string_scalars};
 pub use securityid::{SecType, SecurityId, SecurityIds};
 pub use sedol::*;
 pub use serie::*;
@@ -295,9 +300,9 @@ pub(crate) use uuid::{
 };
 pub(crate) use value::dtype_scalar;
 pub use value::{
-    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FieldSidecar,
-    FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue,
-    NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
+    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, EnumValue,
+    FieldSidecar, FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue,
+    IntegerValue, NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
 };
 pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
 pub use variant::{
@@ -362,14 +367,13 @@ pub mod internals {
     pub use crate::fix::codes::internals as fix_codes;
     pub use crate::fix::component::internals as fix_component;
     pub use crate::fix::document::internals as fix_document;
-    pub use crate::fix::enrich::internals as fix_enrich;
+    pub use crate::fix::forex::internals as fix_forex;
     pub use crate::fix::global::internals as fix_global;
     pub use crate::fix::group_plan::internals as fix_group_plan;
     pub use crate::fix::identity::internals as fix_identity;
     pub use crate::fix::memo::internals as fix_memo;
     pub use crate::fix::msgtype::internals as fix_msgtype;
     pub use crate::fix::registry::internals as fix_registry;
-    pub use crate::fix::replacements::internals as fix_replacements;
     pub use crate::fix::retired::internals as fix_retired;
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
@@ -390,6 +394,8 @@ pub mod internals {
     #[cfg(feature = "http")]
     #[cfg(feature = "http2")]
     pub use crate::http::runtime::internals as http_runtime;
+    #[cfg(feature = "http")]
+    pub use crate::http::server::forwarded::internals as http_server_forwarded;
     #[cfg(feature = "http")]
     pub use crate::http::stream::internals as http_stream;
     #[cfg(feature = "iceberg")]

@@ -5,9 +5,13 @@ use std::sync::Arc;
 use super::{SoleMessage, committed_registry, fixed_codec};
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
-    BookEvent, Element, Event, Market, MarketData, MarketKind, MdUpdateAction, Operation,
+    BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketKind, MdUpdateAction,
+    Operation,
 };
-use yggdryl::{DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType};
+use yggdryl::{
+    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, MarketDataKind, Scalar, State,
+    StructType,
+};
 
 fn message(line: &[u8]) -> FixMsg {
     fixed_codec(committed_registry())
@@ -66,6 +70,21 @@ fn is_full_snapshot(value: &MarketData) -> bool {
     value.book().and_then(|book| book.action) == Some(MdUpdateAction::Snapshot)
 }
 
+/// The entries alive on one side of `book`, best first: `bid` the bid
+/// side, else the ask side.
+fn alive(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
+    book.alive()
+        .filter(|entry| entry.get_side().is_bid() == bid)
+        .collect()
+}
+
+/// The deltas applied to one side of `book`, in the order they were.
+fn deltas(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
+    book.deltas()
+        .filter(|entry| entry.get_side().is_bid() == bid)
+        .collect()
+}
+
 /// The books a lifted `marketdata` stream holds, each a `book_event` row.
 fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
     MarketData::from_arrow_reader(reader)
@@ -73,6 +92,38 @@ fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
         .map(|value| BookEvent::try_from(value?))
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap()
+}
+
+/// Every message a line parses into: what it states, then what its parse
+/// split off it.
+fn split(line: &[u8]) -> Vec<FixMsg> {
+    fixed_codec(committed_registry())
+        .parse_line(line)
+        .expect("a line")
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("every message")
+}
+
+/// The one leaf a message is.
+fn leaf_of(message: FixMsg) -> MarketData {
+    let mut leaves = message.into_market_data().expect("one leaf");
+    assert_eq!(leaves.len(), 1, "one message, one leaf");
+    leaves.remove(0)
+}
+
+/// The execution a split-off execution message is.
+fn execution_of(message: FixMsg) -> ExecutionEvent {
+    ExecutionEvent::try_from(leaf_of(message)).expect("an execution")
+}
+
+/// Whether `split` names `source` and what `source` was read from as its
+/// sources.
+fn names_its_source(split: &FixMsg, source: &FixMsg) -> bool {
+    split.get_srcuuids().contains(&source.get_curruuid())
+        && source
+            .get_srcuuids()
+            .iter()
+            .all(|held| split.get_srcuuids().contains(held))
 }
 
 #[test]
@@ -84,31 +135,30 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
             MarketKind::OrderEvent,
         ),
         (
-            b"8=FIX.4.4|35=S|117=Q1|55=AAPL|132=99|134=7|133=101|135=8|10=0|",
+            b"8=FIX.4.4|35=S|117=Q1|55=AAPL|54=1|132=99|134=7|10=0|",
             14,
             MarketKind::QuoteEvent,
         ),
+        // An execution report reporting a fill is its order's report: the
+        // fill is the execution its parse splits off.
         (
             b"8=FIX.4.4|35=8|17=E1|37=O1|55=AAPL|31=100|32=2|150=F|10=0|",
-            8,
-            MarketKind::ExecutionEvent,
+            10,
+            MarketKind::OrderEvent,
         ),
     ];
 
     for (line, operation_id, kind) in cases {
         let source = message(line);
-        assert_eq!(source.get_marketoperationid(), Some(*operation_id));
+        assert_eq!(source.msgcat().code(), *operation_id);
         assert_eq!(
-            source
-                .get_by_tag(yggdryl::MSGCAT_TAG_NAME.0)
-                .and_then(|value| value.as_i128()),
-            Some(i128::from(*operation_id))
+            source.get_by_tag(yggdryl::MSGCAT_TAG_NAME.0),
+            Some(Scalar::MarketDataKind(source.msgcat()))
         );
-        let operations = source.into_market_operations().expect("a market category");
+        let operations = source.into_market_data().expect("a market category");
         assert_eq!(operations.len(), 1);
-        let operation = operation_of(&operations[0]);
         assert_eq!(operations[0].kind(), *kind, "{line:?}");
-        assert_eq!(operation.get_marketoperationid(), Some(*operation_id));
+        assert_eq!(operations[0].marketdatakind().code(), *operation_id);
         assert_eq!(
             operations[0].book(),
             None,
@@ -125,106 +175,165 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
     }
 }
 
+/// A12: an order's execution report splits once, at the parse, into the
+/// order's report - `ORDR`, its own state - and the execution it reports -
+/// `EXEC`, `FILLED`, its own identity and chain, naming the report as its
+/// source.
 #[test]
-fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip() {
-    let operations = message(
+fn an_order_execution_splits_off_one_filled_execution_message() {
+    let messages = split(
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|",
+    );
+    let [report, execution] = messages.as_slice() else {
+        panic!("the report and its execution, got {}", messages.len())
+    };
+    assert_eq!(report.msgcat(), MarketDataKind::Order);
+    assert_eq!(*report.get_state(), State::PartiallyFilled);
+    assert!(!report.is_execution());
+    assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    assert_eq!(*execution.get_state(), State::Filled);
+    assert!(execution.is_execution());
+    assert!(names_its_source(execution, report));
+    assert_ne!(execution.get_curruuid(), report.get_curruuid());
+    assert_ne!(execution.get_crossuuid(), report.get_crossuuid());
+    // Its chain is its own, keyed by the fill, and stored under its side.
+    assert_eq!(execution.get_crosscode(), "BUY:ExecID=E-1");
+    assert_eq!(report.get_crosscode(), "BUY:O-9");
+    assert_eq!(text(execution.get_lastqty()).as_deref(), Some("40"));
+    assert_eq!(text(execution.get_lastpx()).as_deref(), Some("10.5"));
+
+    // One message, one leaf: the report an order, the execution an
+    // execution reading `FILLED`.
+    assert_eq!(leaf_of(report.clone()).kind(), MarketKind::OrderEvent);
+    let leaf = execution_of(execution.clone());
+    assert_eq!(*leaf.get_state(), State::Filled);
+
+    // Both are rows of their own, read back whole.
+    let schema = yggdryl::fix_schema(&committed_registry(), "fix").unwrap();
+    for held in [report, execution] {
+        let row = held.into_row(&schema).unwrap();
+        let back = FixMsg::from_row(committed_registry(), &schema, &row).unwrap();
+        assert_eq!(back.msgcat(), held.msgcat());
+        assert_eq!(back.get_state(), held.get_state());
+        assert_eq!(back.get_curruuid(), held.get_curruuid());
+        assert_eq!(back.get_srcuuids(), held.get_srcuuids());
+    }
+
+    // A report of no fill splits nothing.
+    let acknowledged = split(b"8=FIX.4.4|35=8|17=A-1|37=O-9|39=0|150=0|55=AAPL|54=1|10=0|");
+    assert_eq!(acknowledged.len(), 1);
+    assert_eq!(acknowledged[0].msgcat(), MarketDataKind::Execution);
+}
+
+/// A12: a trade splits off one sided execution message per `NoSides(552)`
+/// occurrence, each an `ExecutionReport` of its side and `FILLED`, and the
+/// trade itself is no leaf: its fills are those messages, once.
+#[test]
+fn a_trade_splits_off_one_sided_execution_message_per_side() {
+    let messages = split(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|",
-    )
-    .into_market_operations()
-    .expect("an actual trade with two sides");
-
-    let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
-        panic!("one composite trade")
+    );
+    let [trade, buy, sell] = messages.as_slice() else {
+        panic!("the trade and its two sides, got {}", messages.len())
     };
-    assert_eq!(trade.get_marketoperationid(), Some(21));
-    // A trade capture states no price and no quantity of its own: what it
-    // last executed at, and how much, are `lastpx` and `lastqty`, and
-    // neither stands in for the price or the quantity.
-    assert_eq!((trade.get_price(), trade.get_quantity()), (None, None));
-    assert_eq!(text(trade.get_lastpx()).as_deref(), Some("101.25"));
-    assert_eq!(text(trade.get_lastqty()).as_deref(), Some("10"));
-
-    let [buy, sell] = trade.executions() else {
-        panic!("one execution per stated trade side")
-    };
+    assert_eq!(trade.msgcat(), MarketDataKind::Trade);
+    let refused = trade.market_data().unwrap_err().to_string();
+    assert!(refused.contains("MsgType(35)"), "{refused}");
+    for side in [buy, sell] {
+        assert_eq!(side.msgcat(), MarketDataKind::Execution);
+        assert_eq!(*side.get_state(), State::Filled);
+        assert!(names_its_source(side, trade));
+    }
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
-    assert_eq!(buy.kind(), MarketKind::Execution);
-    // Each side keeps `SideLastQty(1009)` as its last executed quantity
-    // only, beside the trade's last executed price: a side states no
-    // price and no quantity, and nothing invents one.
-    assert_eq!((buy.get_price(), sell.get_price()), (None, None));
-    assert_eq!((buy.get_quantity(), sell.get_quantity()), (None, None));
-    assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
-    assert_eq!(text(sell.get_lastpx()).as_deref(), Some("101.25"));
+    // A side's last executed quantity is its `SideLastQty(1009)`, beside
+    // the trade's last price; a side states no price and no quantity.
     assert_eq!(text(buy.get_lastqty()).as_deref(), Some("4"));
     assert_eq!(text(sell.get_lastqty()).as_deref(), Some("6"));
-    assert_eq!(buy.get_altids().get("SIDEEXECID"), Some("BUY-EXEC"));
-    assert_eq!(sell.get_altids().get("SIDEEXECID"), Some("SELL-EXEC"));
+    assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!((buy.get_price(), buy.get_quantity()), (None, None));
+    // The side's identifiers are the execution's.
+    assert_eq!(buy.get_altids().get("EXECID"), Some("BUY-EXEC"));
+    assert_eq!(sell.get_altids().get("EXECID"), Some("SELL-EXEC"));
     assert_eq!(buy.get_altids().get("ORDERID"), Some("BUY-ORDER"));
-    assert_eq!(sell.get_altids().get("ORDERID"), Some("SELL-ORDER"));
-    assert_eq!(buy.get_altids().get("CLORDID"), Some("BUY-CLIENT"));
     assert_eq!(sell.get_altids().get("CLORDID"), Some("SELL-CLIENT"));
-    assert_eq!(
-        trade.get_altids().get("TRADEID"),
-        None,
-        "TradeReportID(571) is no alternate identifier source today"
-    );
     assert_ne!(buy.get_curruuid(), sell.get_curruuid());
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
-    assert_ne!(buy.get_crosscode(), sell.get_crosscode());
+    assert!(buy.get_crosscode().starts_with("BUY:"));
+    assert!(sell.get_crosscode().starts_with("SELL:"));
 
-    let expected = operations[0].clone();
-    let encoded = MarketData::arrow_reader(operations, Some(1), None).unwrap();
-    let actual = MarketData::from_arrow_reader(encoded)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+    let leaves: Vec<ExecutionEvent> = [buy, sell]
+        .into_iter()
+        .map(|side| execution_of(side.clone()))
+        .collect();
+    for leaf in &leaves {
+        assert_eq!(*leaf.get_state(), State::Filled);
+    }
+    let expected: Vec<MarketData> = leaves.into_iter().map(MarketData::from).collect();
+    let encoded = MarketData::arrow_reader(expected.clone(), Some(1), None).unwrap();
+    let actual = drained(MarketData::from_arrow_reader(encoded).unwrap()).unwrap();
     assert_eq!(actual, expected);
 }
 
 #[test]
-fn trade_capture_without_a_side_refuses_the_exact_occurrence() {
-    let error = message(
+fn a_trade_side_stating_no_side_splits_off_nothing_and_is_an_anomaly() {
+    let messages = split(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=4|31=101.25|60=20260921-10:00:00|552=1|1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
-    )
-    .into_market_operations()
-    .expect_err("an execution side is required");
-
+    );
+    let [trade] = messages.as_slice() else {
+        panic!("the trade alone")
+    };
     assert!(
-        matches!(&error, Error::InvalidRecord { path, .. }
-            if path == "$.NoSides(552)[0].Side(54)"),
-        "{error}"
+        trade
+            .anomalies()
+            .iter()
+            .any(|anomaly| anomaly.to_string().contains("states no side")),
+        "{:?}",
+        trade.anomalies()
     );
 }
 
 #[test]
-fn only_initial_trade_capture_reports_decompose_without_requiring_exec_type() {
-    let initial = message(
+fn a_trade_sides_average_price_is_its_own_fact() {
+    let messages = split(
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=BUY-EXEC|1009=4|1852=100.5|10=0|",
+    );
+    let [_, buy] = messages.as_slice() else {
+        panic!("one execution per stated trade side")
+    };
+    let buy = execution_of(buy.clone());
+    assert_eq!(text(buy.get_avgpx()).as_deref(), Some("100.5"));
+    assert_eq!(buy.get_price(), None, "an average is no price");
+    assert_eq!(
+        text(buy.get_lastpx()).as_deref(),
+        Some("101.25"),
+        "the last price, never the average"
+    );
+}
+
+#[test]
+fn only_initial_trade_capture_reports_split_without_requiring_exec_type() {
+    let messages = split(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=10|54=2|1427=SELL-EXEC|1009=10|10=0|",
     );
-    let expected_execunix = initial.get_currunix();
-    let operations = initial
-        .into_market_operations()
-        .expect("an initial AE is an actual trade without ExecType");
-    let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
-        panic!("one composite trade")
-    };
-    assert_eq!(trade.get_execunix(), Some(expected_execunix));
-    assert!(
-        trade
-            .executions()
-            .iter()
-            .all(|execution| execution.get_execunix() == Some(expected_execunix))
-    );
+    assert_eq!(messages.len(), 3);
+    let executed = messages[0].get_currunix();
+    for side in &messages[1..] {
+        assert_eq!(side.get_execunix(), Some(executed));
+    }
 
     for line in [
         b"8=FIX.4.4|35=AE|571=CANCEL|487=1|150=F|552=1|54=1|1427=E1|10=0|".as_slice(),
         b"8=FIX.4.4|35=AR|571=ACK|487=0|150=F|552=1|54=1|1427=E1|10=0|".as_slice(),
     ] {
-        let error = message(line)
-            .into_market_operations()
+        let messages = split(line);
+        assert_eq!(
+            messages.len(),
+            1,
+            "a cancel or an acknowledgement splits nothing"
+        );
+        let error = messages[0]
+            .market_data()
             .expect_err("a cancellation or acknowledgement is not an execution trade");
         assert!(error.to_string().contains("MsgType(35)"), "{error}");
     }
@@ -232,132 +341,261 @@ fn only_initial_trade_capture_reports_decompose_without_requiring_exec_type() {
 
 #[test]
 fn stable_trade_side_ids_make_group_order_irrelevant_to_identity() {
-    let first = message(
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|54=2|1427=SELL-EXEC|1009=6|10=0|",
-    )
-    .into_market_operations()
-    .unwrap();
-    let second = message(
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=2|1427=SELL-EXEC|1009=6|54=1|1427=BUY-EXEC|1009=4|10=0|",
-    )
-    .into_market_operations()
-    .unwrap();
-
-    let ([MarketData::TradeEvent(first)], [MarketData::TradeEvent(second)]) =
-        (first.as_slice(), second.as_slice())
-    else {
-        panic!("two composite trades")
+    let identities = |line: &[u8]| {
+        let mut sides: Vec<_> = split(line)[1..]
+            .iter()
+            .map(|side| (side.get_curruuid(), side.get_crosscode().to_owned()))
+            .collect();
+        sides.sort();
+        sides
     };
+    let first = identities(
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|54=2|1427=SELL-EXEC|1009=6|10=0|",
+    );
+    let second = identities(
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=2|1427=SELL-EXEC|1009=6|54=1|1427=BUY-EXEC|1009=4|10=0|",
+    );
+    assert_eq!(first.len(), 2);
     assert_eq!(first, second);
-    assert_eq!(first.get_curruuid(), second.get_curruuid());
 }
 
 #[test]
 fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide() {
-    let first = message(
+    let codes = |line: &[u8]| {
+        let mut sides: Vec<_> = split(line)[1..]
+            .iter()
+            .map(|side| (side.get_curruuid(), side.get_crosscode().to_owned()))
+            .collect();
+        sides.sort();
+        sides
+    };
+    let first = codes(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1009=4|54=2|1009=6|10=0|",
-    )
-    .into_market_operations()
-    .unwrap();
-    let second = message(
+    );
+    let second = codes(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=2|1009=6|54=1|1009=4|10=0|",
-    )
-    .into_market_operations()
-    .unwrap();
-    let ([MarketData::TradeEvent(first)], [MarketData::TradeEvent(second)]) =
-        (first.as_slice(), second.as_slice())
-    else {
-        panic!("two anonymous composite trades")
-    };
+    );
     assert_eq!(first, second);
-    assert_eq!(first.get_curruuid(), second.get_curruuid());
 
-    let tagged = message(
+    let tagged = codes(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T2|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=SAME|1009=4|54=1|1506=SAME|1009=6|10=0|",
-    )
-    .into_market_operations()
-    .expect("the identifier tag distinguishes equal values");
-    let [MarketData::TradeEvent(tagged)] = tagged.as_slice() else {
-        panic!("one tagged composite trade")
-    };
+    );
+    assert_eq!(tagged.len(), 2);
     assert_ne!(
-        tagged.executions()[0].get_crosscode(),
-        tagged.executions()[1].get_crosscode()
-    );
-    assert_eq!(
-        tagged
-            .executions()
-            .iter()
-            .filter_map(|execution| execution.get_altids().get("SIDEEXECID"))
-            .collect::<Vec<_>>(),
-        ["SAME"]
-    );
-    assert_eq!(
-        tagged
-            .executions()
-            .iter()
-            .filter_map(|execution| execution.get_altids().get("SIDETRADEID"))
-            .collect::<Vec<_>>(),
-        ["SAME"]
+        tagged[0].1, tagged[1].1,
+        "the identifier tag distinguishes equal values"
     );
 }
 
+/// A12: a capture folds into books holding each execution exactly once -
+/// the trade's sided executions and the order's fill - and the trade and
+/// the order's report never add one.
 #[test]
-fn lifecycled_trade_capture_streams_its_sided_executions_into_books() {
+fn a_capture_folds_each_execution_into_the_books_exactly_once() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
-    let trade = codec
-        .sole_line(
-            b"8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|",
-        )
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|52=20260921-09:59:59|11=C-9|55=AAPL|54=1|44=10.5|38=100|326=17|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|",
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:01|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:01|552=2|54=1|1427=BUY-EXEC|1009=4|54=2|1427=SELL-EXEC|1009=6|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .flat_map(|line| codec.parse_line(line).unwrap())
+        .collect::<yggdryl::Result<_>>()
         .unwrap();
-    let reader = codec
-        .book_arrow_reader(codec.lifecycle([trade]), 0, false)
-        .expect("a lifecycled trade book stream");
-    let books = books_of(reader);
+    let execution_messages: Vec<String> = messages
+        .iter()
+        .filter(|message| message.msgcat() == MarketDataKind::Execution)
+        .map(|message| message.get_crosscode().to_owned())
+        .collect();
+    assert_eq!(execution_messages.len(), 3);
+    let books = books_of(
+        codec
+            .book_arrow_reader(codec.lifecycle(messages), 0)
+            .expect("a book stream"),
+    );
+    let mut folded: Vec<String> = books
+        .iter()
+        .flat_map(|book| book.executions())
+        .map(|execution| execution.get_crosscode().to_owned())
+        .collect();
+    folded.sort();
+    let mut expected = execution_messages;
+    expected.sort();
+    assert_eq!(folded, expected, "each execution once");
+    for book in &books {
+        for execution in book.executions() {
+            assert_eq!(*execution.get_state(), State::Filled);
+        }
+    }
+}
 
-    assert_eq!(books.len(), 1);
-    assert_eq!(books[0].executions().len(), 2);
-    assert!(
-        books[0]
-            .executions()
-            .iter()
-            .any(|execution| execution.get_side().is_bid())
+/// A13: a quote stating a bid and an offer and no side splits into two
+/// sided quotes - `BUY` with the bid's facts, `SELL` with the offer's, each
+/// keeping both - and reaches the book as two quote events, once each.
+#[test]
+fn a_two_sided_quote_splits_into_two_sided_quotes_and_two_book_quotes() {
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let messages: Vec<FixMsg> = codec
+        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|188=98.5|189=0.5|326=17|10=0|")
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    let [quote, bid, ask] = messages.as_slice() else {
+        panic!("the quote and its two sides, got {}", messages.len())
+    };
+    assert_eq!(quote.get_side(), yggdryl::Side::Unknown);
+    assert_eq!(quote.get_price(), None);
+    assert_eq!(bid.get_side(), yggdryl::Side::Buy);
+    assert_eq!(ask.get_side(), yggdryl::Side::Sell);
+    for side in [bid, ask] {
+        assert_eq!(side.msgcat(), MarketDataKind::Quotation);
+        assert!(names_its_source(side, quote));
+        // Each keeps the pair its source stated (A20).
+        assert_eq!(text(side.get_bidpx()).as_deref(), Some("99"));
+        assert_eq!(text(side.get_askqty()).as_deref(), Some("8"));
+        assert_eq!(side.get_bidccy().map(yggdryl::Ccy::as_str), Some("USD"));
+    }
+    assert_eq!(text(bid.get_price()).as_deref(), Some("99"));
+    assert_eq!(text(bid.get_quantity()).as_deref(), Some("7"));
+    assert_eq!(text(bid.get_spotrate()).as_deref(), Some("98.5"));
+    assert_eq!(text(bid.get_forwardpoints()).as_deref(), Some("0.5"));
+    assert_eq!(text(ask.get_price()).as_deref(), Some("101"));
+    assert_eq!(text(ask.get_quantity()).as_deref(), Some("8"));
+    assert_eq!(bid.get_crosscode(), "BUY:Q1");
+    assert_eq!(ask.get_crosscode(), "SELL:Q1");
+
+    let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
+    let quotes: Vec<&MarketData> = books
+        .last()
+        .expect("a book")
+        .alive()
+        .filter(|entry| entry.kind() == MarketKind::QuoteEvent)
+        .collect();
+    assert_eq!(quotes.len(), 2, "two quotes, once each");
+    let book = books.last().unwrap();
+    assert_eq!(text(book.get_bidpx()).as_deref(), Some("99"));
+    assert_eq!(text(book.get_askpx()).as_deref(), Some("101"));
+}
+
+/// A quote stating only a bid's facts and no side is that bid: its parse
+/// splits off one `BUY` quote, which the book holds, and the unsided source
+/// stays out of it - a book stream never meets an entry no side can hold.
+#[test]
+fn a_quote_stating_one_side_and_no_side_splits_into_that_sided_quote() {
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let messages: Vec<FixMsg> = codec
+        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q2|55=AAPL|15=USD|132=99|134=7|10=0|")
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    let [quote, bid] = messages.as_slice() else {
+        panic!("the quote and its one side, got {}", messages.len())
+    };
+    assert_eq!(quote.get_side(), yggdryl::Side::Unknown);
+    assert_eq!(bid.get_side(), yggdryl::Side::Buy);
+    assert!(names_its_source(bid, quote));
+    assert_eq!(text(bid.get_price()).as_deref(), Some("99"));
+    assert_eq!(text(bid.get_quantity()).as_deref(), Some("7"));
+    assert_eq!(bid.get_crosscode(), "BUY:Q2");
+
+    let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
+    let book = books.last().expect("a book");
+    assert_eq!(book.alive().count(), 1, "the sided quote alone");
+    assert_eq!(text(book.get_bidpx()).as_deref(), Some("99"));
+    assert_eq!(book.get_askpx(), None);
+}
+
+/// A14: an execution reads `FILLED` whatever its report stated, and its
+/// report keeps its own state; a trade's sided executions read `FILLED`.
+#[test]
+fn an_execution_reads_filled_and_its_report_keeps_its_state() {
+    let [report, execution] = <[FixMsg; 2]>::try_from(split(
+        b"8=FIX.4.4|35=8|17=E-2|37=O-9|39=1|150=F|55=AAPL|54=2|32=5|31=10|10=0|",
+    ))
+    .unwrap();
+    assert_eq!(*report.get_state(), State::PartiallyFilled);
+    assert_eq!(*execution.get_state(), State::Filled);
+    let leaf = execution_of(execution);
+    assert_eq!(*leaf.get_state(), State::Filled);
+    for side in
+        &split(b"8=FIX.4.4|35=AE|571=T9|487=0|55=AAPL|32=2|31=10|552=1|54=2|1427=S-1|1009=2|10=0|")
+            [1..]
+    {
+        assert_eq!(*side.get_state(), State::Filled);
+    }
+}
+
+/// A20/A21: a quote's bid and ask are its `BidPx(132)`/`BidSize(134)` and
+/// `OfferPx(133)`/`OfferSize(135)` - typed, so no leaf's metadata repeats
+/// them - each in the currency a `BidCurrency` or `AskCurrency` field names,
+/// else the message's; nothing fills them from a price.
+#[test]
+fn a_quote_states_its_bid_and_ask_in_their_currencies() {
+    let quote = message(
+        b"8=FIX.4.4|35=S|117=Q2|55=EURUSD|54=1|15=EUR|132=1.1|134=5|133=1.2|135=6|BidCurrency=USD|AskCurrency=GBP|10=0|",
     );
-    assert!(
-        books[0]
-            .executions()
-            .iter()
-            .any(|execution| execution.get_side().is_ask())
+    assert_eq!(text(quote.get_bidpx()).as_deref(), Some("1.1"));
+    assert_eq!(text(quote.get_bidqty()).as_deref(), Some("5"));
+    assert_eq!(text(quote.get_askpx()).as_deref(), Some("1.2"));
+    assert_eq!(text(quote.get_askqty()).as_deref(), Some("6"));
+    assert_eq!(quote.get_bidccy().map(yggdryl::Ccy::as_str), Some("USD"));
+    assert_eq!(quote.get_askccy().map(yggdryl::Ccy::as_str), Some("GBP"));
+    let leaf = leaf_of(quote);
+    for key in [
+        "bidpx",
+        "offerpx",
+        "bidsize",
+        "offersize",
+        "bidcurrency",
+        "askcurrency",
+    ] {
+        assert!(
+            !keys(&leaf)
+                .iter()
+                .any(|held| held.eq_ignore_ascii_case(key)),
+            "{key}"
+        );
+    }
+
+    // Stated in the message's currency where no field names another.
+    let plain = message(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|54=2|15=USD|133=101|135=8|10=0|");
+    assert_eq!(plain.get_askccy().map(yggdryl::Ccy::as_str), Some("USD"));
+    assert_eq!((plain.get_bidpx(), plain.get_bidccy()), (None, None));
+
+    // An order's own price is no bid.
+    let order = message(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|15=USD|10=0|");
+    assert_eq!(
+        (order.get_bidpx(), order.get_bidqty(), order.get_bidccy()),
+        (None, None, None)
     );
-    assert!(books[0].bid().is_empty());
-    assert!(books[0].ask().is_empty());
 }
 
 #[test]
 fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     let mut derived = message(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
-    assert_eq!(derived.get_marketoperationid(), Some(10));
+    assert_eq!(derived.msgcat(), MarketDataKind::Order);
 
     derived.set(35, Scalar::from("S")).unwrap();
-    assert_eq!(derived.get_marketoperationid(), Some(14));
+    assert_eq!(derived.msgcat(), MarketDataKind::Quotation);
     assert!(matches!(
-        derived.market_operations().unwrap().as_slice(),
+        derived.market_data().unwrap().as_slice(),
         [MarketData::QuoteEvent(_)]
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
-    assert_eq!(derived.get_marketoperationid(), Some(0));
-    assert!(derived.market_operations().is_err());
+    assert_eq!(derived.msgcat(), MarketDataKind::Unknown);
+    assert!(derived.market_data().is_err());
 
-    let mut stated = message(b"8=FIX.4.4|35=D|65054=8|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
-    assert_eq!(stated.get_marketoperationid(), Some(8));
+    let mut stated = message(b"8=FIX.4.4|35=D|65016=8|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
+    assert_eq!(stated.msgcat(), MarketDataKind::Execution);
     let execution_hash = stated.get_currhashcode();
     let execution_uuid = stated.get_curruuid();
     stated.set(35, Scalar::from("S")).unwrap();
     assert_eq!(
-        stated.get_marketoperationid(),
-        Some(8),
-        "an explicit MsgCat row value owns the generic operation ID"
+        stated.msgcat(),
+        MarketDataKind::Execution,
+        "an explicit MsgCat row value owns the category"
     );
     assert_ne!(stated.get_currhashcode(), execution_hash);
     assert_ne!(stated.get_curruuid(), execution_uuid);
@@ -365,20 +603,20 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     stated
         .set(yggdryl::MSGCAT_TAG_NAME.0, Scalar::from(14_i32))
         .unwrap();
-    assert_eq!(stated.get_marketoperationid(), Some(14));
+    assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
     assert_ne!(stated.get_currhashcode(), explicit_hash);
     assert_eq!(
         stated.remove(yggdryl::MSGCAT_TAG_NAME.0).unwrap(),
-        Some(Scalar::from(14_i32))
+        Some(Scalar::MarketDataKind(MarketDataKind::Quotation))
     );
-    assert_eq!(stated.get_marketoperationid(), Some(14));
+    assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
 }
 
 #[test]
 fn msgcat_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
     let field = registry.field(yggdryl::MSGCAT_TAG_NAME.0).unwrap();
-    assert_eq!(field.dtype(), &DataType::Int32);
+    assert_eq!(field.dtype(), &DataType::MarketDataKind);
     let codes = registry.codeset_of(field).expect("the MsgCat vocabulary");
     for (name, value) in [
         ("UNKN", "0"),
@@ -437,10 +675,20 @@ fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() 
         )
         .unwrap_err();
     assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
-    registry
+    // The set is the enum's, as the state set is: a code states its
+    // member's name, code and description and nothing more - an alias, even
+    // of its own name, is a second spelling the enum does not own.
+    let refused = registry
         .merge_codeset(
             "msgcatcodeset",
             &[FixCode::new("ORDR", "10").with_aliases(["ordr"])],
+        )
+        .unwrap_err();
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    registry
+        .merge_codeset(
+            "msgcatcodeset",
+            &[FixCode::new("ORDR", "10").with_description(MarketDataKind::Order.description())],
         )
         .expect("an exact named subset changes no intrinsic identifier");
     let refused = registry.remove_codeset("msgcatcodeset").unwrap_err();
@@ -462,37 +710,67 @@ fn msgcat_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_category() 
     let custom = fixed_codec(Arc::new(registry))
         .sole_line(b"8=FIX.4.4|35=ZZ|52=20260921-10:00:00|10=0|")
         .unwrap();
-    assert_eq!(custom.get_marketoperationid(), Some(14));
+    assert_eq!(custom.msgcat(), MarketDataKind::Quotation);
 }
 
 #[test]
 fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let snapshot = codec
-        .sole_line(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|")
+        .sole_line(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|326=17|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|")
         .unwrap();
     let update = codec
-        .sole_line(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|")
+        .sole_line(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|326=17|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|")
         .unwrap();
+    // The message is a book message; each leaf it expands into states its
+    // own category below.
+    assert_eq!(snapshot.msgcat(), MarketDataKind::Book);
+    assert_eq!(update.msgcat(), MarketDataKind::Book);
 
     let reader = codec
-        .book_arrow_reader([snapshot, update], 0, false)
+        .book_arrow_reader([snapshot, update], 0)
         .expect("a centralized FIX book reader");
     let books = books_of(reader);
 
     assert_eq!(books.len(), 2);
-    assert_eq!(books[0].bid().best_price().unwrap().to_string(), "100");
-    assert_eq!(books[0].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(text(books[0].get_price()).as_deref(), Some("101"));
-    assert_eq!(books[1].bid().best_price().unwrap().to_string(), "101");
-    assert_eq!(books[1].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(text(books[1].get_price()).as_deref(), Some("101.5"));
-    assert_eq!(books[1].executions().len(), 1);
     assert_eq!(
-        operation_of(books[1].bid().live().next().unwrap()).get_marketoperationid(),
-        Some(3)
+        books[0].best_price(yggdryl::Side::Buy).unwrap().to_string(),
+        "100"
     );
-    assert_eq!(books[1].executions()[0].get_marketoperationid(), Some(3));
+    assert_eq!(
+        books[0]
+            .best_price(yggdryl::Side::Sell)
+            .unwrap()
+            .to_string(),
+        "102"
+    );
+    assert_eq!(text(books[0].get_price()).as_deref(), Some("101"));
+    assert_eq!(
+        books[1].best_price(yggdryl::Side::Buy).unwrap().to_string(),
+        "101"
+    );
+    assert_eq!(
+        books[1]
+            .best_price(yggdryl::Side::Sell)
+            .unwrap()
+            .to_string(),
+        "102"
+    );
+    assert_eq!(text(books[1].get_price()).as_deref(), Some("101.5"));
+    // The best tradable levels are the book's bid and ask (A22).
+    assert_eq!(text(books[1].get_bidpx()).as_deref(), Some("101"));
+    assert_eq!(text(books[1].get_askqty()).as_deref(), Some("12"));
+    assert_eq!(books[1].executions().len(), 1);
+    // A leaf states its own category: a book entry naming no order is a
+    // quote, whatever the message's `BOOK`.
+    assert_eq!(
+        alive(&books[1], true)[0].marketdatakind(),
+        MarketDataKind::Quotation
+    );
+    assert_eq!(
+        MarketData::from(books[1].executions()[0].clone()).marketdatakind(),
+        MarketDataKind::Execution
+    );
 }
 
 #[test]
@@ -501,14 +779,17 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
     let admitted = [
         b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|".as_slice(),
         b"8=FIX.4.4|35=S|52=20260921-10:00:01|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|".as_slice(),
-        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|55=AAPL|54=1|31=100|32=2|150=F|10=0|".as_slice(),
-        b"8=FIX.4.4|35=W|52=20260921-10:00:03|55=AAPL|268=1|269=0|278=B1|270=99|271=10|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:04|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|".as_slice(),
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:05|571=T1|487=0|55=AAPL|32=1|31=100|552=1|54=1|1427=E2|1009=1|10=0|".as_slice(),
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|55=AAPL|54=1|31=100|32=2|150=F|10=0|"
+            .as_slice(),
+        b"8=FIX.4.4|35=W|52=20260921-10:00:03|55=AAPL|268=1|269=0|278=B1|270=99|271=10|10=0|"
+            .as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:04|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|"
+            .as_slice(),
     ]
     .map(|line| codec.parse_fix_line(line).unwrap());
     let ignored = [
         b"8=FIX.4.4|35=0|52=20260922-10:00:00|10=0|".as_slice(),
+        b"8=FIX.4.4|35=AE|52=20260922-10:00:00|571=T1|487=0|55=AAPL|32=1|31=100|552=1|54=1|1427=E2|1009=1|10=0|".as_slice(),
         b"8=FIX.4.4|35=8|52=20260922-10:00:00|17=ACK|37=O1|150=0|10=0|".as_slice(),
         b"8=FIX.4.4|35=AR|52=20260922-10:00:00|571=ACK|487=0|150=F|10=0|".as_slice(),
         b"8=FIX.4.4|35=AD|52=20260922-10:00:00|568=REQUEST|10=0|".as_slice(),
@@ -523,16 +804,18 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
         .flat_map(|(ignored, admitted)| [ignored, admitted])
         .chain(ignored.iter().cloned())
         .collect::<Vec<_>>();
-    let expected = books_of(codec.book_arrow_reader(admitted, 0, false).unwrap());
-    assert_eq!(expected.len(), 6);
-    assert_eq!(expected[0].bid().deltas()[0].kind(), MarketKind::OrderEvent);
-    assert_eq!(expected[1].ask().deltas()[0].kind(), MarketKind::QuoteEvent);
+    let expected = books_of(codec.book_arrow_reader(admitted, 0).unwrap());
+    assert_eq!(expected.len(), 5);
+    assert_eq!(deltas(&expected[0], true)[0].kind(), MarketKind::OrderEvent);
+    assert_eq!(
+        deltas(&expected[1], false)[0].kind(),
+        MarketKind::QuoteEvent
+    );
     assert_eq!(expected[2].executions().len(), 1);
-    assert_eq!(expected[5].executions().len(), 1);
-    let actual = books_of(codec.book_arrow_reader(mixed, 0, false).unwrap());
+    let actual = books_of(codec.book_arrow_reader(mixed, 0).unwrap());
     assert_eq!(actual, expected);
 
-    let mut empty = codec.book_arrow_reader(ignored.clone(), 0, false).unwrap();
+    let mut empty = codec.book_arrow_reader(ignored.clone(), 0).unwrap();
     assert!(empty.next().is_none());
     for source in ignored {
         assert!(MarketData::try_from(source.clone()).is_err());
@@ -555,7 +838,7 @@ fn codec_book_admission_preserves_source_errors_and_fuses() {
             .parse_fix_line(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|")
             .unwrap()),
     ];
-    let mut reader = codec.book_arrow_reader(source, 0, false).unwrap();
+    let mut reader = codec.book_arrow_reader(source, 0).unwrap();
     let error = reader.next().unwrap().unwrap_err().to_string();
     assert!(error.contains("$.intake"), "{error}");
     assert!(
@@ -569,21 +852,28 @@ fn codec_book_admission_preserves_source_errors_and_fuses() {
 #[test]
 fn codec_book_admission_keeps_admitted_trade_and_book_refusals() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    // A trade is no book input - its executions are the messages its parse
+    // splits off - so none reaches the book, refused or not.
     for line in [
         b"8=FIX.4.4|35=AE|571=CANCEL|487=1|150=F|552=1|54=1|1427=E1|10=0|".as_slice(),
-        b"8=FIX.4.4|35=AE|571=CORRECT|487=2|150=F|552=1|54=1|1427=E1|10=0|".as_slice(),
-        b"8=FIX.4.4|35=AE|571=STATUS|487=0|150=I|552=1|54=1|1427=E1|10=0|".as_slice(),
         b"8=FIX.4.4|35=AE|571=MISSING-SIDE|487=0|552=1|1427=E1|10=0|".as_slice(),
+    ] {
+        let trade = codec.parse_fix_line(line).unwrap();
+        assert!(trade.market_data().is_err());
+        let mut reader = codec.book_arrow_reader([trade], 0).unwrap();
+        assert!(reader.next().is_none());
+    }
+    for line in [
         b"8=FIX.4.4|35=W|55=AAPL|10=0|".as_slice(),
         b"8=FIX.4.4|35=X|55=AAPL|268=1|279=9|269=0|278=B1|270=100|271=2|10=0|".as_slice(),
     ] {
         let invalid = codec.parse_fix_line(line).unwrap();
-        let expected = invalid.market_operations().unwrap_err().to_string();
+        let expected = invalid.market_data().unwrap_err().to_string();
         let source = [
             codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|").unwrap(),
             invalid,
         ];
-        let mut reader = codec.book_arrow_reader(source, 0, false).unwrap();
+        let mut reader = codec.book_arrow_reader(source, 0).unwrap();
         let actual = reader.next().unwrap().unwrap_err().to_string();
         assert!(
             actual.contains(&expected),
@@ -602,23 +892,26 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|268=1|279=5|269=1|278=B1|270=101|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
-    let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
+    let reader = codec.book_arrow_reader(messages, 0).unwrap();
     let books = books_of(reader);
 
     assert_eq!(books.len(), 3);
-    assert_eq!(books[0].bid().len(), 1);
-    assert_eq!(books[1].bid().len(), 1);
-    assert_eq!(books[2].ask().len(), 1);
-    assert!(books[0].ask().is_empty());
-    assert!(books[1].ask().is_empty());
-    assert!(books[2].bid().is_empty());
+    assert_eq!(alive(&books[0], true).len(), 1);
+    assert_eq!(alive(&books[1], true).len(), 1);
+    assert_eq!(alive(&books[2], false).len(), 1);
+    assert!(alive(&books[0], false).is_empty());
+    assert!(alive(&books[1], false).is_empty());
+    assert!(alive(&books[2], true).is_empty());
     let versions = [
-        books[0].bid().live().next().unwrap(),
-        books[1].bid().live().next().unwrap(),
-        books[2].ask().live().next().unwrap(),
+        alive(&books[0], true)[0],
+        alive(&books[1], true)[0],
+        alive(&books[2], false)[0],
     ];
     for (index, (book, version)) in books.iter().zip(versions).enumerate() {
         assert_eq!(version.kind(), MarketKind::OrderEvent);
+        // An entry naming its order is an order, whatever the message's
+        // `BOOK`.
+        assert_eq!(version.marketdatakind(), MarketDataKind::Order);
         let operation = operation_of(version);
         assert_eq!(book.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_ticker(), Some("AAPL"));
@@ -635,16 +928,8 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         );
         if index < 2 {
             assert!(operation.get_side().is_bid());
-            let bid = operation.get_bid().expect("the bid lane");
-            assert_eq!(bid.price, operation.get_price());
-            assert_eq!(bid.quantity, operation.get_quantity());
-            assert_eq!(operation.get_ask(), None);
         } else {
             assert!(operation.get_side().is_ask());
-            let ask = operation.get_ask().expect("the ask lane");
-            assert_eq!(ask.price, operation.get_price());
-            assert_eq!(ask.quantity, operation.get_quantity());
-            assert_eq!(operation.get_bid(), None);
         }
     }
     for pair in versions.windows(2) {
@@ -655,27 +940,22 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         assert_eq!(after.get_prevqty(), before.get_quantity());
     }
     assert_eq!(operation_of(versions[0]).get_prevuuid(), None);
-    // The book control each entry stated rides with it, typed: what the
-    // partial update said, and only that.
-    assert_eq!(
-        versions[0].book().and_then(|book| book.action),
-        Some(MdUpdateAction::Snapshot),
-        "a full refresh entry"
-    );
-    let changed = versions[1].book().expect("the change's control");
-    assert_eq!(changed.action, Some(MdUpdateAction::Change));
-    assert_eq!(
-        changed.entry_size.map(|held| held.to_string()),
-        Some("11".to_owned())
-    );
-    assert_eq!(changed.entry_px, None, "the change restated no price");
-    let overlaid = versions[2].book().expect("the overlay's control");
-    assert_eq!(overlaid.action, Some(MdUpdateAction::Overlay));
-    assert_eq!(
-        overlaid.entry_px.map(|held| held.to_string()),
-        Some("101".to_owned())
-    );
-    assert_eq!(overlaid.entry_size, None, "the overlay restated no size");
+    // A row states an entry's scope and nothing else of its control: the
+    // action, the position and the price and size the entry stated for
+    // itself steered the walk and are no row fact.
+    for version in versions {
+        let control = version.book().expect("a scoped entry");
+        assert!(control.scope.is_some(), "{control:?}");
+        assert_eq!(
+            (
+                control.action,
+                control.position,
+                control.entry_px,
+                control.entry_size
+            ),
+            (None, None, None, None)
+        );
+    }
 }
 
 #[test]
@@ -689,21 +969,20 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
         b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
-    let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
+    let reader = codec.book_arrow_reader(messages, 0).unwrap();
     let books = books_of(reader);
 
     assert_eq!(books.len(), 2);
-    let previous = operation_of(books[0].bid().live().next().unwrap());
-    assert!(books[1].bid().is_empty());
-    assert!(books[1].ask().is_empty());
-    let [deleted] = books[1].bid().deltas() else {
+    let previous = operation_of(alive(&books[0], true)[0]);
+    assert!(alive(&books[1], true).is_empty());
+    assert!(alive(&books[1], false).is_empty());
+    let bid_deltas = deltas(&books[1], true);
+    let [deleted] = bid_deltas[..] else {
         panic!("one terminal bid delta")
     };
     assert_eq!(deleted.kind(), MarketKind::OrderEvent);
-    assert_eq!(
-        deleted.book().and_then(|book| book.action),
-        Some(MdUpdateAction::Delete)
-    );
+    // The delete action steered the walk; a row read back states none.
+    assert_eq!(deleted.book().and_then(|book| book.action), None);
     let deleted = operation_of(deleted);
     assert!(!deleted.get_state().is_live());
     assert!(deleted.get_side().is_bid());
@@ -735,14 +1014,14 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
     assert_eq!(messages[1].get_ticker(), Some("AAPL"));
     assert_eq!(messages[1].get_prevuuid(), Some(messages[0].get_curruuid()));
 
-    let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
+    let reader = codec.book_arrow_reader(messages, 0).unwrap();
     let books = books_of(reader);
     assert_eq!(books.len(), 2);
     for (index, book) in books.iter().enumerate() {
         assert_eq!(book.get_ticker(), Some("AAPL"));
-        assert_eq!(book.bid().len(), 1);
-        assert!(book.ask().is_empty());
-        let operation = book.bid().live().next().unwrap();
+        assert_eq!(alive(book, true).len(), 1);
+        assert!(alive(book, false).is_empty());
+        let operation = alive(book, true)[0];
         assert_eq!(operation.kind(), MarketKind::OrderEvent);
         assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(
@@ -761,7 +1040,7 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     let inputs = message(
         b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
     )
-    .market_operations()
+    .market_data()
     .expect("a full refresh");
 
     assert_eq!(inputs.len(), 3);
@@ -794,7 +1073,12 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
         );
         assert!(scope_of(input).contains("Symbol=AAPL"));
         assert!(scope_of(input).contains("MDReqID=REQ-1"));
-        assert!(operation.get_state().is_live());
+        // A level is live; a trade entry is one fill, complete in itself.
+        if index < 2 {
+            assert!(operation.get_state().is_live());
+        } else {
+            assert_eq!(*operation.get_state(), State::Filled);
+        }
     }
     assert_eq!(
         inputs[0].book().and_then(|book| book.entry_px),
@@ -811,7 +1095,7 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
     let initial = message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|262=REQ-1|268=1|269=0|278=B1|270=100|271=10|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .unwrap();
     assert!(scope_of(&initial[0]).contains("MDReqID=REQ-1"));
     let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
@@ -819,12 +1103,12 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
 
     let empty_other_request =
         message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|262=REQ-2|268=0|10=0|")
-            .into_market_operations()
+            .into_market_data()
             .unwrap();
     assert!(scope_of(&empty_other_request[0]).contains("MDReqID=REQ-2"));
     assert!(is_full_snapshot(&empty_other_request[0]));
     book.add_operations(empty_other_request).unwrap();
-    assert_eq!(book.bid().len(), 1);
+    assert_eq!(alive(&book, true).len(), 1);
 }
 
 #[test]
@@ -867,7 +1151,7 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     let inputs = message(
         b"8=FIX.4.4|35=X|83=7|1181=43|268=3|279=0|269=0|278=B1|55=AAPL|270=100|271=10|290=1|279=1|269=0|278=B1|55=AAPL|270=101|271=11|290=1|279=2|269=0|280=B1|55=AAPL|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("incremental operations");
 
     assert_eq!(inputs.len(), 3);
@@ -918,7 +1202,7 @@ fn unsupported_market_shapes_name_the_exact_fix_path() {
     ];
     for (line, path_part) in cases {
         let error = message(line)
-            .into_market_operations()
+            .into_market_data()
             .expect_err("the shape is unsupported");
         assert!(
             matches!(&error, Error::InvalidRecord { path, .. } if path.contains(path_part)),
@@ -945,7 +1229,7 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
     let operations = message(
         b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|268=2|279=0|269=0|278=B1|270=100|271=10|272=20260920|273=09:30:00.123456789|279=0|269=2|278=T1|270=100|271=2|272=20260920|273=09:30:00.223456789|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("entry clocks");
 
     assert_eq!(operations.len(), 2);
@@ -974,11 +1258,8 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
     );
     let expected = ["EARLY-A", "EARLY-B", "LATE"];
     for operations in [
-        source.market_operations().expect("borrowed expansion"),
-        source
-            .clone()
-            .into_market_operations()
-            .expect("owned expansion"),
+        source.market_data().expect("borrowed expansion"),
+        source.clone().into_market_data().expect("owned expansion"),
     ] {
         assert_eq!(
             operations
@@ -998,24 +1279,24 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
 #[test]
 fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
     let snapshot = message(b"8=FIX.4.4|35=W|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .unwrap();
     let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let size_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .unwrap();
     book.add_operations(size_only).unwrap();
-    let live = book.bid().live().next().unwrap();
+    let live = alive(&book, true)[0];
     assert_eq!(text(live.get_price()).as_deref(), Some("100"));
     assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 
     let price_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=5|269=0|278=B1|270=101|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .unwrap();
     book.add_operations(price_only).unwrap();
-    let live = book.bid().live().next().unwrap();
+    let live = alive(&book, true)[0];
     assert_eq!(text(live.get_price()).as_deref(), Some("101"));
     assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 }
@@ -1025,7 +1306,7 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     let snapshot = message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|290=1|270=100|271=10|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .unwrap();
     let identity = snapshot[0].get_crosscode().to_owned();
     let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
@@ -1034,22 +1315,22 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     let change = message(
         b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=1|269=0|290=1|271=11|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .unwrap();
     assert_eq!(change[0].get_crosscode(), identity);
     book.add_operations(change).unwrap();
-    assert_eq!(book.bid().len(), 1);
+    assert_eq!(alive(&book, true).len(), 1);
     assert_eq!(
-        text(book.bid().live().next().unwrap().get_price()).as_deref(),
+        text(alive(&book, true)[0].get_price()).as_deref(),
         Some("100")
     );
     assert_eq!(
-        text(book.bid().live().next().unwrap().get_quantity()).as_deref(),
+        text(alive(&book, true)[0].get_quantity()).as_deref(),
         Some("11")
     );
 
     let error = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|271=12|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .expect_err("an anonymous update without a stable coordinate is ambiguous");
     assert!(error.to_string().contains("MDEntryID"), "{error}");
 }
@@ -1059,31 +1340,31 @@ fn an_empty_full_refresh_clears_its_scope() {
     let initial = message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .unwrap();
     let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
     book.add_operations(initial).unwrap();
-    assert_eq!(book.bid().len(), 1);
+    assert_eq!(alive(&book, true).len(), 1);
 
     let empty = message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .unwrap();
     assert!(matches!(empty.as_slice(), [MarketData::SnapshotEvent(_)]));
     assert!(is_full_snapshot(&empty[0]));
     assert_eq!(empty[0].get_ticker(), Some("AAPL"));
     book.add_operations(empty).unwrap();
-    assert!(book.bid().is_empty());
-    assert!(book.ask().is_empty());
+    assert!(alive(&book, true).is_empty());
+    assert!(alive(&book, false).is_empty());
 }
 
-/// A FIX event always states an operation id (`derived_marketoperationid`),
-/// but a snapshot control states no operation of its own: it is a
+/// A FIX event always states its category, but a snapshot control states
+/// no operation of its own: it is a
 /// [`yggdryl::graph::SnapshotEvent`], which holds no operation fact, its row
 /// states none, and an Arrow round trip returns exactly what went in.
 #[test]
 fn an_empty_full_refresh_states_no_operation_and_round_trips_through_arrow() {
     let expected = message(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=0|10=0|")
-        .into_market_operations()
+        .into_market_data()
         .unwrap();
     assert!(matches!(
         expected.as_slice(),
@@ -1095,12 +1376,9 @@ fn an_empty_full_refresh_states_no_operation_and_round_trips_through_arrow() {
     let batch = encoded.next().unwrap().unwrap();
     assert!(encoded.next().is_none());
     assert_eq!(
-        batch
-            .column_by_name("marketoperationid")
-            .unwrap()
-            .null_count(),
+        batch.column_by_name("tif").unwrap().null_count(),
         1,
-        "the row states no operation id"
+        "the row states no operation fact"
     );
     let encoded = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
     let actual = MarketData::from_arrow_reader(encoded)
@@ -1159,7 +1437,7 @@ fn a_typed_price_outside_decimal18_is_refused_instead_of_becoming_zero() {
     ]);
     let error = FixMsg::with_registry(registry, root, value)
         .unwrap()
-        .into_market_operations()
+        .into_market_data()
         .expect_err("the graph price cannot hold a 39-digit coefficient");
     assert!(
         matches!(&error, Error::InvalidRecord { path, reason }
@@ -1176,7 +1454,7 @@ fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
     let parsed = message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|262=REQ-1|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=101|271=11|10=0|",
     );
-    let expected = parsed.market_operations().expect("a full refresh");
+    let expected = parsed.market_data().expect("a full refresh");
     assert_eq!(expected.len(), 2);
     let (root, row) = super::restatable(&registry, &parsed, &[35, 52, 262]);
     let at = root
@@ -1191,10 +1469,10 @@ fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
     let column = FixMsg::with_registry(registry, root, row).expect("the column-backed message");
     assert!(super::holds_column(&column, &name));
 
-    assert_eq!(run.market_operations().unwrap(), expected);
+    assert_eq!(run.market_data().unwrap(), expected);
     assert_eq!(
         column
-            .market_operations()
+            .market_data()
             .expect("the entries read from a column"),
         expected
     );
@@ -1233,10 +1511,14 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_reaches_the_books_ex
     assert_eq!(held.by_tag(194).unwrap(), super::decimal("1.25"));
     assert_eq!(held.by_tag(195).unwrap(), super::decimal("0.0025"));
 
-    // The execution reaches a book with its FX parts.
-    let inputs = held.into_market_operations().expect("an execution");
+    // The execution the report splits off reaches a book with its FX parts.
+    let [_, execution] = <[FixMsg; 2]>::try_from(split(
+        b"8=FIX.4.4|35=8|17=E1|37=O1|55=EURUSD|54=1|32=1000000|150=F|194=1.25|195=0.0025|10=0|",
+    ))
+    .expect("the report and its execution");
+    let inputs = execution.into_market_data().expect("an execution");
     assert_eq!(inputs.len(), 1);
-    let books = yggdryl::graph::BookIterator::new(inputs.into_iter(), 0, false)
+    let books = yggdryl::graph::BookIterator::new(inputs.into_iter(), 0)
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
@@ -1250,39 +1532,132 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_reaches_the_books_ex
         Some("0.0025")
     );
     assert_eq!(text(execution.get_lastpx()).as_deref(), Some("1.2525"));
+    // What it last executed is `lastpx` and `lastqty`, beside the parts they
+    // sum from; its own price stays unstated.
+    assert_eq!(execution.get_price(), None);
+    assert_eq!(text(execution.get_lastqty()).as_deref(), Some("1000000"));
 }
 
 #[test]
-fn a_quotes_fx_parts_land_on_its_two_lanes() {
+fn a_quotes_fx_parts_stay_the_messages_own() {
+    // A quote's bid and offer FX parts are the message's lifted fields: no
+    // leaf fact reads them, and none is completed from the others.
     let held = message(
-        b"8=FIX.4.4|35=S|117=Q1|55=EURUSD|132=1.2|134=1000000|133=1.21|135=1000000|188=1.19|189=0.01|190=1.2|191=0.011|10=0|",
+        b"8=FIX.4.4|35=S|117=Q1|55=EURUSD|996=Ccy|132=1.2|134=1000000|133=1.21|135=1000000|188=1.19|191=0.011|10=0|",
     );
-    let bid = held.get_bid().expect("a bid lane");
-    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
-    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
-    let ask = held.get_ask().expect("an ask lane");
-    assert_eq!(text(ask.spotrate).as_deref(), Some("1.2"));
-    assert_eq!(text(ask.forwardpoints).as_deref(), Some("0.011"));
+    assert_eq!(text(held.lifted().bidspotrate()).as_deref(), Some("1.19"));
+    assert_eq!(held.lifted().bidforwardpoints(), None);
+    assert_eq!(held.lifted().offerspotrate(), None);
+    assert_eq!(
+        text(held.lifted().offerforwardpoints()).as_deref(),
+        Some("0.011")
+    );
+    assert_eq!(held.get_price(), None, "a two-sided quote states no price");
     assert_eq!(
         held.get_spotrate(),
         None,
-        "a two-lane quote states no last price of its own"
+        "a two-sided quote states no last price of its own"
     );
 }
 
 #[test]
-fn a_levels_fx_parts_read_onto_its_lane() {
-    let held = message(
-        b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|270=1.2|271=100|1026=1.19|1027=0.01|10=0|",
+fn a_levels_fx_parts_are_its_own_as_stated() {
+    let level = |line: &[u8]| {
+        let inputs = message(line).into_market_data().expect("one level");
+        let level = operation_of(&inputs[0]);
+        [
+            level.get_price(),
+            level.get_spotrate(),
+            level.get_forwardpoints(),
+        ]
+        .map(text)
+    };
+    let stated = |held: [Option<&str>; 3]| held.map(|held| held.map(str::to_owned));
+    // `MDEntryPx(270)`, `MDEntrySpotRate(1026)` and
+    // `MDEntryForwardPoints(1027)` are each read as stated: two complete no
+    // third, and three are kept whether or not they agree.
+    assert_eq!(
+        level(b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|270=1.2|271=100|1026=1.19|1027=0.01|10=0|"),
+        stated([Some("1.2"), Some("1.19"), Some("0.01")])
     );
-    let inputs = held.into_market_operations().expect("one level");
-    let level = operation_of(&inputs[0]);
-    assert_eq!(text(level.get_spotrate()).as_deref(), Some("1.19"));
-    assert_eq!(text(level.get_forwardpoints()).as_deref(), Some("0.01"));
-    let bid = level.get_bid().expect("the level is a bid lane");
-    assert_eq!(text(bid.price).as_deref(), Some("1.2"));
-    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
-    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
+    assert_eq!(
+        level(b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|271=100|1026=1.19|1027=0.01|10=0|"),
+        stated([None, Some("1.19"), Some("0.01")])
+    );
+    assert_eq!(
+        level(b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|270=1.3|271=100|1026=1.19|1027=0.01|10=0|"),
+        stated([Some("1.3"), Some("1.19"), Some("0.01")])
+    );
+}
+
+/// Two ticker-less instruments of one market and classification, each
+/// resting an entry under the same `MDEntryID`: the book the iterator keys
+/// them to is their `MIC:CFI` one, and the scope each entry stands in is
+/// its ISIN where it states one, else that key.
+#[test]
+fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an_isin() {
+    const TOTAL: &[u8] = b"8=FIX.4.4|35=W|52=20260921-10:00:00|48=FR0000120271|22=4|207=XPAR|461=ESVUFR|268=1|269=0|278=E1|270=60|271=10|10=0|";
+    const BNP: &[u8] = b"8=FIX.4.4|35=W|52=20260921-10:00:01|48=FR0000131104|22=4|207=XPAR|461=ESVUFR|268=1|269=0|278=E1|270=70|271=20|10=0|";
+    const FIRST: &[u8] = b"8=FIX.4.4|35=W|52=20260921-10:00:00|207=XPAR|461=ESVUFR|268=1|269=0|278=E1|270=60|271=10|10=0|";
+    const SECOND: &[u8] = b"8=FIX.4.4|35=W|52=20260921-10:00:01|207=XPAR|461=ESVUFR|268=1|269=0|278=E1|270=70|271=20|10=0|";
+
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let scopes = |lines: &[&[u8]]| {
+        messages(&codec, lines)
+            .into_iter()
+            .map(|message| {
+                let leaves = message.into_market_data().expect("one level");
+                let [leaf] = leaves.as_slice() else {
+                    panic!("one level per message")
+                };
+                assert_eq!(leaf.get_ticker(), None);
+                assert_eq!(
+                    leaf.get_crosscode(),
+                    format!("BUY:{}|MDEntryID=E1", scope_of(leaf))
+                );
+                scope_of(leaf).to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    let book = |lines: &[&[u8]]| {
+        let books = books_of(
+            codec
+                .book_arrow_reader(messages(&codec, lines), 0)
+                .expect("a book reader"),
+        );
+        let last = books.last().expect("a last book").clone();
+        // One categorized book: no ticker, keyed by market and class.
+        assert_eq!(last.get_ticker(), None);
+        assert_eq!(last.get_crosscode(), "XPAR:ESVUFR");
+        alive(&last, true)
+            .into_iter()
+            .map(|level| text(level.get_price()).expect("a priced level"))
+            .collect::<Vec<_>>()
+    };
+
+    // Both state an ISIN: two scopes, two live entries.
+    assert_eq!(
+        scopes(&[TOTAL, BNP]),
+        ["Symbol=FR0000120271", "Symbol=FR0000131104"]
+    );
+    let mut live = book(&[TOTAL, BNP]);
+    live.sort();
+    assert_eq!(live, ["60", "70"]);
+    // One states an ISIN: the other stands in the book's key, still apart.
+    assert_eq!(
+        scopes(&[TOTAL, SECOND]),
+        ["Symbol=FR0000120271", "Symbol=XPAR:ESVUFR"]
+    );
+    let mut live = book(&[TOTAL, SECOND]);
+    live.sort();
+    assert_eq!(live, ["60", "70"]);
+    // Neither does: the one scope they share holds one entry, the later
+    // snapshot's - the limit a ticker-less, identifier-less feed has.
+    assert_eq!(
+        scopes(&[FIRST, SECOND]),
+        ["Symbol=XPAR:ESVUFR", "Symbol=XPAR:ESVUFR"]
+    );
+    assert_eq!(book(&[FIRST, SECOND]), ["70"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1304,11 +1679,14 @@ fn effective(value: &MarketData) -> i64 {
 }
 
 /// Messages of one codec, in the order given.
+/// Every message `lines` parse into, what each line's parse split off
+/// included, in the order the parse yields them.
 fn messages(codec: &yggdryl::FixCodec, lines: &[&[u8]]) -> Vec<FixMsg> {
     lines
         .iter()
-        .map(|line| codec.sole_line(line).expect("one FIX message"))
-        .collect()
+        .flat_map(|line| codec.parse_line(line).expect("a FIX line"))
+        .collect::<yggdryl::Result<_>>()
+        .expect("every message")
 }
 
 #[test]
@@ -1328,7 +1706,7 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
         .expect("the strict projection over the sorted capture");
     assert_eq!(expected.len(), 3);
 
-    let actual = drained(codec.market_operations(unsorted.clone())).expect("the sorted door");
+    let actual = drained(codec.market_data(unsorted.clone())).expect("the sorted door");
     assert_eq!(
         actual, expected,
         "the door answers the sorted capture's leaves"
@@ -1336,7 +1714,7 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
 
     // The book door stays strict: the capture it is handed is out of order.
     let refused = codec
-        .book_arrow_reader(unsorted.clone(), 0, false)
+        .book_arrow_reader(unsorted.clone(), 0)
         .expect("a book reader")
         .find_map(Result::err)
         .expect("the book door refuses the regression")
@@ -1344,7 +1722,7 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
     assert!(refused.contains("$.operations"), "{refused}");
 
     // The sorted operations fold through the stateful book, one per leaf.
-    let books = yggdryl::graph::BookIterator::new(codec.market_operations(unsorted), 0, false)
+    let books = yggdryl::graph::BookIterator::new(codec.market_data(unsorted), 0)
         .expect("a book iterator")
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("the sorted operations fold");
@@ -1377,7 +1755,7 @@ fn sorted_operations_never_regress_when_an_entry_clock_precedes_a_message() {
     .to_string();
     assert!(strict.contains("$.operations"), "{strict}");
 
-    let operations = drained(codec.market_operations(capture)).expect("the sorted door");
+    let operations = drained(codec.market_data(capture)).expect("the sorted door");
     assert_eq!(
         operations.iter().map(MarketData::kind).collect::<Vec<_>>(),
         [MarketKind::QuoteEvent, MarketKind::OrderEvent],
@@ -1389,7 +1767,7 @@ fn sorted_operations_never_regress_when_an_entry_clock_precedes_a_message() {
             .windows(2)
             .all(|pair| effective(&pair[0]) <= effective(&pair[1]))
     );
-    let books = yggdryl::graph::BookIterator::new(operations.into_iter().map(Ok), 0, false)
+    let books = yggdryl::graph::BookIterator::new(operations.into_iter().map(Ok), 0)
         .expect("a book iterator")
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("the operations fold");
@@ -1417,7 +1795,7 @@ fn intake_errors_come_first_and_the_arrow_reader_yields_nothing_else() {
                 .unwrap()),
         ]
     };
-    let mut operations = codec.market_operations(source());
+    let mut operations = codec.market_data(source());
     let error = operations
         .next()
         .expect("the failure")
@@ -1426,8 +1804,8 @@ fn intake_errors_come_first_and_the_arrow_reader_yields_nothing_else() {
     assert!(error.contains("$.intake"), "{error}");
     let leaves = drained(operations.by_ref()).expect("then every operation");
     assert_eq!(leaves.len(), 2);
-    assert_eq!(leaves[0].get_crosscode(), "C2", "sorted by instant");
-    assert_eq!(leaves[1].get_crosscode(), "C1");
+    assert_eq!(leaves[0].get_crosscode(), "SELL:C2", "sorted by instant");
+    assert_eq!(leaves[1].get_crosscode(), "BUY:C1");
     assert!(operations.next().is_none(), "fused");
 
     // The writer meets the failure before any row, yields it and stops: one
@@ -1453,7 +1831,7 @@ fn a_message_that_cannot_expand_is_an_intake_refusal_that_drops_only_itself() {
             b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|",
         ],
     );
-    let mut operations = codec.market_operations(capture);
+    let mut operations = codec.market_data(capture);
     let error = operations
         .next()
         .expect("the refusal")
@@ -1467,8 +1845,9 @@ fn a_message_that_cannot_expand_is_an_intake_refusal_that_drops_only_itself() {
     );
 }
 
-/// Five messages, one of each dated leaf a capture expands into, in time
-/// order.
+/// Five messages in time order: an order, a two-sided quote, an order's
+/// execution report, a trade and an empty snapshot - every dated leaf a
+/// capture expands into but a trade, which is its sided executions.
 const EVERY_KIND: [&[u8]; 5] = [
     b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|40=2|10=0|",
     b"8=FIX.4.4|35=S|52=20260921-10:00:01|117=Q1|55=AAPL|132=99|134=7|133=101|135=8|10=0|",
@@ -1481,7 +1860,7 @@ const EVERY_KIND: [&[u8]; 5] = [
 fn market_arrow_reader_rows_state_every_kind() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(2);
     let capture = messages(&codec, &EVERY_KIND);
-    let expected = drained(codec.market_operations(capture.clone())).expect("the leaves");
+    let expected = drained(codec.market_data(capture.clone())).expect("the leaves");
     let reader = codec.market_arrow_reader(capture).expect("a reader");
     let schema = reader.schema();
     assert_eq!(
@@ -1497,8 +1876,10 @@ fn market_arrow_reader_rows_state_every_kind() {
         [
             "order_event",
             "quote_event",
+            "quote_event",
+            "order_event",
             "execution_event",
-            "trade_event",
+            "execution_event",
             "snapshot_event"
         ]
     );
@@ -1510,7 +1891,7 @@ fn the_arrow_twin_answers_the_market_batches_and_refuses_a_foreign_source() {
     let registry = committed_registry();
     let codec = fixed_codec(Arc::clone(&registry)).with_batch_row_size(2);
     let capture = messages(&codec, &EVERY_KIND);
-    let direct = drained(codec.market_operations(capture.clone())).expect("the leaves");
+    let direct = drained(codec.market_data(capture.clone())).expect("the leaves");
     let rows = codec
         .arrow_reader(
             yggdryl::fix_schema(&registry, "fix").expect("the fixed row"),
@@ -1518,7 +1899,7 @@ fn the_arrow_twin_answers_the_market_batches_and_refuses_a_foreign_source() {
         )
         .expect("the FIX rows");
     let twin = codec
-        .market_operations_arrow_reader(rows)
+        .market_data_arrow_reader(rows)
         .expect("the twin opens");
     assert_eq!(
         twin.schema().fields().len(),
@@ -1541,7 +1922,7 @@ fn the_arrow_twin_answers_the_market_batches_and_refuses_a_foreign_source() {
         )
     };
     let refused = codec
-        .market_operations_arrow_reader(foreign())
+        .market_data_arrow_reader(foreign())
         .map(drop)
         .expect_err("a foreign source")
         .to_string();
@@ -1584,7 +1965,7 @@ const UNMAPPED_ORDER: &[u8] = b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=
 #[test]
 fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     let leaves = message(UNMAPPED_ORDER)
-        .into_market_operations()
+        .into_market_data()
         .expect("an order");
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
@@ -1592,6 +1973,8 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     assert_eq!(
         metadata(leaf),
         [
+            // An account is no identifier: it stays the message's word.
+            ("account", "ACC1"),
             // A quantity spells its decimal at the scale it is stored at.
             ("displayqty", "3.000000000000000000"),
             ("execinst", "G"),
@@ -1606,7 +1989,6 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
         "price",
         "orderqty",
         "clordid",
-        "account",
         "transacttime",
         "sendingtime",
         "bodylength",
@@ -1622,37 +2004,35 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     // The typed facts are where they belong.
     let order = operation_of(leaf);
     assert_eq!(order.get_ticker(), Some("AAPL"));
-    assert_eq!(order.get_accountids().get("ACCOUNT"), Some("ACC1"));
     assert_eq!(text(order.get_price()).as_deref(), Some("100.5"));
 }
 
 #[test]
-fn a_group_occurrence_is_keyed_by_its_path_and_a_mapped_party_is_consumed() {
+fn a_group_occurrence_is_keyed_by_its_path_and_every_party_stays() {
     let leaves = message(
         b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=2|448=TRADER1|447=D|452=11|448=ACC9|447=D|452=24|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("an order");
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
     };
-    // Role 11 is no identifier map's, so its occurrence lands member by
-    // member under its path, at its own position.
+    // No party is an identifier: every occurrence stays in the group, one
+    // key under the group's name holding the JSON array of what it kept.
     assert_eq!(
         metadata(leaf),
-        [
-            ("parties[0].partyid", "TRADER1"),
-            ("parties[0].partyidsource", "D"),
-            ("parties[0].partyrole", "11"),
-        ]
+        [(
+            "parties",
+            r#"[{"partyid":"TRADER1","partyidsource":"D","partyrole":"11"},{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#
+        )]
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
-    // Role 24 is the customer account's: the occurrence landed there, whole.
-    assert_eq!(
-        operation_of(leaf).get_accountids().get("CUSTOMERACCOUNT"),
-        Some("ACC9")
+    assert!(
+        operation_of(leaf)
+            .get_altids()
+            .get("CUSTOMERACCOUNT")
+            .is_none()
     );
-    assert!(!keys(leaf).iter().any(|key| key.starts_with("parties[1]")));
     assert!(!keys(leaf).iter().any(|key| key == "nopartyids"));
 }
 
@@ -1661,7 +2041,7 @@ fn an_expanded_entry_carries_the_message_level_map_and_its_own_never_a_siblings(
     let leaves = message(
         b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|1180=MDP|268=2|279=0|269=0|278=B1|270=100|271=10|83=7|279=0|269=1|278=A1|270=101|271=11|83=8|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("an incremental update");
     let [bid, ask] = leaves.as_slice() else {
         panic!("one leaf per entry")
@@ -1681,7 +2061,7 @@ fn an_entrys_own_member_leads_a_message_field_of_its_name() {
     let leaves = message(
         b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|83=1|268=2|279=0|269=0|278=B1|270=100|271=10|83=7|279=0|269=1|278=A1|270=101|271=11|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("an incremental update");
     let [bid, ask] = leaves.as_slice() else {
         panic!("one leaf per entry")
@@ -1702,12 +2082,13 @@ fn a_book_roots_field_no_entry_inherits_rides_every_leaf() {
     let leaves = message(
         b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|1021=2|1023=5|290=3|268=2|279=0|269=0|278=B1|270=100|271=10|279=0|269=1|278=A1|270=101|271=11|10=0|",
     )
-    .into_market_operations()
+    .into_market_data()
     .expect("an incremental update");
     let [bid, ask] = leaves.as_slice() else {
         panic!("one leaf per entry")
     };
     for (leaf, entry) in [(bid, "B1"), (ask, "A1")] {
+        let code = format!("Symbol=AAPL|MDBookType=2|MDEntryID={entry}");
         assert_eq!(
             metadata(leaf),
             [("mdentrypositionno", "3"), ("mdpricelevel", "5")]
@@ -1716,21 +2097,18 @@ fn a_book_roots_field_no_entry_inherits_rides_every_leaf() {
         );
         // What the entries inherit is read, and none of it is repeated.
         assert!(!keys(leaf).iter().any(|key| key == "mdbooktype"), "{entry}");
-        assert_eq!(
-            event_of(leaf).get_crosscode(),
-            format!("Symbol=AAPL|MDBookType=2|MDEntryID={entry}")
-        );
+        // The entry's code, stored under the side it takes.
+        assert_eq!(event_of(leaf).get_crosscode(), leaf.sided_crosscode(&code));
     }
 }
 
 #[test]
 fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold() {
     let read = |line: &[u8]| {
-        let leaves = message(line).into_market_operations().expect("a trade");
-        let [MarketData::TradeEvent(trade)] = leaves.as_slice() else {
-            panic!("one composite trade")
-        };
-        trade.clone()
+        let mut sides: Vec<ExecutionEvent> =
+            split(line).into_iter().skip(1).map(execution_of).collect();
+        sides.sort_by_key(|side| side.get_side().code());
+        sides
     };
     let first = read(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|528=A|54=2|1427=SELL-EXEC|1009=6|528=P|10=0|",
@@ -1738,10 +2116,15 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
     let second = read(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=2|1427=SELL-EXEC|1009=6|528=P|54=1|1427=BUY-EXEC|1009=4|528=A|10=0|",
     );
-    assert_eq!(first, second, "the side order changes nothing");
-    assert_eq!(first.get_curruuid(), second.get_curruuid());
+    let identities =
+        |sides: &[ExecutionEvent]| sides.iter().map(Element::get_curruuid).collect::<Vec<_>>();
+    assert_eq!(
+        identities(&first),
+        identities(&second),
+        "the side order changes nothing"
+    );
 
-    let [buy, sell] = first.executions() else {
+    let [buy, sell] = first.as_slice() else {
         panic!("one execution per side")
     };
     let owned = |pairs: &[(&str, &str)]| {
@@ -1755,24 +2138,24 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
             .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect::<Vec<_>>()
     };
-    // The trade carries the message's own - `TradeReportID(571)`, which no
-    // column reads, and not `TradeReportTransType(487)`, which says the
-    // report executed; each side adds its own members, bare, and never its
+    // Each side's execution carries the trade's own - `TradeReportID(571)`,
+    // which no column reads, and not `TradeReportTransType(487)`, which says
+    // the report executed - and its own side's members, bare, never its
     // sibling's. `OrderCapacity(528)` sits in the side's
-    // `TradeReportOrderDetail` component, so its path opens there.
-    assert_eq!(of(first.get_metadata()), owned(&[("tradereportid", "T1")]));
+    // `TradeReportOrderDetail` component, so it lands in that component's
+    // JSON object, under the component's bare name.
     assert_eq!(
         of(buy.get_metadata()),
         owned(&[
             ("tradereportid", "T1"),
-            ("tradereportorderdetail.ordercapacity", "A")
+            ("tradereportorderdetail", r#"{"ordercapacity":"A"}"#)
         ])
     );
     assert_eq!(
         of(sell.get_metadata()),
         owned(&[
             ("tradereportid", "T1"),
-            ("tradereportorderdetail.ordercapacity", "P")
+            ("tradereportorderdetail", r#"{"ordercapacity":"P"}"#)
         ])
     );
 }
@@ -1785,7 +2168,7 @@ fn the_option_turns_the_fill_off_and_the_identity_says_so() {
     assert!(!bare.market_metadata());
     let read = |codec: &yggdryl::FixCodec| {
         let capture = messages(codec, &[UNMAPPED_ORDER]);
-        drained(codec.market_operations(capture)).expect("an order")
+        drained(codec.market_data(capture)).expect("an order")
     };
     let (filled, bare) = (read(&filled), read(&bare));
     assert!(!filled[0].get_metadata().is_empty());
@@ -1811,7 +2194,7 @@ fn the_option_turns_the_fill_off_and_the_identity_says_so() {
             &codec,
             &[b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|"],
         );
-        drained(codec.market_operations(capture)).expect("an order")
+        drained(codec.market_data(capture)).expect("an order")
     };
     assert_eq!(
         plain(fixed_codec(committed_registry())),
@@ -1824,19 +2207,19 @@ fn book_arrow_reader_honours_the_switch() {
     let live = |codec: yggdryl::FixCodec| {
         let codec = codec.with_batch_row_size(1);
         let capture = messages(&codec, &[UNMAPPED_ORDER]);
-        let books = books_of(
-            codec
-                .book_arrow_reader(capture, 0, false)
-                .expect("a book reader"),
-        );
+        let books = books_of(codec.book_arrow_reader(capture, 0).expect("a book reader"));
         let [book] = books.as_slice() else {
             panic!("one book")
         };
-        book.bid().live().next().expect("the order rests").clone()
+        alive(book, true)
+            .first()
+            .copied()
+            .expect("the order rests")
+            .clone()
     };
     let filled = live(fixed_codec(committed_registry()));
     let bare = live(fixed_codec(committed_registry()).with_market_metadata(false));
-    assert_eq!(filled.get_metadata().len(), 4);
+    assert_eq!(filled.get_metadata().len(), 5);
     assert!(bare.get_metadata().is_empty());
     assert_ne!(filled.get_curruuid(), bare.get_curruuid());
 }
@@ -1850,8 +2233,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65032=SESSION|65008=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65032=SESSION|65008=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65020=SESSION|65019=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65020=SESSION|65019=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec
@@ -1859,7 +2242,7 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("the walk");
     assert_eq!(walked.len(), 1, "one event, observed twice");
-    let leaves = drained(codec.market_operations(walked)).expect("the merged order");
+    let leaves = drained(codec.market_data(walked)).expect("the merged order");
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
     };
@@ -1885,12 +2268,53 @@ fn leaf_metadata_round_trips_through_arrow() {
             b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|38=5|453=1|448=TRADER1|447=D|452=11|10=0|",
         ],
     );
-    let expected = drained(codec.market_operations(capture.clone())).expect("the leaves");
+    let expected = drained(codec.market_data(capture.clone())).expect("the leaves");
     assert!(expected.iter().all(|leaf| !leaf.get_metadata().is_empty()));
     let actual = drained(
         MarketData::from_arrow_reader(codec.market_arrow_reader(capture).expect("a reader"))
             .expect("the rows read back"),
     )
     .expect("every row");
-    assert_eq!(actual, expected);
+    assert_eq!(actual.len(), expected.len());
+    for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
+        assert_eq!(read.get_metadata(), stated.get_metadata(), "{index}");
+        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+    }
+    // The orders state no book control, and read back whole; the entry's
+    // walk-time control is no row fact.
+    assert_eq!(actual[0], expected[0]);
+    assert_eq!(actual[2], expected[2]);
+}
+
+/// A book folds one instant's steps of a chain in the chain's order however
+/// its source read them back: a table sorting a first step's unstated place
+/// after the second's hands the cancel's reject before the cancel, and the
+/// book still reads the cancel first.
+#[test]
+fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
+    let codec = fixed_codec(committed_registry());
+    let lines = [
+        "8=FIX.4.2|35=D|49=B|56=S|34=70|52=20260814-21:50:00|11=C-1|55=2454|54=2|38=100|40=2|44=10|60=20260814-21:50:00|10=0|",
+        "8=FIX.4.2|35=8|49=S|56=B|34=71|52=20260814-21:50:01|11=C-1|37=O-1|17=X1|150=0|39=0|54=2|55=2454|38=100|44=10|151=100|14=0|6=0|60=20260814-21:50:01|10=0|",
+        "8=FIX.4.2|35=F|49=B|56=S|34=72|52=20260814-21:59:46|11=C-2|41=C-1|37=O-1|54=2|55=2454|38=100|60=20260814-21:59:46|10=0|",
+        "8=FIX.4.2|35=9|49=S|56=B|34=73|52=20260814-21:59:47|11=C-2|37=O-1|41=C-1|39=8|434=1|60=20260814-21:59:46|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .map(|line| codec.parse_fix_line(line.as_bytes()).expect("a message"))
+        .collect();
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let (cancel, reject) = (walked.len() - 2, walked.len() - 1);
+    assert_eq!(walked[cancel].get_currunix(), walked[reject].get_currunix());
+    assert!(walked[cancel].get_seqnum() < walked[reject].get_seqnum());
+    let fold = |messages: Vec<FixMsg>| {
+        books_of(codec.book_arrow_reader(messages, 0).expect("a book reader"))
+    };
+    let in_order = fold(walked.clone());
+    let mut reversed = walked;
+    reversed.swap(cancel, reject);
+    assert_eq!(fold(reversed), in_order);
 }

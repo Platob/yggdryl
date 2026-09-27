@@ -289,11 +289,40 @@ assert.equal(ccy.stringParameters, null)
 assert.equal(ccy.scalar('USD').kind, 'ccy')
 assert.ok(!ccy.scalar('USD').equals(Scalar.from('USD')))   // not a string
 assert.throws(() => new DataType('isin').scalar('US0378331006'), /check digit/)
+// A currency pair: every spelling a feed writes, one stored `CCY/CCY`.
+assert.equal(new DataType('forex').codeWidth, 7)
+assert.equal(new DataType('forex').scalar('eurusd').asJs(), 'EUR/USD')
 
 const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
 const uuid = new DataType('uuid')
 assert.equal(uuid.scalar(text.toUpperCase()).asJs(), text)
 assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs()], [1, 2])
+```
+
+## Enums: side, marketdatakind, state
+
+`side`, `marketdatakind` and `state` are the `enum` family: each member is an
+`int32` code in a column and its stored name in text. A value answers the
+name; `Side` and `MarketDataKind` at the package root are frozen name-to-code
+objects. A side is never absent - `UNKNOWN` (code 0) is unstated.
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, MarketDataKind, Side, fields } = require('yggdryl')
+
+// A side reads its stored name, FIX's wire code or its code.
+const side = fields.side('side', { nullable: false })
+assert.deepEqual([side.scalar('BUY').asJs(), side.scalar('1').asJs(), side.scalar(2).asJs()], ['BUY', 'BUY', 'SELL'])
+assert.deepEqual([Side.UNKNOWN, Side.BUY, Side.SELL], [0, 1, 2])
+assert.ok(Object.isFrozen(Side))
+assert.deepEqual([side.dtype.kind, side.dtype.toString()], ['enum', 'side'])
+
+// FIX's MsgCat code set: the category every market data row is filed under.
+assert.equal(new DataType('marketdatakind').scalar('order').asJs(), 'ORDR')
+assert.deepEqual([MarketDataKind.ORDR, MarketDataKind.TRAD], [10, 21])
+
+// Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
+assert.equal(new DataType('state').scalar('UPDATED').asJs(), 'UPDATED')
 ```
 
 ## Nested values: serie, map, union, dictionary

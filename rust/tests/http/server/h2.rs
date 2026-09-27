@@ -213,3 +213,74 @@ fn tls_to_a_server_without_a_certificate_is_closed_unanswered() {
     assert!(!error.to_string().is_empty());
     assert_eq!(server.request_count(), 0);
 }
+
+/// The text an HTTP/2 request in the clear, by prior knowledge, answers
+/// when it states `uri` whole - its `:scheme` and `:authority` included,
+/// which the crate's own client never sends over plain TCP as `https`.
+fn h2c_text(server: &Server, uri: &str) -> String {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    runtime.block_on(async {
+        let tcp = tokio::net::TcpStream::connect(server.address())
+            .await
+            .expect("connect");
+        let (client, connection) = ::h2::client::handshake(tcp).await.expect("a handshake");
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let mut client = client.ready().await.expect("ready");
+        let request = ureq::http::Request::get(uri).body(()).expect("a request");
+        let (response, _) = client.send_request(request, true).expect("sent");
+        let mut body = response.await.expect("an answer").into_body();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.expect("a chunk");
+            let _ = body.flow_control().release_capacity(chunk.len());
+            bytes.extend_from_slice(&chunk);
+        }
+        String::from_utf8(bytes).expect("UTF-8")
+    })
+}
+
+#[test]
+fn a_cleartext_scheme_of_https_is_believed_from_a_trusted_proxy_alone() {
+    let echo = |server: &Server| {
+        server.route(None, "/echo", |request| {
+            Ok(Response::new(Status::OK).with_text(&request.url().to_string()))
+        });
+    };
+    // Any peer may write `:scheme https` over plain TCP; the connection
+    // is not TLS, so the request was made under `http`, as an HTTP/1.1
+    // absolute-form `https://` target is.
+    let plain = Server::bind("127.0.0.1:0").expect("bind");
+    echo(&plain);
+    assert_eq!(
+        h2c_text(&plain, "https://pub.example/echo"),
+        "http://pub.example/echo"
+    );
+    assert_eq!(
+        h2c_text(&plain, "http://pub.example/echo"),
+        "http://pub.example/echo"
+    );
+
+    // A trusted proxy speaking HTTP/2 onward after ending TLS states the
+    // scheme the client used there, as it would in `X-Forwarded-Proto`.
+    let proxied = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default()
+            .with_trusted_proxies(["127.0.0.1"])
+            .expect("a network"),
+    )
+    .expect("bind");
+    echo(&proxied);
+    assert_eq!(
+        h2c_text(&proxied, "https://pub.example/echo"),
+        "https://pub.example/echo"
+    );
+    assert_eq!(
+        h2c_text(&proxied, "http://pub.example/echo"),
+        "http://pub.example/echo"
+    );
+}

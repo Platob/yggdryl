@@ -72,8 +72,10 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
         "{error}"
     );
 
+    // Two executions of one side under one code share a cross code; a buy
+    // and a sell under one code are two, their codes carrying the side.
     let first = execution(10, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None);
-    let second = execution(10, "E-1", Some("IBM"), "Sell", 101, 0, None, None, None);
+    let second = execution(10, "E-1", Some("IBM"), "Buy", 101, 0, None, None, None);
     let error = TradeEvent::from_parts(&root, vec![first, second]).unwrap_err();
     assert!(
         error.to_string().contains("executions[1].crosscode"),
@@ -135,7 +137,7 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
             .iter()
             .map(|held| (held.get_side().as_str(), held.get_crosscode()))
             .collect::<Vec<_>>(),
-        [("BUY", "E-A"), ("BUY", "E-B"), ("SELL", "E-S")]
+        [("BUY", "BUY:E-A"), ("BUY", "BUY:E-B"), ("SELL", "SELL:E-S")]
     );
     assert!(
         first
@@ -196,7 +198,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .filter(|held| held.get_crosscode() == "E-1")
+            .filter(|held| held.get_crosscode() == "BUY:E-1")
             .count(),
         1
     );
@@ -204,7 +206,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "E-1")
+            .find(|held| held.get_crosscode() == "BUY:E-1")
             .unwrap()
             .get_price(),
         Some(Decimal::from_int(101)),
@@ -240,7 +242,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         trade
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "E-1")
+            .find(|held| held.get_crosscode() == "BUY:E-1")
             .unwrap()
             .get_price()
     };

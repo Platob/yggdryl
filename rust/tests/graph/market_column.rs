@@ -1,4 +1,4 @@
-//! `rust/src/graph/market_column.rs`: the nineteen columns every market
+//! `rust/src/graph/market_column.rs`: the twenty-one columns every market
 //! element is stated in, each stating back exactly the fact it read.
 
 use std::collections::BTreeMap;
@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
-use yggdryl::{Ccy, Cfi, DataType, Decimal, Mic, Scalar, Side, Unit};
+use yggdryl::{Ccy, Cfi, DataType, Decimal, Field, Mic, Scalar, Side, StructType, Unit};
 
 fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
@@ -41,6 +41,16 @@ fn market_columns_round_trip_every_optional_band() {
     source.set_prevqty(Some(Decimal::from_int(8)));
     source.set_spotrate(Some(decimal("100.75")));
     source.set_forwardpoints(Some(decimal("0.5")));
+    source.set_bidpx(Some(decimal("100.25")));
+    source.set_bidqty(Some(Decimal::from_int(6)));
+    source.set_bidccy(Some(Ccy::new("USD").unwrap()));
+    source.set_askpx(Some(decimal("100.5")));
+    source.set_askqty(Some(Decimal::from_int(7)));
+    source.set_askccy(Some(Ccy::new("EUR").unwrap()));
+    source.set_fxrates(BTreeMap::from([
+        (Ccy::new("EUR").unwrap(), decimal("1.085")),
+        (Ccy::new("GBP").unwrap(), decimal("0.86")),
+    ]));
     source.set_ticker(Some(SmolStr::new("IBM")));
     source.set_metadata(Some(BTreeMap::from([(
         SmolStr::new("Feed"),
@@ -70,6 +80,8 @@ fn market_columns_round_trip_every_optional_band() {
     assert_eq!(restored.get_unit(), source.get_unit());
     assert_eq!(restored.get_side(), source.get_side());
     assert_eq!(restored.get_securityids(), source.get_securityids());
+    assert_eq!(restored.get_isincode(), Some("US0378331005"));
+    assert_eq!(restored.get_fxrates(), source.get_fxrates());
     assert_eq!(
         restored.get_securityids().get("BLOOMBERG"),
         Some("BBG000B9XRY4")
@@ -165,7 +177,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 19);
+    assert_eq!(fields.len(), 27);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
@@ -175,6 +187,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "unit",
             "side",
             "securityids",
+            "isincode",
             "cficode",
             "miccode",
             "lastpx",
@@ -186,10 +199,54 @@ fn market_column_schema_has_one_owner_and_order() {
             "prevqty",
             "spotrate",
             "forwardpoints",
+            "bidpx",
+            "bidqty",
+            "bidccy",
+            "askpx",
+            "askqty",
+            "askccy",
+            "fxrates",
             "ticker",
             "metadata",
         ]
     );
+    // The bid and the ask a quote or a book states: decimals and codes,
+    // null where none is stated.
+    for column in [
+        MarketColumn::BidPx,
+        MarketColumn::BidQty,
+        MarketColumn::AskPx,
+        MarketColumn::AskQty,
+    ] {
+        assert_eq!(column.datatype(), DataType::Decimal);
+        assert!(column.nullable());
+    }
+    for column in [MarketColumn::BidCcy, MarketColumn::AskCcy] {
+        assert_eq!(column.datatype(), DataType::Ccy);
+        assert!(column.nullable());
+    }
+    assert_eq!(MarketColumn::IsinCode.datatype(), DataType::Isin);
+    assert_eq!(MarketColumn::IsinCode.display(), "ISIN");
+    // Target currency to the rate to divide by: keys and rates required.
+    assert_eq!(
+        MarketColumn::FxRates.datatype(),
+        DataType::map(
+            Field::new(
+                "entries",
+                DataType::Struct(
+                    StructType::from_fields(vec![
+                        Field::new("key", DataType::Ccy, false),
+                        Field::new("value", DataType::Decimal, false),
+                    ])
+                    .unwrap()
+                ),
+                false,
+            ),
+            true,
+        )
+        .unwrap()
+    );
+    assert_eq!(MarketColumn::FxRates.display(), "FX Rates");
     assert_eq!(MarketColumn::SecurityIds.datatype(), SecurityIds::dtype());
     assert_eq!(MarketColumn::Ticker.datatype(), DataType::utf8());
     assert_eq!(MarketColumn::Unit.datatype(), DataType::Unit);
@@ -212,16 +269,36 @@ fn market_column_schema_has_one_owner_and_order() {
         "marketoperationid",
         "tif",
         "tradable",
-        "isincode",
         "cusipcode",
         "sedolcode",
         "bloombergcode",
         "figicode",
-        "bidpx",
         "askunit",
         "symbolticker",
         "identifiers",
     ] {
         assert_eq!(MarketColumn::of_name(gone), None, "{gone}");
     }
+}
+
+/// `isincode` is a projection of `securityids`: recording it fills an
+/// absent `ISIN`, and - the lenient door - leaves a different one standing.
+#[test]
+fn recording_an_isincode_fills_an_absent_isin_and_leaves_another_alone() {
+    let mut blank = OrderEvent::at(1);
+    MarketColumn::IsinCode.record(&mut blank, &Scalar::from("US0378331005"));
+    assert_eq!(blank.get_isincode(), Some("US0378331005"));
+    assert_eq!(
+        MarketColumn::IsinCode.fact(&blank),
+        Some(Scalar::Isin(yggdryl::Isin::new("US0378331005").unwrap()))
+    );
+
+    let mut listed = OrderEvent::at(1);
+    listed
+        .insert_securityid(securityid("ISIN", "GB0002634946"))
+        .unwrap();
+    MarketColumn::IsinCode.record(&mut listed, &Scalar::from("US0378331005"));
+    assert_eq!(listed.get_isincode(), Some("GB0002634946"));
+    MarketColumn::IsinCode.record(&mut listed, &Scalar::Null);
+    assert_eq!(listed.get_isincode(), Some("GB0002634946"));
 }

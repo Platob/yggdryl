@@ -20,7 +20,7 @@ import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, graph
+from yggdryl import DataType, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
@@ -36,6 +36,8 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "price": decimal.Decimal("100.25"),
         "currency": "USD",
         "quantity": 10,
+        "securityids": {"ISIN": "US0378331005"},
+        "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
     return graph.OrderEvent(clock, **base)
@@ -44,7 +46,6 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
 ORDER_EVENT = _order_event()
 ORDER = ORDER_EVENT.into_element()
 DATA = graph.MarketData(ORDER_EVENT)
-LANE = graph.Lane(price=decimal.Decimal("100.25"), currency="USD", quantity=10)
 
 # One order per price tick, all on the bid side of one symbol at one instant -
 # the atomic group a book folds when it replays a session's orders.
@@ -56,7 +57,6 @@ FOLD_OPERATIONS = [
     for index in range(FOLD_OPERATION_COUNT)
 ]
 FOLD_BOOK = graph.BookEvent(CLOCK, "ACME").with_operations(FOLD_OPERATIONS)
-FOLD_SIDE = FOLD_BOOK.bid
 FOLD_ROWS = graph.MarketData.arrow_reader(FOLD_OPERATIONS).read_all()
 
 # One order a millisecond, one price tick each, as the codec parses them:
@@ -88,8 +88,16 @@ def _order_event_read_price() -> object:
     return ORDER_EVENT.price
 
 
-def _order_event_read_bid_lane() -> object:
-    return ORDER_EVENT.bid
+def _order_event_read_side() -> object:
+    return ORDER_EVENT.side
+
+
+def _order_event_read_isincode() -> object:
+    return ORDER_EVENT.isincode
+
+
+def _order_event_read_fxrates() -> object:
+    return ORDER_EVENT.fxrates
 
 
 def _order_event_read_altids() -> object:
@@ -110,14 +118,6 @@ def _market_data_wrap() -> graph.MarketData:
 
 def _market_data_into_leaf() -> object:
     return DATA.into_leaf()
-
-
-def _lane_from_kwargs() -> graph.Lane:
-    return graph.Lane(price=decimal.Decimal("100.25"), currency="USD", quantity=10)
-
-
-def _lane_read_price() -> object:
-    return LANE.price
 
 
 def _book_fold() -> graph.BookEvent:
@@ -150,12 +150,12 @@ def _book_from_arrow_reader() -> int:
     return sum(1 for _ in graph.MarketData.from_arrow_reader(reader))
 
 
-def _book_side_limits() -> int:
-    return len(FOLD_SIDE.limits)
+def _book_limits() -> int:
+    return len(FOLD_BOOK.limits(Side.BUY))
 
 
-def _book_side_depth() -> object:
-    return FOLD_SIDE.depth(10)
+def _book_depth() -> object:
+    return FOLD_BOOK.depth(Side.BUY, 10)
 
 
 def _book_imbalance() -> object:
@@ -170,8 +170,8 @@ def _view_apply() -> int:
     return graph.MarketData.apply_view("orders", FOLD_ROWS).read_all().num_rows
 
 
-def _market_operations() -> int:
-    return sum(1 for _ in CODEC.market_operations(CAPTURE))
+def _market_data() -> int:
+    return sum(1 for _ in CODEC.market_data(CAPTURE))
 
 
 def _market_arrow_reader() -> int:
@@ -197,14 +197,14 @@ def main() -> None:
         _measure("order event from kwargs", _order_event_from_kwargs, args.iterations)
         _measure("order from kwargs", _order_from_kwargs, args.iterations)
         _measure("order event read price", _order_event_read_price, args.iterations)
-        _measure("order event read bid lane", _order_event_read_bid_lane, args.iterations)
+        _measure("order event read side", _order_event_read_side, args.iterations)
+        _measure("order event read isincode", _order_event_read_isincode, args.iterations)
+        _measure("order event read fxrates", _order_event_read_fxrates, args.iterations)
         _measure("order event read altids map", _order_event_read_altids, args.iterations)
         _measure("order at", _order_at, args.iterations)
         _measure("order event into element", _order_event_into_element, args.iterations)
         _measure("market data wrap", _market_data_wrap, args.iterations)
         _measure("market data into leaf", _market_data_into_leaf, args.iterations)
-        _measure("lane from kwargs", _lane_from_kwargs, args.iterations)
-        _measure("lane read price", _lane_read_price, args.iterations)
         folds = max(1, args.iterations // 50)
         count = FOLD_OPERATION_COUNT
         _measure(f"book fold/{count}", _book_fold, folds)
@@ -214,12 +214,12 @@ def main() -> None:
         _measure(f"operations from_arrow_reader/{count}", _operations_from_arrow_reader, folds)
         _measure("book arrow_reader", _book_arrow_reader, folds)
         _measure("book from_arrow_reader", _book_from_arrow_reader, folds)
-        _measure(f"book side limits/{count}", _book_side_limits, folds)
-        _measure("book side depth/10", _book_side_depth, args.iterations)
+        _measure(f"book limits/{count}", _book_limits, folds)
+        _measure("book depth/10", _book_depth, args.iterations)
         _measure("book imbalance/10", _book_imbalance, args.iterations)
         _measure("view plan orders+lift", _view_plan, args.iterations)
         _measure(f"view apply orders/{count}", _view_apply, folds)
-        _measure(f"fix market_operations/{count}", _market_operations, folds)
+        _measure(f"fix market_data/{count}", _market_data, folds)
         _measure(f"fix market_arrow_reader/{count}", _market_arrow_reader, folds)
     finally:
         gc.enable()

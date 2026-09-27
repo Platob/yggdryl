@@ -17,11 +17,11 @@ use crate::metadata::{
 use crate::{
     BbgType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType, DateTimeType,
     DateType, DecimalType, DurationType, EnumType, FigiType, Float16Type, Float32Type, Float64Type,
-    GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type, IntervalType, IsinType,
-    MappingType, MediaTypeType, MicType, MimeTypeType, NullType, RicType, RunEndType, SedolType,
-    SerieType, SideType, StateType, StringType, StructType, TimeInForceType, TimeType,
-    TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType,
-    UuidType, VariantType, VersionType,
+    ForexType, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
+    IntervalType, IsinType, MappingType, MarketDataKindType, MediaTypeType, MicType, MimeTypeType,
+    NullType, RicType, RunEndType, SedolType, SerieType, SideType, StateType, StringType,
+    StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type,
+    UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1620,6 +1620,7 @@ field_leaves! {
     [Isin] => IsinField / IsinType,
     [Side] => SideField / SideType,
     [State] => StateField / StateType,
+    [MarketDataKind] => MarketDataKindField / MarketDataKindType,
     [TimeInForce] => TimeInForceField / TimeInForceType,
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
@@ -1643,6 +1644,7 @@ field_leaves! {
     [Ric] => RicField / RicType,
     [Figi] => FigiField / FigiType,
     [Unit] => UnitField / UnitType,
+    [Forex] => ForexField / ForexType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different
@@ -2382,8 +2384,10 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
-        /// The `yggdryl.state` enum over the `Int32` codes of its members.
-        State,
+        /// An enum leaf's own `yggdryl.{state,...}` over the `Int32` codes of
+        /// its members: which leaf, because a state's codes and a side's are
+        /// two vocabularies over one storage.
+        Enum(DataType),
         /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
         Decimal,
         /// The `yggdryl.bigdecimal` fixed decimal over `Decimal256(76, 18)`.
@@ -2414,9 +2418,11 @@ mod arrow {
                         DataType::Geometry(Arc::new(geospatial))
                     }
                 }
-                Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
+                Self::Code(dtype)
+                | Self::String(dtype)
+                | Self::Bytes(dtype)
+                | Self::Enum(dtype) => dtype,
                 Self::Uuid => DataType::Uuid,
-                Self::State => DataType::State,
                 Self::Decimal => DataType::Decimal,
                 Self::BigDecimal => DataType::BigDecimal,
                 Self::Version => DataType::Version,
@@ -2567,8 +2573,12 @@ mod arrow {
                 ArrowDataType::Utf8
             )
             .then_some(RecognizedExtension::MediaType)),
-            crate::STATE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
-                Ok(matches!(storage, ArrowDataType::Int32).then_some(RecognizedExtension::State))
+            // An enum leaf is its `Int32` codes under its own name, with
+            // nothing to say in a document: the name says which leaf.
+            held if document.unwrap_or("").is_empty()
+                && matches!(storage, ArrowDataType::Int32) =>
+            {
+                Ok(crate::enums::enum_for_extension(held).map(RecognizedExtension::Enum))
             }
             code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
                 Ok(code_for_extension(code).map(RecognizedExtension::Code))
