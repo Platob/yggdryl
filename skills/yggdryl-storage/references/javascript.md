@@ -487,6 +487,46 @@ assert.equal(h2.get('quote.json').version, 'HTTP/2')
 server.shutdown()
 ```
 
+## Paginate a REST API
+
+`session.pages(url, { pagination })` and `request.withPagination(...).pages()`
+walk one `Response` per page - never `session.get(url)`, which sends
+immediately and answers a `Response` with no `.pages()`. `pagination` names
+one of the seven `Pagination` spellings (`'auto'`, `'link'`, `'header:<name>'`,
+`'url:<path>'`, `'cursor:<path>:<parameter>'`, `'offset:<parameter>:<size>'`,
+`'page:<parameter>:<start>'`); the full ladder `'auto'` walks is at
+https://platob.github.io/yggdryl/holder/#pages.
+
+```javascript
+const assert = require('node:assert/strict')
+const { http } = require('yggdryl')
+
+const server = http.Server.bind()
+server.respond('/items', 200, { 'content-type': 'application/json' }, '{"items":[{"id":1},{"id":2}],"next":"/items2"}')
+server.respond('/items2', 200, { 'content-type': 'application/json' }, '{"items":[{"id":3}],"next":null}')
+const session = new http.Session(server.url.toString())
+
+// The simplest door: no `Request` to build.
+const pages = [...session.pages('items', { pagination: 'url:next' })].map((page) => page.json())
+assert.deepEqual(pages.map((page) => page.items), [[{ id: 1 }, { id: 2 }], [{ id: 3 }]])
+assert.equal(pages[1].next, null)
+
+// Or build the `Request` once with `withPagination`, then walk it directly.
+const request = new http.Request('GET', new URL('items', server.url.toString()).toString())
+  .withSession(session)
+  .withPagination('url:next')
+assert.deepEqual([...request.pages()].map((page) => page.json()), pages)
+assert.equal(typeof session.get('items').pages, 'undefined') // already sent
+
+// Every page as one Arrow batch each, under the `items` root the first page infers.
+const reader = session.pages('items', { pagination: 'url:next' }).intoArrowReader()
+let totalRows = 0
+for (const batch of reader) totalRows += batch.numRows
+assert.equal(totalRows, 3)
+
+server.shutdown()
+```
+
 ## Rust only
 
 Not bound in JavaScript - never invent these: a decoded-view handle
@@ -510,5 +550,5 @@ has no S3 client for `IOBase.fromUri('s3://...')` (it reports `Unsupported`);
 - `buffered(...)` returns the same handle (Python's spends it).
 - A handler-backed handle is bound to the JavaScript thread that supplied the
   handler; it cannot be read from a `Worker`.
-- `gzip`, `zlib` and `zstd` exist at runtime but ship no TypeScript
-  declarations in this version; `charset` does.
+- `gzip`, `zlib`, `zstd` and `charset` all ship full TypeScript declarations
+  in `node/binding.d.ts`.

@@ -782,13 +782,15 @@ test('a size crosses as an exact bigint', (t) => {
   handler.files.set('bucket/sized.bin', Buffer.from('symbol,price'))
   assert.equal(IOBase.fromFs(handler, 'bucket/sized.bin').size, 12)
 
-  // A length no length can be is refused rather than truncated.
+  // A length no length can be is refused rather than truncated. A whole
+  // write is the handler's own one output stream and asks for no size, so
+  // the answer that carries one is where the refusal is read.
   const lying = {
     ...memory(),
     fileInfo: (location) => ({ path: location, kind: 'file', size: -1n }),
   }
   assert.throws(
-    () => IOBase.fromFs(lying, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(lying, 'bucket/key.bin').info(),
     /unsigned 64-bit integer/,
   )
 })
@@ -1016,7 +1018,7 @@ test('a handler that throws surfaces its own message', () => {
     fileInfo: (location) => ({ path: location, kind: 'blob' }),
   }
   assert.throws(
-    () => IOBase.fromFs(inventing, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(inventing, 'bucket/key.bin').info(),
     /file.*directory.*not-found/,
   )
 })

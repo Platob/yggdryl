@@ -278,7 +278,7 @@ assert!(refused.to_string().contains("expected overwrite, got append"), "{refuse
 
 ## Bound memory on large writes
 
-`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
+`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
 
 ```rust
 use std::sync::Arc;
@@ -620,7 +620,7 @@ std::fs::remove_dir_all(&root)?;
 ## Gotchas in Rust
 
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
-- Every record verb takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
+- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
 - `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_row_size` do not.
 - `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
 - `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.

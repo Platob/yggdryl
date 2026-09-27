@@ -29,6 +29,35 @@ mod coded {
     ];
 
     #[test]
+    fn the_canonical_default_is_the_side_stated_as_none() {
+        // A closed vocabulary with no empty member: its default is `UNKNOWN`,
+        // so a named row leaving out a required side defaults at the value
+        // door rather than failing on the empty text.
+        assert_eq!(
+            DataType::Side.default_value().unwrap(),
+            Scalar::Side(Side::Unknown)
+        );
+        assert!(
+            DataType::Side
+                .is_default_value(&Scalar::Side(Side::Unknown))
+                .unwrap()
+        );
+        let root = DataType::from(
+            StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::Side.required_field("side"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assert_eq!(
+            root.scalar(Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap())
+                .unwrap(),
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::Side(Side::Unknown)])
+        );
+    }
+
+    #[test]
     fn a_side_is_one_byte_whose_discriminant_is_the_position_of_its_wire_code() {
         assert_eq!(std::mem::size_of::<Side>(), 1);
         assert_eq!(std::mem::size_of::<Option<Side>>(), 1);

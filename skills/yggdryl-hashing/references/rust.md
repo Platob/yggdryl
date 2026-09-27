@@ -85,8 +85,12 @@ assert_eq!(state.as_u64(), xxh3(b""), "clear returns to the constructed seed");
 ## Digest a stored resource without reading it into memory
 
 `read_digest` and `read_range_digest` stream the handle through
-`pstream_bytes`, one bounded chunk at a time, on every backend. A missing
-resource digests as no bytes.
+`pstream_bytes`, one bounded chunk at a time, on every backend. `LocalFile`
+is memory-mapped, though: it keeps one whole-file mapping open for the
+handle's life, so a large local file's touched pages stay resident until the
+handle closes, even though each `pread` only copies out one bounded window.
+`Buffer` and the network-backed stores (HTTP, S3, ...) hold no such mapping
+and stay flat throughout. A missing resource digests as no bytes.
 
 ```rust
 use yggdryl::holder::Buffer;
@@ -241,7 +245,12 @@ assert_eq!(filled.column(1).as_primitive::<UInt64Type>().value(0), expected.as_u
 ## Digest every row or cell of a batch
 
 `row_digests` hashes each row's non-holder columns as one ordered value;
-`column_digests` hashes each cell alone. Neither builds a `Scalar` per row.
+`column_digests` hashes each cell alone. For the buffer-backed leaves -
+booleans, every integer and float width, and every string/byte shape -
+neither builds a `Scalar` per row; every other leaf (decimals, every temporal
+family, `Uuid`, `Geometry`/`Geography`, nested `Struct`/`Serie`/`Map`,
+`Union`, run-end, dictionary, variant, and the registered codes) reads
+through `Serie::scalar(index)` and does build one `Scalar` per cell.
 
 ```rust
 use std::sync::Arc;
@@ -450,5 +459,6 @@ assert_eq!(value.unix(), 1_700_000_000, "the instant floors to the declared unit
   layout is refused by path; holders live in Structs only.
 - `row_digests` ignores a holder's `DIGEST:sources`; narrowing belongs to
   `apply_arrow_batch`.
-- A `variant` column is refused by name in `row_digests` / `column_digests`.
+- A `variant` column digests as the value it decodes to, in both
+  `row_digests` and `column_digests` - not refused.
 - xxHash is not cryptographic and is not Iceberg `bucket[N]` (murmur3).

@@ -85,8 +85,11 @@ assert.equal(seeded.asDigest().value(), xxhash.xxh64('', 7n), 'clear keeps the c
 ## Digest a stored resource without reading it into JavaScript
 
 `readDigest` and `readRangeDigest` stream the resource natively, one bounded
-chunk at a time, on every backend; no byte is copied into the JS heap, and a
-missing resource digests as no bytes.
+chunk at a time, on every backend; no byte is copied into the JS heap. On the
+local backend the underlying handle is memory-mapped, so the process's
+resident memory grows with the bytes actually digested and is released only
+when the handle is closed - a network-backed store (HTTP, S3) stays flat
+throughout. A missing resource digests as no bytes.
 
 ```javascript
 const assert = require('node:assert/strict')

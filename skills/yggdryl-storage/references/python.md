@@ -503,6 +503,41 @@ with http.Server.bind() as server:
     assert h2.get("quote.json").version == "HTTP/2"
 ```
 
+## Paginate a REST API
+
+`session.pages(url, pagination=...)` and `Request(..., session=session).pages(pagination=...)`
+walk one `Response` per page - never `session.get(url)`, which sends
+immediately and answers a `Response` with no `.pages()`. `pagination` names
+one of the seven `Pagination` spellings (`"auto"`, `"link"`, `"header:<name>"`,
+`"url:<path>"`, `"cursor:<path>:<parameter>"`, `"offset:<parameter>:<size>"`,
+`"page:<parameter>:<start>"`); the full ladder `"auto"` walks is at
+https://platob.github.io/yggdryl/holder/#pages.
+
+```python
+from yggdryl import http
+
+with http.Server.bind() as server:
+    server.respond("/items", 200, {"content-type": "application/json"},
+                    b'{"items": [{"id": 1}, {"id": 2}], "next": "/items2"}')
+    server.respond("/items2", 200, {"content-type": "application/json"},
+                    b'{"items": [{"id": 3}], "next": null}')
+    session = http.Session(server.url)
+
+    # The simplest door: no `Request` to build.
+    pages = [page.json() for page in session.pages("items", pagination="url:next")]
+    assert [page["items"] for page in pages] == [[{"id": 1}, {"id": 2}], [{"id": 3}]]
+    assert pages[1]["next"] is None
+
+    # Or build the `Request` once and walk it directly.
+    request = http.Request("GET", "items", session=session)
+    assert [page.json() for page in request.pages(pagination="url:next")] == pages
+    assert not hasattr(session.get("items"), "pages")  # already sent
+
+    # Every page as one Arrow batch each, under the `items` root the first page infers.
+    reader = session.pages("items", pagination="url:next").read_arrow()
+    assert sum(len(batch) for batch in reader) == 3
+```
+
 ## Rust only
 
 Not bound in Python - reach for the Rust crate, never an invented name:

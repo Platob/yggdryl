@@ -530,10 +530,15 @@ class TestScans:
         with pytest.raises(ValueError, match="absent"):
             handle.scan_arrow(options=absent).to_table()
 
+        # A property named at the call is as much of an ask as an options.
+        assert handle.scan_arrow(select=["id"]).to_table().schema.names == ["id"]
+        assert handle.scan_arrow(filter="venue = 'XNAS'").to_table().num_rows == 2
+
         pl = pytest.importorskip("polars")
         lazy = handle.scan_polars(options=selected)
         assert isinstance(lazy, pl.LazyFrame)
         assert lazy.collect().columns == ["id"]
+        assert handle.scan_polars(select=["id"]).collect().columns == ["id"]
 
 
 class TestCursor:

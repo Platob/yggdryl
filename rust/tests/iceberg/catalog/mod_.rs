@@ -850,14 +850,16 @@ mod call_counts {
         // One presence answer, then the create's direct stream operations.
         // The first output open reports a missing parent, one recursive
         // create repairs it, and the output open is retried exactly once.
-        // Raw child resolution never walks ancestor namespaces.
+        // Each whole-value write is the backend's own single output stream -
+        // a `Holder` forwards `write_all_bytes` - so no write asks for a size
+        // first. Raw child resolution never walks ancestor namespaces.
         let calls = filesystem.cost(|| {
             catalog
                 .tables()
                 .create("a.b.c.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(calls, 14, "create into three missing namespace levels");
+        assert_eq!(calls, 8, "create into three missing namespace levels");
 
         // And the table it made opens.
         catalog.tables().get("a.b.c.orders").unwrap();
@@ -875,7 +877,7 @@ mod call_counts {
                 .open_or_create("sales.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(absent, 14, "open_or_create when absent");
+        assert_eq!(absent, 8, "open_or_create when absent");
 
         // The present branch: one classification, whose locate already opened
         // the table - exactly what `get` costs, because it is the same

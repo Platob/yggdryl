@@ -62,7 +62,7 @@ async runtime.
 | --- | --- |
 | `s3://trades/lake/part.parquet` | bucket `trades`, key `lake/part.parquet` |
 | `s3://trades.s3.eu-west-3.amazonaws.com/part.parquet` | virtual-hosted: bucket `trades`, region `eu-west-3` |
-| `s3://localhost:9000/trades/lake/` | first part with a port, IP literal, `localhost`, or ending `.com`/`.io` is the **host**; bucket is the next part |
+| `s3://localhost:9000/trades/lake/` | first part with a port, IP literal, `localhost`, or ending `.com`/`.io`/`.net` is the **host**; bucket is the next part |
 | `gs://trades.storage.googleapis.com/lake/x` | bucket `trades`, endpoint `storage.googleapis.com` |
 | `abfss://lake@trades.dfs.core.windows.net/x` | container `lake` (user position), account `trades` |
 | `az://lake/x` (bare container) | the account comes from the options (`account_name`, `adls.account-name`, `AZURE_STORAGE_ACCOUNT_NAME`) |
@@ -197,6 +197,7 @@ versions. One synchronous client: a caller brings no async runtime.
 | resume | a cut body of a successful uncoded `GET` resumes from its cursor with `Range` + `If-Range`, at most `Stream::MAX_RESUMES` times; a changed resource is `Error::Conflict`, never spliced |
 | environment | `http_proxy`/`https_proxy`/`all_proxy`/`no_proxy` read per request as curl reads them (upper-case `HTTP_PROXY` ignored under CGI; SOCKS refused); `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`; `.netrc` for a request naming no credential; `read_environment=false` reads none |
 | properties | `timeout`, `connect_timeout`, `max_attempts`, `max_redirects`, `max_pause`, `max_body_size`, `concurrency`, `http_version`, `proxy`, `ca_bundle`, `bearer_token`, `basic_auth`, `header.<name>`, `pagination`, `page_limit`, `base_url`; unknown names are ignored, so a catalog's property bag can be handed over |
+| pagination | one of `auto` (the default ladder: `Link` header, then a next-page header, then a next URL or cursor in the body), `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>`, `page:<parameter>:<start>`; walked with `.pages()` on an unsent `Request`, never an already-sent `Response` - see SKILL.md rule 17 and https://platob.github.io/yggdryl/holder/#pages |
 | test origin | `Server::bind("127.0.0.1:0")` in process: `respond`, `route`, `mount(prefix, holder)` with ranges and validators, `inject(Fault)` (cut, close, refuse, delay), `requests()` the log; `with_http3(true)` adds QUIC and TLS under a self-signed `certificate()` |
 
 | Operation | Requests |

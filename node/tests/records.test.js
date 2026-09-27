@@ -1010,3 +1010,27 @@ test('a text line read takes the options a record read takes', () => {
   parquet.mediaType = 'application/vnd.apache.parquet'
   assert.throws(() => parquet.readTextLines(), /plain-text record options/)
 })
+
+test('a column mixing number and bigint is one integer column', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const handle = new IOBase(path.join(root, 'mixed.arrows'))
+  handle.overwriteRecords([{ id: 1 }, { id: 2n }, { id: 3 }])
+  const ids = handle.readArrowReader().intoTable().getChild('id')
+  assert.deepEqual(Array.from(ids), [1n, 2n, 3n])
+
+  // Later batches are built under the first batch's types, either way round.
+  const batched = new IOBase(path.join(root, 'batched.arrows'))
+  batched.overwriteRecords([{ id: 1n }, { id: 2 }], { batchRowSize: 1 })
+  assert.deepEqual(Array.from(batched.readArrowReader().intoTable().getChild('id')), [1n, 2n])
+  const numbers = new IOBase(path.join(root, 'numbers.arrows'))
+  numbers.overwriteRecords([{ qty: 1.5 }, { qty: 2n }], { batchRowSize: 1 })
+  assert.deepEqual(Array.from(numbers.readArrowReader().intoTable().getChild('qty')), [1.5, 2])
+
+  // A fraction beside a bigint is no integer, and says which column.
+  assert.throws(
+    () => handle.overwriteRecords([{ id: 1n }, { id: 1.5 }]),
+    (error) => error instanceof TypeError && /"id"/.test(error.message) && /1\.5/.test(error.message),
+  )
+})

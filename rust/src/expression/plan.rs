@@ -591,12 +591,6 @@ impl Plan {
         Self::default()
     }
 
-    /// The plan a struct field declares: a `create` section holding every
-    /// column with its datatype, nullability and metadata, named after the
-    /// field when the field is not named [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME).
-    ///
-    /// [`Self::field`] reads the field back, so a plan is where a record
-    /// option keeps its declared schema.
     /// Read a plan from the scalar that spells one: text, or null for the
     /// empty plan.
     ///
@@ -620,6 +614,12 @@ impl Plan {
         })
     }
 
+    /// The plan a struct field declares: a `create` section holding every
+    /// column with its datatype, nullability and metadata, named after the
+    /// field when the field is not named [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME).
+    ///
+    /// [`Self::field`] reads the field back, so a plan is where a record
+    /// option keeps its declared schema.
     #[must_use]
     pub fn from_field(field: &Field) -> Self {
         let create = (field.name() != crate::media::DEFAULT_ROOT_NAME)

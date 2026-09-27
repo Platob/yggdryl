@@ -61,6 +61,30 @@ pub const DEFAULT_FETCH_BYTE_SIZE: usize = 1024 * 1024;
 /// Bytes copied per step when moving between two handles.
 const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 
+/// Refuse a decoded view where a coding transfer means the stored bytes.
+///
+/// [`IOBase::compress_into`] and [`IOBase::decompress_into`] move *stored*
+/// bytes and report their sizes, so a handle that already codes on the way
+/// through would apply the coding twice and count the wrong value.
+fn require_stored<H: IOBase + ?Sized>(handle: &H, role: &str) -> Result<()> {
+    let codec = handle.applied_codec();
+    if codec == Codec::Identity {
+        return Ok(());
+    }
+    let location = handle
+        .url()
+        .map_or_else(|| "an in-memory value".to_owned(), ToString::to_string);
+    Err(Error::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "expected {role} presenting its stored bytes, got a {} view of {location}; a coded \
+             handle codes what passes through it, so copy_into already stores the coded form - \
+             or address the stored bytes with the LocalPath, LocalFile, FsPath, or FsFile role",
+            codec.as_str()
+        ),
+    )))
+}
+
 mod bytes;
 pub(crate) mod hierarchy;
 mod lifecycle;
@@ -577,6 +601,27 @@ pub trait IOBase: Send + IOMedia {
         Codec::from_media_type(self.media_type())
     }
 
+    /// Return the content coding this handle applies to the bytes passing
+    /// through it.
+    ///
+    /// A handle presents either what is stored or a decoded view of it. A
+    /// [`Coded`](crate::coding::Coded) handle over `data.json.gz` presents
+    /// the JSON, so its media type declares no coding and this answers
+    /// [`Codec::Gzip`] - the layer doing the decoding. A handle that is its
+    /// stored bytes answers [`Codec::Identity`], and a wrapper that passes
+    /// bytes through answers what the handle it wraps applies.
+    ///
+    /// ```
+    /// use yggdryl::coding::Coded;
+    /// use yggdryl::{Codec, IOBase, holder::Buffer};
+    ///
+    /// assert_eq!(Buffer::new().applied_codec(), Codec::Identity);
+    /// assert_eq!(Coded::wrap(Buffer::new(), Codec::Gzip).applied_codec(), Codec::Gzip);
+    /// ```
+    fn applied_codec(&self) -> Codec {
+        Codec::Identity
+    }
+
     /// Fill `buffer` completely from `offset`.
     ///
     /// # Errors
@@ -779,12 +824,18 @@ pub trait IOBase: Send + IOMedia {
     /// [`append_arrow_reader`](IOMedia::append_arrow_reader), so the offset
     /// this one reports is unambiguously a byte offset.
     ///
+    /// Like [`Self::write_all_bytes`], an append is a complete operation and
+    /// ends with [`Self::flush`]: the bytes are published - a remote store's
+    /// object written, a memory-mapped file's growth slack trimmed - when the
+    /// call returns, with no `flush` or `close` left to the caller.
+    ///
     /// # Errors
     ///
     /// Returns the backing store's write failure.
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         let offset = self.size();
         self.pwrite_all(offset, bytes)?;
+        self.flush()?;
         Ok(offset)
     }
 
@@ -1090,13 +1141,19 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns the first read, encode, or write failure.
+    /// Returns [`std::io::ErrorKind::InvalidInput`] naming the coding before
+    /// anything is written when `target` presents a decoded view
+    /// ([`Self::applied_codec`]): writing through it would code the value
+    /// twice, and [`Self::copy_into`] is the call that stores the coded form
+    /// through such a handle. Otherwise the first read, encode, or write
+    /// failure.
     fn compress_into_with_level(
         &self,
         target: &mut dyn IOBase,
         codec: Codec,
         level: Level,
     ) -> Result<u64> {
+        require_stored(target, "a target")?;
         target.truncate(0)?;
         {
             let writer = Writer { target, offset: 0 };
@@ -1137,8 +1194,14 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns the first read, decode, or write failure.
+    /// Returns [`std::io::ErrorKind::InvalidInput`] naming the coding before
+    /// anything is read or written when this handle or `target` presents a
+    /// decoded view ([`Self::applied_codec`]): the transfer decodes stored
+    /// bytes, and a view has already decoded them. Otherwise the first read,
+    /// decode, or write failure.
     fn decompress_into_with(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64> {
+        require_stored(self, "a source")?;
+        require_stored(target, "a target")?;
         target.truncate(0)?;
         let source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
         let mut decoder = codec.reader(source);

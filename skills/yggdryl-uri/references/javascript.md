@@ -107,8 +107,9 @@ assert.throws(() => Uri.from('file:///lake/a%2Fb').intoPath())
 ## Read and rename the filename; read the media type
 
 Filename getters and in-place setters; `Url` adds `name`, `suffix`,
-`suffixes` and the copying `withName`/`withStem`/`withSuffix`. A refused name
-changes nothing.
+`suffixes`, the `pathlib`-named `isAbsolute()`, `asPosix()`, `asUri()`, and
+the copying `withName`/`withStem`/`withSuffix`. A refused name changes
+nothing.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -136,6 +137,10 @@ const url = Url.from('file:///lake/trades.csv.gz')
 assert.deepEqual([url.name, url.suffix, url.suffixes], ['trades.csv.gz', '.gz', ['.csv', '.gz']])
 assert.equal(url.withSuffix('.zst').toString(), 'file:///lake/trades.csv.zst')
 assert.equal(url.withName('quotes.csv').toString(), 'file:///lake/quotes.csv')
+
+assert.equal(url.isAbsolute(), true)
+assert.equal(url.asPosix(), '/lake/trades.csv.gz')
+assert.equal(url.asUri(), url.toString())
 ```
 
 ## Walk and join paths
@@ -168,7 +173,7 @@ assert.equal(Url.from('file:///lake').joinpath('100%25.csv').fileName, '100%25.c
 ## Read credentials and object-store locations
 
 Everything is read off the authority, with no request. A first part ending
-`.com`/`.io`, with a port, an IP literal, or `localhost` is the host;
+`.com`/`.io`/`.net`, with a port, an IP literal, or `localhost` is the host;
 otherwise it is the bucket.
 
 ```javascript

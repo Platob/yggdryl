@@ -1,8 +1,10 @@
 # yggdryl-storage in Rust
 
 `use yggdryl::IOBase;` brings every byte method into scope (the trait is
-object-safe: `&dyn IOBase`). Object stores need the `s3` feature, the AWS
-session the `aws` feature (implied by `s3`); everything else is default.
+object-safe: `&dyn IOBase`). Object stores need the `s3` feature, HTTP needs
+the `http` feature (`http2`/`http3` add the multiplexed versions; `aws` and
+`s3` already imply `http`), the AWS session needs `aws` (implied by `s3`);
+everything else is default.
 
 ## Open a handle for a path or URL
 
@@ -575,6 +577,48 @@ let h2 = Session::with_options(HttpOptions::default().with_http_version(Some(Htt
 assert_eq!(h2.get(&url)?.send()?.version(), HttpVersion::Http2);
 ```
 
+## Paginate a REST API
+
+`.pages()` walks a `Request` that has not been sent yet - `session.get(url)`
+alone, never `session.get(url)?.send()?`, which answers a `Response` with no
+`.pages()`. `Pagination::Auto` (the default) tries the `Link` header, then a
+few common next-page headers, then a next URL or cursor in the body; name one
+of the other six spellings explicitly with `Request::with_pagination` -
+`Pagination::from_str("link")`, `"header:<name>"`, `"url:<path>"`,
+`"cursor:<path>:<parameter>"`, `"offset:<parameter>:<size>"` or
+`"page:<parameter>:<start>"`. The full ladder and its stop conditions are at
+https://platob.github.io/yggdryl/holder/#pages.
+
+```rust
+use yggdryl::http::{Method, Response, Server, Session, Status};
+
+let server = Server::bind("127.0.0.1:0")?;
+for (path, page) in [
+    ("/trades-1.json", r#"{"data":[{"id":1},{"id":2}],"next":"/trades-2.json"}"#),
+    ("/trades-2.json", r#"{"data":[{"id":3}]}"#),
+] {
+    let answer = Response::new(Status::OK)
+        .with_header("content-type", "application/json")?
+        .with_body(page);
+    server.respond(Some(Method::Get), path, answer);
+}
+
+let session = Session::new();
+// `session.get(url)` alone is the unsent `Request`; the `Auto` ladder finds
+// `next` in the body with no `with_pagination` needed.
+let first = session.get(&server.url_of("/trades-1.json")?.to_string())?;
+
+let mut rows = 0;
+for page in first.pages() {
+    rows += page?.scalar()?.get_key_str("data").map_or(0, |data| data.len());
+}
+assert_eq!(rows, 3);
+
+// Or lay every page out as one Arrow batch each, under the record the first page infers.
+let batches = first.pages().into_arrow_reader(None, 0)?.collect::<Result<Vec<_>, _>>()?;
+assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2, 1]);
+```
+
 ## Gotchas in Rust
 
 - `IOBase` must be in scope (`use yggdryl::IOBase;`) for any byte method,
@@ -589,7 +633,10 @@ assert_eq!(h2.get(&url)?.send()?.version(), HttpVersion::Http2);
   `IOBase("x.log.gz")`; call `into_coded()` (or `into_declared_media()` for
   the record encoding too) to present what the name declares.
 - `compress_into` and `decompress_into` refuse a handle presenting a decoded
-  view (a `Coded` target) by name rather than double-coding.
+  view (a `Coded` target) by name rather than double-coding: both check
+  `IOBase::applied_codec()` - `Codec::Identity` for stored bytes, the
+  wrapped coding for a `Coded`/`Gzip`/`Zlib`/`Zstd` view - before touching
+  anything.
 - `Holder::from_url` with an `s3:`/`gs:`/`az:` scheme needs the `s3` feature;
   without it the scheme is refused.
 - `Counted` tallies what a backend implements, not the derived defaults

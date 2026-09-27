@@ -42,3 +42,23 @@ test("a plan's offset is the row offset, and the offset is the plan's", () => {
   fresh.plan = options.plan.toString()
   assert.ok(fresh.equals(options))
 })
+
+test('null is a value, and clears every section it names', () => {
+  const options = RecordOptions.from('trades.parquet')
+    .withSelect(['id'])
+    .withFilter('id > 1')
+    .withMergeBy(['id'])
+  assert.equal(options.select.toString(), 'id')
+  assert.equal(options.mergeBy.toString(), 'id')
+
+  options.select = null
+  options.filter = null
+  options.mergeBy = null
+  assert.ok(options.equals(RecordOptions.from('trades.parquet')))
+
+  // The plan with no section: every section it spells is cleared.
+  const planned = RecordOptions.from('trades.parquet').withPlan("select id where id > 1")
+  planned.plan = null
+  assert.equal(planned.select.toString(), '*')
+  assert.ok(planned.equals(RecordOptions.from('trades.parquet')))
+})

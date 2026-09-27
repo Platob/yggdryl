@@ -227,6 +227,66 @@ function installRecords({
   // exact types so one native BatchReader remains a valid stream. The native
   // pull bridge asks for a chunk only as the core drains it, preserving one
   // logical write and one publication without holding the incoming iterable.
+  // A column whose rows mix `number` and `bigint` is one integer column, as
+  // Python's `int` is one type: Arrow JS would refuse it with the engine's own
+  // conversion error, naming neither the column nor the value. An integral
+  // number is read as the `bigint` beside it; anything else is refused by
+  // column and value.
+  function unifiedIntegers(records) {
+    const kinds = new Map()
+    const mixed = new Set()
+    for (const record of records) {
+      for (const name of Object.keys(record)) {
+        const kind = typeof record[name]
+        if (kind !== 'number' && kind !== 'bigint') continue
+        const before = kinds.get(name)
+        if (before === undefined) kinds.set(name, kind)
+        else if (before !== kind) mixed.add(name)
+      }
+    }
+    if (mixed.size === 0) return records
+    return records.map((record) => {
+      let copy
+      for (const name of mixed) {
+        if (typeof record[name] !== 'number') continue
+        copy ??= { ...record }
+        copy[name] = integralBigInt(name, record[name])
+      }
+      return copy ?? record
+    })
+  }
+
+  function integralBigInt(name, value) {
+    if (!Number.isInteger(value)) {
+      throw new TypeError(
+        `expected an integer beside the bigint values of column ${JSON.stringify(name)}, got ${value}`,
+      )
+    }
+    return BigInt(value)
+  }
+
+  // A later chunk builds its vectors under the types the first one fixed, so
+  // a `number` meets a 64-bit integer column and a `bigint` a `number` one:
+  // each is read as the other where it is exactly that value.
+  function conformedIntegers(runtime, field, values) {
+    const wide = runtime.DataType.isInt(field.type) && field.type.bitWidth === 64
+    const numeric = runtime.DataType.isFloat(field.type) || (runtime.DataType.isInt(field.type) && !wide)
+    if (!wide && !numeric) return values
+    return values.map((value) => {
+      if (wide && typeof value === 'number') return integralBigInt(field.name, value)
+      if (numeric && typeof value === 'bigint') {
+        const number = Number(value)
+        if (!Number.isSafeInteger(number)) {
+          throw new TypeError(
+            `expected a number column ${JSON.stringify(field.name)} to hold a safe integer, got ${value}n`,
+          )
+        }
+        return number
+      }
+      return value
+    })
+  }
+
   function recordChunker(settings, defaultBatchRowSize) {
     const rowSize = settings.batchRowSize ?? defaultBatchRowSize
     const cadence = settings.commitRowSize
@@ -265,7 +325,7 @@ function installRecords({
       const runtime = arrow()
       let table
       if (arrowSchema === undefined) {
-        table = runtime.tableFromJSON(records)
+        table = runtime.tableFromJSON(unifiedIntegers(records))
         const columns = Object.create(null)
         let replaced = false
         for (const field of table.schema.fields) {
@@ -287,7 +347,11 @@ function installRecords({
         const columns = Object.create(null)
         for (const field of arrowSchema.fields) {
           columns[field.name] = runtime.vectorFromArray(
-            records.map((record) => record[field.name]),
+            conformedIntegers(
+              runtime,
+              field,
+              records.map((record) => record[field.name]),
+            ),
             field.type,
           )
         }

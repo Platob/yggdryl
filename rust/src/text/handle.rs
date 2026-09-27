@@ -190,8 +190,9 @@ impl<H: IOBase> IOMedia for Text<H> {
 
 impl<H: IOBase> IOBase for Text<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+        read_digest, read_range_digest, write_all_bytes, append_bytes,
         pwrite, size, capacity, reserve,
-        truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent,
+        truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close, parent,
         child_by_path, ls, kind, clear, remove, is_atomic, is_io);
 
     fn is_tabular(&self) -> bool {

@@ -605,6 +605,49 @@ mod positional {
     }
 
     #[test]
+    fn a_coding_transfer_refuses_a_decoded_view_before_touching_it() {
+        use yggdryl::coding::Coded;
+        use yggdryl::holder::Holder;
+
+        let plain = Buffer::from_bytes(b"symbol,price\n".to_vec());
+        let mut stored = Buffer::new();
+        plain.compress_into(&mut stored, Codec::Gzip).unwrap();
+        let gzipped = stored.as_slice().to_vec();
+
+        // A coded target would code the zstd bytes a second time.
+        let mut view = Holder::from(Coded::wrap(Buffer::new(), Codec::Gzip));
+        assert_eq!(view.applied_codec(), Codec::Gzip);
+        let refused = plain
+            .compress_into(&mut view, Codec::Zstd)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("a target presenting its stored bytes"),
+            "{refused}"
+        );
+        assert!(refused.contains("gzip view"), "{refused}");
+        assert_eq!(view.size(), 0);
+
+        // A coded source has already decoded what the transfer would decode.
+        let source = Coded::wrap(Buffer::from_bytes(gzipped), Codec::Gzip);
+        let mut target = Buffer::from_bytes(b"kept".to_vec());
+        let refused = source
+            .decompress_into_with(&mut target, Codec::Gzip)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("a source presenting its stored bytes"),
+            "{refused}"
+        );
+        assert_eq!(target.as_slice(), b"kept");
+
+        // Through the view, `copy_into` is the call that stores the coded form.
+        let mut view = Coded::wrap(Buffer::new(), Codec::Gzip);
+        plain.copy_into(&mut view).unwrap();
+        assert_eq!(view.read_all_bytes().unwrap(), b"symbol,price\n");
+    }
+
+    #[test]
     fn streaming_adapters_advance_their_own_offset() {
         let mut buffer = Buffer::new();
         {

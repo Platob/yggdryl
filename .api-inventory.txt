@@ -2426,6 +2426,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
+  fn applied_codec(&self) -> Codec  (the coding a decoded view applies; identity for stored bytes, what `compress_into`/`decompress_into` refuse otherwise)
   fn uri(&self) -> Option<&Uri>
   fn url(&self) -> Option<&Url>
   fn mtime(&self) -> Option<i64>

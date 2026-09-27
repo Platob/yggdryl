@@ -35,12 +35,14 @@ Install and conventions are in `yggdryl`.
 | credentials | `user()`, `password()`, `hostname()` | `user`, `password`, `hostname`, `port`, `host_port` | `user`, `password`, `hostname` |
 | object-store location | `bucket()`, `key()`, `region()`, `account()`, `store_endpoint()`, `is_virtual_hosted()` | same names as properties, `is_virtual_hosted()` | `bucket`, `key`, `region`, `account`, `storeEndpoint`, `isVirtualHosted()` |
 | filename | `file_name()`, `stem()`, `extension()`, `extensions()` | `file_name`, `stem`, `extension`, `extensions`; `Url`: `name`, `suffix`, `suffixes` | `fileName`, `stem`, `extension`, `extensions`; `Url`: `name`, `suffix`, `suffixes` |
+| pathlib path predicates/conversions | n/a | `Url`: `is_absolute()`, `as_posix()`, `as_uri()` | `Url`: `isAbsolute()`, `asPosix()`, `asUri()` |
 | rename in place | `set_file_name`, `set_stem`, `set_extension`, `set_extensions`, `remove_extension`, `clear_extensions` | same | `setFileName`, `setStem`, `setExtension`, `setExtensions`, `removeExtension`, `clearExtensions` |
 | renamed copy | n/a | `Url.with_name`, `with_stem`, `with_suffix` | `Url.withName`, `withStem`, `withSuffix` |
 | media type from suffixes | `mime_type()`, `media_type()`, `set_mime_type(m)?`, `set_media_type(m)?` | `mime_type`, `media_type`, `set_mime_type`, `set_media_type` | `mimeType`, `mediaType`, `setMimeType`, `setMediaType` |
 | segments | `path_segments()`, `path().segment_len()`, `for s in &uri` | `path_segments`, `len(uri)`, `uri[i]`, `in` | `pathSegments`, `length`, `at(i)`, `[...uri]` |
 | join, climb | `joinpath("../d")?`, `parts()`, `parent()`, `parents()` | `joinpath(*others)`, `/`, `parts`, `parent`, `parents` | `Url.joinpath(...others)`, `Uri.joinPath(...others)`, `Url.parts`, `parent`, `parents` |
 | join an OS path (encodes names) | `Url::join_path(path)?` | `joinpath(os.PathLike)` | n/a |
+| resolve a reference (RFC 3986 §5.2: a `Location`/`Link` value, a paginated `next` URL) | `Url::join_reference(reference)?` | n/a (Rust-only) | n/a (Rust-only) |
 | relative to a root | `segments_under(&root)` | `relative_to(root)`, `is_relative_to(root)` | `relativeTo(root)`, `isRelativeTo(root)` |
 | query pairs | `parameters(decode)?` -> `into_owned()` -> `set_parameters(&p)?` | `parameters(decode=False)` (live, dict-like) | n/a: read `query` |
 | replace the query | `set_query(Some("a=1"))?` | `set_query("a=1")` | n/a |
@@ -88,10 +90,10 @@ Install and conventions are in `yggdryl`.
    refused name (`bad/name`, a MIME type with no preferred extension) changes
    nothing.
 8. **Store authorities follow one rule.** On `s3:`/`gs:`/`az:` families, a
-   first component ending `.com`/`.io`, carrying a port, an IP literal, or
-   `localhost` is the host and the bucket is the next part; otherwise it is the
-   bucket. `key()` is the path below the bucket as spelled, trailing slash and
-   escapes kept. All of it reads the authority - no network request.
+   first component ending `.com`/`.io`/`.net`, carrying a port, an IP literal,
+   or `localhost` is the host and the bucket is the next part; otherwise it is
+   the bucket. `key()` is the path below the bucket as spelled, trailing slash
+   and escapes kept. All of it reads the authority - no network request.
 9. **User info splits at the first colon.** `user:pass:word@host` has password
    `pass:word`. Never log a URL that carries one.
 10. **Globs live in the path, spelled with `*`.** `?` opens a query and `[` is

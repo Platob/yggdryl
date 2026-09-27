@@ -65,11 +65,13 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Arrow type / field <-> `DataType` / `Field` | `DataType::from_arrow_datatype(&t)?`, `dtype.into_arrow_datatype()?`, `Field::from_arrow_field(&f)?`, `field.into_arrow_field()?` | `DataType.from_arrow(t)`, `dtype.into_arrow()`, `Field.from_arrow(f)`, `field.into_arrow()` | `DataType.fromArrow(t)`, `Field.fromArrow(f)` (crossed as IPC, nullability included) |
 | Build / merge batch streams | `yggdryl::arrow::batch_reader(schema, batches)`, `yggdryl::arrow::combined(left, right)?`, `combined_as(left, right, &root, safe)?` | pyarrow readers directly; `yggdryl.combined(left, right, schema=None, *, safe=True)` | `BatchReader.from(tableOrBatchesOrIpc)`, `BatchReader.fromIpc(bytes)`, `left.combined(right, schema?)`, `intoTable()`, `intoIpc()` |
 
-`field` / `root` accept a `Field`, a field expression (`"price: int64 not
-null"`), and in Python a `pyarrow.Field`; a `DataType` passed as a cast target
-is its **required** field named `value`. A batch or stream root is a
-non-null struct `Field`; with none, the input's own schema is read as the
-record `row`.
+In Python and JavaScript, `field` / `root` accept a `Field`, a field
+expression (`"price: int64 not null"`), and in Python a `pyarrow.Field`; in
+Rust, build the `Field` explicitly (`Field::from_str(...)` / `.parse()`) and
+pass `Some(&field)` - there is no `&str` coercion. A `DataType` passed as a
+cast target is its **required** field named `value`. A batch or stream root
+is a non-null struct `Field`; with none, the input's own schema is read as
+the record `row`.
 
 ## Rules for fast, correct use
 
@@ -132,7 +134,9 @@ record `row`.
     column is read row by row through `Field::scalar` (no cast options, no
     `safe`), so cast `other` onto the field first when its layout differs and
     you want the cast rules.
-13. **`into_serie` concatenates** (new buffers); `into_arrow_batch`,
+13. **`into_serie` joins the chunks**: no chunk is the empty column (no
+    buffers), one chunk is itself (shared, zero copy), and only two or more
+    chunks are concatenated into new buffers. `into_arrow_batch`,
     `into_arrow_reader` and `SerieReader.from_serie` refuse a record column
     holding a null row, because a batch states no row validity.
 14. **Schema-changing loops compile one plan per distinct source schema.** A
@@ -161,7 +165,8 @@ record `row`.
   surprise at `$.value holds 1 null values`. **Right:** a `DataType` target is
   the required `value` field; pass a nullable `Field` to keep nulls.
 - **Wrong:** `Serie.from_(pa.chunked_array(...))` when the chunks should stay
-  apart. **Right:** `ChunkedSerie.from_(...)` - `Serie.from_` joins (copies).
+  apart. **Right:** `ChunkedSerie.from_(...)` - `Serie.from_` joins the chunks
+  (a copy once there are 2+; a single chunk is shared, not copied).
 - **Wrong (JS):** `Serie.fromArrowReader(arrowTable)`. **Right:**
   `Serie.fromArrowBatch(table)` or `Serie.fromArrowReader(BatchReader.from(table))`
   - `fromArrowReader` takes only a native `BatchReader`, and consumes it.

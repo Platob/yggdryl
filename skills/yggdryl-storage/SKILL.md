@@ -56,6 +56,7 @@ Install and cross-language conventions are in `yggdryl`.
 | HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
 | many HTTP requests | `session.send_all(requests, Some(n))` (lazy, ordered) | `session.send_all(items, concurrency=n)` | `session.sendAll(items, n)` |
 | HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
+| paginate a REST API | `request.with_pagination(Pagination::from_str("url:next")?).pages()`, `session.pages(request)` | `session.pages(url, pagination="url:next")`, `Request(method, url, session=session).pages(pagination=...)` | `session.pages(url, { pagination: 'url:next' })`, `new Request(m, url).withSession(s).withPagination('url:next').pages()` |
 | an origin for tests, in process | `Server::bind("127.0.0.1:0")?` + `respond`, `route`, `mount`, `inject(Fault)` | `with http.Server.bind() as server:` | `http.Server.bind()` ... `server.shutdown()` |
 | foreign Arrow filesystem | `FsFile::from_path(Arc<dyn FileSystem>, path, uri)?` | `IOBase.from_fs(pyarrow_fs, path, uri=None)`, `IOBase.from_uri(uri, options=)` | `IOBase.fromFs(handler, path, uri?)` |
 | ZIP archive | `zip::mount(holder)`, `zip::from_url(&url)?`, `ZipArchive::new(h).mount()` | Rust only | Rust only |
@@ -120,7 +121,10 @@ Install and cross-language conventions are in `yggdryl`.
     intermediate to already be a container.
 13. **A local file is memory-mapped.** Another process truncating it raises
     SIGBUS; `copy_into` a `Buffer` when the file may change underneath.
-    `flush`/`close` publish the logical length.
+    `flush`/`close` publish the logical length; `append_bytes` and
+    `write_all_bytes` already end with a flush and publish on return, on
+    every backend (a remote object written, the mapped file's growth slack
+    trimmed) - only bare `pwrite` stages without publishing.
 14. **Object stores state their request count.** Ranged read: one `GET`;
     whole read/drain/digest: one `GET`; whole write: one `PUT`; listing: one
     request per 1000 entries; remove: one `DELETE`, no probe. `with_known_size`
@@ -143,6 +147,22 @@ Install and cross-language conventions are in `yggdryl`.
     `http://` origin speaks `h2c` only when asked, and a proxied request
     HTTP/1.1. Proxies, CA bundles and `.netrc` come from the environment as
     curl and `requests` read them.
+17. **Pagination is one ladder, seven spellings.** `Pagination::Auto` (the
+    default) tries the `Link` header, then a few common next-page headers,
+    then a next URL or cursor in the body, in a fixed order; name one
+    explicitly with `link`, `header:<name>`, `url:<path>`,
+    `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` or
+    `page:<parameter>:<start>`. `.pages()` walks a `Request` that has not
+    been sent - `session.pages(request)` / `request.pages()` in Rust,
+    `session.pages(url, pagination=...)` / `request.pages(pagination=...)`
+    in Python, `session.pages(url, { pagination })` /
+    `request.withPagination(...).pages()` in JavaScript - never an
+    already-sent `Response`: Python's and JavaScript's `session.get(url)`
+    sends immediately and answers one with no `.pages()`; Rust's
+    `session.get(url)` alone is the unsent `Request` itself, only
+    `.send()`'s answer has none. Every page lays out as one Arrow batch
+    through `Pages::into_arrow_reader`, `.intoArrowReader`, or Python's
+    `.read_arrow()`.
 
 ## Pitfalls
 
@@ -158,12 +178,12 @@ Install and cross-language conventions are in `yggdryl`.
 | `compress_into(memory_target)` with no codec | a nameless target declares nothing: pass `codec="zstd"` |
 | `read_text()` on windows-1252 bytes | it is strict UTF-8: `charset.decode("windows-1252", h.read_bytes())`, or declare `text/plain;charset=windows-1252` for record reads |
 | `charset.decode("latin1", ...)` for Windows `0x80` = `€` | `windows-1252` (`cp1252`); ISO 8859-1 maps `0x80` to `U+0080` |
-| `folder.remove(); assert not folder.exists()` | a folder handle keeps answering what it was asked for; check the parent's listing |
+| `folder.remove(); assert not folder.is_dir()` | `is_dir()`/`isDir()` keeps answering the cached kind (`exists()` is accurate); check the parent's listing |
 | JS `root.joinpath('a', 'b.bin')` when `a` does not exist | `root.joinpath('a/b.bin')` |
 | treating `read_range_bytes(past_end, n)` as an error | it answers what exists (possibly empty); check the length |
 | Python `IOBase.from_uri("s3://...")` expecting the native S3 client | `from_uri` binds `pyarrow.fs.S3FileSystem`; `IOBase("s3://...")`/`S3File` is the native store |
 | a `str` of document content passed to `IOBase(...)` | a `str` is a path; content is `IOBase.from_bytes(b)` or `IOBase(io.BytesIO(b))` |
-| `s3://my.bucket.com/key` | a first part ending `.com`/`.io` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
+| `s3://my.bucket.com/key` | a first part ending `.com`/`.io`/`.net` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |
 | a thread pool calling `session.get(url)` per URL | `session.send_all(urls, concurrency)`: one pool, ordered, lazy, the interpreter released |
 | expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it; retry it yourself when it is safe |
@@ -185,6 +205,7 @@ Install and cross-language conventions are in `yggdryl`.
 - Media type and codings: https://platob.github.io/yggdryl/holder/#media-type-and-codings
 - Object stores: https://platob.github.io/yggdryl/holder/#object-stores
 - HTTP, HTTP/2 and HTTP/3: https://platob.github.io/yggdryl/holder/#http
+- Pagination and `Pages`: https://platob.github.io/yggdryl/holder/#pages
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
 - Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/#compression
 - Charsets: https://platob.github.io/yggdryl/media/#charsets

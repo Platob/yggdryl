@@ -6026,7 +6026,7 @@ export declare class RecordOptions {
    * Set the keys a write matches stored rows on: a `Selector`, the text
    * of one, or the key column names.
    */
-  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string>)
+  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string> | undefined | null)
   /**
    * The `select` section a read or write is shaped by; `select *` keeps
    * every column.
@@ -6036,7 +6036,7 @@ export declare class RecordOptions {
    * Set the `select` section: a `Selector`, the text of one, a `Term`, or
    * the column names.
    */
-  set select(select: Selector | Term | string | Array<Term | string>)
+  set select(select: Selector | Term | string | Array<Term | string> | undefined | null)
   /**
    * The `where` section a read is pruned and filtered by; always true
    * keeps every row.
@@ -6046,7 +6046,7 @@ export declare class RecordOptions {
    * Set the `where` section: a `Filter`, a `Term`, or the text of a
    * predicate.
    */
-  set filter(filter: Filter | Term | string)
+  set filter(filter: Filter | Term | string | undefined | null)
   /**
    * The whole plan these options run: `create` from the declared field,
    * `upsert by` from the merge keys, `select`, `where`, and `limit` from
@@ -6057,7 +6057,7 @@ export declare class RecordOptions {
    * Split a `Plan`, its text, a clause, or a `Field` back into the
    * sections, replacing every one of them.
    */
-  set plan(plan: Plan | Selector | Filter | Field | string)
+  set plan(plan: Plan | Selector | Filter | Field | string | undefined | null)
   /**
    * The partition equalities the filter pins, `[column, value]` pairs
    * spelled as partition paths spell them; what prunes a listing before
@@ -7909,28 +7909,28 @@ export declare class TextOptions {
    * Set the keys a write matches stored rows on: a `Selector`, the text
    * of one, or the key column names.
    */
-  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string>)
+  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string> | undefined | null)
   /** The `select` section a read or write is shaped by. */
   get select(): Selector
   /**
    * Set the `select` section: a `Selector`, the text of one, a `Term`, or
    * the column names.
    */
-  set select(select: Selector | Term | string | Array<Term | string>)
+  set select(select: Selector | Term | string | Array<Term | string> | undefined | null)
   /** The `where` section a read is pruned and filtered by. */
   get filter(): Filter
   /**
    * Set the `where` section: a `Filter`, a `Term`, or the text of a
    * predicate.
    */
-  set filter(filter: Filter | Term | string)
+  set filter(filter: Filter | Term | string | undefined | null)
   /** The whole plan these options run, section by section. */
   get plan(): Plan
   /**
    * Split a `Plan`, its text, a clause, or a `Field` back into the
    * sections, replacing every one of them.
    */
-  set plan(plan: Plan | Selector | Filter | Field | string)
+  set plan(plan: Plan | Selector | Filter | Field | string | undefined | null)
   /** The partition equalities the filter pins, `[column, value]` pairs. */
   partitionPairs(): Array<[string, string]>
   /** The first emitted row number, or `null` when the column is omitted. */

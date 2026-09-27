@@ -13,8 +13,9 @@ physical width. Outside data is resolved **once** at a boundary into one of
 the three - a type expression parsed, a host value read through
 `DataType.scalar` / `Field.scalar` - and everything past that boundary
 carries the proof instead of re-checking it. The Rust core owns every rule;
-Python and JavaScript are native views of the same values, so a spelling, a
-refusal and an error message are the same in all three.
+Python and JavaScript are native views of the same values, so a spelling and
+a refusal are the same in all three, and usually the error message too - the
+one documented exception is the record writers' message below.
 
 A column of many values is a `Serie`, not a list of `Scalar`s: see
 `yggdryl-arrow`. Install and cross-language conventions: `yggdryl`.
@@ -52,7 +53,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
 | schema as a document | `into_json()?` / `Field::from_json`, YAML, TOML | `into_json()` / `from_json`, `into_dict`, YAML, TOML | `toJSON()` / `Field.fromJSON` (JSON only) |
 | one value as bytes | `into_value_bytes()`, `Scalar::decode_value_bytes(&b)?` | `into_value_bytes()`, `Scalar.from_value_bytes(b)`, `pickle` | `intoValueBytes()`, `Scalar.fromValueBytes(b)` |
-| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `DataType.fromArrow(t)` / `Field.fromArrow(f)` read only Arrow JS's text, so a field loses `nullable: false` and its extension |
+| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` crosses an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which never carries either in any language - import the **field** instead to keep them |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
 | engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
 
@@ -78,11 +79,15 @@ string and byte leaves, the legacy `list` words - is in
    JavaScript an integral float.
 4. **A non-null Struct `Field` is the schema.** There is no schema class and
    no second row type. A row is the ordered sequence in declaration order;
-   named input (a record, a dataclass, a JS object) canonicalizes to it, and a
-   child it does not name takes that child's default (at `Field.scalar` /
-   `DataType.scalar` only; record writers - `overwrite_records`,
-   `overwriteRecords` - refuse a row missing a required child). `validate_struct_root`
-   refuses a nullable root.
+   named input (a record, a dataclass, a JS object) canonicalizes to it. A
+   child it does not name takes that child's default only at `Field.scalar` /
+   `DataType.scalar`; the record writers (`overwrite_records`,
+   `overwriteRecords`) write it absent instead - null where the column is
+   nullable, refused by path (`non-nullable field received null`) where it is
+   required, never the default. Rust and Python raise that exact message;
+   JavaScript's `overwriteRecords` still raises Arrow's own cast-layer message
+   (`required Arrow field $.name is missing from the source`) for the same
+   refusal. `validate_struct_root` refuses a nullable root.
 5. **Metadata is `<SCHEME>:<property>` text on the one field map.** Typed
    accessors (`parquet_field_id`, `comment`, `location`, `display`) and the
    protocol views (`iceberg`, `digest`, `partition`, ...) read and write that

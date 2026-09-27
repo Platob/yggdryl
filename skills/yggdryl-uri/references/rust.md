@@ -189,6 +189,37 @@ assert!(lake.joinpath("100%.csv").is_err());
 assert_eq!(lake.join_path("100%.csv")?.to_string(), "file:///lake/100%25.csv");
 ```
 
+## Resolve a reference against a base URL
+
+`join_reference` reads a URI reference the way RFC 3986 section 5.2 does -
+what a `Location` header, a `Link` target, or a `next` URL in a paginated
+response body hands back. An absolute reference is itself; `//host/path`
+keeps the scheme; `/path` replaces the path; a relative path merges onto this
+path with `.`/`..` removed; `?q` keeps the path; `#f` keeps the path and the
+query; an empty reference is this URL without its fragment. It is Rust-only:
+there is no Python or JavaScript binding.
+
+```rust
+use yggdryl::Url;
+
+let page = Url::from_str("https://api.example.com/v1/items?page=1")?;
+assert_eq!(
+    page.join_reference("../users?after=x")?.to_string(),
+    "https://api.example.com/users?after=x"
+);
+assert_eq!(
+    page.join_reference("//cdn.example.com/a.json")?.to_string(),
+    "https://cdn.example.com/a.json"
+);
+assert_eq!(
+    page.join_reference("#top")?.to_string(),
+    "https://api.example.com/v1/items?page=1#top"
+);
+// An absolute reference with no location behind it names nothing this type
+// can hold.
+assert!(page.join_reference("mailto:a@example.com").is_err());
+```
+
 ## Read and edit query parameters
 
 `parameters(decode)` borrows the query as ordered `key=value` pairs (a key may
@@ -220,8 +251,8 @@ assert_eq!(url.query(false)?, None);
 ## Read credentials and object-store locations
 
 Everything is read off the authority, with no request. The bucket/host rule:
-a first part ending `.com`/`.io`, with a port, an IP literal, or `localhost`
-is the host.
+a first part ending `.com`/`.io`/`.net`, with a port, an IP literal, or
+`localhost` is the host.
 
 ```rust
 use yggdryl::Uri;

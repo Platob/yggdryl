@@ -596,6 +596,12 @@ impl<H: IOBase> IOBase for Counted<H> {
         self.record(Call::MediaType).media_type()
     }
 
+    // What the wrapped handle is, not a call it answers: nothing reaches the
+    // store, so nothing is tallied.
+    fn applied_codec(&self) -> crate::Codec {
+        self.handle.applied_codec()
+    }
+
     fn set_media_type(&mut self, media_type: MediaType) {
         self.record_mut(Call::SetMediaType)
             .set_media_type(media_type);

@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 86 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the fourteen [codes](codes/index.md) |
+| Owns | 86 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the thirteen [codes](codes/index.md) and the [`state`](enum/state.md) enum |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
 | Identity | `id()`, `kind()`: 88 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |

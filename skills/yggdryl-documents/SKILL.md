@@ -88,11 +88,12 @@ field's columns, and refuses what does not fit with a located error.
    the codec and any outer gzip/zlib/zstd from the media type (`.json.gz`),
    on any backend - no manual decompress-then-parse.
 10. **Errors are located.** A syntax error or a breached limit names the
-    format and the byte (`invalid json data at byte 8: trailing comma`); a
-    field refusal names the path from the root field (`invalid record value
-    at $.cfg.port: expected int16, got u64`); a Python dataclass mismatch is a
-    `TypeError` naming `Class.field`. Fix the input it names; `errors="default"`
-    (Python `cls=` only) falls back to a field's declared default instead.
+    format and the byte (`invalid json data at byte 8: trailing comma in
+    JSON object`); a field refusal names the path from the root field
+    (`invalid record value at $.cfg.port: expected int16, got u64`); a Python
+    dataclass mismatch is a `TypeError` naming `Class.field`. Fix the input
+    it names; `errors="default"` (Python `cls=` only) falls back to a
+    field's declared default instead.
 11. **Build classes only when you need them.** Reconstructing a dataclass
     costs far more than the parse (CPython JSON on the docs' fixture: 19.5 us
     to decode bytes, 340 us to decode into a field class). Stay with natural

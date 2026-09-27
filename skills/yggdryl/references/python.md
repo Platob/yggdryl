@@ -10,9 +10,16 @@ and stubs, so `mypy --strict` checks calls.
 
 ## Arguments: omitted, `None`, and properties by name
 
-An optional argument left out keeps its default; `None` is a value and
-clears. Every record read and write takes `options` and, beside it, any
+An optional `RecordOptions`/`TextOptions` property left out keeps its
+default; passing it as `None` is a value and clears it back to that default.
+Every record read and write takes `options` and, beside it, any
 `RecordOptions` property by name, applied to a copy.
+
+This is not the rule for `Field`/`DataType` metadata. `Field.set_alias`,
+`set_comment` and `set_display` take a required `str` and raise `TypeError`
+on `None`; the `alias`/`comment`/`display` properties are read-only outright
+(assignment raises `AttributeError`). Clear one with `remove_alias()`,
+`remove_comment()` or `remove_display()`.
 
 ```python
 import pathlib

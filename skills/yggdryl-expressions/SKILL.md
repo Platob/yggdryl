@@ -6,7 +6,10 @@ description: Parse, bind and evaluate yggdryl expressions - Term, Filter, Select
 # Yggdryl expressions
 
 An expression is text - or a tree built method by method - over one grammar,
-and it means nothing until it is **bound** against a non-null Struct `Field`.
+and it means nothing until it is **bound** against a Struct `Field`. Binding
+only requires the schema's datatype to be a Struct; the root field's own
+nullability is not checked (a non-null Struct root is a separate,
+storage-side convention for record write roots, not for binding).
 Parse once; bind once per stream, which resolves names to indices, converts
 each literal into the type of the column it meets, folds constants and orders
 `and` cheapest-first; then evaluate as many rows, batches or statistics as you
@@ -69,8 +72,11 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
    loop and keep the `Bound` / `BoundSelector`.
 2. **Take the reader door.** `apply_arrow_reader` binds once and wraps the
    stream lazily, with the output schema known before the first batch. The
-   unbound clause's `apply_arrow_batch` and `apply_scalar` bind on *every*
-   call - right for one batch, a defect in a loop.
+   unbound clause's `apply_arrow_batch` binds on *every* call - right for one
+   batch, a defect in a loop; Rust also exposes an unbound `apply_scalar` per
+   row, at the same per-call bind cost. Python and JavaScript have no unbound
+   per-row door: bind once and read `Bound.matches` / `eval` (`Filter`) or
+   `BoundSelector.apply_row` / `applyRow` (`Selector`) per row instead.
 3. **Push `where` and `select` into the read** instead of filtering after it.
    Record options carry them as sections: hive leaves prune by
    `partition_pairs`, Parquet row groups and Iceberg manifests by statistics,
@@ -136,7 +142,6 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
 | --- | --- |
 | `Term.column("ccy").eq("EUR")` - a string is term *text*, so this compares two columns | Python `eq(Term.literal("EUR"))` or `eq("'EUR'")`; JS `eq(Term.literal('EUR'))` or `eq("'EUR'")` |
 | Python `Term.column("p") > 100` or `== ...` | `.gt(100)`, `.eq(...)`: comparison operators are Python ordering and equality, only `&`, `\|`, `~` and arithmetic build terms |
-| JS `Term.column('p').gt(100)` (throws) / `Term.literal('x')` (throws) | `gt('100')`; `Term.literal(Scalar.from('x'))` |
 | `Expression("a > 1")` (refused: an expression names its clause) | `Filter("a > 1")`, `Term("a > 1")`, or `Expression("where a > 1")` |
 | `for b in reader: Filter(text).apply_arrow_batch(b)` | `Filter(text).apply_arrow_reader(reader)`, or `bound = f.bind(root)` once and `bound.filter_arrow_batch(b)` |
 | `read_arrow_reader()` then filtering in pyarrow / Arrow JS | `read_arrow_reader(filter="...", select="...")` / `readArrowReader({ filter, select })` |

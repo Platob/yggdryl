@@ -261,55 +261,6 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
     })
 }
 
-/// The content coding the *stored* bytes carry.
-///
-/// A composed handle presents the decoded value, so its own media type
-/// declares no coding - the coding is the layer doing the decoding. Reading
-/// the composition first keeps one answer to "what are these bytes wrapped
-/// in", whether or not the handle has been composed.
-fn applied_codec(holder: &Holder) -> Codec {
-    match holder {
-        Holder::Buffered(buffered) => applied_codec(buffered.handle()),
-        Holder::Coded(coded) => coded.codec(),
-        Holder::Text(text) => applied_codec(text.handle()),
-        Holder::Media(media) => applied_codec(media.handle()),
-        other => other.codec(),
-    }
-}
-
-/// Return whether a handle presents the decoded value rather than what is
-/// stored.
-fn presents_decoded(holder: &Holder) -> bool {
-    match holder {
-        Holder::Coded(_) => true,
-        Holder::Buffered(buffered) => presents_decoded(buffered.handle()),
-        Holder::Text(text) => presents_decoded(text.handle()),
-        Holder::Media(media) => presents_decoded(media.handle()),
-        _ => false,
-    }
-}
-
-/// Refuse a decoded view where the stored bytes are what is meant.
-///
-/// The two coding transfers move *stored* bytes and report their sizes, so a
-/// handle that already codes on the way through would apply the coding twice
-/// and count the wrong value. Writing plain bytes through such a handle is
-/// what stores the coded form, so `copy_into` is the call that means this.
-fn require_stored(holder: &Holder, role: &str) -> PyResult<()> {
-    if !presents_decoded(holder) {
-        return Ok(());
-    }
-    let location = holder
-        .url()
-        .map_or_else(|| "an in-memory value".to_owned(), ToString::to_string);
-    Err(PyValueError::new_err(format!(
-        "expected {role} presenting its stored bytes, got a {} view of {location}; a coded handle \
-         codes what passes through it, so copy_into already stores the coded form - or address \
-         the stored bytes with the LocalPath, LocalFile, FsPath, or FsFile role",
-        applied_codec(holder).as_str(),
-    )))
-}
-
 /// Take one composed layer off a wrapper, spending the handle that held it.
 ///
 /// The inverse of the conversions that built the stack, and consuming for the
@@ -750,6 +701,18 @@ fn resolved_arrow_filesystem<'py>(
     }
 }
 
+/// The content coding the *stored* bytes carry.
+///
+/// A composed handle presents the decoded value, so its own media type
+/// declares no coding - the coding is the layer doing the decoding, which is
+/// what the core's `applied_codec` answers first.
+fn stored_codec(holder: &Holder) -> Codec {
+    match holder.applied_codec() {
+        Codec::Identity => holder.codec(),
+        codec => codec,
+    }
+}
+
 #[pymethods]
 impl PyIOBase {
     // A handle observes mutable external state and has no canonical value
@@ -1100,7 +1063,7 @@ impl PyIOBase {
     /// the coding is the layer, and that is what this reports.
     #[getter]
     fn codec(&self) -> PyResult<Option<&'static str>> {
-        Ok(match applied_codec(self.inner()?) {
+        Ok(match stored_codec(self.inner()?) {
             Codec::Identity => None,
             codec => Some(codec.as_str()),
         })
@@ -2222,10 +2185,9 @@ impl PyIOBase {
         codec: Option<&str>,
         level: Option<u8>,
     ) -> PyResult<u64> {
-        require_stored(target.inner()?, "a target")?;
         let codec = match codec {
             Some(name) => name.parse::<Codec>().map_err(value_error)?,
-            None => match target.inner()?.codec() {
+            None => match stored_codec(target.inner()?) {
                 Codec::Identity => {
                     return Err(PyValueError::new_err(format!(
                         "expected a target declaring a content coding, got {}; pass codec= to say \
@@ -2251,8 +2213,6 @@ impl PyIOBase {
     /// are. The target's media type loses the coding this removed.
     #[pyo3(signature = (target, codec = None))]
     fn decompress_into(&self, target: &mut Self, codec: Option<&str>) -> PyResult<u64> {
-        require_stored(self.inner()?, "a source")?;
-        require_stored(target.inner()?, "a target")?;
         match codec {
             Some(name) => {
                 let codec = name.parse::<Codec>().map_err(value_error)?;
@@ -2955,7 +2915,8 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let asked = options.is_some();
+        let asked =
+            options.is_some() || properties.is_some_and(|properties| !properties.is_empty());
         let options = self.resolve_options(options, properties)?;
         let polars = py.import("polars")?;
         // The fast path hands the file to polars, which knows nothing about
@@ -2986,7 +2947,8 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let asked = options.is_some();
+        let asked =
+            options.is_some() || properties.is_some_and(|properties| !properties.is_empty());
         let options = self.resolve_options(options, properties)?;
         let dataset = py.import("pyarrow.dataset")?;
         // Same rule as `scan_polars`: the dataset scanner is handed the file

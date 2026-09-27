@@ -1,6 +1,6 @@
 ---
 name: yggdryl
-description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure), record media (Arrow IPC, Parquet, Avro, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
+description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), record media (Arrow IPC, Parquet, Avro, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
 ---
 
 # Yggdryl
@@ -17,11 +17,15 @@ and Python, `camelCase` in JavaScript).
 | --- | --- | --- | --- |
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
 | minimum | Rust 1.85 (1.94 with `iceberg`) | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
-| optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `aws`, `s3` (implies `aws`) | everything built in | everything built in |
+| optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
 | extras | Arrow is `arrow-*` 59 | the `ygg` CLI ships in the wheel | `yggdryl/replay`, `yggdryl/web/*` |
 
-A Rust build that reads or writes Parquet or Iceberg, or touches an object
-store, must enable that feature; the bindings already carry all of them.
+A Rust build that reads or writes Parquet or Iceberg, touches an object
+store, or reaches a bare `http://`/`https://` resource, must enable that
+feature - object stores need `s3` (which implies `aws`, which implies
+`http`) and a plain HTTP(S) `Holder` needs `http` directly, or the build
+refuses it at runtime naming the missing feature; the bindings already
+carry all of them via `http3`.
 
 ## The model
 
@@ -72,11 +76,12 @@ answers the task.
 | handle | `Holder::from_url(&url, props)?`, `holder::Buffer::new()`, `local::LocalFile` | `IOBase(path_or_url)`, `IOBase.from_bytes()` | `new IOBase(pathOrUrl)`, `IOBase.fromBytes()` |
 | whole bytes | `read_all_bytes()`, `write_all_bytes(..)` | `read_bytes()`, `write_bytes(..)` | `readBytes()`, `writeBytes(..)` |
 | omitted optional | `Option::None` / builder not called | argument left out (`...` default) | `undefined` |
-| clear an optional | a `clear_*`/`remove_*` call | `None` | `null` |
+| clear a `RecordOptions`/`TextOptions` property (`select`, `filter`, `merge_by`/`mergeBy`, `plan`, `field`) | `set_select(Selector::all())`, `set_filter(Filter::always_true())`, `set_merge_by(Selector::all())`, `set_plan(Plan::new())` - none take an `Option`, so the identity value is passed directly; `field` alone does, as `set_declared(None)` | `None` | `null` |
+| clear `Field`/`DataType` metadata (`alias`, `comment`, `display`, ...) | a `clear_*`/`remove_*` call | `remove_comment()` - `set_comment(None)` raises `TypeError`, direct assignment raises `AttributeError` (read-only) | `removeComment()` - `setComment(null)` throws, direct assignment silently no-ops (getter-only) |
 | 64-bit integers | `i64`/`u64` | `int` | `Scalar.asJs()`: `number` when safe, else `bigint`; record/batch cells: always `bigint`; pass `bigint` in |
 | bytes | `&[u8]`, `Vec<u8>` | `bytes` | `Buffer` / `Uint8Array` |
 | Arrow | `arrow-array` 59 types, shared buffers | pyarrow over the C Data Interface, **zero copy** | apache-arrow over IPC, **copied** |
-| errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message; checked arithmetic raises `ArithmeticError` subclasses (`OverflowError`, `ZeroDivisionError`) | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with `ERR_YGGDRYL_*` codes |
+| errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message; checked arithmetic raises `ArithmeticError` subclasses (`OverflowError`, `ZeroDivisionError`) | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with an `ERR_YGGDRYL_*` code; a record write's mismatched column values (a non-integer `number` beside `bigint` in one column) also throw `TypeError`, naming the column and the value, with no code, in the write's first batch - a later batch (past 65,536 rows, or `batchRowSize`) wraps the same failure as an `Error` with `code: 'GenericFailure'` instead |
 
 Verb prefixes mean the same everywhere: `from_*` parses or constructs,
 `into_*` converts (may allocate), `as_*` borrows without allocating, `is_*` /
@@ -127,20 +132,34 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
 - Expecting `list<...>` back: the serie family displays as `serie`
   (`DataType("list<int64>")` reads and prints `serie(field("item",int64,...))`).
   The old `list` spellings are accepted on input only.
-- Enabling nothing in `Cargo.toml` and then calling Parquet, Iceberg or S3
-  APIs: they do not exist without their feature.
+- Enabling nothing in `Cargo.toml` and then calling Parquet, Iceberg, HTTP(S)
+  or object-store APIs: they do not exist without their feature (`parquet`,
+  `iceberg`, `http`/`http2`/`http3`, `aws`/`s3`).
 - Python: a `str` given to a structured-text loader is document content, not
-  a path - pass `pathlib.Path`. Passing `None` to an optional argument clears
-  it; leave the argument out to keep the default. A `dict` is a `map` value, so
+  a path - pass `pathlib.Path`. Passing `None` to an optional `RecordOptions`
+  property clears it back to its default; leave it out to keep the current
+  default - this is not true of `Field`/`DataType` metadata setters
+  (`set_alias`, `set_comment`, `set_display`), which reject `None` with
+  `TypeError` and clear only through `remove_alias()`/`remove_comment()`/
+  `remove_display()`. A `dict` is a `map` value, so
   `struct_field.scalar({...})` is refused: pass a list in field order, a
   `@scalar` instance, or `Scalar.from_struct({...})`. Record writers
   (`overwrite_records`) do take `dict` rows.
 - JavaScript: a 64-bit `Scalar`'s `asJs()` is a `number` while safe and a
   `bigint` beyond, but `int64` cells read from records or batches
   (`readRecords`, `readArrowReader`) are Arrow JS values and are always
-  `bigint`; pass `bigint` for values past 2^53, and keep one numeric kind
-  (`number` or `bigint`) per column in one record write. Arrow JS interop copies
-  through IPC - cross the boundary in whole batches, not per row.
+  `bigint`; pass `bigint` for values past 2^53. A record write's integer
+  column may mix `number` and `bigint` freely - an integral `number` is read
+  as the `bigint` beside it - but a non-integer `number` beside `bigint`
+  values in one column throws `TypeError` naming the column and the value,
+  as long as the mismatch falls in the write's first batch (65,536 rows by
+  default, fewer under `batchRowSize`); across a later batch, a `number` in
+  an already-`bigint` column converts to `bigint` and a `bigint` in an
+  already-`number` column converts to `number` while it is a safe integer,
+  else the same check fails, but wrapped as a plain `Error` (not `TypeError`)
+  reading `Arrow schema error: External error: TypeError: ...` with
+  `code: 'GenericFailure'`. Arrow JS interop copies through IPC - cross the
+  boundary in whole batches, not per row.
 
 ## Language references
 

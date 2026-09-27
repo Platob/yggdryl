@@ -167,10 +167,10 @@ medium does the work before a byte is decoded.
   small `N` leaves many snapshots; expire them (`expire_snapshots`) or commit
   once.
 - Building an Arrow JS `Int64` vector from `number`s: use `bigint` (`1n`).
-  Record writes under a declared field accept either `number` or `bigint`,
-  but not both in one call: Arrow JS infers the rows from the first row
-  before the declared field applies, so `[{ id: 1 }, { id: 2n }]` throws a
-  `TypeError` - keep one numeric kind per column.
+  Native row writes unify `number` and `bigint` rows of one column instead:
+  `[{ id: 1 }, { id: 2n }]` is one `int64` column, the integral `number` read
+  as `bigint`; only a fraction beside `bigint` rows is refused, naming the
+  column and the value.
 - Looking for a CSV reader: `text/csv` is not a record encoding; read lines
   with a `rowheader` regex, or convert upstream.
 

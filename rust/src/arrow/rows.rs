@@ -40,9 +40,16 @@ where
     R: TryInto<Scalar>,
     R::Error: Into<crate::Error>,
 {
+    let root = field.clone();
     build(
         field,
-        rows,
+        rows.into_iter().map(move |row| {
+            FallibleScalar(
+                row.try_into()
+                    .map_err(Into::into)
+                    .map(|value| absent_by_name(&root, value)),
+            )
+        }),
         batch_row_size,
         batch_byte_size,
         commit_row_size,
@@ -50,6 +57,34 @@ where
         false,
         None,
     )
+}
+
+/// A named row with every child it does not name stated absent.
+///
+/// A record write is a declaration, and a declared column a row leaves out
+/// is a missing column: null where the column is nullable, refused by path
+/// where it is not - never its canonical default, which is what the value
+/// door ([`Field::scalar`]) fills in. Every binding's record writer reads a
+/// row this way, and a name the root does not declare stays in the row for
+/// the validation to refuse.
+fn absent_by_name(root: &Field, value: Scalar) -> Scalar {
+    let Some(record) = value.as_struct() else {
+        return value;
+    };
+    if root
+        .fields()
+        .iter()
+        .all(|child| record.contains_key(child.name()))
+    {
+        return value;
+    }
+    let mut stated = record.clone();
+    for child in root.fields() {
+        stated
+            .entry(smol_str::SmolStr::new(child.name()))
+            .or_insert(Scalar::Null);
+    }
+    Scalar::Struct(crate::Struct::new(stated))
 }
 
 /// The one constructor every reader shares.

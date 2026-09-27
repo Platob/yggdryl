@@ -65,9 +65,14 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
    string leaf of the same characters hash equal; `null` vs `""`, `"1"` vs
    `b"1"`, and a `ccy` vs a `country` with the same text stay apart.
 4. **Hash a stored resource where it lives.** `read_digest` streams the handle
-   through `pstream_bytes` one bounded chunk at a time on every backend - the
-   memory high-water mark does not move and no byte crosses into the host.
-   Never `read_all_bytes` then hash.
+   through `pstream_bytes` one bounded chunk at a time, and no byte crosses
+   into the host - true of every backend's returned chunk. The local backend
+   is memory-mapped, though: it keeps one whole-file mapping open for the
+   handle's life, so a large local file's touched pages stay resident (the OS
+   page cache of that mapping) until the handle closes, even while each
+   `pread` only copies out one bounded window. `Buffer` and the network-backed
+   stores (HTTP, S3, ...) hold no such mapping and stay flat throughout. Never
+   `read_all_bytes` then hash.
 5. **Hash in the pass you already make.** Rust `xxhash::reader` / `writer`
    hash a copy in flight; `Hashed<H>` answers `read_digest` from its running
    state while writes are sequential from offset 0, and re-streams once after
@@ -118,7 +123,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | --- | --- |
 | `xxh3(json.dumps(row))` as a row key | `Scalar.from_(row).stable_hash()` / `Scalar.from(row).stableHash()` - one number in every language |
 | expecting `Scalar.from_("AAPL").stable_hash() == xxhash.xxh3(b"AAPL")` | they differ by design; compare `stable_hash` with `stable_hash`, or use `as_value_bytes` for the payload |
-| `xxh3(handle.read_all_bytes())` / `fs.readFileSync` then hash | `handle.read_digest()` / `readDigest()` - streamed, constant memory |
+| `xxh3(handle.read_all_bytes())` / `fs.readFileSync` then hash | `handle.read_digest()` / `readDigest()` - streamed in bounded chunks; flat resident memory on `Buffer`/HTTP/S3, but a large local file's mapped pages stay resident until `close()` |
 | a column mixing bare `xxh64` and `xxh3-64` integers | keep the `Digest` (it carries its algorithm) or one declared `DIGEST:algorithm` |
 | JS `xxhash.xxh3(buf) === 123` or `+ 1` | it is a `bigint`: compare with `123n`; only `xxh32` is a `number` |
 | marking the source columns as holders too | mark only the digest column; a holder never feeds itself and may not select a sibling holder in its own Struct, but a selected nested Struct holding exactly one holder feeds that holder's value in its place (several direct holders there are ambiguous - name one by path) |

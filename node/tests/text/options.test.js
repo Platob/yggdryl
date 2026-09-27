@@ -35,3 +35,14 @@ test('a text row offset is set, copied, and planned like any other', () => {
   assert.equal(planned.rowOffset, 1)
   assert.equal(planned.maxRowSize, 2)
 })
+
+test('null clears the sections a TextOptions carries', () => {
+  const { TextOptions } = require('yggdryl')
+  const options = new TextOptions().withSelect(['body']).withFilter("body = 'x'")
+  options.select = null
+  options.filter = null
+  options.mergeBy = null
+  options.plan = null
+  assert.equal(options.select.toString(), '*')
+  assert.ok(options.equals(new TextOptions()))
+})

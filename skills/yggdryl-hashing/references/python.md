@@ -83,8 +83,11 @@ assert state.as_int() == xxhash.xxh3(b"")
 ## Digest a stored resource without reading it into Python
 
 `IOBase.read_digest` and `read_range_digest` stream the resource natively, one
-bounded chunk at a time, on every backend; a missing resource digests as no
-bytes.
+bounded chunk at a time, on every backend, and never build the whole resource
+in Python. On the local backend the underlying handle is memory-mapped, so
+the process's resident memory grows with the bytes actually digested and is
+released only when the handle is closed - a network-backed store (HTTP, S3)
+stays flat throughout. A missing resource digests as no bytes.
 
 ```python
 import tempfile

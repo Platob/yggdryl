@@ -52,6 +52,23 @@ mod local {
         }
 
         #[test]
+        fn an_append_is_published_when_it_returns() {
+            let path = path("append");
+            let mut mapped = LocalFile::new(&path).unwrap();
+            assert_eq!(mapped.append_bytes(b"abc").unwrap(), 0);
+            assert_eq!(mapped.append_bytes(b"def").unwrap(), 3);
+
+            // With the handle still open and nothing flushed, the file holds
+            // exactly what was appended - never the mapping's growth slack.
+            assert_eq!(std::fs::metadata(&path).unwrap().len(), 6);
+            assert_eq!(
+                LocalFile::new(&path).unwrap().read_all_bytes().unwrap(),
+                b"abcdef"
+            );
+            mapped.remove(false).unwrap();
+        }
+
+        #[test]
         fn a_handle_for_a_missing_file_touches_nothing() {
             let path = path("lazy");
             assert!(!path.exists());

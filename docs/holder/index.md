@@ -837,6 +837,7 @@ Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`
 fn compress_into(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64>   // bindings: the target's declared coding
 fn decompress_into(&self, target: &mut dyn IOBase) -> Result<u64>                // the source's declared coding
 fn copy_into(&self, target: &mut dyn IOBase) -> Result<u64>                      // chunked; writes through the target's coding
+fn applied_codec(&self) -> Codec                                                 // what compress_into/decompress_into check to refuse a decoded view
 ```
 
 === "Rust"
@@ -1272,7 +1273,7 @@ cargo bench --bench coding -- io_pstream
 
 ## Values
 
-Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name.
+Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing.
 
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>

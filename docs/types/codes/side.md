@@ -261,7 +261,7 @@ assert_eq!(Side::read("BUY")?.merge_with(&Side::read("SELL")?).as_str(), "BUY");
 - A wire code never folds: `A` is `CROSSSHX` and `a` names no side, because they are different FIX codes and a folded lookup would answer the wrong one.
 - A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHORT`.
 - The width bounds the value read, never the spelling, so `SellShortExempt` reads to the eight-byte `SSHORTEX`; a stored value past eight bytes is refused naming the width.
-- No default value: a published vocabulary spells the members, so there is no neutral one, and an empty text cell entering the column is null ([Cast](../cast.md#empty-text)). `UNKNOWN` is a stated value, not an absence.
+- The default value is `UNKNOWN` (`Side::Unknown`), like [`state`](../enum/state.md#edges)'s: a closed vocabulary with no neutral spelling, so `UNKNOWN` stands in for one rather than the empty text other codes default to. A cast never writes it for a null or a missing column - a required `side` field refuses those by path instead ([Required columns](../cast.md#required-columns)) - and an empty text cell entering the column is still null, never `UNKNOWN` ([Cast](../cast.md#empty-text)).
 - `StringEnum::SIDES` is the listing - the eighteen stored values - reached by the logical name `side`; per-member pedigree stays in the registry's vocabulary named by the field's `FIX:codeset`.
 - A `side` and a [`timeinforce`](timeinforce.md) of the same bytes are two values: the identity leads, then the text.
 - `ascii_packed` pads a side into eight bytes, exactly as `fixed_ascii(8)` does, and `ascii_value` reads it back.

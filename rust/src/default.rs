@@ -37,6 +37,9 @@ enum DefaultPlan {
     Uuid,
     /// The state stated as none, code zero.
     State,
+    /// The side stated as none, `UNKNOWN`: a closed vocabulary with no empty
+    /// member, so the empty text a code defaults to is no side.
+    Side,
     /// The minimum canonical version.
     Version,
     Url,
@@ -360,9 +363,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
         | D::Unit => scalar(DefaultPlan::String, false),
+        D::Side => scalar(DefaultPlan::Side, false),
         D::State => scalar(DefaultPlan::State, false),
         D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
@@ -627,6 +630,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Interval(unit) => crate::Interval::new(0, 0, 0, unit).map(Scalar::Interval),
         DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::State => Ok(Scalar::State(crate::State::Unknown)),
+        DefaultPlan::Side => Ok(Scalar::Side(crate::Side::Unknown)),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
             bytes
@@ -734,6 +738,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         DefaultPlan::Interval(unit) => interval_is_zero(value, *unit),
         DefaultPlan::String => value.as_str() == Some(""),
         DefaultPlan::State => matches!(value, Scalar::State(crate::State::Unknown)),
+        DefaultPlan::Side => matches!(value, Scalar::Side(crate::Side::Unknown)),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),

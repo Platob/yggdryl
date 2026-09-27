@@ -1,9 +1,13 @@
 # yggdryl-expressions in Rust
 
-`Filter`, `Selector`, `Expression`, `FieldPath` and `FieldSegment` are at the
-crate root; `Term`, `Plan`, `Bounds`, `col`, `lit` and the user-function
-registry are under `yggdryl::expression`. `Plan::execute` over Parquet or
-Iceberg needs those crate features.
+`Filter`, `Selector`, `Expression`, `Term`, `Plan`, `FieldPath` and
+`FieldSegment` are all re-exported at the crate root; `Term` and `Plan` are
+also reachable at `yggdryl::expression::{Term, Plan}` (the path the examples
+below use). `Bounds`, `col`, `lit` and the user-function registry
+(`register_function`, `unregister_function`, `lookup_function`,
+`registered_functions`, `FunctionSignature`, `UserFunction`, `UserRef`) exist
+only under `yggdryl::expression`. `Plan::execute` over Parquet or Iceberg
+needs those crate features.
 
 ## Parse a predicate, bind it once, answer rows
 

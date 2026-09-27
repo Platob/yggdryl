@@ -139,7 +139,8 @@ for refused in (Url("https://example.test/data.csv"), Uri("file:///lake/a%2Fb"))
 ## Read and rename the filename; read the media type
 
 Filename accessors are properties; setters are atomic and change only the
-filename. `Url` adds `pathlib`'s `name`, `suffix`, `suffixes` and the copying
+filename. `Url` adds `pathlib`'s `name`, `suffix`, `suffixes`, `is_absolute()`,
+`as_posix()`, `as_uri()`, and the copying
 `with_name`/`with_stem`/`with_suffix`.
 
 ```python
@@ -171,6 +172,10 @@ url = Url("file:///lake/trades.csv.gz")
 assert (url.name, url.suffix, url.suffixes) == ("trades.csv.gz", ".gz", (".csv", ".gz"))
 assert str(url.with_suffix(".zst")) == "file:///lake/trades.csv.zst"
 assert str(url.with_name("quotes.csv")) == "file:///lake/quotes.csv"
+
+assert url.is_absolute() is True
+assert url.as_posix() == "/lake/trades.csv.gz"
+assert url.as_uri() == str(url)
 ```
 
 ## Walk and join paths
@@ -244,7 +249,7 @@ assert url.query() is None
 ## Read credentials and object-store locations
 
 Everything is read off the authority, with no request. A first part ending
-`.com`/`.io`, with a port, an IP literal, or `localhost` is the host;
+`.com`/`.io`/`.net`, with a port, an IP literal, or `localhost` is the host;
 otherwise it is the bucket.
 
 ```python

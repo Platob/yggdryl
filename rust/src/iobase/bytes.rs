@@ -135,11 +135,14 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 #[macro_export]
 macro_rules! delegate_iobase {
     // The whole contract, lifecycle included: the wrapper changes nothing. The
-    // two whole-value reads are in the list because leaving them out is not
-    // neutral - the trait's default answers them with `size` plus a positional
-    // read, which on a decoding handle is a second pass over the whole value.
+    // whole-value reads and writes and the two digests are in the list because
+    // leaving them out is not neutral - the trait's default answers them with
+    // `size` plus positional calls, which on a decoding handle is a second
+    // pass over the whole value and on a remote one hides the handle's own
+    // request plan.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
+            read_digest, read_range_digest, write_all_bytes, append_bytes, applied_codec,
             pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular, is_io);
@@ -153,8 +156,8 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
-            ls, kind);
+            truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
+            parent, child_by_path, ls, kind);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -180,6 +183,44 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, read_range_bytes) => {
         fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
             $crate::IOBase::read_range_bytes(&self.$handle, offset, length)
+        }
+    };
+
+    (@method $handle:ident, read_digest) => {
+        fn read_digest(
+            &self,
+            algorithm: $crate::DigestAlgorithm,
+        ) -> $crate::Result<$crate::Digest> {
+            $crate::IOBase::read_digest(&self.$handle, algorithm)
+        }
+    };
+
+    (@method $handle:ident, read_range_digest) => {
+        fn read_range_digest(
+            &self,
+            offset: u64,
+            length: usize,
+            algorithm: $crate::DigestAlgorithm,
+        ) -> $crate::Result<$crate::Digest> {
+            $crate::IOBase::read_range_digest(&self.$handle, offset, length, algorithm)
+        }
+    };
+
+    (@method $handle:ident, write_all_bytes) => {
+        fn write_all_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
+            $crate::IOBase::write_all_bytes(&mut self.$handle, bytes)
+        }
+    };
+
+    (@method $handle:ident, append_bytes) => {
+        fn append_bytes(&mut self, bytes: &[u8]) -> $crate::Result<u64> {
+            $crate::IOBase::append_bytes(&mut self.$handle, bytes)
+        }
+    };
+
+    (@method $handle:ident, applied_codec) => {
+        fn applied_codec(&self) -> $crate::Codec {
+            $crate::IOBase::applied_codec(&self.$handle)
         }
     };
 
@@ -541,6 +582,18 @@ impl IOBase for Box<dyn IOBase> {
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.as_mut().pwrite(offset, bytes)
+    }
+
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_mut().write_all_bytes(bytes)
+    }
+
+    fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
+        self.as_mut().append_bytes(bytes)
+    }
+
+    fn applied_codec(&self) -> crate::Codec {
+        self.as_ref().applied_codec()
     }
 
     fn size(&self) -> u64 {

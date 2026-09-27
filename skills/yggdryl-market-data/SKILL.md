@@ -10,12 +10,13 @@ identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
 chain place, clocks), `Market` (nineteen facts: price, quantity, currency,
 side, security ids, ticker...) and `Operation` (eight more: category, time in
-force, the `accountids`/`userids`/`altids` maps, the `bid`/`ask` lanes) - and
-typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
-`Execution`/`ExecutionEvent`, the composite `TradeEvent`, the book types
-`BookSide`, `BookEvent`, `SnapshotEvent`. `MarketData` is the one value over
-every leaf, and the lifted **`marketdata` Arrow row** (59 columns, one
-`kind` column naming the leaf) is how any of them crosses a boundary.
+force, whether it trades, the `accountids`/`userids`/`altids` maps, the
+`bid`/`ask` lanes) - and typed leaves answer them: `Order`/`OrderEvent`,
+`Quote`/`QuoteEvent`, `Execution`/`ExecutionEvent`, the composite `TradeEvent`,
+the book types `BookSide`, `BookEvent`, `SnapshotEvent`. `MarketData` is the
+one value over every leaf, and the lifted **`marketdata` Arrow row** (59
+columns, one `kind` column naming the leaf) is how any of them crosses a
+boundary.
 
 Hold four facts:
 
@@ -159,4 +160,5 @@ Read the one for the language you write; recipes appear in the same order in eac
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting
   `marketdata` batches), `yggdryl-arrow` (`BatchReader`, casts),
   `yggdryl-hashing` (the digests and UUIDs identities are built from),
-  `yggdryl-types` (`Decimal`, codes such as `side`, `ccy`, `state`).
+  `yggdryl-types` (`Decimal`, codes such as `side`, `ccy`; the lifecycle
+  `state` enum).

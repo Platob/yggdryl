@@ -144,8 +144,17 @@ handle.overwriteRecords([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: 'XNYS' }], 
 handle.appendRecords([{ id: 3n, venue: 'XLON' }], { field: schema })
 assert.equal(String(handle.readArrowField().fieldAt(1).dtype), 'utf8')
 
-// number or bigint under a declared field, but one kind per call: Arrow JS infers from the first row.
-assert.throws(() => handle.appendRecords([{ id: 4, venue: 'XPAR' }, { id: 5n, venue: 'XPAR' }], { field: schema }), TypeError)
+// number and bigint mix in one call - an integral number beside bigint rows
+// reads as bigint - and only a fraction beside them is refused, by column
+// and value.
+const mixed = IOBase.fromBytes()
+mixed.mediaType = MimeType.ARROW_STREAM
+mixed.overwriteRecords([{ id: 4, venue: 'XPAR' }, { id: 5n, venue: 'XPAR' }], { field: schema })
+assert.deepEqual([...mixed.readArrowReader().intoTable().getChild('id')], [4n, 5n])
+assert.throws(
+  () => mixed.appendRecords([{ id: 1.5, venue: 'XPAR' }, { id: 6n, venue: 'XPAR' }], { field: schema }),
+  (error) => error instanceof TypeError && /"id"/.test(error.message),
+)
 
 class Trade {
   constructor(row) {
@@ -489,7 +498,7 @@ fs.rmSync(root, { recursive: true, force: true })
 ## Gotchas in JavaScript
 
 - Arrow JS interop is copied IPC: cross in whole batches or tables, never row by row; `intoTable()` drains the reader.
-- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*Records` under a declared field accepts `number` or `bigint`, but not both in one call: Arrow JS infers the rows from the first row before the field applies, so `[{ id: 1 }, { id: 2n }]` throws a `TypeError`.
+- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*Records` unifies `number` and `bigint` rows of one column into one type: `[{ id: 1 }, { id: 2n }]` is one `int64` column, an integral `number` read as `bigint`. Only a fraction beside `bigint` rows in that column is refused - `TypeError`, naming the column and the value. A later batch reads a `number` as `bigint` under an established `int64` column, and a `bigint` as `number` under a `number` column when it is a safe integer, else the same named `TypeError`.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `{ safe: false }` to have it refused.
 - Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro stores them as the plain values. Pass `{ field }` on the write to state the column instead.
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.

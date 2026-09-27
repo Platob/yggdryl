@@ -877,8 +877,29 @@ impl IOBase for Holder {
         self.as_io().read_range_bytes(offset, length)
     }
 
+    fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
+        self.as_io().read_digest(algorithm)
+    }
+
+    fn read_range_digest(
+        &self,
+        offset: u64,
+        length: usize,
+        algorithm: crate::DigestAlgorithm,
+    ) -> Result<crate::Digest> {
+        self.as_io().read_range_digest(offset, length, algorithm)
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.as_io_mut().pwrite(offset, bytes)
+    }
+
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_io_mut().write_all_bytes(bytes)
+    }
+
+    fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
+        self.as_io_mut().append_bytes(bytes)
     }
 
     fn size(&self) -> u64 {
@@ -915,6 +936,10 @@ impl IOBase for Holder {
 
     fn media_type(&self) -> &MediaType {
         self.as_io().media_type()
+    }
+
+    fn applied_codec(&self) -> crate::Codec {
+        self.as_io().applied_codec()
     }
 
     fn set_media_type(&mut self, media_type: MediaType) {

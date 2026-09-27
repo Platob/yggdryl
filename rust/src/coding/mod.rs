@@ -467,6 +467,10 @@ impl<H: IOBase> IOBase for Coding<H> {
         self.media_type = media_type;
     }
 
+    fn applied_codec(&self) -> Codec {
+        self.codec
+    }
+
     fn flush(&mut self) -> Result<()> {
         self.publish()?;
         self.handle.flush()

@@ -840,6 +840,53 @@ mod rows {
     }
 
     #[test]
+    fn a_named_row_leaving_out_a_declared_column_writes_it_absent() {
+        let mut handle = handle("named-rows.arrows");
+        let options = handle.record_options().unwrap().with_field(schema());
+
+        // A nullable column the row leaves out is null, not its default.
+        handle
+            .overwrite_records(
+                [Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap()],
+                &options,
+            )
+            .unwrap();
+        let batch = handle
+            .read_arrow_reader(&options)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(batch.column(1).null_count(), 1);
+
+        // A required one is refused by path rather than stored as `0`, as
+        // the bindings' record writers refuse it; the value door still fills
+        // the canonical default.
+        let row = Scalar::from_struct([("symbol", Scalar::from("AAPL"))]).unwrap();
+        let refused = handle
+            .overwrite_records([row.clone()], &options)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("id"), "{refused}");
+        assert!(refused.contains("null"), "{refused}");
+        assert_eq!(rows(&handle, &options), 1);
+        assert_eq!(
+            schema().scalar(row).unwrap(),
+            Scalar::from_sequence([Scalar::from(0_i64), Scalar::from("AAPL")])
+        );
+
+        // A name the root does not declare is still refused.
+        let extra =
+            Scalar::from_struct([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
+                .unwrap();
+        let refused = handle
+            .append_records([extra], &options)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("venue"), "{refused}");
+    }
+
+    #[test]
     fn native_row_methods_require_a_field_before_pulling() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 

@@ -21,8 +21,15 @@ yggdryl = "0.1"
 | --- | --- | --- |
 | `parquet` | Parquet reader/writer, Avro snappy blocks | - |
 | `iceberg` | Iceberg tables over the crate's own Parquet | `parquet` |
-| `aws` | the AWS credential chain, profiles, SSO, STS, SigV4 | - |
+| `http` | the HTTP/1.1 client, sessions, requests/responses, resumable streams, the `message/http` medium | - |
+| `http2` | HTTP/2 beside HTTP/1.1 (ALPN `h2`, or prior-knowledge `h2c`) | `http` |
+| `http3` | HTTP/3 over QUIC | `http2` |
+| `aws` | the AWS credential chain, profiles, SSO, STS, SigV4 | `http` |
 | `s3` | Amazon S3, Google Cloud Storage, Azure Blob Storage handles | `aws` |
+
+Without `http`, a bare `http://`/`https://` URL through `Holder::from_url`
+refuses at runtime naming the missing feature; `yggdryl::http` itself does
+not exist in the build.
 
 Arrow types come from the `arrow-*` 59 crates (`arrow-array`,
 `arrow-schema`, ...); add the ones you name in your own code at the same

@@ -301,6 +301,10 @@ impl IOBase for Coded {
         self.as_io().media_type()
     }
 
+    fn applied_codec(&self) -> crate::Codec {
+        self.as_io().applied_codec()
+    }
+
     fn set_media_type(&mut self, media_type: MediaType) {
         self.as_io_mut().set_media_type(media_type);
     }

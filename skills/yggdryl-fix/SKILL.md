@@ -23,7 +23,7 @@ chains each message to the live one of its order (`crossuuid`, `prevuuid`,
 `seqnum`) and learns instrument associations. Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
-(fields, 181 messages, 736 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
+(fields, 181 messages, 737 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
 the `config/fix` folder of the yggdryl repository, generated and committed,
 ~14 MB, **not shipped** in the crate, wheel or npm package. Load it by path, or
 point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
@@ -170,7 +170,7 @@ Read the one for the language you write; recipes appear in the same order in eac
 - FIX overview and `FIX:` vocabulary: https://platob.github.io/yggdryl/fix/
 - Decode rules (none, one or many per line; type filter): https://platob.github.io/yggdryl/fix/decode/
 - Encode order and separators: https://platob.github.io/yggdryl/fix/encode/
-- Registry, one namespace, code sets, global default: https://platob.github.io/yggdryl/fix/registry/
+- Registry, one namespace, code sets, process default: https://platob.github.io/yggdryl/fix/registry/
 - Store layout and snapshots: https://platob.github.io/yggdryl/fix/store/
 - `FixMsg` holders, accessors, writes: https://platob.github.io/yggdryl/fix/message/
 - Arrow doors, pins, market books: https://platob.github.io/yggdryl/fix/arrow/

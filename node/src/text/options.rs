@@ -227,19 +227,26 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_merge_by(
         &mut self,
-        merge_by: napi::bindgen_prelude::Either4<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
-            Vec<
-                napi::bindgen_prelude::Either<
-                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-                    String,
+        merge_by: Option<
+            napi::bindgen_prelude::Either4<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+                Vec<
+                    napi::bindgen_prelude::Either<
+                        napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                        String,
+                    >,
                 >,
             >,
         >,
     ) -> Result<()> {
-        self.inner.set_merge_by(selector_from_input(merge_by)?);
+        // `null` is a value, and clears: no key, so an overwrite or append.
+        let merge_by = match merge_by {
+            Some(merge_by) => selector_from_input(merge_by)?,
+            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+        };
+        self.inner.set_merge_by(merge_by);
         Ok(())
     }
 
@@ -254,19 +261,26 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_select(
         &mut self,
-        select: napi::bindgen_prelude::Either4<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
-            Vec<
-                napi::bindgen_prelude::Either<
-                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-                    String,
+        select: Option<
+            napi::bindgen_prelude::Either4<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+                Vec<
+                    napi::bindgen_prelude::Either<
+                        napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                        String,
+                    >,
                 >,
             >,
         >,
     ) -> Result<()> {
-        self.inner.set_select(selector_from_input(select)?);
+        // `null` is a value, and clears: `select *`.
+        let select = match select {
+            Some(select) => selector_from_input(select)?,
+            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+        };
+        self.inner.set_select(select);
         Ok(())
     }
 
@@ -281,13 +295,20 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_filter(
         &mut self,
-        filter: napi::bindgen_prelude::Either3<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
+        filter: Option<
+            napi::bindgen_prelude::Either3<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+            >,
         >,
     ) -> Result<()> {
-        self.inner.set_filter(filter_from_input(filter)?);
+        // `null` is a value, and clears: always true.
+        let filter = match filter {
+            Some(filter) => filter_from_input(filter)?,
+            None => yggdryl::Filter::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+        };
+        self.inner.set_filter(filter);
         Ok(())
     }
 
@@ -302,17 +323,22 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_plan(
         &mut self,
-        plan: napi::bindgen_prelude::Either5<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
-            String,
+        plan: Option<
+            napi::bindgen_prelude::Either5<
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+                napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
+                String,
+            >,
         >,
     ) -> Result<()> {
-        self.inner
-            .set_plan(plan_from_input(plan)?)
-            .map_err(napi_error)
+        // `null` is a value, and clears: the plan with no section.
+        let plan = match plan {
+            Some(plan) => plan_from_input(plan)?,
+            None => yggdryl::Plan::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+        };
+        self.inner.set_plan(plan).map_err(napi_error)
     }
 
     /// The partition equalities the filter pins, `[column, value]` pairs.
@@ -626,7 +652,7 @@ impl JsTextOptions {
         >,
     ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_merge_by(merge_by)?;
+        options.set_merge_by(Some(merge_by))?;
         Ok(options)
     }
 
@@ -647,7 +673,7 @@ impl JsTextOptions {
         >,
     ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_select(select)?;
+        options.set_select(Some(select))?;
         Ok(options)
     }
 
@@ -662,7 +688,7 @@ impl JsTextOptions {
         >,
     ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_filter(filter)?;
+        options.set_filter(Some(filter))?;
         Ok(options)
     }
 
@@ -679,7 +705,7 @@ impl JsTextOptions {
         >,
     ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_plan(plan)?;
+        options.set_plan(Some(plan))?;
         Ok(options)
     }
 

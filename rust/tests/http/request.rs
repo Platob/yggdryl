@@ -510,6 +510,26 @@ fn append_bytes_is_one_get_and_one_put() {
 }
 
 #[test]
+fn a_holder_appends_and_writes_through_the_request_plan() {
+    let (server, session) = fixture();
+    // A binding's handle is a `Holder`: an append through it is the
+    // request's own, published before the call returns.
+    let mut held = Holder::HttpRequest(leaf(&server, &session, "/data.bin"));
+
+    assert_eq!(held.append_bytes(b"!!").unwrap(), BODY.len() as u64);
+    assert_eq!(methods(&server), ["GET", "PUT"]);
+    assert_eq!(
+        server.resource("/data.bin").unwrap().0,
+        [BODY, b"!!"].concat()
+    );
+
+    server.clear_requests();
+    held.write_all_bytes(b"new").unwrap();
+    assert_eq!(methods(&server), ["PUT"]);
+    assert_eq!(server.resource("/data.bin").unwrap().0, b"new".to_vec());
+}
+
+#[test]
 fn truncate_to_zero_loads_nothing_and_publishes_one_put() {
     let (server, session) = fixture();
     let mut request = leaf(&server, &session, "/data.bin");
