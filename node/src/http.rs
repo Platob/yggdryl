@@ -21,8 +21,9 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::holder::Holder;
 use yggdryl::http::{
-    Authorization, ContentRange, Cookie, Fault, Headers, HttpOptions, Method, Pages, Pagination,
-    Recorded, Request, Response, Server, ServerOptions, Session, StatsSnapshot, Status,
+    Authorization, ContentRange, Cookie, Fault, ForwardedHeader, Headers, HttpOptions, Method,
+    Pages, Pagination, Recorded, Request, Response, Server, ServerOptions, Session, StatsSnapshot,
+    Status,
 };
 use yggdryl::media::DEFAULT_ROOT_NAME;
 use yggdryl::{FieldPath, Url};
@@ -1373,6 +1374,27 @@ pub struct HttpServerOptions {
     /// A folder every exchange is written into, as `NNNN-request.http` and
     /// `NNNN-response.http`: a folder path, or a URL a holder resolves.
     pub trace: Option<String>,
+    /// The URL clients reach the server at, behind a reverse proxy or a
+    /// redirect: `http` or `https`, a host, a port when it is not the
+    /// scheme's own, and the path prefix the proxy adds
+    /// (`https://data.example.com/olap`). Set, it is the base of every URL
+    /// the server states, whatever a request's `Host` or forwarded fields
+    /// say; a query, a fragment or user information is refused.
+    pub public_url: Option<String>,
+    /// The peers whose forwarded fields are believed, each an IP address or
+    /// a CIDR network (`10.0.0.0/8`, `::1`); none by default, so a client
+    /// cannot state a host or a scheme of its own.
+    pub trusted_proxies: Option<Vec<String>>,
+    /// The forwarded fields read from a trusted peer - `Forwarded`,
+    /// `X-Forwarded-For`, `-Proto`, `-Host`, `-Port`, `-Prefix` - by default
+    /// `X-Forwarded-For` and `X-Forwarded-Proto`. Name only fields the proxy
+    /// sets or overwrites on every request: one it passes through is the
+    /// client's to write.
+    pub forwarded_headers: Option<Vec<String>>,
+    /// The path prefix stripped off a request before it is routed: `/olap`
+    /// when a proxy forwards `/olap/xmla` to a server routing `/xmla`. A
+    /// request outside it is routed as it is.
+    pub path_prefix: Option<String>,
 }
 
 fn server_options_of(input: HttpServerOptions) -> Result<ServerOptions> {
@@ -1416,6 +1438,22 @@ fn server_options_of(input: HttpServerOptions) -> Result<ServerOptions> {
     }
     if let Some(trace) = input.trace {
         options = options.with_trace(folder_from_input(Either6::F(trace))?);
+    }
+    if let Some(url) = input.public_url {
+        options = options.with_public_url(Url::from_str(&url).map_err(napi_error)?);
+    }
+    if let Some(networks) = input.trusted_proxies {
+        options = options.with_trusted_proxies(networks).map_err(napi_error)?;
+    }
+    if let Some(headers) = input.forwarded_headers {
+        let headers = headers
+            .iter()
+            .map(|name| ForwardedHeader::from_str(name).map_err(napi_error))
+            .collect::<Result<Vec<_>>>()?;
+        options = options.with_forwarded_headers(headers);
+    }
+    if let Some(prefix) = input.path_prefix {
+        options = options.with_path_prefix(&prefix).map_err(napi_error)?;
     }
     Ok(options)
 }
@@ -1489,6 +1527,11 @@ pub struct HttpRecorded {
     pub status_code: u32,
     /// Whether the connection was closed before any byte of an answer.
     pub closed: bool,
+    /// The connection's peer as `host:port`, when the socket names one: the
+    /// proxy, behind one.
+    pub peer: Option<String>,
+    /// The client: the address a trusted proxy forwarded, else the peer's.
+    pub client: Option<String>,
 }
 
 impl HttpRecorded {
@@ -1502,6 +1545,8 @@ impl HttpRecorded {
             headers: JsHeaders::from_core(recorded.headers),
             body_length: crate::exact_f64(recorded.body_len, "bodyLength")?,
             status_code: u32::from(recorded.status.code()),
+            peer: recorded.peer.map(|peer| peer.to_string()),
+            client: recorded.client.map(|client| client.to_string()),
         })
     }
 }
@@ -1567,6 +1612,18 @@ impl JsServer {
     #[napi(getter)]
     pub fn address(&self) -> Result<String> {
         Ok(self.live()?.address().to_string())
+    }
+
+    /// The URL clients reach `path` at: under the `publicUrl` the server was
+    /// bound with - its path the prefix the proxy adds, so `/xmla` under
+    /// `https://data.example.com/olap` is `https://data.example.com/olap/xmla`
+    /// - else under `url`.
+    #[napi]
+    pub fn public_url_of(&self, path: String) -> Result<JsUrl> {
+        self.live()?
+            .public_url_of(&path)
+            .map(JsUrl::from_core)
+            .map_err(napi_error)
     }
 
     /// Connections accepted so far.

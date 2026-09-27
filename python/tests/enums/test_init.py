@@ -65,7 +65,6 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "order",
         "quote",
         "execution",
-        "book_side",
         "order_event",
         "quote_event",
         "execution_event",
@@ -78,17 +77,44 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
     assert len(enums.EVENT_COLUMNS) == 16
     assert enums.EVENT_COLUMNS[0] == "currunix"
     assert enums.EVENT_COLUMNS[-1] == "state"
-    assert len(enums.MARKET_COLUMNS) == 19
-    assert enums.MARKET_COLUMNS[0] == "price"
-    assert len(enums.OPERATION_COLUMNS) == 8
-    assert enums.OPERATION_COLUMNS[-2:] == ("bid", "ask")
+    assert enums.MARKET_COLUMNS == (
+        "price",
+        "currency",
+        "quantity",
+        "unit",
+        "side",
+        "securityids",
+        "isincode",
+        "cficode",
+        "miccode",
+        "lastpx",
+        "lastqty",
+        "avgpx",
+        "cumqty",
+        "leavesqty",
+        "prevpx",
+        "prevqty",
+        "spotrate",
+        "forwardpoints",
+        "bidpx",
+        "bidqty",
+        "bidccy",
+        "askpx",
+        "askqty",
+        "askccy",
+        "fxrates",
+        "ticker",
+        "metadata",
+    )
+    assert enums.OPERATION_COLUMNS == ("tif", "tradable", "altids")
+    # `yggdryl.Side` is the one Python side: the enums package holds none.
+    assert not hasattr(enums, "Side") and not hasattr(enums, "SIDE")
     # The views a `marketdata` stream is read by, in declaration order.
     assert enums.MARKET_VIEWS == (
         "orders",
         "quotes",
         "executions",
         "trades",
-        "book_sides",
         "books",
         "lifecycle",
     )

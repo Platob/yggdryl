@@ -91,7 +91,11 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
                 .expect("a code borrowed its storage")
                 .clone());
         }
-        crate::Scalar::State(state) => return Ok(smol_str::SmolStr::new_static(state.as_str())),
+        held if held.is_enum() => {
+            return Ok(smol_str::SmolStr::new_static(
+                held.enum_name().expect("an enum member names itself"),
+            ));
+        }
         _ => {}
     }
     // The value is non-null here, so the typed pairing's own projection is the

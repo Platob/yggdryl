@@ -676,6 +676,111 @@ test('trace writes each exchange as a message/http document', (t) => {
   assert.match(fs.readFileSync(responseFile, 'utf8'), /^HTTP\/1\.1 200/)
 })
 
+test('Server behind a proxy: trusted forwarded fields, a path prefix and a public URL', async (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.mkdirSync(path.join(root, 'dir'))
+  fs.writeFileSync(path.join(root, 'dir', 'a.txt'), 'alpha')
+
+  // A trusted peer's forwarded fields - the ones named as the proxy's -
+  // state the base a listing's URLs are made under, and the client; the
+  // prefix comes off before routing and goes back on the URL.
+  const proxied = http.Server.bind(undefined, {
+    trustedProxies: ['127.0.0.1', '::1'],
+    forwardedHeaders: ['X-Forwarded-For', 'x-forwarded-proto', 'X-Forwarded-Host'],
+    pathPrefix: '/files',
+  })
+  t.after(() => proxied.shutdown())
+  proxied.mount('/', new IOBase(root))
+  const base = `http://127.0.0.1:${proxied.port}`
+  const listed = await call('GET', `${base}/files/dir`, {
+    headers: {
+      'X-Forwarded-Proto': 'https',
+      'X-Forwarded-Host': 'pub.example',
+      'X-Forwarded-For': '203.0.113.9, 127.0.0.1',
+    },
+  })
+  assert.equal(listed.status, 200)
+  assert.match(listed.body.toString(), /"url":"https:\/\/pub\.example\/files\/dir\/a\.txt"/)
+  const plain = await call('GET', `${base}/dir`)
+  assert.equal(plain.status, 200)
+  assert.ok(plain.body.toString().includes(`"url":"${base}/dir/a.txt"`), plain.body.toString())
+  const [first, second] = proxied.requests
+  assert.equal(first.client, '203.0.113.9')
+  assert.match(first.peer, /^127\.0\.0\.1:\d+$/)
+  assert.equal(first.path, '/dir')
+  assert.equal(first.target, '/files/dir')
+  assert.equal(second.client, '127.0.0.1')
+  assert.equal(proxied.publicUrlOf('/dir').toString(), `${base}/dir`)
+
+  // By default a trusted proxy states the client and the scheme alone: a
+  // host it passed through is the client's, and is not read.
+  const defaulted = http.Server.bind(undefined, { trustedProxies: ['127.0.0.1', '::1'] })
+  t.after(() => defaulted.shutdown())
+  defaulted.mount('/', new IOBase(root))
+  const passed = await call('GET', `http://127.0.0.1:${defaulted.port}/dir`, {
+    headers: {
+      'X-Forwarded-Proto': 'https',
+      'X-Forwarded-Host': 'evil.example',
+      'X-Forwarded-Prefix': '/evil',
+      Forwarded: 'for=6.6.6.6;host=evil.example',
+      'X-Forwarded-For': '6.6.6.6, 203.0.113.9',
+    },
+  })
+  assert.ok(
+    passed.body.toString().includes(`"url":"https://127.0.0.1:${defaulted.port}/dir/a.txt"`),
+    passed.body.toString(),
+  )
+  assert.equal(defaulted.requests[0].client, '203.0.113.9')
+
+  // An untrusted peer's forwarded fields are not believed.
+  const wary = http.Server.bind()
+  t.after(() => wary.shutdown())
+  wary.mount('/', new IOBase(root))
+  const ignored = await call('GET', `http://127.0.0.1:${wary.port}/dir`, {
+    headers: { 'X-Forwarded-Host': 'pub.example', 'X-Forwarded-For': '203.0.113.9' },
+  })
+  assert.ok(ignored.body.toString().includes(`"url":"http://127.0.0.1:${wary.port}/dir/a.txt"`))
+  assert.equal(wary.requests[0].client, '127.0.0.1')
+
+  // A public URL is the base of every URL the server states, whatever the
+  // request said.
+  const published = http.Server.bind(undefined, {
+    publicUrl: 'https://data.example.com/olap',
+    trustedProxies: ['127.0.0.1'],
+  })
+  t.after(() => published.shutdown())
+  published.mount('/files', new IOBase(root))
+  assert.equal(published.publicUrlOf('/files').toString(), 'https://data.example.com/olap/files')
+  assert.equal(published.publicUrlOf('files').toString(), 'https://data.example.com/olap/files')
+  assert.match(published.url.toString(), /^http:\/\/127\.0\.0\.1:\d+\/$/)
+  const under = await call('GET', `http://127.0.0.1:${published.port}/files/dir`, {
+    headers: { 'X-Forwarded-Host': 'other.example' },
+  })
+  assert.match(under.body.toString(), /"url":"https:\/\/data\.example\.com\/olap\/files\/dir\/a\.txt"/)
+
+  assert.throws(() => http.Server.bind(undefined, { trustedProxies: ['pub.example'] }), /ip network/)
+  assert.throws(
+    () => http.Server.bind(undefined, { publicUrl: 'https://data.example.com/olap?x=1' }),
+    /http server option/,
+  )
+  assert.throws(() => http.Server.bind(undefined, { publicUrl: 'ftp://data.example.com/' }), /http server option/)
+  // A credential in the public URL would reach every client, and is not
+  // repeated in the refusal either.
+  assert.throws(
+    () => http.Server.bind(undefined, { publicUrl: 'https://user:secret@data.example.com/olap' }),
+    (error) => /user information/.test(error.message) && !error.message.includes('secret'),
+  )
+  assert.throws(() => http.Server.bind(undefined, { pathPrefix: '/olap?x=1' }), /olap/)
+  assert.throws(() => http.Server.bind(undefined, { forwardedHeaders: ['X-Real-IP'] }), /forwarded header/)
+  // A timeout no deadline can hold is refused by name.
+  assert.throws(() => http.Server.bind(undefined, { readTimeout: 86_401_000 }), /read_timeout/)
+  assert.throws(() => http.Server.bind(undefined, { writeTimeout: 2 * 86_400_000 }), /write_timeout/)
+  const bounded = http.Server.bind(undefined, { readTimeout: 86_400_000 })
+  assert.ok(bounded.port > 0)
+  bounded.shutdown()
+})
+
 // Node's own HTTP/2, an outside implementation both ways: its server behind
 // the core's client, and its client in front of the core's server.
 const nodeHttp2 = require('node:http2')

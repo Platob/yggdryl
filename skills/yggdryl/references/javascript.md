@@ -2,10 +2,8 @@
 
 `npm install yggdryl` (Node 18+). The package is CommonJS with bundled
 TypeScript declarations; `apache-arrow` is its dependency, so
-`require('apache-arrow')` resolves beside it. Two more entry points:
-`yggdryl/replay` (the order book replay service) and `yggdryl/web/*` (browser
-ES modules). The native addon carries every part of the core - Parquet,
-Iceberg, the object stores.
+`require('apache-arrow')` resolves beside it. The native addon carries every
+part of the core - Parquet, Iceberg, the object stores.
 
 ## Numbers, bigints, bytes
 

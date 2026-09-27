@@ -1,22 +1,21 @@
 //! Native Python view of the operation leaves - [`CoreOrder`],
 //! [`CoreQuote`] and [`CoreExecution`] undated, [`CoreOrderEvent`],
-//! [`CoreQuoteEvent`] and [`CoreExecutionEvent`] dated - and of the two
-//! typed values they carry, [`CoreLane`] and [`CoreBookRef`].
+//! [`CoreQuoteEvent`] and [`CoreExecutionEvent`] dated - and of the book
+//! control a market-data entry carries, [`CoreBookRef`].
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
-use yggdryl::graph::operation_column::{lane_datatype, lane_fact, lane_of};
 use yggdryl::graph::{
     BookRef as CoreBookRef, Element, Execution as CoreExecution,
-    ExecutionEvent as CoreExecutionEvent, ExecutionKind, Lane as CoreLane,
-    MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder, OrderEvent as CoreOrderEvent,
-    OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent, QuoteKind,
+    ExecutionEvent as CoreExecutionEvent, ExecutionKind, MdUpdateAction as CoreMdUpdateAction,
+    Order as CoreOrder, OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote,
+    QuoteEvent as CoreQuoteEvent, QuoteKind,
 };
-use yggdryl::{DataType, Decimal, Field, Scalar};
+use yggdryl::{DataType, Decimal, Scalar};
 
-use super::{code_scalar, decimal_scalar, ellipsis, slot_repr, stated_operation};
+use super::{decimal_scalar, ellipsis, slot_repr, stated_operation};
 use crate::scalar::{PyScalar, from_py};
 use crate::value_error;
 
@@ -43,7 +42,8 @@ macro_rules! operation_element_class {
         }
 
         graph_methods!($class, $name; [
-            element_getters, market_getters, operation_getters, common_verbs, element_repr
+            element_getters, market_getters, operation_getters, kind_getters, common_verbs,
+            element_repr
         ]; {
             /// Build the element from its named facts, keyed by column name
             /// - the market and operation columns and the element's own
@@ -100,7 +100,7 @@ macro_rules! operation_event_class {
 
         graph_methods!($class, $name; [
             element_getters, event_getters, market_getters, operation_getters,
-            common_verbs, event_verbs
+            kind_getters, common_verbs, event_verbs
         ]; {
             /// Build the event at `currunix` nanoseconds since the epoch from
             /// its named facts, keyed by column name - the event, market and
@@ -246,217 +246,6 @@ fn stated_decimal(py: Python<'_>, name: &str, value: &Py<PyAny>) -> PyResult<Opt
     Decimal::from_scalar(&checked)
         .map(Some)
         .ok_or_else(|| PyTypeError::new_err(format!("expected a decimal for {name}")))
-}
-
-/// One lane of a quote: what a party is willing to pay or be paid, in the
-/// currency and unit it states, with the FX parts of its price where it
-/// quotes a forward. Every slot is what the lane states; a lane states
-/// nothing of a slot it leaves `None`.
-#[pyclass(name = "Lane", module = "yggdryl._native", frozen, skip_from_py_object)]
-#[derive(Clone)]
-pub(crate) struct PyLane {
-    pub(crate) inner: CoreLane,
-}
-
-impl PyLane {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreLane) -> Self {
-        Self { inner }
-    }
-
-    /// A slot given at the Python boundary, as the scalar the lane's field
-    /// reads: the literal `Ellipsis` (not given) and `None` (stated null)
-    /// both cross as `Scalar::Null`, since a lane has no third state to
-    /// distinguish them by.
-    fn slot_scalar(py: Python<'_>, value: &Py<PyAny>) -> PyResult<Scalar> {
-        let bound = value.bind(py);
-        if bound.is(py.Ellipsis()) || bound.is_none() {
-            Ok(Scalar::Null)
-        } else {
-            from_py(bound)
-        }
-    }
-}
-
-#[pymethods]
-impl PyLane {
-    /// Build a lane from its six slots, each defaulting to `Ellipsis` (not
-    /// given). The row crosses the boundary once, through the lane
-    /// struct's own field - [`lane_datatype`]'s `scalar` - and is read back
-    /// with [`lane_of`], so every slot is validated exactly as a stored
-    /// lane is.
-    #[new]
-    #[allow(clippy::too_many_arguments)]
-    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `Py`.
-    #[pyo3(signature = (
-        price=ellipsis(),
-        spotrate=ellipsis(),
-        forwardpoints=ellipsis(),
-        currency=ellipsis(),
-        quantity=ellipsis(),
-        unit=ellipsis()
-    ))]
-    fn new(
-        py: Python<'_>,
-        price: Py<PyAny>,
-        spotrate: Py<PyAny>,
-        forwardpoints: Py<PyAny>,
-        currency: Py<PyAny>,
-        quantity: Py<PyAny>,
-        unit: Py<PyAny>,
-    ) -> PyResult<Self> {
-        let raw = Scalar::from_sequence([
-            Self::slot_scalar(py, &price)?,
-            Self::slot_scalar(py, &spotrate)?,
-            Self::slot_scalar(py, &forwardpoints)?,
-            Self::slot_scalar(py, &currency)?,
-            Self::slot_scalar(py, &quantity)?,
-            Self::slot_scalar(py, &unit)?,
-        ]);
-        let dtype = lane_datatype().map_err(value_error)?;
-        let field = Field::new("lane", dtype, true);
-        let checked = field.scalar(raw).map_err(value_error)?;
-        Ok(Self::from_core(lane_of(&checked).unwrap_or_default()))
-    }
-
-    /// Rebuild a lane pickle carried: its six slots, in constructor order.
-    #[staticmethod]
-    fn _from_pickle(
-        price: Option<PyRef<'_, PyScalar>>,
-        spotrate: Option<PyRef<'_, PyScalar>>,
-        forwardpoints: Option<PyRef<'_, PyScalar>>,
-        currency: Option<PyRef<'_, PyScalar>>,
-        quantity: Option<PyRef<'_, PyScalar>>,
-        unit: Option<PyRef<'_, PyScalar>>,
-    ) -> PyResult<Self> {
-        let scalar = |value: Option<PyRef<'_, PyScalar>>| {
-            value.map_or(Scalar::Null, |value| value.inner.clone())
-        };
-        let raw = Scalar::from_sequence([
-            scalar(price),
-            scalar(spotrate),
-            scalar(forwardpoints),
-            scalar(currency),
-            scalar(quantity),
-            scalar(unit),
-        ]);
-        let dtype = lane_datatype().map_err(value_error)?;
-        let field = Field::new("lane", dtype, true);
-        let checked = field.scalar(raw).map_err(value_error)?;
-        Ok(Self::from_core(lane_of(&checked).unwrap_or_default()))
-    }
-
-    /// The price this lane states, as a decimal; `None` where it states
-    /// none.
-    #[getter]
-    fn price(&self) -> Option<PyScalar> {
-        self.inner.price.map(decimal_scalar)
-    }
-
-    /// The spot part of an FX forward price; `None` where the lane states
-    /// none.
-    #[getter]
-    fn spotrate(&self) -> Option<PyScalar> {
-        self.inner.spotrate.map(decimal_scalar)
-    }
-
-    /// The forward points of an FX forward price; `None` where the lane
-    /// states none.
-    #[getter]
-    fn forwardpoints(&self) -> Option<PyScalar> {
-        self.inner.forwardpoints.map(decimal_scalar)
-    }
-
-    /// The currency, as the `currency` code it is; `None` where the lane
-    /// states none.
-    #[getter]
-    fn currency(&self) -> Option<PyScalar> {
-        self.inner.currency.as_ref().map(code_scalar)
-    }
-
-    /// The quantity this lane states, as a decimal; `None` where it states
-    /// none.
-    #[getter]
-    fn quantity(&self) -> Option<PyScalar> {
-        self.inner.quantity.map(decimal_scalar)
-    }
-
-    /// The unit the quantity is counted in, as spelled; `None` where the
-    /// lane states none.
-    #[getter]
-    fn unit(&self) -> Option<&str> {
-        self.inner.unit.as_ref().map(yggdryl::Unit::as_str)
-    }
-
-    /// Whether the lane states any slot.
-    fn is_stated(&self) -> bool {
-        self.inner.is_stated()
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return py.NotImplemented();
-        };
-        PyBool::new(py, self.inner == other.inner)
-            .to_owned()
-            .into_any()
-            .unbind()
-    }
-
-    /// Hashes over the lane's own record: the six slots it states, digested
-    /// as `lane_fact` renders them.
-    fn __hash__(&self) -> isize {
-        crate::python_hash(lane_fact(&self.inner).stable_hash())
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "Lane(price={}, spotrate={}, forwardpoints={}, currency={}, quantity={}, unit={})",
-            slot_repr(self.inner.price),
-            slot_repr(self.inner.spotrate),
-            slot_repr(self.inner.forwardpoints),
-            slot_repr(self.inner.currency.as_ref().map(yggdryl::Ccy::as_str)),
-            slot_repr(self.inner.quantity),
-            slot_repr(self.inner.unit.as_ref().map(yggdryl::Unit::as_str)),
-        )
-    }
-
-    fn __copy__(&self) -> Self {
-        self.clone()
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn __reduce__(
-        &self,
-        py: Python<'_>,
-    ) -> PyResult<(
-        Py<PyAny>,
-        (
-            Option<PyScalar>,
-            Option<PyScalar>,
-            Option<PyScalar>,
-            Option<PyScalar>,
-            Option<PyScalar>,
-            Option<PyScalar>,
-        ),
-    )> {
-        Ok((
-            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (
-                self.price(),
-                self.spotrate(),
-                self.forwardpoints(),
-                self.currency(),
-                self.quantity(),
-                self.unit()
-                    .map(|unit| PyScalar::from_inner(Scalar::from(unit))),
-            ),
-        ))
-    }
 }
 
 /// The typed book-control facts a market-data entry carries: what a book

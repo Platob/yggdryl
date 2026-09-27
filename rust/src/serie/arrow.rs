@@ -909,7 +909,7 @@ pub(crate) fn land_under(
 /// columns.
 ///
 /// A value a leaf refuses is named by the batch row it lies in and the path
-/// below it: `$[3].bid.live[0].miccode`.
+/// below it: `$[3].alive[0].miccode`.
 pub(crate) fn land_batch(root: &Resolved, batch: RecordBatch, proof: &Proof) -> Result<Serie> {
     let records = crate::cast::struct_array_from_batch(batch);
     crate::arrow::require_projection(&root.field, records.as_ref())?;

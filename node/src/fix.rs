@@ -54,7 +54,7 @@ use yggdryl::{
 use yggdryl::{IdMap, SecurityIds};
 
 use crate::field::JsField;
-use crate::graph::{JsLane, JsMarketData, JsMarketDataRowIterator};
+use crate::graph::{JsMarketData, JsMarketDataRowIterator};
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
@@ -240,7 +240,7 @@ pub struct FixCodeSetView {
 pub struct FixIdMapSource {
     /// The field's tag.
     pub tag: i32,
-    /// The map it lands in: `accountids`, `userids` or `altids`.
+    /// The map it lands in: `altids`, the one identifier map.
     pub map: String,
     /// The upper-case key it lands under.
     pub key: String,
@@ -754,8 +754,8 @@ impl JsFixRegistry {
 
     /// Every field that names a message by an identifier, one entry per key
     /// its `FIX:idmap` states, in tag order. A message rebuilds its
-    /// `accountids`, `userids` and `altids` from these, and an operation
-    /// that follows another carries the `altids` keys whose entry follows.
+    /// `altids` from these, and an operation that follows another carries
+    /// the keys whose entry follows.
     #[napi]
     pub fn idmap_sources(&self) -> Vec<FixIdMapSource> {
         self.inner
@@ -1180,17 +1180,17 @@ pub struct FixCaptureView {
     /// The session event the message was delivered as - `MsgType`,
     /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
     /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-    /// `byTag(65065)`.
+    /// `byTag(65021)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65066)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65018)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a
     /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-    /// of its log line; also `byTag(65067)`.
+    /// of its log line; also `byTag(65022)`.
     #[napi(ts_type = "string | null")]
     pub conversationid: Either<String, Null>,
 }
@@ -1333,14 +1333,14 @@ impl JsFixMsg {
         self.inner.as_field().fields().len() as f64
     }
 
-    /// The graph market operations this message expands to: an order, a
-    /// quote, an execution or an initial trade report is one; a book `W` or
-    /// `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
-    /// control for an empty `W` - each a `MarketData`.
+    /// The graph market data this message expands to: an order, a quote,
+    /// an execution or a trade report is one leaf; a book `W` or `X` one per
+    /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
+    /// empty `W` - each a `MarketData`.
     #[napi]
-    pub fn market_operations(&self) -> Result<Vec<JsMarketData>> {
+    pub fn market_data(&self) -> Result<Vec<JsMarketData>> {
         self.inner
-            .market_operations()
+            .market_data()
             .map(|operations| {
                 operations
                     .into_iter()
@@ -1379,10 +1379,19 @@ impl JsFixMsg {
         metadata_view(self.inner.metadata())
     }
 
-    /// The stable integer business-category code lifted from the message type.
+    /// The business category the message's type files under, as the
+    /// `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
+    /// `TRAD`, `BOOK` - and `UNKN` where it files none.
     #[napi(getter)]
-    pub fn msgcat(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
+    pub fn msgcat(&self) -> &'static str {
+        self.inner.msgcat().as_str()
+    }
+
+    /// The option strike price the message identifies, `StrikePrice(202)`,
+    /// as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn strikepx(&self) -> Option<String> {
+        self.inner.strikepx().map(|held| held.to_string())
     }
 
     /// This message's own `UUIDv7` identity, ordered by millisecond and
@@ -1512,33 +1521,74 @@ impl JsFixMsg {
         securityids_view(self.inner.get_securityids())
     }
 
-    /// The accounts the message names, key to value, upper-cased and in key
-    /// order: `Account(1)` and a `CUSTOMERACCOUNT` party; empty where none.
-    #[napi(getter, ts_return_type = "Record<string, string>")]
-    pub fn accountids(&self) -> BTreeMap<String, String> {
-        idmap_view(self.inner.get_accountids())
+    /// The instrument's ISIN, borrowed from `securityids`, or `null`.
+    #[napi(getter)]
+    pub fn isincode(&self) -> Option<String> {
+        self.inner.get_isincode().map(ToOwned::to_owned)
     }
 
-    /// The users the message names, the same way: `SenderSubID(50)`,
-    /// `OnBehalfOfSubID(116)`, an `ENTERINGTRADER` or `EXECUTINGTRADER`
-    /// party.
+    /// The rates an amount in `currency` is divided by to state it in each
+    /// target currency, keyed by the target's `ccy` code, each rate as
+    /// decimal text; empty where none - and nothing fills it yet.
     #[napi(getter, ts_return_type = "Record<string, string>")]
-    pub fn userids(&self) -> BTreeMap<String, String> {
-        idmap_view(self.inner.get_userids())
+    pub fn fxrates(&self) -> BTreeMap<String, String> {
+        self.inner
+            .get_fxrates()
+            .iter()
+            .map(|(target, rate)| (target.as_str().to_owned(), rate.to_string()))
+            .collect()
     }
 
-    /// The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
+    /// The bid price the message states, `BidPx(132)`, as decimal text, or
+    /// `null`.
+    #[napi(getter)]
+    pub fn bidpx(&self) -> Option<String> {
+        self.inner.get_bidpx().map(|held| held.to_string())
+    }
+
+    /// The bid size the message states, `BidSize(134)`, as decimal text, or
+    /// `null`.
+    #[napi(getter)]
+    pub fn bidqty(&self) -> Option<String> {
+        self.inner.get_bidqty().map(|held| held.to_string())
+    }
+
+    /// The currency the bid is stated in: a stated `BidCurrency`, else the
+    /// message's currency where it states a bid; `null` otherwise.
+    #[napi(getter)]
+    pub fn bidccy(&self) -> Option<String> {
+        self.inner.get_bidccy().map(|held| held.as_str().to_owned())
+    }
+
+    /// The offer price the message states, `OfferPx(133)`, as decimal text, or
+    /// `null`.
+    #[napi(getter)]
+    pub fn askpx(&self) -> Option<String> {
+        self.inner.get_askpx().map(|held| held.to_string())
+    }
+
+    /// The offer size the message states, `OfferSize(135)`, as decimal text,
+    /// or `null`.
+    #[napi(getter)]
+    pub fn askqty(&self) -> Option<String> {
+        self.inner.get_askqty().map(|held| held.to_string())
+    }
+
+    /// The currency the offer is stated in: a stated `AskCurrency` or
+    /// `OfferCurrency`, else the message's currency where it states an offer;
+    /// `null` otherwise.
+    #[napi(getter)]
+    pub fn askccy(&self) -> Option<String> {
+        self.inner.get_askccy().map(|held| held.as_str().to_owned())
+    }
+
+    /// The names the operation goes by, key to value, upper-cased and in key
+    /// order: `ORDERID`, `CLORDID`,
     /// `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
     /// `TRADEID` and the rest the message states.
     #[napi(getter, ts_return_type = "Record<string, string>")]
     pub fn altids(&self) -> BTreeMap<String, String> {
         idmap_view(self.inner.get_altids())
-    }
-
-    /// The stable integer category of the market operation, or `null`.
-    #[napi(getter)]
-    pub fn marketoperationid(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
     }
 
     /// The price stated, as decimal text, or `null` where none is. Never a
@@ -1562,8 +1612,8 @@ impl JsFixMsg {
         self.inner.get_unit().as_str().to_owned()
     }
 
-    /// The side: the one stated, else the lane a single-sided quote states -
-    /// `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+    /// The side, as the `side` member's stored name: the one stated, else
+    /// `UNKNOWN` - never `null`.
     #[napi(getter)]
     pub fn side(&self) -> String {
         self.inner.get_side().as_str().to_owned()
@@ -1742,20 +1792,6 @@ impl JsFixMsg {
             .map(|held| held.as_str().to_owned())
     }
 
-    /// The bid lane - what the message states a party will pay, in the
-    /// currency and unit it states - or `null` where it states no slot of
-    /// it. A buy order fills its own lane's size; a quote states both.
-    #[napi(getter)]
-    pub fn bid(&self) -> Option<JsLane> {
-        self.inner.get_bid().cloned().map(JsLane::from_core)
-    }
-
-    /// The ask lane, the same way.
-    #[napi(getter)]
-    pub fn ask(&self) -> Option<JsLane> {
-        self.inner.get_ask().cloned().map(JsLane::from_core)
-    }
-
     /// The value the root child an identifier names, or `null`.
     ///
     /// An identifier is exact and does not fold: `id` is the number
@@ -1880,7 +1916,7 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching the capture's own column - `sourceurl` (65026), by tag
+    /// key reaching the capture's own column - `sourceurl` (65031), by tag
     /// or by name: a message holds no fact for it, and a row child would put
     /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
@@ -2168,8 +2204,8 @@ impl std::io::Write for JsSink<'_> {
 /// Every message it builds is settled as it is parsed: the typed facts are
 /// lifted off the line, a nested `XmlData` is exploded into the message,
 /// deprecated fields are restated to their latest aliases, the dictionary's
-/// `FIX:derivation` rules run, the identifier maps, the security identifiers
-/// and the order lanes fill, and
+/// native derivations run, the identifier maps and the security identifiers
+/// fill, and
 /// the identity is derived. `SendingTime` is the message's valid tag 52,
 /// else a row cell reaching that tag, else the `mtime` of the `TextLine` it
 /// was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
@@ -2222,6 +2258,10 @@ impl JsFixCodec {
     /// per new message.
     /// `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
     /// nanoseconds; `null`, zero and a negative width disable snapshots;
+    /// `sortedLifecycle` states that the messages `lifecycle` is handed
+    /// arrive in instant order, so the walk reads them as they come one
+    /// epoch hour at a time rather than collecting and sorting the whole
+    /// capture, off when unstated;
     /// `officialTimeDelayMs` is how far from `SendingTime(52)` an official
     /// transaction clock may stand and still date the message, the core's
     /// one second when unstated; `marketMetadata` is whether a market
@@ -2288,6 +2328,9 @@ impl JsFixCodec {
             let snapshot_ns = i64::try_from(snapshot_ns)
                 .map_err(|_| napi_error("snapshotNs must be a signed 64-bit integer"))?;
             inner = inner.with_snapshot_ns(snapshot_ns);
+        }
+        if let Some(held) = options.sorted_lifecycle {
+            inner = inner.with_sorted_lifecycle(held);
         }
         if let Some(held) = options.official_time_delay_ms {
             let delay = exact_i64(held, "officialTimeDelayMs")?;
@@ -2379,6 +2422,50 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn snapshot_ns(&self) -> Option<BigInt> {
         self.inner.snapshot_ns().map(BigInt::from)
+    }
+
+    /// This codec with its lifecycle snapshot grid set to `snapshotNs`, an
+    /// epoch-aligned width in exact nanoseconds: `null`, zero and a negative
+    /// width disable snapshots. Every other setting, the dictionary included,
+    /// is this codec's, so a caller's codec gains a grid without its options
+    /// being listed again.
+    #[napi]
+    pub fn with_snapshot_ns(&self, snapshot_ns: Either<BigInt, Null>) -> Result<Self> {
+        let width = match snapshot_ns {
+            Either::A(held) => {
+                let held = crate::exact_i128(&held, "snapshotNs")?;
+                i64::try_from(held)
+                    .map_err(|_| napi_error("snapshotNs must be a signed 64-bit integer"))?
+            }
+            Either::B(_) => 0,
+        };
+        Ok(Self {
+            inner: self.inner.clone().with_snapshot_ns(width),
+            registry: Arc::clone(&self.registry),
+        })
+    }
+
+    /// Whether `lifecycle` reads its messages as they come, in instant
+    /// order, one epoch hour at a time.
+    #[napi(getter)]
+    pub fn sorted_lifecycle(&self) -> bool {
+        self.inner.sorted_lifecycle()
+    }
+
+    /// This codec with its lifecycle pinned to messages arriving in instant
+    /// order - a table read hour partition by hour partition, sorted by
+    /// `currunix` - when `sorted`: the walk then holds one epoch hour at a
+    /// time, sorts within it exactly as a whole capture is sorted, and walks
+    /// an hour once a message two hours past it is read; a message dated
+    /// before an hour already walked is walked where it arrives. `false`
+    /// collects and sorts the whole capture. Every other setting is this
+    /// codec's.
+    #[napi]
+    pub fn with_sorted_lifecycle(&self, sorted: bool) -> Self {
+        Self {
+            inner: self.inner.clone().with_sorted_lifecycle(sorted),
+            registry: Arc::clone(&self.registry),
+        }
     }
 
     /// How far from `SendingTime(52)` an official transaction clock may
@@ -2656,15 +2743,14 @@ impl JsFixCodec {
     /// including unsupported AE corrections, cancellations and status reports.
     ///
     /// The loader supplies the iterable pull. `snapshotMillis` enables an
-    /// epoch-aligned snapshot grid and `global` consolidates symbols into one
-    /// `GLOBAL` book. Lifecycle enrichment remains an explicit composition.
+    /// epoch-aligned snapshot grid. Lifecycle enrichment remains an explicit
+    /// composition.
     #[napi(js_name = "_bookArrowReaderNative", skip_typescript)]
     pub fn book_arrow_reader_native(
         &self,
         env: Env,
         pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
         snapshot_millis: f64,
-        global: bool,
     ) -> Result<JsBatchReader> {
         let snapshot_millis = exact_i64(snapshot_millis, "snapshotMillis")?;
         let snapshot_millis = u64::try_from(snapshot_millis)
@@ -2678,16 +2764,16 @@ impl JsFixCodec {
             }));
         let reader = self
             .inner
-            .book_arrow_reader(messages, snapshot_millis, global)
+            .book_arrow_reader(messages, snapshot_millis)
             .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, "marketdata"))
     }
 
-    /// A capture of messages as the market operations a book folds, in the
-    /// order it folds them.
+    /// A capture of messages as the market data a book folds, in the order
+    /// it folds them.
     ///
     /// Admits what `bookArrowReader` admits and expands each admitted
-    /// message as `FixMsg.marketOperations` does, each leaf carrying its
+    /// message as `FixMsg.marketData` does, each leaf carrying its
     /// message's unmapped fields where `marketMetadata` says so. The capture
     /// is collected when this is called - it is bounded by its own size -
     /// and the operations are stably sorted by `snapunix`, else `currunix`:
@@ -2696,8 +2782,8 @@ impl JsFixCodec {
     /// each thrown by its own `next`; neither the lifecycle nor the msgtype
     /// filter runs here. The loader supplies the iterable pull, and a
     /// failure of the iterable itself throws once, in place of the end.
-    #[napi(js_name = "_marketOperationsNative", skip_typescript)]
-    pub fn market_operations_native(
+    #[napi(js_name = "_marketDataNative", skip_typescript)]
+    pub fn market_data_native(
         &self,
         env: Env,
         pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
@@ -2710,11 +2796,11 @@ impl JsFixCodec {
                 failed.take().map(|error| Err(javascript_failure(error)))
             }));
         Ok(JsMarketDataRowIterator::over(Box::new(
-            self.inner.market_operations(messages),
+            self.inner.market_data(messages),
         )))
     }
 
-    /// `marketOperations` as bounded Arrow batches of lifted `marketdata`
+    /// `marketData` as bounded Arrow batches of lifted `marketdata`
     /// rows, closing as `bookArrowReader` closes them. Every failure is met
     /// before the first operation, so one intake failure - a failure of the
     /// iterable included - is the reader's only item.
@@ -2749,13 +2835,10 @@ impl JsFixCodec {
     /// schema making no FIX root is refused before a row is read. The source
     /// is consumed.
     #[napi]
-    pub fn market_operations_arrow_reader(
-        &self,
-        source: &mut JsBatchReader,
-    ) -> Result<JsBatchReader> {
+    pub fn market_data_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
         let reader = self
             .inner
-            .market_operations_arrow_reader(source.take()?)
+            .market_data_arrow_reader(source.take()?)
             .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, "marketdata"))
     }
@@ -2918,6 +3001,10 @@ pub struct FixCodecOptions<'env> {
     /// `null`, zero and a negative width disable snapshots.
     #[napi(ts_type = "bigint | null")]
     pub snapshot_ns: Option<Either<BigInt, Null>>,
+    /// Whether the messages `lifecycle` is handed arrive in instant order,
+    /// so the walk holds one epoch hour at a time rather than collecting and
+    /// sorting the whole capture; `false` when unstated.
+    pub sorted_lifecycle: Option<bool>,
     /// How far from `SendingTime(52)` an official transaction clock may
     /// stand and still date the message, in milliseconds; the core's one
     /// second when unstated, and a nonpositive delay admits only a
@@ -3040,10 +3127,10 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// `msgsessionid` - and the `msgsesseventid` the session and the context
 /// join to with the message type and sequence; the capture's own column,
 /// `sourceurl`, which whoever read the line states on the row and no message
-/// holds; the `nofixentries` that counts the content record; and the generic
-/// `marketoperationid` shared with market operations. Thirty-one in all,
-/// each a fact no FIX dictionary publishes, at the datatype its graph column
-/// names.
+/// holds; the `msgcat` the message type files under; and the instrument,
+/// order and bridge facts a message names - each a fact no FIX dictionary
+/// publishes, at the datatype its graph column names, numbered contiguously
+/// from `65001`.
 ///
 /// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null; `state` is written on every row a message

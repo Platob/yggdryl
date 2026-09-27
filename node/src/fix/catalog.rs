@@ -24,11 +24,12 @@ impl JsMsgType {
 
 #[napi]
 impl JsMsgType {
-    /// The symbolic business-category name, or `null` for an unclassified
+    /// The business category the type files under, as the
+    /// `marketdatakind` member's stored name, or `null` for an unclassified
     /// custom definition.
     #[napi(getter)]
-    pub fn msgcat(&self) -> Option<String> {
-        self.inner.msgcat().map(ToOwned::to_owned)
+    pub fn msgcat(&self) -> Option<&'static str> {
+        self.inner.msgcat().map(yggdryl::MarketDataKind::as_str)
     }
 
     /// The native canonical name.

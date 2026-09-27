@@ -32,12 +32,19 @@ mod dataset {
 
     /// How many messages the capture reads as under the codec's own defaults:
     /// every frame, bridge row and document the log carries, less the session
-    /// traffic `DEFAULT_REFUSED_MSGTYPES` names.
-    const ROWS: usize = 79;
+    /// traffic `DEFAULT_REFUSED_MSGTYPES` names - 79 - and the 56 executions
+    /// the parse splits off the execution reports that report a fill, one
+    /// each (A12).
+    const ROWS: usize = 79 + SPLIT;
 
     /// How many it reads as when nothing is refused: the same lines plus the
     /// heartbeats, the test request and the rows that state no type at all.
-    const EVERY_ROW: usize = 94;
+    const EVERY_ROW: usize = 94 + SPLIT;
+
+    /// How many executions the parse splits off the capture: one per
+    /// execution report reporting a fill - 52 bridge rows and 4 frames. The
+    /// one trade capture states no side, so it splits off none.
+    const SPLIT: usize = 56;
 
     fn registry() -> Arc<FixRegistry> {
         super::committed_registry()
@@ -117,8 +124,9 @@ mod dataset {
     ];
 
     /// How many of the capture's messages carry a bridge row in their
-    /// `XmlData(213)`.
-    const NESTED: usize = 6;
+    /// `XmlData(213)`: six frames, and the executions split off the two of
+    /// them that report a fill, which carry it as their reports do (A12).
+    const NESTED: usize = 8;
 
     #[test]
     fn every_named_order_flow_reads_whole_end_to_end() {
@@ -168,8 +176,8 @@ mod dataset {
         for message in &messages {
             let body = message
                 .get_srcuuids()
-                .first()
-                .and_then(|source| bodies.get(source))
+                .iter()
+                .find_map(|source| bodies.get(source))
                 .copied()
                 .expect("every message names the line it was read from");
             // No security identifier the line does not state, but the Valor a
@@ -271,6 +279,34 @@ mod dataset {
             .expect("every line reads")
     }
 
+    /// A table read hour partition by hour partition hands the lifecycle its
+    /// messages sorted by the instant they were stored under - the undated
+    /// ones first, the walk dating them by their transactions - and the walk
+    /// holding one hour at a time answers exactly what sorting the whole
+    /// capture answers.
+    #[test]
+    fn the_capture_walks_alike_sorted_one_hour_at_a_time() {
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let mut messages = line_messages(&codec);
+        messages.sort_by_key(Event::get_currunix);
+        let walk = |codec: &FixCodec| {
+            codec
+                .lifecycle(messages.clone())
+                .map(|message| {
+                    let message = message.expect("a walked message");
+                    (
+                        message.get_curruuid(),
+                        message.get_seqnum(),
+                        message.get_prevuuid(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let whole = walk(&codec);
+        assert_eq!(whole.len(), 36);
+        assert_eq!(walk(&codec.clone().with_sorted_lifecycle(true)), whole);
+    }
+
     #[test]
     fn ulbridge_lifecycle_preserves_deliveries_and_identities_through_arrow() {
         let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
@@ -283,7 +319,7 @@ mod dataset {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         // Complete four-part capture keys identify the bridge's repeated
-        // observations before the older content-key dedup runs: 27 deliveries
+        // observations before the older content-key dedup runs: 35 deliveries
         // and one expiry.
         //
         // It was 32 while the row header's clock admitted three fractional
@@ -292,7 +328,11 @@ mod dataset {
         // fifteen it missed arrived carrying no session, context or sequence,
         // built no `msgsesseventid`, and so could not be folded onto the
         // deliveries they are repeats of. Reading them is what folds them.
-        assert_eq!(direct.len(), 28);
+        //
+        // It is 36 since the parse splits each fill's execution off its
+        // report (A12): the 56 executions fold, hop onto hop, into the eight
+        // fills they are, each a delivery of its own.
+        assert_eq!(direct.len(), 36);
         assert_eq!(
             direct
                 .iter()
@@ -488,17 +528,14 @@ mod dataset {
         });
 
         let residual_column = target.index_of("fixentries").expect("the residual column");
-        let residual_count = target.index_of("nofixentries").expect("the residual count");
         let original_entries: usize = messages.iter().map(|message| message.entries().len()).sum();
         let mut residual_entries = 0;
         for row in &canonical_rows {
             let cells = row.as_sequence().expect("a row");
-            let count = cells[residual_column]
-                .as_sequence()
-                .expect("residual entries")
+            residual_entries += cells[residual_column]
+                .as_mapping()
+                .expect("the residual map")
                 .len();
-            assert_eq!(cells[residual_count].as_i128(), Some(count as i128));
-            residual_entries += count;
         }
         assert!(
             residual_entries < original_entries,
@@ -930,6 +967,9 @@ mod dataset {
             ] {
                 assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
             }
+            // A key no dictionary resolved crosses the row in its metadata and
+            // comes back as the entry a parse holds, so it is written back
+            // like every other token: once.
             let source_tokens = wire_tokens(wire);
             let stated_tags = source_tokens
                 .iter()
@@ -1007,14 +1047,14 @@ mod dataset {
     }
 
     /// The typed spellings no leaf's metadata may key: each is a column, a
-    /// header or a trailer fact.
-    const TYPED: [&str; 11] = [
+    /// header or a trailer fact. `Account(1)` is none: an account is no
+    /// identifier, and the leaf's metadata carries it.
+    const TYPED: [&str; 10] = [
         "symbol",
         "side",
         "price",
         "orderqty",
         "clordid",
-        "account",
         "transacttime",
         "sendingtime",
         "bodylength",
@@ -1023,7 +1063,7 @@ mod dataset {
     ];
 
     #[test]
-    fn the_capture_reads_as_market_operations_and_folds_into_books() {
+    fn the_capture_reads_as_market_data_and_folds_into_books() {
         use std::collections::{BTreeMap, HashMap};
 
         use yggdryl::graph::{BookIterator, MarketData};
@@ -1044,40 +1084,39 @@ mod dataset {
         let messages = line_messages(&codec);
         assert_eq!(messages.len(), EVERY_ROW, "nothing refused");
 
-        // The walk folds the 94 observations into the 28 deliveries the
-        // lifecycle pin states, and the sorted door expands those.
+        // The walk folds the 94 observations and the 56 executions their
+        // parse split off into the 36 deliveries the lifecycle pin states -
+        // the 28 it folded before the split, and one per fill (A12), every
+        // hop's execution of one fill folded onto one - and the sorted door
+        // expands those.
         let walked = codec
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the capture walks");
-        assert_eq!(walked.len(), 28);
-        let (operations, refused): (Vec<_>, Vec<_>) = codec
-            .market_operations(walked.clone())
-            .partition(Result::is_ok);
+        assert_eq!(walked.len(), 36);
+        let (operations, refused): (Vec<_>, Vec<_>) =
+            codec.market_data(walked.clone()).partition(Result::is_ok);
         let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
         let refused: Vec<String> = refused
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Eleven of the deliveries reach a book - eight fills and three
+        // Nineteen of the deliveries reach a book - eight fills, the eight
+        // reports they were split off, now their orders' reports, and three
         // orders; the rest are acknowledgements, rejects, session traffic
-        // and bridge rows no book takes. The one admitted message refused is
-        // the trade capture of line 112, whose single side states no
-        // `Side(54)`: a sided execution needs one.
-        assert_eq!(
-            refused,
-            [
-                "invalid record value at $.NoSides(552)[0].Side(54): expected a bid or ask side, got no value"
-            ]
-        );
-        assert_eq!(operations.len(), 11);
+        // and bridge rows no book takes. Nothing is refused: the trade
+        // capture of line 112 is no book input, since a trade's fills are the
+        // executions its parse splits off - and its single side states no
+        // `Side(54)`, so it split off none.
+        assert!(refused.is_empty(), "{refused:?}");
+        assert_eq!(operations.len(), 19);
         let mut census: BTreeMap<&str, usize> = BTreeMap::new();
         for operation in &operations {
             *census.entry(operation.kind().as_str()).or_default() += 1;
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 8), ("order_event", 3)])
+            BTreeMap::from([("execution_event", 8), ("order_event", 11)])
         );
         assert!(operations.windows(2).all(|pair| {
             let at = |operation: &MarketData| {
@@ -1098,30 +1137,46 @@ mod dataset {
         // one book of that instant applies both as deltas and holds nothing;
         // seven books come out, and the last is that one.
         let books: Vec<yggdryl::graph::BookEvent> =
-            BookIterator::new(operations.clone().into_iter().map(Ok), 0, false)
+            BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
         assert_eq!(books.len(), 7);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
-        assert!(last.bid().is_empty() && last.ask().is_empty());
-        let deltas = last.ask().deltas();
+        assert!(last.limits(yggdryl::Side::Buy).next().is_none());
+        assert!(last.limits(yggdryl::Side::Sell).next().is_none());
+        assert_eq!(last.alive().count(), 0);
+        let deltas: Vec<&yggdryl::graph::MarketData> = last.deltas().collect();
         assert_eq!(deltas.len(), 2, "the unpriced order and its exit");
         assert_eq!(
             deltas
                 .iter()
-                .map(yggdryl::graph::Market::get_price)
+                .map(|delta| yggdryl::graph::Market::get_price(*delta))
                 .collect::<Vec<_>>(),
             [None, None]
         );
         assert_eq!(
-            yggdryl::graph::Market::get_quantity(&deltas[0]),
+            yggdryl::graph::Market::get_quantity(deltas[0]),
             Some(yggdryl::Decimal::from_int(10_000))
         );
         // The book's code digests its events' states, each fed as the `int32`
-        // code of its member.
-        assert_eq!(last.get_currhashcode(), 7_839_532_806_895_463_521);
+        // code of its member, and the identities of its two deltas. It moved
+        // when every operation's identity fed its `marketdatakind` code in
+        // place of its kind's word and its `marketoperationid` (D2). D8, D9
+        // and D1 leave it: the two deltas carry no group for the metadata
+        // JSON to render, each lane holds a quantity alone, and the book is
+        // keyed by its ticker. It moved again when a book's sides stopped
+        // being leaves: the book digests what each side holds - its entries
+        // and deltas - rather than a side summary's identity, and no longer
+        // the scopes a snapshot replaced; and the two deltas' identities moved
+        // because a book control's action no longer feeds an operation's
+        // digest - only its scope, the one control a row states. It moved
+        // again when the bid and ask lanes left the operations: the lane each
+        // delta held - its quantity alone - no longer feeds its digest. It
+        // moved again when a sided element's cross code took its side (A17):
+        // each delta's cross code, and so its identity, reads `SELL:`.
+        assert_eq!(last.get_currhashcode(), 16_200_745_769_023_081_660);
 
         // No leaf keys a typed fact.
         for operation in &operations {
@@ -1134,8 +1189,9 @@ mod dataset {
             }
         }
         // The bridge's own namespaced keys ride every leaf of the message
-        // that states them, as the message holds them: 40 of them over the
-        // eleven leaves.
+        // that states them, as the message holds them: 80 of them over the
+        // nineteen leaves - a fill's report and the execution split off it
+        // each carry the 40 the fill's leaf alone carried before the split.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1148,7 +1204,7 @@ mod dataset {
                 carried += 1;
             }
         }
-        assert_eq!(carried, 40);
+        assert_eq!(carried, 80);
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1182,7 +1238,7 @@ mod dataset {
                 .map(|held| held.as_str()),
             Some("LN")
         );
-        assert!(trade.market_operations().is_err());
+        assert!(trade.market_data().is_err());
     }
 
     #[test]
@@ -1190,19 +1246,21 @@ mod dataset {
         use yggdryl::graph::MarketData;
 
         let codec = codec();
-        // Every message the capture reads as, less the trade capture whose
-        // expansion is refused: one refusal is an Arrow door's only answer.
+        // Every message the capture reads as: none is refused, since the
+        // trade capture is no book input - its fills are the executions its
+        // parse splits off - and one refusal would be an Arrow door's only
+        // answer.
         let messages: Vec<FixMsg> = line_messages(&codec)
             .into_iter()
             .filter(|message| {
                 codec
-                    .market_operations([message.clone()])
+                    .market_data([message.clone()])
                     .all(|held| held.is_ok())
             })
             .collect();
-        assert_eq!(messages.len(), ROWS - 1);
+        assert_eq!(messages.len(), ROWS);
         let direct = codec
-            .market_operations(messages.clone())
+            .market_data(messages.clone())
             .collect::<yggdryl::Result<Vec<MarketData>>>()
             .expect("the capture expands");
         // Rows no walk wrote: each is read as its own message, so the twin
@@ -1214,15 +1272,17 @@ mod dataset {
             .expect("the FIX rows");
         let twin = MarketData::from_arrow_reader(
             codec
-                .market_operations_arrow_reader(rows)
+                .market_data_arrow_reader(rows)
                 .expect("the twin opens"),
         )
         .expect("the rows read back")
         .collect::<yggdryl::Result<Vec<MarketData>>>()
         .expect("every row");
         // Every observation's leaves, the repeated deliveries among them:
-        // nothing walked folds a repeat onto the delivery it repeats.
-        assert_eq!(direct.len(), 60);
+        // nothing walked folds a repeat onto the delivery it repeats. A fill
+        // is two leaves since the parse splits its execution off (A12): its
+        // report, now its order's, and the execution - 56 more than 60.
+        assert_eq!(direct.len(), 60 + SPLIT);
         assert_eq!(twin.len(), direct.len());
         for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
             assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
@@ -1301,8 +1361,10 @@ mod pipeline {
     /// separator a line names and the bridge marked no key, so they are prose
     /// carrying an `=`; lines 3, 9, 10 and 11 are sentences with no pair in them
     /// at all. Every one of the six used to be a row holding an entry-less
-    /// `unknown`.
-    const CARRYING: [usize; 5] = [3, 4, 5, 6, 7];
+    /// `unknown`. The fill (line 6) and the row it was routed as (line 7)
+    /// each carry two: the report, and the execution its parse splits off
+    /// (A12).
+    const CARRYING: [usize; 7] = [3, 4, 5, 6, 6, 7, 7];
 
     /// How many rows the batch door answers for this capture: one per message,
     /// never one per line.
@@ -1314,7 +1376,9 @@ mod pipeline {
     const HEARTBEAT_ROW: usize = 1;
     const RELAY_ROW: usize = 2;
     const FILL_ROW: usize = 3;
-    const ROUTED_ROW: usize = 4;
+    const FILL_EXECUTION_ROW: usize = 4;
+    const ROUTED_ROW: usize = 5;
+    const ROUTED_EXECUTION_ROW: usize = 6;
 
     /// The log as the bytes a `.log` file holds.
     fn corpus(lines: &[&str]) -> Buffer {
@@ -1607,7 +1671,7 @@ mod pipeline {
         // them states a message.
         assert_eq!(
             messages_per_line(&CAPTURE),
-            [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
+            [0, 0, 0, 1, 1, 1, 2, 2, 0, 0, 0]
         );
 
         // The text reader is what answers one row per line; the batch door
@@ -1637,15 +1701,24 @@ mod pipeline {
         );
         let lines = column(&stage, "curruuid");
         let sources = column(&read, "srcuuids");
+        let identities = column(&read, "curruuid");
         assert_eq!(sources.len(), MESSAGES);
         for (row, line) in CARRYING.iter().enumerate() {
-            assert_eq!(
-                sources[row]
-                    .as_sequence()
-                    .expect("the line the row was read from"),
-                [lines[*line].clone()],
+            let sources = sources[row]
+                .as_sequence()
+                .expect("the line the row was read from");
+            assert!(
+                sources.contains(&lines[*line]),
                 "row {row} names line {line}"
             );
+            // An execution the parse split off names its report beside the
+            // line (A12); every other row names the line alone.
+            if [FILL_EXECUTION_ROW, ROUTED_EXECUTION_ROW].contains(&row) {
+                assert_eq!(sources.len(), 2, "row {row}");
+                assert!(sources.contains(&identities[row - 1]), "row {row}");
+            } else {
+                assert_eq!(sources.len(), 1, "row {row}");
+            }
         }
 
         // The row header's captures survive the codec untouched: the thread that
@@ -1941,8 +2014,8 @@ mod pipeline {
         let entries = column(&read, "fixentries");
         assert_eq!(
             entries[RESPONSE_ROW]
-                .as_sequence()
-                .map(<[Scalar]>::len)
+                .as_mapping()
+                .map(<[(Scalar, Scalar)]>::len)
                 .unwrap_or_default(),
             0,
             "{:?}",
@@ -2032,18 +2105,20 @@ mod pipeline {
         assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
         let entries = column(&read, "fixentries");
         let recorded: Vec<i64> = entries[ROUTED_ROW]
-            .as_sequence()
-            .expect("the entries")
+            .as_mapping()
+            .expect("the residual map")
             .iter()
-            .map(|entry| {
-                entry.as_sequence().expect("an entry")[0]
-                    .as_i64()
-                    .unwrap_or_default()
+            .map(|(key, _)| {
+                key.as_str()
+                    .and_then(|key| key.split_once(':'))
+                    .and_then(|(tag, _)| tag.parse().ok())
+                    .expect("a tag:name key")
             })
             .collect();
         // This projection leaves ExecBroker, GrossTradeAmt and CurrencyCodeSource
         // in the residual record; its other content fields have typed columns.
-        assert_eq!(recorded, [76, 381, 2897]);
+        // The map is sorted by its `tag:name` keys as text.
+        assert_eq!(recorded, [2897, 381, 76]);
         for filled in [
             34,
             yggdryl::MSGCTXID_TAG_NAME.0,
@@ -2248,12 +2323,14 @@ mod pipeline {
             .expect("the batch reader opens")
             .map(|batch| batch.expect("a batch"))
             .collect();
+        // Each of the two reports a fill, so each is its report and the
+        // execution its parse splits off (A12).
         let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
-        assert_eq!(rows, 2);
+        assert_eq!(rows, 4);
         assert_eq!(
             tag_text(&batches[0], 35),
-            vec![Some("8".to_owned()); 2],
-            "the fill and the row it was routed as"
+            vec![Some("8".to_owned()); 4],
+            "the fill and the row it was routed as, each with its execution"
         );
         // The line door refuses the same lines the batch door did.
         assert_eq!(
@@ -2265,7 +2342,8 @@ mod pipeline {
                     .next()
                     .is_some())
                 .count(),
-            rows
+            2,
+            "the two lines the four rows were read from"
         );
     }
 }

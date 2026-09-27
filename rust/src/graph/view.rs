@@ -2,12 +2,11 @@
 //! [`Plan`] over the rows [`MarketData::arrow_reader`] writes.
 //!
 //! A view is not a second reader: it is a plan built structurally - columns,
-//! literals, a membership test, a selector and an ordering - and applied by
+//! literals, a comparison, a selector and an ordering - and applied by
 //! the one expression engine, so what a view publishes is exactly what its
 //! plan's text says and the text reads back as the same plan. Every view
-//! keeps the rows of the kinds it names and drops the nested columns it does
-//! not read; the composite leaves are laid flat by `unnest`, a trade's
-//! executions one row each and a book's two sides one row each.
+//! keeps the rows of the `marketdatakind` it names and drops the nested columns it does
+//! not read; a trade's executions are laid flat by `unnest`, one row each.
 //!
 //! A *lift* is a [`FieldPath`] into the root row appended to the view's
 //! projections, so a fact kept inside a nested column - an identifier in
@@ -16,26 +15,17 @@
 //! and a path naming a column the root does not hold is refused where the
 //! plan binds.
 
-use std::sync::Arc;
-
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ASKSIDE, BIDSIDE, DELTAS, EXECUTIONS, KIND, LIMITS, LIVE, SNAPSHOT_PARTITIONS};
-use super::{EventColumn, MarketData, MarketKind};
+use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS, MARKETDATAKIND};
+use super::{EventColumn, MarketData};
+use crate::MarketDataKind;
 use crate::arrow::BatchReader;
 use crate::expression::{FieldPath, Function, Ordering, Plan, Projection, Selector, Term};
 use crate::{Error, Result};
 
 /// Every nested column of the root row: what a flat view drops.
-const NESTED: [&str; 7] = [
-    EXECUTIONS,
-    BIDSIDE,
-    ASKSIDE,
-    SNAPSHOT_PARTITIONS,
-    LIVE,
-    DELTAS,
-    LIMITS,
-];
+const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 
 /// One named reading of a `marketdata` stream.
 ///
@@ -43,8 +33,7 @@ const NESTED: [&str; 7] = [
 /// | --- | --- | --- |
 /// | `orders`, `quotes`, `executions` | the undated and dated leaves of that operation kind | every flat root column |
 /// | `trades` | one per execution of a trade | the trade's flat columns, then `execution.<column>` per execution column |
-/// | `book_sides` | two per book, bid then ask | `currunix`, `snapunix`, then `side.<column>` per side column |
-/// | `books` | one per book | every root column but the executions and a book side's own nested rows |
+/// | `books` | one per book | every root column but the executions |
 /// | `lifecycle` | every leaf of one `crosscode`, ordered by `currunix`, tied instants in arrival order | every flat root column |
 ///
 /// Lifts are appended after the view's own columns in every view.
@@ -56,7 +45,9 @@ const NESTED: [&str; 7] = [
 /// let view = MarketView::read("Trades", None)?;
 /// assert_eq!(view, MarketView::Trades);
 /// let plan = MarketData::plan(&view, &["securityids['ISIN'] as isin".parse()?])?;
-/// assert!(plan.to_string().starts_with("select * exclude (executions, "));
+/// assert!(plan
+///     .to_string()
+///     .starts_with("select * exclude (alive, deltas, executions, bidlimits, asklimits)"));
 /// assert_eq!(plan.to_string().parse::<yggdryl::Plan>()?, plan);
 /// # Ok(())
 /// # }
@@ -71,9 +62,7 @@ pub enum MarketView {
     Executions,
     /// One row per execution of every trade, the trade's columns beside it.
     Trades,
-    /// One row per side of every book, bid then ask.
-    BookSides,
-    /// One row per book, its sides and partitions kept nested.
+    /// One row per book, its alive entries and its deltas kept nested.
     Books,
     /// Every leaf of one element's chain, in the order it happened: ordered
     /// by `currunix`, the leaves that share an instant kept in the order the
@@ -91,12 +80,11 @@ pub enum MarketView {
 impl MarketView {
     /// Every view's spelling, in declaration order: the enumeration both
     /// bindings list.
-    pub const ALL: [&'static str; 7] = [
+    pub const ALL: [&'static str; 6] = [
         "orders",
         "quotes",
         "executions",
         "trades",
-        "book_sides",
         "books",
         "lifecycle",
     ];
@@ -109,7 +97,6 @@ impl MarketView {
             Self::Quotes => "quotes",
             Self::Executions => "executions",
             Self::Trades => "trades",
-            Self::BookSides => "book_sides",
             Self::Books => "books",
             Self::Lifecycle { .. } => "lifecycle",
         }
@@ -140,7 +127,6 @@ impl MarketView {
             "quotes" => Self::Quotes,
             "executions" => Self::Executions,
             "trades" => Self::Trades,
-            "book_sides" => Self::BookSides,
             "books" => Self::Books,
             _ => {
                 let Some(crosscode) = crosscode else {
@@ -176,9 +162,16 @@ impl std::fmt::Display for MarketView {
     }
 }
 
-/// `kind in (...)`: the rows of these leaves.
-fn kinds(kinds: &[MarketKind]) -> Term {
-    Term::column(KIND).is_in(kinds.iter().map(|kind| Term::literal(kind.as_str())))
+/// `marketdatakind = '...'`: the rows of one category, dated or not - the
+/// name coerces to the member where the plan binds.
+fn category(kind: MarketDataKind) -> Term {
+    Term::column(MARKETDATAKIND).eq(Term::literal(kind.as_str()))
+}
+
+/// `marketdatakind = 'BOOK' and alive is not null`: the books, which state
+/// their alive entries, where a snapshot control states none.
+fn books() -> Term {
+    category(MarketDataKind::Book).and(Term::column(ALIVE).is_not_null())
 }
 
 /// `unnest(<serie>) as <name>`: the projection that lays a serie flat.
@@ -200,33 +193,16 @@ impl MarketData {
     pub fn plan(view: &MarketView, lifts: &[FieldPath]) -> Result<Plan> {
         let flat = || Selector::all_except(NESTED);
         let (mut selector, filter) = match view {
-            MarketView::Orders => (flat(), kinds(&[MarketKind::Order, MarketKind::OrderEvent])),
-            MarketView::Quotes => (flat(), kinds(&[MarketKind::Quote, MarketKind::QuoteEvent])),
-            MarketView::Executions => (
-                flat(),
-                kinds(&[MarketKind::Execution, MarketKind::ExecutionEvent]),
-            ),
+            MarketView::Orders => (flat(), category(MarketDataKind::Order)),
+            MarketView::Quotes => (flat(), category(MarketDataKind::Quotation)),
+            MarketView::Executions => (flat(), category(MarketDataKind::Execution)),
             MarketView::Trades => (
                 flat().with_projection(unnested(Term::column(EXECUTIONS), "execution")),
-                Term::column(KIND).eq(Term::literal(MarketKind::TradeEvent.as_str())),
+                category(MarketDataKind::Trade),
             ),
-            MarketView::BookSides => (
-                Selector::new([
-                    Projection::column(EventColumn::CurrUnix.name()),
-                    Projection::column(EventColumn::SnapUnix.name()),
-                    unnested(
-                        Term::Serie(Arc::from([Term::column(BIDSIDE), Term::column(ASKSIDE)])),
-                        "side",
-                    ),
-                ]),
-                Term::column(KIND).eq(Term::literal(MarketKind::BookEvent.as_str())),
-            ),
-            // A book keeps its sides and partitions; its executions and a
-            // book side's own nested rows are not a book's.
-            MarketView::Books => (
-                Selector::all_except([EXECUTIONS, LIVE, DELTAS, LIMITS]),
-                Term::column(KIND).eq(Term::literal(MarketKind::BookEvent.as_str())),
-            ),
+            // A book keeps its alive entries and its deltas; its executions
+            // are the trades view's to lay flat.
+            MarketView::Books => (Selector::all_except([EXECUTIONS]), books()),
             MarketView::Lifecycle { crosscode } => (
                 flat(),
                 Term::column(EventColumn::CrossCode.name()).eq(Term::literal(crosscode.as_str())),

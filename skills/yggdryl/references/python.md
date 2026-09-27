@@ -1,7 +1,7 @@
 # yggdryl in Python
 
 `pip install yggdryl` (Python 3.10+, `pyarrow>=18`). The wheel carries every
-part of the core - Parquet, Iceberg, the object stores - and the `ygg`
+part of the core - Parquet, Iceberg, the object stores - and the `yggdryl`
 command. The package mirrors the crate: one module per type at the root
 (`yggdryl.integer`, `yggdryl.temporal`, `yggdryl.string`, ...) and one per
 implementation (`yggdryl.json`, `yggdryl.iceberg`, `yggdryl.xxhash`), with

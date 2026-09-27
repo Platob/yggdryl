@@ -11,7 +11,6 @@ fn every_kind_spells_itself_once_in_declaration_order_and_reads_back_ignoring_ca
             "order",
             "quote",
             "execution",
-            "book_side",
             "order_event",
             "quote_event",
             "execution_event",
@@ -32,6 +31,11 @@ fn every_kind_spells_itself_once_in_declaration_order_and_reads_back_ignoring_ca
     assert_eq!(MarketKind::read("trade"), None, "a trade is dated");
     assert_eq!(MarketKind::read("snapshot"), None);
     assert_eq!(MarketKind::read(" order "), None, "a spelling is exact");
+    assert_eq!(
+        MarketKind::read("book_side"),
+        None,
+        "a book side is no leaf"
+    );
     assert!(MarketKind::Order < MarketKind::SnapshotEvent);
 }
 
@@ -50,6 +54,27 @@ fn the_six_dated_kinds_are_the_events() {
             MarketKind::TradeEvent,
             MarketKind::BookEvent,
             MarketKind::SnapshotEvent,
+        ]
+    );
+}
+
+/// Every leaf stands under one MsgCat category: the operations under
+/// their own, and a book and a snapshot control under `BOOK`.
+#[test]
+fn every_kind_stands_under_its_marketdatakind() {
+    use yggdryl::MarketDataKind;
+    assert_eq!(
+        MarketKind::ALL.map(MarketKind::marketdatakind),
+        [
+            MarketDataKind::Order,
+            MarketDataKind::Quotation,
+            MarketDataKind::Execution,
+            MarketDataKind::Order,
+            MarketDataKind::Quotation,
+            MarketDataKind::Execution,
+            MarketDataKind::Trade,
+            MarketDataKind::Book,
+            MarketDataKind::Book,
         ]
     );
 }

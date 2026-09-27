@@ -62,8 +62,8 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -195,7 +195,7 @@ pub(crate) mod casts {
     };
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
     use arrow_schema::DataType as ArrowDataType;
-    use smol_str::SmolStr;
+    use smol_str::format_smolstr;
 
     use crate::arrow::{Error, Result};
     use crate::budget::{MaterializationBudget, reserve_vec_bytes};
@@ -221,9 +221,9 @@ pub(crate) mod casts {
         Code(DataType),
         /// A UUID: sixteen stored bytes, read as the canonical spelling they are.
         Uuid,
-        /// A state: the `int32` codes of its members, each read as the name
-        /// it stands for.
-        State,
+        /// An enum leaf: the `int32` codes of its members, each read as the
+        /// name it stands for under that leaf.
+        Enum(DataType),
         /// Storage with no extension identity.
         Bare,
     }
@@ -280,21 +280,21 @@ pub(crate) mod casts {
                     target.admit(Str::from(uuid_text(&uuid_parse(text.as_bytes())?)))
                 }
                 (
-                    StringSource::Code(_) | StringSource::State | StringSource::Bare,
+                    StringSource::Code(_) | StringSource::Enum(_) | StringSource::Bare,
                     Cell::Text(text),
                 ) => target.admit(Str::from(text)),
-                // A state reaches here only as its name, read off its code.
-                (StringSource::State, Cell::Bytes(_) | Cell::Slot(_)) => {
+                // An enum member reaches here only as its name, read off its code.
+                (StringSource::Enum(held), Cell::Bytes(_) | Cell::Slot(_)) => {
                     Err(crate::Error::InvalidDataType {
-                        kind: "state",
-                        reason: SmolStr::new_static("expected a state's code, got bytes"),
+                        kind: held.name(),
+                        reason: format_smolstr!("expected the code of a {held}, got bytes"),
                     })
                 }
                 (StringSource::Bare, Cell::Slot(bytes)) => target.read_text(trim_padding(bytes)),
                 (StringSource::Bare, Cell::Bytes(bytes)) => target.read_text(bytes),
             }
         };
-        if let (StringSource::State, ArrowDataType::Int32) = (source, array.data_type()) {
+        if let (StringSource::Enum(held), ArrowDataType::Int32) = (source, array.data_type()) {
             let codes = downcast::<Int32Array>(array.as_ref())?;
             return string_storage(
                 target,
@@ -305,8 +305,12 @@ pub(crate) mod casts {
                 budget,
                 |index| {
                     codes.is_valid(index).then(|| {
-                        crate::State::read_code(i64::from(codes.value(index)))
-                            .and_then(|state| read(Cell::Text(state.as_str())))
+                        crate::enums::read_enum_code(held.id(), i64::from(codes.value(index)))
+                            .and_then(|member| {
+                                read(Cell::Text(
+                                    member.enum_name().expect("the leaf's own member"),
+                                ))
+                            })
                     })
                 },
             );
@@ -548,7 +552,8 @@ pub(crate) mod casts {
         for index in 0..source.len() {
             if is_exposed(exposure, index) && source.is_valid(index) {
                 let cell = source.value(index);
-                if code_cell::<WIDTH>(field, index, cell.as_bytes(), safe)? != Some(cell) {
+                if code_cell::<WIDTH>(field, index, cell.as_bytes(), safe)?.as_deref() != Some(cell)
+                {
                     every_cell_reads_as_itself = false;
                     break;
                 }
@@ -594,7 +599,9 @@ pub(crate) mod casts {
         Ok(Arc::new(builder.finish()))
     }
 
-    /// Validates one code cell at the code's constant width.
+    /// Validates one code cell at the code's constant width, answering the
+    /// text the column stores: the cell's own for every code but a currency
+    /// pair, whose accepted spellings land as the one canonical pair.
     ///
     /// `None` is a refused cell under `safe`, which the caller stores as null;
     /// strict, the refusal names the row and the column.
@@ -603,7 +610,7 @@ pub(crate) mod casts {
         index: usize,
         bytes: &'a [u8],
         safe: bool,
-    ) -> Result<Option<&'a str>> {
+    ) -> Result<Option<Cow<'a, str>>> {
         let refused = |reason: String| match safe {
             true => Ok(None),
             false => Err(Error::IncompatibleSchema(format!(
@@ -615,13 +622,16 @@ pub(crate) mod casts {
             Ok(text) => text,
             Err(error) => return refused(error.to_string()),
         };
-        // A side is read by its spelling and the column holds the explicit
-        // value the spelling names: `Buy` and `1` land as `BUY`, and a cell
-        // that names no side is refused here exactly as the scalar door
-        // refuses it, never stored.
-        if matches!(field.dtype(), DataType::Side) {
-            return match crate::Side::read(text) {
-                Ok(side) => Ok(Some(side.as_str())),
+        // A pair is read by every spelling it accepts and the column holds
+        // the canonical one: `EURUSD` lands as `EUR/USD`, borrowed where the
+        // cell already spells it, and a cell that names no pair is refused
+        // here exactly as the scalar door refuses it, never stored.
+        if matches!(field.dtype(), DataType::Forex) {
+            if crate::Forex::is_canonical(text) {
+                return Ok(Some(Cow::Borrowed(text)));
+            }
+            return match crate::Forex::new(text) {
+                Ok(pair) => Ok(Some(Cow::Owned(pair.as_str().to_owned()))),
                 Err(error) => refused(error.to_string()),
             };
         }
@@ -643,7 +653,7 @@ pub(crate) mod casts {
                 "expected a securities identifier in its canonical spelling, got {text:?}"
             ));
         }
-        Ok(Some(text))
+        Ok(Some(Cow::Borrowed(text)))
     }
 }
 
@@ -710,12 +720,12 @@ impl DataType {
         ("isin", DataType::Isin, ISIN_WIDTH),
         ("cusip", DataType::Cusip, CUSIP_WIDTH),
         ("sedol", DataType::Sedol, SEDOL_WIDTH),
-        ("side", DataType::Side, SIDE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
         ("bbg", DataType::Bbg, BBG_WIDTH),
         ("figi", DataType::Figi, FIGI_WIDTH),
         ("unit", DataType::Unit, UNIT_WIDTH),
         ("ric", DataType::Ric, RIC_WIDTH),
+        ("forex", DataType::Forex, FOREX_WIDTH),
     ];
 }
 
@@ -2326,19 +2336,18 @@ impl StringEnum {
         "XZCE",
     ];
 
-    /// Every side of the market a value may hold, sorted: the crate's own
-    /// explicit spellings, one per side FIX's `Side(54)` code set names
-    /// across every version, and `UNKNOWN` for a side stated as none.
+    /// Every side of the market a text column may hold, sorted: the stored
+    /// names of [`Side`](crate::Side)'s members, one per side FIX's
+    /// `Side(54)` code set names across every version, and `UNKNOWN` for a
+    /// side stated as none.
     ///
-    /// The stored value is the spelling and never FIX's one-character code:
-    /// `BUY` rather than `1`, `SSHORT` rather than `5`, so a column reads
-    /// without a dictionary beside it and a 4.2 message and a newest one
-    /// agree about what a side is. A FIX code or the specification's name
-    /// reaches the value through [`Side::from_spelling`](crate::Side::from_spelling),
-    /// which is how a registry maps tag 54 onto it; per-member pedigree stays
-    /// in the registry's vocabulary named by the field's `FIX:codeset`, where
-    /// a version can be asked about. A spelling that names no side is refused
-    /// rather than stored, exactly as a state is.
+    /// A `side` column stores its member's `int32` code; this listing is the
+    /// names a `FIELD:enum` text column declares, never FIX's one-character
+    /// code: `BUY` rather than `1`, `SSHORT` rather than `5`, so a column
+    /// reads without a dictionary beside it and a 4.2 message and a newest
+    /// one agree about what a side is. A FIX code or the specification's
+    /// name reaches the member through
+    /// [`Side::from_spelling`](crate::Side::from_spelling).
     pub const SIDES: &'static [&'static str] = &[
         "ASDEF", "BORROW", "BUY", "BUYMINUS", "CROSS", "CROSSSH", "CROSSSHX", "LEND", "OPPOSITE",
         "REDEEM", "SELL", "SELLPLUS", "SELLUND", "SSHORT", "SSHORTEX", "SUBSCR", "UNDISC",
@@ -2876,6 +2885,10 @@ mod scalars {
             crate::string_scalars!(text) => Ok(text.clone()),
             code if code.is_code() => Ok(Str::from(
                 code.code_storage().expect("a code borrowed its storage"),
+            )),
+            // An enum member spells its stored name, as its column casts to text.
+            member if member.is_enum() => Ok(Str::from(
+                member.enum_name().expect("an enum member names itself"),
             )),
             // A number of any width spells its own leaf's canonical `Display`.
             number if number.is_number() => {

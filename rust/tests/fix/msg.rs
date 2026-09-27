@@ -11,7 +11,7 @@ use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    Ccy, DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType,
+    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType,
     fix_schema, fix_schema_carrying,
 };
 
@@ -1209,14 +1209,11 @@ fn writing_a_captures_own_column_onto_a_message_is_refused() {
 fn a_row_without_the_entries_group_rebuilds_its_projected_content() {
     let (registry, reader) = reader();
     let wide = fix_schema(&registry, "fix").unwrap();
-    // The group and the counter that counts it are dropped together: a count
-    // of a record the row does not carry is a number about nothing.
+    // The residual record is dropped; the columns are all that is left.
     let columns: Vec<Field> = wide
         .fields()
         .iter()
-        .filter(|column| {
-            column.name() != FIXENTRIES_COLUMN && column.name() != yggdryl::NOFIXENTRIES_TAG_NAME.1
-        })
+        .filter(|column| column.name() != FIXENTRIES_COLUMN)
         .cloned()
         .collect();
     let narrow = StructType::from_fields(columns)
@@ -1248,12 +1245,12 @@ fn a_row_without_the_entries_group_rebuilds_its_projected_content() {
 }
 
 #[test]
-fn entries_folded_past_the_materialization_depth_read_back_whole() {
+fn a_deep_residual_reads_back_whole() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     // A trade report's sides, each side's parties, each party's
-    // sub-identifiers: four counters deep, one past the three levels a row
-    // materializes, so the deepest level folds into the JSON leaf.
+    // sub-identifiers: four counters deep, every level of it one JSON value
+    // under the sides' key.
     const DEEP: &[u8] =
         b"8=FIX.4.4|35=AE|571=T1|552=1|54=1|453=1|448=P1|452=1|802=1|523=S1|803=1|10=0|";
     let parsed = reader.sole_line(DEEP).unwrap();
@@ -1266,40 +1263,25 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     }
     assert!(
         depth(parsed.entries()) >= 4,
-        "the fixture nests past the materialized depth: {:?}",
+        "the fixture nests deep: {:?}",
         parsed.entries()
     );
     let row = parsed.into_row(&schema).unwrap();
-    // The row holds a folded leaf somewhere under the entries column.
-    fn leaf(entry: &[Scalar]) -> bool {
-        match entry.get(3) {
-            Some(tail) if tail.as_str().is_some_and(|text| !text.is_empty()) => true,
-            Some(tail) => tail
-                .as_sequence()
-                .unwrap_or_default()
-                .iter()
-                .filter_map(Scalar::as_sequence)
-                .any(leaf),
-            None => false,
-        }
-    }
-    let entries = row
+    let record = row
         .get(schema.index_of(FIXENTRIES_COLUMN).unwrap())
         .unwrap();
-    assert!(
-        entries
-            .as_sequence()
-            .unwrap()
-            .iter()
-            .filter_map(Scalar::as_sequence)
-            .any(leaf)
-    );
+    let sides = record
+        .as_mapping()
+        .expect("the residual map")
+        .iter()
+        .find(|(key, _)| key.as_str().is_some_and(|key| key.starts_with("552:")))
+        .and_then(|(_, value)| value.as_str().map(str::to_owned))
+        .expect("the sides under their tag:name");
+    assert!(sides.starts_with("[{"), "{sides}");
+    assert!(sides.contains(r#""523:partysubid":"S1""#), "{sides}");
 
-    // The folded leaf decodes back into the message: every pair the four
-    // levels state is stated again, at the depth it was folded from. The
-    // shape around them - a group whose occurrences nest a second group -
-    // is the one [`FixMsg::from_row`] names as not rebuilding entry for
-    // entry, so what is pinned here is that nothing folded is lost.
+    // The JSON decodes back into the message: every pair the four levels
+    // state is stated again, whatever order the map listed them in.
     fn pairs(entries: &[FixEntry], out: &mut Vec<(i32, String)>) {
         for entry in entries {
             if entry.entries().is_empty() {
@@ -1315,11 +1297,23 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     let (mut stated, mut rebuilt) = (Vec::new(), Vec::new());
     pairs(parsed.entries(), &mut stated);
     pairs(held.entries(), &mut rebuilt);
+    stated.sort();
+    rebuilt.sort();
     assert_eq!(rebuilt, stated);
     assert!(
         stated.contains(&(523, "S1".to_owned())),
-        "the folded level's own pair: {stated:?}"
+        "the deepest level's own pair: {stated:?}"
     );
+    // A group read back out of the map opens each occurrence on its
+    // delimiter again, as the dictionary declares its members.
+    assert!(
+        held.into_text('|')
+            .unwrap()
+            .contains("|453=1|448=P1|452=1|802=1|523=S1|803=1|"),
+        "{}",
+        held.into_text('|').unwrap()
+    );
+    assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
 /// A group nested in an occurrence is one entry under its counter, as a
@@ -1352,7 +1346,7 @@ fn a_nested_group_re_emits_its_counter_once() {
 }
 
 #[test]
-fn an_entries_column_holding_no_entry_is_refused() {
+fn a_residual_value_whose_json_does_not_decode_is_refused() {
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let mut values: Vec<Scalar> = schema
@@ -1361,105 +1355,68 @@ fn an_entries_column_holding_no_entry_is_refused() {
         .map(|column| column.default_value().unwrap())
         .collect();
     values[schema.index_of(FIXENTRIES_COLUMN).unwrap()] =
-        Scalar::from_sequence([Scalar::from_sequence([
-            Scalar::from(35_i32),
-            Scalar::from("msgtype"),
-            Scalar::from("D"),
-            Scalar::from(b"not json" as &[u8]),
-        ])]);
+        Scalar::from_mapping([(Scalar::from("58:text"), Scalar::from("{not json"))]).unwrap();
     let row = Scalar::from_sequence(values);
     let refused = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap_err();
-    assert!(!refused.to_string().is_empty());
+    assert!(refused.to_string().contains("58:text"), "{refused}");
 }
 
 #[test]
-fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
+fn a_malformed_residual_value_is_refused_instead_of_dropped() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let message = reader.sole_line(ORDER).unwrap();
     let original = message.into_row(&schema).unwrap();
     let at = schema.index_of(FIXENTRIES_COLUMN).unwrap();
-    let row = |leaf: Scalar| {
-        let mut tail = leaf;
-        for _ in 0..3 {
-            // No value of its own: an entry that heads others is what the
-            // materialized levels above a fold hold.
-            tail = Scalar::from_sequence([Scalar::from_sequence([
-                Scalar::from(0_i32),
-                Scalar::from("raw"),
-                Scalar::Null,
-                tail,
-            ])]);
-        }
+    let row = |value: &str| {
         let mut values = original.as_sequence().unwrap().to_vec();
-        values[at] = tail;
+        values[at] =
+            Scalar::from_mapping([(Scalar::from("453:parties"), Scalar::from(value))]).unwrap();
         Scalar::from_sequence(values)
     };
-    for leaf in [
-        // A leaf whose JSON is `null` folded nothing and says so with an
-        // absent leaf, not with a document that decodes to nothing.
-        "null",
-        "true",
-        "{}",
-        "[1]",
-        // Three members is one short and five is one over: an entry is
-        // exactly the four the materialized levels hold.
-        "[[0,\"name\",\"value\"]]",
-        "[[0,\"name\",\"value\",[],0]]",
-        "[[-1,\"name\",\"value\",[]]]",
-        "[[2147483648,\"name\",\"value\",[]]]",
-        "[[\"0\",\"name\",\"value\",[]]]",
-        "[[0,1,\"value\",[]]]",
-        "[[0,null,\"value\",[]]]",
-        "[[0,\"name\",false,[]]]",
-        "[[0,\"name\",\"value\",true]]",
-        "[[0,\"name\",\"value\",[false]]]",
+    for value in [
+        // JSON that does not decode.
+        "[1,",
+        "{",
+        r#""unterminated"#,
+        // A member key that is no `tag:name`: a bare name, a bare tag, a
+        // negative tag, a tag that is no number, an empty name.
+        r#"[{"partyid":"P1"}]"#,
+        r#"[{"448":"P1"}]"#,
+        r#"[{"-1:partyid":"P1"}]"#,
+        r#"[{"x:partyid":"P1"}]"#,
+        r#"[{"448:":"P1"}]"#,
+        // A member no text can state.
+        r#"[{"448:partyid":{"1":"x"}}]"#,
     ] {
-        let error =
-            FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from(leaf))).unwrap_err();
+        let error = FixMsg::from_row(Arc::clone(&registry), &schema, &row(value)).unwrap_err();
         assert!(
             matches!(&error, yggdryl::Error::InvalidRecord { path, .. }
-            if path.starts_with("$.fixentries[0].fixentries[0].fixentries[0].fixentries")),
-            "{leaf}: {error}"
+            if path.starts_with("$.fixentries")),
+            "{value}: {error}"
         );
     }
-    // A null tag is the tag of a key that named no field, and a null value
-    // is an entry that only heads others; the name is never null, because
-    // an entry is reached by it.
+    // What decodes is read rather than refused: an empty group, one
+    // occurrence of a member the dictionary knows, a member it does not
+    // know under tag zero, a number spelled as JSON spells one, and text
+    // that opens no JSON at all.
+    for value in [
+        "[]",
+        "{}",
+        r#"[{"448:partyid":"P1"}]"#,
+        r#"[{"0:venueseq":"7","448:partyid":"P1"}]"#,
+        r#"[{"452:partyrole":1}]"#,
+        "0",
+        "",
+    ] {
+        assert!(
+            FixMsg::from_row(Arc::clone(&registry), &schema, &row(value)).is_ok(),
+            "{value}"
+        );
+    }
     assert!(
-        FixMsg::from_row(
-            Arc::clone(&registry),
-            &schema,
-            &row(Scalar::from("[[null,\"\",null,[]]]")),
-        )
-        .is_ok()
-    );
-    // A folded pair the dictionary knows is read rather than refused; what
-    // it reads back as is
-    // `entries_folded_past_the_materialization_depth_read_back_whole`'s.
-    assert!(
-        FixMsg::from_row(
-            Arc::clone(&registry),
-            &schema,
-            &row(Scalar::from("[[448,\"partyid\",\"P1\",[]]]")),
-        )
-        .is_ok()
-    );
-    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from("[]"))).is_ok());
-    // An empty leaf and an absent one both mean nothing was folded - which is
-    // what the nullable leaf buys over the empty-string-only spelling.
-    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from(""))).is_ok());
-    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::Null)).is_ok());
-    let undecodable = FixMsg::from_row(
-        Arc::clone(&registry),
-        &schema,
-        &row(Scalar::from("not json")),
-    )
-    .unwrap_err();
-    assert!(
-        matches!(&undecodable, yggdryl::Error::InvalidRecord { path, .. }
-            if path == "$.fixentries[0].fixentries[0].fixentries[0].fixentries"),
-        "{undecodable}"
+        FixMsg::from_row(Arc::clone(&registry), &schema, &row("[")).is_err(),
+        "an array that never closes"
     );
     assert_eq!(message.into_row(&schema).unwrap(), original);
 }
@@ -1554,13 +1511,12 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
     assert_eq!(column.get_currunix(), EXECUTION);
 }
 
-/// A quote stating one of its lanes and no `Side(54)` is that lane's side:
-/// `BidPx(132)`/`BidSize(134)` alone read as a buy at the bid, and
-/// `OfferPx(133)`/`OfferSize(135)` alone as a sell at the offer, so the
-/// price, the quantity and the lane's currency fill from it. What is read
-/// is derived - nothing of it reaches the wire.
+/// A quote's `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and
+/// `OfferSize(135)` are the message's fields and no market fact of it: a
+/// quote stating one side of them and no `Side(54)` names no side and no
+/// price, and a stated side is the message's own.
 #[test]
-fn a_single_sided_quote_reads_as_its_lanes_side() {
+fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
     let (_registry, reader) = reader();
     let decimal = |text: &str| Decimal::parse(text).expect("a decimal");
 
@@ -1569,17 +1525,9 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
             b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|",
         )
         .unwrap();
-    assert_eq!(bid.get_side().as_str(), "BUY");
-    assert_eq!(bid.get_price(), Some(decimal("101.5")));
-    assert_eq!(bid.get_quantity(), Some(Decimal::from_int(200)));
+    assert_eq!(bid.get_side().as_str(), "UNKNOWN");
+    assert_eq!((bid.get_price(), bid.get_quantity()), (None, None));
     assert_eq!(bid.get_currency().as_str(), "USD");
-    assert_eq!(
-        bid.get_bid()
-            .and_then(|lane| lane.currency.as_ref())
-            .map(Ccy::as_str),
-        Some("USD")
-    );
-    assert_eq!(bid.get_ask(), None);
     let wire = bid.into_bytes(b'|');
     assert!(
         !wire.windows(4).any(|held| held == b"|54="),
@@ -1587,61 +1535,33 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         String::from_utf8_lossy(&wire)
     );
 
-    let offer = reader
-        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q2|55=AAPL|133=102|135=50|10=0|")
-        .unwrap();
-    assert_eq!(offer.get_side().as_str(), "SELL");
-    assert_eq!(offer.get_price(), Some(decimal("102")));
-    assert_eq!(offer.get_quantity(), Some(Decimal::from_int(50)));
-
-    // Both lanes name no side, and nothing reads off either.
-    let two = reader
-        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q3|55=AAPL|132=101|133=102|134=10|135=20|10=0|")
-        .unwrap();
-    assert_eq!(two.get_side().as_str(), "UNKNOWN");
-    assert_eq!(two.get_price(), None);
-
-    // A stated side is the message's own: a sell quoting only a bid keeps
-    // its side, and its own lane quotes nothing to read.
     let stated = reader
         .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q4|55=AAPL|54=2|132=101|134=10|10=0|")
         .unwrap();
     assert_eq!(stated.get_side().as_str(), "SELL");
     assert_eq!(stated.get_price(), None);
 
-    // A report pricing itself is not a quote: a fill at its last executed
-    // price beside a lone bid is about the fill, and names no side. The
-    // lane is context, and the price the fill states stays none: what it
-    // last executed at is `lastpx`, never the price.
+    // A report pricing itself is about the fill: what it last executed at
+    // is `lastpx`, never the price.
     let fill = reader
         .sole_line(
             b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
         )
         .unwrap();
     assert_eq!(fill.get_side().as_str(), "UNKNOWN");
-    assert_eq!(fill.get_price(), None);
-    assert_eq!(fill.get_quantity(), None);
+    assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
     assert_eq!(fill.get_lastpx(), Some(decimal("100")));
     assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(10)));
 
-    // A lane read under a side is the side's, not a statement of its own: a
-    // buy whose side a write takes away quotes no lane any more, so it names
-    // no side either.
+    // A side a write takes away is gone.
     let mut order = reader
         .sole_line(
             b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=C1|55=AAPL|15=USD|54=1|44=100|38=10|10=0|",
         )
         .unwrap();
-    assert_eq!(
-        order
-            .get_bid()
-            .and_then(|lane| lane.currency.as_ref())
-            .map(Ccy::as_str),
-        Some("USD")
-    );
+    assert_eq!(order.get_side().as_str(), "BUY");
     order.remove(54).unwrap();
     assert_eq!(order.get_side().as_str(), "UNKNOWN");
-    assert_eq!(order.get_bid(), None);
 }
 
 mod market_ladder {
@@ -1800,11 +1720,12 @@ mod market_ladder {
 }
 
 mod identifier_maps {
-    //! The three identifier maps a message rebuilds from the dictionary's
-    //! `FIX:idmap` sources at every settle.
+    //! The alternate identifiers a message rebuilds from the dictionary's
+    //! `FIX:idmap` sources at every settle, and the accounts, users and
+    //! parties it names, which are no identifier and stay in its metadata.
 
     use yggdryl::FixMsg;
-    use yggdryl::graph::Operation;
+    use yggdryl::graph::{Market, Operation};
 
     fn parsed(line: &str) -> FixMsg {
         super::super::fixed_codec(super::super::committed_registry())
@@ -1818,20 +1739,21 @@ mod identifier_maps {
             .collect()
     }
 
+    /// The metadata of the first leaf the message expands to: what it
+    /// states that no typed column reads.
+    fn leaf_metadata(message: &FixMsg) -> yggdryl::graph::Metadata {
+        message.market_data().expect("market data")[0]
+            .get_metadata()
+            .clone()
+    }
+
     #[test]
     fn a_bridges_own_fields_name_the_message_and_stay_content() {
         let held = parsed(
-            "8=FIX.4.4|35=8|17=E1|37=O1|1=ACC|OMSDEALERACCOUNT=YNHD5|OMSUSERID=trader1|\
+            "8=FIX.4.4|35=8|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|1=ACC|\
+             OMSDEALERACCOUNT=YNHD5|OMSUSERID=trader1|\
              PARENTORDERID=P1|PARENTCLORDID=PC1|OMSDEALERPARENTORDERID=OP1|\
              EXCHANGECLIENTORDERID=X1|TRANSVERSAL_KEY=T1|ULTRADER_CLORDID=U1|10=0|",
-        );
-        assert_eq!(
-            pairs(held.get_accountids()),
-            [("ACCOUNT", "ACC"), ("OMSDEALERACCOUNT", "YNHD5")].map(|(k, v)| (k.into(), v.into()))
-        );
-        assert_eq!(
-            pairs(held.get_userids()),
-            [("OMSUSERID".to_owned(), "trader1".to_owned())]
         );
         let alts = pairs(held.get_altids());
         for (key, value) in [
@@ -1858,53 +1780,60 @@ mod identifier_maps {
         );
         let registry = super::super::committed_registry();
         let schema = yggdryl::fix_schema(&registry, "fix").expect("a schema");
-        for tag in 65_068..=65_075 {
+        for tag in 65_032..=65_039 {
             assert!(yggdryl::fix_column_of(&schema, tag).is_none(), "{tag}");
+        }
+        // An account and a user are no identifier: no alternate identifier
+        // holds them. `Account(1)` is what the leaf's metadata carries, and
+        // the bridge's own two stay content of the message's row.
+        for key in ["ACCOUNT", "OMSDEALERACCOUNT", "OMSUSERID"] {
+            assert!(alts.iter().all(|(held, _)| held != key), "{key}: {alts:?}");
+        }
+        let metadata = leaf_metadata(&held);
+        assert_eq!(
+            metadata.get("account").map(|held| held.as_str()),
+            Some("ACC"),
+            "{metadata:?}"
+        );
+        for (name, value) in [("omsdealeraccount", "YNHD5"), ("omsuserid", "trader1")] {
+            assert_eq!(
+                held.get_by_name(name)
+                    .and_then(|held| held.as_str().map(str::to_owned))
+                    .as_deref(),
+                Some(value),
+                "{name}"
+            );
         }
         // A write lands on the field the key is read from.
         let mut held = held;
         assert!(
-            held.insert_userid("OMSUSERID", "other")
+            held.insert_altid("EXECID", "other")
                 .expect("a stated key")
                 .eq(&false)
-        );
-        let mut users = yggdryl::IdMap::new();
-        users
-            .insert("OMSUSERID", "other")
-            .expect("a key and a value");
-        held.set_userids(users).expect("a map the row states");
-        assert_eq!(
-            held.get_by_name("omsuserid")
-                .and_then(|held| held.as_str().map(str::to_owned))
-                .as_deref(),
-            Some("other")
         );
     }
 
     #[test]
-    fn a_party_role_fills_its_key_once_and_a_differing_later_occurrence_is_an_anomaly() {
+    fn the_parties_a_message_names_stay_in_its_metadata() {
         let held = parsed(
-            "8=FIX.4.4|35=8|17=E1|37=O1|453=3|448=T1|447=D|452=36|448=T2|447=D|452=36|\
+            "8=FIX.4.4|35=8|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|453=3|448=T1|\
+             447=D|452=36|448=T2|447=D|452=36|\
              448=C1|447=D|452=24|10=0|",
         );
-        assert_eq!(
-            pairs(held.get_userids()),
-            [("ENTERINGTRADER".to_owned(), "T1".to_owned())]
-        );
-        assert_eq!(
-            pairs(held.get_accountids()),
-            [("CUSTOMERACCOUNT".to_owned(), "C1".to_owned())]
-        );
-        let anomalies: Vec<String> = held.anomalies().iter().map(ToString::to_string).collect();
-        assert_eq!(
-            anomalies,
-            ["parties: states ENTERINGTRADER:T2 where ENTERINGTRADER:T1 is already stated"]
-        );
-        // The same trader twice is one statement.
-        let held = parsed(
-            "8=FIX.4.4|35=8|17=E1|37=O1|453=2|448=T1|447=D|452=36|448=T1|447=D|452=12|10=0|",
-        );
+        let metadata = leaf_metadata(&held);
+        let parties = metadata.get("parties").expect("the parties as JSON");
+        for id in ["T1", "T2", "C1"] {
+            assert!(parties.contains(id), "{id}: {parties}");
+        }
+        // No party is an alternate identifier, so none is an anomaly.
         assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
+        assert!(
+            pairs(held.get_altids())
+                .iter()
+                .all(|(key, _)| key == "ORDERID" || key == "EXECID"),
+            "{:?}",
+            held.get_altids()
+        );
     }
 
     #[test]
@@ -1915,6 +1844,222 @@ mod identifier_maps {
         }
         for key in ["CLORDID", "EXECID", "ULTRADERCLORDID", "MARKETORDERID"] {
             assert!(!held.is_followed_altid(key), "{key}");
+        }
+    }
+}
+
+/// A message naming no currency pair digests exactly as it did before FX
+/// detection existed: detection writes nothing where it finds no pair.
+#[test]
+fn a_message_naming_no_pair_digests_as_it_did_before_detection() {
+    let (_, reader) = reader();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=100|40=2|44=10.5|15=USD|167=CS|10=0|")
+        .expect("an order");
+    assert_eq!(message.get_currhashcode(), 17_802_254_102_850_403_896);
+}
+
+/// What settle derives about the market a message is in: the rates it
+/// states, its last price's FX triple completed, and its category.
+mod settled_market {
+    use std::sync::Arc;
+
+    use super::SoleMessage;
+    use yggdryl::graph::{FxRates, Market, MarketData};
+    use yggdryl::{Ccy, Decimal, FixMsg, MarketDataKind, Scalar, fix_schema};
+
+    fn decimal(text: &str) -> Decimal {
+        text.parse().expect("a decimal")
+    }
+
+    fn parsed(line: &str) -> FixMsg {
+        let (_, reader) = super::reader();
+        reader.sole_line(line.as_bytes()).expect("a message")
+    }
+
+    #[test]
+    fn no_field_fills_the_rates_and_a_settlement_rate_stays_metadata() {
+        let stated = parsed(
+            "8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|55=AAPL|31=10|32=1|15=EUR|120=USD|155=1.1|156=D|10=0|",
+        );
+        assert!(
+            stated.get_fxrates().is_empty(),
+            "{:?}",
+            stated.get_fxrates()
+        );
+        let metadata = stated.market_data().expect("an execution")[0]
+            .get_metadata()
+            .clone();
+        assert_eq!(
+            metadata.get("settlcurrfxrate").map(|held| held.as_str()),
+            Some("1.1"),
+            "{metadata:?}"
+        );
+        let fill =
+            parsed("8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|55=EUR/USD|31=1.0862|32=100|10=0|");
+        assert!(fill.get_fxrates().is_empty(), "{:?}", fill.get_fxrates());
+        // A rate the caller states stands: target to the rate to divide by.
+        let mut held = stated;
+        let rates = FxRates::from([(Ccy::new("USD").unwrap(), decimal("0.9"))]);
+        held.set_fxrates(rates.clone());
+        assert_eq!(held.get_fxrates(), &rates);
+        assert!(!held.insert_fxrate(Ccy::new("USD").unwrap(), decimal("0.8")));
+        assert!(held.insert_fxrate(Ccy::new("GBP").unwrap(), decimal("1.2")));
+        assert_eq!(held.get_fxrates().len(), 2);
+    }
+
+    #[test]
+    fn a_tag_triple_completes_the_member_it_leaves_out() {
+        // The last price's spot is `LastSpotRate(194)`, from `LastPx(31)`
+        // and `LastForwardPoints(195)` - never `Price(44)`'s.
+        let fill = parsed(
+            "8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|15=EUR|44=9|31=1.0862|32=100|195=0.0012|10=0|",
+        );
+        assert_eq!(fill.get_spotrate(), Some(decimal("1.085")));
+        assert_eq!(fill.get_lastpx(), Some(decimal("1.0862")));
+        assert_eq!(fill.get_price(), Some(decimal("9")));
+        // Three stated are left as they are.
+        let three =
+            parsed("8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|31=1|32=100|194=2|195=3|10=0|");
+        assert_eq!(
+            (
+                three.get_lastpx(),
+                three.get_spotrate(),
+                three.get_forwardpoints()
+            ),
+            (Some(decimal("1")), Some(decimal("2")), Some(decimal("3")))
+        );
+    }
+
+    #[test]
+    fn an_executions_price_stays_unstated() {
+        let mut fill = parsed("8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|31=101.5|32=10|10=0|");
+        for _ in 0..2 {
+            assert_eq!(fill.get_price(), None, "a last price is not a price");
+            assert_eq!(fill.get_lastpx(), Some(decimal("101.5")));
+            assert_eq!(fill.get_lastqty(), Some(decimal("10")));
+            // A write settles the message again.
+            fill.set(58, Scalar::from("again")).unwrap();
+        }
+    }
+
+    #[test]
+    fn the_category_is_typed_the_rows_word_wins_and_a_new_type_derives_again() {
+        let (registry, _) = super::reader();
+        let category = |code: &str| {
+            registry
+                .get_msgtype(code)
+                .and_then(|held| held.msgcat())
+                .unwrap_or(MarketDataKind::Unknown)
+        };
+        let mut order = parsed("8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=10|10=0|");
+        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        assert_eq!(
+            order.get_by_tag(yggdryl::MSGCAT_TAG_NAME.0),
+            Some(Scalar::MarketDataKind(MarketDataKind::Order))
+        );
+        // A row stating another category is the row's word.
+        let schema = fix_schema(&registry, "fix").unwrap();
+        let at = schema.index_of("msgcat").expect("the category column");
+        let mut cells = order
+            .into_row(&schema)
+            .unwrap()
+            .as_sequence()
+            .expect("a row")
+            .to_vec();
+        cells[at] = Scalar::MarketDataKind(MarketDataKind::Book);
+        let stated = FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &Scalar::from_sequence(cells),
+        )
+        .unwrap();
+        assert_eq!(stated.msgcat(), MarketDataKind::Book);
+        // A written type derives its own.
+        order.set(35, Scalar::from("8")).unwrap();
+        assert_eq!(order.msgcat(), category("8"));
+        assert_ne!(order.msgcat(), MarketDataKind::Order);
+    }
+
+    /// The first leaf's metadata, key by key.
+    fn metadata(message: &FixMsg) -> Vec<(String, String)> {
+        let leaves = message.market_data().expect("market data");
+        leaves[0]
+            .get_metadata()
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    fn value(message: &FixMsg, key: &str) -> Option<String> {
+        metadata(message)
+            .into_iter()
+            .find_map(|(held, value)| (held == key).then_some(value))
+    }
+
+    #[test]
+    fn a_group_no_column_reads_is_one_json_text_under_its_name() {
+        let order = parsed(
+            "8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=2|448=TRADER2|447=D|452=11|448=ACC9|447=D|452=24|10=0|",
+        );
+        assert_eq!(
+            value(&order, "parties").as_deref(),
+            Some(
+                r#"[{"partyid":"TRADER2","partyidsource":"D","partyrole":"11"},{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#
+            ),
+            "no party is an identifier: every occurrence stays"
+        );
+        assert!(
+            !metadata(&order)
+                .iter()
+                .any(|(key, _)| key.starts_with("parties[")),
+            "no member keyed by its path"
+        );
+        // A customer account's occurrence is no identifier's either.
+        let account = parsed(
+            "8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=1|448=ACC9|447=D|452=24|10=0|",
+        );
+        assert_eq!(
+            value(&account, "parties").as_deref(),
+            Some(r#"[{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#)
+        );
+        // A decimal keeps its stored scale inside the text, as a string.
+        let fees = parsed(
+            "8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|55=AAPL|31=10|32=5|136=1|137=1.5|138=EUR|139=4|10=0|",
+        );
+        let (key, text) = metadata(&fees)
+            .into_iter()
+            .find(|(_, value)| value.contains("miscfeeamt"))
+            .expect("the fees group");
+        assert_eq!(key, "miscfees");
+        assert_eq!(
+            text,
+            r#"[{"miscfeeamt":"1.500000000000000000","miscfeecurr":"EUR","miscfeetype":"4"}]"#
+        );
+    }
+
+    #[test]
+    fn a_trade_sides_component_is_one_json_text_under_its_bare_name() {
+        // A trade's sides are the executions its parse splits off, each
+        // carrying its own side's members.
+        let sides: Vec<MarketData> = super::super::fixed_codec(super::super::committed_registry())
+            .parse_line(
+                b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|528=A|54=2|1427=SELL-EXEC|1009=6|528=P|10=0|",
+            )
+            .expect("a trade")
+            .skip(1)
+            .map(|side| side.and_then(FixMsg::into_market_data).expect("an execution").remove(0))
+            .collect();
+        let [buy, sell] = sides.as_slice() else {
+            panic!("one execution per side")
+        };
+        for (side, capacity) in [(buy, "A"), (sell, "P")] {
+            assert_eq!(
+                side.get_metadata()
+                    .get("tradereportorderdetail")
+                    .map(ToString::to_string),
+                Some(format!(r#"{{"ordercapacity":"{capacity}"}}"#))
+            );
         }
     }
 }

@@ -37,3 +37,59 @@ mod coded {
         assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
     }
 }
+
+mod merge {
+    use yggdryl::{Cfi, CodeValue};
+
+    fn filled(mine: &str, theirs: &str) -> String {
+        Cfi::new(mine)
+            .unwrap()
+            .merge_with(&Cfi::new(theirs).unwrap())
+            .as_str()
+            .to_owned()
+    }
+
+    #[test]
+    fn an_unclassified_code_yields_whole_to_a_classified_one() {
+        // All `X`, or a letter no group accepts: it says nothing, so the
+        // other statement stands whole.
+        assert_eq!(filled("XXXXXX", "ESVUFR"), "ESVUFR");
+        assert_eq!(filled("XXXXXX", "JFTXFN"), "JFTXFN");
+        assert_eq!(filled("ESZUFR", "ESVUFR"), "ESVUFR");
+        assert_eq!(filled("XXXXXX", "ESXXXX"), "ESXXXX");
+        // Nothing better beside it: this one stays.
+        assert_eq!(filled("XXXXXX", "XXXXXX"), "XXXXXX");
+        assert_eq!(filled("XXXXXX", "EXXXXX"), "XXXXXX");
+        // A classified code never takes an unclassified one.
+        assert_eq!(filled("ESVUFR", "XXXXXX"), "ESVUFR");
+        assert_eq!(filled("ESXXXX", "XXXXXX"), "ESXXXX");
+    }
+
+    #[test]
+    fn one_instrument_fills_position_by_position_and_two_keep_this_one() {
+        assert_eq!(filled("ESVXXX", "ESXUFR"), "ESVUFR");
+        assert_eq!(filled("ESVUFR", "ESNUFR"), "ESXUFR");
+        assert_eq!(filled("ESVUFR", "DBFNFB"), "ESVUFR");
+        assert_eq!(filled("JFTXFX", "JFTXXN"), "JFTXFN");
+    }
+}
+
+mod groups {
+    use yggdryl::Cfi;
+
+    #[test]
+    fn a_non_deliverable_fx_forward_and_swap_classify() {
+        // ISO 10962:2021, groups JF and SF: position 6 (delivery) lists `N`,
+        // non-deliverable, beside physical and cash.
+        for code in ["JFTXFN", "JFRXFN", "SFXXXN", "SFAXXN", "SFCXXN"] {
+            assert!(Cfi::is_classified(code), "{code}");
+            assert!(Cfi::is_detailed(code), "{code}");
+        }
+        for code in ["JFTXFP", "JFTXFC", "JFTXCC", "SFCXXP", "IFXXXP"] {
+            assert!(Cfi::is_classified(code), "{code}");
+        }
+        // `Z` is no delivery at all, and a spot is always physical.
+        assert!(!Cfi::is_classified("JFTXFZ"));
+        assert!(!Cfi::is_classified("IFXXXN"));
+    }
+}

@@ -1,4 +1,4 @@
-"""The operation leaves, ``Lane`` and ``BookRef``: `python/src/graph/operation.rs`."""
+"""The operation leaves and ``BookRef``: `python/src/graph/operation.rs`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Scalar, State, graph
+from yggdryl import MarketDataKind, Scalar, Side, State, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -29,7 +29,11 @@ def order_event(**facts: Any) -> graph.OrderEvent:
         "ticker": "ACME",
         "tif": "0",
         "altids": {"ORDERID": "O-100"},
-        "bid": graph.Lane(price=D("101"), quantity=5),
+        "securityids": {"ISIN": "US0378331005"},
+        "fxrates": {"EUR": D("1.25")},
+        "bidpx": D("100.5"),
+        "bidqty": 7,
+        "bidccy": "USD",
     }
     stated.update(facts)
     return graph.OrderEvent(CLOCK, **stated)
@@ -39,11 +43,12 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     event = order_event()
     assert isinstance(event.curruuid, Scalar) and event.curruuid.kind == "uuid"
     assert isinstance(event.crossuuid, Scalar) and event.crossuuid.kind == "uuid"
-    assert event.crosscode == "O-100"
+    # A sided element's cross code states its side.
+    assert event.crosscode == "BUY:O-100"
     assert isinstance(event.currhashcode, int) and isinstance(event.crosshashcode, int)
     assert event.srcuuids == []
     assert event.currunix == CLOCK
-    assert event.state.as_py() is State.UNKNOWN
+    assert event.state is State.UNKNOWN
     assert event.seqnum == 3
     assert event.creaunix == CLOCK - 100_000_000_000
     assert event.execunix is None
@@ -55,8 +60,15 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.currency.as_py() == "USD"
     assert event.quantity is not None and event.quantity.as_py() == 5
     assert event.unit == ""
-    assert event.side.as_py() == "BUY"
-    assert event.securityids == {}
+    assert event.side is Side.BUY
+    # A US ISIN embeds its CUSIP, which the core derives beside it.
+    assert event.securityids == {"CUSIP": "037833100", "ISIN": "US0378331005"}
+    assert event.isincode == "US0378331005"
+    assert {target: rate.as_py() for target, rate in event.fxrates.items()} == {"EUR": D("1.25")}
+    assert event.bidpx is not None and event.bidpx.as_py() == D("100.5")
+    assert event.bidqty is not None and event.bidqty.as_py() == 7
+    assert event.bidccy is not None and event.bidccy.as_py() == "USD"
+    assert event.askpx is None and event.askqty is None and event.askccy is None
     assert event.cficode is None and event.miccode is None
     assert event.lastpx is None and event.lastqty is None
     assert event.avgpx is None and event.cumqty is None and event.leavesqty is None
@@ -64,23 +76,28 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.spotrate is None and event.forwardpoints is None
     assert event.ticker == "ACME"
     assert event.metadata == {}
-    assert event.marketoperationid is None
     assert event.tif == "0"
     assert event.tradable is None
-    assert event.accountids == {} and event.userids == {}
     assert event.altids == {"ORDERID": "O-100"}
     assert event.kind == "order"
+    assert event.marketdatakind is MarketDataKind.ORDR
+    for retired in ("marketoperationid", "accountids", "userids", "bid", "ask"):
+        assert not hasattr(event, retired), retired
     assert not event.is_execution
     assert event.book is None and event.action is None
     assert event.scope == "" and not event.is_full_snapshot
 
 
-def test_bid_answers_a_typed_lane_never_a_dict() -> None:
-    event = order_event()
-    bid = event.bid
-    assert isinstance(bid, graph.Lane)
-    assert event.ask is None
-    assert bid.price == event.price and bid.quantity == event.quantity
+def test_a_side_stated_as_none_is_unknown_never_none() -> None:
+    event = graph.OrderEvent(CLOCK, crosscode="O-1")
+    assert event.side is Side.UNKNOWN
+    # An element stating no side keeps its cross code unprefixed.
+    assert event.crosscode == "O-1"
+    assert event.isincode is None and event.fxrates == {}
+    assert graph.OrderEvent(CLOCK, side=Side.SELL).side is Side.SELL
+    assert graph.QuoteEvent(CLOCK).marketdatakind is MarketDataKind.QUOT
+    assert graph.ExecutionEvent(CLOCK).marketdatakind is MarketDataKind.EXEC
+    assert graph.Execution().marketdatakind is MarketDataKind.EXEC
 
 
 def test_an_unknown_fact_is_refused_by_name() -> None:
@@ -115,8 +132,8 @@ def test_ellipsis_is_skipped_and_none_clears() -> None:
 
 def test_an_undated_element_states_no_clock_state_or_chain() -> None:
     element = graph.Order(crosscode="O-1", price=D("10"), side="SELL", curruuid=...)
-    assert element.crosscode == "O-1" and element.kind == "order"
-    assert element.side.as_py() == "SELL"
+    assert element.crosscode == "SELL:O-1" and element.kind == "order"
+    assert element.side is Side.SELL
     for name in ("currunix", "state", "seqnum", "prevuuid"):
         with pytest.raises(ValueError, match="an undated element has no clock, state or chain"):
             graph.Order(**{name: 1})
@@ -148,7 +165,7 @@ def test_at_dates_an_element_and_into_element_undates_it() -> None:
     element = graph.Quote(crosscode="Q-1", side="SELL", price=D("102"))
     event = element.at(CLOCK)
     assert isinstance(event, graph.QuoteEvent)
-    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "Q-1", element.price)
+    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "SELL:Q-1", element.price)
     back = event.into_element()
     assert isinstance(back, graph.Quote)
     assert back == element
@@ -207,9 +224,11 @@ def test_following_crosses_no_kind() -> None:
     "leaf",
     [
         order_event(),
-        graph.QuoteEvent(CLOCK, crosscode="Q", ask=graph.Lane(price=1, currency="EUR")),
+        graph.QuoteEvent(CLOCK, crosscode="Q", askpx=1, askccy="EUR", fxrates={"USD": D("0.8")}),
         graph.ExecutionEvent(CLOCK, crosscode="E", lastpx=D("1.5"), lastqty=3, state="FILLED"),
-        graph.QuoteEvent(CLOCK, book=graph.BookRef(action="2", scope="S", position=4)),
+        # A row states the book scope alone: the other controls are walk-time
+        # facts no column carries (A1), so a pickle keeps the scope.
+        graph.QuoteEvent(CLOCK, book=graph.BookRef(scope="S")),
         graph.Order(crosscode="O", metadata={"k": "v"}),
         graph.Quote(),
         graph.Execution(securityids={"ISIN": "US0378331005"}),
@@ -231,39 +250,6 @@ def test_the_leaves_are_immutable() -> None:
     event = order_event()
     with pytest.raises(AttributeError):
         event.price = None  # type: ignore[misc]
-
-
-class TestLane:
-    def test_every_slot_reads_back(self) -> None:
-        lane = graph.Lane(
-            price=D("1.5"), spotrate=D("1.4"), forwardpoints=D("0.1"), currency="EUR", quantity=2, unit="SHARES"
-        )
-        assert lane.price is not None and lane.price.as_py() == D("1.5")
-        assert lane.spotrate is not None and lane.spotrate.as_py() == D("1.4")
-        assert lane.forwardpoints is not None and lane.forwardpoints.as_py() == D("0.1")
-        assert lane.currency is not None and lane.currency.as_py() == "EUR"
-        assert lane.quantity is not None and lane.quantity.as_py() == 2
-        assert lane.unit == "SHARES"
-        assert lane.is_stated()
-
-    def test_not_given_and_none_both_state_nothing(self) -> None:
-        assert graph.Lane() == graph.Lane(price=None)
-        assert not graph.Lane().is_stated()
-        assert graph.Lane().price is None
-
-    def test_a_slot_is_checked_by_the_lane_field(self) -> None:
-        with pytest.raises(ValueError):
-            graph.Lane(price="x")
-
-    def test_equality_hash_repr_copy_pickle(self) -> None:
-        lane = graph.Lane(price=1, currency="USD")
-        assert pickle.loads(pickle.dumps(lane)) == lane
-        assert hash(pickle.loads(pickle.dumps(lane))) == hash(lane)
-        assert copy.copy(lane) == lane and copy.deepcopy(lane) == lane
-        assert repr(lane) == (
-            'Lane(price="1", spotrate=None, forwardpoints=None, currency="USD", '
-            "quantity=None, unit=None)"
-        )
 
 
 class TestBookRef:

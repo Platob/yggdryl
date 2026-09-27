@@ -35,6 +35,7 @@ from yggdryl import (
     IOBase,
     Int32Field,
     IsinField,
+    MarketDataKind,
     MediaType,
     MicField,
     MimeType,
@@ -51,6 +52,8 @@ from yggdryl import (
     Serie,
     SerieField,
     SerieReader,
+    Side,
+    State,
     StringField,
     Term,
     TextLine,
@@ -1485,12 +1488,13 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_operations: list[graph.MarketData] = fix_message.market_operations()
+fix_message_operations: list[graph.MarketData] = fix_message.market_data()
 fix_message_event: fix.FixMsg = fix_message
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
-fix_message_msgcat: int | None = fix_message.msgcat
+fix_message_msgcat: MarketDataKind = fix_message.msgcat
+fix_message_strikepx: Scalar | None = fix_message.strikepx
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
@@ -1498,17 +1502,24 @@ fix_message_crosscode: str = fix_message.crosscode
 fix_message_currhashcode: int = fix_message.currhashcode
 fix_message_crosshashcode: int = fix_message.crosshashcode
 fix_message_currunix: int = fix_message.currunix
-fix_message_state: Scalar = fix_message.state
+fix_message_state: State = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
 fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
-fix_message_marketoperationid: int | None = fix_message.marketoperationid
 fix_message_price: Scalar | None = fix_message.price
 fix_message_currency: Scalar = fix_message.currency
 fix_message_quantity: Scalar | None = fix_message.quantity
 fix_message_unit: str = fix_message.unit
-fix_message_side: Scalar = fix_message.side
+fix_message_side: Side = fix_message.side
 fix_message_securityids: dict[str, str] = fix_message.securityids
+fix_message_isincode: str | None = fix_message.isincode
+fix_message_fxrates: dict[str, Scalar] = fix_message.fxrates
+fix_message_bidpx: Scalar | None = fix_message.bidpx
+fix_message_bidqty: Scalar | None = fix_message.bidqty
+fix_message_bidccy: Scalar | None = fix_message.bidccy
+fix_message_askpx: Scalar | None = fix_message.askpx
+fix_message_askqty: Scalar | None = fix_message.askqty
+fix_message_askccy: Scalar | None = fix_message.askccy
 fix_message_cficode: Scalar | None = fix_message.cficode
 fix_message_miccode: Scalar | None = fix_message.miccode
 fix_message_lastpx: Scalar | None = fix_message.lastpx
@@ -1523,11 +1534,7 @@ fix_message_forwardpoints: Scalar | None = fix_message.forwardpoints
 fix_message_ticker: str | None = fix_message.ticker
 fix_message_tif: str | None = fix_message.tif
 fix_message_tradable: bool | None = fix_message.tradable
-fix_message_accountids: dict[str, str] = fix_message.accountids
-fix_message_userids: dict[str, str] = fix_message.userids
 fix_message_altids: dict[str, str] = fix_message.altids
-fix_message_bid: graph.Lane | None = fix_message.bid
-fix_message_ask: graph.Lane | None = fix_message.ask
 fix_message_entries: list[FixEntryTuple] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
 fix_message_wire_text: str = fix_message.into_text("|")
@@ -1561,7 +1568,7 @@ fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
 fix_event_currunix: int = fix_message_event.currunix
-fix_event_state: Scalar = fix_message_event.state
+fix_event_state: State = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_execunix: int | None = fix_message_event.execunix
@@ -1570,7 +1577,6 @@ fix_event_exprunix: int | None = fix_message_event.exprunix
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
 fix_event_snapunix: int | None = fix_message_event.snapunix
-fix_event_marketoperationid: int | None = fix_message_event.marketoperationid
 fix_event_price: Scalar | None = fix_message_event.price
 fix_event_quantity: Scalar | None = fix_message_event.quantity
 fix_event_lastpx: Scalar | None = fix_message_event.lastpx
@@ -1585,18 +1591,14 @@ fix_event_tradable: bool | None = fix_message_event.tradable
 fix_event_ticker: str | None = fix_message_event.ticker
 fix_event_currency: Scalar = fix_message_event.currency
 fix_event_unit: str = fix_message_event.unit
-fix_event_side: Scalar = fix_message_event.side
+fix_event_side: Side = fix_message_event.side
 fix_event_securityids: dict[str, str] = fix_message_event.securityids
 fix_event_cficode: Scalar | None = fix_message_event.cficode
 fix_event_miccode: Scalar | None = fix_message_event.miccode
 fix_event_spotrate: Scalar | None = fix_message_event.spotrate
 fix_event_forwardpoints: Scalar | None = fix_message_event.forwardpoints
 fix_event_metadata: dict[str, str] = fix_message_event.metadata
-fix_event_accountids: dict[str, str] = fix_message_event.accountids
-fix_event_userids: dict[str, str] = fix_message_event.userids
 fix_event_altids: dict[str, str] = fix_message_event.altids
-fix_event_bid: graph.Lane | None = fix_message_event.bid
-fix_event_ask: graph.Lane | None = fix_message_event.ask
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1608,6 +1610,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     direction="R",
     batch_byte_size=1 << 20,
     snapshot_ns=1_000_000_000,
+    sorted_lifecycle=True,
     official_time_delay_ms=250,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
@@ -1617,6 +1620,9 @@ fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_snapshot_ns: int | None = fix_reader_pinned.snapshot_ns
+fix_reader_sorted_lifecycle: bool = fix_reader_pinned.sorted_lifecycle
+fix_reader_unsorted: fix.FixCodec = fix_reader_pinned.with_sorted_lifecycle(False)
+assert fix_reader_sorted_lifecycle and not fix_reader_unsorted.sorted_lifecycle
 fix_reader_official_time_delay_ms: int = fix_reader_pinned.official_time_delay_ms
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
@@ -1676,14 +1682,14 @@ fix_walked_rows: pa.RecordBatchReader = fix_reader.lifecycle_arrow_reader(fix_pa
 fix_read_back: fix.FixMessages = fix_reader.messages(fix_walked_rows)
 fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back)
 fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
-    [fix_read_text], snapshot_millis=0, global_=False
+    [fix_read_text], snapshot_millis=0
 )
 fix_reader_market_metadata: bool = fix_reader.market_metadata
 fix_reader_bare: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, market_metadata=False)
-fix_market_operations: graph.MarketDataRowIterator = fix_reader.market_operations([fix_read_text])
-fix_market_operation_list: list[graph.MarketData] = list(fix_market_operations)
+fix_market_data: graph.MarketDataRowIterator = fix_reader.market_data([fix_read_text])
+fix_market_data_list: list[graph.MarketData] = list(fix_market_data)
 fix_market_rows: pa.RecordBatchReader = fix_reader.market_arrow_reader(iter([fix_read_text]))
-fix_market_twin: pa.RecordBatchReader = fix_reader.market_operations_arrow_reader(fix_parsed)
+fix_market_twin: pa.RecordBatchReader = fix_reader.market_data_arrow_reader(fix_parsed)
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 
 fix_counter: Field = Field("nopartyids", "int32")
@@ -1721,11 +1727,6 @@ fix_side: Field = Field("Side", "utf8")
 fix_side.fix.tag = 54
 fix_side.fix.codeset = "sidecodeset"
 fix_codeset_name: str | None = fix_side.fix.codeset
-fix_derived: Field = Field("leavesqty", "float64")
-fix_derived.fix.tag = 151
-fix_derived.fix.derivation = "orderqty - cumqty"
-fix_derivation: str | None = fix_derived.fix.derivation
-fix_derived.fix.derivation = None
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
 fix_inserted_component: Field | None = fix_catalog.insert(fix_component)
 fix_inserted_group: Field | None = fix_catalog.insert(fix_group)
@@ -1759,7 +1760,8 @@ fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
-fix_msgtype_category: str | None = fix_msgtype.msgcat
+fix_msgtype_category: MarketDataKind | None = fix_msgtype.msgcat
+assert fix_msgtype_category is MarketDataKind.ORDR
 fix_msgtype_field: Field = fix_msgtype.field
 fix_msgtype_group: Field | None = fix_msgtype.get_group_by_tag(453)
 fix_identifier_values: list[tuple[Field, Scalar]] = fix_msgtype.identifier_values(fix_message)
@@ -1797,7 +1799,7 @@ fix_fixed_row: Scalar = fix_read_text.into_row(fix_fixed_schema)
 
 fix_env: fix.FixRegistry = fix.FixRegistry.from_env()
 fix.FixRegistry.install_env(fix_registry_from_fields)
-fix_env_codec: fix.FixCodec = fix.FixCodec.from_env(default_sending_time=None)
+fix_env_codec: fix.FixCodec = fix.FixCodec.from_env(default_sending_time=None, sorted_lifecycle=False)
 
 assert fix_tag == 38 and fix_tags and fix_names and fix_description
 assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
@@ -1805,7 +1807,6 @@ assert fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
 assert fix_direction_code == "S"
 assert fix_direction_patterns == ["(?i)^TX\\b"] and len(fix_directions) == 2
-assert fix_derivation == "orderqty - cumqty" and fix_derived.fix.derivation is None
 assert fix_read_cblock[0] is not None
 assert python_declared is not None and python_declared.kind == "field"
 assert python_module == "trading.execution" and python_qualname == "Book.Fill"
@@ -1834,10 +1835,17 @@ assert fix_message_operations and isinstance(fix_message_operations[0], graph.Ma
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
-assert fix_message_msgcat is None or isinstance(fix_message_msgcat, int)
-assert fix_message_marketoperationid is None or isinstance(fix_message_marketoperationid, int)
+assert isinstance(fix_message_msgcat, MarketDataKind)
+assert fix_message_strikepx is None or isinstance(fix_message_strikepx, Scalar)
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_altids, dict)
-assert isinstance(fix_message_accountids, dict) and isinstance(fix_message_userids, dict)
+assert fix_message_isincode is None or isinstance(fix_message_isincode, str)
+assert isinstance(fix_message_fxrates, dict)
+assert fix_message_bidpx is None or isinstance(fix_message_bidpx, Scalar)
+assert fix_message_bidqty is None or isinstance(fix_message_bidqty, Scalar)
+assert fix_message_bidccy is None or isinstance(fix_message_bidccy, Scalar)
+assert fix_message_askpx is None or isinstance(fix_message_askpx, Scalar)
+assert fix_message_askqty is None or isinstance(fix_message_askqty, Scalar)
+assert fix_message_askccy is None or isinstance(fix_message_askccy, Scalar)
 assert isinstance(fix_message_securityids, dict) and isinstance(fix_message_unit, str)
 assert fix_message_cficode is None or fix_message_cficode
 assert fix_message_miccode is None or fix_message_miccode
@@ -1853,12 +1861,10 @@ assert fix_message_forwardpoints is None or isinstance(fix_message_forwardpoints
 assert fix_message_ticker is None or isinstance(fix_message_ticker, str)
 assert fix_message_tif is None or isinstance(fix_message_tif, str)
 assert fix_message_tradable is None or isinstance(fix_message_tradable, bool)
-assert fix_message_bid is None or isinstance(fix_message_bid, graph.Lane)
-assert fix_message_ask is None or isinstance(fix_message_ask, graph.Lane)
 assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
 assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
 assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
-assert isinstance(fix_message_state, Scalar) and isinstance(fix_message_side, Scalar)
+assert isinstance(fix_message_state, State) and isinstance(fix_message_side, Side)
 assert isinstance(fix_message_price, Scalar) and isinstance(fix_message_quantity, Scalar)
 assert isinstance(fix_message_currency, Scalar)
 assert fix_message_prevuuid is None or fix_message_prevuuid
@@ -1885,7 +1891,6 @@ assert fix_event_recdunix is None or isinstance(fix_event_recdunix, int)
 assert fix_event_exprunix is None or isinstance(fix_event_exprunix, int)
 assert fix_event_prevunix is None or isinstance(fix_event_prevunix, int)
 assert fix_event_snapunix is None or isinstance(fix_event_snapunix, int)
-assert fix_event_marketoperationid is None or isinstance(fix_event_marketoperationid, int)
 assert fix_event_prevuuid is None or fix_event_prevuuid
 assert fix_event_lastpx is None or isinstance(fix_event_lastpx, Scalar)
 assert fix_event_lastqty is None or isinstance(fix_event_lastqty, Scalar)
@@ -1901,13 +1906,10 @@ assert fix_event_cficode is None or fix_event_cficode
 assert fix_event_miccode is None or fix_event_miccode
 assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
 assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
-assert fix_event_bid is None or isinstance(fix_event_bid, graph.Lane)
-assert fix_event_ask is None or isinstance(fix_event_ask, graph.Lane)
 assert isinstance(fix_event_securityids, dict) and isinstance(fix_event_metadata, dict)
-assert isinstance(fix_event_accountids, dict) and isinstance(fix_event_userids, dict)
 assert isinstance(fix_event_altids, dict)
 assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
-assert isinstance(fix_event_state, Scalar) and isinstance(fix_event_side, Scalar)
+assert isinstance(fix_event_state, State) and isinstance(fix_event_side, Side)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)
 assert isinstance(fix_event_currency, Scalar)
 assert fix_walked is not None and fix_walked_rows is not None and fix_book_rows is not None
@@ -1949,7 +1951,9 @@ graph_order_event: graph.OrderEvent = graph.OrderEvent(
     quantity=100,
     currency="USD",
     ticker="IBM",
-    bid=graph.Lane(price=decimal.Decimal("10.5"), quantity=100),
+    fxrates={"EUR": decimal.Decimal("1.1")},
+    bidpx=decimal.Decimal("10.5"),
+    bidqty=100,
 )
 graph_order_event_skipped: graph.OrderEvent = graph.OrderEvent(
     graph_order_event.currunix, book=..., crosscode="G-1", side=...
@@ -1961,7 +1965,7 @@ graph_order_event_currhashcode: int = graph_order_event.currhashcode
 graph_order_event_crosshashcode: int = graph_order_event.crosshashcode
 graph_order_event_srcuuids: list[Scalar] = graph_order_event.srcuuids
 graph_order_event_currunix: int = graph_order_event.currunix
-graph_order_event_state: Scalar = graph_order_event.state
+graph_order_event_state: State = graph_order_event.state
 graph_order_event_seqnum: int = graph_order_event.seqnum
 graph_order_event_creaunix: int | None = graph_order_event.creaunix
 graph_order_event_execunix: int | None = graph_order_event.execunix
@@ -1975,8 +1979,17 @@ graph_order_event_price: Scalar | None = graph_order_event.price
 graph_order_event_currency: Scalar = graph_order_event.currency
 graph_order_event_quantity: Scalar | None = graph_order_event.quantity
 graph_order_event_unit: str = graph_order_event.unit
-graph_order_event_side: Scalar = graph_order_event.side
+graph_order_event_side: Side = graph_order_event.side
 graph_order_event_securityids: dict[str, str] = graph_order_event.securityids
+graph_order_event_isincode: str | None = graph_order_event.isincode
+graph_order_event_fxrates: dict[str, Scalar] = graph_order_event.fxrates
+graph_order_event_bidpx: Scalar | None = graph_order_event.bidpx
+graph_order_event_bidqty: Scalar | None = graph_order_event.bidqty
+graph_order_event_bidccy: Scalar | None = graph_order_event.bidccy
+graph_order_event_askpx: Scalar | None = graph_order_event.askpx
+graph_order_event_askqty: Scalar | None = graph_order_event.askqty
+graph_order_event_askccy: Scalar | None = graph_order_event.askccy
+graph_order_event_marketdatakind: MarketDataKind = graph_order_event.marketdatakind
 graph_order_event_cficode: Scalar | None = graph_order_event.cficode
 graph_order_event_miccode: Scalar | None = graph_order_event.miccode
 graph_order_event_lastpx: Scalar | None = graph_order_event.lastpx
@@ -1990,14 +2003,9 @@ graph_order_event_spotrate: Scalar | None = graph_order_event.spotrate
 graph_order_event_forwardpoints: Scalar | None = graph_order_event.forwardpoints
 graph_order_event_ticker: str | None = graph_order_event.ticker
 graph_order_event_metadata: dict[str, str] = graph_order_event.metadata
-graph_order_event_marketoperationid: int | None = graph_order_event.marketoperationid
 graph_order_event_tif: str | None = graph_order_event.tif
 graph_order_event_tradable: bool | None = graph_order_event.tradable
-graph_order_event_accountids: dict[str, str] = graph_order_event.accountids
-graph_order_event_userids: dict[str, str] = graph_order_event.userids
 graph_order_event_altids: dict[str, str] = graph_order_event.altids
-graph_order_event_bid: graph.Lane | None = graph_order_event.bid
-graph_order_event_ask: graph.Lane | None = graph_order_event.ask
 graph_order_event_kind: Literal["order"] = graph_order_event.kind
 graph_order_event_book: graph.BookRef | None = graph_order_event.book
 graph_order_event_action: str | None = graph_order_event.action
@@ -2025,17 +2033,6 @@ graph_execution: graph.Execution = graph.Execution()
 graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.currunix)
 graph_execution_kind: Literal["execution"] = graph_execution_event.kind
 
-graph_lane: graph.Lane = graph.Lane(
-    price=decimal.Decimal("10.5"), currency="USD", quantity=100, spotrate=...
-)
-graph_lane_price: Scalar | None = graph_lane.price
-graph_lane_spotrate: Scalar | None = graph_lane.spotrate
-graph_lane_forwardpoints: Scalar | None = graph_lane.forwardpoints
-graph_lane_currency: Scalar | None = graph_lane.currency
-graph_lane_quantity: Scalar | None = graph_lane.quantity
-graph_lane_unit: str | None = graph_lane.unit
-graph_lane_stated: bool = graph_lane.is_stated()
-
 graph_book_ref: graph.BookRef = graph.BookRef(action="0", scope="GLOBAL", position=1)
 graph_book_ref_skipped: graph.BookRef = graph.BookRef(action=...)
 graph_book_ref_action: str | None = graph_book_ref.action
@@ -2056,31 +2053,18 @@ graph_trade_executions: list[graph.ExecutionEvent] = graph_trade.executions
 graph_trade_lastpx: Scalar | None = graph_trade.lastpx
 graph_trade_restated: graph.TradeEvent = graph_trade.restating(graph_trade)
 
-graph_partition: graph.SnapshotPartition = graph.SnapshotPartition("GLOBAL", "IBM")
-graph_partition_scope: str = graph_partition.scope
-graph_partition_symbol: str | None = graph_partition.symbol
-
-graph_side: graph.BookSide = graph.BookSide("BUY")
-graph_side_with_operation: graph.BookSide = graph_side.with_operation(graph_order_event)
-graph_side_live: list[graph.MarketData] = graph_side_with_operation.live
-graph_side_deltas: list[graph.MarketData] = graph_side_with_operation.deltas
-graph_side_len: int = len(graph_side)
-graph_side_is_empty: bool = graph_side.is_empty
-graph_side_best_price: Scalar | None = graph_side_with_operation.best_price
-graph_side_best_quantity: Scalar | None = graph_side_with_operation.best_quantity
-graph_side_side: Scalar = graph_side.side
-graph_side_with_previous: graph.BookSide | None = graph_side.with_previous(graph_side)
-graph_side_limits: list[Scalar] = graph_side_with_operation.limits
-graph_side_depth: Scalar | None = graph_side_with_operation.depth(1)
-
 graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
 graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
     [graph_order_event, graph.MarketData(graph_quote_event)]
 )
-graph_book_bid: graph.BookSide = graph_book_with_operations.bid
-graph_book_ask: graph.BookSide = graph_book_with_operations.ask
+graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
+graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
 graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
-graph_book_snapshot_partitions: list[graph.SnapshotPartition] = graph_book.snapshot_partitions
+graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUY)
+graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUY")
+graph_book_best_quantity: Scalar | None = graph_book_with_operations.best_quantity(Side.BUY)
+graph_book_depth: Scalar | None = graph_book_with_operations.depth(Side.SELL, 1)
+graph_book_kind: MarketDataKind = graph_book.marketdatakind
 graph_book_crossed: bool = graph_book_with_operations.is_crossed
 graph_book_locked: bool = graph_book_with_operations.is_locked
 graph_book_spread: Scalar | None = graph_book_with_operations.spread
@@ -2125,19 +2109,17 @@ graph_view_lifecycle_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
 )
 
 graph_book_iterator: graph.BookIterator = graph.BookIterator(
-    [graph_order_event, graph_data], snapshot_millis=0, global_=False
+    [graph_order_event, graph_data], snapshot_millis=0
 )
-graph_book_iterator_global: bool = graph_book_iterator.global_
 graph_book_iterator_books: list[graph.BookEvent] = list(graph_book_iterator)
 
 graph_event_iterator: graph.EventIterator = graph.EventIterator(
-    [graph_order_event, graph_side], sorted=True, snapshot_ns=None
+    [graph_order_event, graph_book], sorted=True, snapshot_ns=None
 )
 graph_event_iterator_snapshot_ns: int | None = graph_event_iterator.snapshot_ns
 graph_event_iterator_items: list[graph.MarketData] = list(graph_event_iterator)
 graph_event_iterator_alive: list[graph.MarketData] = graph_event_iterator.alive()
 
-graph_global_symbol: str = graph.GLOBAL_SYMBOL
 graph_entry_id: str = graph.ENTRY_ID
 graph_entry_ref_id: str = graph.ENTRY_REF_ID
 graph_followed_altids: tuple[str, ...] = graph.FOLLOWED_ALTIDS
@@ -2151,18 +2133,22 @@ assert graph_order_event_execunix is None and graph_order_event_recdunix is None
 assert graph_order_event_exprunix is None and graph_order_event_prevunix is None
 assert graph_order_event_snapunix is None and not graph_order_event_is_execution
 assert graph_order_event_price is not None and graph_order_event_quantity is not None
-assert graph_order_event_currency and graph_order_event_side and graph_order_event_unit == ""
+assert graph_order_event_currency and graph_order_event_side is Side.BUY
+assert graph_order_event_unit == "" and graph_order_event_state is State.UNKNOWN
 assert graph_order_event_securityids == {} and graph_order_event_ticker == "IBM"
+assert graph_order_event_isincode is None and set(graph_order_event_fxrates) == {"EUR"}
+assert graph_order_event_bidpx is not None and graph_order_event_bidqty is not None
+assert graph_order_event_bidccy is None and graph_order_event_askpx is None
+assert graph_order_event_askqty is None and graph_order_event_askccy is None
+assert graph_order_event_marketdatakind is MarketDataKind.ORDR
 assert graph_order_event_cficode is None and graph_order_event_miccode is None
 assert graph_order_event_lastpx is None and graph_order_event_lastqty is None
 assert graph_order_event_avgpx is None and graph_order_event_cumqty is None
 assert graph_order_event_leavesqty is None and graph_order_event_prevpx is None
 assert graph_order_event_prevqty is None and graph_order_event_spotrate is None
 assert graph_order_event_forwardpoints is None and graph_order_event_metadata == {}
-assert graph_order_event_marketoperationid is None and graph_order_event_tif is None
-assert graph_order_event_tradable is None and graph_order_event_accountids == {}
-assert graph_order_event_userids == {} and graph_order_event_altids == {}
-assert graph_order_event_bid is not None and graph_order_event_ask is None
+assert graph_order_event_tif is None
+assert graph_order_event_tradable is None and graph_order_event_altids == {}
 assert graph_order_event_book is None and graph_order_event_action is None
 assert graph_order_event_scope == "" and not graph_order_event_is_full_snapshot
 assert graph_order_event_with_previous is None and graph_order_event_merged is None
@@ -2171,11 +2157,9 @@ assert not graph_order_event_after and not graph_order_event_before
 assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
 assert graph_order.at(graph_order_event.currunix) == graph_order_at
 assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
+assert graph_order_event_crosscode == "BUY:G-1"
 assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
 assert graph_execution.kind == "execution"
-assert graph_lane_price is not None and graph_lane_currency is not None
-assert graph_lane_quantity is not None and graph_lane_stated
-assert graph_lane_spotrate is None and graph_lane_forwardpoints is None and graph_lane_unit is None
 assert graph_book_ref_skipped.action is None
 assert graph_book_ref_action == "0" and graph_book_ref_scope == "GLOBAL"
 assert graph_book_ref_position == 1 and graph_book_ref_entry_px is None
@@ -2184,18 +2168,15 @@ assert not graph_book_ref_range_delete and not graph_book_ref_partial
 assert graph_quote_event_booked.book == graph_book_ref
 assert graph_trade_executions == [graph_fill]
 assert graph_trade_restated == graph_trade
-assert graph_partition_scope == "GLOBAL" and graph_partition_symbol == "IBM"
-assert graph_side_live == [graph.MarketData(graph_order_event)] and len(graph_side_deltas) == 1
-assert graph_side_len == 0 and graph_side_is_empty
-assert graph_side_best_price is not None and graph_side_best_quantity is not None
-assert graph_side_side.as_py() == "BUY" and graph_side_with_previous is None
-assert graph_book_bid.live == [graph.MarketData(graph_order_event)]
-assert isinstance(graph_book_ask, graph.BookSide) and graph_book_executions == []
-assert graph_book_snapshot_partitions == [] and not graph_book_crossed
+assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_deltas) == 2
+assert graph_book_executions == [] and not graph_book_crossed
+assert len(graph_book_limits) == 1 and graph_book_depth is not None
+assert graph_book_best_price is not None and graph_book_best_quantity is not None
+assert graph_book_kind is MarketDataKind.BOOK
 assert graph_book_midpoint is not None and graph_book_median_quantity is not None
 assert graph_book_restated == graph_book
 assert graph_control_book.action == "snapshot" and graph_control_book.scope == "GLOBAL"
-assert graph_data_kind == "order_event" and graph_data_kinds[4] == "order_event"
+assert graph_data_kind == "order_event" and graph_data_kinds[3] == "order_event"
 assert graph_data_is_event and graph_data_book is None
 assert graph_data_order_event == graph_order_event and graph_data_book_event is None
 assert graph_data_leaf == graph_order_event and graph_data_curruuid == graph_order_event_curruuid
@@ -2206,12 +2187,11 @@ assert graph_data_rows_list == [
     graph_data,
     graph.MarketData(graph_book_with_operations),
 ]
-assert graph_book_iterator_global is False
 assert len(graph_book_iterator_books) == 1
 assert graph_event_iterator_snapshot_ns is None
-assert [item.kind for item in graph_event_iterator_items] == ["order_event", "book_side"]
+assert [item.kind for item in graph_event_iterator_items] == ["order_event", "book_event"]
 assert graph_event_iterator_alive == [graph_data]
-assert graph_global_symbol == "GLOBAL" and graph_entry_id and graph_entry_ref_id
+assert graph_entry_id and graph_entry_ref_id
 assert graph_followed_altids
 
 # The typed door for a value. A typed field alias already names the width,
@@ -2398,3 +2378,14 @@ def _http_server_usage(folder: LocalFolder) -> None:
         count: int = server.request_count
         server.clear_requests()
         assert port and where and recorded is not None and count >= 0
+    with yggdryl.http.Server.bind(
+        "0.0.0.0:0",
+        public_url="https://data.example.com/olap",
+        trusted_proxies=["10.0.0.0/8", "::1"],
+        forwarded_headers=("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Prefix"),
+        path_prefix="/olap",
+    ) as proxied:
+        public: Url = proxied.public_url_of("/files")
+        client: str | None = proxied.requests[0]["client"] if proxied.requests else None
+        peer: str | None = proxied.requests[0]["peer"] if proxied.requests else None
+        assert public and client is None and peer is None

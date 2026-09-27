@@ -23,7 +23,6 @@ use std::fmt::Write as _;
 use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 
 use std::sync::Arc;
 
@@ -936,10 +935,10 @@ fn one_book_iterator_update_clones_depth_only_for_its_output() {
             .map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New"))
             .collect::<Vec<_>>();
         let update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
-        let mut books = BookIterator::new(initial.into_iter().chain([update]), 0, false).unwrap();
-        assert_eq!(books.next().unwrap().unwrap().bid().len(), entries);
+        let mut books = BookIterator::new(initial.into_iter().chain([update]), 0).unwrap();
+        assert_eq!(books.next().unwrap().unwrap().alive().count(), entries);
         let (allocations, book) = counted(|| books.next().unwrap().unwrap());
-        assert_eq!(book.bid().len(), entries);
+        assert_eq!(book.alive().count(), entries);
         let (output, _) = counted(|| book.clone());
         allocations
             .checked_sub(output)
@@ -967,8 +966,8 @@ fn one_book_update_does_not_allocate_per_live_entry() {
     let deep_update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
     let (deep_allocations, deep_result) = counted(|| deep.add_operations([deep_update]));
     deep_result.expect("the deep update");
-    assert_eq!(shallow.bid().len(), 1);
-    assert_eq!(deep.bid().len(), 128);
+    assert_eq!(shallow.alive().count(), 1);
+    assert_eq!(deep.alive().count(), 128);
 
     assert!(
         deep_allocations <= shallow_allocations + 4,
@@ -1013,12 +1012,12 @@ fn allocation_book_levels(levels: usize) -> BookEvent {
 fn book_readings_allocate_nothing() {
     for levels in [8, 128] {
         let book = allocation_book_levels(levels);
-        assert_eq!(book.bid().limits().count(), levels);
+        assert_eq!(book.limits(Side::Buy).count(), levels);
         free("best_price", || {
-            black_box(black_box(&book).bid().best_price());
+            black_box(black_box(&book).best_price(Side::Buy));
         });
         free("best_quantity", || {
-            black_box(black_box(&book).ask().best_quantity());
+            black_box(black_box(&book).best_quantity(Side::Sell));
         });
         free("is_crossed", || {
             black_box(black_box(&book).is_crossed());
@@ -1039,31 +1038,41 @@ fn book_readings_allocate_nothing() {
             black_box(black_box(&book).imbalance(levels));
         });
         free("depth", || {
-            black_box(black_box(&book).bid().depth(levels));
+            black_box(black_box(&book).depth(Side::Buy, levels));
         });
     }
 }
 
 /// A side's limits cost one vector each - its entries' identities,
-/// collected at their exact count - and nothing per entry, at two depths.
+/// collected at their exact count - and nothing per entry, and the
+/// `bidlimits` cell a book row states for the side one vector more, which
+/// holds them, at two depths.
 #[test]
 fn book_limits_allocate_one_vector_per_limit() {
     for levels in [8, 128] {
         let book = allocation_book_levels(levels);
-        let side = book.bid();
-        let (allocations, count) = counted(|| side.limits().map(black_box).count());
+        let (allocations, count) = counted(|| book.limits(Side::Buy).map(black_box).count());
         assert_eq!(count, levels);
         assert_eq!(
             allocations, levels,
             "{levels} limits of eight entries each allocated {allocations} times"
+        );
+        let (allocations, cell) = counted(|| book.limits(Side::Buy).collect::<Vec<_>>());
+        assert_eq!(cell.len(), levels);
+        assert_eq!(
+            allocations,
+            levels + 1,
+            "the bidlimits cell of {levels} limits allocated {allocations} times"
         );
     }
 }
 
 /// One order the market-data read pin reads back: every fact a row hands
 /// back owning heap - the cross code, the sources, three identifiers (past
-/// the map's inline two), an account, the metadata and a book control - each
-/// at an inline width, so a clone owns exactly what the row does.
+/// the map's inline two), the metadata and a book control - each at an
+/// inline width, so a clone owns exactly what the row does. The control's
+/// action and position are walk-time and read back as none; the box holding
+/// its scope is the same one allocation.
 fn allocation_market_order(index: usize) -> MarketData {
     let unix = 1_700_000_000_000_000_000 + i64::try_from(index).expect("a small corpus");
     let mut order = OrderEvent::at(unix);
@@ -1084,9 +1093,6 @@ fn allocation_market_order(index: usize) -> MarketData {
     order
         .insert_altid("CLORDID", &format!("CL-{index:06}"))
         .expect("an identifier");
-    order
-        .insert_accountid("ACCOUNT", "ACC-1")
-        .expect("an account");
     order.set_metadata(Some(
         [(SmolStr::new("venue"), SmolStr::new("XNAS"))]
             .into_iter()
@@ -1143,6 +1149,83 @@ fn a_market_data_row_read_allocates_only_what_it_hands_back() {
     }
 }
 
+/// An order that also states an ISIN and two FX rates: the `isincode` and
+/// `fxrates` columns a row read reads beside every other.
+fn allocation_market_order_with_rates(index: usize) -> MarketData {
+    let MarketData::OrderEvent(mut order) = allocation_market_order(index) else {
+        unreachable!("the allocation order is an order event")
+    };
+    order
+        .insert_securityid(
+            yggdryl::securityid::SecurityId::new(
+                yggdryl::securityid::SecType::read("ISIN").expect("the ISIN key"),
+                "US0378331005",
+            )
+            .expect("an ISIN"),
+        )
+        .expect("a plain holder");
+    order.set_fxrates(
+        ["EUR", "JPY"]
+            .into_iter()
+            .map(|target| {
+                (
+                    yggdryl::Ccy::new(target).expect("a currency"),
+                    Decimal::from_int(2),
+                )
+            })
+            .collect(),
+    );
+    order.finalize();
+    MarketData::from(order)
+}
+
+/// A row stating an ISIN and FX rates reads as the row without them does:
+/// the value it answers and nothing else - the `isincode` compared in place
+/// against `securityids`, the rates read into the one map the answer
+/// holds and checked against it without a copy - at two corpus sizes.
+#[test]
+fn a_market_data_row_with_rates_reads_only_what_it_hands_back() {
+    for rows in [64, 512] {
+        let values: Vec<MarketData> = (0..rows).map(allocation_market_order_with_rates).collect();
+        let (handed, ()) = counted(|| {
+            for value in &values {
+                black_box(value.clone());
+            }
+        });
+        assert_eq!(handed % rows, 0, "every order owns the same heap");
+        let batch = MarketData::arrow_reader(values, Some(rows), None)
+            .expect("a reader")
+            .next()
+            .expect("one batch")
+            .expect("the batch");
+        let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        let mut read = MarketData::from_arrow_reader(source).expect("the canonical schema");
+        black_box(read.next().expect("a first row").expect("the first order"));
+        let (allocations, count) = counted(|| {
+            read.by_ref().fold(0, |count, value| {
+                black_box(value.expect("an order"));
+                count + 1
+            })
+        });
+        assert_eq!(count, rows - 1);
+        assert_eq!(
+            allocations,
+            handed / rows * (rows - 1),
+            "reading {count} rows allocated {allocations} times, but the orders they answer own {} allocations each",
+            handed / rows
+        );
+    }
+}
+
+/// The key of a ticker's book is the ticker itself, borrowed.
+#[test]
+fn a_book_crosscode_allocates_nothing_for_a_ticker_input() {
+    let order = allocation_market_order(1);
+    let (allocations, key) = counted(|| black_box(order.book_crosscode().len()));
+    assert_eq!(key, "ALLOC".len());
+    assert_eq!(allocations, 0);
+}
+
 /// A `marketdata` batch is laid out column by column from the typed
 /// leaves: per row it costs the canonical clone its write check compares
 /// against and nothing else - no cell is built as a value - so what the
@@ -1182,7 +1265,8 @@ fn a_market_data_batch_write_allocates_per_row_only_its_canonical_check() {
 fn fix_market_operations_cost_is_linear_in_the_leaves() {
     let registry = Arc::new(committed_registry().clone());
     // Orders, quotes, a fill and a two-entry snapshot in turn, a second
-    // apart, each stating fields no typed column reads.
+    // apart, each stating fields no typed column reads. The quote states its
+    // side: a two-sided one is its parse's to split (A13) and no leaf here.
     let capture = |codec: &FixCodec, messages: usize| -> Vec<FixMsg> {
         (0..messages)
             .map(|index| {
@@ -1192,7 +1276,7 @@ fn fix_market_operations_cost_is_linear_in_the_leaves() {
                         "8=FIX.4.4|35=D|52={clock}|11=C{index}|55=AAPL|54=1|44=100|38=5|40=2|21=1|10=0|"
                     ),
                     1 => format!(
-                        "8=FIX.4.4|35=S|52={clock}|117=Q{index}|55=AAPL|132=99|134=7|133=101|135=8|537=1|10=0|"
+                        "8=FIX.4.4|35=S|52={clock}|117=Q{index}|55=AAPL|54=1|132=99|134=7|133=101|135=8|537=1|10=0|"
                     ),
                     2 => format!(
                         "8=FIX.4.4|35=8|52={clock}|17=E{index}|37=O{index}|55=AAPL|54=1|31=100|32=2|150=F|40=2|10=0|"
@@ -1213,8 +1297,8 @@ fn fix_market_operations_cost_is_linear_in_the_leaves() {
             .with_market_metadata(market_metadata);
         let held = capture(&codec, messages);
         // Settle the codec's and the registry's first-use state first.
-        black_box(codec.market_operations(held.clone()).count());
-        let (allocations, count) = counted(|| codec.market_operations(held.clone()).count());
+        black_box(codec.market_data(held.clone()).count());
+        let (allocations, count) = counted(|| codec.market_data(held.clone()).count());
         assert_eq!(count, messages / 4 * 5, "a leaf each, two for a snapshot");
         allocations
     };
@@ -2704,7 +2788,7 @@ fn a_view_plan_is_compiled_once_per_stream() {
     for (view, lifts) in [
         (MarketView::Orders, vec![isin]),
         (MarketView::Trades, Vec::new()),
-        (MarketView::BookSides, Vec::new()),
+        (MarketView::Books, Vec::new()),
     ] {
         // An endless stream of the one batch: the view binds when it is
         // applied, and every batch it is then pulled for costs one batch.
@@ -2922,7 +3006,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 50] = [
+    let seeds: [(DataTypeId, Scalar); 52] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2971,9 +3055,11 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
         (DataTypeId::Bbg, Scalar::from("AAPL US EQUITY")),
         (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
+        (DataTypeId::Forex, Scalar::from("EURUSD")),
         (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
+        (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
@@ -4601,7 +4687,26 @@ struct StageCosts {
 /// by its shape once the alias children it makes share their metadata, so
 /// its parse is as linear as a frame's. Each landing fell by four when the
 /// `state` column became the `int32` code of its member: one primitive
-/// buffer where a text column built its offsets and its bytes.
+/// buffer where a text column built its offsets and its bytes; and by four
+/// again when the `side` column did the same. Every parse fell when the
+/// derivations and the retired fields' restatements became native code, no
+/// rule compiled or bound per registry (718 to 559, 254 to 206, 1471 to
+/// 1005, and a bridge row's walk 38 to 36, which enriches again). The
+/// residual record became one `map<utf8, utf8>` and its counter column
+/// went: the landing fell by about seventy and the batch by thirteen, fewer
+/// arrays than three levels of entry structs; `into_row` now renders a
+/// group's JSON, which allocates by contract - the packed frame's nested
+/// groups 174 to 244 - while a flat row's map is about what its list cost
+/// (83 to 78 with the unresolved keys moved into `metadata`, 55 to 58). The
+/// split at the parse, the six bid and ask facts and the token aliases
+/// (A12-A22) moved every parse up (559 to 653, 206 to 254, 1005 to 1036),
+/// each landing by seven and each batch by one with the six new market
+/// columns, and a bridge row's walk to 43. Reading the four word aliases on
+/// the stack, where the token lookup cut a name into a `Vec` of words and
+/// spelled each alternative as a `String`, took 24, 24 and 8 back off the
+/// parse (629, 230, 1028) and 8 off the bridge row's walk (35); and a key no
+/// dictionary resolves that a row states empty is kept in `metadata` as
+/// `{}` rather than dropped, the bridge row's `into_row` 78 to 79.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -4609,22 +4714,22 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 718,
-            into_row: 83,
-            landing: 1450,
-            batch: 202,
+            parse: 629,
+            into_row: 79,
+            landing: 1381,
+            batch: 190,
             digest: 24,
-            lifecycle: 38,
+            lifecycle: 35,
         },
     ),
     (
         "frame_pipe",
         72,
         StageCosts {
-            parse: 254,
-            into_row: 55,
-            landing: 1428,
-            batch: 202,
+            parse: 230,
+            into_row: 58,
+            landing: 1362,
+            batch: 190,
             digest: 24,
             lifecycle: 7,
         },
@@ -4633,10 +4738,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1471,
-            into_row: 174,
-            landing: 1479,
-            batch: 202,
+            parse: 1028,
+            into_row: 244,
+            landing: 1398,
+            batch: 190,
             digest: 16,
             lifecycle: 7,
         },
@@ -4735,95 +4840,59 @@ fn committed_registry() -> &'static FixRegistry {
 }
 
 #[test]
-fn default_aliases_allocation_profile_is_idempotent() {
-    // Before direct reindexing, the first pass made 313,853,260 allocations
-    // by refreshing the catalog for each of 170 fields; the repeat still made
-    // 7,867,934. One alias registration now rebuilds the catalog once, so the
-    // first cap permits one refresh with 37% fixture headroom. An already
-    // aliased registry skips that refresh; its cap leaves room for spelling
-    // generation but remains below the cost of cloning the full catalog.
-    const FIRST_MAX_ALLOCATIONS: usize = 2_500_000;
-    const REPEATED_MAX_ALLOCATIONS: usize = 4_096;
-    let first_input = committed_registry().clone();
-    let first_at = Instant::now();
-    let (first_allocations, registered) = counted(|| {
-        first_input
-            .with_default_aliases()
-            .expect("the committed aliases register")
+fn a_word_alias_lookup_allocates_nothing() {
+    // The words are read on the stack: a spelling reached through them, and
+    // one no spelling reaches, cost no allocation at any dictionary size.
+    let registry = committed_registry();
+    let (allocations, found) = counted(|| {
+        (
+            registry
+                .get_field_by_name(black_box("AskPrice"))
+                .map(Field::name),
+            registry
+                .get_field_by_name(black_box("DemandQty"))
+                .map(Field::name),
+            registry
+                .get_field_by_name(black_box("HedgePriceQty"))
+                .is_none(),
+        )
     });
-    let first_elapsed = first_at.elapsed();
-    assert!(
-        first_allocations <= FIRST_MAX_ALLOCATIONS,
-        "default aliases first pass made {first_allocations} allocations; \
-         the one catalog refresh budget is {FIRST_MAX_ALLOCATIONS}"
-    );
-    assert_eq!(
-        registered
-            .field_by_name("askprice")
-            .expect("AskPrice resolves")
-            .name(),
-        "offerpx",
-        "the default aliases retain their canonical owner"
-    );
-
-    let repeated_input = registered.clone();
-    let repeated_at = Instant::now();
-    let (repeated_allocations, repeated) = counted(|| {
-        repeated_input
-            .with_default_aliases()
-            .expect("registering aliases twice succeeds")
-    });
-    let repeated_elapsed = repeated_at.elapsed();
-    assert!(
-        repeated_allocations <= REPEATED_MAX_ALLOCATIONS,
-        "default aliases repeat made {repeated_allocations} allocations; \
-         the no-op budget is {REPEATED_MAX_ALLOCATIONS}"
-    );
-    assert_eq!(
-        repeated
-            .field_by_name("askprice")
-            .expect("AskPrice still resolves")
-            .name(),
-        "offerpx"
-    );
-    eprintln!(
-        "default_aliases: first={first_allocations} allocations, \
-         {first_elapsed:?}; repeated={repeated_allocations} allocations, {repeated_elapsed:?}"
-    );
+    assert_eq!(found, (Some("offerpx"), Some("bidsize"), true));
+    assert_eq!(allocations, 0);
 }
 
+/// The crate's derivations are native: no registry compiles or keeps a plan
+/// of them, so a report implying five fields costs every parse the same, and
+/// what the first parse warms is the dictionary's own memo, never a rule.
 #[test]
-fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
-    let mut registry = committed_registry().clone();
-    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
-    gross
-        .as_fix_mut()
-        .set_derivation(&"lastqty * nosuchfield".parse().expect("a term"))
-        .expect("stored");
-    registry.update(gross).expect("the text is a term");
-    let registry = Arc::new(registry);
-    let codec = FixCodec::new(Arc::clone(&registry));
-    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    // A parse enriches, so a derivation the registry cannot bind refuses the
-    // read itself. The first ask pays the compile up to the refusal; the
-    // registry keeps the refusal as it would keep the compiled list, so
-    // every ask after it pays the same and none of them pays a compile.
-    let refuse = || {
+fn the_native_derivations_cost_every_parse_the_same() {
+    let codec = FixCodec::new(Arc::new(committed_registry().clone()));
+    let line = b"8=FIX.4.4|35=8|37=A|15=CHF|38=100|14=20|39=1|32=20|31=2.5|48=US0378331005|22=4|150=F|10=0|";
+    let parse = || {
         codec
             .parse_line(black_box(line))
             .and_then(|mut messages| messages.next().expect("one frame"))
-            .expect_err("the derivation refuses")
+            .expect("a readable report")
     };
-    let (cold, refused) = counted(refuse);
-    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
-    let (warm, _) = counted(refuse);
-    let (again, _) = counted(refuse);
-    assert!(
-        cold - warm > 1_000,
-        "the refused compile is a thousand allocations and is paid once: \
-         {cold} cold, {warm} warm"
+    let held = parse();
+    for (tag, implied) in [(151, "80"), (381, "50")] {
+        let value = held.get_by_tag(tag).expect("the report implies it");
+        let implied = yggdryl::Decimal::parse(implied).expect("an exact number");
+        assert_eq!(value, Scalar::from(implied), "tag {tag}");
+    }
+    for (tag, implied) in [(470, "US"), (2897, "6"), (120, "CHF")] {
+        let value = held.get_by_tag(tag).expect("the report implies it");
+        assert_eq!(value.as_str(), Some(implied), "tag {tag}");
+    }
+    let (once, repeated) = counted_once_and_repeated(|| {
+        black_box(parse());
+    });
+    assert_eq!(
+        repeated,
+        once * 1_000,
+        "a parse keeps nothing per message: {once} once, {repeated} over a thousand"
     );
-    assert_eq!(warm, again, "the refusal is kept, not recompiled");
+    eprintln!("native_derivations: {once} allocations per parse");
 }
 #[test]
 fn instrument_codes_construct_and_classify_without_allocating() {
@@ -4864,6 +4933,46 @@ fn instrument_codes_construct_and_classify_without_allocating() {
     free("CFI inference", || {
         assert_eq!(Cfi::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
     });
+}
+
+#[test]
+fn a_forex_pair_and_an_fx_symbol_read_without_allocating() {
+    use yggdryl::{Forex, FxSymbol, FxTenor};
+    // Two legs on the stack, two binary searches, and a seven-byte pair
+    // inline in its string: no spelling costs a heap block.
+    free("Forex construction from another spelling", || {
+        black_box(Forex::new(black_box(" eur-usd ")).unwrap());
+    });
+    free("Forex canonical check", || {
+        assert!(Forex::is_canonical(black_box("EUR/USD")));
+    });
+    let metal = Forex::new("XAU/USD").unwrap();
+    free("Forex legs", || {
+        assert_eq!(black_box(&metal).base().as_str(), "XAU");
+        assert_eq!(black_box(&metal).quote().as_str(), "USD");
+        assert!(black_box(&metal).is_metal());
+    });
+    // The detector, over every branch it takes: a settlement type is at
+    // most four bytes, inline too.
+    for (symbol, tenor) in [
+        ("EURUSD", Some(FxTenor::Unstated)),
+        ("EUR-USD 1M", Some(FxTenor::Forward)),
+        ("EUR/USD 123D", Some(FxTenor::Forward)),
+        ("GBPUSD SPOT", Some(FxTenor::Spot)),
+        ("EURUSD SN", Some(FxTenor::Forward)),
+        ("EURGBP=R", Some(FxTenor::Spot)),
+        ("EUR/USD Curncy", Some(FxTenor::Unstated)),
+        ("EUR=", None),
+        ("EUR/USD XYZ", None),
+        ("AAPL", None),
+    ] {
+        free(symbol, || {
+            assert_eq!(
+                black_box(FxSymbol::from_symbol(black_box(symbol))).map(|read| read.tenor),
+                tenor
+            );
+        });
+    }
 }
 
 #[test]

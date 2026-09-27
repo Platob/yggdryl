@@ -162,11 +162,7 @@ pub(super) fn wire_text_under(
     field: &crate::Field,
     value: &crate::Scalar,
 ) -> Option<SmolStr> {
-    let coded = value.is_code()
-        || matches!(
-            field.dtype(),
-            crate::DataType::Side | crate::DataType::State
-        );
+    let coded = value.is_code() || field.dtype().is_enum();
     if coded {
         if let Some(code) = value.as_str().and_then(|name| {
             let document = registry.codeset_of(field)?.document();

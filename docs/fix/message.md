@@ -6,28 +6,27 @@
 
 | item | contract |
 | --- | --- |
-| Holders | the event the message is, read through the four [graph traits](../graph/index.md#traits) - `Element`, `Event`, `Market` and `Operation`: the identities, the codes, the instants, the place in the chain, and the market reading *derived* from the FIX fields the message stated: the price, the quantity, the state, the side, the lanes, the security identifiers and the three [identifier maps](#the-identifier-maps); `lifted() -> &FixLifted`, the FIX numbers and identifiers the message lifted out of its row, exactly as it stated them - a fact the traits answer but this holder lacks is derived, and a derived fact reaches neither the wire, the entries nor the code; `header() -> &FixHeader`, the frame: tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10 typed; `capture() -> &FixCapture`, `msgpluginid`, `msgctxid` and `msgsessionid` - what a bridge's own row header stated, read off the line's own bytes, and never what a *reader* said about the line - the `msgsesseventid` the message derives from them, and the `msgoriginator` and `conversationid` a bridge's log line names; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
+| Holders | the event the message is, read through the four [graph traits](../graph/index.md#traits) - `Element`, `Event`, `Market` and `Operation`: the identities, the codes, the instants, the place in the chain, and the market reading *derived* from the FIX fields the message stated: the price, the quantity, the bid and the ask, the state, the side, the security identifiers and the [alternate identifiers](#the-identifier-maps); `lifted() -> &FixLifted`, the FIX numbers and identifiers the message lifted out of its row, exactly as it stated them - a fact the traits answer but this holder lacks is derived, and a derived fact reaches neither the wire, the entries nor the code; `header() -> &FixHeader`, the frame: tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10 typed; `capture() -> &FixCapture`, `msgpluginid`, `msgctxid` and `msgsessionid` - what a bridge's own row header stated, read off the line's own bytes, and never what a *reader* said about the line - the `msgsesseventid` the message derives from them, and the `msgoriginator` and `conversationid` a bridge's log line names; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
 | Row | `as_field()` and `as_value()`: a root Struct [`Field`](../types/field.md) and the `Scalar::Serie` it declares, holding only what no holder owns - the dictionary's fields, a group as a Serie of Struct occurrences beside its `int32` counter, a component as a Struct, a key no dictionary explains under its own spelling; a [typed tag](#typed-tags) is never in it |
 | Entries | `entries() -> &[FixEntry]`, the row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, each carrying the tag the dictionary resolved - `0` for a key it does not explain - the canonical name and the value as the wire spells it; a group is one entry under its counter valued the count, with one valueless entry per occurrence heading the members; a component a valueless entry heading its members; the typed facts are not entries |
-| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit what the message *stated*: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the fields it lifted in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003 - then 58, then the entries pre-order, then the trailer 93, 89 and 10, which closes the frame whatever the body's tags are. A fact the message *derived* - the price it is about, the state it reached, a lane it never quoted - is emitted nowhere. A coded fact spells as its wire code, `54=1`, and a lane number at the decimal's full scale. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator |
+| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit what the message *stated*: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the fields it lifted in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003 - then 58, then the entries pre-order, then the trailer 93, 89 and 10, which closes the frame whatever the body's tags are. A fact the message *derived* - the price it is about, the state it reached, the category it is filed under - is emitted nowhere. A coded fact spells as its wire code, `54=1`. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator |
 | Constructors | `FixMsg::new` links `FixRegistry::from_env()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; a key reaching [the capture's own column](#a-row-is-a-message-again) - `sourceurl` - is refused, naming the column, because a message holds no fact for it; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
-| Settled | `currunix` is a stated `currunix`, else the [official clock](capture.md#the-official-clock-dates-the-message) standing within the codec's `official_time_delay_ms` of `SendingTime(52)` - the `TransactTime(60)` the message states, else the `TrdRegTimestamp(769)` its `TrdRegTimestampType(770)` says is about the event or a hop - else that `SendingTime`; `SendingTime` is the message's own, else a row cell or line capture reaching tag 52, else the `currunix` of the [text line](../media/index.md#plain-text) it was read out of, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creaunix` is a stated one, else `currunix`; `execunix` is the most precise execution clock the message states, else `currunix` where `FixMsg::is_execution` accepts the report and it follows nothing; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states* but the standard header and trailer, less `MsgType(35)`, and never the chain it is in: the event facts, text, metadata, lifted FIX fields and canonical entry tree. A complete nonempty `msgtype`, capture `msgsessionid` and capture `msgctxid` with a present `msgseqnum` are also settled as the capture's `msgsesseventid`, the four values joined by `:` - `"<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>"`, as `8:e7256476:9effef3e6a:1094`; the sequence is canonical `u64`, an absent part removes it, and this delivery identity is excluded from the FIX content identity. An explicit nonempty `crosscode` wins; otherwise the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)` names the chain. |
+| Settled | `currunix` is a stated `currunix`, else the [official clock](capture.md#the-official-clock-dates-the-message) standing within the codec's `official_time_delay_ms` of `SendingTime(52)` - the `TransactTime(60)` the message states, else the `TrdRegTimestamp(769)` its `TrdRegTimestampType(770)` says is about the event or a hop - else that `SendingTime`; `SendingTime` is the message's own, else a row cell or line capture reaching tag 52, else the `currunix` of the [text line](../media/index.md#plain-text) it was read out of, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creaunix` is a stated one, else `currunix`; `execunix` is the most precise execution clock the message states, else `currunix` where `FixMsg::is_execution` accepts the report and it follows nothing; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states* but the standard header and trailer, less `MsgType(35)`, and never the chain it is in: the event facts, text, metadata, lifted FIX fields and canonical entry tree. A complete nonempty `msgtype`, capture `msgsessionid` and capture `msgctxid` with a present `msgseqnum` are also settled as the capture's `msgsesseventid`, the four values joined by `:` - `"<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>"`, as `8:e7256476:9effef3e6a:1094`; the sequence is canonical `u64`, an absent part removes it, and this delivery identity is excluded from the FIX content identity. An explicit nonempty `crosscode` wins; otherwise the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)` names the chain, and a message taking a side stores it under that side's name - `BUY:A1` - so a buy and a sell under one `ClOrdID` are two chains; a side of `UNKNOWN` leaves it as spelled. `Market::sided_crosscode` is the one place the prefix is spelled, and `crosshashcode` and `crossuuid` read the prefixed code |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
-| Graph | `FixMsg` implements `Element`, `Event`, `Market` and `Operation` through its event: `is_after` is the instant, `finalize` settles the identity again, which re-derives every market fact from the FIX fields the message states unless a caller or a walk wrote one through the traits. `with_previous` first compares the complete `msgsesseventid`; equality forces a full content-and-graph merge instead of following, with the latest recorded observation as reference and the earliest `recdunix` and `execunix` retained. Otherwise it is `Market::following_market`, which records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, puts the message one place after it, `seqnum`, and carries the market facts the chain is about - not the operation's: the time in force, the accounts, the users and the followed alternate identifiers stay this message's own. `merge_with` is `Market::merging_market_event` under the same recording-clock rule, and `restating` the operation restatement, `graph::market::restating_operation`; import the traits to call them |
-| Market operations | `market_operations(&self) -> Result<Vec<MarketData>>` reads this message as the [values a book folds](../graph/book.md#book-fold) - an `OrderEvent`, a `QuoteEvent`, an `ExecutionEvent`, a `TradeEvent` or a `SnapshotEvent`; `into_market_operations(self)` moves a direct message's held root event; `FixMarketIterator` streams sorted messages without allocating a vector for direct messages; `FixCodec::book_arrow_reader` composes that iterator with `BookIterator` and bounded Arrow output; `TryFrom<FixMsg> for MarketData` requires exactly one result. Order and quote categories are direct, an actual `EXEC` is one execution, and only an initial TradeCaptureReport `35=AE` whose `TradeReportTransType(487)` is absent/New and whose `ExecType(150)` is absent or execution-like becomes one composite trade built from `NoSides(552)`; non-New/cancel/correct/reverse/status AE are refused. The composed book reader skips administration, requests, acknowledgements and non-executing reports; standalone conversion remains strict. `W` / `X` expand `NoMDEntries(268)` in nondecreasing effective time, retaining source order for ties. Every leaf carries in its metadata what its message states that no typed column reads - [the rule](#market-operations) - and the map is part of the leaf's digest; `FixCodec::market_operations` is the [sorted door](arrow.md#fix-market-books) over a whole capture. The operation conversion is Rust-owned and the composed Arrow readers are exposed by Python and JavaScript |
+| Graph | `FixMsg` implements `Element`, `Event`, `Market` and `Operation` through its event: `is_after` is the instant, `finalize` settles the identity again, which re-derives every market fact from the FIX fields the message states unless a caller or a walk wrote one through the traits. `with_previous` first compares the complete `msgsesseventid`; equality forces a full content-and-graph merge instead of following, with the latest recorded observation as reference and the earliest `recdunix` and `execunix` retained. Otherwise it is `Operation::following_operation`, which records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, puts the message one place after it, `seqnum`, and carries the market facts the chain is about and the operation's: the time in force and whether it can trade where this message states neither, and each alternate identifier whose [`FIX:idmap`](registry.md#a-field-names-a-message-by-its-identifiers) entry follows, written into the field it is read from. `merge_with` is `Operation::merging_operation_event` under the same recording-clock rule, and `restating` the operation restatement, `graph::market::restating_operation`; import the traits to call them |
+| Split | a [stream door of the parse](#a-parse-splits-what-a-message-reports) answers, beside a message reporting an execution or quoting both sides, the messages it reports - an execution per fill, a sided quote per side - each its own identity, its `srcuuids` its source's |
+| Market data | `market_data(&self) -> Result<Vec<MarketData>>` reads this message as the [values a book folds](../graph/book.md#book-fold), one leaf per message: an `OrderEvent` for the category `ORDR`, a `QuoteEvent` for `QUOT`, an `ExecutionEvent` for an `EXEC` that reports an execution, and one leaf per `NoMDEntries(268)` occurrence - or a scoped `SnapshotEvent` - for a `W` or `X`; `into_market_data(self)` moves a direct message's held root event; `FixMarketIterator` streams sorted messages without allocating a vector for direct messages; `FixCodec::book_arrow_reader` composes that iterator with `BookIterator` and bounded Arrow output; `TryFrom<FixMsg> for MarketData` requires exactly one result. A trade `35=AE` is no leaf: its fills are the executions its parse split off. The composed book reader skips administration, requests, acknowledgements, non-executing reports, trades and two-sided quotes; standalone conversion stays strict. `W` / `X` expand `NoMDEntries(268)` in nondecreasing effective time, retaining source order for ties. Every leaf carries in its metadata what its message states that no typed column reads - [the rule](#what-a-leafs-metadata-holds) - and the map is part of the leaf's digest; `FixCodec::market_data` is the [sorted door](arrow.md#fix-market-books) over a whole capture. The conversion is Rust-owned and reached from Python and JavaScript |
 | Serialization | inherited: `as_field().clone().into_json()` renders the row's schema, [`into_json_scalar`](../media/index.md#json) its value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root; `into_row` is the whole message as one fixed row |
 | Equality | over the holders, the row and the registry - the same `Arc`, or registries holding the same fields; `Hash` over the hashcode, the row's schema and its value |
-| Bindings | The message is Rust, Python and JavaScript; Python `FixCodec.book_arrow_reader` and JavaScript `FixCodec.bookArrowReader` redirect into the complete Rust FIX-to-book Arrow pipeline, and `market_operations`, `market_arrow_reader`, `market_operations_arrow_reader` - `marketOperations`, `marketArrowReader`, `marketOperationsArrowReader` - into the sorted market door, the metadata switch being Python's `market_metadata=` and JavaScript's `{ marketMetadata }` |
+| Bindings | The message is Rust, Python and JavaScript: `FixMsg.market_data()` / `marketData()` and `FixMsg.msgcat` - Python the `MarketDataKind` member, JavaScript its name; Python `FixCodec.book_arrow_reader` and JavaScript `FixCodec.bookArrowReader` redirect into the complete Rust FIX-to-book Arrow pipeline, and `market_data`, `market_arrow_reader`, `market_data_arrow_reader` - `marketData`, `marketArrowReader`, `marketDataArrowReader` - into the sorted market door, the metadata switch being Python's `market_metadata=` and JavaScript's `{ marketMetadata }` |
 
-## Market operations
+## Market data
 
-`market_operations()` is the borrowed door and clones the one base event; `into_market_operations()` is the consuming door and moves that root holder without cloning for one direct or composite operation. The projected generic event is finalized at that boundary, so its identity derives only from the facts the operation schema carries and it can pass directly through the graph Arrow round trip; the FIX message keeps its richer FIX-content identity before conversion. Its `marketoperationid` is the `int32` code read from `msgcatcodeset`: `10` (`ORDR`) becomes an `OrderEvent`, `14` (`QUOT`) a `QuoteEvent`, and `8` (`EXEC`) an `ExecutionEvent` only where `Event::is_execution()` says this observation itself is an execution. Category `21` (`TRAD`) becomes a composite `TradeEvent` only for an initial TradeCaptureReport `35=AE`: `TradeReportTransType(487)` must be absent or New (`0`, with legacy `N` or `New`), and `ExecType(150)` must be absent or execution-like (`F`, with legacy `1` or `2`). A non-New or cancel/correct/reverse/status AE, every `AD`, `AQ` and `AR`, another category, a non-executing execution message, or a `BOOK` message other than `W` or `X` is an `InvalidRecord` at `MsgType(35)`. `TryFrom<FixMsg> for MarketData` uses the consuming door and refuses unless it yields exactly one value.
+`market_data()` is the borrowed door and clones the one base event; `into_market_data()` is the consuming door and moves that root holder without cloning for a direct message. The projected generic event is finalized at that boundary, so its identity derives only from the facts the [market data row](../graph/market-data.md#arrow) carries and it passes directly through the graph Arrow round trip; the FIX message keeps its richer FIX-content identity. One message is one leaf, chosen by `msgcat` - the [`MarketDataKind`](../types/enum/marketdatakind.md) member the dictionary files the message's type under, which the leaf states again as its `marketdatakind`: `ORDR` (`10`) becomes an `OrderEvent`, `QUOT` (`14`) a `QuoteEvent`, `EXEC` (`8`) an `ExecutionEvent` only where `Event::is_execution()` says the message reports an execution, and `BOOK` (`3`) one leaf per entry of a `W` or `X`. A trade (`TRAD`, `21`) is no leaf: what it reports are the sided executions [its parse split off](#a-parse-splits-what-a-message-reports), so a fill is never stated twice. Any other category, a non-executing `EXEC` and a `BOOK` message other than `W` or `X` is an `InvalidRecord` at `MsgType(35)`. `TryFrom<FixMsg> for MarketData` uses the consuming door and refuses unless it yields exactly one value.
 
-`FixCodec::book_arrow_reader` admits order and quote categories, actual executions, `W`/`X` and every `AE`, ignoring the remaining records before strict projection. An unsupported correction, cancellation or status `AE` still raises its named refusal, as does any malformed admitted message; source errors are preserved. Ignored records neither advance book time nor trigger ordering errors. Lifecycle enrichment remains explicit.
-
-An accepted initial `35=AE` must state exactly one nonempty `NoSides(552)` group. Each occurrence becomes one `ExecutionEvent` and must state `Side(54)` as bid or ask; absence or another value is refused at `$.NoSides(552)[index].Side(54)`. `SideLastQty(1009)` supplies that child's `lastqty` and quantity, otherwise root `LastQty(32)` supplies the quantity where present. Root `LastPx(31)` remains the shared price; `SideAvgPx(1852)` records the child's average price and supplies its price only when the root stated no last price. `SideCurrency(1154)` may replace the root currency. The child keeps the root's [identifier maps](#the-identifier-maps) and adds its side plus any `SideExecID(1427)`, `SideTradeReportID(1005)`, `SideTradeID(1506)`, `SideOrigTradeID(1507)`, `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `SecondaryClOrdID(526)` and `OrigClOrdID(41)` it states, each an alternate identifier under the upper-cased field name - `SIDEEXECID`, `SECONDARYCLORDID` - replacing the root's entry under that key. No `TradeSideIndex` identifier is emitted. A child cross code uses its order/client chain where available and a tag-qualified first `SideExecID`, `SideTradeID`, `SideTradeReportID`, `OrderID` or `ClOrdID`; when none is stated it uses the canonical 128-bit digest of that occurrence's content. The source group index never participates in the identity. [`TradeEvent::from_parts`](../graph/trade.md) finalizes and canonically sorts the children, folds their temporal bounds into the trade root, and feeds each canonical child UUID once into that root's identity. The graph [Arrow row](../graph/market-data.md#arrow) carries those children in its nullable `executions` list; a [book](../graph/book.md#books) flattens them into its own execution list and never treats the composite as resting depth.
+`FixCodec::book_arrow_reader` admits orders, one-sided quotes, actual executions and `W`/`X`, ignoring every other record before strict projection - a trade and a two-sided quote among them, because the messages their parse split off are what the book reads. Source errors are preserved, and ignored records neither advance book time nor trigger ordering errors. Lifecycle enrichment remains explicit.
 
 For `W` and `X`, the converter derives `entries()` once, requires exactly one `NoMDEntries(268)` group, walks its occurrences once, stably sorts the projected operations by effective instant, and returns one operation per occurrence. An empty `W` returns one scoped `SnapshotEvent` - built by `SnapshotEvent::snapshot(&event, scope)` - so an authoritative empty book can clear stale depth; an empty `X` states no changes and returns none. Root context - `Symbol(55)`, the book scope tags below and `MDEntryDate(272)` / `MDEntryTime(273)` - is inherited and an occurrence's stated value overrides it; any other entry tag a root states is read by no entry and rides every leaf's [metadata](#what-a-leafs-metadata-holds). Root `MDReqID(262)` is taken from its lifted message field because lifting deliberately removes it from the residual entry tree. The entry's own facts are written per occurrence - its `MDENTRYID`, `MDENTRYREFID` and `ORDERID` alternate identifiers replaced under their keys, its book control built afresh - so a missing `MDEntryID`, reference or coordinate cannot leak from one occurrence into the next while unrelated caller identifiers survive. The entry type decides the concrete operation:
 
@@ -49,18 +48,20 @@ For `W` and `X`, the converter derives `entries()` once, requires exactly one `N
 | `X`, `4` | delete from | `Canceled`, terminal; for a bid or offer, removes same-symbol, same-scope live entries from that required position |
 | `X`, `5` | overlay | `Replaced`, live |
 
-The book scope - `BookRef::scope`, what `OperationEvent::scope()` answers - is deterministic: `Symbol=<Symbol(55)>`, or the event's ticker, or `GLOBAL`, followed where stated by `MDBookType(1021)`, `MDSubBookType(1173)`, `MDFeedType(1022)`, `MDStreamID(1500)`, `MarketID(1301)`, `MarketSegmentID(1300)`, `MDReqID(262)` and `MarketDepth(264)`, in that order. `%`, `|` and `=` in external values are percent-escaped before those separators are written, so distinct tuples cannot concatenate alike. The occurrence inherits those facts from the message root and may replace them. Its cross code is that complete scope plus `MDEntryID(278)`, or the same qualified ID named by `MDEntryRefID(280)`. Without either ID it is the scope, `MDEntryType`, and the stated position and/or price level; a new or snapshot entry with neither coordinate adds its price, while a change, delete or overlay without any stable ID/position/level is refused as ambiguous. IDs reused by two feeds or symbols therefore never collide, and an anonymous price change retains the position/level identity it updates.
+An execution leaf - a trade entry, or an `EXEC` message - is one fill, complete in itself: it reads `FILLED` whatever its report's state, and only a trade entry a book message deletes reads `CANCELED`.
 
-The book control retains the effective action (`Snapshot` for `W`, the wire code for `X`), the scope, `MDEntryPositionNo(290)` as `position`, and `MDEntryPx(270)` and `MDEntrySize(271)` as the entry stated them - `entry_px` and `entry_size`, stated only where the occurrence stated them, so presence is distinct from a numeric zero: change and overlay actions inherit either value the occurrence omitted from the matched live entry, and refuse an omitted value where no predecessor exists. The entry's own and referenced identifiers and the order it names are alternate identifiers - `MDENTRYID` and `MDENTRYREFID` (`graph::book::ENTRY_ID`, `ENTRY_REF_ID`) and `ORDERID`; `MDPriceLevel(1023)` takes part in the cross code of an entry naming no identifier and in nothing else, and `RptSeq(83)` and the `ApplID` sequences are no fact of the operation. A stated `MDEntryRefID` is resolved before the incoming `MDEntryID`; two distinct live entries at those identities are ambiguous and refused. This gives [the book](../graph/book.md#book-sides) its matching, ordering and scope facts without a second FIX schema. Trade occurrences become executions beside the book and never decrement resting order or quote depth.
+The book scope - `BookRef::scope`, what `OperationEvent::scope()` answers - is deterministic: `Symbol=` the entry's `Symbol(55)`, else the message's ticker, else the instrument's `ISIN`, else its currency pair, else the book it keys to, [`Market::book_crosscode`](../graph/market.md#sides-and-cross-codes); then, where stated, `MDBookType(1021)`, `MDSubBookType(1173)`, `MDFeedType(1022)`, `MDStreamID(1500)`, `MarketID(1301)`, `MarketSegmentID(1300)`, `MDReqID(262)` and `MarketDepth(264)`, in that order. `%`, `|` and `=` in external values are percent-escaped before those separators are written, so distinct tuples cannot concatenate alike. The occurrence inherits those facts from the message root and may replace them. Its cross code is that complete scope plus `MDEntryID(278)`, or the same qualified ID named by `MDEntryRefID(280)`, stored under the entry's side as every sided element's is - `BUY:Symbol=AAPL|MDEntryID=B1`. Without either ID it is the scope, `MDEntryType`, and the stated position and/or price level; a new or snapshot entry with neither coordinate adds its price, while a change, delete or overlay without any stable ID/position/level is refused as ambiguous. IDs reused by two feeds or symbols therefore never collide, and an anonymous price change retains the position/level identity it updates. Two instruments stating neither ticker nor identifier under one market and classification share a scope.
+
+The book control retains the effective action (`Snapshot` for `W`, the wire code for `X`), the scope, `MDEntryPositionNo(290)` as `position`, and `MDEntryPx(270)` and `MDEntrySize(271)` as the entry stated them - `entry_px` and `entry_size`, stated only where the occurrence stated them, so presence is distinct from a numeric zero: change and overlay actions inherit either value the occurrence omitted from the matched live entry, and refuse an omitted value where no predecessor exists. The book control is the walk's and no column of the market data row. The entry's own and referenced identifiers and the order it names are alternate identifiers - `MDENTRYID` and `MDENTRYREFID` (`graph::book::ENTRY_ID`, `ENTRY_REF_ID`) and `ORDERID`; `MDPriceLevel(1023)` takes part in the cross code of an entry naming no identifier and in nothing else, and `RptSeq(83)` and the `ApplID` sequences are no fact of the operation. A stated `MDEntryRefID` is resolved before the incoming `MDEntryID`; two distinct live entries at those identities are ambiguous and refused. This gives [the book](../graph/book.md#book-fold) its matching, ordering and scope facts without a second FIX schema. Trade occurrences become executions beside the book and never decrement resting order or quote depth.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market, MarketKind, Operation};
+    use yggdryl::graph::{Element, Market, MarketKind};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl::{FixCodec, FixRegistry, MarketDataKind};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -70,12 +71,15 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
         .parse_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=A|55=IBM|54=1|38=10|44=101.5|15=USD|10=0|")?
         .next()
         .expect("one frame")?;
-    let operations = order.market_operations()?;
+    assert_eq!(order.msgcat(), MarketDataKind::Order);
+    let operations = order.market_data()?;
     assert_eq!(operations.len(), 1);
     assert_eq!(operations[0].kind(), MarketKind::OrderEvent);
+    assert_eq!(operations[0].marketdatakind(), MarketDataKind::Order);
     let leaf = operations[0].as_order_event().expect("an order event");
     assert_eq!(leaf.get_price(), order.get_price());
-    assert_eq!(leaf.get_bid(), order.get_bid());
+    // The chain is the ClOrdID under the side the order takes.
+    assert_eq!(leaf.get_crosscode(), "BUY:A");
     assert_eq!(leaf.get_crossuuid(), order.get_crossuuid());
 
     // A full snapshot is one operation per NoMDEntries(268) occurrence.
@@ -83,8 +87,10 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
         .parse_line(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|")?
         .next()
         .expect("one frame")?;
-    let kinds: Vec<MarketKind> = book.market_operations()?.iter().map(|value| value.kind()).collect();
+    let entries = book.market_data()?;
+    let kinds: Vec<MarketKind> = entries.iter().map(|value| value.kind()).collect();
     assert_eq!(kinds, [MarketKind::QuoteEvent, MarketKind::QuoteEvent]);
+    assert_eq!(entries[0].get_crosscode(), "BUY:Symbol=AAPL|MDEntryID=B1");
     ```
 
 === "Python"
@@ -92,26 +98,31 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
     ```python
     from pathlib import Path
 
-    from yggdryl import graph
+    from yggdryl import MarketDataKind, graph
     from yggdryl.fix import FixCodec, FixRegistry
 
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
 
     # A new order is one order event, its facts the message's own.
     order = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=A|55=IBM|54=1|38=10|44=101.5|15=USD|10=0|")
-    [operation] = order.market_operations()
+    assert order.msgcat == MarketDataKind.ORDR
+    [operation] = order.market_data()
     assert isinstance(operation, graph.MarketData) and operation.kind == "order_event"
+    assert operation.marketdatakind == MarketDataKind.ORDR
     leaf = operation.as_order_event()
     assert leaf is not None
     assert leaf.price == order.price
-    assert isinstance(order.bid, graph.Lane) and leaf.bid == order.bid
+    # The chain is the ClOrdID under the side the order takes.
+    assert leaf.crosscode == "BUY:A"
     assert leaf.crossuuid == order.crossuuid
 
     # A full snapshot is one operation per NoMDEntries(268) occurrence.
     book = codec.parse_fix_line(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|"
     )
-    assert [value.kind for value in book.market_operations()] == ["quote_event", "quote_event"]
+    entries = book.market_data()
+    assert [value.kind for value in entries] == ["quote_event", "quote_event"]
+    assert entries[0].crosscode == "BUY:Symbol=AAPL|MDEntryID=B1"
     ```
 
 === "JavaScript"
@@ -127,26 +138,133 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
     const order = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|11=A|55=IBM|54=1|38=10|44=101.5|15=USD|10=0|'),
     )
-    const [operation] = order.marketOperations()
+    assert.equal(order.msgcat, 'ORDR')
+    const [operation] = order.marketData()
     assert.ok(operation instanceof graph.MarketData)
     assert.equal(operation.kind, 'order_event')
+    assert.equal(operation.marketdatakind, 'ORDR')
     const leaf = operation.asOrderEvent()
     assert.equal(leaf.price, order.price)
-    assert.ok(order.bid instanceof graph.Lane && leaf.bid.equals(order.bid))
+    // The chain is the ClOrdID under the side the order takes.
+    assert.equal(leaf.crosscode, 'BUY:A')
     assert.equal(leaf.crossuuid, order.crossuuid)
 
     // A full snapshot is one operation per NoMDEntries(268) occurrence.
     const book = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
     ))
-    assert.deepEqual(book.marketOperations().map((value) => value.kind), ['quote_event', 'quote_event'])
+    const entries = book.marketData()
+    assert.deepEqual(entries.map((value) => value.kind), ['quote_event', 'quote_event'])
+    assert.equal(entries[0].crosscode, 'BUY:Symbol=AAPL|MDEntryID=B1')
+    ```
+
+### A parse splits what a message reports
+
+A message may report more than itself: an execution report stating a fill reports the fill, a trade capture report reports each side that traded, and a quote stating a bid and an offer quotes two sides. Each of those is an event of its own, with its own chain, so every stream door of the parse - `parse_line`, `parse_lines`, `parse_text_line`, `parse_text_lines` and `parse_text_arrow_reader` - answers, right after the message, the messages it reports. The split runs once, there, so a fill or a quoted side is one message wherever a capture is read, and the [book](../graph/book.md#book-fold) and the [lifecycle](lifecycle.md) read each once. The one-body doors - `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line` and `parse_pairs` - answer the message as stated and split nothing.
+
+| Message | Reports | Split off |
+| --- | --- | --- |
+| an order's, a quote's or an execution report stating an execution - `ExecType(150)` `F`, or FIX 4.2's `1` or `2`, else a state that reports one | one fill | one execution: the report's content under the category `EXEC`, its cross code its own - `ExecID=<ExecID(17)>`, else `TradeID=<TradeID(1003)>`, else the report's code and content digest. The execution report is then its order's report, `ORDR` - `QUOT` where it names a `QuoteID(117)` - so the fill is stated by the execution alone |
+| a TradeCaptureReport `35=AE` whose `TradeReportTransType(487)` is absent or New and whose `ExecType(150)` is absent or execution-like | each side that traded | one execution per `NoSides(552)` occurrence stating a side: the trade's content with that occurrence alone in its group and the side's facts at the root where an `ExecutionReport` states them - `Side(54)`, `SideExecID(1427)` as `ExecID(17)`, `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `SecondaryOrderID(198)`, `SecondaryClOrdID(526)`, `SideLastQty(1009)` as `LastQty(32)`, `SideAvgPx(1852)` as `AvgPx(6)`, `SideCurrency(1154)` as `Currency(15)`. Its cross code is the side's order - its `OrderID`, `ClOrdID` or `OrigClOrdID`, else the trade's - and the first stable identifier it states: `SideExecID`, `SideTradeID(1506)`, `SideTradeReportID(1005)`, `OrderID`, `ClOrdID`, else the occurrence's own content digest; the group index never enters it. An occurrence stating no side splits nothing and is kept on the trade as an [anomaly](#anomalies) |
+| a quote stating a bid and an offer and no `Side(54)` | two sides | a `BUY` quote and a `SELL` quote, the source's content stating that `Side(54)`, so each reads its price, quantity and FX parts off its own side's `BidPx(132)`/`BidSize(134)`/`BidSpotRate(188)`/`BidForwardPoints(189)` or `OfferPx(133)`/`OfferSize(135)`/`OfferSpotRate(190)`/`OfferForwardPoints(191)`; both keep the whole [bid and ask](../graph/market.md#bid-and-ask) the source stated |
+
+Every message split off has an identity of its own, reads `FILLED` where it is an execution and its source's state otherwise, and names as its `srcuuids` its source's `curruuid` beside its source's own sources. The source keeps what it states, its own state included - a partial fill's report stays `PARTIALLY_FILLED` while its execution reads `FILLED`. Its cross code takes the side it states, `BUY:ExecID=E1`, as [every sided element's](../graph/market.md#sides-and-cross-codes) does. A message split off is an ordinary message: it lands as a row of its own in the [fixed row](capture.md#the-columns-are-the-folded-names), and the lifecycle walks it as a chain of its own - an execution never joins its order's chain, so a fill cannot end it.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
+
+    // A partial fill: the order's report, then the fill it reports.
+    let line: &[u8] = b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|11=C1|17=E1|150=F|39=1|55=AAPL|54=1|31=10|32=5|38=10|14=5|151=5|10=0|";
+    let messages: Vec<FixMsg> = codec.parse_line(line)?.collect::<yggdryl::Result<_>>()?;
+    let [report, fill] = messages.as_slice() else { panic!("two messages") };
+    assert_eq!((report.msgcat(), report.get_state().as_str()), (MarketDataKind::Order, "PARTIALLY_FILLED"));
+    assert_eq!((fill.msgcat(), fill.get_state().as_str()), (MarketDataKind::Execution, "FILLED"));
+    assert_eq!(report.get_crosscode(), "BUY:O1");
+    assert_eq!(fill.get_crosscode(), "BUY:ExecID=E1");
+    assert_eq!(fill.get_srcuuids(), [report.get_curruuid()]);
+    // The one-body door answers the message as stated, split nothing.
+    assert_eq!(codec.parse_fix_line(line)?.msgcat(), MarketDataKind::Execution);
+
+    // A quote stating both sides is two sided quotes beside it.
+    let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|132=100.5|133=101|134=500|135=700|15=USD|10=0|";
+    let quotes: Vec<FixMsg> = codec.parse_line(quote)?.collect::<yggdryl::Result<_>>()?;
+    let codes: Vec<&str> = quotes.iter().map(|held| held.get_crosscode()).collect();
+    assert_eq!(codes, ["Q1", "BUY:Q1", "SELL:Q1"]);
+    assert_eq!(quotes[1].get_price(), quotes[1].get_bidpx());
+    assert_eq!(quotes[2].get_price(), quotes[2].get_askpx());
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl import MarketDataKind, State
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+
+    # A partial fill: the order's report, then the fill it reports.
+    line = b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|11=C1|17=E1|150=F|39=1|55=AAPL|54=1|31=10|32=5|38=10|14=5|151=5|10=0|"
+    report, fill = codec.parse_line(line)
+    assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
+    assert (fill.msgcat, fill.state) == (MarketDataKind.EXEC, State.FILLED)
+    assert report.crosscode == "BUY:O1"
+    assert fill.crosscode == "BUY:ExecID=E1"
+    assert fill.srcuuids == [report.curruuid]
+    # The one-body door answers the message as stated, split nothing.
+    assert codec.parse_fix_line(line).msgcat == MarketDataKind.EXEC
+
+    # A quote stating both sides is two sided quotes beside it.
+    quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|132=100.5|133=101|134=500|135=700|15=USD|10=0|"
+    quotes = list(codec.parse_line(quote))
+    assert [held.crosscode for held in quotes] == ["Q1", "BUY:Q1", "SELL:Q1"]
+    assert quotes[1].price == quotes[1].bidpx
+    assert quotes[2].price == quotes[2].askpx
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+
+    // A partial fill: the order's report, then the fill it reports.
+    const line = Buffer.from('8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|11=C1|17=E1|150=F|39=1|55=AAPL|54=1|31=10|32=5|38=10|14=5|151=5|10=0|')
+    const [report, fill] = [...codec.parseLine(line)]
+    assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
+    assert.deepEqual([fill.msgcat, fill.state], ['EXEC', 'FILLED'])
+    assert.equal(report.crosscode, 'BUY:O1')
+    assert.equal(fill.crosscode, 'BUY:ExecID=E1')
+    assert.deepEqual(fill.srcuuids, [report.curruuid])
+    // The one-body door answers the message as stated, split nothing.
+    assert.equal(codec.parseFixLine(line).msgcat, 'EXEC')
+
+    // A quote stating both sides is two sided quotes beside it.
+    const quote = Buffer.from('8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|132=100.5|133=101|134=500|135=700|15=USD|10=0|')
+    const quotes = [...codec.parseLine(quote)]
+    assert.deepEqual(quotes.map((held) => held.crosscode), ['Q1', 'BUY:Q1', 'SELL:Q1'])
+    assert.equal(quotes[1].price, quotes[1].bidpx)
+    assert.equal(quotes[2].price, quotes[2].askpx)
     ```
 
 ### What a leaf's metadata holds
 
-Every leaf carries, in its [`Market::get_metadata`](../graph/market.md#contract), what its message states that no typed column reads, each value the canonical text it spells - a decimal at the scale it is stored at: the bridge's namespaced keys as they are (`tech.clientid`), then every other top-level field under its folded name (`ordtype`), and a group or component member by member under its [`FieldPath`](../types/paths.md) text, the group spelled by its column - `parties[0].partyid`. Left out are the envelope a message's code leaves out, so two hops of one message are one leaf; every tag a typed column reads; an identifier-map source, and a `parties` occurrence whose role an identifier map reads, consumed whole; the fields read by name - `eventtimestamp`, the detailed CFI, the security-type names; a group's counter; and the group a message expands into its leaves, `NoMDEntries(268)` for `W` and `X`, `NoSides(552)` for `AE`. A book entry and a trade side add their own occurrence's members keyed bare, each leading a message field of the same name, and never a sibling's.
+Every leaf carries, in its [`Market::get_metadata`](../graph/market.md#contract), what its message states that no typed column reads, each value the canonical text it spells - a decimal at the scale it is stored at: the bridge's namespaced keys as they are (`tech.clientid`), then every other top-level field under its folded name (`ordtype`, `account`), and a group, a component or a map as one key under its folded name holding JSON - a group the array of one object per occurrence, a component or a map one object, each member under its folded name and nested groups and components recursing, every leaf the canonical text a root field spells, so no value is a JSON number and the keys are in name order: `parties` holds `[{"partyid":"TRADER1","partyidsource":"D","partyrole":"11"}]`. A key no dictionary resolved is a top-level field like any other, `9999` under its own spelling. Left out are the envelope a message's code leaves out, so two hops of one message are one leaf; every tag a typed column reads; an alternate identifier's source field, and a `parties` occurrence whose role an [identifier map](#the-identifier-maps) reads, consumed whole; the fields read by name - `eventtimestamp`, the detailed CFI, `BidCurrency` and `AskCurrency`, the security-type names; null members and a group's counter; and the group a message expands into its leaves, `NoMDEntries(268)` for `W` and `X`, `NoSides(552)` for an execution a trade split off. A book entry and a trade side add their own occurrence's scalar members keyed bare, each leading a message field of the same name, a nested member of that occurrence as JSON under its bare name, and never a sibling's.
 
-The map is computed where the leaf is built and never stored on the `FixMsg`, so it feeds the leaf's digest and never the message's code. `market_operations` and `into_market_operations` always carry it; a codec's `with_market_metadata(false)` turns it off for the codec's own doors - `market_operations`, `market_arrow_reader`, `book_arrow_reader` - which moves the identity of every leaf whose message states such a field.
+The map is computed where the leaf is built and never stored on the `FixMsg`, so it feeds the leaf's digest and never the message's code. `market_data` and `into_market_data` always carry it; a codec's `with_market_metadata(false)` turns it off for the codec's own doors - `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `book_arrow_reader` - which moves the identity of every leaf whose message states such a field.
 
 === "Rust"
 
@@ -160,23 +278,25 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
 
-    // OrdType(40) and ExecInst(18) are no typed column, and a PartyRole(452)
-    // of 11 names no identifier map; the rest of the order is typed.
+    // OrdType(40) and ExecInst(18) are no typed column, and the Parties group
+    // is one key holding its occurrences; the rest of the order is typed.
     let line: &[u8] = b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100.5|38=5|40=2|18=G|453=1|448=TRADER1|447=D|452=11|10=0|";
     let message = codec.parse_line(line)?.next().expect("one frame")?;
-    let leaves = message.market_operations()?;
-    let keys: Vec<&str> = leaves[0].get_metadata().keys().map(|key| key.as_str()).collect();
+    let leaves = message.market_data()?;
+    let metadata = leaves[0].get_metadata();
+    let keys: Vec<&str> = metadata.keys().map(|key| key.as_str()).collect();
+    assert_eq!(keys, ["execinst", "ordtype", "parties"]);
+    assert_eq!(metadata.get("ordtype").map(|value| value.as_str()), Some("2"));
     assert_eq!(
-        keys,
-        ["execinst", "ordtype", "parties[0].partyid", "parties[0].partyidsource", "parties[0].partyrole"]
+        metadata.get("parties").map(|value| value.as_str()),
+        Some(r#"[{"partyid":"TRADER1","partyidsource":"D","partyrole":"11"}]"#),
     );
-    assert_eq!(leaves[0].get_metadata().get("ordtype").map(|value| value.as_str()), Some("2"));
 
     // The codec's switch leaves the map empty, and the leaf's identity says so.
     let bare = codec.clone().with_market_metadata(false);
     assert!(!bare.market_metadata());
     let plain = bare
-        .market_operations([bare.parse_line(line)?.next().expect("one frame")?])
+        .market_data([bare.parse_line(line)?.next().expect("one frame")?])
         .next()
         .expect("one leaf")?;
     assert!(plain.get_metadata().is_empty());
@@ -194,24 +314,22 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     codec = FixCodec(registry)
 
-    # OrdType(40) and ExecInst(18) are no typed column, and a PartyRole(452)
-    # of 11 names no identifier map; the rest of the order is typed.
+    # OrdType(40) and ExecInst(18) are no typed column, and the Parties group
+    # is one key holding its occurrences; the rest of the order is typed.
     line = b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100.5|38=5|40=2|18=G|453=1|448=TRADER1|447=D|452=11|10=0|"
-    [leaf] = codec.parse_fix_line(line).market_operations()
+    [leaf] = codec.parse_fix_line(line).market_data()
     order = leaf.as_order_event()
     assert order is not None
     assert order.metadata == {
         "execinst": "G",
         "ordtype": "2",
-        "parties[0].partyid": "TRADER1",
-        "parties[0].partyidsource": "D",
-        "parties[0].partyrole": "11",
+        "parties": '[{"partyid":"TRADER1","partyidsource":"D","partyrole":"11"}]',
     }
 
     # The codec's switch leaves the map empty, and the leaf's identity says so.
     bare = FixCodec(registry, market_metadata=False)
     assert not bare.market_metadata
-    [plain] = bare.market_operations([bare.parse_fix_line(line)])
+    [plain] = bare.market_data([bare.parse_fix_line(line)])
     held = plain.as_order_event()
     assert held is not None and held.metadata == {}
     assert plain.curruuid != leaf.curruuid
@@ -227,22 +345,21 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const codec = new fix.FixCodec(registry)
 
-    // OrdType(40) and ExecInst(18) are no typed column, and a PartyRole(452)
-    // of 11 names no identifier map; the rest of the order is typed.
+    // OrdType(40) and ExecInst(18) are no typed column, and the Parties group
+    // is one key holding its occurrences; the rest of the order is typed.
     const line = Buffer.from(
       '8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100.5|38=5|40=2|18=G|453=1|448=TRADER1|447=D|452=11|10=0|',
     )
-    const [leaf] = codec.parseFixLine(line).marketOperations()
+    const [leaf] = codec.parseFixLine(line).marketData()
     const metadata = leaf.asOrderEvent().metadata
-    assert.deepEqual(Object.keys(metadata), [
-      'execinst', 'ordtype', 'parties[0].partyid', 'parties[0].partyidsource', 'parties[0].partyrole',
-    ])
+    assert.deepEqual(Object.keys(metadata), ['execinst', 'ordtype', 'parties'])
     assert.equal(metadata.ordtype, '2')
+    assert.deepEqual(JSON.parse(metadata.parties), [{ partyid: 'TRADER1', partyidsource: 'D', partyrole: '11' }])
 
     // The codec's switch leaves the map empty, and the leaf's identity says so.
     const bare = new fix.FixCodec(registry, { marketMetadata: false })
     assert.equal(bare.marketMetadata, false)
-    const [plain] = [...bare.marketOperations([bare.parseFixLine(line)])]
+    const [plain] = [...bare.marketData([bare.parseFixLine(line)])]
     assert.equal(Object.keys(plain.asOrderEvent().metadata).length, 0)
     assert.notEqual(plain.curruuid, leaf.curruuid)
     ```
@@ -400,7 +517,7 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     # The typed facts left the row for their holders: the type is the header's,
     # the side and the quantity the event's, and the row holds the four others.
     assert message.header().msgtype == "D"
-    assert message.side.as_py() == "BUY"
+    assert message.side == yggdryl.Side.BUY
     assert [name for name, _ in message] == ["Side", "Symbol", "NoPartyIDs", "Parties", "9999"]
     assert len(message) == 5
 
@@ -563,12 +680,12 @@ A message holds each fact once. The tags below are the holders' and are never in
 | --- | --- | --- |
 | 8, 35, 49, 56, 34, 52, 43, 385, 93, 89, 10 | `header()` | the frame: `beginstring`, `msgtype`, `sendercompid`, `targetcompid`, `msgseqnum`, `sendingtime` with `stated_sendingtime`, `possdupflag`, `msgdirection`, and the trailer `signaturelength`, `signature`, `checksum` |
 | 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 188, 189, 190, 191, 194, 195, 198, 262, 1003 | `lifted()` | the numbers a consumer reads first and the identifiers one message of a chain shares with the next: `Price`, `OrderQty`, `Quantity`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `ClOrdID`, `OrigClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `QuoteID`, `QuoteReqID`, `MDReqID`, `TradeID`, and the six FX parts of a price behind one pointer - `LastSpotRate(194)`, `LastForwardPoints(195)`, `BidSpotRate(188)`, `BidForwardPoints(189)`, `OfferSpotRate(190)`, `OfferForwardPoints(191)`, read as `lifted().lastspotrate()` and its five siblings - each exactly as the message stated it |
-| every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) | the [event](../graph/event.md) getters and `capture()` | the identities, the codes, the instants, the place in the chain, the state it reached and when it expires on the event; `msgpluginid`, `msgctxid`, `msgsessionid`, the `msgsesseventid` they join to, `msgoriginator` and `conversationid` on the capture; `metadata` is the bridge's namespaced keys; the names a message goes by are its [identifier maps](#the-identifier-maps), read off the FIX fields that state them and no column of their own. The one exception is [the capture's own column](#a-row-is-a-message-again): no holder answers it, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
+| every [crate tag](capture.md#the-crates-own-columns), 65001 to 65030 | the [event](../graph/event.md) getters, the message and `capture()` | the identities, the codes, the instants, the place in the chain, the state it reached and when it expires on the event; the category `msgcat()` - a [`MarketDataKind`](../types/enum/marketdatakind.md) member - and the strike `strikepx()` on the message; the instrument codes `isincode`, `forexcode`, `bloombergcode`, `figicode` and `miccode`, views of the market facts below; `msgpluginid`, `msgctxid`, `msgsessionid`, the `msgsesseventid` they join to, `msgoriginator` and `conversationid` on the capture; `metadata` is the bridge's namespaced keys; the names a message goes by are its [alternate identifiers](#the-identifier-maps), read off the FIX fields that state them and no column of their own. [The capture's own column](#a-row-is-a-message-again), `sourceurl` (65031), is no fact: no holder answers it, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message; and the ten a bridge names in its own words, 65032 to 65041, are content the row keeps |
 | 58 | `text()` | the free text |
 
-Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source, the `secaltids` group and the market are ordinary children of the row, and what a [`Market` or `Operation`](../graph/market.md) getter answers is derived from them and from the lifted numbers - `get_price` is `Price(44)`, else the price its own side's lane quotes, and `None` otherwise - never `LastPx(31)` or `AvgPx(6)`, which are the last executed and the average price and answer as `get_lastpx` and `get_avgpx`; `get_spotrate` and `get_forwardpoints` are `LastSpotRate(194)` and `LastForwardPoints(195)`, and each lane's are its own four; `get_securityids` is built at every settle, each source filling only the keys the ones before it left absent: `SecurityID(48)` under `SecurityIDSource(22)`, each `secaltids` occurrence read through `SecType::read`, the crated `isincode`, `bloombergcode` and `figicode` views a row stated, then every top-level field no dictionary maps whose name names a source through `SecType::from_field_name` - `ISIN`, `cusip_code`, `#SEDOLCODE` - trimmed, validated and left on the wire as it arrived; a value that is empty or null-like states nothing, and an invalid code, or a different code under a filled key, states nothing and is kept as an [anomaly](#anomalies). The first identifier under a key ending `INSTRUMENTID` whose value after its last `;` is shaped `{ISIN}_{MIC}_{CCY}` - twelve, four and three ASCII alphanumerics, `dbi;CH0012214059_XSWX_CHF` - is a bridge's instrument key: it fills the `ISIN` and `get_currency` only where nothing stated them and names the market `get_miccode` ranks after `LastMkt(30)` and `ExDestination(100)` and before `SecurityExchange(207)`, a part its own type refuses skipped, and nothing it fills reaches the wire; `get_bid` and `get_ask` are the two `Lane`s the lanes 132 to 135 state - and a quote stating one lane, no `Side(54)` and no price, `LastPx` or `AvgPx` of its own takes that lane's side, `BUY` for `BidPx(132)`/`BidSize(134)` alone and `SELL` for `OfferPx(133)`/`OfferSize(135)` alone, so its price, quantity and currency read off that lane. A derived market fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to. Four readings are event facts with [columns of the crate's own](capture.md#the-crates-own-columns): `state` (65052) and `exprunix` (65053), which a walk folds forward; `execunix` (65062), the lifecycle's latest precise execution clock, which a report `FixMsg::is_execution` accepts takes from its own `currunix` when it settles stating none and follows nothing; and the observation's own `recdunix` (65063). Duplicate observations of one event merge `execunix` and `recdunix` to their earliest precise values before lifecycle following carries the latest execution forward, and the later `recdunix` of the two decides which one is the reference. A row stating one is the row's word; none reaches the wire or the entries.
+Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the bid and offer `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and `OfferSize(135)`, `SecurityID(48)` under its source, the `secaltids` group and the market are ordinary children of the row, and what a [`Market` or `Operation`](../graph/market.md) getter answers is derived from them and from the lifted numbers - `get_price` is `Price(44)`, else on a quote taking a side that side's `BidPx(132)` or `OfferPx(133)`, and `None` otherwise - never `LastPx(31)` or `AvgPx(6)`, which are the last executed and the average price and answer as `get_lastpx` and `get_avgpx`; `get_quantity` is `OrderQty(38)`, else `Quantity(53)`, else on a sided quote its side's size; `get_spotrate` and `get_forwardpoints` are `LastSpotRate(194)` and `LastForwardPoints(195)`, else on a sided quote its side's `BidSpotRate(188)`/`BidForwardPoints(189)` or `OfferSpotRate(190)`/`OfferForwardPoints(191)`, and where two of `LastPx(31)`, `LastSpotRate(194)` and `LastForwardPoints(195)` are stated the third is their sum or difference; the [bid and ask](../graph/market.md#bid-and-ask) - `get_bidpx`, `get_bidqty`, `get_askpx`, `get_askqty` - are `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and `OfferSize(135)`, and `get_bidccy` a stated `BidCurrency` field, `get_askccy` a stated `AskCurrency` or `OfferCurrency` field, each read by name, else the message's currency where that side states a price or a size; `get_fxrates` is empty, because no FIX field states a rate a message divides by; `get_side` is the `Side(54)` stated, else `UNKNOWN`, and never read off which of the bid or the offer a quote states; `get_securityids` is built at every settle, each source filling only the keys the ones before it left absent: `SecurityID(48)` under `SecurityIDSource(22)`, each `secaltids` occurrence read through `SecType::read`, the crated `isincode`, `forexcode`, `bloombergcode` and `figicode` views a row stated, then every top-level field no dictionary maps whose name names a source through `SecType::from_field_name` - `ISIN`, `cusip_code`, `#SEDOLCODE` - trimmed, validated and left on the wire as it arrived; a value that is empty or null-like states nothing, and an invalid code, or a different code under a filled key, states nothing and is kept as an [anomaly](#anomalies); a currency pair `Symbol(55)` names where the message states no other class is [derived](capture.md#a-currency-pair-is-read-off-the-symbol) under `FOREX`, and `get_isincode` borrows the `ISIN` entry. The first identifier under a key ending `INSTRUMENTID` whose value after its last `;` is shaped `{ISIN}_{MIC}_{CCY}` - twelve, four and three ASCII alphanumerics, `dbi;CH0012214059_XSWX_CHF` - is a bridge's instrument key: it fills the `ISIN` and `get_currency` only where nothing stated them and names the market `get_miccode` ranks after `LastMkt(30)` and `ExDestination(100)` and before `SecurityExchange(207)`, a part its own type refuses skipped, and nothing it fills reaches the wire; a currency pair trades on no one market, so where none of them names one `get_miccode` is ISO 10383's `XXXX`. A derived market fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to. Six readings have [columns of the crate's own](capture.md#the-crates-own-columns): the event facts `state` (65029) and `exprunix` (65007), which a walk folds forward; `execunix` (65002), the lifecycle's latest precise execution clock, which a report `FixMsg::is_execution` accepts takes from its own `currunix` when it settles stating none and follows nothing; the observation's own `recdunix` (65003); and the message's `msgcat` (65016) - the dictionary's `FIX:msgcat` for the type through `msgcatcodeset`, `UNKN` where it files none - and `strikepx` (65028), `StrikePrice(202)` as the decimal leaf. Duplicate observations of one event merge `execunix` and `recdunix` to their earliest precise values before lifecycle following carries the latest execution forward, and the later `recdunix` of the two decides which one is the reference. A row stating one is the row's word; none reaches the wire or the entries.
 
-A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(METADATA_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a place of zero in no chain - answers nothing, and a state of `UNKNOWN` answers as it is, the state stated as none, so `by_tag(STATE_TAG_NAME.0)` is never a miss and the `state` column never null on a row a message wrote.
+A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(MSGCAT_TAG_NAME.0)` a `MarketDataKind` member, `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(METADATA_TAG_NAME.0)` a sorted map; a row child answers as the dictionary types it, so under the shipped dictionary `by_tag(54)` is a `Side` member whose `as_str` is `BUY`, and nothing on a message stating no `Side(54)`, whose `get_side` is `UNKNOWN`; a holder stating nothing - a place of zero in no chain - answers nothing, and a state of `UNKNOWN` answers as it is, the state stated as none, so `by_tag(STATE_TAG_NAME.0)` is never a miss and the `state` column never null on a row a message wrote.
 
 ## One namespace
 
@@ -591,7 +708,7 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 | `get_by_name` / `by_name` | folds through the registry to the canonical spelling - a typed field answers its holder - then matches a root child exactly |
 | `get_by_path` / `by_path` | the first segment as a name, then segment by segment: into a Struct child by name, into a Serie entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects; a name that reaches nothing and spells more than one segment is read as a path |
-| `header`, `capture`, `text`, `metadata` | the holders themselves, borrowed without a lookup; the event's facts are the trait getters, and the leaves a message expands to are [`market_operations`](#market-operations) |
+| `header`, `capture`, `text`, `metadata` | the holders themselves, borrowed without a lookup; the event's facts are the trait getters, and the leaves a message expands to are [`market_data`](#market-data) |
 
 Every lookup answers an owned `Scalar`: a holder's fact is rendered into the column's type on the way out, and a row child cloned.
 
@@ -689,7 +806,7 @@ The security-identifier verbs write FIX's own fields through one writer, `sync_s
 
 A written child keeps its position, so every reader already holding the row addresses it as before, and the tag index follows the one child that changed rather than being reread. A value the field refuses - text into `OrderQty(38)` - is refused whole, and with `set_many` one refused write refuses them all.
 
-A written value is then [restated](#restated-under-the-dictionary) exactly as a read one is: `set(47, 'A')` writes the `OrderCapacity(528)` that replaced `Rule80A`, and `set(76, 'BRKR')` makes the `Parties` occurrence `ExecBroker` became, from the [specification's retirements](registry.md#what-the-specification-retired) or from the rule the registry states on the field. What runs is the rules of the tags written, so a write of a tag no rule speaks for is the write and nothing more. The pass never overwrites a stated value and is idempotent, so writing one value twice writes its replacement once, and a caller who stated the replacement keeps what they stated.
+A written value is then [restated](#restated-under-the-dictionary) exactly as a read one is: `set(47, 'A')` writes the `OrderCapacity(528)` that replaced `Rule80A`, and `set(76, 'BRKR')` makes the `Parties` occurrence `ExecBroker` became, from the [specification's retirements](registry.md#what-the-specification-retired). What runs is the rules of the tags written, so a write of a tag no rule speaks for is the write and nothing more. The pass never overwrites a stated value and is idempotent, so writing one value twice writes its replacement once, and a caller who stated the replacement keeps what they stated.
 
 === "Rust"
 
@@ -771,6 +888,7 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
 
     import pytest
 
+    from yggdryl import Side
     from yggdryl.fix import FixCodec, FixMsg, FixRegistry, fix_schema
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
@@ -812,7 +930,7 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
 
     # Removed, and the value answered: a typed fact is cleared on its holder, a
     # row child taken out, and the other tags still reach theirs.
-    assert message.remove(54).as_py() == "BUY"
+    assert message.remove(54).as_py() == Side.BUY
     assert message.get_by_tag(54) is None
     assert message.remove("nosuchfield") is None
     assert message.by_tag(11).as_py() == "A1"
@@ -905,18 +1023,14 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
 
 ## The identifier maps
 
-A message goes by the names the fields of its dictionary state, and the three [`IdMap`](../graph/operation.md#identifier-maps)s `Operation` answers - `get_accountids()`, `get_userids()` and `get_altids()` - are rebuilt from those fields at every settle: a view of the row, never a store of its own. Which field states which key is a fact about the field, so it travels on the field as its [`FIX:idmap`](registry.md#a-field-names-a-message-by-its-identifiers) document, and `FixRegistry::idmap_sources` compiles every field's once into the table a settle reads. The dictionary ships this one:
+A message goes by the names the fields of its dictionary state, and the [`IdMap`](../graph/operation.md#alternate-identifiers) of alternate identifiers `Operation` answers - `get_altids()` - is rebuilt from those fields at every settle: a view of the row, never a store of its own. Which field states which key is a fact about the field, so it travels on the field as its [`FIX:idmap`](registry.md#a-field-names-a-message-by-its-identifiers) document, and `FixRegistry::idmap_sources` compiles every field's once into the table a settle reads. `altids` is the one map: the account a message is booked to, the user who entered it and the parties it names are no identifier, and stay in its leaves' [metadata](#what-a-leafs-metadata-holds). The dictionary ships this table:
 
-| Map | Key | Source |
+| Key | Followed | Source |
 | --- | --- | --- |
-| `accountids` | `ACCOUNT`, `OMSDEALERACCOUNT` | `Account(1)`, the crate's `omsdealeraccount` (65068) |
-| `accountids` | `CUSTOMERACCOUNT` | the `PartyID(448)` of every `Parties` occurrence whose `PartyRole(452)` is `24` |
-| `userids` | `SENDERSUBID`, `ONBEHALFOFSUBID`, `OMSUSERID` | `SenderSubID(50)`, `OnBehalfOfSubID(116)`, the crate's `omsuserid` (65069) |
-| `userids` | `ENTERINGTRADER`, `EXECUTINGTRADER` | the `PartyID(448)` of every `Parties` occurrence whose `PartyRole(452)` is `36` or `12` |
-| `altids`, followed | `ORDERID`, `SECONDARYORDERID`, `PARENTORDERID`, `PARENTCLORDID`, `OMSDEALERPARENTORDERID`, `EXCHANGECLIENTORDERID`, `TRANSVERSALKEY` | `OrderID(37)`, `SecondaryOrderID(198)`, the crate's 65070 to 65074 |
-| `altids` | `CLORDID`, `ORIGCLORDID`, `EXECID`, `TRDMATCHID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`, `TRADEID`, `ULTRADERCLORDID` | `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, `TradeID(1003)`, the crate's `ultraderclordid` (65075) |
+| `ORDERID`, `SECONDARYORDERID`, `PARENTORDERID`, `PARENTCLORDID`, `OMSDEALERPARENTORDERID`, `EXCHANGECLIENTORDERID`, `TRANSVERSALKEY` | yes | `OrderID(37)`, `SecondaryOrderID(198)`, the crate's `parentorderid` (65034) to `transversalkey` (65038) |
+| `CLORDID`, `ORIGCLORDID`, `EXECID`, `TRDMATCHID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`, `TRADEID`, `ULTRADERCLORDID` | no | `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, `TradeID(1003)`, the crate's `ultraderclordid` (65039) |
 
-The eight crate fields are a bridge's own identifiers - `OMSDEALERACCOUNT=`, `PARENTORDERID=` - content the row keeps under its [entries](capture.md#the-crates-own-columns) rather than a column of the fixed row. The first value a key is stated with fills it; a later different one - a second `Parties` occurrence under one role naming another trader - states nothing and is kept as an [anomaly](#anomalies), `parties: states ENTERINGTRADER:t2 where ENTERINGTRADER:t1 is already stated`.
+The six crate fields are a bridge's own identifiers - `PARENTORDERID=`, `TRANSVERSALKEY=` - content the row keeps under its [entries](capture.md#the-crates-own-columns) rather than a column of the fixed row, and so are `omsdealeraccount` (65032) and `omsuserid` (65033), which name no identifier. The first value a key is stated with fills it; a later different one states nothing and is kept as an [anomaly](#anomalies).
 
 === "Rust"
 
@@ -936,16 +1050,15 @@ The eight crate fields are a bridge's own identifiers - `OMSDEALERACCOUNT=`, `PA
         .iter()
         .find(|(_, source)| source.key() == "PARENTORDERID")
         .expect("a bridge's parent order");
-    assert_eq!((*tag, parent.map(), parent.follows()), (65_070, FixIdMapKind::Alts, true));
+    assert_eq!((*tag, parent.map(), parent.follows()), (65_034, FixIdMapKind::Alts, true));
 
     let reader = FixCodec::new(Arc::clone(&registry));
     let held = reader.parse_fix_line(
         b"8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|PARENTORDERID=P1|10=0|",
     )?;
-    assert_eq!(held.get_accountids().get("OMSDEALERACCOUNT"), Some("ACC1"));
-    assert_eq!(held.get_userids().get("OMSUSERID"), Some("trader1"));
+    let keys: Vec<&str> = held.get_altids().iter().map(|(key, _)| key).collect();
+    assert_eq!(keys, ["EXECID", "ORDERID", "PARENTORDERID"]);
     assert_eq!(held.get_altids().get("PARENTORDERID"), Some("P1"));
-    assert_eq!(held.get_altids().get("ORDERID"), Some("O1"));
     ```
 
 === "Python"
@@ -957,14 +1070,12 @@ The eight crate fields are a bridge's own identifiers - `OMSDEALERACCOUNT=`, `PA
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     assert {
-        "tag": 65070, "map": "altids", "key": "PARENTORDERID", "follow": True, "role": None
+        "tag": 65034, "map": "altids", "key": "PARENTORDERID", "follow": True, "role": None
     } in registry.idmap_sources()
 
     held = FixCodec(registry).parse_fix_line(
         b"8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|PARENTORDERID=P1|10=0|"
     )
-    assert held.accountids == {"OMSDEALERACCOUNT": "ACC1"}
-    assert held.userids == {"OMSUSERID": "trader1"}
     assert held.altids == {"EXECID": "E1", "ORDERID": "O1", "PARENTORDERID": "P1"}
     ```
 
@@ -978,39 +1089,39 @@ The eight crate fields are a bridge's own identifiers - `OMSDEALERACCOUNT=`, `PA
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
     assert.deepEqual(
       registry.idmapSources().find((source) => source.key === 'PARENTORDERID'),
-      { tag: 65070, map: 'altids', key: 'PARENTORDERID', follow: true },
+      { tag: 65034, map: 'altids', key: 'PARENTORDERID', follow: true },
     )
 
     const held = new fix.FixCodec(registry).parseFixLine(Buffer.from(
       '8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|PARENTORDERID=P1|10=0|',
     ))
-    assert.deepEqual(held.accountids, { OMSDEALERACCOUNT: 'ACC1' })
-    assert.deepEqual(held.userids, { OMSUSERID: 'trader1' })
     assert.deepEqual(held.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1' })
     ```
 
-A value that states nothing - empty, `null`, `none`, `n/a`, `[n/a]` - adds nothing. A write goes through the field a key is read from: `insert_accountid`, `insert_userid` and `insert_altid` fill only an absent key, writing its field and answering `false` for a held one; `remove_*` nulls the field; `set_accountids`, `set_userids` and `set_altids` write every entry that moved and null every key the new map lacks; each settles the identity again, and the map is rebuilt from the row on the way out, so what a map answers is always what the row states. A key no top-level field states - a party-role key such as `CUSTOMERACCOUNT`, or a name the table lacks - is a located `InvalidRecord` at `$.altids.<KEY>` (`$.accountids.<KEY>`, `$.userids.<KEY>`) on every write that would have to land it or null it, because a map that is a view of the row cannot hold what the row cannot say; a graph leaf - an `OrderEvent` - accepts any key. The [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by `altids`, and an operation that follows another carries its accounts, its users and the alternate identifiers whose `FIX:idmap` entry follows - the order's own and its parents', `graph::FOLLOWED_ALTIDS` by default and `Operation::is_followed_altid` for a message - never an execution's or a quote's. The maps are no column of the [fixed row](capture.md#the-crates-own-columns) - the fields that state them are - and the `identifiers` Map (65020) that once carried a message's names is retired, its tag never reused.
+A value that states nothing - empty, `null`, `none`, `n/a`, `[n/a]` - adds nothing. A write goes through the field a key is read from: `insert_altid` fills only an absent key, writing its field and answering `false` for a held one; `remove_altid` nulls the field; `set_altids` writes every entry that moved and nulls every key the new map lacks; each settles the identity again, and the map is rebuilt from the row on the way out, so what it answers is always what the row states. A key no top-level field states - a party-role key, or a name the table lacks - is a located `InvalidRecord` at `$.altids.<KEY>` on every write that would have to land it or null it, because a map that is a view of the row cannot hold what the row cannot say; a graph leaf - an `OrderEvent` - accepts any key. The [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by `altids`, and an operation that follows another carries the alternate identifiers whose `FIX:idmap` entry follows - the order's own and its parents', `graph::FOLLOWED_ALTIDS` by default and `Operation::is_followed_altid` for a message - never an execution's or a quote's. The map is no column of the [fixed row](capture.md#the-crates-own-columns) - the fields that state it are.
 
 ## A row is a message again
 
 `from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): typed facts are read from the columns that own them, and `fixentries` supplies only the residual arrival content those columns do not represent. The two are rebuilt under the dictionary into one semantic message. The row's `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. The six recorded identity cells remain recorded while market getters refill from reconstructed content. Every one of the capture's own columns is carried: the one the crate tags, `sourceurl`, and every column no tag and no counter names - the body the line was cut from, its place in the object, its media type, what a bound dropped - each non-null cell under its column's name, answered by `carried`. A message is what parsing one line answered, and what a *reader* said about that line is not it, so none of them is content: none reaches an entry, the code the message answers to, or a `body=` at a counterparty, and a namespaced column lands in the [metadata](#typed-tags) as a parsed line's does. `into_row` states each carried cell again at its column, so `from_row` then `into_row` returns the same canonical row. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without `fixentries` rebuilds from its projected facts alone.
 
+A key no dictionary resolved is no `fixentries` key: `into_row` writes it into the row's `metadata`, [as that column holds it](capture.md#nothing-is-lost-at-the-end), beside the bridge's namespaced keys, and `from_row` reads every key of that cell that holds no `.` back as the message's own entry: tag `0` under that spelling, a JSON value as the entries it holds. The namespaced keys stay the message's `metadata`. So the wire re-emits the key, a read by name reaches it and the code the message digests to is the parse's, while the row and its round trip keep one place for it.
+
 The fixed-row round trip is semantic: it preserves the canonical row, reconstructed content identity, and typed facts, while original wire and arrival order are not a row contract. Reconstructed sibling fields are canonicalized for the event hash; repeated occurrences retain their order. The public wire digest remains arrival-ordered. A group no dictionary declares - a bridge packing `NOTRADINGSESSIONS[0]=...` under a counter's own name - rebuilds from the row as the serie it is. The [example above](#written-into-the-row) ends with the round trip.
 
 ## Restated under the dictionary
 
-A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. A [parse](capture.md#a-reader-is-the-whole-parse-surface) restates the message once as it builds it, from what the dictionary itself says - the registry's field for every tag and the aliases that reach it - and from what the specification says of a retired field or value: [the crate's table of retirements](registry.md#what-the-specification-retired), applied as the message is built, with nothing parsed, bound or evaluated per message. A registry that states a rule of its own on a field, as [`FIX:replacements`](registry.md#a-field-carries-what-replaced-it), restates that field by its document alone. The parse then [fills what the restated row implies](capture.md#what-a-message-implied-is-filled-in) by the [`FIX:derivation`](registry.md#a-field-carries-how-it-is-derived) each derived field carries. There is no door of its own: a parsed message is a restated message, and so is a written one - [`set`](#written-into-the-row) restates what it writes, so a value a caller states and a value a line states are restated the same way.
+A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. A [parse](capture.md#a-reader-is-the-whole-parse-surface) restates the message once as it builds it, from what the dictionary itself says - the registry's field for every tag and the aliases that reach it - and from what the specification says of a retired field or value: [the crate's table of retirements](registry.md#what-the-specification-retired), applied as the message is built, with nothing parsed, bound or evaluated per message. A registry states no rule of its own: the table is native code, the same for every dictionary that declares the tags. The parse then [fills what the restated row implies](capture.md#what-a-message-implied-is-filled-in), by the crate's native derivations. There is no door of its own: a parsed message is a restated message, and so is a written one - [`set`](#written-into-the-row) restates what it writes, so a value a caller states and a value a line states are restated the same way.
 
 | item | contract |
 | --- | --- |
 | Canonicalizes | every child the registry knows - by its `FIX:tag`, else its name or alias, else the decimal tag its name spells - is re-expressed under the registry's field: canonical name, datatype, tag, in the position it held; a child no dictionary knows stays exactly as it is |
 | Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
-| Restates | each child the specification retired or whose field carries `FIX:replacements`, in ascending tag order, by the first entry whose condition holds at the level - the held value, the message type and the enclosing group - the field's own document before the specification's table; a group occurrence a rule states makes or completes one occurrence and sets its counter |
+| Restates | each child the specification retired, in ascending tag order, by the first entry of [the table](registry.md#what-the-specification-retired) whose condition holds at the level - the held value, the message type and the enclosing group; a group occurrence a rule states makes or completes one occurrence and sets its counter |
 | Deprecated | a field the dictionary marks [`FIX:deprecated`](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version) - one FIX Latest removed, `MaxFloor(111)` among them - is restated to the field that replaced it and then nulled, so the row holds the fact once under its latest name while the entries keep the pair as it arrived |
 | All or nothing | every target an entry fills is computed and checked before any is written; one target that cannot take its value blocks the whole entry, and no later entry fills in for it |
 | Never overwrites | a value the message stated: a target takes a value only when it is absent, null or already equal; the source field itself is the one exception, because it is what is being restated |
 | Keeps | a removed field the specification named no replacement for, and the source of every rule that did not write it - the row says what was sent and what it means |
-| Levels | the root, then every occurrence of every repeating group to any depth, each canonicalized and restated in turn; `:group` is the occurrence's group, `:msgtype` the root's `MsgType(35)` |
+| Levels | the root, then every occurrence of every repeating group to any depth, each canonicalized and restated in turn; a rule scoped to a group applies inside an occurrence of it, a rule scoped to message types reads the root's `MsgType(35)` |
 | Wire | `into_bytes` emits the restated row, so a FIX 4.2 report re-emits with the `OrderCapacity`, the `Parties` and the derived pairs behind what it stated; the entries carry both the source and its restatement |
 | Idempotent | a message read back from its row is the same message: what one parse wrote is what the row states |
 | Batch | inside the parse, so `parse_text_arrow_reader` lands restated rows and the [lifecycle](lifecycle.md) walks them |
@@ -1155,17 +1266,17 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
 
 ### What a held value is, to a rule
 
-A rule's plan reads the row's typed values through the [expression grammar](../expression/grammar.md) and writes wire text, because that is what the specification's appendices are written in. The two meet at the condition and at the target.
+A rule reads the held value as the wire spells it and writes wire text, because that is what the specification's appendices are written in. The two meet at the condition and at the target.
 
-| held value | in the `where` | so |
+| The rule says | Holds when | So |
 | --- | --- | --- |
-| text, ASCII | compared as text | `rule80a = 'A'`; a `MultipleCharValue` holds several codes in one text, so `ExecInst` `G T` is asked with `contains(execinst, 'T')` |
-| boolean | `'Y'` coerces to it | `OddLot` `Y` meets `oddlot = 'Y'` |
-| integer, float, decimal | a literal coerces to the column's type | `repurchaseterm = '1'`; a join spells an integer with two digits through `substring(concat('0', cast(maturityday as utf8)), -2)`, which is how a day completes a month-year |
-| temporal | itself | `onbehalfofsendingtime as hopsendingtime` lands the instant it is |
-| a coded value | compared by the code's spelling | `exectype = '1'` meets the `1` a partial fill was read as, as `exectype in ('1', '2')` meets either |
+| every value | always: the field itself was retired | `MaxFloor(111)` is `DisplayQty(1138)` whatever it states |
+| a code | the held value spells it | `Rule80A(47)` `A` is `OrderCapacity(528)` `A`; a coded value is compared by its wire code, so `ExecType(150)` `1` meets the `1` a partial fill was read as |
+| one code among several | a `MultipleCharValue` holds it among its codes | `ExecInst(18)` `G T` meets the rule for `T` |
+| a width | the value is no longer than an identifier source may hold | a bridge's `OmsInstrumentId` becomes a `secaltids` occurrence under its own source only where the source can hold it |
+| message types, a group | the root's `MsgType(35)` is one of them, the level an occurrence of that group | `AllocTransType(71)` on `J`; `SettlCurrAmt(119)` inside `AllocGrp` |
 
-A value written into a target is re-typed for the target's field through the codec's own text-to-typed reading: a constant `'1'` lands in `PartyRole(452)` as an integer, `'F'` in `ExecType(150)` as the text it is, `'A'` in `OrderCapacity(528)` likewise. A constant written over a multi-valued source replaces the token the condition named - `G T` restated at `T` is `G R`. A value the target cannot hold blocks the entry rather than landing as null.
+A boolean value spells no code, so only a rule about every value applies to it. What a rule fills is a constant, the source's own value, another field's value stated at the same level, the wire texts of several fields joined - every part stated, a day spelled with two digits, which is how it completes a month-year - or one occurrence of a repeating group at this level, a member per fill. A value written into a target is re-typed for the target's field through the codec's own text-to-typed reading: a constant `'1'` lands in `PartyRole(452)` as an integer, `'F'` in `ExecType(150)` as the text it is, `'A'` in `OrderCapacity(528)` likewise. A constant written over a multi-valued source replaces the code the condition named - `G T` restated at `T` is `G R`. A value the target cannot hold blocks the entry rather than landing as null.
 
 ## Edges
 
@@ -1173,13 +1284,14 @@ A value written into a target is re-typed for the target's field through the cod
 - A tag two fields hold under different names (`OrderQty` and `Quantity`, both 38) -> `by_id` tells them apart, each id reaching its own child; a bare tag reaches one child, the one named by the registry's first holder where the row itself does not carry the tag.
 - `by_id` with another name or another tag than the field's -> a miss, because an identifier names the pair exactly and never folds a tag onto a name it does not carry.
 - `FixId::of(0, ..)` or `FixId::of(-1, ..)` -> refused, because a definition's tag is positive and 0 marks only an unresolved arrival entry; a message root the codec builds carries no `FIX:branches`, because a message is not a dictionary member.
+- A quote stating one side's `BidPx(132)`/`BidSize(134)` or `OfferPx(133)`/`OfferSize(135)` and no `Side(54)` -> `get_side` is `UNKNOWN`, because a side is never read off which of the two a quote states; `book_arrow_reader` admits it and refuses it at `$.operation.side`, since a book entry takes a bid or an ask side.
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a Serie of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - A typed tag stated null at construction, or a holder stating nothing -> the lookup answers nothing: `get_by_tag(54)` on a report stating no side is `None`, `get_by_tag(SEQNUM_TAG_NAME.0)` on a message in no chain is `None`, and `get_by_tag(STATE_TAG_NAME.0)` on an order that reached no state is `None`.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
 - `set` on a typed tag with a value its type refuses - text into `OrderQty(38)`, a spelling outside the side's set - is silence: the holder keeps what it held. `set` with a `Null` on a row child -> a stated null, the child kept and made nullable; on a typed tag -> the fact cleared. `remove` -> the child gone or the fact cleared and its value answered, `None` for a key that reaches nothing; a cleared `crosscode` keeps the settled one, because the identity is re-settled from what the message states and the code, once named, stands.
 - `FixMsg::new` / `with_registry` on a root stating `SendingTime(52)` -> the header's clock, marked stated; on one stating none -> one UTC-now read, marked not stated, so the wire omits it; a stated clock that is not an instant -> a located refusal.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
-- `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its members, a negative tag, a name or value that is not text - or a leaf the JSON reader cannot decode -> refused at the arrival path; on a schema without the column -> a message with the typed facts, no content and a wire of the header alone; on a row leaving `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` or `crossuuid` null -> the schema's refusal, since the fixed row declares them required.
+- `from_row` on a row whose `fixentries` holds a key that is not `tag:name` - a tag of `0` among them, because a key no dictionary resolved lives in `metadata` - or a value opening as JSON that the JSON reader cannot decode -> refused at `$.fixentries.<key>`; a `metadata` key holding JSON that does not decode -> refused at `$.metadata.<key>`; on a schema without the column -> a message with the typed facts, no content and a wire of the header alone; on a row leaving `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` or `crossuuid` null -> the schema's refusal, since the fixed row declares them required.
 - Two children reaching one field, both stated and different (`lastqty` `50` beside `LastShares` `100`) -> both kept as they arrived; equal once re-typed, or one null -> one child.
 - A child named by a tag's digits (`"32"`) that the registry knows -> re-expressed under the registry's field like any other; one it does not know (`"9999"`) -> kept exactly, name, datatype and value.
 - A Serie no `FIX:counter` heads, and any nested value that is not a repeating group -> kept exactly; only group occurrences are levels.
@@ -1187,7 +1299,7 @@ A value written into a target is re-typed for the target's field through the cod
 - A rule that rewrote the source's own value (`ExecInst` `T` -> `R`) -> the new value is restated in turn (`R` is a `PegPriceType`), so one parse reaches what a second would find; a chain is bounded by the rules the field states.
 - A `join` with a part unstated (`205=5` and no `200`) or a `from` whose tag is absent -> the entry fills nothing.
 - A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the counter unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
-- A rule scoped by `:msgtype` on a message stating no `MsgType(35)` -> does not apply; one scoped by `:group` at the root -> does not apply.
+- A rule scoped to message types on a message stating no `MsgType(35)` -> does not apply; one scoped to a group at the root -> does not apply.
 - A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and the registry still holds it under its own tag.
 
 ## Commands
@@ -1200,6 +1312,8 @@ A value written into a target is re-typed for the target's field through the cod
     cargo test -p yggdryl --test fix -- msg
     cargo test -p yggdryl --test fix latest::
     cargo test -p yggdryl --test fix latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
+    cargo test -p yggdryl --test fix market::
+    cargo test -p yggdryl --test fix retired::
     ```
 
 === "Python"

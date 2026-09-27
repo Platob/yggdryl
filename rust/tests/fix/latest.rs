@@ -11,7 +11,7 @@ use super::path;
 
 use std::sync::Arc;
 
-use yggdryl::fix::{FixCode, FixReplacement};
+use yggdryl::fix::FixCode;
 use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 
 /// `LastQty(32)`, which `LastShares` also reaches, `Symbol(55)`, and
@@ -180,19 +180,13 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
     assert_eq!(latest.by_name("venueownthing").unwrap(), Scalar::from("x"));
 }
 
-/// A hand-built rule: `Rule80A(47)` `A` fills `OrderCapacity(528)` `A`,
-/// whose code set declares `A` and `P` current and `Z` deprecated at 4.4.
+/// A hand-built dictionary of the two fields one rule of the table reads
+/// and writes: `Rule80A(47)` `A` fills `OrderCapacity(528)` `A`, whose code
+/// set declares `A` and `P` current and `Z` deprecated at 4.4. The rule is
+/// the crate's, so a registry holding the fields restates by it.
 fn ruled_registry() -> Arc<FixRegistry> {
     let mut rule80a = DataType::utf8().nullable_field("rule80a");
     rule80a.as_fix_mut().set_tag(47).expect("a tag");
-    rule80a
-        .as_fix_mut()
-        .set_replacements(&[FixReplacement::new(
-            "select 'A' as ordercapacity where rule80a = 'A'"
-                .parse()
-                .expect("a plan"),
-        )])
-        .expect("a rule");
     let mut capacity = DataType::utf8().nullable_field("ordercapacity");
     capacity.as_fix_mut().set_tag(528).expect("a tag");
     capacity
@@ -244,8 +238,13 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
         &[("ordercapacity", "Z"), ("rule80a", "A")],
     );
     assert_eq!(text(&latest, 528).as_deref(), Some("Z"));
-    // A value the rule does not speak for fills nothing.
-    let latest = built(ruled_registry(), &[("rule80a", "B")]);
+    // A value no rule speaks for fills nothing.
+    let latest = built(ruled_registry(), &[("rule80a", "Q")]);
+    assert_eq!(latest.get_by_tag(528), None);
+    // And a rule whose target the registry lacks is blocked whole: `C` is
+    // a principal order with `OrderRestrictions(529)`, which this
+    // dictionary does not hold.
+    let latest = built(ruled_registry(), &[("rule80a", "C")]);
     assert_eq!(latest.get_by_tag(528), None);
 }
 
@@ -549,42 +548,26 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
 }
 
 #[test]
-fn a_registrys_own_rule_wins_whole_over_the_specifications() {
-    // The specification restates Rule80A `A` as an agency order. A registry
-    // that states a document of its own on the field restates by that
-    // alone - `A` as a principal order - and nothing of the specification's
-    // table for the field fills in behind it; the other fields' retirements
-    // still apply.
+fn a_registry_states_no_replacement_rule_of_its_own() {
+    // A key a registry stores on a field is inert text: `Rule80A(47)` `A`
+    // is an agency order whatever the field says, and the other fields'
+    // retirements apply as ever.
     let mut registry = super::committed_registry().as_ref().clone();
     let mut rule80a = registry.field_by_tag(47).expect("Rule80A").clone();
     rule80a
-        .as_fix_mut()
-        .set_replacements(&[FixReplacement::new(
-            "select 'P' as ordercapacity where rule80a = 'A'"
-                .parse()
-                .expect("a plan"),
-        )])
-        .expect("a rule");
-    registry.update(rule80a).expect("updated");
-    assert!(
-        registry.get_field_by_name("parties").is_some(),
-        "the catalog is untouched"
-    );
+        .insert_metadata(
+            "FIX:replacements",
+            r#"[{"plan":"select 'P' as ordercapacity where rule80a = 'A'"}]"#,
+        )
+        .expect("any text can be stored on a field");
+    registry.update(rule80a).expect("an inert key is stored");
     let reader = super::fixed_codec(Arc::new(registry));
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|47=A|109=C1|10=0|");
-    assert_eq!(text(&latest, 528).as_deref(), Some("P"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("A"));
     assert_eq!(text(&latest, 47).as_deref(), Some("A"));
-    assert_eq!(
-        occurrences(&latest, "parties").len(),
-        1,
-        "the other fields' retirements still apply"
-    );
-    // A value the registry's own document does not speak for is left as it
-    // arrived, where the specification's table would have restated it.
+    assert_eq!(occurrences(&latest, "parties").len(), 1);
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|47=C|10=0|");
-    assert_eq!(text(&latest, 47).as_deref(), Some("C"));
-    assert_eq!(latest.get_by_tag(528), None);
-    assert_eq!(latest.get_by_tag(529), None);
+    assert_eq!(text(&latest, 528).as_deref(), Some("P"));
 }
 
 #[test]
@@ -724,28 +707,6 @@ fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
         ]
     );
     assert_eq!(integer(&party, 453), Some(1));
-
-    // A registry's own rule wins here too: the field's document answers and
-    // the specification's table stands down.
-    let mut registry = super::committed_registry().as_ref().clone();
-    let mut rule80a = registry.field_by_tag(47).expect("Rule80A").clone();
-    rule80a
-        .as_fix_mut()
-        .set_replacements(&[FixReplacement::new(
-            "select 'P' as ordercapacity where rule80a = 'A'"
-                .parse()
-                .expect("a plan"),
-        )])
-        .expect("a rule");
-    registry.update(rule80a).expect("updated");
-    let own = super::fixed_codec(Arc::new(registry));
-    let mut written = own
-        .sole_line(b"8=FIX.4.4|35=D|11=A|10=0|")
-        .expect("a readable line");
-    written
-        .set(47, Scalar::from("A"))
-        .expect("a written capacity");
-    assert_eq!(text(&written, 528).as_deref(), Some("P"));
 }
 
 /// A group the row holds as a column is still a group: an identifier setter

@@ -13,7 +13,7 @@ use crate::{diff, quality, registry, schema, shell, style};
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nA field reads its values by a named code set the dictionary holds: --codes names one, and codesets list/read/write/delete states its members.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
+    after_help = "Examples:\n  yggdryl fix fields list Party\n  yggdryl fix fields read 453 --json\n  yggdryl fix components create Party 'struct<PartyID: utf8>'\n  yggdryl fix groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  yggdryl fix components create --input Order.json\n  yggdryl fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  yggdryl fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nA field reads its values by a named code set the dictionary holds: --codes names one, and codesets list/read/write/delete states its members.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -96,7 +96,7 @@ pub enum Command {
 /// sources state one set, and folding them keeps every spelling either named.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix codesets list side\n  ygg fix codesets read sidecodeset --json\n  ygg fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  ygg fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\"}]'\n  ygg fix fields update Side utf8 --tag 54 --codes sidecodeset\n\nwrite replaces the set; --merge folds by wire value instead, keeping every name and alias either side declared.\ndelete refuses a set a field still reads by."
+    after_help = "Examples:\n  yggdryl fix codesets list side\n  yggdryl fix codesets read sidecodeset --json\n  yggdryl fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  yggdryl fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\"}]'\n  yggdryl fix fields update Side utf8 --tag 54 --codes sidecodeset\n\nwrite replaces the set; --merge folds by wire value instead, keeping every name and alias either side declared.\ndelete refuses a set a field still reads by."
 )]
 pub enum CodesetCommand {
     /// List the code sets held, with how many fields read by each.
@@ -117,7 +117,7 @@ pub enum CodesetCommand {
     },
     /// State a code set's members, replacing or folding into what it held.
     #[command(
-        after_help = "Examples:\n  ygg fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  ygg fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\",\"aliases\":[\"Anon\"]}]'\n\n--codes takes the whole set as compact JSON, value before name; aliases, doc and group are optional on each code.\nWithout --merge the set is replaced; with it the codes fold in by wire value, the reading the dictionary already holds winning a shared one and every spelling either side declared kept as an alias.\nAn empty list removes the set, which is refused while a field still reads by it."
+        after_help = "Examples:\n  yggdryl fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  yggdryl fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\",\"aliases\":[\"Anon\"]}]'\n\n--codes takes the whole set as compact JSON, value before name; aliases, doc and group are optional on each code.\nWithout --merge the set is replaced; with it the codes fold in by wire value, the reading the dictionary already holds winning a shared one and every spelling either side declared kept as an alias.\nAn empty list removes the set, which is refused while a field still reads by it."
     )]
     Write {
         /// The set's name.
@@ -179,7 +179,7 @@ pub enum CategoryCommand {
 /// Native Field intake; category semantics remain in the core registry.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nA field names the code set it reads its values by; --codes takes that name, and `ygg fix codesets write` states its members.\nTag 385's direction rules belong to FIX:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example [{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]; an empty list removes the property so the crate's defaults read again."
+    after_help = "Examples:\n  yggdryl fix fields create NoPartyIDs int32 --tag 453\n  yggdryl fix fields create --input Side.json\n  yggdryl fix components create Party 'struct<PartyID: utf8>'\n  yggdryl fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  yggdryl fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  yggdryl fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nA field names the code set it reads its values by; --codes takes that name, and `yggdryl fix codesets write` states its members.\nTag 385's direction rules belong to FIX:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example [{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]; an empty list removes the property so the crate's defaults read again."
 )]
 pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
@@ -594,7 +594,7 @@ fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
         ShellCommand::command().print_long_help()?;
         outln!();
         style::note(
-            "save writes pending changes; quit leaves. Category commands use the same flags as ygg fix.",
+            "save writes pending changes; quit leaves. Category commands use the same flags as yggdryl fix.",
         );
         return Ok(());
     }

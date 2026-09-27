@@ -10,8 +10,8 @@
 //! one state. [`market`] holds the two that stand in a market: [`Market`]
 //! is the slim reading any plain struct gives cheaply - the instrument, the
 //! side, the price and quantity it states, its last executed price and quantity - and
-//! [`Operation`] adds what an operation states: its category, how long
-//! it stands, its account, user and own identifiers, and its two lanes.
+//! [`Operation`] adds what an operation states: how long
+//! it stands, whether it can trade and its own identifiers.
 //! What an [`Event`] that is also one of them answers is provided on
 //! [`Market`] and [`Operation`] themselves, gated `where Self: Event`,
 //! rather than a separate blanket trait. The traits state signatures and
@@ -20,17 +20,19 @@
 //! any of them; the crate-private `*Facts` holders store the facts of any
 //! market element or event as plain fields, and every leaf
 //! ([`OperationElement`]/[`OperationEvent`], [`TradeEvent`], [`BookEvent`],
-//! [`BookSide`]) holds one as its facts. [`OperationElement`] and
+//! [`SnapshotEvent`]) holds one as its facts. [`OperationElement`] and
 //! [`OperationEvent`] are the one undated and one dated operation type - an
 //! order, a quote or an execution by the sealed [`OperationKind`] they are
 //! generic over - and [`MarketData`] is the one value over every leaf, read
-//! generically past the boundary that resolved it. [`BookEvent`] holds
-//! [`OrderEvent`]/[`QuoteEvent`] entries on its [`BookSide`]s. The one walk,
+//! generically past the boundary that resolved it. [`BookEvent`] holds its
+//! alive [`OrderEvent`]/[`QuoteEvent`] entries, the deltas applied since the
+//! book before it and the executions at its instant, and answers each side
+//! as its price levels, best first. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`EventColumn`] is the
 //! sixteen columns every generated schema of an event states,
-//! [`MarketColumn`] the nineteen of a market and [`OperationColumn`] the
-//! eight of an operation - one per fact the traits answer, under one name
+//! [`MarketColumn`] the twenty-seven of a market and [`OperationColumn`] the
+//! three of an operation - one per fact the traits answer, under one name
 //! and one datatype each - so a text line's batch, a FIX row and a chained
 //! message join on them without a mapping.
 
@@ -265,6 +267,48 @@ macro_rules! delegate_market {
             fn set_metadata(&mut self, metadata: Option<$crate::graph::Metadata>) {
                 $crate::graph::Market::set_metadata(&mut self.$($field).+, metadata);
             }
+            fn get_fxrates(&self) -> &$crate::graph::FxRates {
+                $crate::graph::Market::get_fxrates(&self.$($field).+)
+            }
+            fn set_fxrates(&mut self, rates: $crate::graph::FxRates) {
+                $crate::graph::Market::set_fxrates(&mut self.$($field).+, rates);
+            }
+            fn get_bidpx(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_bidpx(&self.$($field).+)
+            }
+            fn set_bidpx(&mut self, px: Option<$crate::Decimal>) {
+                $crate::graph::Market::set_bidpx(&mut self.$($field).+, px);
+            }
+            fn get_bidqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_bidqty(&self.$($field).+)
+            }
+            fn set_bidqty(&mut self, qty: Option<$crate::Decimal>) {
+                $crate::graph::Market::set_bidqty(&mut self.$($field).+, qty);
+            }
+            fn get_bidccy(&self) -> Option<&$crate::Ccy> {
+                $crate::graph::Market::get_bidccy(&self.$($field).+)
+            }
+            fn set_bidccy(&mut self, ccy: Option<$crate::Ccy>) {
+                $crate::graph::Market::set_bidccy(&mut self.$($field).+, ccy);
+            }
+            fn get_askpx(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_askpx(&self.$($field).+)
+            }
+            fn set_askpx(&mut self, px: Option<$crate::Decimal>) {
+                $crate::graph::Market::set_askpx(&mut self.$($field).+, px);
+            }
+            fn get_askqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_askqty(&self.$($field).+)
+            }
+            fn set_askqty(&mut self, qty: Option<$crate::Decimal>) {
+                $crate::graph::Market::set_askqty(&mut self.$($field).+, qty);
+            }
+            fn get_askccy(&self) -> Option<&$crate::Ccy> {
+                $crate::graph::Market::get_askccy(&self.$($field).+)
+            }
+            fn set_askccy(&mut self, ccy: Option<$crate::Ccy>) {
+                $crate::graph::Market::set_askccy(&mut self.$($field).+, ccy);
+            }
         }
     };
 }
@@ -274,15 +318,6 @@ macro_rules! delegate_market {
 macro_rules! delegate_operation {
     ($type:ty, $($field:ident).+) => {
         impl $crate::graph::Operation for $type {
-            fn get_marketoperationid(&self) -> Option<i32> {
-                $crate::graph::Operation::get_marketoperationid(&self.$($field).+)
-            }
-            fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-                $crate::graph::Operation::set_marketoperationid(
-                    &mut self.$($field).+,
-                    marketoperationid,
-                );
-            }
             fn get_tif(&self) -> Option<&$crate::TimeInForce> {
                 $crate::graph::Operation::get_tif(&self.$($field).+)
             }
@@ -295,34 +330,6 @@ macro_rules! delegate_operation {
             fn set_tradable(&mut self, tradable: Option<bool>) {
                 $crate::graph::Operation::set_tradable(&mut self.$($field).+, tradable);
             }
-            fn get_accountids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::Operation::get_accountids(&self.$($field).+)
-            }
-            fn set_accountids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::Operation::set_accountids(&mut self.$($field).+, ids)
-            }
-            fn insert_accountid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::insert_accountid(
-                    &mut self.$($field).+,
-                    key,
-                    value,
-                )
-            }
-            fn remove_accountid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_accountid(&mut self.$($field).+, key)
-            }
-            fn get_userids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::Operation::get_userids(&self.$($field).+)
-            }
-            fn set_userids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::Operation::set_userids(&mut self.$($field).+, ids)
-            }
-            fn insert_userid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::insert_userid(&mut self.$($field).+, key, value)
-            }
-            fn remove_userid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_userid(&mut self.$($field).+, key)
-            }
             fn get_altids(&self) -> &$crate::idmap::IdMap {
                 $crate::graph::Operation::get_altids(&self.$($field).+)
             }
@@ -334,18 +341,6 @@ macro_rules! delegate_operation {
             }
             fn remove_altid(&mut self, key: &str) -> $crate::Result<bool> {
                 $crate::graph::Operation::remove_altid(&mut self.$($field).+, key)
-            }
-            fn get_bid(&self) -> Option<&$crate::graph::Lane> {
-                $crate::graph::Operation::get_bid(&self.$($field).+)
-            }
-            fn set_bid(&mut self, lane: Option<$crate::graph::Lane>) {
-                $crate::graph::Operation::set_bid(&mut self.$($field).+, lane);
-            }
-            fn get_ask(&self) -> Option<&$crate::graph::Lane> {
-                $crate::graph::Operation::get_ask(&self.$($field).+)
-            }
-            fn set_ask(&mut self, lane: Option<$crate::graph::Lane>) {
-                $crate::graph::Operation::set_ask(&mut self.$($field).+, lane);
             }
         }
     };
@@ -369,14 +364,14 @@ pub mod operation_column;
 pub mod trade;
 pub mod view;
 
-pub use book::{
-    BookEvent, BookIterator, BookSide, GLOBAL_SYMBOL, SnapshotEvent, SnapshotPartition,
-};
+pub use book::{BookEvent, BookIterator, SnapshotEvent};
 pub use column::EventColumn;
 pub use element::{Element, Event};
 pub use iterator::EventIterator;
 pub use kind::MarketKind;
-pub use market::{FOLLOWED_ALTIDS, Lane, Market, Metadata, Operation, empty_metadata};
+pub use market::{
+    FOLLOWED_ALTIDS, FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata,
+};
 pub use market_column::MarketColumn;
 pub use market_data::MarketData;
 pub use operation::{

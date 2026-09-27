@@ -65,8 +65,6 @@ extra_css:
 extra_javascript:
   - assets/playground.js
   - assets/fix-explorer.js
-  - path: assets/replay.js
-    type: module
 
 extra:
   social:
@@ -171,12 +169,14 @@ nav:
       - Bbg: types/codes/bbg.md
       - FIGI: types/codes/figi.md
       - RIC: types/codes/ric.md
-      - Side: types/codes/side.md
+      - Forex: types/codes/forex.md
       - Time in force: types/codes/timeinforce.md
       - Unit: types/codes/unit.md
     - Enums:
       - types/enum/index.md
       - State: types/enum/state.md
+      - MarketDataKind: types/enum/marketdatakind.md
+      - Side: types/enum/side.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md
@@ -231,7 +231,6 @@ nav:
     - Trade: graph/trade.md
     - Book: graph/book.md
     - Market data: graph/market-data.md
-    - Replay: graph/replay.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

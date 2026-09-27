@@ -33,7 +33,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Storage handles and backends | [holder](docs/holder/index.md) |
 | Record encodings, tables, documents, codings, charsets | [media](docs/media/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [graph](docs/graph/index.md) with its [replay](docs/graph/replay.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [graph](docs/graph/index.md), [fix](docs/fix/index.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
 and the site keeps that context while you move between pages.
@@ -90,10 +90,8 @@ python/                  The Python extension
 node/                    The JavaScript extension
   src/                   Node-API views, laid out like python/src
   *.js                   The loader and its convenience protocols
-  replay.js, replay/     The trading replay service and its command line
-  web/                   The browser components and the replay application
   tests/                 The mirror of both, file for file
-cli/                     The ygg command-line tool
+cli/                     The yggdryl command-line tool
 skills/                  Agent skills for code using the package, one folder
                          per layer, published as a Claude Code plugin by
                          .claude-plugin/

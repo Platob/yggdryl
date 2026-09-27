@@ -16,18 +16,18 @@ use crate::http::headers::{parse_http_date, render_http_date};
 use crate::http::{Headers, Method, Status};
 use crate::{DigestAlgorithm, Error, IOBase, IOKind, MediaType, MimeType, Result, Scalar, Url};
 
-/// The answer to `incoming` under the mount `shared` at `prefix`, `rest`
-/// being the percent-decoded path below the prefix.
+/// The answer to `incoming` under the mount `shared`, `rest` being the
+/// percent-decoded path below the mount's prefix and `url` the request's
+/// URL on the base it was made under, which a listing's URLs are built on.
 pub(super) fn serve(
     shared: &Arc<RwLock<Mounted>>,
-    prefix: &str,
     rest: &str,
     incoming: &Incoming,
-    server_url: &Url,
+    url: &Url,
     options: &ServerOptions,
 ) -> Answer {
     let outcome = match incoming.head.method {
-        Method::Get | Method::Head => read(shared, prefix, rest, incoming, server_url, options),
+        Method::Get | Method::Head => read(shared, rest, incoming, url, options),
         Method::Put => put(shared, rest, incoming),
         Method::Delete => delete(shared, rest),
         Method::Options => Ok(Answer::status(Status::NO_CONTENT).with_header("allow", ALLOW)),
@@ -77,10 +77,9 @@ fn resolve<T>(
 /// whole leaf.
 fn read(
     shared: &Arc<RwLock<Mounted>>,
-    prefix: &str,
     rest: &str,
     incoming: &Incoming,
-    server_url: &Url,
+    url: &Url,
     options: &ServerOptions,
 ) -> Result<Answer> {
     let (found, source) = resolve(shared, rest, |holder, declared| {
@@ -89,7 +88,7 @@ fn read(
             return Ok(Found::Absent);
         }
         if kind.is_container() {
-            return listing(holder, prefix, rest, server_url).map(Found::Listing);
+            return listing(holder, url).map(Found::Listing);
         }
         let etag = if options.etag {
             let digest = holder.read_digest(DigestAlgorithm::Xxh3)?;
@@ -222,27 +221,12 @@ fn delete(shared: &Arc<RwLock<Mounted>>, rest: &str) -> Result<Answer> {
     Ok(Answer::status(Status::NO_CONTENT))
 }
 
-/// `path` - decoded segments joined by `/` - as URL path text, each segment
-/// escaped, so a reference to a name holding a space, a `?` or a `%` reaches
-/// the resource it names.
-fn escaped(path: &str) -> String {
-    path.split('/')
-        .map(crate::uri::percent_encode_segment)
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 /// A container's direct children as a JSON array of
-/// `{"name", "url", "kind", "size", "media_type"}`.
-fn listing(holder: &Holder, prefix: &str, rest: &str, server_url: &Url) -> Result<Answer> {
-    let base = if rest.is_empty() {
-        server_url.join_reference(&escaped(prefix))?
-    } else {
-        server_url.join_reference(&escaped(&format!(
-            "{}/{rest}",
-            prefix.trim_end_matches('/')
-        )))?
-    };
+/// `{"name", "url", "kind", "size", "media_type"}`, each `url` a child of
+/// the request's own `url` - the base the request was made under, so the
+/// listing is right behind a proxy that adds a prefix or terminates TLS.
+fn listing(holder: &Holder, url: &Url) -> Result<Answer> {
+    let base = url.path_text(false)?.trim_end_matches('/').to_owned();
     let mut entries = Vec::new();
     for child in holder.ls(false, false) {
         let child = child?;
@@ -251,12 +235,9 @@ fn listing(holder: &Holder, prefix: &str, rest: &str, server_url: &Url) -> Resul
             .url()
             .and_then(|url| url.file_name())
             .map(str::to_owned)
-            .ok_or_else(|| Error::absent("a listed child's name", &base))?;
+            .ok_or_else(|| Error::absent("a listed child's name", url))?;
         let name = crate::uri::percent_decode(&segment, "url")?;
-        let url = base.join_reference(&format!(
-            "{}/{segment}",
-            base.path_text(false)?.trim_end_matches('/')
-        ))?;
+        let url = url.join_reference(&format!("{base}/{segment}"))?;
         entries.push(Scalar::from_struct([
             ("name", Scalar::from(name.as_ref())),
             ("url", Scalar::from(url.to_string())),

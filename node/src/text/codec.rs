@@ -2296,8 +2296,14 @@ pub(crate) fn value_to_transport(
         code if code.is_code() => Ok(JsonValue::String(
             code.as_str().expect("a code borrowed its text").to_owned(),
         )),
-        // A state crosses as its member's name.
-        Scalar::State(state) => Ok(JsonValue::String(state.as_str().to_owned())),
+        // An enum member - a state, a side, a market data kind - crosses as
+        // its member's name.
+        member if member.enum_name().is_some() => Ok(JsonValue::String(
+            member
+                .enum_name()
+                .expect("an enum member names itself")
+                .to_owned(),
+        )),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(marker(
             "version",

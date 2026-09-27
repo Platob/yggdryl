@@ -40,8 +40,8 @@ mod datatypes {
         ("figi", DataType::Figi, 12, "BBG000BLNQ16"),
         ("bbg", DataType::Bbg, 32, "AAPL US Equity"),
         ("ric", DataType::Ric, 32, "AAPL.OQ"),
-        ("side", DataType::Side, 8, "BUY"),
         ("timeinforce", DataType::TimeInForce, 8, "0"),
+        ("forex", DataType::Forex, 7, "EUR/USD"),
     ];
 
     #[test]
@@ -248,50 +248,40 @@ mod datatypes {
     fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
         // The value contract accepts the text, rewrites it into the declared
         // representation, and answers an unchanged value untouched.
-        let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
-        assert!(matches!(side, Scalar::Side(_)));
-        assert_eq!(side.as_str(), Some("BUY"));
-        assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
-        // A side is read by its spelling: FIX's wire code and the
-        // specification's name reach the same explicit value.
-        assert_eq!(DataType::Side.scalar(Scalar::from("1")).unwrap(), side);
-        assert_eq!(DataType::Side.scalar(Scalar::from("Buy")).unwrap(), side);
+        let tif = DataType::TimeInForce.scalar(Scalar::from("GTC")).unwrap();
+        assert!(matches!(tif, Scalar::TimeInForce(_)));
+        assert_eq!(tif.as_str(), Some("GTC"));
+        assert_eq!(DataType::TimeInForce.scalar(tif.clone()).unwrap(), tif);
 
         // Packing is the crate's fixed-ASCII packing at the code's own width:
         // NUL-padded up to it, the padding gone on the way back. The padding is
         // the packing's; the column stores no padding at all.
         assert_eq!(
-            DataType::Side.ascii_packed(b"BUY").unwrap(),
+            DataType::TimeInForce.ascii_packed(b"GTC").unwrap(),
             DataType::fixed_ascii(8)
                 .unwrap()
-                .ascii_packed(b"BUY")
+                .ascii_packed(b"GTC")
                 .unwrap()
         );
-        for (dtype, value) in [(DataType::Side, "BUY"), (DataType::Side, "SSHORTEX")] {
+        for (dtype, value) in [
+            (DataType::TimeInForce, "GTC"),
+            (DataType::TimeInForce, "0"),
+            (DataType::Ccy, "USD"),
+        ] {
             let packed = dtype.ascii_packed(value.as_bytes()).unwrap();
             let read = dtype.ascii_value(packed).unwrap();
             assert_eq!(read.as_str(), value, "{dtype} {value}");
         }
 
-        // A spelling that names no side is refused by name: the width bounds
-        // the value read, never the spelling, so a long name still reads.
-        let refused = DataType::Side
-            .scalar(Scalar::from("TOOLONGSIDE"))
-            .unwrap_err();
-        assert!(refused.to_string().contains("side"), "{refused}");
-        assert_eq!(
-            DataType::Side
-                .scalar(Scalar::from("SellShortExempt"))
-                .unwrap()
-                .as_str(),
-            Some("SSHORTEX")
-        );
         // A time in force is the text it is, at its width, and a value longer
         // than the width is the refusal any fixed-ASCII field gives.
         let refused = DataType::TimeInForce
             .scalar(Scalar::from("TOOLONGTIF"))
             .unwrap_err();
         assert!(refused.to_string().contains("8 bytes"), "{refused}");
+        // A side is no code: it packs into no integer, because its column
+        // stores its member's code already.
+        assert!(DataType::Side.ascii_packed(b"BUY").is_err());
     }
 
     #[test]
@@ -384,14 +374,6 @@ mod datatypes {
         assert_eq!(stored.as_str(), Some(outside), "{dtype}");
         let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
         assert_eq!(dtype.ascii_value(packed).unwrap().as_str(), outside);
-        // A side is the explicit values and nothing else, read by spelling as a
-        // state is: a letter no version defines is refused rather than stored.
-        let refused = DataType::Side.scalar(Scalar::from("Z")).unwrap_err();
-        assert!(refused.to_string().contains("side"), "{refused}");
-        assert_eq!(
-            DataType::Side.scalar(Scalar::from("5")).unwrap().as_str(),
-            Some("SSHORT")
-        );
 
         // The listing is what a name resolves from, and two readers answer the
         // same members because it is a constant.
@@ -407,9 +389,11 @@ mod datatypes {
                 "{name}"
             );
         }
-        // Every prebuilt member fits the width its own datatype fixes.
+        // Every prebuilt member fits the width its own datatype fixes; the
+        // sides fit the fixed ASCII width their string listing declares,
+        // since a side column itself stores codes and packs nothing.
         for (name, dtype) in [
-            ("side", DataType::Side),
+            ("side", DataType::fixed_ascii(8).unwrap()),
             ("timeinforce", DataType::TimeInForce),
         ] {
             StringEnum::from_logical_name(name)
@@ -422,17 +406,17 @@ mod datatypes {
     #[test]
     fn a_code_carries_its_identity_into_equality_and_order() {
         // Two codes whose bytes agree are two values: the identity compares
-        // first, then the text, so a side and a time in force never collide in
+        // first, then the text, so a unit and a time in force never collide in
         // a set or sort beside each other.
-        let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
+        let unit = DataType::Unit.scalar(Scalar::from("BUY")).unwrap();
         let tif = DataType::TimeInForce.scalar(Scalar::from("BUY")).unwrap();
-        assert_eq!(side.as_str(), tif.as_str());
-        assert_ne!(side, tif);
-        assert_ne!(side.cmp(&tif), std::cmp::Ordering::Equal);
-        assert_eq!(side, DataType::Side.scalar(Scalar::from("BUY")).unwrap());
+        assert_eq!(unit.as_str(), tif.as_str());
+        assert_ne!(unit, tif);
+        assert_ne!(unit.cmp(&tif), std::cmp::Ordering::Equal);
+        assert_eq!(unit, DataType::Unit.scalar(Scalar::from("BUY")).unwrap());
 
         // And a code is not the string of the same characters.
-        assert_ne!(side, Scalar::from("BUY"));
+        assert_ne!(unit, Scalar::from("BUY"));
         assert_ne!(
             DataType::Ccy.scalar(Scalar::from("USD")).unwrap(),
             DataType::fixed_ascii(3).unwrap().scalar("USD").unwrap()
@@ -809,7 +793,7 @@ mod datatypes {
 
     #[test]
     fn a_code_merges_to_the_better_statement() {
-        use yggdryl::{Ccy, Cfi, CodeValue, Isin, Mic, Side};
+        use yggdryl::{Ccy, Cfi, CodeValue, Isin, Mic};
 
         // A classification fills what it left unknown from the other, and stands
         // as it is beside another instrument's.
@@ -826,22 +810,8 @@ mod datatypes {
             "ESXXXR"
         );
 
-        // A side, a currency and a market stated as none take the other, and
+        // A currency and a market stated as none take the other, and
         // anything stated stands.
-        assert_eq!(
-            Side::read("UNKNOWN")
-                .unwrap()
-                .merge_with(&Side::read("1").unwrap())
-                .as_str(),
-            "BUY"
-        );
-        assert_eq!(
-            Side::read("BUY")
-                .unwrap()
-                .merge_with(&Side::read("SELL").unwrap())
-                .as_str(),
-            "BUY"
-        );
         assert_eq!(
             Ccy::new("XXX")
                 .unwrap()
@@ -890,7 +860,7 @@ mod datatypes {
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
         use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
-        use yggdryl::{Side, TimeInForce};
+        use yggdryl::{Forex, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
@@ -898,7 +868,6 @@ mod datatypes {
                 crate::family_leaf!(Ccy, Ccy::new("USD").unwrap()),
                 crate::family_leaf!(Mic, Mic::new("XPAR").unwrap()),
                 crate::family_leaf!(Cfi, Cfi::new("ESVUFR").unwrap()),
-                crate::family_leaf!(Side, Side::new("BUY").unwrap()),
                 crate::family_leaf!(TimeInForce, TimeInForce::new("0").unwrap()),
                 crate::family_leaf!(Isin, Isin::new("US0378331005").unwrap()),
                 crate::family_leaf!(Cusip, Cusip::new("037833100").unwrap()),
@@ -906,6 +875,7 @@ mod datatypes {
                 crate::family_leaf!(Bbg, Bbg::new("BBG000B9XRY4").unwrap()),
                 crate::family_leaf!(Ric, Ric::new("AAPL.OQ").unwrap()),
                 crate::family_leaf!(Figi, Figi::new("BBG000BLNQ16").unwrap()),
+                crate::family_leaf!(Forex, Forex::new("EUR/USD").unwrap()),
             ],
             DataTypeKind::Code,
             // The text a code is made of is not the code.

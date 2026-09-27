@@ -19,7 +19,7 @@
 //! costs after it is built - its row, the batch the rows land in, the one
 //! walk that joins it to its order's life, and its digest. A parse settles
 //! everything a message derives about itself - the dictionary's latest
-//! names, the derivations, the identifiers, the lanes, the identity - so
+//! names, the derivations, the identifiers, the identity - so
 //! there is no pass after it but the walk.
 //!
 //! The registry is the shipped dictionary: the framed FIX lands on FIX's own
@@ -33,7 +33,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
     BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, MdUpdateAction,
-    Operation, OrderEvent, QuoteEvent,
+    Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
@@ -58,12 +58,15 @@ const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 /// How many messages one copy of the capture carries.
 ///
 /// Every codec below refuses nothing, so this is the whole capture and not
-/// the 79 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
+/// the 135 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
 /// keepalives and the rows that state no type, and those are shapes this
 /// corpus exists to measure. `rust/tests/fix/ulbridge.rs` pins both numbers
 /// against each other; every other reader of this capture - the integration
 /// suite, the pages, the two bindings' suites - reads it the same way.
-const MESSAGES: usize = 94;
+///
+/// It is the 94 messages the capture carries plus the 56 executions its
+/// parse splits off the reports that report a fill, one each (A12).
+const MESSAGES: usize = 94 + 56;
 
 /// How many three-entry snapshots one market-book measurement consumes.
 const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);
@@ -236,6 +239,25 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    // The same walk over the messages as a table read by `currunix` hands
+    // them over, held one hour at a time rather than sorted whole.
+    let mut ordered = decoded.clone();
+    ordered.sort_by_key(yggdryl::graph::Event::get_currunix);
+    let hourly = composed.clone().with_sorted_lifecycle(true);
+    group.bench_function("decoded_lifecycle_sorted", |bencher| {
+        bencher.iter_batched(
+            || ordered.clone(),
+            |held| {
+                hourly
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
 
     // The codec alone, over the framed bodies: what a message costs to
     // build, without the frame it was cut from or the batch it lands in. A
@@ -347,10 +369,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         schema
             .fields()
             .iter()
-            .filter(|field| {
-                field.name() != yggdryl::fix::FIXENTRIES_COLUMN
-                    && field.name() != yggdryl::NOFIXENTRIES_TAG_NAME.1
-            })
+            .filter(|field| field.name() != yggdryl::fix::FIXENTRIES_COLUMN)
             .cloned(),
     )
     .expect("the fixed columns remain unique");
@@ -585,23 +604,33 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         &codec,
         b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
     );
-    let two_sided_trade = market_message(
-        &codec,
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|",
-    );
-    let snapshot_operations = snapshot.market_operations().expect("the snapshot expands");
+    // A trade reaches a book as the sided executions its parse splits off
+    // (A12), and is no leaf of its own: the composite trade is built over
+    // those parts, as a caller holding both builds it.
+    let trade_row: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|";
+    let mut trade_messages = codec
+        .parse_line(trade_row)
+        .expect("a FIX row")
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the trade and its sides");
+    let trade_root = trade_messages.remove(0);
+    let executions = trade_messages
+        .into_iter()
+        .flat_map(|message| message.into_market_data().expect("a sided execution"))
+        .map(|leaf| match leaf {
+            MarketData::ExecutionEvent(execution) => execution,
+            other => panic!(
+                "the AE fixture splits off executions, got {:?}",
+                other.kind()
+            ),
+        })
+        .collect::<Vec<ExecutionEvent>>();
+    assert_eq!(executions.len(), 2);
+    let snapshot_operations = snapshot.market_data().expect("the snapshot expands");
     assert_eq!(snapshot_operations.len(), 3);
-    let expanded_trade = two_sided_trade
-        .market_operations()
-        .expect("the two-sided trade expands");
-    let [trade_operation] = expanded_trade.as_slice() else {
-        panic!("the AE fixture must produce one operation");
-    };
-    let MarketData::TradeEvent(trade) = trade_operation else {
-        panic!("the AE fixture must produce a composite trade");
-    };
-    assert_eq!(trade.executions().len(), 2);
-    let trade_operation = (*trade_operation).clone();
+    let trade_operation = MarketData::from(
+        TradeEvent::from_parts(&trade_root, executions).expect("the composite trade"),
+    );
     let market_messages = (0..MARKET_REPEATS)
         .map(|index| {
             let mut message = snapshot.clone();
@@ -681,7 +710,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             || direct.clone(),
             |message| {
                 black_box(message)
-                    .into_market_operations()
+                    .into_market_data()
                     .expect("an order operation")
                     .len()
             },
@@ -695,7 +724,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             || snapshot.clone(),
             |message| {
                 black_box(message)
-                    .into_market_operations()
+                    .into_market_data()
                     .expect("three book operations")
                     .len()
             },
@@ -704,20 +733,23 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     });
 
     group.throughput(Throughput::Elements(2));
-    group.bench_function("two_sided_trade_fix_to_operation", |bencher| {
-        bencher.iter_batched(
-            || two_sided_trade.clone(),
-            |message| {
-                let operations = black_box(message)
-                    .into_market_operations()
-                    .expect("one composite trade operation");
-                let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
-                    panic!("the AE fixture must produce a composite trade");
-                };
-                black_box(trade.executions().len())
-            },
-            BatchSize::SmallInput,
-        );
+    // A two-sided trade row to what a book reads of it: the parse splits
+    // off one execution per side (A12), each one execution leaf.
+    group.bench_function("two_sided_trade_fix_to_executions", |bencher| {
+        bencher.iter(|| {
+            codec
+                .parse_line(black_box(trade_row))
+                .expect("a FIX row")
+                .skip(1)
+                .map(|message| {
+                    message
+                        .expect("a sided execution")
+                        .into_market_data()
+                        .expect("an execution leaf")
+                        .len()
+                })
+                .sum::<usize>()
+        });
     });
 
     group.throughput(Throughput::Elements(operations.len() as u64));
@@ -727,7 +759,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             |(mut book, operations)| {
                 book.add_operations(black_box(operations))
                     .expect("one atomic book update");
-                black_box(book.bid().len() + book.ask().len() + book.executions().len())
+                black_box(book)
             },
             BatchSize::LargeInput,
         );
@@ -739,7 +771,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             |(mut book, update)| {
                 book.add_operations([black_box(update)])
                     .expect("one journaled book update");
-                black_box(book.bid().len())
+                black_box(book)
             },
             BatchSize::LargeInput,
         );
@@ -750,7 +782,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             |(mut book, execution)| {
                 book.add_operations([black_box(execution)])
                     .expect("one execution-only dense-book update");
-                black_box(book.bid().len() + book.executions().len())
+                black_box(book)
             },
             BatchSize::LargeInput,
         );
@@ -762,8 +794,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
                     .clone()
                     .into_iter()
                     .chain([dense_update.clone()]);
-                let mut books =
-                    BookIterator::new(source, 0, false).expect("a sorted book iterator");
+                let mut books = BookIterator::new(source, 0).expect("a sorted book iterator");
                 books
                     .next()
                     .expect("initial depth")
@@ -779,12 +810,12 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         bencher.iter_batched(
             || operations.clone(),
             |operations| {
-                BookIterator::new(black_box(operations).into_iter(), 0, false)
+                BookIterator::new(black_box(operations).into_iter(), 0)
                     .expect("a sorted book iterator")
                     .try_fold(0_usize, |count, book| {
                         let book = book?;
                         Ok::<_, yggdryl::Error>(
-                            count + book.bid().len() + book.ask().len() + book.executions().len(),
+                            count + book.alive().count() + book.executions().len(),
                         )
                     })
                     .expect("the operation stream builds books")
@@ -798,7 +829,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             || market_messages.clone(),
             |messages| {
                 let rows = codec
-                    .book_arrow_reader(black_box(messages), 0, false)
+                    .book_arrow_reader(black_box(messages), 0)
                     .expect("a FIX book Arrow reader")
                     .try_fold(0_usize, |rows, batch| {
                         batch.map(|batch| rows + batch.num_rows())

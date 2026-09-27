@@ -12,7 +12,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, FieldPath, Plan, enums, graph
+from yggdryl import Field, FieldPath, MarketDataKind, Plan, Side, enums, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -35,7 +35,6 @@ def leaves() -> list[Any]:
         graph.Order(crosscode="O-1", price=D("101")),
         graph.Quote(crosscode="Q-1"),
         graph.Execution(crosscode="E-1", lastqty=2),
-        graph.BookSide("BUY").with_operation(order),
         order,
         quote,
         execution,
@@ -45,10 +44,26 @@ def leaves() -> list[Any]:
     ]
 
 
+#: The `MarketDataKind` of each leaf `leaves()` answers, in its order.
+KINDS = [
+    MarketDataKind.ORDR,
+    MarketDataKind.QUOT,
+    MarketDataKind.EXEC,
+    MarketDataKind.ORDR,
+    MarketDataKind.QUOT,
+    MarketDataKind.EXEC,
+    MarketDataKind.TRAD,
+    MarketDataKind.BOOK,
+    MarketDataKind.BOOK,
+]
+
+
 def test_every_leaf_wraps_and_names_its_kind() -> None:
     wrapped = [graph.MarketData(leaf) for leaf in leaves()]
     assert tuple(data.kind for data in wrapped) == graph.MarketData.kinds
-    assert [data.is_event for data in wrapped] == [False] * 4 + [True] * 6
+    assert [data.marketdatakind for data in wrapped] == KINDS
+    assert [leaf.marketdatakind for leaf in leaves()] == KINDS
+    assert [data.is_event for data in wrapped] == [False] * 3 + [True] * 6
     for leaf, data in zip(leaves(), wrapped):
         assert type(data.into_leaf()) is type(leaf)
         assert data.into_leaf() == leaf
@@ -60,10 +75,11 @@ def test_every_leaf_wraps_and_names_its_kind() -> None:
             leaf.price,
             leaf.side,
         )
+        assert isinstance(data.side, Side)
 
 
 def test_as_leaf_borrows_the_leaf_it_is_and_none_otherwise() -> None:
-    order = leaves()[4]
+    order = leaves()[3]
     data = graph.MarketData(order)
     assert data.as_order_event() == order
     assert data.into_leaf() == order
@@ -71,7 +87,6 @@ def test_as_leaf_borrows_the_leaf_it_is_and_none_otherwise() -> None:
         "as_order",
         "as_quote",
         "as_execution",
-        "as_book_side",
         "as_quote_event",
         "as_execution_event",
         "as_trade_event",
@@ -79,6 +94,7 @@ def test_as_leaf_borrows_the_leaf_it_is_and_none_otherwise() -> None:
         "as_snapshot_event",
     ):
         assert getattr(data, name)() is None, name
+    assert not hasattr(data, "as_book_side")
 
 
 def test_book_answers_the_control_of_an_operation_or_a_snapshot() -> None:
@@ -105,9 +121,10 @@ def test_following_crosses_operation_kinds_and_merging_no_variant() -> None:
     execution = graph.MarketData(graph.ExecutionEvent(CLOCK + 1_000_000, crosscode="O-1"))
     fill = execution.with_previous(first)
     assert fill is not None and fill.kind == "execution_event"
-    assert fill.as_execution_event().prevuuid == first.curruuid
-    # A book side follows no other variant, and a merge never crosses one.
-    assert graph.MarketData(graph.BookSide("BUY")).with_previous(first) is None
+    fill_leaf = fill.as_execution_event()
+    assert fill_leaf is not None and fill_leaf.prevuuid == first.curruuid
+    # A book follows no operation, and a merge never crosses a variant.
+    assert graph.MarketData(graph.BookEvent(CLOCK + 2, "O-1")).with_previous(first) is None
     assert first.merge_with(execution) is None
     assert first.merge_with(first) is None
     assert later.is_after(first) and first.is_before(later)
@@ -115,7 +132,7 @@ def test_following_crosses_operation_kinds_and_merging_no_variant() -> None:
     assert not graph.MarketData(graph.Order()).is_after(first)
 
 
-@pytest.mark.parametrize("index", range(10), ids=lambda index: graph.MarketData.kinds[index])
+@pytest.mark.parametrize("index", range(9), ids=lambda index: graph.MarketData.kinds[index])
 def test_equality_hash_repr_copy_pickle(index: int) -> None:
     leaf = leaves()[index]
     data = graph.MarketData(leaf)
@@ -123,7 +140,8 @@ def test_equality_hash_repr_copy_pickle(index: int) -> None:
     assert twin == data and hash(twin) == hash(data) == hash(leaf)
     assert copy.copy(data) == data and copy.deepcopy(data) == data
     assert repr(data) == (
-        f'MarketData({data.curruuid.as_py()}, kind="{data.kind}", crosscode="{data.crosscode}")'
+        f'MarketData({data.curruuid.as_py()}, kind="{data.kind}", '
+        f'marketdatakind={data.marketdatakind}, crosscode="{data.crosscode}")'
     )
     # Every leaf pickles through the same one-row stream.
     assert pickle.loads(pickle.dumps(leaf)) == leaf
@@ -135,11 +153,44 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     assert isinstance(field, Field)
     assert field.name == "marketdata" and not field.nullable
     names = [child.name for child in field]
-    assert names[0] == "kind"
-    for name in ("currunix", "price", "altids", "bid", "ask", "mdupdateaction", "executions"):
-        assert name in names
-    for name in ("bidside", "askside", "snapshotpartitions", "live", "deltas"):
-        assert name in names
+    assert names[0] == "marketdatakind"
+    for name in (
+        "currunix",
+        "price",
+        "side",
+        "isincode",
+        "fxrates",
+        "bidpx",
+        "bidqty",
+        "bidccy",
+        "askpx",
+        "askqty",
+        "askccy",
+        "altids",
+        "bookscope",
+        "alive",
+        "deltas",
+        "executions",
+        "bidlimits",
+        "asklimits",
+    ):
+        assert name in names, name
+    for retired in (
+        "kind",
+        "bid",
+        "ask",
+        "mdupdateaction",
+        "bidside",
+        "askside",
+        "snapshotpartitions",
+        "live",
+        "limits",
+        "accountids",
+        "userids",
+        "marketoperationid",
+        "spread",
+    ):
+        assert retired not in names, retired
 
 
 def test_arrow_reader_round_trips_every_variant() -> None:
@@ -147,8 +198,8 @@ def test_arrow_reader_round_trips_every_variant() -> None:
     reader = graph.MarketData.arrow_reader(items)
     assert isinstance(reader, pa.RecordBatchReader)
     table = reader.read_all()
-    assert table.num_rows == 10
-    assert table.column("kind").to_pylist() == list(graph.MarketData.kinds)
+    assert table.num_rows == 9
+    assert table.column("marketdatakind").to_pylist() == [int(kind) for kind in KINDS]
     back = list(graph.MarketData.from_arrow_reader(table))
     assert back == [graph.MarketData(item) for item in items]
     assert [data.into_leaf() for data in back] == items
@@ -185,10 +236,11 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
     batch = pa.table(
         {
             "foreign": [1, 2],
-            "CrossCode": ["O-1", "O-1"],
-            "Kind": ["order_event", "execution_event"],
+            # A sided row states the cross code its side prefixes.
+            "CrossCode": ["BUY:O-1", "BUY:O-1"],
+            "MarketDataKind": pa.array([10, 8], pa.int32()),
             "currunix": pa.array([CLOCK, CLOCK + 1], pa.int64()),
-            "side": ["BUY", "BUY"],
+            "side": pa.array([1, 1], pa.int32()),
             "price": ["101", None],
             "lastqty": [None, "5"],
             "altids": pa.array([[("ORDERID", "O-1")], None], pa.map_(pa.string(), pa.string())),
@@ -196,7 +248,7 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
     )
     order, execution = (data.into_leaf() for data in graph.MarketData.from_arrow_reader(batch))
     assert isinstance(order, graph.OrderEvent) and isinstance(execution, graph.ExecutionEvent)
-    assert (order.currunix, order.crosscode, order.side.as_py()) == (CLOCK, "O-1", "BUY")
+    assert (order.currunix, order.crosscode, order.side) == (CLOCK, "BUY:O-1", Side.BUY)
     assert order.price is not None and order.price.as_py() == D("101")
     assert order.altids == {"ORDERID": "O-1"}
     assert execution.lastqty is not None and execution.lastqty.as_py() == 5
@@ -204,27 +256,34 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
 
 
 def test_from_arrow_reader_refuses_by_name_and_fuses() -> None:
-    with pytest.raises(ValueError, match=r"\$\[0\]\.kind: expected order, quote.*got null"):
+    with pytest.raises(ValueError, match=r"\$\[0\]\.marketdatakind: expected ORDR, QUOT.*got null"):
         list(graph.MarketData.from_arrow_reader(pa.table({"currunix": [CLOCK]})))
-    with pytest.raises(ValueError, match=r'\$\[0\]\.kind: .*got "nope"'):
-        list(graph.MarketData.from_arrow_reader(pa.table({"kind": ["nope"]})))
+    with pytest.raises(ValueError, match=r"\$\[0\]\.marketdatakind: .*got ACCT"):
+        list(graph.MarketData.from_arrow_reader(pa.table({"marketdatakind": pa.array([1], pa.int32())})))
     rows = graph.MarketData.from_arrow_reader(
-        pa.table({"kind": ["order_event", "order_event"], "currunix": pa.array([CLOCK, None], pa.int64())})
+        pa.table(
+            {
+                "marketdatakind": pa.array([10, 21], pa.int32()),
+                "currunix": pa.array([CLOCK, None], pa.int64()),
+            }
+        )
     )
     assert next(rows).kind == "order_event"
-    with pytest.raises(ValueError, match=r"\$\[1\]\.currunix: expected the instant a dated leaf happened at"):
+    with pytest.raises(ValueError, match=r"\$\[1\]\.marketdatakind: expected a dated TRAD row"):
         next(rows)
     assert list(rows) == []
 
 
 def test_an_undated_row_needs_no_clock() -> None:
-    [data] = graph.MarketData.from_arrow_reader(pa.table({"kind": ["order"], "crosscode": ["X"]}))
+    [data] = graph.MarketData.from_arrow_reader(
+        pa.table({"marketdatakind": pa.array([10], pa.int32()), "crosscode": ["X"]})
+    )
     assert data.kind == "order" and data.crosscode == "X"
     assert data.as_order() == graph.Order(crosscode="X")
 
 
 # The root's nested columns: what a flat view drops.
-NESTED = ("executions", "bidside", "askside", "snapshotpartitions", "live", "deltas", "limits")
+NESTED = ("alive", "deltas", "executions", "bidlimits", "asklimits")
 ISIN = "US0378331005"
 
 
@@ -254,44 +313,43 @@ def _view(view: str, lifts: Any = (), **crosscode: str) -> pa.Table:
 
 
 @pytest.mark.parametrize(
-    ("view", "kinds"),
+    ("view", "kind", "rows"),
     [
-        ("orders", ["order", "order_event", "order_event"]),
-        ("quotes", ["quote", "quote_event"]),
-        ("executions", ["execution", "execution_event"]),
+        ("orders", MarketDataKind.ORDR, 3),
+        ("quotes", MarketDataKind.QUOT, 2),
+        ("executions", MarketDataKind.EXEC, 2),
     ],
 )
-def test_an_operation_view_keeps_its_two_kinds_and_every_flat_column(view: str, kinds: list[str]) -> None:
+def test_an_operation_view_keeps_its_kind_and_every_flat_column(
+    view: str, kind: MarketDataKind, rows: int
+) -> None:
     table = _view(view)
     assert table.schema.names == _flat()
-    assert sorted(table.column("kind").to_pylist()) == kinds
+    assert table.column("marketdatakind").to_pylist() == [int(kind)] * rows
 
 
 def test_a_trade_is_one_row_per_execution_its_own_columns_beside_it() -> None:
     table = _view("trades")
     assert table.schema.names == [*_flat(), *_prefixed("executions", "execution")]
     assert table.column("crosscode").to_pylist() == ["T-1", "T-1"]
-    assert sorted(table.column("execution.crosscode").to_pylist()) == ["E-1", "E-2"]
+    assert sorted(table.column("execution.crosscode").to_pylist()) == ["BUY:E-1", "SELL:E-2"]
 
 
-def test_a_book_is_two_side_rows_or_one_row_of_its_own() -> None:
-    table = _view("book_sides")
-    assert table.schema.names == ["currunix", "snapunix", *_prefixed("bidside", "side")]
-    # Bid then ask, for the one book the stream holds.
-    assert table.column("side.side").to_pylist() == ["BUY", "SELL"]
-    assert table.column("currunix").cast(pa.int64()).to_pylist() == [CLOCK, CLOCK]
+def test_a_book_is_one_row_of_its_own() -> None:
     books = _view("books")
-    kept = [name for name in _root().names if name not in ("executions", "live", "deltas", "limits")]
+    kept = [name for name in _root().names if name != "executions"]
     assert books.schema.names == kept
-    assert books.column("kind").to_pylist() == ["book_event"]
+    # The snapshot control states no alive entries: the view keeps books.
+    assert books.column("marketdatakind").to_pylist() == [int(MarketDataKind.BOOK)]
+    assert books.column("crosscode").to_pylist() == ["ACME"]
 
 
 def test_a_lifecycle_is_one_chain_ordered_and_needs_its_crosscode() -> None:
     chain = [
-        graph.OrderEvent(CLOCK + step, crosscode="C-1", side="BUY")
+        graph.OrderEvent(CLOCK + step, crosscode="C-1")
         for step in (30, 10, 20)
     ]
-    other = graph.OrderEvent(CLOCK, crosscode="C-2", side="BUY")
+    other = graph.OrderEvent(CLOCK, crosscode="C-2")
     source = graph.MarketData.arrow_reader([*chain, other])
     table = graph.MarketData.apply_view("lifecycle", source, crosscode="C-1").read_all()
     assert table.schema.names == _flat()
@@ -300,8 +358,8 @@ def test_a_lifecycle_is_one_chain_ordered_and_needs_its_crosscode() -> None:
         graph.MarketData.plan("lifecycle")
     with pytest.raises(ValueError, match="crosscode"):
         graph.MarketData.plan("orders", crosscode="C-1")
-    with pytest.raises(ValueError, match="book_sides"):
-        graph.MarketData.plan("book-sides")
+    with pytest.raises(ValueError, match="books, lifecycle"):
+        graph.MarketData.plan("book_sides")
 
 
 def test_a_lift_reads_one_key_null_where_missing_and_refuses_a_missing_column() -> None:
@@ -311,7 +369,7 @@ def test_a_lift_reads_one_key_null_where_missing_and_refuses_a_missing_column() 
     )
     assert table.schema.names == [*_flat(), "isin", "wkn"]
     by_code = dict(zip(table.column("crosscode").to_pylist(), table.column("isin").to_pylist()))
-    assert by_code == {"O-1": None, "O-5": ISIN}
+    assert by_code == {"O-1": None, "BUY:O-1": None, "BUY:O-5": ISIN}
     assert table.column("wkn").null_count == table.num_rows
     with pytest.raises(Exception, match="nothing"):
         _view("orders", ["nothing['ISIN'] as isin"])
@@ -358,10 +416,10 @@ def test_the_plans_the_views_are() -> None:
     nested = ", ".join(NESTED)
     assert str(graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])) == (
         f"select * exclude ({nested}), securityids['ISIN'] as isin "
-        "where kind in ('order', 'order_event')"
+        "where marketdatakind = 'ORDR'"
     )
-    assert str(graph.MarketData.plan("book_sides")) == (
-        "select currunix, snapunix, unnest([bidside, askside]) as side where kind = 'book_event'"
+    assert str(graph.MarketData.plan("books")) == (
+        "select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null"
     )
     # Applying a view is applying its plan.
     plan = graph.MarketData.plan("trades")

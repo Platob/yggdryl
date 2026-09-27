@@ -1,4 +1,4 @@
-//! `cli/src/quality.rs`: the findings `ygg fix check` reports.
+//! `cli/src/quality.rs`: the findings `yggdryl fix check` reports.
 
 use std::process::Command;
 
@@ -8,7 +8,7 @@ fn a_catalog_of_the_crate_s_own_definitions_checks_clean() {
     // definitions, `srcuuids` among them: a field whose value is a serie of
     // UUIDs, not a group read item by item.
     let root = std::env::temp_dir().join(format!("ygg-cli-quality-{}", std::process::id()));
-    let output = Command::new(env!("CARGO_BIN_EXE_ygg"))
+    let output = Command::new(env!("CARGO_BIN_EXE_yggdryl"))
         .args(["fix", "--root"])
         .arg(&root)
         .arg("check")

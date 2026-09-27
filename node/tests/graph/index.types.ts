@@ -8,14 +8,11 @@ import {
   graph,
   type BookEvent,
   type BookLimit,
-  type BookSide,
   type ExecutionEvent,
-  type Lane,
   type MarketData,
   type MarketItem,
   type Order,
   type OrderEvent,
-  type SnapshotPartition,
 } from '../..'
 
 // The operation leaves take their named facts as one plain object, or the
@@ -26,7 +23,7 @@ const bare: Order = new graph.Order()
 const event: OrderEvent = new graph.OrderEvent(1n, {
   crosscode: 'O-1',
   side: 'BUY',
-  bid: new graph.Lane({ price: '101' }),
+  bidpx: '101',
   book: new graph.BookRef({ action: '0' }),
 })
 const fromRecord: OrderEvent = new graph.OrderEvent(1, Scalar.from({ crosscode: 'O-1' }))
@@ -43,7 +40,11 @@ const creaunix: bigint | null = event.creaunix
 const price: string | null = event.price
 const side: string = event.side
 const altids: Record<string, string> = event.altids
-const bid: Lane | null = event.bid
+const bidpx: string | null = event.bidpx
+const bidccy: string | null = event.bidccy
+const isincode: string | null = event.isincode
+const fxrates: Record<string, string> = event.fxrates
+const marketdatakind: string = event.marketdatakind
 const kind: string = event.kind
 const followed: OrderEvent | null = event.withPrevious(dated)
 
@@ -59,19 +60,24 @@ const marketKinds: readonly string[] = enums.marketKinds
 
 // A book folds any iterable of items, and the two walks pull theirs lazily.
 const book: BookEvent = new graph.BookEvent(1n, 'IBM').withOperations(new Set(items))
-const bidSide: BookSide = book.bid
-const partitions: SnapshotPartition[] = book.snapshotPartitions
-const books: BookEvent[] = [...new graph.BookIterator(items, 0, false)]
+const alive: MarketData[] = book.alive()
+const deltas: MarketData[] = book.deltas()
+const executions: ExecutionEvent[] = book.executions()
+const books: BookEvent[] = [...new graph.BookIterator(items, 0)]
 const walked: MarketData[] = [...new graph.EventIterator(items, true, 5n)]
 const snapshotNs: bigint | null = new graph.EventIterator([]).snapshotNs
 const followedAltids: readonly string[] = graph.FOLLOWED_ALTIDS
 
-// A side reads its limits, best first, and its depth; a book its two bests.
-const limits: BookLimit[] = bidSide.limits
+// A book reads each side's limits, best first, and its depth; and its two
+// bests.
+const limits: BookLimit[] = book.limits('BUY')
 const limitPrice: string | null = limits[0].price
 const limitQuantity: string = limits[0].quantity
 const limitUuids: string[] = limits[0].uuids
-const depth: string | null = bidSide.depth(2)
+const limitTradable: boolean = limits[0].tradable
+const depth: string | null = book.depth('SELL', 2)
+const bestPrice: string | null = book.bestPrice(1)
+const bestQuantity: string | null = book.bestQuantity('SELL')
 const locked: boolean = book.isLocked
 const spread: string | null = book.spread
 const imbalance: string | null = book.imbalance(1)
@@ -84,8 +90,8 @@ const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Ar
 const marketViews: readonly string[] = enums.marketViews
 // @ts-expect-error a lift is a path or its text
 graph.MarketData.plan('orders', [1])
-// @ts-expect-error a limit is read, never written
-bidSide.limits = []
+// @ts-expect-error the book walk takes no third argument
+void new graph.BookIterator(items, 0, false)
 
 // @ts-expect-error the namespace is frozen
 graph.Order = graph.Quote
@@ -103,7 +109,7 @@ void creaunix
 void price
 void side
 void altids
-void bid
+void [bidpx, bidccy, isincode, fxrates, marketdatakind]
 void kind
 void followed
 void leaf
@@ -111,11 +117,10 @@ void kinds
 void field
 void rows
 void marketKinds
-void bidSide
-void partitions
+void [alive, deltas, executions]
 void books
 void walked
 void snapshotNs
 void followedAltids
-void [limitPrice, limitQuantity, limitUuids, depth, locked, spread, imbalance]
+void [limitPrice, limitQuantity, limitUuids, limitTradable, depth, bestPrice, bestQuantity, locked, spread, imbalance]
 void [viewPlan, lifecyclePlan, view, liftedView, marketViews]

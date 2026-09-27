@@ -44,13 +44,19 @@ const NEGOTIATION: (&str, &str) = ("X-Transport-Caps-Negotiation-Flags", "0,0,0,
 impl Service {
     /// Answer XML for Analysis at `path` on `server`: a `POST` carrying a
     /// SOAP 1.1 Discover or Execute, answered as it is sent, and a `GET` (a
-    /// `HEAD` its head) describing the endpoint; answers the endpoint's URL.
+    /// `HEAD` its head) describing the endpoint under the URL the request
+    /// was made at - the one a proxy in front presents, when the server
+    /// trusts it; answers the endpoint's URL on the server's own socket
+    /// ([`Server::public_url_of`] is the one clients reach).
     ///
     /// Every answer to a `POST` is `200` under `text/xml; charset=utf-8`
     /// and `X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0`, a fault
     /// included - the way the reference providers answer and XMLA clients
     /// read one - and a body that is no SOAP message, or not XML at all, is
-    /// a `Client` fault naming what it was. Routing the same `path` again
+    /// a `Client` fault naming what it was. A `POST` to `path` with a
+    /// trailing slash is served by the same route, never redirected - a
+    /// redirected client may not repeat its body - while a `GET` of it is the
+    /// server's `308` to the path without it. Routing the same `path` again
     /// replaces the service it answers with.
     ///
     /// # Errors
@@ -63,13 +69,18 @@ impl Service {
         let path = crate::http::server::normalize_path(path)?;
         let path = path.as_str();
         let endpoint = server.url_of(path)?;
-        let description = format!(
-            "{} {}: an XML for Analysis 1.1 provider. POST a SOAP 1.1 Discover or Execute here.\n",
+        let provider = format!(
+            "{} {}",
             self.options().provider_name,
             self.options().provider_version
         );
-        server.route(Some(Method::Get), path, move |_| {
-            Ok(Response::new(Status::OK).with_text(&description))
+        server.route(Some(Method::Get), path, move |request| {
+            // The endpoint as this request reached it, its query left off.
+            let mut reached = request.url().clone();
+            reached.set_query(None)?;
+            Ok(Response::new(Status::OK).with_text(&format!(
+                "{provider}: an XML for Analysis 1.1 provider at {reached}. POST a SOAP 1.1 Discover or Execute here.\n"
+            )))
         });
         server.route(Some(Method::Post), path, move |request| {
             Arc::clone(&self).answer_http(request)

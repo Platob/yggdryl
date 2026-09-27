@@ -1,4 +1,4 @@
-"""The staged ``ygg`` comes from cargo's answer, not from a reconstructed path.
+"""The staged ``yggdryl`` comes from cargo's answer, not from a reconstructed path.
 
 ``target/<profile>/`` holds the binary only when nothing moves it, and the
 release matrix moves it three ways: ``--target`` on a cross build,
@@ -41,7 +41,7 @@ def _stage_cli() -> types.ModuleType:
 stage_cli = _stage_cli()
 
 
-def artifact(executable: str | None, name: str = "ygg", kind: str = "bin") -> str:
+def artifact(executable: str | None, name: str = "yggdryl", kind: str = "bin") -> str:
     """One `compiler-artifact` line, shaped the way cargo writes it."""
     return json.dumps(
         {
@@ -62,26 +62,26 @@ def test_a_moved_target_directory_is_still_found() -> None:
         "\n".join(
             [
                 artifact(None, name="yggdryl", kind="lib"),
-                artifact("/work/target/x86_64-unknown-linux-musl/release/ygg"),
+                artifact("/work/target/x86_64-unknown-linux-musl/release/yggdryl"),
             ]
         )
     )
-    assert linked == pathlib.Path("/work/target/x86_64-unknown-linux-musl/release/ygg")
+    assert linked == pathlib.Path("/work/target/x86_64-unknown-linux-musl/release/yggdryl")
 
 
 def test_an_unmoved_target_directory_is_found_the_same_way() -> None:
-    linked = stage_cli.linked(artifact("/work/target/release/ygg"))
-    assert linked == pathlib.Path("/work/target/release/ygg")
+    linked = stage_cli.linked(artifact("/work/target/release/yggdryl"))
+    assert linked == pathlib.Path("/work/target/release/yggdryl")
 
 
 def test_the_windows_binary_is_recognised_by_its_target_name() -> None:
-    # The file gains `.exe`; the bin target cargo reports is `ygg` regardless,
+    # The file gains `.exe`; the bin target cargo reports is `yggdryl` regardless,
     # which is why the artifact is matched on the target rather than the file.
     # `str` rather than `.name`, because a Windows path read on a POSIX host is
     # one long segment - the point here is that it was recognised at all.
-    linked = stage_cli.linked(artifact("C:\\work\\target\\release\\ygg.exe"))
+    linked = stage_cli.linked(artifact("C:\\work\\target\\release\\yggdryl.exe"))
     assert linked is not None
-    assert str(linked).endswith("ygg.exe")
+    assert str(linked).endswith("yggdryl.exe")
 
 
 def test_another_crate_s_binary_is_not_staged() -> None:
@@ -91,7 +91,7 @@ def test_another_crate_s_binary_is_not_staged() -> None:
 
 
 def test_a_library_artifact_carries_no_command() -> None:
-    assert stage_cli.linked(artifact(None, name="ygg", kind="lib")) is None
+    assert stage_cli.linked(artifact(None, name="yggdryl", kind="lib")) is None
 
 
 def test_a_build_that_linked_nothing_reports_nothing() -> None:
@@ -106,12 +106,12 @@ def test_output_that_is_not_cargo_s_messages_is_stepped_over() -> None:
             [
                 "warning: something a wrapper printed on stdout",
                 "",
-                artifact("/work/target/release/ygg"),
+                artifact("/work/target/release/yggdryl"),
                 "{not json",
             ]
         )
     )
-    assert linked == pathlib.Path("/work/target/release/ygg")
+    assert linked == pathlib.Path("/work/target/release/yggdryl")
 
 
 def test_the_last_link_of_the_command_wins() -> None:
@@ -119,12 +119,12 @@ def test_the_last_link_of_the_command_wins() -> None:
     linked = stage_cli.linked(
         "\n".join(
             [
-                artifact("/work/target/debug/ygg"),
-                artifact("/work/target/release/ygg"),
+                artifact("/work/target/debug/yggdryl"),
+                artifact("/work/target/release/yggdryl"),
             ]
         )
     )
-    assert linked == pathlib.Path("/work/target/release/ygg")
+    assert linked == pathlib.Path("/work/target/release/yggdryl")
 
 
 @pytest.mark.parametrize("flag", ["--message-format", "json-render-diagnostics"])
@@ -136,5 +136,5 @@ def test_the_script_asks_cargo_to_name_its_artifacts(flag: str) -> None:
 
 
 def test_the_staged_name_carries_the_extension_windows_needs() -> None:
-    expected = "ygg.exe" if sys.platform == "win32" else "ygg"
+    expected = "yggdryl.exe" if sys.platform == "win32" else "yggdryl"
     assert stage_cli.NAME == expected

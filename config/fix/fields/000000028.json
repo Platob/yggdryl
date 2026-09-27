@@ -1087,7 +1087,6 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "currencycodesourcecodeset",
-      "FIX:derivation": "case when currency is not null then '6' end",
       "FIX:tag": "2897",
       "description": "Identifies class or source of the Currency(15) value.",
       "display": "CurrencyCodeSource"

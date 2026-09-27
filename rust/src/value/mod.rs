@@ -25,7 +25,7 @@
 //! [`id`](crate::Scalar::id), and the value itself is the leaf the
 //! [`Scalar`] variant holds. What the leaves of one family share is a leaf
 //! contract - [`IntegerValue`], [`FloatingValue`], [`DecimalValue`],
-//! [`TemporalValue`], [`GeospatialValue`], [`CodeValue`] and
+//! [`TemporalValue`], [`GeospatialValue`], [`CodeValue`], [`EnumValue`] and
 //! [`NestedValue`] - declared here and implemented beside each leaf.
 //!
 //! A fourth side stands beside the three: many values of one field, which is
@@ -199,16 +199,58 @@ pub trait CodeValue: Value {
     ///
     /// What "less" means is each code's own, and the codes that can state
     /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
-    /// where the two describe one instrument; a [`Side`](crate::Side) `UNKNOWN`, a
-    /// [`Ccy`](crate::Ccy) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the other. Every other
-    /// code is an identifier with nothing partial about it, so this one
-    /// stands as it is. This is what a graph element folds two statements
+    /// where the two describe one instrument, and an unclassified one - every
+    /// position `X`, or no classification at all - yields whole to a
+    /// classified other; a [`Ccy`](crate::Ccy) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the
+    /// other; an [`Isin`](crate::Isin) under the `ZZ` prefix yields to any other prefix.
+    /// Every other code is an identifier with nothing partial about it, so
+    /// this one stands as it is. This is what a graph element folds two statements
     /// of one fact with.
     #[must_use]
     fn merge_with(self, other: &Self) -> Self {
         let _ = other;
         self
     }
+}
+
+/// What every leaf of the Enum family answers: a closed set of members, each
+/// stored as the `int32` code that stands for it.
+///
+/// A member is its code on every wire that stores it - Arrow's `Int32`,
+/// Iceberg's `int`, the value stream, a digest - and its stored name in
+/// every text a person reads, so the two readings are one door each:
+/// [`Self::read_code`] over an integer and [`Self::read`] over a spelling,
+/// the spellings each leaf accepts being its own (`from_spelling`) and the
+/// refusal naming the leaf by [`Self::KIND`]. The `enum_leaf!` macro in
+/// `enums.rs` writes the whole of it for a leaf from its member table.
+pub trait EnumValue: Value + Copy + Default {
+    /// Every member, in code order.
+    const ALL: &'static [Self];
+    /// The datatype's name, which every refusal names: `state`, `side`.
+    const KIND: &'static str;
+    /// The Arrow extension name the `Int32` codes ride under.
+    const EXTENSION_NAME: &'static str;
+
+    /// The `int32` a column stores for this member.
+    fn code(self) -> i32;
+    /// The stored name.
+    fn as_str(self) -> &'static str;
+    /// What this member means, in a sentence.
+    fn description(self) -> &'static str;
+    /// The member one stored code names, or `None` where none does.
+    fn from_code(code: i32) -> Option<Self>;
+    /// The member one spelling names, refused where none does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the spelling under [`Self::KIND`].
+    fn read(spelling: &str) -> Result<Self>;
+    /// The member one stored code names, refused where none does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the code under [`Self::KIND`].
+    fn read_code(code: i64) -> Result<Self>;
 }
 
 /// What every nested value answers: its direct children, counted and walked.

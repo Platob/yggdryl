@@ -203,13 +203,12 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
     match dtype {
         DataType::Null => plain("null"),
         DataType::Boolean => plain("boolean"),
-        // A state is the `int32` code of its member, which is what Avro reads.
-        DataType::Int8
-        | DataType::Int16
-        | DataType::Int32
-        | DataType::UInt8
-        | DataType::UInt16
-        | DataType::State => plain("int"),
+        DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::UInt8 | DataType::UInt16 => {
+            plain("int")
+        }
+        // An enum member is the `int32` code of its leaf, which is what Avro
+        // reads.
+        held if held.is_enum() => plain("int"),
         DataType::Int64 | DataType::UInt32 => plain("long"),
         DataType::Float16 | DataType::Float32 => plain("float"),
         DataType::Float64 => plain("double"),

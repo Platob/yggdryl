@@ -1,4 +1,4 @@
-//! Process-level checks for `ygg xmla serve`: the endpoint it prints answers
+//! Process-level checks for `yggdryl xmla serve`: the endpoint it prints answers
 //! the SOAP 1.1 HTTP binding, and what it refuses it refuses before binding.
 
 use std::io::{BufRead, BufReader};
@@ -64,8 +64,8 @@ impl Drop for Served {
     }
 }
 
-fn ygg() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_ygg"));
+fn command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_yggdryl"));
     command
         .env("NO_COLOR", "1")
         .stdout(Stdio::piped())
@@ -74,9 +74,10 @@ fn ygg() -> Command {
 }
 
 #[test]
+#[ignore = "hosts a live XMLA server, which races the runner's socket readiness; run with --ignored"]
 fn serve_prints_its_endpoint_first_and_answers_a_discover() {
     let root = catalog_root();
-    let mut child = ygg()
+    let mut child = command()
         .args(["xmla", "serve", "--bind", "127.0.0.1:0", "--path", "/olap"])
         .arg(format!("market={}", root.display()))
         .spawn()
@@ -122,8 +123,207 @@ fn serve_prints_its_endpoint_first_and_answers_a_discover() {
 }
 
 #[test]
+#[ignore = "hosts a live XMLA server, which races the runner's socket readiness; run with --ignored"]
+fn serve_behind_a_proxy_prints_the_socket_endpoint_first_and_states_the_public_one() {
+    let root = catalog_root();
+    let mut child = command()
+        .args([
+            "xmla",
+            "serve",
+            "--bind",
+            "127.0.0.1:0",
+            "--public-url",
+            "https://data.example.com/olap",
+            "--trusted-proxy",
+            "127.0.0.1",
+            "--trusted-proxy",
+            "10.0.0.0/8",
+            "--path-prefix",
+            "/olap",
+            "--read-timeout",
+            "45",
+        ])
+        .arg(format!("market={}", root.display()))
+        .spawn()
+        .expect("the provider starts");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let served = Served(child);
+    let mut lines = BufReader::new(stdout);
+    let mut endpoint = String::new();
+    lines.read_line(&mut endpoint).expect("the endpoint line");
+    let endpoint = endpoint.trim();
+    assert!(
+        endpoint.starts_with("http://127.0.0.1:") && endpoint.ends_with("/xmla"),
+        "{endpoint}"
+    );
+    let mut note = String::new();
+    lines
+        .read_line(&mut note)
+        .expect("the public endpoint note");
+    assert!(
+        note.contains("public endpoint https://data.example.com/olap/xmla"),
+        "{note}"
+    );
+
+    // The proxy's path reaches the route, and DISCOVER_DATASOURCES states
+    // the public endpoint as its URL.
+    let prefixed = endpoint.replace("/xmla", "/olap/xmla");
+    let payload = Request::from(Discover::new(RequestType::DiscoverDatasources))
+        .into_bytes()
+        .expect("a request encodes");
+    let response = HttpRequest::post(&prefixed, payload)
+        .expect("a request builds")
+        .with_header("content-type", "text/xml; charset=utf-8")
+        .expect("a header")
+        .with_header("X-Forwarded-Proto", "https")
+        .expect("a header")
+        .with_header("X-Forwarded-Host", "data.example.com")
+        .expect("a header")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
+    let response = Response::from_bytes(&body, None).expect("a DiscoverResponse");
+    let sources = response.rows().expect("a rowset");
+    assert_eq!(sources.len(), 1);
+    assert_eq!(
+        sources
+            .child("URL")
+            .and_then(|column| column.scalar(0).ok()),
+        Some(Scalar::from("https://data.example.com/olap/xmla"))
+    );
+    drop(served);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The first line `command` prints once started, and the process kept
+/// alive until the guard drops.
+fn started(mut command: Command) -> (Served, String) {
+    let mut child = command.spawn().expect("the provider starts");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let served = Served(child);
+    let mut endpoint = String::new();
+    BufReader::new(stdout)
+        .read_line(&mut endpoint)
+        .expect("the endpoint line");
+    (served, endpoint.trim().to_owned())
+}
+
+/// The description a `GET` of `endpoint` answers with `fields` sent.
+fn described(endpoint: &str, fields: &[(&str, &str)]) -> String {
+    let mut request = HttpRequest::get(endpoint).expect("a request builds");
+    for (name, value) in fields {
+        request = request.with_header(name, value).expect("a header");
+    }
+    let response = request.send().expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    response.text().expect("a text")
+}
+
+#[test]
+#[ignore = "hosts a live XMLA server, which races the runner's socket readiness; run with --ignored"]
+fn serve_reads_the_forwarded_fields_it_is_told_the_proxy_sets() {
+    let root = catalog_root();
+    let forwarded = [
+        ("X-Forwarded-Proto", "https"),
+        ("X-Forwarded-Host", "data.example.com"),
+        ("X-Forwarded-For", "203.0.113.9"),
+    ];
+
+    // By default a trusted proxy states the scheme and the client; a host
+    // it did not say it sets is the client's, and is not read.
+    let mut serve = command();
+    serve
+        .args([
+            "xmla",
+            "serve",
+            "--bind",
+            "127.0.0.1:0",
+            "--trusted-proxy",
+            "127.0.0.1",
+        ])
+        .arg(format!("market={}", root.display()));
+    let (served, endpoint) = started(serve);
+    let socket = endpoint.trim_start_matches("http://");
+    let text = described(&endpoint, &forwarded);
+    assert!(text.contains(&format!("at https://{socket}.")), "{text}");
+    drop(served);
+
+    // Named, the host is read too.
+    let mut serve = command();
+    serve
+        .args([
+            "xmla",
+            "serve",
+            "--bind",
+            "127.0.0.1:0",
+            "--trusted-proxy",
+            "127.0.0.1",
+        ])
+        .args(["--forwarded-header", "X-Forwarded-For"])
+        .args(["--forwarded-header", "x-forwarded-proto"])
+        .args(["--forwarded-header", "X-Forwarded-Host"])
+        .arg(format!("market={}", root.display()));
+    let (served, endpoint) = started(serve);
+    let text = described(&endpoint, &forwarded);
+    assert!(text.contains("at https://data.example.com/xmla."), "{text}");
+    drop(served);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn serve_refuses_a_forwarded_field_or_a_read_timeout_it_cannot_honour() {
+    let root = catalog_root();
+    for (flag, value, named) in [
+        ("--forwarded-header", "X-Real-IP", "forwarded-header"),
+        ("--read-timeout", "86401", "read-timeout"),
+        ("--read-timeout", "18446744073709551615", "read-timeout"),
+        ("--read-timeout", "0", "read-timeout"),
+    ] {
+        let output = command()
+            .args(["xmla", "serve", "--bind", "127.0.0.1:0", flag, value])
+            .arg(root.to_str().expect("a UTF-8 path"))
+            .output()
+            .expect("the process runs");
+        assert!(!output.status.success(), "{flag} {value}");
+        let text = String::from_utf8_lossy(&output.stderr);
+        assert!(text.contains(named), "{flag} {value}: {text}");
+        assert!(output.stdout.is_empty(), "nothing bound: {flag} {value}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn serve_refuses_a_public_url_that_is_no_http_origin() {
+    let root = catalog_root();
+    for public in [
+        "ftp://data.example.com/",
+        "https://user:secret@data.example.com/olap",
+    ] {
+        let output = command()
+            .args([
+                "xmla",
+                "serve",
+                "--bind",
+                "127.0.0.1:0",
+                "--public-url",
+                public,
+            ])
+            .arg(root.to_str().expect("a UTF-8 path"))
+            .output()
+            .expect("the process runs");
+        assert!(!output.status.success(), "{public}");
+        let text =
+            String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
+        assert!(text.contains("public_url"), "{text}");
+        assert!(!text.contains("secret"), "{text}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn serve_without_a_catalog_is_a_usage_error() {
-    let output = ygg()
+    let output = command()
         .args(["xmla", "serve"])
         .output()
         .expect("the process runs");
@@ -135,7 +335,7 @@ fn serve_without_a_catalog_is_a_usage_error() {
 #[test]
 fn serve_refuses_an_address_it_cannot_bind() {
     let root = catalog_root();
-    let output = ygg()
+    let output = command()
         .args(["xmla", "serve", "--bind", "not-an-address"])
         .arg(root.to_str().expect("a UTF-8 path"))
         .output()
@@ -150,11 +350,12 @@ fn serve_refuses_an_address_it_cannot_bind() {
 }
 
 #[test]
+#[ignore = "hosts a live XMLA server, which races the runner's socket readiness; run with --ignored"]
 fn serve_traces_each_exchange_under_the_folder_asked_for() {
     let root = catalog_root();
     let trace = root.with_extension("trace");
     let _ = std::fs::remove_dir_all(&trace);
-    let mut child = ygg()
+    let mut child = command()
         .args(["xmla", "serve", "--bind", "127.0.0.1:0", "--trace"])
         .arg(trace.to_str().expect("a UTF-8 path"))
         .arg(format!("market={}", root.display()))

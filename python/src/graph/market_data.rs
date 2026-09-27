@@ -16,7 +16,7 @@ use yggdryl::graph::{
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
 
-use super::book::{PyBookEvent, PyBookSide, PySnapshotEvent};
+use super::book::{PyBookEvent, PySnapshotEvent};
 use super::operation::{
     PyBookRef, PyExecution, PyExecutionEvent, PyOrder, PyOrderEvent, PyQuote, PyQuoteEvent,
 };
@@ -79,7 +79,6 @@ pub(crate) fn market_data_of(item: &Bound<'_, PyAny>) -> PyResult<CoreMarketData
         PyOrder,
         PyQuote,
         PyExecution,
-        PyBookSide,
         PyOrderEvent,
         PyQuoteEvent,
         PyExecutionEvent,
@@ -109,7 +108,6 @@ pub(crate) fn leaf_object(py: Python<'_>, data: CoreMarketData) -> PyResult<Py<P
         CoreMarketData::Order(leaf) => Py::new(py, PyOrder::from_core(leaf))?.into_any(),
         CoreMarketData::Quote(leaf) => Py::new(py, PyQuote::from_core(leaf))?.into_any(),
         CoreMarketData::Execution(leaf) => Py::new(py, PyExecution::from_core(leaf))?.into_any(),
-        CoreMarketData::BookSide(leaf) => Py::new(py, PyBookSide::from_core(leaf))?.into_any(),
         CoreMarketData::OrderEvent(leaf) => Py::new(py, PyOrderEvent::from_core(leaf))?.into_any(),
         CoreMarketData::QuoteEvent(leaf) => Py::new(py, PyQuoteEvent::from_core(leaf))?.into_any(),
         CoreMarketData::ExecutionEvent(leaf) => {
@@ -151,7 +149,7 @@ pub(crate) fn from_ipc(stream: &[u8]) -> PyResult<CoreMarketData> {
 }
 
 /// One value over every market leaf - an order, a quote or an execution,
-/// undated or dated, a book side, a trade, a book or a snapshot control -
+/// undated or dated, a trade, a book or a snapshot control -
 /// answering the element and market facts its leaf answers. Immutable:
 /// every verb answers a new value.
 #[pyclass(
@@ -181,7 +179,6 @@ macro_rules! market_data_leaves {
             as_order => PyOrder,
             as_quote => PyQuote,
             as_execution => PyExecution,
-            as_book_side => PyBookSide,
             as_order_event => PyOrderEvent,
             as_quote_event => PyQuoteEvent,
             as_execution_event => PyExecutionEvent,
@@ -210,7 +207,7 @@ macro_rules! market_data_leaves {
 }
 
 graph_methods!(PyMarketData, "MarketData"; [
-    element_getters, market_getters, common_verbs, market_data_leaves
+    element_getters, market_getters, kind_getters, common_verbs, market_data_leaves
 ]; {
     /// Wrap any market leaf, through the core's own `From`.
     #[new]
@@ -330,9 +327,10 @@ graph_methods!(PyMarketData, "MarketData"; [
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketData({}, kind={:?}, crosscode={:?})",
+            "MarketData({}, kind={:?}, marketdatakind={}, crosscode={:?})",
             yggdryl::graph::Element::get_curruuid(&self.inner),
             self.inner.kind().as_str(),
+            self.inner.marketdatakind(),
             yggdryl::graph::Element::get_crosscode(&self.inner),
         )
     }
@@ -340,7 +338,7 @@ graph_methods!(PyMarketData, "MarketData"; [
 
 /// A lazy stream of `MarketData` a core stage answers: the rows
 /// `MarketData.from_arrow_reader` decodes, or the operations
-/// `FixCodec.market_operations` sorted out of a capture.
+/// `FixCodec.market_data` sorted out of a capture.
 ///
 /// Behind a lock, as [`crate::fix::PyFixMessages`] is: a cursor a single
 /// caller advances, never contended, and the lock is what makes the boxed

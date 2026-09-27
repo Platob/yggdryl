@@ -66,18 +66,57 @@ fn catalog_root(label: &str) -> PathBuf {
 /// A service over a fresh `catalog_root(label)`, routed at `/xmla` on a
 /// fresh loopback server; the endpoint [`Service::route`] answered.
 fn running(label: &str) -> (Server, Url, Arc<Service>) {
+    running_with(label, ServerOptions::default(), ServiceOptions::new())
+}
+
+/// [`running`] with the server and the service options stated.
+fn running_with(
+    label: &str,
+    options: ServerOptions,
+    service_options: ServiceOptions,
+) -> (Server, Url, Arc<Service>) {
     let root = catalog_root(label);
-    let service = Arc::new(
-        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
-            "market",
-            Holder::folder(&root).expect("holds"),
-        )),
-    );
-    let server = Server::bind("127.0.0.1:0").expect("a loopback port");
+    let service = Arc::new(Service::new(service_options).with_catalog(Catalog::new(
+        "market",
+        Holder::folder(&root).expect("holds"),
+    )));
+    let server = Server::bind_with("127.0.0.1:0", options).expect("a loopback port");
     let endpoint = Arc::clone(&service)
         .route(&server, "/xmla")
         .expect("the path routes");
     (server, endpoint, service)
+}
+
+/// One raw HTTP/1.1 exchange on a fresh connection to `server`: the
+/// request written whole, the answer read whole.
+fn exchange(server: &Server, request: &[u8]) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    let mut stream = TcpStream::connect(server.address()).expect("the server accepts");
+    stream.write_all(request).expect("the request is sent");
+    stream.flush().expect("flushed");
+    let mut reader = BufReader::new(stream);
+    receive(&mut reader)
+}
+
+/// The `URL` `DISCOVER_DATASOURCES` states when posted to `endpoint`.
+fn data_source_url(endpoint: &Url) -> Scalar {
+    let discover = Request::from(Discover::new(RequestType::DiscoverDatasources))
+        .into_bytes()
+        .expect("a request");
+    let response = post(
+        endpoint,
+        discover,
+        "urn:schemas-microsoft-com:xml-analysis:Discover",
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
+    let discovered = Response::from_bytes(&body, None).expect("a response");
+    let rows = discovered.rows().expect("a rowset");
+    assert_eq!(rows.len(), 1);
+    rows.child("URL")
+        .expect("a URL column")
+        .scalar(0)
+        .expect("one row")
 }
 
 /// One SOAP `POST` of `body` to `endpoint` under `SOAPAction: "<action>"`.
@@ -341,6 +380,163 @@ fn an_adomdnet_shaped_request_gets_the_interim_continue_then_a_chunked_answer() 
     );
     let response = Response::from_bytes(&body, None).expect("a response");
     assert_eq!(response.rows().map(yggdryl::Serie::len), Some(1));
+}
+
+#[test]
+fn behind_a_trusted_proxy_the_forwarded_endpoint_is_described_and_a_discover_answers() {
+    let options = ServerOptions::default()
+        .with_trusted_proxies(["127.0.0.1"])
+        .expect("the loopback network")
+        .with_path_prefix("/olap")
+        .expect("a prefix");
+    let (server, _endpoint, _service) = running_with("proxied", options, ServiceOptions::new());
+    let address = server.address();
+    // As the documented nginx setup forwards: the public `Host`, the scheme
+    // overwritten, the client appended; a host the client stated itself is
+    // passed through, and not read.
+    let forwarded = "Host: data.example.com\r\nX-Forwarded-Proto: https\r\nX-Forwarded-Host: evil.example\r\nX-Forwarded-For: 203.0.113.9\r\n";
+    let (status, _, body) = exchange(
+        &server,
+        format!("GET /olap/xmla?probe=1 HTTP/1.1\r\n{forwarded}Connection: close\r\n\r\n")
+            .as_bytes(),
+    );
+    assert_eq!(status, 200);
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("at https://data.example.com/olap/xmla."),
+        "{text}"
+    );
+    let discover = Request::from(Discover::new(RequestType::DbschemaTables))
+        .into_bytes()
+        .expect("a request");
+    let mut request = format!(
+        "POST /olap/xmla HTTP/1.1\r\n{forwarded}Content-Type: text/xml\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n",
+        discover.len()
+    )
+    .into_bytes();
+    request.extend_from_slice(&discover);
+    let (status, headers, body) = exchange(&server, &request);
+    assert_eq!(status, 200);
+    assert!(
+        headers
+            .iter()
+            .any(|(name, value)| name == "x-transport-caps-negotiation-flags"
+                && value == "0,0,0,0,0"),
+        "{headers:?}"
+    );
+    let response = Response::from_bytes(&body, None).expect("a response");
+    assert_eq!(response.rows().map(yggdryl::Serie::len), Some(1));
+
+    // Off the proxy's path the same route answers, described where it was
+    // reached.
+    let (status, _, body) = exchange(
+        &server,
+        format!("GET /xmla HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
+    );
+    assert_eq!(status, 200);
+    assert!(
+        String::from_utf8_lossy(&body).contains(&format!("at http://{address}/xmla.")),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+#[test]
+fn a_post_to_the_path_with_a_trailing_slash_is_served_and_a_get_of_it_is_308() {
+    let (server, endpoint, _service) = running("slashed");
+    let slashed = format!("{endpoint}/");
+    let discover = Request::from(Discover::new(RequestType::DbschemaTables))
+        .into_bytes()
+        .expect("a request");
+    let response = post(
+        &Url::from_str(&slashed).expect("a URL"),
+        discover,
+        "urn:schemas-microsoft-com:xml-analysis:Discover",
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
+    let discovered = Response::from_bytes(&body, None).expect("a response");
+    assert_eq!(discovered.rows().expect("a rowset").len(), 1);
+    assert_eq!(
+        server.requests().last().map(|recorded| recorded.status),
+        Some(Status::OK),
+        "served, never redirected"
+    );
+
+    let address = server.address();
+    let (status, headers, body) = exchange(
+        &server,
+        format!("GET /xmla/?x=1 HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
+            .as_bytes(),
+    );
+    assert_eq!(status, 308);
+    assert!(
+        headers
+            .iter()
+            .any(|(name, value)| name == "location" && value == "../xmla?x=1"),
+        "{headers:?}"
+    );
+    assert!(body.is_empty());
+}
+
+#[test]
+fn discover_datasources_states_the_public_endpoint_when_the_options_name_it() {
+    let public = Url::from_str("https://data.example.com/olap").expect("a URL");
+    let server_options = ServerOptions::default().with_public_url(public);
+    let (server, endpoint, _service) =
+        running_with("public", server_options, ServiceOptions::new());
+    assert_eq!(data_source_url(&endpoint), Scalar::Null, "unstated");
+    assert_eq!(
+        server.public_url_of("/xmla").expect("a URL").to_string(),
+        "https://data.example.com/olap/xmla"
+    );
+
+    let public = Url::from_str("https://data.example.com/olap").expect("a URL");
+    let server_options = ServerOptions::default().with_public_url(public);
+    let service_options = ServiceOptions::new().with_url("https://data.example.com/olap/xmla");
+    let (_server, endpoint, _service) = running_with("stated", server_options, service_options);
+    assert_eq!(
+        data_source_url(&endpoint),
+        Scalar::from("https://data.example.com/olap/xmla")
+    );
+}
+
+#[test]
+fn a_session_posting_through_a_308_reaches_the_route_with_its_body() {
+    let (server, endpoint, _service) = running("redirected");
+    server.respond(
+        Some(Method::Post),
+        "/old",
+        HttpResponse::new(Status::PERMANENT_REDIRECT)
+            .with_header("location", "xmla")
+            .expect("a header"),
+    );
+    let discover = Request::from(
+        Discover::new(RequestType::DbschemaTables)
+            .with_properties(PropertyList::new().with("Catalog", "market")),
+    )
+    .into_bytes()
+    .expect("a request");
+    let old = server.url_of("/old").expect("a URL");
+    let response = post(
+        &old,
+        discover,
+        "urn:schemas-microsoft-com:xml-analysis:Discover",
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(response.url(), &endpoint, "landed on the route");
+    let body = response.bytes().expect("a body");
+    let discovered = Response::from_bytes(&body, None).expect("a response");
+    assert_eq!(discovered.rows().expect("a rowset").len(), 1);
+    let statuses: Vec<u16> = server
+        .requests()
+        .iter()
+        .map(|recorded| recorded.status.code())
+        .collect();
+    assert_eq!(statuses, [308, 200]);
 }
 
 #[test]

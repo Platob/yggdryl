@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol, Side, State, TimeInForce, Unit,
-    decimal,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, Mic, Ric, Sedol, Side, State,
+    TimeInForce, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -217,10 +217,13 @@ pub enum Scalar {
     Mic(Mic),
     /// ISO 10962 classification code.
     Cfi(Cfi),
-    /// FIX's side of a trade.
+    /// FIX's side of a trade: an enum stored as its code.
     Side(Side),
     /// What state one thing is in: a lifecycle-sorted enum, stored as its code.
     State(State),
+    /// What kind of market data an element is: FIX's MsgCat code set, stored
+    /// as its code.
+    MarketDataKind(MarketDataKind),
     /// How long an order stands.
     TimeInForce(TimeInForce),
     /// ISO 6166 securities identification number.
@@ -308,6 +311,8 @@ pub enum Scalar {
     Unit(Unit),
     /// Refinitiv Identification Code.
     Ric(Ric),
+    /// ISO 4217 currency pair.
+    Forex(Forex),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -417,8 +422,12 @@ impl Serialize for Scalar {
                     &crate::string::StringWire { leaf, text },
                 )
             }
-            // A state writes its stored name under the datatype's name.
-            Self::State(state) => tagged(serializer, DataTypeId::State.as_str(), &state.as_str()),
+            // An enum member writes its stored name under the datatype's name.
+            held @ enum_scalars!() => tagged(
+                serializer,
+                held.id().as_str(),
+                &held.enum_name().expect("an enum member names itself"),
+            ),
             // A code writes its text under its own datatype's name.
             code_scalars!() => tagged(
                 serializer,
@@ -703,6 +712,8 @@ impl<'de> Deserialize<'de> for Scalar {
             Bbg(SmolStr),
             Side(SmolStr),
             State(SmolStr),
+            #[serde(rename = "marketdatakind")]
+            MarketDataKind(SmolStr),
             #[serde(rename = "timeinforce")]
             TimeInForce(SmolStr),
             Uuid(SmolStr),
@@ -746,6 +757,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Figi(SmolStr),
             Unit(SmolStr),
             Ric(SmolStr),
+            Forex(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -803,6 +815,9 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Ric(value) => crate::Ric::new(value)
                 .map(Self::Ric)
                 .map_err(D::Error::custom),
+            StructuralWire::Forex(value) => crate::Forex::new(value)
+                .map(Self::Forex)
+                .map_err(D::Error::custom),
             StructuralWire::Figi(value) => crate::Figi::new(value)
                 .map(Self::Figi)
                 .map_err(D::Error::custom),
@@ -819,6 +834,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralWire::State(value) => crate::State::read(&value)
                 .map(Self::State)
+                .map_err(D::Error::custom),
+            StructuralWire::MarketDataKind(value) => crate::MarketDataKind::read(&value)
+                .map(Self::MarketDataKind)
                 .map_err(D::Error::custom),
             StructuralWire::TimeInForce(value) => crate::TimeInForce::new(value)
                 .map(Self::TimeInForce)
@@ -1058,7 +1076,6 @@ impl Ord for Scalar {
             | Self::Ccy(_)
             | Self::Mic(_)
             | Self::Cfi(_)
-            | Self::Side(_)
             | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
@@ -1066,9 +1083,14 @@ impl Ord for Scalar {
             | Self::Bbg(_)
             | Self::Ric(_)
             | Self::Figi(_)
-            | Self::Unit(_) => code_key(self).cmp(&code_key(other)),
-            // A state orders by its code, which is its rank.
+            | Self::Unit(_)
+            | Self::Forex(_) => code_key(self).cmp(&code_key(other)),
+            // An enum member orders by its code: a state's is its rank.
             Self::State(left) => same_kind!(Self::State(right) => left.cmp(right)),
+            Self::MarketDataKind(left) => {
+                same_kind!(Self::MarketDataKind(right) => left.cmp(right))
+            }
+            Self::Side(left) => same_kind!(Self::Side(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1164,7 +1186,6 @@ impl Hash for Scalar {
             | Self::Ccy(_)
             | Self::Mic(_)
             | Self::Cfi(_)
-            | Self::Side(_)
             | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
@@ -1172,8 +1193,11 @@ impl Hash for Scalar {
             | Self::Bbg(_)
             | Self::Ric(_)
             | Self::Figi(_)
-            | Self::Unit(_) => code_key(self).hash(state),
+            | Self::Unit(_)
+            | Self::Forex(_) => code_key(self).hash(state),
             Self::State(value) => value.hash(state),
+            Self::MarketDataKind(value) => value.hash(state),
+            Self::Side(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1252,7 +1276,6 @@ macro_rules! code_scalars {
             | $crate::Scalar::Ccy(_)
             | $crate::Scalar::Mic(_)
             | $crate::Scalar::Cfi(_)
-            | $crate::Scalar::Side(_)
             | $crate::Scalar::TimeInForce(_)
             | $crate::Scalar::Isin(_)
             | $crate::Scalar::Cusip(_)
@@ -1261,6 +1284,16 @@ macro_rules! code_scalars {
             | $crate::Scalar::Ric(_)
             | $crate::Scalar::Figi(_)
             | $crate::Scalar::Unit(_)
+            | $crate::Scalar::Forex(_)
+    };
+}
+
+/// The enum leaves as one pattern: a value stored as the `int32` code of its
+/// member. [`Scalar::enum_code`] and [`Scalar::enum_name`] are the same list
+/// in value position.
+macro_rules! enum_scalars {
+    () => {
+        $crate::Scalar::State(_) | $crate::Scalar::MarketDataKind(_) | $crate::Scalar::Side(_)
     };
 }
 
@@ -1371,7 +1404,6 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Ccy(_)
         | Scalar::Mic(_)
         | Scalar::Cfi(_)
-        | Scalar::Side(_)
         | Scalar::TimeInForce(_)
         | Scalar::Isin(_)
         | Scalar::Cusip(_)
@@ -1379,7 +1411,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Bbg(_)
         | Scalar::Ric(_)
         | Scalar::Figi(_)
-        | Scalar::Unit(_) => 18,
+        | Scalar::Unit(_)
+        | Scalar::Forex(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1394,6 +1427,11 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Variant(_) => 26,
         // A state is its own kind, ordered by the rank its code states.
         Scalar::State(_) => 27,
+        // Every other enum leaf is its own kind too, ordered by its codes.
+        Scalar::MarketDataKind(_) => 28,
+        // A side ranked with the codes while it was one; as an enum it is its
+        // own kind, appended so no other pair moves.
+        Scalar::Side(_) => 29,
     }
 }
 
@@ -1460,12 +1498,14 @@ impl Scalar {
             Self::Cfi(_) => DataTypeId::Cfi,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
+            Self::MarketDataKind(_) => DataTypeId::MarketDataKind,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
             Self::Isin(_) => DataTypeId::Isin,
             Self::Cusip(_) => DataTypeId::Cusip,
             Self::Sedol(_) => DataTypeId::Sedol,
             Self::Bbg(_) => DataTypeId::Bbg,
             Self::Ric(_) => DataTypeId::Ric,
+            Self::Forex(_) => DataTypeId::Forex,
             Self::Figi(_) => DataTypeId::Figi,
             Self::Unit(_) => DataTypeId::Unit,
             Self::Uuid(_) => DataTypeId::Uuid,
@@ -1541,12 +1581,14 @@ impl Scalar {
             Self::Cfi(_) => DataTypeId::Cfi.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
             Self::State(_) => DataTypeId::State.as_str(),
+            Self::MarketDataKind(_) => DataTypeId::MarketDataKind.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
             Self::Isin(_) => DataTypeId::Isin.as_str(),
             Self::Cusip(_) => DataTypeId::Cusip.as_str(),
             Self::Sedol(_) => DataTypeId::Sedol.as_str(),
             Self::Bbg(_) => DataTypeId::Bbg.as_str(),
             Self::Ric(_) => DataTypeId::Ric.as_str(),
+            Self::Forex(_) => DataTypeId::Forex.as_str(),
             Self::Figi(_) => DataTypeId::Figi.as_str(),
             Self::Unit(_) => DataTypeId::Unit.as_str(),
             Self::Uuid(_) => "uuid",
@@ -1828,13 +1870,45 @@ impl Scalar {
     }
 
     /// The text of a string value of any leaf, of a registered code, or the
-    /// stored name of a state.
+    /// stored name of an enum member.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             string_scalars!(value) => Some(value.as_str()),
-            Self::State(state) => Some(state.as_str()),
+            enum_scalars!() => self.enum_name(),
             value => value.code_storage().map(SmolStr::as_str),
         }
+    }
+
+    /// The `int32` code an enum member stores, `None` for every other value.
+    ///
+    /// Each enum leaf is a variant of its own, but every question but
+    /// "which one" has the same answer for all of them; this is where they
+    /// are written out and [`Self::id`] is the other half.
+    #[must_use]
+    pub const fn enum_code(&self) -> Option<i32> {
+        match self {
+            Self::State(held) => Some(held.code()),
+            Self::MarketDataKind(held) => Some(held.code()),
+            Self::Side(held) => Some(held.code()),
+            _ => None,
+        }
+    }
+
+    /// The stored name of an enum member, `None` for every other value.
+    #[must_use]
+    pub const fn enum_name(&self) -> Option<&'static str> {
+        match self {
+            Self::State(held) => Some(held.as_str()),
+            Self::MarketDataKind(held) => Some(held.as_str()),
+            Self::Side(held) => Some(held.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Whether this value is a member of one of the enum leaves.
+    #[must_use]
+    pub const fn is_enum(&self) -> bool {
+        DataTypeKind::Enum.contains(self.id())
     }
 
     /// Borrow the validated storage when this is a registered code.
@@ -1851,13 +1925,13 @@ impl Scalar {
             Self::Ccy(value) => Some(value.storage()),
             Self::Mic(value) => Some(value.storage()),
             Self::Cfi(value) => Some(value.storage()),
-            Self::Side(value) => Some(value.storage()),
             Self::TimeInForce(value) => Some(value.storage()),
             Self::Isin(value) => Some(value.storage()),
             Self::Cusip(value) => Some(value.storage()),
             Self::Sedol(value) => Some(value.storage()),
             Self::Bbg(value) => Some(value.storage()),
             Self::Ric(value) => Some(value.storage()),
+            Self::Forex(value) => Some(value.storage()),
             Self::Figi(value) => Some(value.storage()),
             Self::Unit(value) => Some(value.storage()),
             _ => None,
@@ -2108,6 +2182,7 @@ impl Scalar {
             | Self::Cfi(_)
             | Self::Side(_)
             | Self::State(_)
+            | Self::MarketDataKind(_)
             | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
@@ -2116,6 +2191,7 @@ impl Scalar {
             | Self::Ric(_)
             | Self::Figi(_)
             | Self::Unit(_)
+            | Self::Forex(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)
@@ -2413,6 +2489,7 @@ fn duplicate_key_error(index: usize) -> Error {
 
 pub(crate) use bytes_scalars;
 pub(crate) use code_scalars;
+pub(crate) use enum_scalars;
 pub(crate) use string_scalars;
 pub(crate) use text_leaf_value;
 

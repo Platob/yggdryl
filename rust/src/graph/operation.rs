@@ -153,6 +153,11 @@ impl MdUpdateAction {
 /// reads to place the operation, never an identifier - the entry's own and
 /// referenced identifiers are the operation's `MDENTRYID` and
 /// `MDENTRYREFID` alternate identifiers.
+///
+/// Walk-time facts, not row facts: only the [`Self::scope`] is a column of
+/// the `marketdata` row and feeds the operation's digest; the action, the
+/// position and the price and size the entry stated for itself steer the
+/// book walk and are gone once it has placed the entry.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BookRef {
     /// The update action, where the entry states one.
@@ -180,21 +185,10 @@ impl BookRef {
             || self.entry_size.is_some()
     }
 
+    /// Feeds the one control fact a row states, the scope.
     fn feed(&self, staged: &mut Staged<'_>) {
-        if let Some(action) = self.action {
-            staged.feed("mdupdateaction", action.as_str().as_bytes());
-        }
         if let Some(scope) = &self.scope {
             staged.feed("bookscope", scope.as_bytes());
-        }
-        if let Some(position) = self.position {
-            staged.feed("mdentrypositionno", &position.to_le_bytes());
-        }
-        if let Some(px) = self.entry_px {
-            staged.feed("mdentrypx", &px.units().to_le_bytes());
-        }
-        if let Some(size) = self.entry_size {
-            staged.feed("mdentrysize", &size.units().to_le_bytes());
         }
     }
 }
@@ -302,12 +296,14 @@ impl<K: OperationKind> Element for OperationElement<K> {
     /// an order and as a quote are two entries.
     fn finalize(&mut self) {
         self.data.fill_market();
-        self.data.fill_operation();
         self.data.sync_cross();
         let mut digest = self.data.digest_operation();
         {
             let mut staged = Staged::new(&mut digest);
-            staged.feed("operationkind", K::KIND.as_str().as_bytes());
+            staged.feed(
+                "marketdatakind",
+                &K::KIND.marketdatakind().code().to_le_bytes(),
+            );
         }
         let hashcode = digest.as_u64();
         self.data.set_currhashcode(hashcode);
@@ -455,15 +451,51 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
         self.data.set_metadata(metadata);
     }
+    fn get_fxrates(&self) -> &super::market::FxRates {
+        self.data.get_fxrates()
+    }
+    fn set_fxrates(&mut self, rates: super::market::FxRates) {
+        self.data.set_fxrates(rates);
+    }
+    fn get_bidpx(&self) -> Option<crate::Decimal> {
+        self.data.get_bidpx()
+    }
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
+        self.data.set_bidpx(px);
+    }
+    fn get_bidqty(&self) -> Option<crate::Decimal> {
+        self.data.get_bidqty()
+    }
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
+        self.data.set_bidqty(qty);
+    }
+    fn get_bidccy(&self) -> Option<&crate::Ccy> {
+        self.data.get_bidccy()
+    }
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
+        self.data.set_bidccy(ccy);
+    }
+    fn get_askpx(&self) -> Option<crate::Decimal> {
+        self.data.get_askpx()
+    }
+    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
+        self.data.set_askpx(px);
+    }
+    fn get_askqty(&self) -> Option<crate::Decimal> {
+        self.data.get_askqty()
+    }
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
+        self.data.set_askqty(qty);
+    }
+    fn get_askccy(&self) -> Option<&crate::Ccy> {
+        self.data.get_askccy()
+    }
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
+        self.data.set_askccy(ccy);
+    }
 }
 
 impl<K: OperationKind> Operation for OperationElement<K> {
-    fn get_marketoperationid(&self) -> Option<i32> {
-        self.data.get_marketoperationid()
-    }
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-        self.data.set_marketoperationid(marketoperationid);
-    }
     fn get_tif(&self) -> Option<&crate::TimeInForce> {
         self.data.get_tif()
     }
@@ -476,30 +508,6 @@ impl<K: OperationKind> Operation for OperationElement<K> {
     fn set_tradable(&mut self, tradable: Option<bool>) {
         self.data.set_tradable(tradable);
     }
-    fn get_accountids(&self) -> &crate::idmap::IdMap {
-        self.data.get_accountids()
-    }
-    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_accountids(ids)
-    }
-    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_accountid(key, value)
-    }
-    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_accountid(key)
-    }
-    fn get_userids(&self) -> &crate::idmap::IdMap {
-        self.data.get_userids()
-    }
-    fn set_userids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_userids(ids)
-    }
-    fn insert_userid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_userid(key, value)
-    }
-    fn remove_userid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_userid(key)
-    }
     fn get_altids(&self) -> &crate::idmap::IdMap {
         self.data.get_altids()
     }
@@ -511,18 +519,6 @@ impl<K: OperationKind> Operation for OperationElement<K> {
     }
     fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
         self.data.remove_altid(key)
-    }
-    fn get_bid(&self) -> Option<&super::market::Lane> {
-        self.data.get_bid()
-    }
-    fn set_bid(&mut self, lane: Option<super::market::Lane>) {
-        self.data.set_bid(lane);
-    }
-    fn get_ask(&self) -> Option<&super::market::Lane> {
-        self.data.get_ask()
-    }
-    fn set_ask(&mut self, lane: Option<super::market::Lane>) {
-        self.data.set_ask(lane);
     }
 }
 
@@ -717,16 +713,19 @@ impl<K: OperationKind> Element for OperationEvent<K> {
         self.data.is_after(&other.data)
     }
 
-    /// The operation's facts, its kind and its book control digest to the
+    /// The operation's facts, its kind and its book scope digest to the
     /// code: the same entry as an order and as a quote are two operations.
+    /// The rest of the book control is walk-time and feeds nothing.
     fn finalize(&mut self) {
         self.data.fill_market();
-        self.data.fill_operation();
         self.data.sync_cross();
         let mut digest = self.data.digest_operation_event();
         {
             let mut staged = Staged::new(&mut digest);
-            staged.feed("operationkind", K::KIND.as_str().as_bytes());
+            staged.feed(
+                "marketdatakind",
+                &K::KIND.marketdatakind().code().to_le_bytes(),
+            );
             if let Some(book) = &self.book {
                 book.feed(&mut staged);
             }
@@ -952,15 +951,51 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
         self.data.set_metadata(metadata);
     }
+    fn get_fxrates(&self) -> &super::market::FxRates {
+        self.data.get_fxrates()
+    }
+    fn set_fxrates(&mut self, rates: super::market::FxRates) {
+        self.data.set_fxrates(rates);
+    }
+    fn get_bidpx(&self) -> Option<crate::Decimal> {
+        self.data.get_bidpx()
+    }
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
+        self.data.set_bidpx(px);
+    }
+    fn get_bidqty(&self) -> Option<crate::Decimal> {
+        self.data.get_bidqty()
+    }
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
+        self.data.set_bidqty(qty);
+    }
+    fn get_bidccy(&self) -> Option<&crate::Ccy> {
+        self.data.get_bidccy()
+    }
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
+        self.data.set_bidccy(ccy);
+    }
+    fn get_askpx(&self) -> Option<crate::Decimal> {
+        self.data.get_askpx()
+    }
+    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
+        self.data.set_askpx(px);
+    }
+    fn get_askqty(&self) -> Option<crate::Decimal> {
+        self.data.get_askqty()
+    }
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
+        self.data.set_askqty(qty);
+    }
+    fn get_askccy(&self) -> Option<&crate::Ccy> {
+        self.data.get_askccy()
+    }
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
+        self.data.set_askccy(ccy);
+    }
 }
 
 impl<K: OperationKind> Operation for OperationEvent<K> {
-    fn get_marketoperationid(&self) -> Option<i32> {
-        self.data.get_marketoperationid()
-    }
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-        self.data.set_marketoperationid(marketoperationid);
-    }
     fn get_tif(&self) -> Option<&crate::TimeInForce> {
         self.data.get_tif()
     }
@@ -973,30 +1008,6 @@ impl<K: OperationKind> Operation for OperationEvent<K> {
     fn set_tradable(&mut self, tradable: Option<bool>) {
         self.data.set_tradable(tradable);
     }
-    fn get_accountids(&self) -> &crate::idmap::IdMap {
-        self.data.get_accountids()
-    }
-    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_accountids(ids)
-    }
-    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_accountid(key, value)
-    }
-    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_accountid(key)
-    }
-    fn get_userids(&self) -> &crate::idmap::IdMap {
-        self.data.get_userids()
-    }
-    fn set_userids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_userids(ids)
-    }
-    fn insert_userid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_userid(key, value)
-    }
-    fn remove_userid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_userid(key)
-    }
     fn get_altids(&self) -> &crate::idmap::IdMap {
         self.data.get_altids()
     }
@@ -1008,18 +1019,6 @@ impl<K: OperationKind> Operation for OperationEvent<K> {
     }
     fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
         self.data.remove_altid(key)
-    }
-    fn get_bid(&self) -> Option<&super::market::Lane> {
-        self.data.get_bid()
-    }
-    fn set_bid(&mut self, lane: Option<super::market::Lane>) {
-        self.data.set_bid(lane);
-    }
-    fn get_ask(&self) -> Option<&super::market::Lane> {
-        self.data.get_ask()
-    }
-    fn set_ask(&mut self, lane: Option<super::market::Lane>) {
-        self.data.set_ask(lane);
     }
 }
 

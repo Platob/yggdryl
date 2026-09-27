@@ -45,7 +45,7 @@ pub struct FixDirection {
 /// One identifier-map key a FIX field's value states.
 #[napi(object)]
 pub struct FixIdSource {
-    /// The map it lands in: `accountids`, `userids` or `altids`.
+    /// The map it lands in: `altids`, the one identifier map.
     pub map: String,
     /// The upper-case key it lands under.
     pub key: String,
@@ -2183,46 +2183,6 @@ impl JsProtocolField {
             .as_fix_mut()
             .set_idmap(&sources)
             .map_err(napi_error)
-    }
-
-    /// How this field's value is derived from the message where the message
-    /// states none: one expression over the message's fields, in its
-    /// canonical text, or `null` for a field nothing derives.
-    #[napi(getter)]
-    pub fn derivation(&self, env: Env) -> Result<Option<String>> {
-        self.require_fix(env, "derivation")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
-            .derivation()
-            .map_err(napi_error)?
-            .map(|term| term.to_string()))
-    }
-
-    /// Record the derivation; `null` removes the property, and a text that
-    /// is not a term, or one past the grammar's budget, throws leaving the
-    /// field unchanged.
-    #[napi(setter)]
-    pub fn set_derivation(&mut self, env: Env, value: Option<String>) -> Result<()> {
-        self.require_fix(env, "derivation")?;
-        match value {
-            Some(text) => {
-                let term: yggdryl::expression::Term = text.parse().map_err(napi_error)?;
-                self.field
-                    .inner
-                    .as_fix_mut()
-                    .set_derivation(&term)
-                    .map_err(napi_error)
-            }
-            None => self
-                .field
-                .inner
-                .as_fix_mut()
-                .remove_derivation()
-                .map(|_| ())
-                .map_err(napi_error),
-        }
     }
 
     /// The specification's own wording for this field.

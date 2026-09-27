@@ -12,12 +12,9 @@ use std::str::Split;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::FixId;
-use super::constants::MSGCATEGORIES;
 use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::idmap::{FixIdSource, FixIdSources};
-use super::replacements::{FixReplacement, FixReplacements};
-use crate::expression::Term;
 use crate::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result};
 
@@ -52,16 +49,11 @@ const NULLS: &str = "nulls";
 /// The name of the FIX code set this field's values are drawn from; the
 /// dictionary holds its members.
 const CODESET: &str = "codeset";
-/// How a value of this field is restated at a later version.
-const REPLACEMENTS: &str = "replacements";
 /// The rules naming a code of this field's set from the prose in front of a
 /// payload; tag 385's.
 const DIRECTIONS: &str = "directions";
 /// The identifier-map keys this field's value states.
 const IDMAP: &str = "idmap";
-/// How this field's value is derived from the message where the message
-/// states none: the canonical text of one term over the message's fields.
-const DERIVATION: &str = "derivation";
 const COUNTER: &str = "counter";
 /// Whether this field travels from one message of a chain to the next.
 const TRANSIENT: &str = "transient";
@@ -71,8 +63,10 @@ const FIELD_REF: &str = "field";
 const GROUP: &str = "group";
 const MSGTYPE: &str = "msgtype";
 const MSGCAT: &str = "msgcat";
+/// Whether a `FIX:msgcat` names a category: a member of the one owner of
+/// the set, [`crate::MarketDataKind`].
 pub(super) fn is_msgcat(value: &str) -> bool {
-    MSGCATEGORIES.contains(&value)
+    crate::MarketDataKind::from_name(value).is_some()
 }
 /// What separates the elements of a comma-separated property: the
 /// memberships, the identifiers and the null spellings, whose elements can
@@ -106,9 +100,9 @@ impl<'field> FixField<'field> {
 
     /// The version at which the specification deprecated this field, where
     /// it did: the dictionary keeps the field so an old message still
-    /// resolves, and a reader restates it under what replaced it - see
-    /// [`replacements`](Self::replacements) - and keeps no value of its own
-    /// for it.
+    /// resolves, and a reader restates it under what replaced it - the
+    /// crate's own retirement table, never a rule on the field - and keeps
+    /// no value of its own for it.
     pub fn deprecated(&self) -> Option<&'field str> {
         self.get(DEPRECATED)
     }
@@ -399,37 +393,6 @@ impl<'field> FixField<'field> {
         self.get(CODESET)
     }
 
-    /// Walks how a value of this field is restated at a later version, in
-    /// document order.
-    ///
-    /// The first entry whose conditions a held value meets is the one that
-    /// answers, which is why the order is the document's and not sorted. The
-    /// iterator is lazy and allocates nothing: every spelling is a slice of
-    /// the stored document, which the field already owns. An absent property
-    /// yields nothing, which is what a field the specification never
-    /// replaced answers.
-    ///
-    /// ```
-    /// use yggdryl::fix::FixReplacement;
-    /// use yggdryl::{DataType, Plan};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut max_floor = DataType::Float64.nullable_field("maxfloor");
-    /// max_floor.as_fix_mut().set_tag(111)?;
-    /// // MaxFloor(111) was replaced by DisplayQty(1138), which takes its value.
-    /// let plan: Plan = "select maxfloor as displayqty".parse()?;
-    /// max_floor.as_fix_mut().set_replacements(&[FixReplacement::new(plan.clone())])?;
-    ///
-    /// let entry = max_floor.as_fix().replacements().next().expect("one rule")?;
-    /// assert_eq!(entry.parse_plan()?, plan);
-    /// assert_eq!(entry.doc(), None, "no wording stated");
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn replacements(&self) -> FixReplacements<'field> {
-        FixReplacements::over(self.get(REPLACEMENTS))
-    }
-
     /// Walks the rules naming a code of this field's set from the prose in
     /// front of a payload, in document order.
     ///
@@ -490,62 +453,11 @@ impl<'field> FixField<'field> {
         FixIdSources::over(self.get(IDMAP))
     }
 
-    /// The term this field's value is derived from the message with, where
-    /// the message states none.
-    ///
-    /// One term in the crate's expression grammar over the message's fields,
-    /// spelled by their canonical folded names - `orderqty`, `cumqty`,
-    /// `secaltids` - and evaluated by every
-    /// [parse](crate::FixCodec::parse_line): a field carrying one is a
-    /// column the parse fills where the message left it unsaid. `None` is a
-    /// field nothing derives.
-    ///
-    /// ```
-    /// use yggdryl::DataType;
-    /// use yggdryl::expression::Term;
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut leaves = DataType::Float64.nullable_field("leavesqty");
-    /// leaves.as_fix_mut().set_tag(151)?;
-    /// leaves.as_fix_mut().set_derivation(&"orderqty - cumqty".parse::<Term>()?)?;
-    ///
-    /// let term = leaves.as_fix().derivation()?.expect("a derivation");
-    /// assert_eq!(term.to_string(), "orderqty - cumqty");
-    /// assert_eq!(term.columns(), ["orderqty", "cumqty"]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidMetadataValue`] naming `FIX:derivation` when
-    /// the stored text is not a term, or one past the depth or node budget.
-    pub fn derivation(&self) -> Result<Option<Term>> {
-        let Some(stored) = self.get(DERIVATION) else {
-            return Ok(None);
-        };
-        let term: Term = stored
-            .parse()
-            .map_err(|error: Error| self.rejected(DERIVATION, format_smolstr!("{error}")))?;
-        term.check_budget()
-            .map_err(|error| self.rejected(DERIVATION, format_smolstr!("{error}")))?;
-        Ok(Some(term))
-    }
-
     /// Name the full key a stored value failed under, and what it should be.
     fn invalid(&self, name: &str, expected: &str, actual: &str) -> Error {
         Error::InvalidMetadataValue {
             key: SmolStr::new(self.key(name)),
             reason: format_smolstr!("expected {expected}, got {actual:?}"),
-        }
-    }
-
-    /// Name the full key a stored value was refused under, with the reader's
-    /// own reason.
-    fn rejected(&self, name: &str, reason: SmolStr) -> Error {
-        Error::InvalidMetadataValue {
-            key: SmolStr::new(self.key(name)),
-            reason,
         }
     }
 }
@@ -952,90 +864,6 @@ impl FixFieldMut<'_> {
         self.remove(CODESET)
     }
 
-    /// Records how a value of this field is restated at a later version.
-    ///
-    /// Entries are rendered canonically in the order given, because the
-    /// order is what the document says: the first entry whose conditions a
-    /// held value meets answers, so a catch-all entry comes last.
-    ///
-    /// An empty slice removes the property, exactly as an empty tag or alias
-    /// list removes its own.
-    ///
-    /// ```
-    /// use yggdryl::fix::FixReplacement;
-    /// use yggdryl::{DataType, Plan};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut rule80a = DataType::utf8().nullable_field("rule80a");
-    /// rule80a.as_fix_mut().set_tag(47)?;
-    /// // Rule80A(47) `A` is an agency order: OrderCapacity(528) takes `A`.
-    /// let plan: Plan = "select 'A' as ordercapacity where rule80a = 'A'".parse()?;
-    /// rule80a.as_fix_mut().set_replacements(&[
-    ///     FixReplacement::new(plan).with_doc("Agency single order"),
-    /// ])?;
-    /// assert_eq!(
-    ///     rule80a.get_metadata("FIX:replacements"),
-    ///     Some(concat!(
-    ///         r#"[{"plan":"select 'A' as ordercapacity where rule80a = 'A'","#,
-    ///         r#""doc":"Agency single order"}]"#,
-    ///     ))
-    /// );
-    ///
-    /// rule80a.as_fix_mut().set_replacements(&[])?;
-    /// assert_eq!(rule80a.get_metadata("FIX:replacements"), None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] when an entry's plan is past the expression
-    /// budget or fills no named column; and the property write's refusal
-    /// otherwise. Either leaves the field unchanged.
-    pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()> {
-        if entries.is_empty() {
-            self.remove(REPLACEMENTS);
-            return Ok(());
-        }
-        let rendered = FixReplacements::render(entries)?;
-        self.store(REPLACEMENTS, rendered)
-    }
-
-    /// Removes the replacement rules, answering what they held.
-    ///
-    /// ```
-    /// use yggdryl::fix::FixReplacement;
-    /// use yggdryl::{DataType, Plan};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut odd_lot = DataType::Boolean.nullable_field("oddlot");
-    /// odd_lot.as_fix_mut().set_tag(575)?;
-    /// // OddLot(575) `Y` became LotType(1093) `1`, an odd lot.
-    /// let plan: Plan = "select '1' as lottype where oddlot = true".parse()?;
-    /// let rules = [FixReplacement::new(plan)];
-    /// odd_lot.as_fix_mut().set_replacements(&rules)?;
-    ///
-    /// assert_eq!(odd_lot.as_fix_mut().remove_replacements()?, Some(rules.to_vec()));
-    /// assert_eq!(odd_lot.as_fix_mut().remove_replacements()?, None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] naming the byte position when the stored
-    /// document does not parse, having already removed it: a document a
-    /// reader refuses is one a caller asked to take away.
-    pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>> {
-        let Some(stored) = self.remove(REPLACEMENTS) else {
-            return Ok(None);
-        };
-        FixReplacements::over(Some(stored.as_str()))
-            .map(|entry| entry.map(FixReplacement::from))
-            .collect::<Result<Vec<_>>>()
-            .map(Some)
-    }
-
     /// Records the rules naming a code of this field's set from the prose in
     /// front of a payload.
     ///
@@ -1158,70 +986,6 @@ impl FixFieldMut<'_> {
             .map(Some)
     }
 
-    /// Records the term this field's value is derived from the message with.
-    ///
-    /// The term is stored as its canonical text, so what is read back is
-    /// what was written whatever spelling the caller parsed it from, and a
-    /// registry validates it exactly as this does when a field carrying one
-    /// is inserted, updated or loaded.
-    ///
-    /// ```
-    /// use yggdryl::DataType;
-    /// use yggdryl::expression::Term;
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut gross = DataType::Float64.nullable_field("grosstradeamt");
-    /// gross.as_fix_mut().set_tag(381)?;
-    /// gross.as_fix_mut().set_derivation(&"lastqty*lastpx".parse::<Term>()?)?;
-    /// assert_eq!(gross.get_metadata("FIX:derivation"), Some("lastqty * lastpx"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] when the term is past the depth or node
-    /// budget, and the property write's refusal otherwise; either leaves the
-    /// field unchanged.
-    pub fn set_derivation(&mut self, term: &Term) -> Result<()> {
-        term.check_budget()?;
-        self.store(DERIVATION, term.to_string())
-    }
-
-    /// Removes the derivation, answering the term it spelled.
-    ///
-    /// ```
-    /// use yggdryl::DataType;
-    /// use yggdryl::expression::Term;
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut gross = DataType::Float64.nullable_field("grosstradeamt");
-    /// gross.as_fix_mut().set_tag(381)?;
-    /// let term: Term = "lastqty * lastpx".parse()?;
-    /// gross.as_fix_mut().set_derivation(&term)?;
-    ///
-    /// assert_eq!(gross.as_fix_mut().remove_derivation()?, Some(term));
-    /// assert_eq!(gross.as_fix_mut().remove_derivation()?, None);
-    /// assert_eq!(gross.get_metadata("FIX:derivation"), None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidMetadataValue`] when the stored text does not
-    /// parse, having already removed it: a text a reader refuses is one a
-    /// caller asked to take away.
-    pub fn remove_derivation(&mut self) -> Result<Option<Term>> {
-        let Some(stored) = self.remove(DERIVATION) else {
-            return Ok(None);
-        };
-        stored
-            .parse()
-            .map(Some)
-            .map_err(|error: Error| self.rejected(DERIVATION, format_smolstr!("{error}")))
-    }
-
     /// Folds another definition of the same field into this one.
     ///
     /// This field is the incoming definition and wins every shared key; the
@@ -1238,9 +1002,7 @@ impl FixFieldMut<'_> {
     /// | `FIX:names` | union, folded, incoming first |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
     /// | `FIX:codeset` | the stored set's name is kept; a stored field naming none takes the incoming name |
-    /// | `FIX:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
     /// | `FIX:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
-    /// | `FIX:derivation` | incoming wins whole: a derivation is one term, and a field derives one way |
     /// | `FIX:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
     /// | any other `FIX:` key | incoming wins; stored keeps what only it has |
     ///
@@ -1441,16 +1203,14 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 12] = [
+const MERGED_KEYS: [&str; 10] = [
     TAG,
     BRANCHES,
     TAGS,
     NAMES,
     NULLS,
     CODESET,
-    REPLACEMENTS,
     DIRECTIONS,
-    DERIVATION,
     IDENTIFIERS,
     MSGCAT,
     DEPRECATED,

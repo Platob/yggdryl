@@ -1,7 +1,7 @@
-# `ygg`: the yggdryl command line, one namespace per subcommand.
+# `yggdryl`: the command line, one namespace per subcommand.
 #
-# `ygg fix` is everything a desk does to a FIX dictionary, from a shell, and
-# `ygg xmla serve` puts folders of record media on the wire as XML for
+# `yggdryl fix` is everything a desk does to a FIX dictionary, from a shell, and
+# `yggdryl xmla serve` puts folders of record media on the wire as XML for
 # Analysis catalogs. Its own member rather than a binary inside the core, so a
 # library consumer carries none of what a terminal needs - argument parsing,
 # raw mode, colour - and the core's dependency set stays exactly what a schema
@@ -16,12 +16,15 @@ repository.workspace = true
 description = "The yggdryl command line: manage a FIX dictionary and serve XML for Analysis catalogs from a terminal."
 
 [[bin]]
-name = "ygg"
+name = "yggdryl"
 path = "src/main.rs"
+# The core library is `yggdryl` too, so documenting this target would write
+# over the core's rustdoc (cargo#6313); its `--help` is its documentation.
+doc = false
 
 [dependencies]
 # The default core plus `http`: a tool that reads a dictionary wants the same
-# core a consumer has, and `ygg xmla serve` answers on the core's HTTP server.
+# core a consumer has, and `yggdryl xmla serve` answers on the core's HTTP server.
 yggdryl = { path = "../rust", features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
@@ -33,7 +36,7 @@ crossterm = { version = "0.29", default-features = false, features = ["events", 
 shlex = "2.0"
 
 [features]
-# `ygg xmla serve` over an Iceberg folder needs the core's table reader; without
+# `yggdryl xmla serve` over an Iceberg folder needs the core's table reader; without
 # it an Iceberg table is listed and refused on read, by name. The staged binary
 # (`scripts/stage_cli.py`) enables it; the default build stays the schema-only core.
 iceberg = ["yggdryl/iceberg"]

@@ -313,11 +313,11 @@ jobs:
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
       # maturin copies python/wheel-data/ into the wheel and builds no binary
-      # of its own, so `ygg` is staged first - and staged where the wheel is
+      # of its own, so `yggdryl` is staged first - and staged where the wheel is
       # built. Off Linux that is the runner; on Linux it is inside the
       # manylinux or musllinux container, because a binary linked against the
       # runner's own glibc would defeat the tag the wheel carries.
-      - name: Stage the ygg command
+      - name: Stage the yggdryl command
         if: runner.os != 'Linux'
         run: python scripts/stage_cli.py
       - name: Build wheels
@@ -352,9 +352,13 @@ jobs:
               scripts = [
                   name
                   for name in zipfile.ZipFile(wheel).namelist()
-                  if ".data/scripts/ygg" in name
+                  if ".data/scripts/" in name
               ]
-              assert len(scripts) == 1, f"{wheel} carries {scripts}"
+              # Exactly one script, under the command's exact name (`.exe` on
+              # Windows) - never one whose name only starts the same way.
+              assert len(scripts) == 1 and scripts[0].endswith(
+                  (".data/scripts/yggdryl", ".data/scripts/yggdryl.exe")
+              ), f"{wheel} carries {scripts}"
               print(f"{wheel} carries {scripts[0]}")
           EOF
       - name: Smoke test the wheel
@@ -459,17 +463,6 @@ jobs:
           # setting changes the code the compiler emits.
           CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
           CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
-      # The web components' tests drive a headless Chromium. Every other
-      # runner image ships a browser; the Linux arm64 image ships none, so it
-      # takes Playwright's build of Chromium and the tests are told where it is.
-      - name: Install Chromium for the browser tests
-        if: matrix.label == 'linux-arm64-gnu'
-        shell: bash
-        run: |
-          npx --yes playwright@1.63.0 install --with-deps chromium
-          chrome=$(find "$HOME/.cache/ms-playwright" -path '*/chromium-*' -type f -name chrome | head -n 1)
-          test -x "$chrome"
-          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
       - name: Smoke tests against the release binary
         run: npm test --prefix node
       # A crash names its file and never its test: the runner reads each file

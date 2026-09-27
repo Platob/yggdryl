@@ -121,7 +121,7 @@ from .codes import (
     MicField as MicField,
     RicField as RicField,
     SedolField as SedolField,
-    SideField as SideField,
+    ForexField as ForexField,
     TimeInForceField as TimeInForceField,
     UnitField as UnitField,
     bbg as bbg,
@@ -134,7 +134,7 @@ from .codes import (
     mic as mic,
     ric as ric,
     sedol as sedol,
-    side as side,
+    forex as forex,
     timeinforce as timeinforce,
     unit as unit,
 )
@@ -302,6 +302,16 @@ from .state import (
     State as State,
     StateField as StateField,
     state as state,
+)
+from .marketdatakind import (
+    MarketDataKind as MarketDataKind,
+    MarketDataKindField as MarketDataKindField,
+    marketdatakind as marketdatakind,
+)
+from .side import (
+    Side as Side,
+    SideField as SideField,
+    side as side,
 )
 from .version import (
     Version as Version,

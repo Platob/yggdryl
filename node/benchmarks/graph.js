@@ -57,7 +57,6 @@ function orderEvent(facts = {}) {
 const ORDER_EVENT = orderEvent()
 const ORDER = ORDER_EVENT.intoElement()
 const DATA = new graph.MarketData(ORDER_EVENT)
-const LANE = new graph.Lane({ price: '100.25', currency: 'USD', quantity: '10' })
 
 // One order per price tick, all on the bid side of one symbol at one
 // instant - the atomic group a book folds when it replays a session's orders.
@@ -74,15 +73,15 @@ function count(iterable) {
 benchmark('order event from an object', () => orderEvent())
 benchmark('order from an object', () => new graph.Order({ crosscode: 'G-1', side: 'BUY', price: '100.25' }))
 benchmark('order event read price', () => ORDER_EVENT.price)
-benchmark('order event read bid lane', () => ORDER_EVENT.bid)
+benchmark('order event read isincode', () => ORDER_EVENT.isincode)
+benchmark('order event read fxrates', () => ORDER_EVENT.fxrates)
+benchmark('order event read marketdatakind', () => ORDER_EVENT.marketdatakind)
 benchmark('order event read altids map', () => ORDER_EVENT.altids)
 benchmark('order at', () => ORDER.at(CLOCK))
 benchmark('order event into element', () => ORDER_EVENT.intoElement())
 benchmark('market data wrap', () => new graph.MarketData(ORDER_EVENT))
 benchmark('market data into leaf', () => DATA.intoLeaf())
 benchmark('order event toJSON', () => ORDER_EVENT.toJSON())
-benchmark('lane from an object', () => new graph.Lane({ price: '100.25', currency: 'USD', quantity: '10' }))
-benchmark('lane read price', () => LANE.price)
 benchmarkStreams(`book fold/${FOLD_OPERATION_COUNT}`, () =>
   new graph.BookEvent(CLOCK, 'ACME').withOperations(FOLD_OPERATIONS))
 benchmarkStreams(`book iterator drain/${FOLD_OPERATION_COUNT}`, () =>
@@ -96,12 +95,12 @@ benchmarkStreams(`operations fromArrowReader/${FOLD_OPERATION_COUNT}`, () =>
 benchmarkStreams('book arrowReader', () => graph.MarketData.arrowReader([FOLD_BOOK]).intoIpc())
 benchmarkStreams('book fromArrowReader', () =>
   count(graph.MarketData.fromArrowReader(graph.MarketData.arrowReader([FOLD_BOOK]))))
-// The book readings over the folded side - one limit per tick - and the named
-// views: a plan built from its spelling, and the orders view over the
+// The book readings over the folded bid side - one limit per tick - and the
+// named views: a plan built from its spelling, and the orders view over the
 // operations' own stream.
-const FOLD_SIDE = FOLD_BOOK.bid
-benchmarkStreams(`book side limits/${FOLD_OPERATION_COUNT}`, () => FOLD_SIDE.limits)
-benchmark('book side depth/10', () => FOLD_SIDE.depth(10))
+benchmarkStreams(`book bid limits/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.limits('BUY'))
+benchmark('book bid depth/10', () => FOLD_BOOK.depth('BUY', 10))
+benchmarkStreams(`book alive/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.alive())
 benchmark('book spread', () => FOLD_BOOK.spread)
 benchmark('book imbalance/10', () => FOLD_BOOK.imbalance(10))
 benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['ISIN'] as isin"]))

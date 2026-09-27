@@ -327,10 +327,16 @@ mod value {
                 Scalar::from(b"hi".to_vec())
             );
             // A code spells its characters' bytes, which is the payload its text
-            // column stores; so does any other text, and nothing more.
-            let code = DataType::Side.scalar("BUY").unwrap();
+            // column stores; so does any other text, and an enum member the
+            // bytes of its stored name, and nothing more.
+            let code = DataType::Ccy.scalar("USD").unwrap();
             assert_eq!(
                 DataType::binary().scalar(code).unwrap().as_bytes(),
+                Some(b"USD".as_slice())
+            );
+            let member = DataType::Side.scalar("1").unwrap();
+            assert_eq!(
+                DataType::binary().scalar(member).unwrap().as_bytes(),
                 Some(b"BUY".as_slice())
             );
             let text = dtype("fixed_ascii(4)").scalar("US").unwrap();

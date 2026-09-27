@@ -4365,7 +4365,7 @@ NativeFixMsg.prototype.set = function set(key, value) {
 // widen, because a line is a decoded row and not a value - and a batch source
 // as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
 // batch, IPC bytes. That widening lives here, beside the conversions it uses.
-for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'marketOperationsArrowReader', 'messages']) {
+for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'marketDataArrowReader', 'messages']) {
   const native = binding.FixCodec.prototype[name]
   binding.FixCodec.prototype[name] = {
     [name](source) {
@@ -4421,7 +4421,7 @@ function asLine(value) {
     [binding.FixCodec, 'parseLines', '_parseLinesNative', toBytes, 'lines'],
     [binding.FixCodec, 'parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
     [binding.FixCodec, 'lifecycle', '_lifecycleNative', asMessage, 'messages'],
-    [binding.FixCodec, 'marketOperations', '_marketOperationsNative', asMessage, 'messages'],
+    [binding.FixCodec, 'marketData', '_marketDataNative', asMessage, 'messages'],
   ]
   for (const [owner, name, hidden, read, what] of streams) {
     const native = owner.prototype[hidden]
@@ -4445,8 +4445,8 @@ function asLine(value) {
   }
   const nativeBookArrowReader = binding.FixCodec.prototype._bookArrowReaderNative
   delete binding.FixCodec.prototype._bookArrowReaderNative
-  binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(messages, snapshotMillis = 0, global = false) {
-    return nativeBookArrowReader.call(this, pullOf(messages, asMessage, 'messages'), snapshotMillis, global)
+  binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(messages, snapshotMillis = 0) {
+    return nativeBookArrowReader.call(this, pullOf(messages, asMessage, 'messages'), snapshotMillis)
   }
   const nativeMarketArrowReader = binding.FixCodec.prototype._marketArrowReaderNative
   delete binding.FixCodec.prototype._marketArrowReaderNative
@@ -4546,12 +4546,11 @@ for (const name of [
 
 // `yggdryl::graph` is a module in the core, so it is one here too: the typed
 // market leaves - an order, a quote or an execution, undated or dated, a
-// trade, a book, its sides and its snapshot control - `MarketData`, the one
+// trade, a book and its snapshot control - `MarketData`, the one
 // value over them, and the two walks share one namespace rather than a
 // dozen top-level classes. Nothing here resolves, folds, merges or validates
 // a fact: a named fact is resolved, checked and stated natively by its
 // column, and every other door redirects to the native one named beside it.
-const NativeLane = binding.Lane
 const NativeBookRef = binding.BookRef
 const NativeOrder = binding.Order
 const NativeQuote = binding.Quote
@@ -4560,8 +4559,6 @@ const NativeOrderEvent = binding.OrderEvent
 const NativeQuoteEvent = binding.QuoteEvent
 const NativeExecutionEvent = binding.ExecutionEvent
 const NativeTradeEvent = binding.TradeEvent
-const NativeSnapshotPartition = binding.SnapshotPartition
-const NativeBookSide = binding.BookSide
 const NativeBookEvent = binding.BookEvent
 const NativeSnapshotEvent = binding.SnapshotEvent
 const NativeMarketData = binding.MarketData
@@ -4569,14 +4566,13 @@ const NativeMarketDataRowIterator = binding.MarketDataRowIterator
 const NativeBookIterator = binding.BookIterator
 const NativeEventIterator = binding.EventIterator
 
-// Every class a market stream item may be: `MarketData` or one of its ten
+// Every class a market stream item may be: `MarketData` or one of its nine
 // leaves, the union the native doors read.
 const MARKET_ITEMS = [
   NativeMarketData,
   NativeOrder,
   NativeQuote,
   NativeExecution,
-  NativeBookSide,
   NativeOrderEvent,
   NativeQuoteEvent,
   NativeExecutionEvent,
@@ -4590,7 +4586,6 @@ const MARKET_ITEMS = [
 const GRAPH_VALUES = [
   ...MARKET_ITEMS,
   NativeBookRef,
-  NativeSnapshotPartition,
   NativeMarketDataRowIterator,
   NativeBookIterator,
   NativeEventIterator,
@@ -4607,11 +4602,8 @@ function asMarketItem(value) {
 // The named facts an operation leaf is built from, widened once for the
 // native constructor: a fact given as `undefined` is not given and is
 // dropped, so the leaf states nothing of it, while `null` crosses and
-// clears; a `Lane` under `bid`/`ask` crosses as its own six slots - the
-// generic `Scalar.from` walk reads only own enumerable properties, which a
-// native class has none of; and `book` is not a column but the leaf's book
-// control, so it is lifted out into its own argument. A `Scalar` record
-// crosses untouched.
+// clears; and `book` is not a column but the leaf's book control, so it is
+// lifted out into its own argument. A `Scalar` record crosses untouched.
 function operationFacts(owner, facts, dated) {
   if (facts === undefined || facts === null) return [undefined, undefined]
   if (facts instanceof Scalar) return [facts, undefined]
@@ -4630,10 +4622,6 @@ function operationFacts(owner, facts, dated) {
       book = value ?? undefined
       continue
     }
-    if (value instanceof NativeLane) {
-      stated[key] = value.toJSON()
-      continue
-    }
     // Any other graph value is no column's value: refused naming the key,
     // as the native door names an unknown fact, rather than walked as a
     // plain object by `Scalar.from`.
@@ -4648,7 +4636,7 @@ function operationFacts(owner, facts, dated) {
   return [asScalar(stated), book]
 }
 
-// The named slots a `Lane` or a `BookRef` is built from, widened once for
+// The named slots a `BookRef` is built from, widened once for
 // the native constructor through the same door the facts take: a slot
 // given as `undefined` is not given and is dropped, `null` crosses, and a
 // `Scalar` record crosses untouched.
@@ -4692,9 +4680,6 @@ function publicClass(Native, name, build) {
   return Public
 }
 
-const Lane = publicClass(NativeLane, 'Lane', (input) =>
-  new NativeLane(namedSlots('Lane', input)),
-)
 const BookRef = publicClass(NativeBookRef, 'BookRef', (input) =>
   new NativeBookRef(namedSlots('BookRef', input)),
 )
@@ -4758,13 +4743,12 @@ const nativeBookIterator = NativeBookIterator._bookIteratorNative
 const BookIterator = publicClass(
   NativeBookIterator,
   'BookIterator',
-  (items, snapshotMillis = 0, global = false) => {
+  (items, snapshotMillis = 0) => {
     const failed = {}
     const walk = nativeBookIterator.call(
       NativeBookIterator,
       pullOf(items, asMarketItem, 'items', failed),
       snapshotMillis,
-      global,
     )
     walk[FAILED] = failed
     return walk
@@ -4815,17 +4799,14 @@ for (const [prototype, name] of [
   })
 }
 
-const graphGlobalSymbol = binding._graphGlobalSymbolNative()
 const graphEntryId = binding._graphEntryIdNative()
 const graphEntryRefId = binding._graphEntryRefIdNative()
 const graphFollowedAltids = Object.freeze(binding._graphFollowedAltidsNative())
-delete binding._graphGlobalSymbolNative
 delete binding._graphEntryIdNative
 delete binding._graphEntryRefIdNative
 delete binding._graphFollowedAltidsNative
 
 const graph = Object.freeze({
-  Lane,
   BookRef,
   Order,
   Quote,
@@ -4834,15 +4815,12 @@ const graph = Object.freeze({
   QuoteEvent,
   ExecutionEvent,
   TradeEvent: NativeTradeEvent,
-  SnapshotPartition: NativeSnapshotPartition,
-  BookSide: NativeBookSide,
   BookEvent: NativeBookEvent,
   SnapshotEvent: NativeSnapshotEvent,
   MarketData: NativeMarketData,
   MarketDataRowIterator: NativeMarketDataRowIterator,
   BookIterator,
   EventIterator,
-  GLOBAL_SYMBOL: graphGlobalSymbol,
   ENTRY_ID: graphEntryId,
   ENTRY_REF_ID: graphEntryRefId,
   FOLLOWED_ALTIDS: graphFollowedAltids,
@@ -4850,7 +4828,6 @@ const graph = Object.freeze({
 
 // The graph values are reached through the namespace and nowhere else.
 for (const name of [
-  'Lane',
   'BookRef',
   'Order',
   'Quote',
@@ -4859,8 +4836,6 @@ for (const name of [
   'QuoteEvent',
   'ExecutionEvent',
   'TradeEvent',
-  'SnapshotPartition',
-  'BookSide',
   'BookEvent',
   'SnapshotEvent',
   'MarketData',
@@ -5694,6 +5669,27 @@ binding.yaml = yaml
   const members = binding._stateMembersNative()
   delete binding._stateMembersNative
   binding.State = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
+// What kind of market data an element is: FIX's MsgCat code set, each
+// member's four-letter name under the code a `marketdatakind` column stores.
+{
+  const members = binding._marketDataKindMembersNative()
+  delete binding._marketDataKindMembersNative
+  binding.MarketDataKind = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
+// Which side of the market a trade took: FIX's Side(54), each member's
+// stored name under the code a `side` column stores - `UNKNOWN` at zero,
+// then the seventeen sides in FIX's own order.
+{
+  const members = binding._sideMembersNative()
+  delete binding._sideMembersNative
+  binding.Side = Object.freeze(
     Object.fromEntries(members.map(({ name, code }) => [name, code])),
   )
 }

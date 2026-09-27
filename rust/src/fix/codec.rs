@@ -495,11 +495,15 @@ pub struct FixCodec {
     threads: usize,
     /// The lifecycle snapshot grid in nanoseconds; nonpositive disables it.
     snapshot_ns: i64,
+    /// Whether the lifecycle reads its messages as they come, in instant
+    /// order, holding one hour of them at a time, rather than collecting and
+    /// sorting the whole capture first.
+    sorted_lifecycle: bool,
     /// How far from `SendingTime(52)` an official transaction clock may
     /// stand and still date the message, in milliseconds; nonpositive
     /// leaves only a clock equal to it.
     official_time_delay_ms: i64,
-    /// Whether a market operation this codec builds carries what its
+    /// Whether a market data element this codec builds carries what its
     /// message states that no typed column reads.
     market_metadata: bool,
     /// The `BeginString` child every built message carries, resolved once:
@@ -641,6 +645,7 @@ impl FixCodec {
             batch_row_size: Self::DEFAULT_BATCH_ROW_SIZE,
             threads: std::thread::available_parallelism().map_or(1, usize::from),
             snapshot_ns: 0,
+            sorted_lifecycle: false,
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
             market_metadata: true,
             beginstring,
@@ -925,6 +930,29 @@ impl FixCodec {
         }
     }
 
+    /// States whether the messages [`Self::lifecycle`] is handed arrive in
+    /// instant order - a table read hour partition by hour partition, sorted
+    /// by `currunix`. Then the walk reads them as they come and holds one
+    /// epoch hour of them at a time, merging a delivery's hops and sorting
+    /// within the hour exactly as a whole capture is sorted, and walks an
+    /// hour once the stream has read a message two hours past it; a message
+    /// the walk dates by its transaction still lands in its own hour within
+    /// that grace, and one dated before an hour already walked is walked
+    /// where it arrives. Off by default: a capture is collected and sorted
+    /// whole, since nothing says it is in order.
+    #[must_use]
+    pub const fn with_sorted_lifecycle(mut self, sorted: bool) -> Self {
+        self.sorted_lifecycle = sorted;
+        self
+    }
+
+    /// Whether the lifecycle reads its messages as they come, in instant
+    /// order, one hour at a time.
+    #[must_use]
+    pub const fn sorted_lifecycle(&self) -> bool {
+        self.sorted_lifecycle
+    }
+
     /// Sets how far from `SendingTime(52)` an official transaction clock may
     /// stand and still date the message, in milliseconds.
     ///
@@ -953,13 +981,13 @@ impl FixCodec {
         self.official_time_delay_ms
     }
 
-    /// Sets whether a market operation this codec builds carries, in its
+    /// Sets whether a market data element this codec builds carries, in its
     /// metadata, what its message states that no typed column reads.
     ///
-    /// On by default, and read by [`Self::market_operations`],
+    /// On by default, and read by [`Self::market_data`],
     /// [`Self::market_arrow_reader`] and [`Self::book_arrow_reader`]: every
     /// field but the ones a column types, the envelope and the identifier
-    /// maps' sources, as [`FixMsg::market_operations`] states them. The map
+    /// maps' sources, as [`FixMsg::market_data`] states them. The map
     /// is part of what a leaf's identity digests, so turning it off answers
     /// other identities for any message stating such a field - and nothing
     /// changes for a message stating none.
@@ -969,7 +997,7 @@ impl FixCodec {
         self
     }
 
-    /// Whether a market operation this codec builds carries its message's
+    /// Whether a market data element this codec builds carries its message's
     /// unmapped fields.
     #[must_use]
     pub const fn market_metadata(&self) -> bool {
@@ -1219,6 +1247,39 @@ impl FixCodec {
     /// holds, one per configuration a bulk UL answer named, and none at all
     /// for a line that states no message - which a document naming no
     /// configuration is, as much as a sentence is.
+    ///
+    /// # What a message reports is a message of its own
+    ///
+    /// Each message is followed by the messages it splits into, once, here -
+    /// the one split every stream door runs, this one, [`Self::parse_lines`],
+    /// the text-line doors and the batch readers alike: an execution report
+    /// of a fill is its order's report (`ORDR`, or `QUOT` naming a
+    /// `QuoteID(117)`) followed by the execution (`EXEC`, `FILLED`, chained
+    /// under its `ExecID(17)`); a trade (`AE`) is followed by one execution
+    /// per side it states; a quote stating a bid and an offer and no side is
+    /// followed by its `BUY` and its `SELL` quote. Each names its source's
+    /// identity beside its source's sources as its own and is a row of its
+    /// own; a book reads each fill and each quoted side once. The
+    /// single-message doors - [`Self::parse_fix_line`] and its siblings -
+    /// answer the message as stated.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixCodec, FixRegistry, MarketDataKind, State};
+    /// # use yggdryl::graph::{Element, Event};
+    /// let codec = FixCodec::new(Arc::new(FixRegistry::new()));
+    /// let fill = b"8=FIX.4.4|35=8|17=E1|37=O1|39=1|150=F|32=2|31=10|10=0|";
+    /// let read: Vec<_> = codec.parse_line(fill)?.collect::<yggdryl::Result<_>>()?;
+    /// let [report, execution] = read.as_slice() else { panic!("two messages") };
+    /// assert_eq!(report.msgcat(), MarketDataKind::Order);
+    /// assert_eq!(*report.get_state(), State::PartiallyFilled);
+    /// assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    /// assert_eq!(*execution.get_state(), State::Filled);
+    /// assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # A message is the frame; the line is still the line
     ///
@@ -2338,7 +2399,7 @@ impl FixCodec {
                 // The walk reads the structured message: a frame the parse
                 // dated by a stand-in clock is dated by its transaction.
                 .map(|held: Result<FixMsg>| held.and_then(FixMsg::dated_by_transaction));
-        super::enrich::Walked::new(walked, self.snapshot_ns)
+        super::enrich::Walked::new(walked, self.snapshot_ns, self.sorted_lifecycle)
     }
 
     /// Builds one message from pairs the caller already split.

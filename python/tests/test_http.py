@@ -784,6 +784,122 @@ class TestServer:
         assert server.unmount("/nothing") is False
         assert server.unroute("/nothing") is False
 
+    def test_a_trusted_proxys_forwarded_fields_state_the_url_and_the_client(self) -> None:
+        # The fields the proxy sets are named; any other is the client's.
+        with Server.bind(
+            trusted_proxies=["127.0.0.1", "::1"],
+            forwarded_headers=[
+                "X-Forwarded-For",
+                "x-forwarded-proto",
+                "X-Forwarded-Host",
+                "X-Forwarded-Port",
+            ],
+            path_prefix="/olap",
+        ) as proxied:
+            proxied.route("/echo", lambda request: (200, None, str(request.url)))
+            connection = http.client.HTTPConnection("127.0.0.1", proxied.port)
+            connection.request(
+                "GET",
+                "/olap/echo?x=1",
+                headers={
+                    "X-Forwarded-Proto": "https",
+                    "X-Forwarded-Host": "pub.example",
+                    "X-Forwarded-Port": "8443",
+                    "X-Forwarded-For": "203.0.113.9, 127.0.0.1",
+                },
+            )
+            assert connection.getresponse().read() == b"https://pub.example:8443/olap/echo?x=1"
+            # Outside the prefix the route answers as well, under the Host
+            # the request itself stated.
+            connection.request("GET", "/echo", headers={"Host": "data.example.com"})
+            assert connection.getresponse().read() == b"http://data.example.com/echo"
+            connection.close()
+            first, second = proxied.requests
+            assert first["client"] == "203.0.113.9"
+            assert first["peer"] is not None and first["peer"].startswith("127.0.0.1:")
+            assert (first["path"], first["target"]) == ("/echo", "/olap/echo?x=1")
+            assert second["client"] == "127.0.0.1"
+
+        # By default a trusted proxy states the client and the scheme alone:
+        # a host, a port, a prefix or a Forwarded it passed through is not read.
+        with Server.bind(trusted_proxies=["127.0.0.1", "::1"]) as proxied:
+            proxied.route("/echo", lambda request: (200, None, str(request.url)))
+            connection = http.client.HTTPConnection("127.0.0.1", proxied.port)
+            connection.request(
+                "GET",
+                "/echo",
+                headers={
+                    "Host": "data.example.com",
+                    "Forwarded": "for=6.6.6.6;host=evil.example;proto=http",
+                    "X-Forwarded-Host": "evil.example",
+                    "X-Forwarded-Port": "1234",
+                    "X-Forwarded-Prefix": "/evil",
+                    "X-Forwarded-Proto": "https",
+                    "X-Forwarded-For": "6.6.6.6, 203.0.113.9",
+                },
+            )
+            assert connection.getresponse().read() == b"https://data.example.com/echo"
+            connection.close()
+            assert proxied.requests[0]["client"] == "203.0.113.9"
+
+        # An untrusted peer's forwarded fields are not believed.
+        with Server.bind() as plain:
+            plain.route("/echo", lambda request: (200, None, str(request.url)))
+            connection = http.client.HTTPConnection("127.0.0.1", plain.port)
+            connection.request(
+                "GET",
+                "/echo",
+                headers={"X-Forwarded-Host": "pub.example", "X-Forwarded-For": "203.0.113.9"},
+            )
+            assert connection.getresponse().read() == f"http://127.0.0.1:{plain.port}/echo".encode()
+            connection.close()
+            assert plain.requests[0]["client"] == "127.0.0.1"
+
+    def test_a_public_url_is_the_base_of_every_url_the_server_states(self) -> None:
+        public = yggdryl.Url("https://data.example.com/olap")
+        with Server.bind(public_url=public, trusted_proxies=["127.0.0.1"]) as published:
+            published.route("/echo", lambda request: (200, None, str(request.url)))
+            assert str(published.public_url_of("/echo")) == "https://data.example.com/olap/echo"
+            assert str(published.public_url_of("echo")) == "https://data.example.com/olap/echo"
+            assert str(published.url_of("/echo")) == f"http://127.0.0.1:{published.port}/echo"
+            connection = http.client.HTTPConnection("127.0.0.1", published.port)
+            connection.request("GET", "/echo?x=1", headers={"X-Forwarded-Host": "other.example"})
+            assert connection.getresponse().read() == b"https://data.example.com/olap/echo?x=1"
+            connection.close()
+        with Server.bind(public_url="https://data.example.com/olap") as spelled:
+            assert str(spelled.public_url_of("/echo")) == "https://data.example.com/olap/echo"
+        with Server.bind() as plain:
+            assert str(plain.public_url_of("/echo")) == str(plain.url_of("/echo"))
+
+    def test_the_proxy_options_are_refused_by_name(self) -> None:
+        with pytest.raises(ValueError, match="ip network"):
+            Server.bind(trusted_proxies=["pub.example"])
+        with pytest.raises(TypeError, match="trusted_proxies"):
+            Server.bind(trusted_proxies="10.0.0.0/8")
+        with pytest.raises(ValueError, match="http server option"):
+            Server.bind(public_url="https://data.example.com/olap?x=1")
+        with pytest.raises(ValueError, match="http server option"):
+            Server.bind(public_url="ftp://data.example.com/")
+        # A credential in the public URL would reach every client, and is not
+        # repeated in the refusal either.
+        with pytest.raises(ValueError, match="user information") as refused:
+            Server.bind(public_url="https://user:secret@data.example.com/olap")
+        assert "secret" not in str(refused.value)
+        with pytest.raises(ValueError):
+            Server.bind(path_prefix="/olap?x=1")
+        with pytest.raises(ValueError, match="forwarded header"):
+            Server.bind(forwarded_headers=["X-Real-IP"])
+        with pytest.raises(TypeError, match="forwarded_headers"):
+            Server.bind(forwarded_headers="X-Forwarded-Host")
+        # A timeout no deadline can hold is refused by name, never a server
+        # whose connections fail adding it to the clock.
+        with pytest.raises(ValueError, match="read_timeout"):
+            Server.bind(read_timeout=86_401)
+        with pytest.raises(ValueError, match="write_timeout"):
+            Server.bind(write_timeout=datetime.timedelta(days=2))
+        with Server.bind(read_timeout=datetime.timedelta(days=1)) as bounded:
+            assert bounded.port > 0
+
     def test_trace_writes_each_exchange_as_a_message_http_document(
         self, tmp_path: pathlib.Path
     ) -> None:

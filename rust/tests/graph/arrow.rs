@@ -1,13 +1,12 @@
 //! `rust/src/graph/arrow.rs`: the lifted `marketdata` rows every
 //! `MarketData` leaf is written in and read back from.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, ListArray, MapArray, RecordBatch,
-    RecordBatchReader as _, StringArray, StructArray, UInt64Array, new_null_array,
+    Array, ArrayRef, BooleanArray, Decimal128Array, Int32Array, Int64Array, ListArray, MapArray,
+    RecordBatch, RecordBatchReader as _, StringArray, StructArray, UInt64Array, new_null_array,
 };
 use arrow_buffer::{OffsetBuffer, ScalarBuffer};
 use arrow_schema::{Fields, Schema};
@@ -15,12 +14,14 @@ use smol_str::SmolStr;
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
-    BookEvent, BookRef, BookSide, Element, Event, EventColumn, Execution, ExecutionEvent, Market,
+    BookEvent, BookRef, Element, Event, EventColumn, Execution, ExecutionEvent, FxRates, Market,
     MarketColumn, MarketData, MarketKind, MdUpdateAction, Operation, OperationColumn,
-    OperationEvent, OperationKind, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent,
-    SnapshotPartition, TradeEvent,
+    OperationEvent, OperationKind, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent, TradeEvent,
 };
-use yggdryl::{ArrowCastOptions, Ccy, Decimal, Field, Limit, Scalar, Serie, Side, State, Unit};
+use yggdryl::securityid::{SecType, SecurityId};
+use yggdryl::{
+    ArrowCastOptions, Ccy, Decimal, Field, Limit, MarketDataKind, Scalar, Serie, Side, State, Unit,
+};
 
 /// One operation as a market-data message states it, finalized.
 fn operation<K: OperationKind>(
@@ -46,7 +47,6 @@ fn operation<K: OperationKind>(
     operation
         .insert_altid("ORDERID", &format!("ORDER-{code}"))
         .unwrap();
-    operation.insert_accountid("ACCOUNT", "ACC-1").unwrap();
     operation.finalize();
     operation
 }
@@ -111,8 +111,8 @@ fn book(unix: i64) -> BookEvent {
     book
 }
 
-/// A book whose last change was a full snapshot of one scope, so it
-/// remembers the partition it replaced.
+/// A book whose last change was a full snapshot of one scope: its entry
+/// states a walk-time control no row carries.
 fn snapshot_book(unix: i64) -> BookEvent {
     let mut book = BookEvent::new(unix, "ACME");
     book.add_operations([
@@ -136,7 +136,6 @@ fn every_leaf() -> Vec<MarketData> {
         MarketData::from(element::<yggdryl::graph::OrderKind>(1, "O-1")),
         MarketData::from(element::<yggdryl::graph::QuoteKind>(2, "Q-2")),
         MarketData::from(element::<yggdryl::graph::ExecutionKind>(3, "E-3")),
-        MarketData::from(book(4).bid().clone()),
         MarketData::from(order(5, "O-5")),
         MarketData::from(entry(6, "Q-6", MdUpdateAction::Change)),
         MarketData::from(execution(7, "E-7", "Buy")),
@@ -186,13 +185,11 @@ fn with_column(batch: &RecordBatch, name: &str, column: ArrayRef) -> RecordBatch
 }
 
 /// One order of `side` stating `price` - `None` a market order - and
-/// `quantity`, its lanes filled from those facts alone.
+/// `quantity`.
 fn resting(unix: i64, code: &str, side: &str, price: Option<i64>, quantity: i64) -> MarketData {
     let mut entry: OrderEvent = operation(unix, code, side, "New");
     entry.set_price(price.map(Decimal::from_int));
     entry.set_quantity(Some(Decimal::from_int(quantity)));
-    entry.set_bid(None);
-    entry.set_ask(None);
     entry.finalize();
     MarketData::from(entry)
 }
@@ -212,26 +209,13 @@ fn deep_book(unix: i64) -> BookEvent {
     book
 }
 
-/// The `name` child of the struct column `column` of `batch`.
-fn child_of(batch: &RecordBatch, column: &str, name: &str) -> ArrayRef {
-    let parent = batch.column_by_name(column).unwrap();
-    let parent = parent.as_any().downcast_ref::<StructArray>().unwrap();
-    Arc::clone(parent.column_by_name(name).unwrap())
+/// The column `name` of `batch`.
+fn column_of(batch: &RecordBatch, name: &str) -> ArrayRef {
+    Arc::clone(batch.column_by_name(name).unwrap())
 }
 
-/// `batch` with the `name` child of its struct column `column` replaced.
-fn with_child(batch: &RecordBatch, column: &str, name: &str, child: ArrayRef) -> RecordBatch {
-    let parent = batch.column_by_name(column).unwrap();
-    let parent = parent.as_any().downcast_ref::<StructArray>().unwrap();
-    with_column(
-        batch,
-        column,
-        Arc::new(replace_struct_child(parent, name, child)),
-    )
-}
-
-/// The limits one `limits` list cell states, read through the landed
-/// column and [`Limit::from_scalar`].
+/// The limits one `bidlimits` or `asklimits` cell states, read through the
+/// landed column and [`Limit::from_scalar`].
 fn limits_of(list: ArrayRef, row: usize) -> Vec<Limit> {
     let serie = Serie::from_arrow_array(None, list, ArrowCastOptions::new()).unwrap();
     serie
@@ -244,9 +228,9 @@ fn limits_of(list: ArrayRef, row: usize) -> Vec<Limit> {
         .collect()
 }
 
-/// `list` - a `limits` list - with its items' `name` child replaced by
-/// `child`, that child's field nullable where `nullable` says so: the
-/// shape a foreign writer may state.
+/// `list` - a `bidlimits` or `asklimits` list - with its items' `name`
+/// child replaced by `child`, that child's field nullable where `nullable`
+/// says so: the shape a foreign writer may state.
 fn with_limit_child(list: &ArrayRef, name: &str, child: ArrayRef, nullable: bool) -> ArrayRef {
     let list = list.as_any().downcast_ref::<ListArray>().unwrap();
     let items = list
@@ -307,18 +291,6 @@ fn decimals(values: &[i64]) -> ArrayRef {
     )
 }
 
-/// `array` - a struct - without its `name` child.
-fn without_struct_child(array: &StructArray, name: &str) -> StructArray {
-    let (fields, columns): (Vec<_>, Vec<_>) = array
-        .fields()
-        .iter()
-        .zip(array.columns())
-        .filter(|(field, _)| field.name() != name)
-        .map(|(field, column)| (Arc::clone(field), Arc::clone(column)))
-        .unzip();
-    StructArray::new(Fields::from(fields), columns, array.nulls().cloned())
-}
-
 fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> StructArray {
     let index = array
         .fields()
@@ -341,8 +313,13 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 1 + 16 + 19 + 8 + 5 + 3 + 7);
-    assert_eq!(names[0], "kind");
+    assert_eq!(names.len(), 1 + 16 + 27 + 3 + 1 + 5);
+    assert_eq!(names.len(), 53);
+    assert_eq!(names[0], "marketdatakind");
+    assert_eq!(
+        field.fields()[0].dtype(),
+        &yggdryl::DataType::MarketDataKind
+    );
     assert!(!field.fields()[0].is_nullable());
     assert_eq!(names[1], "currunix");
     assert!(
@@ -350,36 +327,66 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
         "an undated leaf states no clock"
     );
     assert_eq!(names[17], "price");
-    assert_eq!(names[36], "marketoperationid");
+    assert_eq!(names[21..24], ["side", "securityids", "isincode"]);
     assert_eq!(
-        names[44..49],
+        names[34..44],
         [
-            "mdupdateaction",
-            "bookscope",
-            "mdentrypositionno",
-            "mdentrypx",
-            "mdentrysize"
+            "forwardpoints",
+            "bidpx",
+            "bidqty",
+            "bidccy",
+            "askpx",
+            "askqty",
+            "askccy",
+            "fxrates",
+            "ticker",
+            "metadata"
         ]
     );
-    assert_eq!(names[49..52], ["spread", "crossed", "locked"]);
-    assert!(field.fields()[49..].iter().all(Field::is_nullable));
+    assert_eq!(names[44..47], ["tif", "tradable", "altids"]);
+    // The one book control a row states; the rest is walk-time.
+    assert_eq!(names[47], "bookscope");
+    for gone in [
+        "mdupdateaction",
+        "mdentrypositionno",
+        "mdentrypx",
+        "mdentrysize",
+        "spread",
+        "crossed",
+        "locked",
+        "accountids",
+        "userids",
+        "bidside",
+        "askside",
+        "snapshotpartitions",
+        "limits",
+        "bid",
+        "ask",
+    ] {
+        assert!(!names.contains(&gone), "{gone}");
+    }
+    assert!(field.fields()[47..].iter().all(Field::is_nullable));
     assert_eq!(
-        names[52..],
-        [
-            "executions",
-            "bidside",
-            "askside",
-            "snapshotpartitions",
-            "live",
-            "deltas",
-            "limits"
-        ]
+        names[48..],
+        ["alive", "deltas", "executions", "bidlimits", "asklimits"]
     );
-    // A side row: its six element facts, the market, and its three lists.
-    let side = &field.fields()[53];
-    let side: Vec<&str> = side.fields().iter().map(Field::name).collect();
-    assert_eq!(side.len(), 6 + 19 + 3);
-    assert_eq!(side[25..], ["live", "deltas", "limits"]);
+    // An operation row, the item of every operation list: nothing nested.
+    let item = field.fields()[48].dtype().serie_item().unwrap().clone();
+    let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
+    assert_eq!(item.len(), 1 + 16 + 27 + 3 + 1);
+    assert_eq!(item, names[..48]);
+    // A book's two sides are its price levels, one limit each.
+    for side in &field.fields()[51..] {
+        assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
+    }
+}
+
+/// The rows every leaf writes, then the rows the leaves read back write.
+fn rewritten(values: Vec<MarketData>, rows: usize) -> Vec<RecordBatch> {
+    MarketData::arrow_reader(values, Some(rows), None)
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
 }
 
 #[test]
@@ -396,26 +403,26 @@ fn every_leaf_round_trips_in_bounded_batches() {
             .iter()
             .map(RecordBatch::num_rows)
             .collect::<Vec<_>>(),
-        [5, 5, 2]
+        [5, 5, 1]
     );
     let kinds = batches[0]
         .column(0)
         .as_any()
-        .downcast_ref::<StringArray>()
+        .downcast_ref::<Int32Array>()
         .unwrap();
-    assert_eq!(kinds.value(0), "order");
-    assert_eq!(kinds.value(3), "book_side");
-    assert_eq!(kinds.value(4), "order_event");
+    assert_eq!(kinds.value(0), MarketDataKind::Order.code());
+    assert_eq!(kinds.value(1), MarketDataKind::Quotation.code());
+    assert_eq!(kinds.value(2), MarketDataKind::Execution.code());
+    assert_eq!(kinds.value(3), MarketDataKind::Order.code());
+    assert_eq!(kinds.value(4), MarketDataKind::Quotation.code());
 
-    let actual = read(batch_reader(batches[0].schema(), batches)).unwrap();
-    assert_eq!(actual, expected);
+    let actual = read(batch_reader(batches[0].schema(), batches.clone())).unwrap();
     assert_eq!(
         actual.iter().map(MarketData::kind).collect::<Vec<_>>(),
         [
             MarketKind::Order,
             MarketKind::Quote,
             MarketKind::Execution,
-            MarketKind::BookSide,
             MarketKind::OrderEvent,
             MarketKind::QuoteEvent,
             MarketKind::ExecutionEvent,
@@ -426,23 +433,29 @@ fn every_leaf_round_trips_in_bounded_batches() {
             MarketKind::SnapshotEvent,
         ]
     );
-    let entry = actual[5].as_quote_event().unwrap();
-    assert_eq!(entry.action(), Some(MdUpdateAction::Change));
+    // Every fact a row states round trips, and the leaves read back write
+    // the same rows; a book control's walk-time facts - an action, a
+    // position, an entry's own price and size - are no row fact, so the two
+    // leaves stating one read back without them and keep their identity.
+    assert_eq!(rewritten(actual.clone(), 5), batches);
+    for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
+        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+        if index != 4 && index != 8 {
+            assert_eq!(read, stated, "{index}");
+        }
+    }
+    let entry = actual[4].as_quote_event().unwrap();
+    assert_eq!(entry.action(), None, "an action is walk-time");
     assert_eq!(entry.scope(), "Symbol=ACME");
     assert_eq!(entry.get_altids().get(ENTRY_ID), Some("Q-6"));
-    assert_eq!(entry.get_accountids().get("ACCOUNT"), Some("ACC-1"));
-    assert_eq!(actual[7].as_trade_event().unwrap().executions().len(), 2);
-    let book = actual[8].as_book_event().unwrap();
-    assert_eq!(book.bid().live().count(), 1);
+    assert_eq!(actual[6].as_trade_event().unwrap().executions().len(), 2);
+    let book = actual[7].as_book_event().unwrap();
+    assert_eq!(book.alive().count(), 2);
+    assert_eq!(book.deltas().count(), 2);
     assert_eq!(book.executions().len(), 1);
-    assert_eq!(
-        actual[9].as_book_event().unwrap().snapshot_partitions(),
-        &BTreeSet::from([SnapshotPartition {
-            symbol: Some(SmolStr::new("ACME")),
-            scope: SmolStr::new("Symbol=ACME"),
-        }])
-    );
-    let control = actual[11].as_snapshot_event().unwrap();
+    let replaced = actual[8].as_book_event().unwrap();
+    assert_eq!(replaced.alive().count(), 1);
+    let control = actual[10].as_snapshot_event().unwrap();
     assert_eq!(control.book().action, Some(MdUpdateAction::Snapshot));
     assert_eq!(control.book().scope.as_deref(), Some("Symbol=ACME"));
 }
@@ -476,8 +489,9 @@ fn an_undated_leaf_states_no_clock() {
 
 /// What a FIX lifecycle writes - the event, market and operation columns in
 /// its own order, beside columns of its own - reads as operation events once
-/// a `kind` column names them: a foreign column is ignored, a column of
-/// another castable type is cast, the book columns are simply absent.
+/// a `marketdatakind` column names them, here as text: a foreign column is
+/// ignored, a column of another castable type is cast - the names to their
+/// members - and the book columns are simply absent.
 #[test]
 fn a_lifecycle_shaped_batch_reads_into_operation_events() {
     let expected = vec![
@@ -545,15 +559,11 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
         columns.push(array);
     }
     fields.push(arrow_schema::Field::new(
-        "Kind",
+        "MarketDataKind",
         arrow_schema::DataType::Utf8,
         true,
     ));
-    columns.push(Arc::new(StringArray::from(vec![
-        "order_event",
-        "EXECUTION_EVENT",
-        "Order_Event",
-    ])));
+    columns.push(Arc::new(StringArray::from(vec!["ORDR", "EXEC", "ordr"])));
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap();
     let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
     assert_eq!(actual, expected);
@@ -566,8 +576,11 @@ fn a_batch_with_no_kind_is_refused_at_its_first_row() {
     let kept: Vec<usize> = (1..schema.fields().len()).collect();
     let batch = batch.project(&kept).unwrap();
     let error = refusal(batch);
-    assert!(error.contains("$[0].kind"), "{error}");
-    assert!(error.contains("got null"), "{error}");
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected ORDR, QUOT, EXEC, TRAD or BOOK, got null"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -575,23 +588,114 @@ fn an_unknown_or_null_kind_is_named_then_the_stream_fuses() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);
     let error = refusal(with_column(
         &batch,
-        "kind",
-        Arc::new(StringArray::from(vec!["auction"])),
+        "marketdatakind",
+        Arc::new(Int32Array::from(vec![MarketDataKind::Account.code()])),
     ));
-    assert!(error.contains("$[0].kind"), "{error}");
-    assert!(error.contains("auction"), "{error}");
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected ORDR, QUOT, EXEC, TRAD or BOOK, got ACCT"),
+        "{error}"
+    );
+    // A null category, in a column a reader declared nullable.
+    let at = batch.schema().index_of("marketdatakind").unwrap();
+    let mut fields: Vec<arrow_schema::Field> = batch
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.as_ref().clone())
+        .collect();
+    fields[at] = fields[at].clone().with_nullable(true);
+    let mut columns = batch.columns().to_vec();
+    columns[at] = new_null_array(&arrow_schema::DataType::Int32, 1);
+    let nulled = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap();
+    let error = refusal(nulled);
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
+    assert!(error.contains("got null"), "{error}");
 }
 
+/// A trade is an event: a `TRAD` row stating no instant names no leaf.
 #[test]
-fn a_dated_leaf_requires_its_instant() {
-    let batch = written(vec![MarketData::from(order(1, "O-1"))]);
+fn an_undated_trade_is_refused() {
+    let batch = written(vec![MarketData::from(trade(8, "T-8"))]);
     let schema = batch.schema();
     let without = schema.index_of("currunix").unwrap();
     let kept: Vec<usize> = (0..schema.fields().len())
         .filter(|at| *at != without)
         .collect();
     let error = refusal(batch.project(&kept).unwrap());
-    assert!(error.contains("$[0].currunix"), "{error}");
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected a dated TRAD row, got currunix null"),
+        "{error}"
+    );
+}
+
+/// The instant is what dates a leaf: an `ORDR` row without one is an order
+/// entry, and with one an order event.
+#[test]
+fn the_instant_says_whether_a_row_is_an_element_or_an_event() {
+    let undated = MarketData::from(element::<yggdryl::graph::OrderKind>(1, "O-1"));
+    let dated = MarketData::from(order(1, "O-1"));
+    let batch = written(vec![undated.clone(), dated.clone()]);
+    let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
+    assert_eq!(
+        actual.iter().map(MarketData::kind).collect::<Vec<_>>(),
+        [MarketKind::Order, MarketKind::OrderEvent]
+    );
+    assert_eq!(actual, [undated, dated]);
+}
+
+/// A `BOOK` row is dated, and a dated one a book where it states its
+/// `alive` entries and a snapshot control where the cell is null; a batch
+/// that laid out no `alive` column cannot say which.
+#[test]
+fn a_dated_book_row_is_told_by_its_alive_entries() {
+    let batch = written(vec![MarketData::from(book(10))]);
+    let schema = batch.schema();
+    let kept: Vec<usize> = (0..schema.fields().len())
+        .filter(|at| schema.field(*at).name() != "alive")
+        .collect();
+    let error = refusal(batch.project(&kept).unwrap());
+    assert!(error.contains("$[0].alive"), "{error}");
+    assert!(
+        error.contains(
+            "expected the alive column that tells a book_event from a snapshot_event, got none"
+        ),
+        "{error}"
+    );
+
+    // A book row with its entries nulled reads as a snapshot control, whose
+    // identity is not the one the row states.
+    let held = batch.column_by_name("alive").unwrap();
+    let error = refusal(with_column(
+        &batch,
+        "alive",
+        new_null_array(held.data_type(), 1),
+    ));
+    assert!(error.contains("$[0].curruuid"), "{error}");
+
+    // An undated `BOOK` row names no leaf.
+    let without = schema.index_of("currunix").unwrap();
+    let kept: Vec<usize> = (0..schema.fields().len())
+        .filter(|at| *at != without)
+        .collect();
+    let error = refusal(batch.project(&kept).unwrap());
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
+    assert!(
+        error.contains("expected a dated BOOK row, got currunix null"),
+        "{error}"
+    );
+
+    // An empty book states its entries, none, and reads back a book.
+    let empty = written(vec![MarketData::from(BookEvent::new(11, "EMPTY"))]);
+    assert!(!empty.column_by_name("alive").unwrap().is_null(0));
+    let actual = read(batch_reader(empty.schema(), [empty])).unwrap();
+    assert_eq!(actual[0].kind(), MarketKind::BookEvent);
+
+    let controls = written(vec![MarketData::from(snapshot(12, "W-12"))]);
+    assert!(controls.column_by_name("alive").unwrap().is_null(0));
+    let actual = read(batch_reader(controls.schema(), [controls])).unwrap();
+    assert_eq!(actual[0].kind(), MarketKind::SnapshotEvent);
 }
 
 #[test]
@@ -599,10 +703,116 @@ fn a_trade_requires_its_executions() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);
     let error = refusal(with_column(
         &batch,
-        "kind",
-        Arc::new(StringArray::from(vec!["trade_event"])),
+        "marketdatakind",
+        Arc::new(Int32Array::from(vec![MarketDataKind::Trade.code()])),
     ));
     assert!(error.contains("$[0].executions"), "{error}");
+}
+
+/// `isincode` is the `ISIN` of `securityids`, projected: written from it,
+/// filling an absent one on the way back, and refused where the two
+/// disagree.
+#[test]
+fn isincode_projects_the_securityids_isin() {
+    let mut listed = order(1, "O-1");
+    listed
+        .insert_securityid(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap())
+        .unwrap();
+    listed.finalize();
+    assert_eq!(listed.get_isincode(), Some("US0378331005"));
+    let expected = MarketData::from(listed);
+    let batch = written(vec![expected.clone()]);
+    let cell = batch
+        .column_by_name("isincode")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap()
+        .value(0)
+        .to_owned();
+    assert_eq!(cell, "US0378331005");
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch.clone()])).unwrap(),
+        std::slice::from_ref(&expected)
+    );
+
+    // Alone, it fills the ISIN - and the CUSIP the ISIN carries derives.
+    let schema = batch.schema();
+    let kept: Vec<usize> = (0..schema.fields().len())
+        .filter(|at| schema.field(*at).name() != "securityids")
+        .collect();
+    let alone = batch.project(&kept).unwrap();
+    let actual = read(batch_reader(alone.schema(), [alone])).unwrap();
+    assert_eq!(actual, [expected]);
+    assert_eq!(actual[0].get_securityids().get("CUSIP"), Some("037833100"));
+
+    // A second ISIN beside the one `securityids` states is refused there.
+    let error = refusal(with_column(
+        &batch,
+        "isincode",
+        Arc::new(StringArray::from(vec!["GB0002634946"])),
+    ));
+    assert!(error.contains("$[0].isincode"), "{error}");
+    assert!(
+        error.contains(r#"expected the securityids ISIN "US0378331005", got "GB0002634946""#),
+        "{error}"
+    );
+}
+
+/// Rates ride a sorted `map<ccy, decimal>`, target currency to the rate
+/// to divide by, null where an element states none.
+#[test]
+fn fxrates_round_trip_and_are_null_where_none_is_stated() {
+    let rates: FxRates = [("JPY", "150.25"), ("EUR", "0.92")]
+        .into_iter()
+        .map(|(target, rate)| (Ccy::new(target).unwrap(), rate.parse().unwrap()))
+        .collect();
+    let mut quoted = order(1, "O-1");
+    quoted.set_fxrates(rates.clone());
+    quoted.finalize();
+    assert_eq!(
+        quoted
+            .get_fxrates()
+            .keys()
+            .map(Ccy::as_str)
+            .collect::<Vec<_>>(),
+        ["EUR", "JPY"],
+        "sorted by target"
+    );
+    let plain = MarketData::from(order(2, "O-2"));
+    let expected = vec![MarketData::from(quoted), plain];
+    let batch = written(expected.clone());
+    let column = batch.column_by_name("fxrates").unwrap();
+    assert!(matches!(
+        column.data_type(),
+        arrow_schema::DataType::Map(_, true)
+    ));
+    assert_eq!(column.null_count(), 1);
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch.clone()])).unwrap(),
+        expected
+    );
+
+    // A stated rate that differs from the one the identity was derived over
+    // is refused there; a rate that is no decimal is refused on its row.
+    let mut other = order(1, "O-1");
+    other.set_fxrates(
+        [("EUR", "0.93"), ("JPY", "150.25")]
+            .into_iter()
+            .map(|(target, rate)| (Ccy::new(target).unwrap(), rate.parse().unwrap()))
+            .collect(),
+    );
+    other.finalize();
+    let differing = written(vec![
+        MarketData::from(other),
+        MarketData::from(order(2, "O-2")),
+    ]);
+    let error = refusal(with_column(
+        &batch,
+        "fxrates",
+        Arc::clone(differing.column_by_name("fxrates").unwrap()),
+    ));
+    assert!(error.contains("$[0].curruuid"), "{error}");
 }
 
 #[test]
@@ -679,15 +889,8 @@ fn decoding_locates_an_invalid_typed_code() {
 #[test]
 fn book_decoding_locates_an_invalid_nested_typed_code() {
     let batch = written(vec![MarketData::from(book(10))]);
-    let bid_column = batch.schema().index_of("bidside").unwrap();
-    let bid = batch.column(bid_column);
-    let bid = bid.as_any().downcast_ref::<StructArray>().unwrap();
-    let live = bid
-        .column_by_name("live")
-        .unwrap()
-        .as_any()
-        .downcast_ref::<ListArray>()
-        .unwrap();
+    let live = batch.column_by_name("alive").unwrap();
+    let live = live.as_any().downcast_ref::<ListArray>().unwrap();
     let operations = live
         .values()
         .as_any()
@@ -706,9 +909,8 @@ fn book_decoding_locates_an_invalid_nested_typed_code() {
         Arc::new(operations),
         live.nulls().cloned(),
     );
-    let bid = replace_struct_child(bid, "live", Arc::new(live));
-    let error = refusal(with_column(&batch, "bidside", Arc::new(bid)));
-    assert!(error.contains("bidside.live[0].miccode"), "{error}");
+    let error = refusal(with_column(&batch, "alive", Arc::new(live)));
+    assert!(error.contains("$[0].alive[0].miccode"), "{error}");
 }
 
 #[test]
@@ -864,11 +1066,11 @@ fn book_encoding_refuses_root_lifecycle_bounds_that_contradict_nested_operations
 
     let mut invalid = book(10);
     invalid.set_seqnum(0);
-    refused(invalid, "live[0].seqnum");
+    refused(invalid, "alive[0].seqnum");
 
     let mut invalid = book(10);
     invalid.set_creaunix(Some(8));
-    refused(invalid, "live[0].creaunix");
+    refused(invalid, "alive[0].creaunix");
 }
 
 #[test]
@@ -908,25 +1110,22 @@ fn a_batch_of_foreign_columns_alone_reads_nothing_until_a_row_needs_a_kind() {
     )
     .unwrap();
     let error = refusal(batch);
-    assert!(error.contains("$[0].kind"), "{error}");
+    assert!(error.contains("$[0].marketdatakind"), "{error}");
 }
 
 #[test]
-fn a_book_round_trips_its_limits_lanes_and_facts() {
+fn a_book_round_trips_its_price_levels() {
     let book = deep_book(10);
-    let expected = vec![
-        MarketData::from(book.clone()),
-        MarketData::from(book.bid().clone()),
-    ];
+    let expected = vec![MarketData::from(book.clone())];
     let batch = written(expected.clone());
     assert_eq!(
         read(batch_reader(batch.schema(), [batch.clone()])).unwrap(),
         expected
     );
 
-    // Each side row states its limits, best first and the unpriced one last.
-    let bid = limits_of(child_of(&batch, "bidside", "limits"), 0);
-    assert_eq!(bid, book.bid().limits().collect::<Vec<_>>());
+    // Each side states its limits, best first and the unpriced one last.
+    let bid = limits_of(column_of(&batch, "bidlimits"), 0);
+    assert_eq!(bid, book.limits(Side::Buy).collect::<Vec<_>>());
     assert_eq!(
         bid.iter()
             .map(|limit| (limit.price, limit.quantity, limit.uuids.len()))
@@ -937,56 +1136,67 @@ fn a_book_round_trips_its_limits_lanes_and_facts() {
             (None, Decimal::from_int(5), 1),
         ]
     );
-    let live: Vec<_> = book.bid().live().map(Element::get_curruuid).collect();
+    let alive: Vec<_> = book
+        .alive()
+        .filter(|entry| entry.get_side().is_bid())
+        .map(Element::get_curruuid)
+        .collect();
     assert_eq!(
         bid.iter()
             .flat_map(|limit| limit.uuids.clone())
             .collect::<Vec<_>>(),
-        live
+        alive
     );
-    let ask = limits_of(child_of(&batch, "askside", "limits"), 0);
-    assert_eq!(ask, book.ask().limits().collect::<Vec<_>>());
+    let ask = limits_of(column_of(&batch, "asklimits"), 0);
+    assert_eq!(ask, book.limits(Side::Sell).collect::<Vec<_>>());
     assert_eq!(ask.last().unwrap().price, None);
+    // The first level that can trade is the side's best: the top of each
+    // side here, since no entry of the fixture states it cannot.
+    let best = |limits: &[Limit]| limits.iter().find(|limit| limit.tradable).cloned();
+    assert_eq!(
+        best(&bid).and_then(|limit| limit.price),
+        book.best_price(Side::Buy)
+    );
+    assert_eq!(
+        best(&ask).map(|limit| limit.quantity),
+        book.best_quantity(Side::Sell)
+    );
+    assert_eq!(
+        (book.get_bidpx(), book.get_askpx()),
+        (bid[0].price, ask[0].price)
+    );
+    assert!(book.get_bidpx().is_some() && book.get_askpx().is_some());
+    // The book's entries, alive on both sides, one list.
+    let alive = batch.column_by_name("alive").unwrap();
+    let alive = alive.as_any().downcast_ref::<ListArray>().unwrap();
+    assert_eq!(alive.value_length(0), 6);
 
-    // A book row states no limits of its own; a side row at the root does.
-    let limits = batch.column_by_name("limits").unwrap();
-    assert!(limits.is_null(0) && !limits.is_null(1));
-    assert_eq!(limits_of(Arc::clone(limits), 1), bid);
-
-    // The book's lanes state its bests, and nothing else.
-    let price = child_of(&batch, "bid", "price");
-    let price = price.as_any().downcast_ref::<Decimal128Array>().unwrap();
-    assert_eq!(price.value(0), Decimal::from_int(101).units());
-    let quantity = child_of(&batch, "ask", "quantity");
-    let quantity = quantity.as_any().downcast_ref::<Decimal128Array>().unwrap();
-    assert_eq!(quantity.value(0), Decimal::from_int(1).units());
-    assert!(child_of(&batch, "bid", "currency").is_null(0));
-    assert!(batch.column_by_name("bid").unwrap().is_null(1));
-
-    // The three facts the book derives from its bests.
-    let spread = batch.column_by_name("spread").unwrap();
-    let spread = spread.as_any().downcast_ref::<Decimal128Array>().unwrap();
-    assert_eq!(spread.value(0), Decimal::from_int(1).units());
-    assert!(spread.is_null(1));
-    for name in ["crossed", "locked"] {
-        let column = batch.column_by_name(name).unwrap();
-        let column = column.as_any().downcast_ref::<BooleanArray>().unwrap();
-        assert!(!column.value(0), "{name}");
-        assert!(column.is_null(1), "{name}");
+    // An empty side is an empty list, and an operation states no levels.
+    let mut one_sided = BookEvent::new(10, "ACME");
+    one_sided
+        .add_operations([resting(10, "B-1", "Buy", Some(101), 3)])
+        .unwrap();
+    let batch = written(vec![MarketData::from(one_sided)]);
+    let asks = column_of(&batch, "asklimits");
+    let asks = asks.as_any().downcast_ref::<ListArray>().unwrap();
+    assert!(!asks.is_null(0));
+    assert_eq!(asks.value_length(0), 0);
+    let quoted = written(vec![MarketData::from(order(1, "O-1"))]);
+    for name in ["bidlimits", "asklimits"] {
+        assert!(column_of(&quoted, name).is_null(0), "{name}");
     }
 }
 
 #[test]
 fn a_stated_limit_that_differs_is_refused_on_its_row() {
     let batch = written(vec![MarketData::from(deep_book(10))]);
-    let limits = child_of(&batch, "bidside", "limits");
-    let error = refusal(with_child(
+    let limits = column_of(&batch, "bidlimits");
+    let error = refusal(with_column(
         &batch,
-        "bidside",
-        "limits",
+        "bidlimits",
         with_limit_child(&limits, "quantity", decimals(&[3, 2, 6]), false),
     ));
-    assert!(error.contains("$[0].bidside.limits"), "{error}");
+    assert!(error.contains("$[0].bidlimits"), "{error}");
 
     // A null quantity, where a foreign schema lets one stand, is refused by
     // the cast under the required field, naming its path.
@@ -999,55 +1209,80 @@ fn a_stated_limit_that_differs_is_refused_on_its_row() {
         .with_precision_and_scale(Decimal::PRECISION, Decimal::SCALE)
         .unwrap(),
     );
-    let error = refusal(with_child(
+    let error = refusal(with_column(
         &batch,
-        "bidside",
-        "limits",
+        "bidlimits",
         with_limit_child(&limits, "quantity", quantity, true),
     ));
     assert!(
-        error.contains("required Arrow field $.bidside.limits[].quantity holds 1 null values"),
+        error.contains("required Arrow field $.bidlimits[].quantity holds 1 null values"),
         "{error}"
     );
 }
 
 #[test]
-fn a_stated_spread_that_differs_is_refused() {
-    let batch = written(vec![MarketData::from(deep_book(10))]);
-    let error = refusal(with_column(&batch, "spread", decimals(&[2])));
-    assert!(error.contains("$[0].spread"), "{error}");
-    for name in ["crossed", "locked"] {
-        let error = refusal(with_column(
-            &batch,
-            name,
-            Arc::new(BooleanArray::from(vec![true])),
-        ));
-        assert!(error.contains(&format!("$[0].{name}")), "{error}");
-    }
+fn a_book_limit_states_whether_its_level_trades() {
+    let mut book = BookEvent::new(10, "ACME");
+    let stating = |code: &str, price: i64, tradable: bool| {
+        let MarketData::OrderEvent(mut entry) = resting(10, code, "Buy", Some(price), 1) else {
+            unreachable!("an order rests as an order");
+        };
+        entry.set_tradable(Some(tradable));
+        entry.finalize();
+        MarketData::from(entry)
+    };
+    // 101 trades - one entry says so and the other states nothing - and
+    // 100 does not: its one entry says it cannot.
+    book.add_operations([
+        stating("B-T", 101, true),
+        resting(10, "B-1", "Buy", Some(101), 3),
+        stating("B-2", 100, false),
+    ])
+    .unwrap();
+    let expected = vec![MarketData::from(book.clone())];
+    let batch = written(expected.clone());
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch.clone()])).unwrap(),
+        expected
+    );
+    let bid = limits_of(column_of(&batch, "bidlimits"), 0);
+    assert_eq!(
+        bid.iter().map(|limit| limit.tradable).collect::<Vec<_>>(),
+        [true, false]
+    );
+
+    // A stated flag that differs from the fold is refused on its row.
+    let limits = column_of(&batch, "bidlimits");
+    let flipped: ArrayRef = Arc::new(BooleanArray::from(vec![false, false]));
+    let error = refusal(with_column(
+        &batch,
+        "bidlimits",
+        with_limit_child(&limits, "tradable", flipped, false),
+    ));
+    assert!(error.contains("$[0].bidlimits"), "{error}");
+
+    // A null flag, where a foreign schema lets one stand, is refused by the
+    // cast under the required field, naming its path.
+    let nulled: ArrayRef = Arc::new(BooleanArray::from(vec![Some(true), None]));
+    let error = refusal(with_column(
+        &batch,
+        "bidlimits",
+        with_limit_child(&limits, "tradable", nulled, true),
+    ));
+    assert!(
+        error.contains("required Arrow field $.bidlimits[].tradable holds 1 null values"),
+        "{error}"
+    );
 }
 
-#[test]
-fn a_stated_bid_lane_that_differs_is_refused() {
-    let batch = written(vec![MarketData::from(deep_book(10))]);
-    let error = refusal(with_child(&batch, "bid", "price", decimals(&[100])));
-    assert!(error.contains("$[0].bid"), "{error}");
-    let error = refusal(with_child(&batch, "ask", "quantity", decimals(&[5])));
-    assert!(error.contains("$[0].ask"), "{error}");
-}
-
+/// A null cell states nothing: a book's price levels nulled read the book
+/// its entries derive.
 #[test]
 fn a_null_limits_cell_states_nothing() {
     let expected = vec![MarketData::from(deep_book(10))];
-    let batch = written(expected.clone());
-    let limits = child_of(&batch, "bidside", "limits");
-    let mut batch = with_child(
-        &batch,
-        "bidside",
-        "limits",
-        new_null_array(limits.data_type(), limits.len()),
-    );
-    for name in ["spread", "crossed", "locked", "bid", "ask"] {
-        let held = batch.column_by_name(name).unwrap();
+    let mut batch = written(expected.clone());
+    for name in ["bidlimits", "asklimits"] {
+        let held = column_of(&batch, name);
         batch = with_column(&batch, name, new_null_array(held.data_type(), 1));
     }
     assert_eq!(
@@ -1056,41 +1291,18 @@ fn a_null_limits_cell_states_nothing() {
     );
 }
 
-/// A batch written before the book facts and the limits existed reads the
-/// same values: every new column is nullable where it stands, so the cast
-/// fills the missing ones with nulls and a null states nothing.
+/// A batch stating no price levels at all reads the same values: the book
+/// derives them from its entries.
 #[test]
-fn a_batch_without_the_new_columns_still_reads() {
-    let book = deep_book(10);
-    let expected = vec![
-        MarketData::from(book.clone()),
-        MarketData::from(book.ask().clone()),
-    ];
+fn a_batch_stating_no_limits_columns_still_reads() {
+    let expected = vec![MarketData::from(deep_book(10))];
     let batch = written(expected.clone());
     let schema = batch.schema();
-    let added = ["spread", "crossed", "locked", "limits"];
     let kept: Vec<usize> = (0..schema.fields().len())
-        .filter(|at| !added.contains(&schema.field(*at).name().as_str()))
+        .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
-    let mut batch = batch.project(&kept).unwrap();
-    for side in ["bidside", "askside"] {
-        let held = batch.column_by_name(side).unwrap();
-        let held = held.as_any().downcast_ref::<StructArray>().unwrap();
-        let without = without_struct_child(held, "limits");
-        let at = batch.schema().index_of(side).unwrap();
-        let mut fields: Vec<arrow_schema::Field> = batch
-            .schema()
-            .fields()
-            .iter()
-            .map(|field| field.as_ref().clone())
-            .collect();
-        fields[at] =
-            arrow_schema::Field::new(side, without.data_type().clone(), fields[at].is_nullable());
-        let mut columns = batch.columns().to_vec();
-        columns[at] = Arc::new(without);
-        batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap();
-    }
-    assert_eq!(batch.schema().fields().len(), 1 + 16 + 19 + 8 + 5 + 6);
+    let batch = batch.project(&kept).unwrap();
+    assert_eq!(batch.schema().fields().len(), 1 + 16 + 27 + 3 + 1 + 3);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected
@@ -1110,17 +1322,10 @@ fn metadata_round_trips_and_a_stated_entry_that_differs_is_refused() {
         let mut order = order(1, "O-1");
         order.set_metadata(metadata(value));
         order.finalize();
-        let mut side: BookSide = deep_book(2).bid().clone();
-        side.set_metadata(metadata(value));
-        side.finalize();
         let mut book = deep_book(3);
         book.set_metadata(metadata(value));
         book.finalize();
-        vec![
-            MarketData::from(order),
-            MarketData::from(side),
-            MarketData::from(book),
-        ]
+        vec![MarketData::from(order), MarketData::from(book)]
     };
     let expected = carrying("v");
     let batch = written(expected.clone());
@@ -1156,12 +1361,12 @@ fn metadata_round_trips_and_a_stated_entry_that_differs_is_refused() {
     };
     let twice = MapArray::try_new(
         Arc::clone(entries),
-        OffsetBuffer::new(ScalarBuffer::from(vec![0_i32, 2, 3, 4])),
+        OffsetBuffer::new(ScalarBuffer::from(vec![0_i32, 2, 3])),
         StructArray::new(
             children.clone(),
             vec![
-                Arc::new(StringArray::from(vec!["k", "k", "k", "k"])),
-                Arc::new(StringArray::from(vec!["v", "w", "v", "v"])),
+                Arc::new(StringArray::from(vec!["k", "k", "k"])),
+                Arc::new(StringArray::from(vec!["v", "w", "v"])),
             ],
             None,
         ),

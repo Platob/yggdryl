@@ -8,7 +8,7 @@ import pickle
 
 import pytest
 
-from yggdryl import graph
+from yggdryl import MarketDataKind, Side, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -33,9 +33,12 @@ def test_from_parts_of_two_executions() -> None:
     executions = made.executions
     assert [type(execution) for execution in executions] == [graph.ExecutionEvent] * 2
     # In canonical side order, whatever order they were handed over in.
-    assert [execution.side.as_py() for execution in executions] == ["BUY", "SELL"]
-    assert sorted(execution.crosscode for execution in executions) == ["BUY-1", "SELL-1"]
+    assert [execution.side for execution in executions] == [Side.BUY, Side.SELL]
+    # A sided execution's cross code states its side.
+    assert sorted(execution.crosscode for execution in executions) == ["BUY:BUY-1", "SELL:SELL-1"]
     assert made.is_execution
+    assert made.marketdatakind is MarketDataKind.TRAD
+    assert made.side is Side.UNKNOWN
 
 
 def test_any_dated_operation_or_market_data_roots_a_trade() -> None:

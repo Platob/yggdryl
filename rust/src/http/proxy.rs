@@ -14,12 +14,16 @@
 //!
 //! A `no_proxy` entry is a host, matched with every host under it (`.`, `*.`
 //! and bare spellings alike, on a label boundary, so `example.com` never
-//! covers `badexample.com`), an IP address, an IP network in CIDR form, any
-//! of them with `:port` to match that port alone, or `*` for every host.
+//! covers `badexample.com`), an IP address, an IP network in CIDR form -
+//! read by [`IpNetwork`], the one CIDR grammar, so `[fd00::]/8` is the
+//! network and an IPv4-mapped IPv6 host is matched as the IPv4 address it
+//! maps - any of them with `:port` to match that port alone, or `*` for
+//! every host.
 
 use std::net::IpAddr;
 
 use crate::Url;
+use crate::http::IpNetwork;
 
 /// The variables naming the proxy of an `http` URL, lower case first.
 const HTTP_PROXY: [&str; 2] = ["http_proxy", "HTTP_PROXY"];
@@ -81,22 +85,11 @@ fn entry_matches(entry: &str, host: &str, address: Option<IpAddr>, port: Option<
     if wanted_port.is_some() && wanted_port != port {
         return false;
     }
-    let pattern = pattern
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_ascii_lowercase();
     if let Some(address) = address {
-        if let Some((network, bits)) = pattern.split_once('/') {
-            return network
-                .parse::<IpAddr>()
-                .ok()
-                .zip(bits.parse::<u8>().ok())
-                .is_some_and(|(network, bits)| in_network(address, network, bits));
-        }
-        return pattern
-            .parse::<IpAddr>()
-            .is_ok_and(|pattern| pattern == address);
+        // An address alone is the network of that one address.
+        return IpNetwork::from_str(pattern).is_ok_and(|network| network.contains(address));
     }
+    let pattern = pattern.to_ascii_lowercase();
     let pattern = pattern
         .trim_start_matches('*')
         .trim_start_matches('.')
@@ -109,12 +102,18 @@ fn entry_matches(entry: &str, host: &str, address: Option<IpAddr>, port: Option<
 }
 
 /// An entry and the port it names after its last `:`, when it names one; an
-/// IPv6 address's own colons are no port.
+/// IPv6 address's own colons are no port, and a bracketed address keeps its
+/// brackets and the `/bits` after them: `[fd00::]/8:443` is `[fd00::]/8`
+/// at port 443.
 fn split_port(entry: &str) -> (&str, Option<u16>) {
-    if let Some(rest) = entry.strip_prefix('[') {
-        if let Some((address, tail)) = rest.split_once(']') {
-            let port = tail.strip_prefix(':').and_then(|port| port.parse().ok());
-            return (address, port);
+    if entry.starts_with('[') {
+        if let Some(close) = entry.find(']') {
+            let tail = &entry[close + 1..];
+            let (network, port) = match tail.rsplit_once(':') {
+                Some((bits, port)) => (close + 1 + bits.len(), port.parse().ok()),
+                None => (entry.len(), None),
+            };
+            return (&entry[..network], port);
         }
     }
     match entry.rsplit_once(':') {
@@ -123,21 +122,6 @@ fn split_port(entry: &str) -> (&str, Option<u16>) {
             Err(_) => (entry, None),
         },
         _ => (entry, None),
-    }
-}
-
-/// Whether `address` lies in `network/bits`, both of one family.
-fn in_network(address: IpAddr, network: IpAddr, bits: u8) -> bool {
-    match (address, network) {
-        (IpAddr::V4(address), IpAddr::V4(network)) if bits <= 32 => {
-            let mask = u32::MAX.checked_shl(32 - u32::from(bits)).unwrap_or(0);
-            u32::from(address) & mask == u32::from(network) & mask
-        }
-        (IpAddr::V6(address), IpAddr::V6(network)) if bits <= 128 => {
-            let mask = u128::MAX.checked_shl(128 - u32::from(bits)).unwrap_or(0);
-            u128::from(address) & mask == u128::from(network) & mask
-        }
-        _ => false,
     }
 }
 

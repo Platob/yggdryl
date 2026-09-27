@@ -65,15 +65,14 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
         return is_text_storage(parameters);
     }
     // Iceberg has `string` and nothing that carries a code's identity, so
-    // every registered code is portable as the text it is.
-    if dtype.is_code() {
+    // every registered code is portable as the text it is, and every enum
+    // member as the `int32` code of its leaf, bounding as one.
+    if dtype.is_code() || dtype.is_enum() {
         return true;
     }
     matches!(
         dtype,
         DataType::Boolean
-            // A state is the `int32` code of its member, and bounds as one.
-            | DataType::State
             | DataType::Int32
             | DataType::Int64
             | DataType::Float32
@@ -108,10 +107,9 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
     let datum = match dtype {
         DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
         DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
-        DataType::State => OfficialDatum::int(match value {
-            Scalar::State(state) => state.code(),
-            _ => return None,
-        }),
+        held if held.is_enum() => {
+            OfficialDatum::int(value.enum_code().filter(|_| value.id() == held.id())?)
+        }
         DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
         DataType::Int64 => OfficialDatum::long(count(value)?),
         #[allow(clippy::cast_possible_truncation)]
@@ -183,8 +181,8 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
     let value = match (dtype, datum.literal()) {
         (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Scalar::from(*value),
         (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Scalar::from(*value),
-        (DataType::State, OfficialPrimitiveLiteral::Int(value)) => {
-            Scalar::State(crate::State::from_code(*value)?)
+        (held, OfficialPrimitiveLiteral::Int(value)) if held.is_enum() => {
+            crate::enums::read_enum_code(held.id(), i64::from(*value)).ok()?
         }
         (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Scalar::date32(*value),
         (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Scalar::from(*value),
@@ -229,7 +227,9 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
 fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
     let primitive = match dtype {
         DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
-        DataType::Int32 | DataType::State if bytes.len() == 4 => OfficialPrimitiveType::Int,
+        held if (matches!(held, DataType::Int32) || held.is_enum()) && bytes.len() == 4 => {
+            OfficialPrimitiveType::Int
+        }
         DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
         DataType::Int64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Long,
         DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,

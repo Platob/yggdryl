@@ -488,7 +488,7 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
         crate::string_scalars!(text) => return Some(Cow::Borrowed(text.as_str())),
         code if code.is_code() => return code.as_str().map(Cow::Borrowed),
-        Scalar::State(state) => return Some(Cow::Borrowed(state.as_str())),
+        held if held.is_enum() => return held.enum_name().map(Cow::Borrowed),
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Boolean(held) => held.to_string(),
         Scalar::Int8(_)

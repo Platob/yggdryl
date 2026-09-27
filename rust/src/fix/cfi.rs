@@ -134,10 +134,7 @@ impl super::FixMsg {
         // it is found among the row's own children by its spelling alone -
         // exactly, else by the one child the fold reaches - and never asks
         // the dictionary for a name it does not hold.
-        let named = |name: &str| {
-            let at = self.index_of_name(name)?;
-            clean(self.as_value().as_sequence()?.get(at).cloned())
-        };
+        let named = |name: &str| clean(self.named_value(name));
         let number = |tag: i32| {
             self.get_by_tag(tag)
                 .filter(|held| !held.is_null())

@@ -182,10 +182,9 @@ mod datatype {
         assert_eq!(DataType::Ric.code_name(), Some("ric"));
         assert_eq!(DataType::Ric.code_width(), Some(32));
         assert_eq!(DataType::Ric.fixed_byte_width(), None);
-        assert_eq!(
-            DataType::CODES.last(),
-            Some(&("ric", DataType::Ric, 32)),
-            "the newest code is listed last"
+        assert!(
+            DataType::CODES.contains(&("ric", DataType::Ric, 32)),
+            "the one listing names the code"
         );
 
         // The datatype's own wire is the one spelling, and it round-trips.

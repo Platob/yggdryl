@@ -13,12 +13,17 @@ from yggdryl import (
     CcyField,
     DataType,
     Field,
+    ForexField,
+    MarketDataKind,
+    MarketDataKindField,
     MediaTypeField,
     MimeTypeField,
     ProtocolField,
     PythonMetadata,
     RicField,
     Scalar,
+    Side,
+    SideField,
     StructField,
     TimezoneField,
     UrlField,
@@ -76,6 +81,11 @@ dynamic_class: type[object] = imported.into_dataclass(
 ccy: CcyField = yggdryl.ccy("currency", nullable=False)
 ccy_default_scalar: Scalar = ccy.default_scalar()
 instrument: RicField = yggdryl.ric("instrument")
+pair: ForexField = yggdryl.forex("pair")
+side: SideField = yggdryl.side("side", nullable=False)
+side_member: Side = Side.BUY
+category: MarketDataKindField = yggdryl.marketdatakind("marketdatakind")
+category_member: MarketDataKind | None = MarketDataKind.from_spelling("ORDR")
 version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = yggdryl.url("url")
@@ -107,6 +117,9 @@ assert ccy_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == Version(0)
 assert location_dtype == DataType("url")
 assert name_dtype == DataType("urn")
+assert pair.dtype == DataType("forex") and side.dtype == DataType("side")
+assert category.dtype == DataType("marketdatakind")
+assert side_member.is_bid() and category_member is MarketDataKind.ORDR
 assert canonical_text_dtypes == (
     DataType("timezone"),
     DataType("mimetype"),

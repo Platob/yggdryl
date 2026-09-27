@@ -52,7 +52,7 @@ impl Fixture {
         let iterations = if cfg!(debug_assertions) { 1 } else { 20 };
         let start = Instant::now();
         for _ in 0..iterations {
-            let output = Command::new(env!("CARGO_BIN_EXE_ygg"))
+            let output = Command::new(env!("CARGO_BIN_EXE_yggdryl"))
                 .args(["fix", "--root"])
                 .arg(&self.0)
                 .args(args)

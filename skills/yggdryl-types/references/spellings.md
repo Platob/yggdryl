@@ -132,8 +132,9 @@ The same number rule holds: `large_binary(16)` is refused.
 
 | Canonical | Also parsed as | Note |
 | --- | --- | --- |
-| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `side`, `timeinforce`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | thirteen registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 8, 8, 32 |
-| `state` | - | kind `enum`: the lifecycle-sorted `State`, stored as the `int32` code of its member under `yggdryl.state` |
+| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `timeinforce`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | thirteen registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 8, 32 |
+| `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
+| `side`, `marketdatakind`, `state` | - | kind `enum`: each stored as the `int32` code of its member under `yggdryl.side`, `yggdryl.marketdatakind`, `yggdryl.state`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | `major.minor.patch`, numerically ordered |
 | `mimetype` | `mime` | one `type/subtype` |

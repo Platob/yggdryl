@@ -5,7 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market, Operation};
+use yggdryl::graph::{Element, Event, Market};
 use yggdryl::{
     DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };
@@ -30,6 +30,41 @@ fn column_of(schema: &Field, tag: i32) -> usize {
     fix_column_of(schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }
 
+/// The residual record of a fixed row: each key under the text it holds.
+fn residual(row: &Scalar, schema: &Field) -> Vec<(String, String)> {
+    let at = schema.index_of("fixentries").expect("the residual record");
+    row.as_sequence().expect("a row")[at]
+        .as_mapping()
+        .expect("the residual map")
+        .iter()
+        .map(|(key, value)| {
+            (
+                key.as_str().expect("a text key").to_owned(),
+                value.as_str().expect("a text value").to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The `metadata` of a fixed row: each key under the text it holds.
+fn metadata(row: &Scalar, schema: &Field) -> Vec<(String, String)> {
+    let at = schema.index_of("metadata").expect("the metadata column");
+    row.as_sequence().expect("a row")[at]
+        .as_mapping()
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.as_str().expect("a text key").to_owned(),
+                        value.as_str().expect("a text value").to_owned(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The `parties` occurrences out of a fixed row.
 ///
 /// The group is reached by its name and not by tag 453, which is the
@@ -46,13 +81,15 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat, two optional event clocks, the session event and three
-    // normalized identifiers - ISIN, Bloomberg, FIGI - join the existing
+    // MsgCat, two optional event clocks, the session event and four
+    // normalized identifiers - ISIN, the currency pair, Bloomberg, FIGI -
+    // join the existing
     // standard CFI column; the identifiers map and the CUSIP and SEDOL
     // columns are retired, their tags never reused; the six FX parts of a
     // price - 194, 195, 188 to 191 - are columns of their own; a bridge's
-    // originating plugin and conversation join the message band.
-    assert_eq!(tags.len(), 127);
+    // originating plugin and conversation join the message band; the option
+    // strike joins the instrument band.
+    assert_eq!(tags.len(), 128);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -137,30 +174,19 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             );
         }
     }
-    // The bridge's own keys and the arrival record's counter close the row.
-    assert_eq!(
-        &tags[tags.len() - 2..],
-        [
-            yggdryl::METADATA_TAG_NAME.0,
-            yggdryl::NOFIXENTRIES_TAG_NAME.0
-        ]
-    );
+    // The keys that are no field close the tagged row: the residual record
+    // is a map, its own count, and no counter column stands beside it.
+    assert_eq!(tags.last(), Some(&yggdryl::METADATA_TAG_NAME.0));
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 132);
+    assert_eq!(schema.fields().len(), 133);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
-    // The frame closes the row: the trailer, then the bridge's own keys, then
-    // the arrival record and the counter that counts it.
+    // The frame closes the row: the trailer, then the keys that are no
+    // field, then the residual record.
     assert_eq!(
-        &names[names.len() - 5..],
-        [
-            "signature",
-            "checksum",
-            "metadata",
-            "nofixentries",
-            "fixentries"
-        ]
+        &names[names.len() - 4..],
+        ["signature", "checksum", "metadata", "fixentries"]
     );
     for tag in [
         yggdryl::EXECUNIX_TAG_NAME.0,
@@ -552,46 +578,23 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
 }
 
 #[test]
-fn a_lane_a_message_never_wrote_is_still_true_of_it() {
+fn a_bid_is_a_column_only_where_the_message_states_it() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
 
-    // A buy order at a price is a party willing to pay it, so the bid lane
-    // it never wrote is still true of it - and true of it is where the fact
-    // lives: the traits answer the lane while the row carries only the
-    // column the message stated, because a derived fact reaches no column.
+    // A buy order at a price states no bid: nothing derives one, so the
+    // row's `BidPx(132)` and `OfferPx(133)` stay null.
     let buy = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|")
         .unwrap();
-    let bid = buy.get_bid().expect("the bid lane a buy fills");
-    assert_eq!(
-        bid.price.map(|held| held.to_string()).as_deref(),
-        Some("12.5")
-    );
-    assert_eq!(
-        bid.quantity.map(|held| held.to_string()).as_deref(),
-        Some("100")
-    );
-    assert_eq!(buy.get_ask(), None, "no ask lane on a buy");
     let row = buy.into_row(&schema).unwrap();
-    assert!(
-        at(&row, &schema, 132).is_null(),
-        "the lane was never stated"
-    );
+    assert!(at(&row, &schema, 132).is_null(), "no bid was stated");
     assert!(at(&row, &schema, 133).is_null());
 
-    // A lane the message did state is a column like any other.
+    // A bid the message did state is a column like any other.
     let stated = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
         .unwrap();
-    assert_eq!(
-        stated
-            .get_bid()
-            .and_then(|lane| lane.price)
-            .map(|held| held.to_string())
-            .as_deref(),
-        Some("99")
-    );
     let row = stated.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 132), &super::decimal("99"));
 }
@@ -601,34 +604,136 @@ fn the_row_keeps_unrepresented_content_and_projects_explained_values() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let message = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
+        .sole_line(b"8=FIX.4.4|35=D|11=A|107=HOLCIM N|9999=x|VenueOwnThing=y|10=0|")
         .unwrap();
     let row = message.into_row(&schema).unwrap();
-    let held = row.as_sequence().expect("a row");
-    let entries = held.last().unwrap().as_sequence().expect("the record");
 
-    // Only content no column explained remains in the residual. The frame,
-    // order identifier and derived `TimeInForce` each have a column.
-    assert_eq!(entries.len(), 2);
-    // A key no dictionary explains is named after itself, folded as every
-    // name is: the name cannot be null, and the key is the only one it has.
-    let named: Vec<_> = entries
-        .iter()
-        .filter(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(0))
-        .map(|entry| {
-            entry
-                .get(1)
-                .and_then(|name| name.as_str().map(str::to_owned))
-                .unwrap()
-        })
-        .collect();
-    assert_eq!(named, ["9999", "venueownthing"]);
+    // Only content no column explained remains in the residual, under its
+    // field's `tag:name`. The frame, order identifier and derived
+    // `TimeInForce` each have a column; `SecurityDesc(107)` has none.
+    assert_eq!(
+        residual(&row, &schema),
+        [("107:securitydesc".to_owned(), "HOLCIM N".to_owned())]
+    );
+    // A key no dictionary resolves is no field: the metadata states it under
+    // its own spelling, folded as every name is, with the text it arrived as.
+    assert_eq!(
+        metadata(&row, &schema),
+        [
+            ("9999".to_owned(), "x".to_owned()),
+            ("venueownthing".to_owned(), "y".to_owned())
+        ]
+    );
 
     // A dictionary value the schema represents is read from its named
-    // column, and rebuilding preserves it beside the residual.
+    // column, and rebuilding preserves it beside the residual; an unmapped
+    // key comes back as the tag-zero entry the parse held it as, so the
+    // message read back re-emits it and its metadata keeps bridge keys only.
     let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(restored.by_tag(59).unwrap(), message.by_tag(59).unwrap());
+    assert_eq!(restored.by_tag(107).unwrap(), message.by_tag(107).unwrap());
+    assert!(restored.metadata().is_empty());
+    let unmapped = |held: &yggdryl::FixMsg| {
+        held.entries()
+            .iter()
+            .filter(|entry| entry.tag() == 0)
+            .map(|entry| (entry.name().to_owned(), entry.value().map(str::to_owned)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(unmapped(&restored), unmapped(&message));
+    assert_eq!(restored.digest(), message.digest());
     assert_eq!(restored.into_row(&schema).unwrap(), row);
+}
+
+/// An unmapped key stated twice is one metadata key holding the JSON array
+/// of its values in arrival order, and a text opening the way JSON does its
+/// JSON string; the row read back holds both occurrences again.
+#[test]
+fn a_repeated_unmapped_key_is_one_metadata_array_and_reads_back_whole() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|VenueOwnThing=b|VenueOwnThing=a|VenueList=[1]|10=0|")
+        .unwrap();
+    let row = message.into_row(&schema).unwrap();
+    assert_eq!(
+        metadata(&row, &schema),
+        [
+            ("venuelist".to_owned(), "\"[1]\"".to_owned()),
+            ("venueownthing".to_owned(), "[\"b\",\"a\"]".to_owned())
+        ]
+    );
+    let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    let wire = String::from_utf8(restored.into_bytes(b'|')).unwrap();
+    assert!(
+        wire.contains("venueownthing=b|venueownthing=a|") && wire.contains("venuelist=[1]|"),
+        "{wire}"
+    );
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
+}
+
+/// A residual value is text where a scalar states it and the JSON of what
+/// a group holds - its occurrences an array, each an object keyed
+/// `tag:name` - and a scalar whose text opens the way JSON does is its JSON
+/// string, so every value reads back as what it was.
+#[test]
+fn a_residual_group_is_its_json_and_a_json_looking_scalar_its_string() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=AE|571=T1|107=[1]|552=2|54=1|453=1|448=P1|452=1|54=2|10=0|")
+        .unwrap();
+    let row = message.into_row(&schema).unwrap();
+    let held = residual(&row, &schema);
+    let text = |key: &str| {
+        held.iter()
+            .find(|(held, _)| held == key)
+            .map(|(_, value)| value.as_str())
+            .unwrap_or_else(|| panic!("{key} in {held:?}"))
+    };
+    assert_eq!(text("107:securitydesc"), r#""[1]""#);
+    let sides = held
+        .iter()
+        .find(|(key, _)| key.starts_with("552:"))
+        .map(|(_, value)| value.as_str())
+        .unwrap_or_else(|| panic!("the sides in {held:?}"));
+    assert!(sides.starts_with("[{"), "{sides}");
+    assert!(sides.contains(r#""54:side":"1""#), "{sides}");
+    assert!(sides.contains(r#""54:side":"2""#), "{sides}");
+    assert!(
+        sides.contains(r#"[{"448:partyid":"P1","452:partyrole":"1"}]"#),
+        "{sides}"
+    );
+
+    let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(restored.by_tag(107).unwrap(), message.by_tag(107).unwrap());
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
+}
+
+/// A key the record holds must be a resolved field's `tag:name`: a key no
+/// dictionary resolved lives in `metadata`, and a record naming one is
+/// refused where it is spelled.
+#[test]
+fn a_residual_key_that_is_no_resolved_field_is_refused_by_name() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|10=0|")
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    let at = schema.index_of("fixentries").unwrap();
+    for key in ["0:venueownthing", "venueownthing", "x:symbol", "55:"] {
+        let mut cells = row.as_sequence().unwrap().to_vec();
+        cells[at] = Scalar::from_mapping([(Scalar::from(key), Scalar::from("y"))]).expect("a map");
+        let error = yggdryl::FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &Scalar::from_sequence(cells),
+        )
+        .expect_err("a key that is no resolved field");
+        assert!(error.to_string().contains("fixentries"), "{key}: {error}");
+    }
 }
 
 /// The two documents a datatype writes name it the same way.
@@ -1041,13 +1146,10 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(members[4].is_null());
     assert!(members[5].is_null());
 
-    let residual = row.as_sequence().unwrap()[schema.index_of("fixentries").unwrap()]
-        .as_sequence()
-        .expect("the residual entries");
     assert!(
-        residual
+        residual(&row, &schema)
             .iter()
-            .all(|entry| entry.get(0).and_then(|tag| tag.as_i128()) != Some(1907)),
+            .all(|(key, _)| !key.starts_with("1907:")),
         "the projected group is not duplicated in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -1065,40 +1167,44 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     let row = proprietary.into_row(&schema).unwrap();
     assert!(at(&row, &schema, 1907).is_null());
     assert!(row.as_sequence().unwrap()[at_group].is_null());
-    let residual = row.as_sequence().unwrap()[schema.index_of("fixentries").unwrap()]
-        .as_sequence()
-        .expect("the residual entries");
     assert!(
-        residual
+        residual(&row, &schema)
             .iter()
-            .any(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(1907)),
+            .any(|(key, _)| key.starts_with("1907:")),
         "the proprietary group remains whole in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
 }
 
-/// A row read out of Arrow holds its arrival entries as a column; it
-/// rebuilds the message the run of them does.
+/// A row read out of Arrow holds its residual record as the map Arrow
+/// answers; it rebuilds the message the record does.
 #[test]
-fn a_row_holding_its_arrival_entries_as_a_column_rebuilds_its_message() {
+fn a_row_read_out_of_arrow_rebuilds_its_message_from_the_residual_map() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|9999=x|10=0|")
+        .sole_line(b"8=FIX.4.4|35=AE|571=T1|55=AAPL|107=HOLCIM N|552=1|54=1|9999=x|10=0|")
         .unwrap();
     let row = order.into_row(&schema).unwrap();
-    let at = schema.index_of("fixentries").expect("the arrival entries");
-    assert!(
-        !row.as_sequence().unwrap()[at]
-            .as_sequence()
-            .unwrap()
-            .is_empty(),
-        "tag 9999 is a residual entry"
-    );
-    let column = super::with_column_at(&row, at, &super::item_of(&schema.fields()[at]));
-    let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &column)
-        .expect("the entries read from a column");
+    let keys: Vec<String> = residual(&row, &schema)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    assert!(keys.iter().any(|key| key == "107:securitydesc"), "{keys:?}");
+    assert!(keys.iter().any(|key| key.starts_with("552:")), "{keys:?}");
+    assert!(keys.iter().all(|key| !key.starts_with("0:")), "{keys:?}");
+    let batch = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
+        .expect("the row lands")
+        .into_arrow_batch()
+        .expect("a batch");
+    let landed =
+        yggdryl::Serie::from_arrow_batch(Some(&schema), &batch, yggdryl::ArrowCastOptions::new())
+            .expect("the batch lands again")
+            .scalar(0)
+            .expect("its row");
+    let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &landed)
+        .expect("the record read out of Arrow");
     assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
@@ -1200,13 +1306,10 @@ fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
     let member = |name: &str| members[declared.index_of(name).expect(name)].as_str();
     assert_eq!(member("securityaltid"), Some("US0378331005"));
     assert_eq!(member("securityaltidsource"), Some("4"));
-    let residual = cells[schema.index_of("fixentries").unwrap()]
-        .sequence_rows()
-        .expect("the residual entries");
     assert!(
-        residual
+        residual(&row, &schema)
             .iter()
-            .all(|entry| entry.get(0).and_then(|tag| tag.as_i128()) != Some(454)),
+            .all(|(key, _)| !key.starts_with("454:")),
         "the fixed group is not duplicated in fixentries"
     );
     assert_eq!(row, run.into_row(&schema).unwrap());

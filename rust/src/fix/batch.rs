@@ -24,16 +24,18 @@
 //! | --- | --- |
 //! | identity | `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
-//! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
+//! | residual | `fixentries`, a sorted `map<utf8, utf8>` keyed by each field's `tag:name` |
 //!
-//! `entries` is not optional. The facet columns are a convenience over a
-//! subset; the entries list *is* the row, and it is what makes a batch a
-//! lossless capture rather than one reader's summary of it. A caller wanting
-//! facets alone projects the batch afterwards, which already exists.
+//! `fixentries` is not optional. The facet columns are a convenience over a
+//! subset; the columns and the residual map together *are* the message, and
+//! they are what makes a batch a lossless capture rather than one reader's
+//! summary of it. A caller wanting facets alone projects the batch
+//! afterwards, which already exists. A key no dictionary resolved is no
+//! field, and `metadata` holds it.
 //!
 //! A column per tag seen is deliberately not the shape: it makes the schema
 //! depend on the data, gives a mixed capture a thousand mostly-null columns,
-//! and is reconstructible from `entries` by whoever actually wants it.
+//! and is reconstructible from `fixentries` by whoever actually wants it.
 //!
 //! # Batches close on the bytes they were read from
 //!
@@ -293,7 +295,7 @@ impl FixCodec {
         self.arrow_reader(schema, walked)
     }
 
-    /// A stream of batches of FIX rows as the market operations its
+    /// A stream of batches of FIX rows as the market data its
     /// messages are, in [`MarketData::field`](crate::graph::MarketData::field)
     /// rows.
     ///
@@ -314,7 +316,7 @@ impl FixCodec {
     ///
     /// Returns the schema grammar's refusal when the source's schema does not
     /// make a root field, before a row is read.
-    pub fn market_operations_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
+    pub fn market_data_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         Self::row_field(source.schema().as_ref())?;
         self.market_arrow_reader(self.messages(source))
     }
@@ -550,6 +552,8 @@ impl FixCodec {
     /// pinned, else [`SOH`], then a newline. The wire combines projected
     /// ordinary fields with residual entries; residual content owns any
     /// overlapping tag or group. Represented content may reorder or normalize.
+    /// A key no dictionary resolved is the row's `metadata` and no field, so
+    /// it is not written, exactly as a bridge's namespaced keys are not.
     /// A batch without the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message

@@ -117,6 +117,17 @@ const port: number = server.port
 server.clearRequests()
 server.shutdown()
 
+const proxied: Server = http.Server.bind('0.0.0.0:0', {
+  publicUrl: 'https://data.example.com/olap',
+  trustedProxies: ['10.0.0.0/8', '::1'],
+  forwardedHeaders: ['X-Forwarded-For', 'X-Forwarded-Proto', 'X-Forwarded-Prefix'],
+  pathPrefix: '/olap',
+})
+const publicUrl: Url = proxied.publicUrlOf('/data')
+const client: string | undefined = recorded[0]?.client
+const peer: string | undefined = recorded[0]?.peer
+proxied.shutdown()
+
 // @ts-expect-error a request option this binding does not read
 session.get('orders', { retries: 3 })
 // @ts-expect-error the fault names are closed

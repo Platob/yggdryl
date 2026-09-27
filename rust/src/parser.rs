@@ -875,8 +875,10 @@ impl fmt::Display for DataType {
             | D::Figi
             | D::Side
             | D::State
+            | D::MarketDataKind
             | D::TimeInForce
             | D::Unit
+            | D::Forex
             | D::Decimal
             | D::BigDecimal
             | D::Uuid

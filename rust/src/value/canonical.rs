@@ -987,21 +987,21 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => {
+        | D::Unit
+        | D::Forex => {
             if value.is_code() && value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
             let Some(bytes) = ascii_bytes(value) else {
                 return canonicalization_failure(dtype);
             };
-            // A side is read by its spelling, and a name is longer than the
-            // value it names - `SellShortExempt` for `SSHORTEX` - so the width
-            // holds the value read, never the spelling; every other code is
-            // the text it is, at its width.
+            // A pair is read by every spelling it accepts, whitespace around
+            // it included, so no width holds the text read - the canonical
+            // pair is what the width bounds; every other code is the text it
+            // is, at its width.
             let text = match dtype {
-                D::Side => ascii_text_sized(None, bytes)?,
+                D::Forex => ascii_text_sized(None, bytes)?,
                 _ => code_cell_text(dtype, bytes)?,
             };
             let canonical = match dtype {
@@ -1015,32 +1015,33 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Bbg => Scalar::Bbg(crate::Bbg::new(text)?),
                 D::Ric => Scalar::Ric(crate::Ric::new(text)?),
                 D::Figi => Scalar::Figi(crate::Figi::new(text)?),
-                // A side is read by its spelling: the wire code, the
-                // specification's name or a stored value all reach the one
-                // explicit value, and a spelling that names none is refused
-                // rather than stored unread.
-                D::Side => Scalar::Side(crate::Side::read(text)?),
                 D::TimeInForce => Scalar::TimeInForce(crate::TimeInForce::new(text)?),
                 D::Unit => Scalar::Unit(crate::Unit::new(text)?),
+                D::Forex => Scalar::Forex(crate::Forex::new(text)?),
                 _ => unreachable!("registered code matched above"),
             };
             Ok((canonical, true))
         }
-        // A state is its member: an integer is read as the code it is and
-        // text as the spelling it is, and one that names no member is
-        // refused rather than stored unread.
-        D::State => {
-            if let Scalar::State(_) = value {
+        // An enum member is its leaf's: an integer is read as the code it is
+        // and text as the spelling it is, and one that names no member is
+        // refused rather than stored unread. A member of another enum leaf
+        // is neither: validation refused it before this door.
+        crate::enum_dtypes!() => {
+            if value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
-            let state = match (value.as_i128(), value.as_str()) {
-                (Some(code), _) => crate::State::read_code(
-                    i64::try_from(code).map_err(|_| state_code_refusal(code))?,
+            if value.is_enum() {
+                return canonicalization_failure(dtype);
+            }
+            let member = match (value.as_i128(), value.as_str()) {
+                (Some(code), _) => crate::enums::read_enum_code(
+                    dtype.id(),
+                    i64::try_from(code).map_err(|_| enum_code_refusal(dtype, code))?,
                 )?,
-                (None, Some(text)) => crate::State::read(text)?,
+                (None, Some(text)) => crate::enums::read_enum_spelling(dtype.id(), text)?,
                 (None, None) => return canonicalization_failure(dtype),
             };
-            Ok((Scalar::State(state), true))
+            Ok((member, true))
         }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
@@ -1653,11 +1654,11 @@ fn check_string_bound(parameters: StringType, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// The refusal an integer too wide to be a state's code answers with.
-fn state_code_refusal(code: i128) -> Error {
+/// The refusal an integer too wide to be an enum member's code answers with.
+fn enum_code_refusal(dtype: &DataType, code: i128) -> Error {
     Error::InvalidDataType {
-        kind: "state",
-        reason: format_smolstr!("expected the code of a state, got {code}"),
+        kind: dtype.name(),
+        reason: format_smolstr!("expected the code of a {dtype}, got {code}"),
     }
 }
 
@@ -1863,12 +1864,12 @@ fn validate_dtype_value(
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::Side
         | D::TimeInForce
-        | D::Unit => match ascii_bytes(value) {
-            // A side is read by its spelling, which may be longer than the
-            // value it names; the width holds the value.
-            Some(bytes) if matches!(dtype, D::Side) => ascii_text_sized(None, bytes)
+        | D::Unit
+        | D::Forex => match ascii_bytes(value) {
+            // A pair's spellings are wider than the pair; the width holds
+            // the canonical text, which the canonicalization builds.
+            Some(bytes) if matches!(dtype, D::Forex) => ascii_text_sized(None, bytes)
                 .map(|_| ())
                 .map_err(ascii_failure),
             Some(bytes) => code_cell_text(dtype, bytes)
@@ -1876,15 +1877,20 @@ fn validate_dtype_value(
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
-        D::State => match value {
-            Scalar::State(_) => Ok(()),
+        crate::enum_dtypes!() => match value {
+            member if member.id() == dtype.id() => Ok(()),
+            // A member of another enum leaf is a value of another vocabulary,
+            // never a spelling of this one.
+            member if member.is_enum() => Err(expected(dtype.name(), value)),
             other => match (other.as_i128(), other.as_str()) {
                 (Some(code), _) => i64::try_from(code)
-                    .map_err(|_| state_code_refusal(code))
-                    .and_then(crate::State::read_code)
+                    .map_err(|_| enum_code_refusal(dtype, code))
+                    .and_then(|code| crate::enums::read_enum_code(dtype.id(), code))
                     .map(|_| ())
                     .map_err(ascii_failure),
-                (None, Some(text)) => crate::State::read(text).map(|_| ()).map_err(ascii_failure),
+                (None, Some(text)) => crate::enums::read_enum_spelling(dtype.id(), text)
+                    .map(|_| ())
+                    .map_err(ascii_failure),
                 (None, None) => Err(expected(dtype.name(), value)),
             },
         },

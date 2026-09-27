@@ -2509,8 +2509,8 @@ mod typed {
                 DataType::Bbg,
                 DataType::Ric,
                 DataType::Figi,
-                DataType::Side,
                 DataType::TimeInForce,
+                DataType::Forex,
             ]
         }
 

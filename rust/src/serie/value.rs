@@ -11,7 +11,7 @@ use crate::budget::{
 use crate::string::is_text_storage;
 use crate::{
     BBG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, Str, StringType, TIMEINFORCE_WIDTH,
+    FOREX_WIDTH, ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, Str, StringType, TIMEINFORCE_WIDTH,
     UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
@@ -162,14 +162,14 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         DataType::Bbg => code_array::<BBG_WIDTH>(dtype, values)?,
         DataType::Ric => code_array::<RIC_WIDTH>(dtype, values)?,
         DataType::Figi => code_array::<FIGI_WIDTH>(dtype, values)?,
-        DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
-        // A state is the code of its member.
-        DataType::State => primitive!(Int32Type, |value: &Scalar| match value {
-            Scalar::State(state) => Ok(state.code()),
-            other => Err(invalid_value_kind("a state", other)),
+        // An enum member is the code its own leaf stores.
+        crate::enum_dtypes!() => primitive!(Int32Type, |value: &Scalar| match value.enum_code() {
+            Some(code) if value.id() == dtype.id() => Ok(code),
+            _ => Err(invalid_value_kind(dtype.name(), value)),
         }),
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
         DataType::Unit => code_array::<UNIT_WIDTH>(dtype, values)?,
+        DataType::Forex => code_array::<FOREX_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
@@ -392,9 +392,10 @@ pub(crate) fn read_native<N: Into<Scalar>>(_: &DataType, value: N) -> Result<Sca
     Ok(value.into())
 }
 
-/// A state slot: the code of one member, refused where it names none.
-pub(crate) fn read_state(_: &DataType, code: i32) -> Result<Scalar> {
-    Ok(Scalar::State(crate::State::read_code(i64::from(code))?))
+/// An enum slot: the code of one member of the field's leaf, refused where
+/// it names none.
+pub(crate) fn read_enum(dtype: &DataType, code: i32) -> Result<Scalar> {
+    Ok(crate::enums::read_enum_code(dtype.id(), i64::from(code))?)
 }
 
 pub(crate) fn read_decimal32(dtype: &DataType, value: i32) -> Result<Scalar> {
@@ -552,9 +553,9 @@ read_code!(
     read_bbg => Bbg,
     read_ric => Ric,
     read_figi => Figi,
-    read_side => Side,
     read_time_in_force => TimeInForce,
     read_unit => Unit,
+    read_forex => Forex,
 );
 
 /// Emit one reader per unnumbered leaf in text or binary storage.
@@ -662,9 +663,9 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::Bbg => read_bbg,
         DataType::Ric => read_ric,
         DataType::Figi => read_figi,
-        DataType::Side => read_side,
         DataType::TimeInForce => read_time_in_force,
         DataType::Unit => read_unit,
+        DataType::Forex => read_forex,
         DataType::Version => read_version,
         DataType::Url => read_url,
         DataType::Urn => read_urn,
@@ -764,7 +765,7 @@ pub(crate) fn value_from_array(
         DataType::Int8 => cell!(Int8Array, read_native),
         DataType::Int16 => cell!(Int16Array, read_native),
         DataType::Int32 => cell!(Int32Array, read_native),
-        DataType::State => cell!(Int32Array, read_state),
+        crate::enum_dtypes!() => cell!(Int32Array, read_enum),
         DataType::Int64 => cell!(Int64Array, read_native),
         DataType::UInt8 => cell!(UInt8Array, read_native),
         DataType::UInt16 => cell!(UInt16Array, read_native),
@@ -836,9 +837,9 @@ pub(crate) fn value_from_array(
         | DataType::Bbg
         | DataType::Ric
         | DataType::Figi
-        | DataType::Side
         | DataType::TimeInForce
-        | DataType::Unit => cell!(StringArray, text_reading(dtype)?),
+        | DataType::Unit
+        | DataType::Forex => cell!(StringArray, text_reading(dtype)?),
         DataType::Serie(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }

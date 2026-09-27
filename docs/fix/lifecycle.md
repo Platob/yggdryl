@@ -7,25 +7,27 @@ A message says what happened; it does not say which order's life it belongs to b
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixCodec::lifecycle`, `FixCodec::lifecycle_arrow_reader`; the walk itself is [`graph::EventIterator`](../graph/event.md#lifecycle-walk), configured by the codec's snapshot width or opened directly by a Rust caller |
-| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021) and `seqnum` (65042) place a message in it; `creaunix` (65023), `exprunix` (65053) and `state` (65052) carry creation, the current generation's deadline and state; `execunix` (65062) is the precise execution instant and `recdunix` (65063) the earliest precise recording instant its statements know; `msgsesseventid` (65065) is the delivery a twin is matched by; `snapunix` (65025) is a grid view's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled after a source message moves; a view keeps them unchanged |
-| Chain name | the cross code: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code shares one identity whatever else it says. A complete `msgtype`, capture session, capture context and message sequence separately build the capture's `msgsesseventid`; it neither chooses the cross code nor changes the FIX content identity. A message naming no cross code is a chain of one: its `crossuuid` is its own `curruuid` |
-| Joins | a message arriving under the identity a live message holds follows it; one arriving under no live identity, but going by a name a live message goes by - the same `(key, value)` in its alternate identifiers, [`get_altids()`](message.md#the-identifier-maps), a report stating only the `ClOrdID` an order was placed under - follows that one, and takes the chain's cross code as its own |
-| Follows | before following, equal complete `msgsesseventid` values force a full content-and-graph merge: the latest recorded observation is the reference, the later `currunix` closing a tie, while `recdunix` and `execunix` become the earliest values either statement knows. Otherwise the predecessor's `curruuid` and `currunix` are recorded, `seqnum` is one past the predecessor's, the chain's cross code carries, and so do the earliest `creaunix`, the newer message's explicit `exprunix` where stated else the predecessor's, the furthest [state](../types/enum/state.md#the-code-is-the-rank), and the later of the predecessor's latest execution clock and this event's precise `execunix`. `recdunix` remains this observation's own. A missing `parentorderid` takes a different predecessor `OrderID(37)`, and a missing `ClOrdID(11)` takes the predecessor's; an explicitly stated link always wins. An absent `ticker` inherits the predecessor's even when the timed link already exists; a stated one remains. What the message states of its operation - its time in force, its accounts and users, its alternate identifiers beyond the order links above - is its own: the FIX reading is `Market::following_market`, not `Operation::following_operation`. A merged statement ranks against a third by the earliest `recdunix` it keeps, so which of three statements leads depends on the order they merge in. A message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
+| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65010), `crosshashcode` (65012) and `crossuuid` (65009) name the chain; `prevuuid` (65013), `prevunix` (65005) and `seqnum` (65014) place a message in it; `creaunix` (65004), `exprunix` (65007) and `state` (65029) carry creation, the current generation's deadline and state; `execunix` (65002) is the precise execution instant and `recdunix` (65003) the earliest precise recording instant its statements know; `msgsesseventid` (65021) is the delivery a twin is matched by; `snapunix` (65006) is a grid view's stamp. `currhashcode` (65011) and `curruuid` (65008) are settled after a source message moves; a view keeps the live message's `currhashcode` and takes the `curruuid` its tick derives |
+| Chain name | the cross code: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`, stored under the side the message takes - `BUY:A1` - so a buy and a sell under one identifier are two chains, and as spelled for a message taking `UNKNOWN`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code on one side shares one identity whatever else it says. A complete `msgtype`, capture session, capture context and message sequence separately build the capture's `msgsesseventid`; it neither chooses the cross code nor changes the FIX content identity. A message naming no cross code is a chain of one: its `crossuuid` is its own `curruuid`, which a message following it keeps as its own |
+| Joins | a message arriving under the identity a live message holds follows it; one arriving under no live identity, but going by a name a live message of its side goes by - the same `(key, value)` in its alternate identifiers, [`get_altids()`](message.md#the-identifier-maps), a report stating only the `ClOrdID` an order was placed under - follows that one, and takes the chain's cross code as its own. A message stating no side joins the one side alive under its base cross code, else under the first name it shares with a live message, where exactly one side is alive there, and takes that side; where both are, it starts a chain of its own. An execution joins nothing by a name or a base: it is a chain of its own, followed only under its own cross code |
+| Follows | before following, equal complete `msgsesseventid` values force a full content-and-graph merge: the latest recorded observation is the reference, the later `currunix` closing a tie, while `recdunix` and `execunix` become the earliest values either statement knows. Otherwise the predecessor's `curruuid` and `currunix` are recorded, `seqnum` is one past the predecessor's, the chain's cross code carries, and so do the earliest `creaunix`, the newer message's explicit `exprunix` where stated else the predecessor's, the furthest [state](../types/enum/state.md#the-code-is-the-rank) - a `NEW` stated over a live new-like predecessor [reads `UPDATED`](../types/enum/state.md#stated-anew-over-a-live-one) - and the later of the predecessor's latest execution clock and this event's precise `execunix`. `recdunix` remains this observation's own. A missing `parentorderid` takes a different predecessor `OrderID(37)`, and a missing `ClOrdID(11)` takes the predecessor's; an explicitly stated link always wins. An absent `ticker` inherits the predecessor's even when the timed link already exists; a stated one remains. The FIX reading is `Operation::following_operation`: the time in force and whether the instrument can trade carry where this message states neither, and so does every alternate identifier whose `FIX:idmap` entry follows - the order's own and its parents'. A merged statement ranks against a third by the earliest `recdunix` it keeps, so which of three statements leads depends on the order they merge in. A message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
+| Creation | every walked message leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold keeps - or, starting a chain, its own instant; a stated one is never replaced. A parse already states one on every message, so this reads for an event a caller built without one |
+| Unknowns | a statement that knows the instrument or the market leads one that does not: an ISIN numbered `ZZ` yields to a real one, an unclassified CFI (`XXXXXX`) to a classified one and the no-market MIC `XXXX` to a market, whether one statement follows another or two merge |
 | Twins | a message arriving under the identity the live one *arrived* under - the same instant and content, one message a bridge logged at every hop it passed - is another statement of it, not the one after it: it takes the live one's place, predecessor, position and lifecycle, keeps the earliest execution and recording instants either observation states, and finalizes to the same `curruuid`, so the chain grows by nothing |
-| Dating | a message whose `SendingTime(52)` the parse supplied rather than read - a carrier row's, its line's `currunix`, the codec's default, the intake's clock - is dated by the `TransactTime(60)` it states with a clock before the walk, and a resend's `OrigSendingTime(122)` is its creation where earlier; a stated sending clock stands, because the parse has already dated the message by [the official clock](capture.md#the-official-clock-dates-the-message) standing within `official_time_delay_ms` of it. No delay bounds this one: a clock nobody stated is no reference to measure a distance from. `FixMsg::dated_by_transaction` is the reading, so a capture whose frames state no sending clock still orders, expires and folds by when its transactions happened. Independently, a report accepted by `FixMsg::is_execution` uses its directly parsed execution clock where present and otherwise its own `currunix`, which the parse fills in rather than the walk; this includes an initial `35=AE` whose `TradeReportTransType(487)` is absent/New and whose `ExecType(150)` is absent or execution-like. That latest clock propagates to later lifecycle events and never moves backward; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. `recdunix` is only the precise carrier recording time or a directly stated value, never a sending, original-sending or hop clock |
-| Order | the entire finite capture is collected; capture-identical observations are merged, then the retained messages are stably sorted by event time before the walk. Intake errors are retained and yielded first because sorting cannot preserve their position among messages |
-| Deliveries | a complete nonempty `(msgtype, msgsessionid, msgctxid, msgseqnum)` is prebuilt as the capture's `msgsesseventid`: `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, the values joined by `:` as stated and the sequence rendered as canonical `u64`. Equal values are one delivery before sorting, walking or ordinary with-previous following. The observations are ranked latest `recdunix` first - a stated one ahead of an absent one, the later `currunix` closing a tie - and a full FIX-content and graph merge folds every other observation into the first, the reference chosen once over all of them, so the delivery takes no predecessor or extra chain place. Reference scalar conflicts win, older values fill absences, and repeating groups merge recursively at equal occurrence indexes with members sorted by FIX tag and no duplicate key. The merged `recdunix` and `execunix` facts are their earliest values, and provenance sources form a sorted unique union whose positions carry no reference meaning. Separately, exact republications and true retransmissions are removed across the entire finite capture, however many distinct deliveries intervene; session, sequence, original time and content distinguish normal deliveries, and headerless bridge rows use their event identity and capture context. An absent or empty text part or absent sequence produces no `msgsesseventid`; distinct message types, sessions, contexts and sequences survive |
+| Dating | a message whose `SendingTime(52)` the parse supplied rather than read - a carrier row's, its line's `currunix`, the codec's default, the intake's clock - is dated by the `TransactTime(60)` it states with a clock before the walk, and a resend's `OrigSendingTime(122)` is its creation where earlier; a stated sending clock stands, because the parse has already dated the message by [the official clock](capture.md#the-official-clock-dates-the-message) standing within `official_time_delay_ms` of it. No delay bounds this one: a clock nobody stated is no reference to measure a distance from. `FixMsg::dated_by_transaction` is the reading, so a capture whose frames state no sending clock still orders, expires and folds by when its transactions happened. Independently, a report accepted by `FixMsg::is_execution` uses its directly parsed execution clock where present and otherwise its own `currunix`, which the parse fills in rather than the walk. That latest clock propagates to later lifecycle events and never moves backward; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. `recdunix` is only the precise carrier recording time or a directly stated value, never a sending, original-sending or hop clock |
+| Order | by default the entire finite capture is collected; capture-identical observations are merged, then the retained messages are stably sorted by event time before the walk. Intake errors are retained and yielded first because sorting cannot preserve their position among messages. A codec whose [`sorted_lifecycle`](#a-sorted-source-is-walked-one-hour-at-a-time) pin is on reads a source already in instant order as it comes, one epoch hour at a time, and yields each intake error as the walk reaches it |
+| Deliveries | a complete nonempty `(msgtype, msgsessionid, msgctxid, msgseqnum)` is prebuilt as the capture's `msgsesseventid`: `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, the values joined by `:` as stated and the sequence rendered as canonical `u64`. Equal values are one delivery before sorting, walking or ordinary with-previous following - where the two also agree on the category, the side and an execution's chain, so the messages a parse split off one delivery never merge into each other. The observations are ranked latest `recdunix` first - a stated one ahead of an absent one, the later `currunix` closing a tie - and a full FIX-content and graph merge folds every other observation into the first, the reference chosen once over all of them, so the delivery takes no predecessor or extra chain place. Reference scalar conflicts win, older values fill absences, and repeating groups merge recursively at equal occurrence indexes with members sorted by FIX tag and no duplicate key. The merged `recdunix` and `execunix` facts are their earliest values, and provenance sources form a sorted unique union whose positions carry no reference meaning. Separately, exact republications and true retransmissions are removed across the entire finite capture, however many distinct deliveries intervene; session, sequence, original time and content distinguish normal deliveries, and headerless bridge rows use their event identity and capture context. An absent or empty text part or absent sequence produces no `msgsesseventid`; distinct message types, sessions, contexts and sequences survive |
 | Instruments | after sorting, one lifecycle-local `SecurityIdRegistry` learns, under a valid ISIN, one association per security identifier key the message states - at most eight per instrument - and its detailed CFI, and fills only what a later message with the same ISIN leaves unstated, through `derive_securityid`, so a filled identifier never reaches a field or the wire. Coarse CFI is not learned, and neither is a bridge's `OMSINSTRUMENTID` or `ULLINKINSTRUMENTID`: each names a listing - `dbi;CH0012214059_XSWX_CHF` is the ISIN with its market and currency - and one ISIN has as many listings as markets. Conflicting values make an association ambiguous and silent. Storage reserves 2 KiB for each first valid ISIN, at most 32 MiB or 16,384 ISINs and never more than 65,536; a known ISIN can keep learning at the cap |
 | Ends | a terminal state retires the chain once yielded. A live finite deadline emits one owned `EXPIRED` message at that exact instant, following the live generation with `prevuuid` and the next `seqnum`, then purges it; replaced or terminal generations leave no stale expiry |
-| Grid | a positive codec `snapshot_ns` / `snapshotNs` enables an epoch-aligned grid; the default is off. Every crossed tick yields an owned view of every living chain, changing only `snapunix`. Deadlines win ties, all source messages at the instant follow, and views come last. Output is proportional to crossed ticks times living identities; there is no implicit output cap |
-| Errors | intake errors are yielded before the sorted messages and never advance the walk; exhaustion is fused |
-| Entries | delivery folding and missing order-link propagation rebuild the affected content canonically; stated values always win. The graph-only chain columns remain off the wire |
-| Trade projection | lifecycle retains every FIX observation as one message; it neither filters trade reports nor manufactures child FIX rows. At the later market boundary only an initial TradeCaptureReport `35=AE` with `TradeReportTransType(487)` absent/New and `ExecType(150)` absent or execution-like is accepted; non-New/cancel/correct/reverse/status AE are refused there. Standalone market conversion also refuses `AD`, `AQ` and `AR`; the composed book reader ignores them and other records outside order/quote categories, actual executions and `W`/`X`. Accepted output passed to `FixMarketIterator`, `book_arrow_reader` or `market_operations` is projected from its `NoSides(552)` occurrences into one composite graph `TradeEvent`, preserving the enriched root and deriving one explicitly sided child execution per occurrence; `codec.market_operations(codec.lifecycle(messages))` is the [sorted handoff](arrow.md#fix-market-books) to a book |
+| Grid | a positive codec `snapshot_ns` / `snapshotNs` enables an epoch-aligned grid; the default is off. Every crossed tick yields an owned view of every living chain: the live message as of that tick, dated at it - `currunix` and `snapunix` both the tick - so its `curruuid` is the identity that instant derives, while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live message's; a view does not advance the chain. Deadlines win ties, all source messages at the instant follow, and views come last. Output is proportional to crossed ticks times living identities; there is no implicit output cap |
+| Errors | intake errors are yielded before the sorted messages - on a sorted lifecycle, as the walk reaches them - and never advance the walk; exhaustion is fused |
+| Entries | delivery folding, missing order-link propagation and the side a follower stating no `Side(54)` takes from its chain rebuild the affected content canonically; stated values always win. The graph-only chain columns remain off the wire |
+| Split messages | the walk reads what the parse answered: the execution a report or a trade [reports](message.md#a-parse-splits-what-a-message-reports) and each side of a two-sided quote are messages of their own, walked as chains of their own - an execution under its `ExecID` or `TradeID`, so a fill never ends its order's chain - while the report they were split from follows its order. `codec.market_data(codec.lifecycle(messages))` is the [sorted handoff](arrow.md#fix-market-books) to a book |
 | Bindings | Rust; Python `FixCodec.lifecycle`, `lifecycle_arrow_reader`; JavaScript `lifecycle`, `lifecycleArrowReader` |
 
 ## Use
 
-One order's life: the order under its client identifier, the acknowledgement under the venue's, that acknowledgement logged a second time on its way through a bridge, the fill naming the venue's alone, and a new order reusing the client identifier after the fill. The repeated delivery is omitted before the walk.
+One order's life: the order under its client identifier, the acknowledgement under the venue's, that acknowledgement logged a second time on its way through a bridge, the fill naming the venue's alone, and a new order reusing the client identifier after the fill. The parse splits the fill's execution off its report, and the repeated delivery is omitted before the walk.
 
 === "Rust"
 
@@ -34,7 +36,7 @@ One order's life: the order under its client identifier, the acknowledgement und
 
     use yggdryl::graph::{Element, Event, Market};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -47,20 +49,24 @@ One order's life: the order under its client identifier, the acknowledgement und
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|",
     ];
     let parsed: Vec<FixMsg> = reader.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
-    // Parsed, each message names the chain it spells: the order its ClOrdID,
-    // the reports the venue's OrderID, and none follows anything yet.
-    assert_eq!(parsed[0].get_crosscode(), "A1");
+    // Parsed, each message names the chain it spells - the order its ClOrdID
+    // under the side it takes, the reports the venue's OrderID - and the fill
+    // is followed by the execution it reports; none follows anything yet.
+    assert_eq!(parsed.len(), 6);
+    assert_eq!(parsed[0].get_crosscode(), "BUY:A1");
     assert_eq!(parsed[1].get_crosscode(), "O1");
+    assert_eq!(parsed[4].msgcat(), MarketDataKind::Execution);
+    assert_eq!(parsed[4].get_srcuuids(), [parsed[3].get_curruuid()]);
     assert!(parsed.iter().all(|held| held.get_seqnum() == 0 && held.get_prevuuid().is_none()));
 
     let chained: Vec<FixMsg> = reader.lifecycle(parsed.clone()).collect::<yggdryl::Result<_>>()?;
-    let [order, ack, fill, again] = chained.as_slice() else { panic!("four messages") };
+    let [order, ack, fill, execution, again] = chained.as_slice() else { panic!("five messages") };
 
     // The acknowledgement goes by the name the order was placed under, so it
     // follows the order and the chain keeps the order's code; the fill names
     // only the venue's identifier, which the acknowledgement went by.
-    assert!(chained.iter().take(3).all(|held| held.get_crosscode() == "A1"));
-    assert!(chained.iter().take(3).all(|held| held.get_crossuuid() == order.get_crossuuid()));
+    assert!([order, ack, fill].iter().all(|held| held.get_crosscode() == "BUY:A1"));
+    assert!([order, ack, fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
     assert_eq!((order.get_seqnum(), order.get_prevuuid()), (0, None));
     assert_eq!((ack.get_seqnum(), ack.get_prevuuid()), (1, Some(order.get_curruuid())));
     assert_eq!(ack.get_prevunix(), Some(order.get_currunix()));
@@ -72,10 +78,13 @@ One order's life: the order under its client identifier, the acknowledgement und
     // The lifecycle travels: the chain's first creation, and the state.
     assert_eq!(fill.get_creaunix(), order.get_creaunix());
     assert_eq!(fill.get_state().as_str(), "FILLED");
+    // The execution is a chain of its own: it follows nothing and joins nothing.
+    assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (0, None));
+    assert_ne!(execution.get_crossuuid(), order.get_crossuuid());
     // The fill ended the chain: the new order under the reused identifier
     // starts one afresh.
     assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
-    assert_eq!(again.get_crosscode(), "A1");
+    assert_eq!(again.get_crosscode(), "BUY:A1");
     // The stamps are columns, reached like any typed fact. They never
     // reach the wire, and neither does a fact the walk folded: this
     // acknowledgement named no side, so the chain's buy is what the trait
@@ -86,7 +95,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert_eq!(ack.get_side().as_str(), "BUY");
     let wire = ack.into_text('|')?;
     assert!(wire.starts_with("8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|"), "{wire}");
-    assert!(!wire.contains("65042="), "no stamp is a field");
+    assert!(!wire.contains("65014="), "no stamp is a field");
 
     // A chained stream replayed answers the same messages.
     let replayed: Vec<FixMsg> = reader.lifecycle(chained.clone()).collect::<yggdryl::Result<_>>()?;
@@ -98,9 +107,10 @@ One order's life: the order under its client identifier, the acknowledgement und
     ```python
     from pathlib import Path
 
+    from yggdryl import MarketDataKind, Side, State
     from yggdryl.fix import FixCodec, FixRegistry
 
-    SEQNUM, PREVUUID = 65042, 65022
+    SEQNUM, PREVUUID = 65014, 65013
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
     lines = [
@@ -111,19 +121,23 @@ One order's life: the order under its client identifier, the acknowledgement und
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|",
     ]
     parsed = list(reader.parse_lines(lines))
-    # Parsed, each message names the chain it spells: the order its ClOrdID, the
-    # reports the venue's OrderID, and none follows anything yet.
-    assert parsed[0].crosscode == "A1"
+    # Parsed, each message names the chain it spells - the order its ClOrdID
+    # under the side it takes, the reports the venue's OrderID - and the fill is
+    # followed by the execution it reports; none follows anything yet.
+    assert len(parsed) == 6
+    assert parsed[0].crosscode == "BUY:A1"
     assert parsed[1].crosscode == "O1"
+    assert parsed[4].msgcat == MarketDataKind.EXEC
+    assert parsed[4].srcuuids == [parsed[3].curruuid]
     assert all(held.seqnum == 0 and held.prevuuid is None for held in parsed)
 
-    order, ack, fill, again = reader.lifecycle(parsed)
+    order, ack, fill, execution, again = reader.lifecycle(parsed)
 
     # The acknowledgement goes by the name the order was placed under, so it
     # follows the order and the chain keeps the order's code; the fill names only
     # the venue's identifier, which the acknowledgement went by.
     chained = [order, ack, fill]
-    assert all(held.crosscode == "A1" for held in chained)
+    assert all(held.crosscode == "BUY:A1" for held in chained)
     assert all(held.crossuuid == order.crossuuid for held in chained)
     assert (order.seqnum, order.prevuuid) == (0, None)
     assert (ack.seqnum, ack.prevuuid) == (1, order.curruuid)
@@ -135,25 +149,29 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert before_fill.prevuuid == order.curruuid
     # The lifecycle travels: the chain's first creation, and the state.
     assert fill.creaunix == order.creaunix
-    assert fill.state.as_py().name == "FILLED"
+    assert fill.state == State.FILLED
+    # The execution is a chain of its own: it follows nothing and joins nothing.
+    assert (execution.seqnum, execution.prevuuid) == (0, None)
+    assert execution.crossuuid != order.crossuuid
     # The fill ended the chain: the new order under the reused identifier starts
     # one afresh.
     assert (again.seqnum, again.prevuuid) == (0, None)
-    assert again.crosscode == "A1"
+    assert again.crosscode == "BUY:A1"
     # The stamps are columns, reached like any typed fact. They never
     # reach the wire, and neither does a fact the walk folded: this
     # acknowledgement named no side, so the chain's buy is what the trait
     # answers and not a byte the message emits.
     assert ack.by_tag(SEQNUM).as_py() == 1
     assert ack.by_tag(PREVUUID) == order.curruuid
-    assert parsed[1].side.as_py() == "UNKNOWN"
-    assert ack.side.as_py() == "BUY"
+    assert parsed[1].side == Side.UNKNOWN
+    assert ack.side == Side.BUY
     wire = ack.into_text("|")
     assert wire.startswith("8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|")
-    assert "65042=" not in wire  # no stamp is a field
+    assert "65014=" not in wire  # no stamp is a field
 
     # A chained stream replayed answers the same messages.
-    assert list(reader.lifecycle([order, ack, fill, again])) == [order, ack, fill, again]
+    walked = [order, ack, fill, execution, again]
+    assert list(reader.lifecycle(walked)) == walked
     ```
 
 === "JavaScript"
@@ -163,7 +181,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const [SEQNUM, PREVUUID] = [65042, 65022]
+    const [SEQNUM, PREVUUID] = [65014, 65013]
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry)
     const lines = [
@@ -174,19 +192,23 @@ One order's life: the order under its client identifier, the acknowledgement und
       '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|',
     ].map((line) => Buffer.from(line))
     const parsed = [...reader.parseLines(lines)]
-    // Parsed, each message names the chain it spells: the order its ClOrdID, the
-    // reports the venue's OrderID, and none follows anything yet.
-    assert.equal(parsed[0].crosscode, 'A1')
+    // Parsed, each message names the chain it spells - the order its ClOrdID
+    // under the side it takes, the reports the venue's OrderID - and the fill is
+    // followed by the execution it reports; none follows anything yet.
+    assert.equal(parsed.length, 6)
+    assert.equal(parsed[0].crosscode, 'BUY:A1')
     assert.equal(parsed[1].crosscode, 'O1')
+    assert.equal(parsed[4].msgcat, 'EXEC')
+    assert.deepEqual(parsed[4].srcuuids, [parsed[3].curruuid])
     assert.ok(parsed.every((held) => held.seqnum === 0 && held.prevuuid === null))
 
-    const [order, ack, fill, again] = [...reader.lifecycle(parsed)]
+    const [order, ack, fill, execution, again] = [...reader.lifecycle(parsed)]
 
     // The acknowledgement goes by the name the order was placed under, so it
     // follows the order and the chain keeps the order's code; the fill names only
     // the venue's identifier, which the acknowledgement went by.
     const chained = [order, ack, fill]
-    assert.ok(chained.every((held) => held.crosscode === 'A1'))
+    assert.ok(chained.every((held) => held.crosscode === 'BUY:A1'))
     assert.ok(chained.every((held) => held.crossuuid === order.crossuuid))
     assert.deepEqual([order.seqnum, order.prevuuid], [0, null])
     assert.deepEqual([ack.seqnum, ack.prevuuid], [1, order.curruuid])
@@ -199,10 +221,13 @@ One order's life: the order under its client identifier, the acknowledgement und
     // The lifecycle travels: the chain's first creation, and the state.
     assert.equal(fill.creaunix, order.creaunix)
     assert.equal(fill.state, 'FILLED')
+    // The execution is a chain of its own: it follows nothing and joins nothing.
+    assert.deepEqual([execution.seqnum, execution.prevuuid], [0, null])
+    assert.notEqual(execution.crossuuid, order.crossuuid)
     // The fill ended the chain: the new order under the reused identifier starts
     // one afresh.
     assert.deepEqual([again.seqnum, again.prevuuid], [0, null])
-    assert.equal(again.crosscode, 'A1')
+    assert.equal(again.crosscode, 'BUY:A1')
     // The stamps are columns, reached like any typed fact. They never
     // reach the wire, and neither does a fact the walk folded: this
     // acknowledgement named no side, so the chain's buy is what the trait
@@ -213,22 +238,23 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert.equal(ack.side, 'BUY')
     const wire = ack.intoText('|')
     assert.ok(wire.startsWith('8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|'), wire)
-    assert.ok(!wire.includes('65042='), 'no stamp is a field')
+    assert.ok(!wire.includes('65014='), 'no stamp is a field')
 
     // A chained stream replayed answers the same messages.
-    const replayed = [...reader.lifecycle([order, ack, fill, again])]
-    assert.ok(replayed.every((held, at) => held.equals([order, ack, fill, again][at])))
+    const walked = [order, ack, fill, execution, again]
+    const replayed = [...reader.lifecycle(walked)]
+    assert.ok(replayed.every((held, at) => held.equals(walked[at])))
     ```
 
 ## A chain is named by its cross code
 
-The cross code is what a message spells to name the thing it is about: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`, read when the message is [built](message.md). `crossuuid` is the UUIDv8 of its XXH3-64, so two messages spelling one `OrderID` share one identity before any walk reads them. The separate `msgsesseventid` names one captured delivery only when its message type, session, context and sequence are all present; it never chooses the chain or changes the FIX content identity. A message spelling no cross code - a heartbeat, a logon - is a chain of one: its `crossuuid` is its own `curruuid`, and it opens nothing anyone else joins.
+The cross code is what a message spells to name the thing it is about: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`, read when the message is [built](message.md) and stored under the side the message takes - `BUY:A1`, `SELL:A1` - through [`Market::sided_crosscode`](../graph/market.md#sides-and-cross-codes), the one owner of the prefix. `crossuuid` is the UUIDv8 of its XXH3-64, so two messages spelling one `OrderID` on one side share one identity before any walk reads them, and a buy and a sell under one `ClOrdID` are two chains. The separate `msgsesseventid` names one captured delivery only when its message type, session, context and sequence are all present; it never chooses the chain or changes the FIX content identity. A message spelling no cross code - a heartbeat, a logon - is a chain of one: its `crossuuid` is its own `curruuid`, and a message that follows it by a name keeps that `crossuuid`, so one chain is one cross identity.
 
-The walk keys the live chains on that identity, and where a message arrives under an identity nothing live holds, on the names a live message goes by: the message's alternate identifiers - [`get_altids()`](message.md#the-identifier-maps), each under the upper-cased name of the field that stated it - are matched pair by pair, `(CLORDID, A1)`, against the names every live message went by, so a report stating only the `ClOrdID` an order was placed under joins the order, and a fill stating only the venue's `OrderID` joins through the acknowledgement that went by both. A message that follows takes the chain's cross code as its own, so `crosscode` and `crossuuid` name one chain whichever identifier each message chose, and a message's own spelling is still in its row and its wire. A replace's `OrigClOrdID(41)` is a different scheme from `ClOrdID(11)`, so it joins nothing by itself; the replace joins where it states the venue's `OrderID` or a `ClOrdID` a live message went by.
+The walk keys the live chains on that identity, and where a message arrives under an identity nothing live holds, on the names a live message of its side goes by: the message's alternate identifiers - [`get_altids()`](message.md#the-identifier-maps), each under the upper-cased name of the field that stated it - are matched pair by pair, `(CLORDID, A1)`, against the names every live message of that side went by, so a report stating only the `ClOrdID` an order was placed under joins the order, and a fill stating only the venue's `OrderID` joins through the acknowledgement that went by both. A message stating no side - a cancel reject naming no `Side(54)`, an acknowledgement that states none - joins the one side alive under its cross code, else under the first name it shares with a live message, where exactly one side of it is alive, and takes that side and its prefixed cross code; where both sides are alive it starts a chain of its own. A message that follows takes the chain's cross code as its own, so `crosscode` and `crossuuid` name one chain whichever identifier each message chose, and a message's own spelling is still in its row and its wire. A replace's `OrigClOrdID(41)` is a different scheme from `ClOrdID(11)`, so it joins nothing by itself; the replace joins where it states the venue's `OrderID` or a `ClOrdID` a live message went by. An execution - one a parse [split off](message.md#a-parse-splits-what-a-message-reports) its report, chained under `ExecID=` or `TradeID=` - joins nothing by a name or a base cross code, so a fill never follows, and never ends, the order it filled.
 
 ## A chain carries its creation and its history
 
-With-previous first compares `msgsesseventid`. Equal complete values force a full merge and stop: no predecessor, lifecycle position or order-link inheritance is stamped. Otherwise following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix` and puts the message one place after the predecessor's, `seqnum`. The predecessor is the one message a chained message names: nothing records the chain further back, so a caller reads a chain by following `prevuuid` from row to row. The `srcuuids` a message states - the text line it was parsed out of - are its own and travel nowhere: provenance names what a node was read from, never what it follows. `creaunix` is the earliest the two know and the [state](../types/enum/state.md#the-code-is-the-rank) the furthest along. An `exprunix` the newer message explicitly states is the current generation's deadline even where it is earlier; only an absent deadline is inherited. A report `FixMsg::is_execution` accepts that states no execution instant already took its own `currunix` as one when it was parsed, before any walk; following carries the later of that clock and the predecessor's `execunix`, and a lifecycle output read back with none is not refilled, because the state it carries may be one it inherited. `recdunix` remains this observation's own. It also fills an absent `parentorderid` from the exact predecessor's different `OrderID(37)` and an absent `ClOrdID(11)` from that predecessor's `ClOrdID`; neither overwrites a stated value. An absent `ticker` likewise carries from the predecessor, even when the timed link is already present, while a stated one remains. The timed and market readings settle before one finalization, and only an inherited ticker is cloned. A full merge instead takes the statement with the later `recdunix` as reference - a stated one leads an absent one, and the later `currunix` closes a tie - for conflicting content and identifier maps while the provenance list becomes a sorted unique union, keeping the latest expiry and the earliest execution and recording facts either statement knows. A merged statement therefore ranks against a third by the earliest recording it keeps, so which of three statements is the reference depends on the order they merge in. The message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the merged or chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor with all inherited facts is one following changes nothing on.
+With-previous first compares `msgsesseventid`. Equal complete values force a full merge and stop: no predecessor, lifecycle position or order-link inheritance is stamped. Otherwise following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix` and puts the message one place after the predecessor's, `seqnum`. The predecessor is the one message a chained message names: nothing records the chain further back, so a caller reads a chain by following `prevuuid` from row to row. The `srcuuids` a message states - the text line it was parsed out of, the message a parse split it off - are its own and travel nowhere: provenance names what a node was read from, never what it follows. `creaunix` is the earliest the two know - and a walked message stating none takes its chain's, or starting a chain its own instant - and the [state](../types/enum/state.md#the-code-is-the-rank) the furthest along, as `State::merge_with` reads it; a `NEW` stated over a live predecessor that is itself new, working or restated [reads `UPDATED`](../types/enum/state.md#stated-anew-over-a-live-one), and later progress folds over it. An `exprunix` the newer message explicitly states is the current generation's deadline even where it is earlier; only an absent deadline is inherited. A report `FixMsg::is_execution` accepts that states no execution instant already took its own `currunix` as one when it was parsed, before any walk; following carries the later of that clock and the predecessor's `execunix`, and a lifecycle output read back with none is not refilled, because the state it carries may be one it inherited. `recdunix` remains this observation's own. It also fills an absent `parentorderid` from the exact predecessor's different `OrderID(37)` and an absent `ClOrdID(11)` from that predecessor's `ClOrdID`; neither overwrites a stated value. An absent `ticker` likewise carries from the predecessor, even when the timed link is already present, while a stated one remains; and what the chain is about - the currency, the side, the unit, each security identifier the message lacks, the classification and the market - carries where the message says nothing, a statement that knows leading one that does not: an ISIN numbered `ZZ` yields to a real one, an unclassified CFI to a classified one and the `XXXX` market to a real one. The timed and market readings settle before one finalization, and only an inherited ticker is cloned. A full merge instead takes the statement with the later `recdunix` as reference - a stated one leads an absent one, and the later `currunix` closes a tie - for conflicting content and identifier maps while the provenance list becomes a sorted unique union, keeping the latest expiry and the earliest execution and recording facts either statement knows. A merged statement therefore ranks against a third by the earliest recording it keeps, so which of three statements is the reference depends on the order they merge in. The message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the merged or chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor with all inherited facts is one following changes nothing on.
 
 Read across the three steps, provenance and the chain are joins on one column set: a message's `srcuuids` are the `curruuid` of the [line](../media/index.md#plain-text) it was parsed out of, a chained message's `prevuuid` is the `curruuid` of the message before it, and the line's batch, the parsed row and the chained row contain the same sixteen [event columns](../graph/market-data.md#columns) under one name and one datatype each, so the joins need no mapping.
 
@@ -242,21 +268,17 @@ After that merge, `lifecycle` removes an exact republication or true retransmiss
 
 After delivery deduplication, the walk still recognizes two source statements that arrive under the same event identity: the later statement takes the live one's predecessor, position and lifecycle and finalizes to the same `curruuid`, so the chain grows by nothing. Deduplication decides whether the finite capture delivered the same message twice; restating decides whether two retained graph events are statements of one event.
 
-## Sided trades after the lifecycle
-
-Lifecycle enrichment remains message-shaped: one retained FIX observation is one `FixMsg`, including any canonically merged `NoSides(552)` group. Decomposition belongs to the Rust [FIX-to-market boundary](message.md#market-operations), after duplicate folding, sorting and predecessor propagation have settled that root. `FixMarketIterator` accepts only an initial `35=AE` whose `TradeReportTransType(487)` is absent/New and whose `ExecType(150)` is absent or execution-like; it refuses non-New/cancel/correct/reverse/status AE and every `AD`, `AQ` or `AR` at `$.MsgType(35)`. An accepted report must have exactly one nonempty `NoSides` group and becomes one composite graph `TradeEvent`. Every occurrence must state a bid or ask `Side(54)`; a missing side refuses at `$.NoSides(552)[index].Side(54)` rather than guessing from another occurrence or the root.
-
-Each child execution starts from the lifecycle-enriched root, then applies the occurrence's side quantity, average price, currency and alternate identifiers. Its cross code uses a tag-qualified stable side/order ID where stated, otherwise the occurrence's canonical 128-bit content digest; no `TradeSideIndex` identifier or source group index enters the identity. The composite constructor canonicalizes child order and derives a root identity from their canonical UUIDs. Passing `codec.lifecycle(messages)` to `book_arrow_reader` therefore keeps one trade operation at the market boundary and yields all of its sided executions in the book's nested `executions` list. `codec.market_operations(codec.lifecycle(messages))` is the sorted handoff: the walk settles each message, and the [sorted door](arrow.md#fix-market-books) places each operation by its own effective instant - the snapshot instant a grid view states, else its `currunix` - so an entry clock standing before an earlier message's cannot regress the fold. Neither door runs the lifecycle implicitly: calling `book_arrow_reader` or `market_operations` directly performs no lifecycle enrichment of its own. It ignores administration, requests, acknowledgements and non-executing reports, while admitting every `AE` to strict projection so correction, cancellation and status refusals remain visible. Source errors and malformed admitted records also stop the reader.
-
 ## Instrument associations are lifecycle state
 
 Messages are sorted before one lifecycle-local `SecurityIdRegistry` reads them. A valid ISIN may teach its detailed CFI and every other security identifier the message states under it - a CUSIP, a SEDOL, a Bloomberg code, a FIGI, any source, at most eight keys per instrument - to later messages that state the same ISIN and omit that key; what it fills is derived, `derive_securityid`, so it reaches no field and no wire. The registry never overwrites a stated fact. A coarse CFI such as `ESXXXX`, an invalid spelling and a null marker teach nothing; two valid conflicting values make that code family ambiguous and it stays silent.
 
 The registry retains at most 32 MiB by reserving a conservative 2 KiB for each first valid ISIN, so at most 16,384 ISINs register, and never more than 65,536. Reaching the cap refuses unseen ISINs without eviction; an already registered ISIN can still learn another code because its full payload was reserved on first insertion. The registry belongs to this ordered lifecycle, never to the codec, so a second lifecycle starts empty.
 
+A currency pair is no association the walk learns. The parse [detects](capture.md#a-currency-pair-is-read-off-the-symbol) it off `Symbol(55)` into the message's derived identifiers, remembered per registry for 4,096 symbols, a symbol naming no pair remembered as one: a detected pair is derived, so a stated `FOREX` identifier replaces it, and a pair a row states in `forexcode` is stated and read back as it is.
+
 ## Snapshots are a grid
 
-The codec's positive `snapshot_ns` / `snapshotNs` gives its lifecycle an epoch-aligned grid; zero, a negative width, `None` / `null`, or omission disables it, which is the default. At every crossed tick the walk yields a separate owned view of every living message. The view keeps the live message's `curruuid`, `seqnum` and content and changes only `snapunix`; source messages keep the snapshot fact they stated and are never stamped backward to a previous tick.
+The codec's positive `snapshot_ns` / `snapshotNs` gives its lifecycle an epoch-aligned grid; zero, a negative width, `None` / `null`, or omission disables it, which is the default. A codec in hand takes another grid with `with_snapshot_ns` (Rust and Python) / `withSnapshotNs` (JavaScript), which keeps every other setting of it. At every crossed tick the walk yields a separate owned view of every living message: the live message as of that tick. The view is dated at the tick - its `currunix` and its `snapunix` are both the tick - so its `curruuid` is the identity that instant derives, and a view is a row of its own wherever rows are keyed by identity within a time; a view at the live message's own instant derives the live message's identity. Its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live message's, and it does not advance the chain: the next message still follows the live one. Source messages keep the snapshot fact they stated and are never stamped backward to a previous tick.
 
 At one instant, finite expirations come first, then every source message at that instant, then its views. Expiration emits one owned `EXPIRED` message at the exact deadline with the live message as predecessor and the next sequence number, then purges the identity; a replaced or ended generation's stale deadline emits nothing. At EOF the grid reaches the greatest finite deadline still encountered, or the last source instant where none remains, and stops; a nonexpiring message does not make a finite capture infinite. The width is a caller's output choice: the number of rows is proportional to crossed ticks times identities alive at each tick, with no implicit count or span cap.
 
@@ -279,17 +301,27 @@ At one instant, finite expirations come first, then every source message at that
     let source_uuid = source.get_curruuid();
     let deadline = source.get_exprunix().expect("the stated expiry");
     let walked: Vec<_> = codec.lifecycle([source]).collect::<yggdryl::Result<_>>()?;
+    let live = &walked[0];
+    assert!(live.get_snapunix().is_none(), "the source comes before its tick's view");
 
     let snapshots: Vec<_> = walked
         .iter()
         .filter(|message| message.get_snapunix().is_some())
         .collect();
     assert_eq!(snapshots.len(), 2, "the source tick and the crossed second");
+    // A view is the live message as of its tick: dated at it, with the live
+    // message's content, place and chain.
     assert!(snapshots.iter().all(|view| {
-        view.get_curruuid() == source_uuid
-            && view.get_seqnum() == 0
-            && view.get_snapunix().is_some_and(|tick| tick < deadline)
+        view.get_snapunix() == Some(view.get_currunix())
+            && view.get_currunix() < deadline
+            && view.get_currhashcode() == live.get_currhashcode()
+            && view.get_crossuuid() == live.get_crossuuid()
+            && (view.get_seqnum(), view.get_prevuuid()) == (0, None)
     }));
+    // Its identity is the one its tick derives: the source's at the source's
+    // own instant, one of its own a second later.
+    assert_eq!(snapshots[0].get_curruuid(), source_uuid);
+    assert_ne!(snapshots[1].get_curruuid(), source_uuid);
     let expired = walked.last().expect("the deadline event");
     assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (deadline, "EXPIRED"));
     assert_eq!((expired.get_prevuuid(), expired.get_seqnum()), (Some(source_uuid), 1));
@@ -300,6 +332,7 @@ At one instant, finite expirations come first, then every source message at that
     ```python
     from pathlib import Path
 
+    from yggdryl import State
     from yggdryl.fix import FixCodec, FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
@@ -312,17 +345,27 @@ At one instant, finite expirations come first, then every source message at that
     deadline = source.exprunix
     assert deadline is not None
     walked = list(codec.lifecycle([source]))
+    live = walked[0]
+    assert live.snapunix is None  # the source comes before its tick's view
 
     snapshots = [message for message in walked if message.snapunix is not None]
     assert len(snapshots) == 2
+    # A view is the live message as of its tick: dated at it, with the live
+    # message's content, place and chain.
     assert all(
-        message.curruuid == source_uuid
-        and message.seqnum == 0
-        and message.snapunix < deadline
-        for message in snapshots
+        view.snapunix == view.currunix
+        and view.currunix < deadline
+        and view.currhashcode == live.currhashcode
+        and view.crossuuid == live.crossuuid
+        and (view.seqnum, view.prevuuid) == (0, None)
+        for view in snapshots
     )
+    # Its identity is the one its tick derives: the source's at the source's
+    # own instant, one of its own a second later.
+    assert snapshots[0].curruuid == source_uuid
+    assert snapshots[1].curruuid != source_uuid
     expired = walked[-1]
-    assert (expired.currunix, expired.state.as_py().name) == (deadline, "EXPIRED")
+    assert (expired.currunix, expired.state) == (deadline, State.EXPIRED)
     assert (expired.prevuuid, expired.seqnum) == (source_uuid, 1)
     ```
 
@@ -342,22 +385,136 @@ At one instant, finite expirations come first, then every source message at that
     const sourceUuid = source.curruuid
     const deadline = source.exprunix
     const walked = [...codec.lifecycle([source])]
+    const live = walked[0]
+    assert.equal(live.snapunix, null, 'the source comes before its tick\'s view')
 
     const snapshots = walked.filter((message) => message.snapunix !== null)
     assert.equal(snapshots.length, 2)
-    assert.ok(snapshots.every((message) =>
-      message.curruuid === sourceUuid
-      && message.seqnum === 0
-      && message.snapunix < deadline,
+    // A view is the live message as of its tick: dated at it, with the live
+    // message's content, place and chain.
+    assert.ok(snapshots.every((view) =>
+      view.snapunix === view.currunix
+      && view.currunix < deadline
+      && view.currhashcode === live.currhashcode
+      && view.crossuuid === live.crossuuid
+      && view.seqnum === 0
+      && view.prevuuid === null,
     ))
+    // Its identity is the one its tick derives: the source's at the source's
+    // own instant, one of its own a second later.
+    assert.equal(snapshots[0].curruuid, sourceUuid)
+    assert.notEqual(snapshots[1].curruuid, sourceUuid)
     const expired = walked.at(-1)
     assert.deepEqual([expired.currunix, expired.state], [deadline, 'EXPIRED'])
     assert.deepEqual([expired.prevuuid, expired.seqnum], [sourceUuid, 1])
     ```
 
+## A sorted source is walked one hour at a time
+
+A codec's `sorted_lifecycle` pin - `with_sorted_lifecycle(true)` (Rust), the `sorted_lifecycle=True` keyword or `with_sorted_lifecycle(True)` (Python), the `sortedLifecycle: true` option or `withSortedLifecycle(true)` (JavaScript), each read back by `sorted_lifecycle` / `sortedLifecycle` - states that the messages `lifecycle` is handed arrive in instant order: a table read hour partition by hour partition, sorted by `currunix`. The walk then reads them as they come instead of collecting the capture, and holds one epoch hour of them at a time. Each message waits in the bucket of its hour - an observation of a delivery already held joins the others of it, whatever its own hour - and a bucket is walked, its deliveries folded and its messages sorted exactly as a whole capture is, once the stream has read a message two hours past it. That hour of grace is what a message the walk dates by its transaction rather than by where it was stored needs to land in its own hour, and what the hops of one delivery logged across an hour's end need to meet. A message dated before an hour already walked is walked where it arrives, as any late message is. What is held is the messages of the hours not yet walked - two of them for a source in order - never the stream, and an intake error is yielded as the walk reaches it rather than first.
+
+The pin is off by default, because nothing says a capture is in order: a capture is collected and sorted whole. On a source that is in instant order both answer the same walk.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
+    let whole = FixCodec::new(registry);
+    let hourly = whole.clone().with_sorted_lifecycle(true);
+    assert!(!whole.sorted_lifecycle());
+    assert!(hourly.sorted_lifecycle());
+    // An order, its acknowledgement an hour later and its fill two hours
+    // after that, in instant order.
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-11:15:30|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-13:15:30|10=0|",
+    ];
+    let messages: Vec<FixMsg> = whole.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
+    let chain = |codec: &FixCodec| {
+        codec
+            .lifecycle(messages.clone())
+            .map(|held| held.map(|message| (message.get_curruuid(), message.get_seqnum(), message.get_prevuuid())))
+            .collect::<yggdryl::Result<Vec<_>>>()
+    };
+    let walked = chain(&whole)?;
+    // The order, the acknowledgement, the fill, and the execution split off it.
+    let places: Vec<u64> = walked.iter().map(|(_, seqnum, _)| *seqnum).collect();
+    assert_eq!(places, [0, 1, 2, 0]);
+    assert_eq!(chain(&hourly)?, walked);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    whole = FixCodec(registry)
+    hourly = FixCodec(registry, sorted_lifecycle=True)
+    assert (whole.sorted_lifecycle, hourly.sorted_lifecycle) == (False, True)
+    assert whole.with_sorted_lifecycle(True).sorted_lifecycle
+    # An order, its acknowledgement an hour later and its fill two hours after
+    # that, in instant order.
+    lines = [
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-11:15:30|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-13:15:30|10=0|",
+    ]
+    messages = list(whole.parse_lines(lines))
+
+
+    def chain(codec: FixCodec) -> list[tuple[object, int, object]]:
+        return [(held.curruuid, held.seqnum, held.prevuuid) for held in codec.lifecycle(messages)]
+
+
+    walked = chain(whole)
+    # The order, the acknowledgement, the fill, and the execution split off it.
+    assert [seqnum for _, seqnum, _ in walked] == [0, 1, 2, 0]
+    assert chain(hourly) == walked
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const whole = new fix.FixCodec(registry)
+    const hourly = new fix.FixCodec(registry, { sortedLifecycle: true })
+    assert.deepEqual([whole.sortedLifecycle, hourly.sortedLifecycle], [false, true])
+    assert.equal(whole.withSortedLifecycle(true).sortedLifecycle, true)
+    // An order, its acknowledgement an hour later and its fill two hours after
+    // that, in instant order.
+    const lines = [
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-11:15:30|10=0|',
+      '8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-13:15:30|10=0|',
+    ].map((line) => Buffer.from(line))
+    const messages = [...whole.parseLines(lines)]
+    const chain = (codec) => [...codec.lifecycle(messages)]
+      .map((held) => [held.curruuid, held.seqnum, held.prevuuid])
+
+    const walked = chain(whole)
+    // The order, the acknowledgement, the fill, and the execution split off it.
+    assert.deepEqual(walked.map(([, seqnum]) => seqnum), [0, 1, 2, 0])
+    assert.deepEqual(chain(hourly), walked)
+    ```
+
 ## In a batch read
 
-The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.lifecycle_arrow_reader(reader)` chains a whole read of FIX rows under the schema it read, and `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` is the same composition spelled out - the same messages and the same rows, [the capture's own columns](message.md#a-row-is-a-message-again) included: `messages` reads each row's own cells into the message it makes and `into_row` states them again at their columns, so the spelled-out composition keeps them exactly as the door does. `lifecycle` takes owned messages or their `Result`s (Python and JavaScript accept any finite iterable). It consumes the input before yielding because stable event-time sorting, capture-wide delivery deduplication and ordered association learning need the complete capture; source errors are queued and yielded before the sorted messages. Nothing chains unasked: a parse answers messages that follow nothing, because a stamped value is indistinguishable from a stated one, and a batch that is walked twice is walked into the same rows.
+The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.lifecycle_arrow_reader(reader)` chains a whole read of FIX rows under the schema it read, and `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` is the same composition spelled out - the same messages and the same rows, [the capture's own columns](message.md#a-row-is-a-message-again) included: `messages` reads each row's own cells into the message it makes and `into_row` states them again at their columns, so the spelled-out composition keeps them exactly as the door does. `lifecycle` takes owned messages or their `Result`s (Python and JavaScript accept any finite iterable). By default it consumes the input before yielding because stable event-time sorting, capture-wide delivery deduplication and ordered association learning need the complete capture; source errors are queued and yielded before the sorted messages. A [sorted lifecycle](#a-sorted-source-is-walked-one-hour-at-a-time) reads a source already in instant order as it comes, one hour at a time. Nothing chains unasked: a parse answers messages that follow nothing, because a stamped value is indistinguishable from a stated one, and a batch that is walked twice is walked into the same rows.
 
 === "Rust"
 
@@ -379,30 +536,36 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
 
     let read = codec.lifecycle_arrow_reader(codec.arrow_reader(schema.clone(), parsed)?)?;
     let batch = read.into_iter().next().expect("one batch")?;
-    assert_eq!(batch.num_rows(), 2);
+    // The order, the fill's report and the execution the parse split off it.
+    assert_eq!(batch.num_rows(), 3);
     let rows = Serie::from_arrow_batch(Some(&schema), &batch, ArrowCastOptions::new())?;
     let column = |name: &str| rows.child(name).expect("a column");
-    // One order, one chain: the fill is the second in it and names the
+    // One order, one chain: the report is the second in it and names the
     // order before it.
     assert_eq!(column("crossuuid").scalar(0)?, column("crossuuid").scalar(1)?);
     assert_eq!(column("seqnum").scalar(0)?, Scalar::Null, "a first message states no place");
     assert_eq!(column("seqnum").scalar(1)?, Scalar::from(1_u64));
     assert!(column("prevuuid").is_null(0)?);
     assert!(!column("prevuuid").is_null(1)?);
+    // The execution is a chain of its own.
+    assert_ne!(column("crossuuid").scalar(2)?, column("crossuuid").scalar(0)?);
+    assert!(column("prevuuid").is_null(2)?);
     ```
 
 ## Edges
 
 - Two messages of one chain at the same instant are neither after nor before one another: the walk keeps them in arrival order, and the second follows the first.
-- A message that happened before the live one it would follow - out of order on a walk a caller opened as sorted - is yielded as it came and changes nothing; `lifecycle` sorts first, so nothing arrives out of order there.
+- A message that happened before the live one it would follow - out of order on a walk a caller opened as sorted - is yielded as it came and changes nothing; `lifecycle` sorts first, so nothing arrives out of order there. A sorted lifecycle sorts within each hour it holds; a message dated before an hour already walked is walked where it arrives.
 - A message the reading refuses - its own predecessor, one following changes nothing on - is yielded as it came and still stands as the live one.
 - A terminal state ends the chain once the message is yielded; a message arriving under the retired identity starts a chain afresh at `seqnum` 0, sharing the `crossuuid` and nothing else.
 - A message whose expiry - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or the instrument's `MaturityDate(541)` - is at or before its `currunix` is not alive and opens no chain. A later deadline is scheduled even where no later source arrives: one `EXPIRED` message is emitted at the deadline and the identity is purged.
-- The state is the furthest along the two know, as `CodeValue::merge_with` reads a state, so a chain never moves backward: a `New` after a `Filled` under a live chain would be yielded `Filled`; it is not, because the fill retired the chain first.
+- The state is the furthest along the two know, as `State::merge_with` reads it, so a chain never moves backward: a `New` after a `Filled` under a live chain would be yielded `Filled`; it is not, because the fill retired the chain first. A `NEW` after a live `NEW` reads `UPDATED`; after a live `PENDING_NEW` it is the first acknowledgement and stays `NEW`.
 - A cleared or absent cross code keeps a message in a chain of one; nothing derives one from the identifiers alone, and a message in no chain joins one only by a name a live message goes by.
+- A buy and a sell under one `ClOrdID` are two chains, `BUY:A1` and `SELL:A1`; a cancel reject stating no side under that `ClOrdID` joins neither while both are alive, and joins the one that is where only one is.
 - `restating` is never refused: the walk gives the word only for an arrival under the identity the live message arrived under, which a later statement of the same instant and content has and a successor never does.
 - The grid begins at the first aligned tick at or after the first source instant; it never stamps a source with a tick before that source existed.
-- Errors: sorting consumes the finite source first, then `lifecycle` yields every intake error before its messages; no error advances the walk.
+- Errors: sorting consumes the finite source first, then `lifecycle` yields every intake error before its messages; a sorted lifecycle yields each as the walk reaches it. No error advances the walk.
+- A view at a later tick is a row of its own: dated at the tick, its `curruuid` differs from the live message's, so a monitor keyed by `curruuid` within a time holds one row per tick and chain.
 
 ## Commands
 
@@ -411,6 +574,7 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     ```bash
     cargo test -p yggdryl --test graph
     cargo test -p yggdryl --test fix batch::
+    cargo test -p yggdryl --test fix market::
     cargo test -p yggdryl --test fix schema::
     ```
 

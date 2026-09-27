@@ -1,6 +1,6 @@
 # TimeInForce
 
-How long an order stands: FIX `TimeInForce(59)`, stored as the wire value rather than a name for it, exactly as [`side`](side.md) is.
+How long an order stands: FIX `TimeInForce(59)`, stored as the wire value rather than a name for it.
 
 ## Contract
 
@@ -12,7 +12,7 @@ How long an order stands: FIX `TimeInForce(59)`, stored as the wire value rather
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A ninth byte or a byte past `0x7F`, naming the width: `at most 8 bytes` |
 
-The standard's values are one character; eight leaves room for a venue's own code, and a value no version defines is held rather than refused. That is the difference from [`side`](side.md) and the [`state`](../enum/state.md) enum, which read a spelling and refuse what names nothing.
+The standard's values are one character; eight leaves room for a venue's own code, and a value no version defines is held rather than refused. That is the difference from the [`side`](../enum/side.md) and [`state`](../enum/state.md) enums, which read a spelling and refuse what names nothing.
 
 ## DataType
 
@@ -105,7 +105,7 @@ The value is the wire code itself, under the time-in-force identity. Nothing is 
     assert_eq!(day.as_str(), Some("0"));
     assert_eq!(day.kind(), "timeinforce");
 
-    // A side and a time in force of the same bytes are two values.
+    // A side is an enum member and a time in force the text it is: two values.
     assert_ne!(DataType::Side.scalar("BUY")?, DataType::TimeInForce.scalar("BUY")?);
     // The width is the whole rule, and it names itself in the refusal.
     let refused = DataType::TimeInForce.scalar("TOOLONGTIF").unwrap_err().to_string();
@@ -258,7 +258,7 @@ The listing is a vocabulary rather than a gate: a value it does not carry - a ve
 - `at most 8 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
 - A value outside the code set is stored: this code declares a vocabulary the way [`mic`](mic.md) does, and gates nothing.
 - The default value is the empty text, answered as a `timeinforce` scalar ([Cast](../cast.md#empty-text)); a [FIX capture](../../fix/capture.md) reads an absent `TimeInForce(59)` as `0`, a day order, from the field's own definition rather than from this datatype.
-- A `timeinforce` and a [`side`](side.md) of the same bytes are two values: the identity leads, then the text.
+- A `timeinforce` and any other code of the same bytes are two values: the identity leads, then the text; a [`side`](../enum/side.md) spelled alike is an enum member, another value again.
 - Nothing about a time in force merges: it has no value stating none, so [`merge_with`](index.md#the-code-family-value) keeps this one.
 
 ## Commands

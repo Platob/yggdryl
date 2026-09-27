@@ -250,3 +250,90 @@ mod unprojected {
         );
     }
 }
+
+/// The currency pair a message is about is one of the crate's instrument
+/// fields: a forex column, displayed `ForexCode`, under tag 65024, right
+/// after the ISIN in the fixed row's instrument band.
+#[test]
+fn the_currency_pair_is_an_instrument_field_after_the_isin() {
+    let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+    assert_eq!(held.len(), 41);
+    let at = |name: &str| {
+        held.iter()
+            .position(|field| field.name() == name)
+            .expect("a crate field")
+    };
+    let pair = &held[at("forexcode")];
+    assert_eq!(at("forexcode"), at("isincode") + 1);
+    assert_eq!(pair.dtype(), &yggdryl::DataType::Forex);
+    assert_eq!(pair.display(), Some("ForexCode"));
+    assert!(pair.is_nullable());
+    assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_024, "forexcode"));
+    assert_eq!(
+        pair.as_fix().tag().expect("a tag reading"),
+        Some(yggdryl::FOREXCODE_TAG_NAME.0)
+    );
+}
+
+/// The option strike a message identifies is the crate's `strikepx`:
+/// `StrikePrice(202)` as the decimal leaf, under tag 65028 right after the
+/// market in the fixed row's instrument band; a row stating one is the
+/// row's word, and a message stating none answers none.
+#[test]
+fn the_strike_is_strikeprice_as_the_decimal_leaf_and_a_row_states_it_back() {
+    use std::sync::Arc;
+    use yggdryl::{Decimal, FixMsg, Scalar};
+
+    let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+    let strike = held
+        .iter()
+        .find(|field| field.name() == "strikepx")
+        .expect("the strike field");
+    assert_eq!(strike.dtype(), &yggdryl::DataType::Decimal);
+    assert_eq!(strike.display(), Some("StrikePx"));
+    assert!(strike.is_nullable());
+    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_028, "strikepx"));
+    let tags = yggdryl::fix_schema_tags();
+    let place = |tag: i32| tags.iter().position(|held| *held == tag).expect("a band");
+    assert_eq!(
+        place(yggdryl::STRIKEPX_TAG_NAME.0),
+        place(yggdryl::MICCODE_TAG_NAME.0) + 1
+    );
+
+    let registry = committed_registry();
+    let codec = fixed_codec(Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+    let at =
+        yggdryl::fix_column_of(&schema, yggdryl::STRIKEPX_TAG_NAME.0).expect("the strike column");
+    let option = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=O|55=XAU|201=1|202=4600.5|10=0|")
+        .expect("an option order");
+    assert_eq!(
+        option.strikepx(),
+        Some("4600.5".parse::<Decimal>().unwrap())
+    );
+    let plain = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=P|55=XAU|10=0|")
+        .expect("an order");
+    assert_eq!(plain.strikepx(), None);
+    assert!(
+        plain.into_row(&schema).unwrap().as_sequence().unwrap()[at].is_null(),
+        "no strike stated, none written"
+    );
+
+    let row = option.into_row(&schema).expect("a fixed row");
+    let mut cells = row.as_sequence().expect("a row").to_vec();
+    assert_eq!(
+        Decimal::from_scalar(&cells[at]),
+        Some("4600.5".parse().unwrap())
+    );
+    // A row stating another strike is the row's word over StrikePrice.
+    cells[at] = Scalar::from(Decimal::from_int(4_700));
+    let restated = FixMsg::with_registry(
+        Arc::clone(&registry),
+        schema.clone(),
+        Scalar::from_sequence(cells),
+    )
+    .expect("the row read back");
+    assert_eq!(restated.strikepx(), Some(Decimal::from_int(4_700)));
+}

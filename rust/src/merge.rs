@@ -205,11 +205,11 @@ impl DataType {
         if canonical_text(self) || canonical_text(other) {
             return Err(unmergeable(self, other));
         }
-        // A state is the `int32` code of its member, so beside an integer the
-        // two meet as the integers they store.
+        // An enum member is the `int32` code of its leaf, so beside an
+        // integer the two meet as the integers they store.
         match (self, other) {
-            (Self::State, integer) | (integer, Self::State)
-                if DataTypeKind::Integer.contains(integer.id()) =>
+            (held, integer) | (integer, held)
+                if held.is_enum() && DataTypeKind::Integer.contains(integer.id()) =>
             {
                 return Self::Int32.merge(integer, how, recode);
             }

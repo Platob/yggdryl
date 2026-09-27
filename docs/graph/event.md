@@ -9,11 +9,11 @@
 | Owner | trait `yggdryl::graph::Event` (`graph::element`); `EventIterator` walk (`graph::iterator`); Rust-only - dated [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `currunix` | `get_currunix`/`set_currunix`: nanoseconds since the Unix epoch, UTC, signed |
 | `state` | `get_state`/`set_state`: the lifecycle-sorted [`State`](../types/enum/state.md) member, never absent - `UNKNOWN` where none reached |
-| `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ |
+| `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ - an operation leaf's kind decides |
 | `seqnum` | `get_seqnum`/`set_seqnum`: how many came before it in its chain |
-| Clocks | `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `execunix` the execution instant, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step |
+| Clocks | `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `creaunix` when its lifecycle was created, `execunix` the execution instant, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step |
 | `digest_event` | provided: continues [`Element::digest`](element.md#contract) with the state, chain place and predecessor's identity; no instant fed |
-| `fold_lifecycle` | provided, `(&mut self, &Self) -> bool`: earliest creation, latest expiration, better state ([`CodeValue::merge_with`](../types/codes/index.md#the-code-family-value)) |
+| `fold_lifecycle` | provided, `(&mut self, &Self) -> bool`: earliest creation, latest expiration, the further state ([`State::merge_with`](../types/enum/state.md#the-further-along-stands)) |
 
 ## Identity
 
@@ -30,13 +30,13 @@
 | Moves | Rule |
 | --- | --- |
 | The link | predecessor's identity/instant as `prevuuid`/`prevunix`, one place past its `seqnum` (saturating); chain history stops at `prevuuid` |
-| The cross code | the predecessor's is forced on where this event's differs - one chain shares it |
+| The cross code | the predecessor's is forced on where this event's differs - one chain shares it, its side prefix included |
 | The lifecycle | earliest creation either knows; this event's explicit expiration else the predecessor's (can shorten a deadline); the furthest state |
 | Execution | the later of this event's precise execution clock and the predecessor's |
 | Nothing else | current/recording instants, sources and snapshot move nowhere |
 | Refusals | nothing for its own predecessor, one that happened after it, or no change; an equal instant follows |
 
-An event that moved is finalized; [`Market::following_market`](market.md#following-and-merging)/[`Operation::following_operation`](operation.md#following-and-merging) continue it before finalizing.
+An event that moved is finalized; [`Market::following_market`](market.md#following-and-merging)/[`Operation::following_operation`](operation.md#following-and-merging) continue it before finalizing - the side among what they take.
 
 ## Restating
 
@@ -108,7 +108,7 @@ An Apple order placed, then partly filled a second later.
     ```python
     from decimal import Decimal
 
-    from yggdryl import graph
+    from yggdryl import State, graph
 
     T = 1_700_000_000_000_000_000
 
@@ -127,7 +127,7 @@ An Apple order placed, then partly filled a second later.
     placed = event(T, "NEW")
     # UUIDv7: the millisecond 1_700_000_000_000 leads the identity.
     assert placed.curruuid.as_py().startswith("018bcfe5-6800-7")
-    assert placed.state.as_py().name == "NEW"
+    assert placed.state is State.NEW
 
     filled = event(T + 1_000_000_000, "PARTIALLY_FILLED")
     assert filled.is_after(placed) and placed.is_before(filled)
@@ -299,18 +299,24 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 | Key | Rule |
 | --- | --- |
 | Live set, twins | elements still alive (a live state, not past expiration) share the cross identity; an arrival under a live identity - or (if dead) under a `(key, value)` of a live element's `get_altids()` - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead |
+| Sides | a sided cross code carries its [side](market.md#sides-and-cross-codes), so a `BUY` and a `SELL` under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with |
+| No side | an element stating `UNKNOWN` joins the one side alive under its base cross code (the code without its prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
+| `UPDATED` | a `NEW` stated over a live element that is new-like - [`State::is_new_like`](../types/enum/state.md): acknowledged or working (rank 20 or 30), or `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` - is yielded `UPDATED` (`3004`, rank 30), read before following folds the state, so later progress folds over it; a `PENDING_NEW` followed by `NEW` stays `NEW` |
+| Creation | every element leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold kept - or, starting a chain, its own instant; a stated one is never replaced, and no identity moves, since no instant is digested |
+| One cross element | a chain whose first element states no cross code stands under that element's identity, and every element joining it by a name carries that identity as its `crossuuid` |
 | Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element, refused by it, or unchanged by following, is yielded as it came |
-| Executions | `execunix` defaults to `currunix` pre-placement when `Event::is_execution` holds; following carries the latest execution clock through non-executions, never filling/carrying `recdunix`. FIX counts an initial `35=AE` only if `TradeReportTransType(487)` is absent/New and `ExecType(150)` is absent or execution-like (`F`, legacy `1`/`2`) - never non-New/cancel/correct/reverse/status `AE`, nor `AD`/`AQ`/`AR` |
+| Executions | an execution joins nothing by a name or a base code: it is a chain of its own, followed only under its own cross code; `execunix` defaults to `currunix` pre-placement when `Event::is_execution` holds; following carries the latest execution clock through non-executions, never filling/carrying `recdunix`; a FIX message's fills are split into execution messages at the [parse](../fix/message.md#market-data) |
 | Deadlines, end | a finite `exprunix` emits one owned `EXPIRED` at that instant, following the live generation, then purges it; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
-| Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, changing only `snapunix`, never backdating; `snapshot_ns()` reads it back |
+| Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, never backdating; `snapshot_ns()` reads it back. A view is the live element as of its tick: dated at it (`currunix` = `snapunix` = the tick), so its `curruuid` is the identity that instant derives - a row of its own wherever rows are keyed by identity within a time - while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live element's; it does not advance the chain |
 | `MarketData` | `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` walk; every other variant yields unchanged and never stands live; unsorted, an undated value sorts first |
 | `alive()` | the live elements, in no order |
+| Bindings | Python `graph.EventIterator(items, sorted=True, snapshot_ns=None)`, JavaScript `new graph.EventIterator(items, sorted, snapshotNs)`: each yields `MarketData`, and `alive()` answers it |
 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, EventIterator, OrderEvent};
-    use yggdryl::State;
+    use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
+    use yggdryl::{Side, State};
 
     const T: i64 = 1_700_000_000_000_000_000;
     const SECOND: i64 = 1_000_000_000;
@@ -343,9 +349,44 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     assert_eq!(chained[2].get_curruuid(), chained[3].get_curruuid(), "a twin, not a successor");
     assert_eq!(chained[4].get_prevuuid(), Some(chained[2].get_curruuid()));
     assert_eq!(chained[5].get_prevuuid(), None, "the fill ended the chain");
+    // Each states when its lifecycle was created: its chain's first instant.
+    assert_eq!(chained[4].get_creaunix(), Some(T));
+    assert_eq!(chained[5].get_creaunix(), Some(T + 4 * SECOND));
     let mut alive: Vec<&str> = walk.alive().map(Element::get_crosscode).collect();
     alive.sort_unstable();
     assert_eq!(alive, ["O-1001", "O-2002"]);
+
+    // One identifier on each side: a NEW restated, a cancel stating no side.
+    let sided = |second: i64, side: Side, state: &str| {
+        let mut sided = event(second, "O-7", state);
+        sided.set_side(side);
+        sided.finalize();
+        sided
+    };
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            sided(0, Side::Buy, "New"),
+            sided(1, Side::Buy, "New"),
+            sided(2, Side::Unknown, "PendingCancel"),
+            sided(3, Side::Sell, "New"),
+        ],
+        true,
+    )
+    .collect();
+    let chains: Vec<(&str, &str, u64)> = walked
+        .iter()
+        .map(|held| (held.get_crosscode(), held.get_state().as_str(), held.get_seqnum()))
+        .collect();
+    assert_eq!(
+        chains,
+        [
+            ("BUY:O-7", "NEW", 0),
+            ("BUY:O-7", "UPDATED", 1),
+            ("BUY:O-7", "PENDING_CANCEL", 2),
+            ("SELL:O-7", "NEW", 0),
+        ]
+    );
+    assert_eq!(walked[2].get_side(), Side::Buy, "the one side alive under O-7");
 
     // A 10 ms grid: a view of the living order at each tick, then its deadline.
     const MS: i64 = 1_000_000;
@@ -353,13 +394,17 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     expiring.set_crosscode("O-3003".to_owned());
     expiring.set_exprunix(Some(T + 70 * MS));
     expiring.finalize();
-    let source = expiring.get_curruuid();
+    let (source, content, cross) = (expiring.get_curruuid(), expiring.get_currhashcode(), expiring.get_crossuuid());
     let timed: Vec<OrderEvent> = EventIterator::new([expiring], true).with_snapshot_ns(10 * MS).collect();
     let view = timed
         .iter()
         .find(|held| held.get_snapunix() == Some(T + 60 * MS))
         .expect("the living view at the crossed tick");
-    assert_eq!((view.get_curruuid(), view.get_seqnum()), (source, 0));
+    // The live order as of the tick: dated at it, so the identity is the
+    // tick's own, while content, place and chain are the live order's.
+    assert_eq!(view.get_currunix(), T + 60 * MS);
+    assert_ne!(view.get_curruuid(), source);
+    assert_eq!((view.get_currhashcode(), view.get_crossuuid(), view.get_seqnum()), (content, cross, 0));
     let expired = timed.last().expect("the deadline event");
     assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (T + 70 * MS, "EXPIRED"));
     assert_eq!((expired.get_prevuuid(), expired.get_seqnum()), (Some(source), 1));
@@ -368,13 +413,13 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 === "Python"
 
     ```python
-    from yggdryl import graph
+    from yggdryl import State, graph
 
     T = 1_700_000_000_000_000_000
     SECOND = 1_000_000_000
 
-    def event(second: int, order: str, state: str) -> graph.OrderEvent:
-        return graph.OrderEvent(T + second * SECOND, crosscode=order, state=state)
+    def event(second: int, order: str, state: str, side: str = "UNKNOWN") -> graph.OrderEvent:
+        return graph.OrderEvent(T + second * SECOND, crosscode=order, state=state, side=side)
 
     # Unsorted: one report logged twice, and O-1001 reopened after its fill.
     arrived = [
@@ -392,16 +437,41 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     assert chained[2].curruuid == chained[3].curruuid, "a twin, not a successor"
     assert chained[4].prevuuid == chained[2].curruuid
     assert chained[5].prevuuid is None, "the fill ended the chain"
+    # Each states when its lifecycle was created: its chain's first instant.
+    assert (chained[4].creaunix, chained[5].creaunix) == (T, T + 4 * SECOND)
     assert sorted(value.crosscode for value in walk.alive()) == ["O-1001", "O-2002"]
+
+    # One identifier on each side: a NEW restated, a cancel stating no side.
+    walked = [
+        value.as_order_event()
+        for value in graph.EventIterator(
+            [
+                event(0, "O-7", "NEW", "BUY"),
+                event(1, "O-7", "NEW", "BUY"),
+                event(2, "O-7", "PENDING_CANCEL"),
+                event(3, "O-7", "NEW", "SELL"),
+            ]
+        )
+    ]
+    assert [(held.crosscode, held.state, held.seqnum) for held in walked] == [
+        ("BUY:O-7", State.NEW, 0),
+        ("BUY:O-7", State.UPDATED, 1),
+        ("BUY:O-7", State.PENDING_CANCEL, 2),
+        ("SELL:O-7", State.NEW, 0),
+    ]
 
     # A 10 ms grid: a view of the living order at each tick, then its deadline.
     MS = 1_000_000
     expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-3003", exprunix=T + 70 * MS)
     timed = [value.as_order_event() for value in graph.EventIterator([expiring], snapshot_ns=10 * MS)]
     [view] = [held for held in timed if held.snapunix == T + 60 * MS]
-    assert (view.curruuid, view.seqnum) == (expiring.curruuid, 0)
+    # The live order as of the tick: dated at it, so the identity is the
+    # tick's own, while content, place and chain are the live order's.
+    assert view.currunix == T + 60 * MS
+    assert view.curruuid != expiring.curruuid
+    assert (view.currhashcode, view.crossuuid, view.seqnum) == (expiring.currhashcode, expiring.crossuuid, 0)
     expired = timed[-1]
-    assert (expired.currunix, expired.state.as_py().name) == (T + 70 * MS, "EXPIRED")
+    assert (expired.currunix, expired.state) == (T + 70 * MS, State.EXPIRED)
     assert (expired.prevuuid, expired.seqnum) == (expiring.curruuid, 1)
     ```
 
@@ -413,7 +483,9 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
     const T = 1_700_000_000_000_000_000n
     const SECOND = 1_000_000_000n
-    const event = (second, order, state) => new graph.OrderEvent(T + second * SECOND, { crosscode: order, state })
+    const event = (second, order, state, side = 'UNKNOWN') => new graph.OrderEvent(T + second * SECOND, {
+      crosscode: order, state, side,
+    })
 
     // Unsorted: one report logged twice, and O-1001 reopened after its fill.
     const arrived = [
@@ -433,15 +505,34 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
     assert.equal(chained[2].curruuid, chained[3].curruuid, 'a twin, not a successor')
     assert.equal(chained[4].prevuuid, chained[2].curruuid)
     assert.equal(chained[5].prevuuid, null, 'the fill ended the chain')
+    // Each states when its lifecycle was created: its chain's first instant.
+    assert.deepEqual([chained[4].creaunix, chained[5].creaunix], [T, T + 4n * SECOND])
     assert.deepEqual(walk.alive().map((value) => value.crosscode).sort(), ['O-1001', 'O-2002'])
+
+    // One identifier on each side: a NEW restated, a cancel stating no side.
+    const walked = [...new graph.EventIterator([
+      event(0n, 'O-7', 'NEW', 'BUY'),
+      event(1n, 'O-7', 'NEW', 'BUY'),
+      event(2n, 'O-7', 'PENDING_CANCEL'),
+      event(3n, 'O-7', 'NEW', 'SELL'),
+    ])].map((value) => value.asOrderEvent())
+    assert.deepEqual(walked.map((held) => [held.crosscode, held.state, held.seqnum]), [
+      ['BUY:O-7', 'NEW', 0],
+      ['BUY:O-7', 'UPDATED', 1],
+      ['BUY:O-7', 'PENDING_CANCEL', 2],
+      ['SELL:O-7', 'NEW', 0],
+    ])
 
     // A 10 ms grid: a view of the living order at each tick, then its deadline.
     const MS = 1_000_000n
     const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-3003', exprunix: T + 70n * MS })
     const timed = [...new graph.EventIterator([expiring], true, 10n * MS)].map((value) => value.asOrderEvent())
     const view = timed.find((held) => held.snapunix === T + 60n * MS)
-    assert.equal(view.curruuid, expiring.curruuid)
-    assert.equal(view.seqnum, 0)
+    // The live order as of the tick: dated at it, so the identity is the
+    // tick's own, while content, place and chain are the live order's.
+    assert.equal(view.currunix, T + 60n * MS)
+    assert.notEqual(view.curruuid, expiring.curruuid)
+    assert.deepEqual([view.currhashcode, view.crossuuid, view.seqnum], [expiring.currhashcode, expiring.crossuuid, 0])
     const expired = timed[timed.length - 1]
     assert.equal(expired.currunix, T + 70n * MS)
     assert.equal(expired.state, 'EXPIRED')
@@ -456,3 +547,4 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 - The later `recdunix` picks the merge reference even if its event instant is earlier; merged `execunix`/`recdunix` stay earliest observed, so merge order can change the winner.
 - The walk clones a source at most twice (as the live one, or one its predecessor refuses), plus one clone per expiration/grid view; it holds one live element per identity, emitting views lazily rather than queued.
 - A grid starts at the first epoch-aligned tick at/after the first source instant; output is crossed ticks × identities alive, caller-chosen width, no implicit count/span cap.
+- An element stating no side whose base code and names are alive on both sides is ambiguous: it neither picks one nor is refused - it starts a chain of its own under its unprefixed code.

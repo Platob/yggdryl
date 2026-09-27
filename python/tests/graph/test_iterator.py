@@ -25,7 +25,10 @@ def test_an_order_chains_to_the_live_order_it_follows() -> None:
     head = walked[0].as_order_event()
     tail = walked[1].as_order_event()
     assert head is not None and tail is not None
-    assert head == first and head.seqnum == 0 and head.prevuuid is None
+    # The walk dates a chain's creation where no event states it: the first
+    # event its own instant, every later one the chain's.
+    assert head.seqnum == 0 and head.prevuuid is None
+    assert first.creaunix is None and head.creaunix == CLOCK and tail.creaunix == CLOCK
     assert tail.prevuuid == first.curruuid
     assert tail.prevunix == CLOCK and tail.seqnum == 1
 
@@ -34,11 +37,11 @@ def test_an_execution_and_every_other_leaf_walk_through() -> None:
     first = order(CLOCK)
     # A millisecond later: two instants in one millisecond share an identity.
     execution = graph.ExecutionEvent(CLOCK + 1_000_000, crosscode="O-1", side="BUY", lastpx=D("101"), lastqty=10)
-    side = graph.BookSide("BUY")
-    walked = list(graph.EventIterator([first, execution, side, graph.Order(crosscode="O-1")]))
-    assert [data.kind for data in walked] == ["order_event", "execution_event", "book_side", "order"]
-    # A book side is yielded unchanged, in place.
-    assert walked[2].as_book_side() == side
+    book = graph.BookEvent(CLOCK + 2_000_000, "ACME")
+    walked = list(graph.EventIterator([first, execution, book, graph.Order(crosscode="O-1")]))
+    assert [data.kind for data in walked] == ["order_event", "execution_event", "book_event", "order"]
+    # A book is yielded unchanged, in place.
+    assert walked[2].as_book_event() == book
     assert walked[3].as_order() == graph.Order(crosscode="O-1")
     # The execution follows the order it fills across kinds, keeping its own.
     fill = walked[1].as_execution_event()
@@ -57,13 +60,39 @@ def test_alive_and_the_snapshot_grid() -> None:
     assert walk.snapshot_ns == 5
     walked = [data.as_order_event() for data in walk]
     assert [event.snapunix for event in walked if event is not None] == [None, CLOCK, CLOCK + 5, None]
-    assert walked[-1] is not None and walked[-1].state.as_py() is State.EXPIRED
+    assert walked[-1] is not None and walked[-1].state is State.EXPIRED
     assert walk.alive() == []
     live = graph.EventIterator([order(CLOCK)])
     assert live.snapshot_ns is None
     list(live)
-    assert [data.crosscode for data in live.alive()] == ["O-1"]
+    # A sided order's cross code states its side.
+    assert [data.crosscode for data in live.alive()] == ["BUY:O-1"]
     assert all(isinstance(data, graph.MarketData) for data in live.alive())
+
+
+def test_a_view_is_the_live_event_as_of_its_tick() -> None:
+    ms = 1_000_000
+    first = order(CLOCK)
+    second = order(CLOCK + ms + ms // 2, state="REPLACED", leavesqty=..., exprunix=CLOCK + 3 * ms)
+    walked = [data.as_order_event() for data in graph.EventIterator([first, second], snapshot_ns=ms)]
+    events = [event for event in walked if event is not None]
+    sources = [event for event in events if event.snapunix is None]
+    views = [event for event in events if event.snapunix is not None]
+    assert [view.snapunix for view in views] == [CLOCK, CLOCK + ms, CLOCK + 2 * ms]
+    for view in views:
+        tick = view.snapunix
+        assert tick is not None
+        source = [held for held in sources if held.currunix <= tick][-1]
+        # Dated at its tick, so its identity is the one that tick derives -
+        # a row of its own - while its content, its place and its cross
+        # element are the live event's.
+        assert view.currunix == tick
+        assert view.currhashcode == source.currhashcode
+        assert (view.seqnum, view.prevuuid, view.crossuuid) == (source.seqnum, source.prevuuid, source.crossuuid)
+        assert (view.curruuid == source.curruuid) == (tick == source.currunix)
+    # The tick past the replacement views it, the chain it follows kept.
+    assert views[-1].prevuuid == first.curruuid and views[-1].seqnum == 1
+    assert views[1].curruuid != first.curruuid
 
 
 def test_a_python_failure_is_raised_as_itself() -> None:

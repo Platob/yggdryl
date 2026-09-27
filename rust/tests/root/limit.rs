@@ -11,6 +11,7 @@ fn priced() -> Limit {
         price: Some("101.5".parse().unwrap()),
         quantity: Decimal::from_int(300),
         uuids: vec![Uuid::from_v8(1), Uuid::from_v8(2)],
+        tradable: true,
     }
 }
 
@@ -19,6 +20,7 @@ fn unpriced() -> Limit {
         price: None,
         quantity: Decimal::from_int(7),
         uuids: vec![Uuid::from_v8(3)],
+        tradable: false,
     }
 }
 
@@ -45,7 +47,7 @@ fn read_as_the_door(value: &Scalar) -> Result<Limit, String> {
     read
 }
 
-/// A struct scalar under the three names, `edit` replacing one cell.
+/// A struct scalar under the four names, `edit` replacing one cell.
 fn struct_with(name: &str, cell: Scalar) -> Scalar {
     let limit = priced().into_scalar();
     let fields = limit.as_struct().unwrap();
@@ -75,13 +77,14 @@ fn hashed(limit: &Limit) -> u64 {
 }
 
 #[test]
-fn the_datatype_is_a_nullable_price_a_quantity_and_the_entries() {
+fn the_datatype_is_a_nullable_price_a_quantity_the_entries_and_whether_it_trades() {
     assert_eq!(
         Limit::dtype().to_string(),
         "struct(\
          field(\"price\",decimal,nullable=true,metadata={}),\
          field(\"quantity\",decimal,nullable=false,metadata={}),\
-         field(\"uuids\",serie(field(\"uuid\",uuid,nullable=false,metadata={})),nullable=false,metadata={}))"
+         field(\"uuids\",serie(field(\"uuid\",uuid,nullable=false,metadata={})),nullable=false,metadata={}),\
+         field(\"tradable\",boolean,nullable=false,metadata={}))"
     );
 }
 
@@ -94,12 +97,12 @@ fn the_field_is_the_required_item_of_a_limits_column() {
 }
 
 #[test]
-fn into_scalar_is_the_struct_of_the_three_names() {
+fn into_scalar_is_the_struct_of_the_four_names() {
     let scalar = priced().into_scalar();
     let fields = scalar.as_struct().expect("a struct scalar");
     assert_eq!(
         fields.keys().map(|key| key.as_str()).collect::<Vec<_>>(),
-        ["price", "quantity", "uuids"]
+        ["price", "quantity", "tradable", "uuids"]
     );
     assert_eq!(fields["price"], Scalar::from(priced().price.unwrap()));
     assert_eq!(fields["quantity"], Scalar::from(Decimal::from_int(300)));
@@ -110,8 +113,10 @@ fn into_scalar_is_the_struct_of_the_three_names() {
             Scalar::Uuid(Uuid::from_v8(2))
         ]
     );
+    assert_eq!(fields["tradable"], Scalar::from(true));
     let scalar = unpriced().into_scalar();
     assert_eq!(scalar.as_struct().unwrap()["price"], Scalar::Null);
+    assert_eq!(scalar.as_struct().unwrap()["tradable"], Scalar::from(false));
 }
 
 #[test]
@@ -123,6 +128,7 @@ fn from_scalar_reads_the_struct_and_the_canonical_row() {
             price: Some(Decimal::ZERO),
             quantity: Decimal::ZERO,
             uuids: Vec::new(),
+            tradable: false,
         },
     ] {
         assert_eq!(Limit::from_scalar(&limit.into_scalar()).unwrap(), limit);
@@ -145,6 +151,8 @@ fn a_cell_is_refused_exactly_as_the_value_door_refuses_it() {
         ("uuids", 2, Scalar::Null, "$.limit.uuids"),
         ("uuids", 2, Scalar::from("O-1"), "$.limit.uuids"),
         ("uuids", 2, mixed, "$.limit.uuids[1].uuid"),
+        ("tradable", 3, wrong.clone(), "$.limit.tradable"),
+        ("tradable", 3, Scalar::Null, "$.limit.tradable"),
     ] {
         for value in [
             struct_with(name, cell.clone()),
@@ -207,6 +215,7 @@ fn what_the_value_door_accepts_reads_as_the_limit_it_canonicalizes_to() {
     let missing = Scalar::from_struct([
         ("quantity", Scalar::from(Decimal::ONE)),
         ("uuids", Scalar::from_sequence([])),
+        ("tradable", Scalar::from(true)),
     ])
     .unwrap();
     assert_eq!(read_as_the_door(&missing).unwrap().price, None);
@@ -214,7 +223,7 @@ fn what_the_value_door_accepts_reads_as_the_limit_it_canonicalizes_to() {
 
 #[test]
 fn a_name_the_struct_lacks_is_a_null_never_the_default_a_required_cell_takes() {
-    for name in ["quantity", "uuids"] {
+    for name in ["quantity", "uuids", "tradable"] {
         let fields = priced().into_scalar();
         let lacking = Scalar::from_struct(
             fields
@@ -226,7 +235,7 @@ fn a_name_the_struct_lacks_is_a_null_never_the_default_a_required_cell_takes() {
         )
         .unwrap();
         // The door alone fills a required cell with its default - a quantity
-        // of zero - which a limit never states.
+        // of zero, a `false` - which a limit never states.
         assert!(Limit::field().scalar(lacking.clone()).is_ok());
         let stated_null = read_as_the_door(&struct_with(name, Scalar::Null)).unwrap_err();
         assert_eq!(
@@ -244,6 +253,7 @@ fn a_row_of_another_width_an_unknown_name_or_another_shape_is_refused() {
         ("price", Scalar::Null),
         ("quantity", Scalar::from(Decimal::ONE)),
         ("uuids", Scalar::from_sequence([])),
+        ("tradable", Scalar::from(false)),
         ("venue", Scalar::from("XNAS")),
     ])
     .unwrap();
@@ -264,6 +274,7 @@ fn a_row_of_another_width_an_unknown_name_or_another_shape_is_refused() {
             ("price", Scalar::Null),
             ("quantity", Scalar::from(Decimal::ONE)),
             ("uuids", Scalar::from_sequence([])),
+            ("tradable", Scalar::from(false)),
             ("venue", Scalar::from("XNAS")),
         ])
         .unwrap(),
@@ -278,4 +289,9 @@ fn equality_and_hash_read_the_entries_in_order() {
     assert_ne!(swapped, priced());
     assert_ne!(hashed(&swapped), hashed(&priced()));
     assert_eq!(hashed(&priced()), hashed(&priced().clone()));
+    let untradable = Limit {
+        tradable: false,
+        ..priced()
+    };
+    assert_ne!(untradable, priced());
 }

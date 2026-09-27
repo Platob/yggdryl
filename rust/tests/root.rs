@@ -74,6 +74,8 @@ mod field;
 mod figi;
 #[path = "root/floating.rs"]
 mod floating;
+#[path = "root/forex.rs"]
+mod forex;
 #[path = "root/geospatial.rs"]
 mod geospatial;
 #[path = "root/gzip.rs"]
@@ -96,6 +98,8 @@ mod iokind;
 mod iomedia;
 #[path = "root/iomode.rs"]
 mod iomode;
+#[path = "root/isin.rs"]
+mod isin;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]
@@ -104,6 +108,8 @@ mod limit;
 mod listing;
 #[path = "root/mapping.rs"]
 mod mapping;
+#[path = "root/marketdatakind.rs"]
+mod marketdatakind;
 #[path = "root/media_type.rs"]
 mod media_type;
 #[path = "root/merge.rs"]

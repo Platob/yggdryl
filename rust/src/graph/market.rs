@@ -6,11 +6,11 @@
 //! classification, the market it trades on and the ticker it goes by - the
 //! side it takes, what it is priced and counted in, the price and quantity
 //! it is about, its last executed price and quantity and its average, how far it has got, the
-//! step before it, the two FX parts of a price, and free-form metadata.
-//! [`Operation`] is a market element that is also an operation: its
-//! category, how long it stands, whether it can trade, the account, user
-//! and alternate identifiers it is known by, and the two lanes a quote is
-//! made of. What an [`Event`] that is also one of them answers -
+//! step before it, the two FX parts of a price, the FX rates to other
+//! currencies, and free-form metadata.
+//! [`Operation`] is a market element that is also an operation: how long
+//! it stands, whether it can trade and the alternate identifiers it is known
+//! by. What an [`Event`] that is also one of them answers -
 //! [`Market::digest_market_event`], [`Market::following_market`],
 //! [`Market::merging_market_event`] and their [`Operation`] counterparts -
 //! is provided on the trait itself, gated `where Self: Event`, rather than
@@ -19,6 +19,7 @@
 //! message, a book entry and a lifecycle incarnation can each be a market
 //! without the graph owning any of them.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
@@ -36,7 +37,7 @@ use crate::{Ccy, Cfi, Decimal, Mic, Result, Side, TimeInForce, Unit};
 
 /// Free-form facts a market element carries beside its typed ones: never an
 /// identifier, which has a typed home in [`Market::get_securityids`] or an
-/// operation's maps.
+/// operation's alternate identifiers.
 pub type Metadata = BTreeMap<SmolStr, SmolStr>;
 
 static EMPTY_METADATA: Metadata = BTreeMap::new();
@@ -45,6 +46,19 @@ static EMPTY_METADATA: Metadata = BTreeMap::new();
 #[must_use]
 pub fn empty_metadata() -> &'static Metadata {
     &EMPTY_METADATA
+}
+
+/// The FX rates a market element states, sorted by target currency: an
+/// amount in the element's currency divided by the rate under a target is
+/// that amount in the target.
+pub type FxRates = BTreeMap<Ccy, Decimal>;
+
+static EMPTY_FXRATES: FxRates = BTreeMap::new();
+
+/// The rates an element that states none answers: one shared empty map.
+#[must_use]
+pub fn empty_fxrates() -> &'static FxRates {
+    &EMPTY_FXRATES
 }
 
 /// The alternate-identifier keys a following operation carries from the
@@ -61,80 +75,6 @@ pub const FOLLOWED_ALTIDS: [&str; 7] = [
     "EXCHANGECLIENTORDERID",
     "TRANSVERSALKEY",
 ];
-
-/// One lane of a quote: what a party is willing to pay or be paid, in the
-/// currency and unit the lane states, with the FX parts of its price where
-/// it quotes a forward.
-///
-/// Every slot is what the lane states; a lane states nothing of a slot it
-/// leaves `None`, and [`Lane::is_stated`] is whether it states anything.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Lane {
-    /// The lane's price.
-    pub price: Option<Decimal>,
-    /// The spot part of an FX forward price.
-    pub spotrate: Option<Decimal>,
-    /// The forward points of an FX forward price.
-    pub forwardpoints: Option<Decimal>,
-    /// The currency the lane is priced in.
-    pub currency: Option<Ccy>,
-    /// The lane's quantity.
-    pub quantity: Option<Decimal>,
-    /// The unit the lane's quantity is counted in.
-    pub unit: Option<Unit>,
-}
-
-impl Lane {
-    /// Whether the lane states any slot.
-    #[must_use]
-    pub fn is_stated(&self) -> bool {
-        self.price.is_some()
-            || self.spotrate.is_some()
-            || self.forwardpoints.is_some()
-            || self.currency.is_some()
-            || self.quantity.is_some()
-            || self.unit.is_some()
-    }
-
-    /// The lane as `Some` where it states anything, else `None`.
-    #[must_use]
-    pub fn stated(self) -> Option<Self> {
-        self.is_stated().then_some(self)
-    }
-
-    /// This lane folded with another statement of it: each slot the
-    /// selected statement states, else the other's. `later` selects
-    /// `other`.
-    #[must_use]
-    fn merged(&self, other: &Self, later: bool) -> Self {
-        Self {
-            price: stated(self.price, other.price, later),
-            spotrate: stated(self.spotrate, other.spotrate, later),
-            forwardpoints: stated(self.forwardpoints, other.forwardpoints, later),
-            currency: stated(self.currency.clone(), other.currency.clone(), later),
-            quantity: stated(self.quantity, other.quantity, later),
-            unit: stated(self.unit.clone(), other.unit.clone(), later),
-        }
-    }
-
-    fn feed(&self, staged: &mut Staged<'_>, lane: &str) {
-        for held in [self.price, self.spotrate, self.forwardpoints]
-            .into_iter()
-            .flatten()
-        {
-            staged.feed(lane, &held.units().to_le_bytes());
-        }
-        if let Some(currency) = &self.currency {
-            staged.feed(lane, currency.as_str().as_bytes());
-        }
-        if let Some(quantity) = self.quantity {
-            staged.feed(lane, &quantity.units().to_le_bytes());
-        }
-        if let Some(unit) = &self.unit {
-            staged.feed(lane, unit.as_str().as_bytes());
-        }
-    }
-}
 
 /// An element that stands in a market: the slim facts a book level or any
 /// plain struct answers cheaply.
@@ -252,6 +192,118 @@ pub trait Market {
     fn get_metadata(&self) -> &Metadata;
     /// Sets [`Self::get_metadata`]; `None` and an empty map are the same.
     fn set_metadata(&mut self, metadata: Option<Metadata>);
+    /// The FX rates the element states, target currency to the rate to
+    /// divide by: an amount in [`Self::get_currency`] divided by
+    /// `rates[target]` is that amount in `target`. A shared empty map where
+    /// it states none.
+    fn get_fxrates(&self) -> &FxRates;
+    /// Replaces [`Self::get_fxrates`]; an empty map states none.
+    fn set_fxrates(&mut self, rates: FxRates);
+    /// The bid price the element states: a quote's `BidPx(132)`, a book's
+    /// best tradable bid level; `None` where it states none. Never filled
+    /// from the element's own price or its last executed price.
+    fn get_bidpx(&self) -> Option<Decimal>;
+    /// Sets [`Self::get_bidpx`].
+    fn set_bidpx(&mut self, px: Option<Decimal>);
+    /// The quantity bid at [`Self::get_bidpx`]: a quote's `BidSize(134)`, a
+    /// book's best tradable bid level's; `None` where it states none.
+    fn get_bidqty(&self) -> Option<Decimal>;
+    /// Sets [`Self::get_bidqty`].
+    fn set_bidqty(&mut self, qty: Option<Decimal>);
+    /// The currency the bid is stated in, where the element states a bid.
+    fn get_bidccy(&self) -> Option<&Ccy>;
+    /// Sets [`Self::get_bidccy`].
+    fn set_bidccy(&mut self, ccy: Option<Ccy>);
+    /// The ask price the element states: a quote's `OfferPx(133)`, a book's
+    /// best tradable ask level; `None` where it states none.
+    fn get_askpx(&self) -> Option<Decimal>;
+    /// Sets [`Self::get_askpx`].
+    fn set_askpx(&mut self, px: Option<Decimal>);
+    /// The quantity offered at [`Self::get_askpx`]: a quote's
+    /// `OfferSize(135)`, a book's best tradable ask level's.
+    fn get_askqty(&self) -> Option<Decimal>;
+    /// Sets [`Self::get_askqty`].
+    fn set_askqty(&mut self, qty: Option<Decimal>);
+    /// The currency the ask is stated in, where the element states an ask.
+    fn get_askccy(&self) -> Option<&Ccy>;
+    /// Sets [`Self::get_askccy`].
+    fn set_askccy(&mut self, ccy: Option<Ccy>);
+
+    /// The cross code `code` is stored as for this element: `"{SIDE}:{code}"`
+    /// under the stored name of the side it takes - `BUY:ORD-1` - so the two
+    /// sides of one identifier are two chains, and `code` itself for an
+    /// element taking [`Side::Unknown`]. Idempotent: a code already carrying
+    /// this side's prefix is answered as it is, and one carrying another
+    /// side's has that prefix replaced. The one place the prefix is spelled;
+    /// every market holder stores its cross code through it, so setting the
+    /// side after the code converges on the same answer.
+    ///
+    /// ```
+    /// use yggdryl::graph::{Element, Market, OrderEvent};
+    /// use yggdryl::Side;
+    ///
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_side(Side::Buy);
+    /// assert_eq!(order.sided_crosscode("ORD-1"), "BUY:ORD-1");
+    /// assert_eq!(order.sided_crosscode("SELL:ORD-1"), "BUY:ORD-1");
+    /// order.set_crosscode("ORD-1".to_owned());
+    /// assert_eq!(order.get_crosscode(), "BUY:ORD-1");
+    /// order.set_side(Side::Sell);
+    /// assert_eq!(order.get_crosscode(), "SELL:ORD-1");
+    /// ```
+    fn sided_crosscode<'code>(&self, code: &'code str) -> Cow<'code, str> {
+        sided_crosscode(self.get_side(), code)
+    }
+
+    /// States the rate to one target currency, filling a target the element
+    /// states no rate for, never replacing one it does; whether it was
+    /// added.
+    ///
+    /// ```
+    /// use yggdryl::graph::{Market, OrderEvent};
+    /// use yggdryl::Ccy;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// order.set_currency(Ccy::new("EUR")?);
+    /// assert!(order.insert_fxrate(Ccy::new("USD")?, "0.8".parse()?));
+    /// assert!(!order.insert_fxrate(Ccy::new("USD")?, "0.9".parse()?));
+    /// assert_eq!(order.get_fxrates()[&Ccy::new("USD")?], "0.8".parse()?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn insert_fxrate(&mut self, target: Ccy, rate: Decimal) -> bool {
+        if self.get_fxrates().contains_key(&target) {
+            return false;
+        }
+        let mut rates = self.get_fxrates().clone();
+        rates.insert(target, rate);
+        self.set_fxrates(rates);
+        true
+    }
+
+    /// The ISIN the element names: its `ISIN` security identifier, borrowed
+    /// - a projection of [`Self::get_securityids`], never a second store.
+    fn get_isincode(&self) -> Option<&str> {
+        self.get_securityids().get("ISIN")
+    }
+
+    /// The key of the book the element stands in: its ticker where it
+    /// states one, else its category - `{miccode}:{cficode}`, `XXXX` for a
+    /// market it names none of and `XXXXXX` for a classification it knows
+    /// none of. Borrowed where the ticker answers, so a ticker input
+    /// allocates nothing.
+    fn book_crosscode(&self) -> Cow<'_, str> {
+        match self.get_ticker().filter(|ticker| !ticker.is_empty()) {
+            Some(ticker) => Cow::Borrowed(ticker),
+            None => Cow::Owned(format!(
+                "{}:{}",
+                self.get_miccode().map_or(Mic::NONE, |code| code.as_str()),
+                self.get_cficode()
+                    .map_or(Cfi::UNCLASSIFIED, |code| code.as_str())
+            )),
+        }
+    }
 
     /// Fills every market fact this element implies from the ones it
     /// states, and stops where it would be inventing.
@@ -271,13 +323,16 @@ pub trait Market {
     where
         Self: Sized,
     {
-        let embedded: Vec<SecurityId> = self
+        // The ISIN is owned - a code inline - so its national identifiers
+        // are derived straight off it, with no list staged in between.
+        let Some(isin) = self
             .get_securityids()
             .get_id("ISIN")
             .and_then(|id| crate::Isin::new(id.code()).ok())
-            .map(|isin| embedded(&isin).collect())
-            .unwrap_or_default();
-        for id in embedded {
+        else {
+            return;
+        };
+        for id in embedded(&isin) {
             self.derive_securityid(id);
         }
     }
@@ -366,13 +421,39 @@ pub trait Market {
     }
 }
 
+/// [`Market::sided_crosscode`] for `side`: the owner of the side prefix.
+pub(crate) fn sided_crosscode(side: Side, code: &str) -> Cow<'_, str> {
+    if side == Side::Unknown || code.is_empty() {
+        return Cow::Borrowed(code);
+    }
+    let name = side.as_str();
+    if code.len() > name.len() && code.starts_with(name) && code.as_bytes()[name.len()] == b':' {
+        return Cow::Borrowed(code);
+    }
+    let base = unsided_crosscode(code);
+    let mut sided = String::with_capacity(name.len() + 1 + base.len());
+    sided.push_str(name);
+    sided.push(':');
+    sided.push_str(base);
+    Cow::Owned(sided)
+}
+
+/// A cross code without the side prefix [`sided_crosscode`] gives it: the
+/// base every side of one identifier shares.
+pub(crate) fn unsided_crosscode(code: &str) -> &str {
+    match code.split_once(':') {
+        Some((prefix, base))
+            if Side::from_name(prefix).is_some_and(|side| side != Side::Unknown) =>
+        {
+            base
+        }
+        _ => code,
+    }
+}
+
 /// A market element that is also an operation on the market: what it adds
 /// to the slim facts.
 pub trait Operation: Market {
-    /// The stable numeric market-operation category, where known.
-    fn get_marketoperationid(&self) -> Option<i32>;
-    /// Sets [`Self::get_marketoperationid`].
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>);
     /// How long the operation stands, where stated.
     fn get_tif(&self) -> Option<&TimeInForce>;
     /// Sets [`Self::get_tif`].
@@ -381,52 +462,6 @@ pub trait Operation: Market {
     fn get_tradable(&self) -> Option<bool>;
     /// Sets [`Self::get_tradable`].
     fn set_tradable(&mut self, tradable: Option<bool>);
-    /// The accounts the operation is for, source key to account.
-    fn get_accountids(&self) -> &IdMap;
-    /// Replaces [`Self::get_accountids`].
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// one of the keys.
-    fn set_accountids(&mut self, ids: IdMap) -> Result<()>;
-    /// States one account, filling only an absent key; whether it was added.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// the key, or the key or value breaks [`IdMap`]'s rules.
-    fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool>;
-    /// Removes one account; whether one was held.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// the key.
-    fn remove_accountid(&mut self, key: &str) -> Result<bool>;
-    /// The users the operation is by, source key to user.
-    fn get_userids(&self) -> &IdMap;
-    /// Replaces [`Self::get_userids`].
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// one of the keys.
-    fn set_userids(&mut self, ids: IdMap) -> Result<()>;
-    /// States one user, filling only an absent key; whether it was added.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// the key, or the key or value breaks [`IdMap`]'s rules.
-    fn insert_userid(&mut self, key: &str, value: &str) -> Result<bool>;
-    /// Removes one user; whether one was held.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the holder is a view of a store that refuses
-    /// the key.
-    fn remove_userid(&mut self, key: &str) -> Result<bool>;
     /// The operation's own identifiers, source key to identifier.
     fn get_altids(&self) -> &IdMap;
     /// Replaces [`Self::get_altids`].
@@ -457,122 +492,6 @@ pub trait Operation: Market {
     fn is_followed_altid(&self, key: &str) -> bool {
         FOLLOWED_ALTIDS.contains(&key)
     }
-    /// The bid lane a quote states, where it states one.
-    fn get_bid(&self) -> Option<&Lane>;
-    /// Sets [`Self::get_bid`]; a lane stating nothing is `None`.
-    fn set_bid(&mut self, lane: Option<Lane>);
-    /// The ask lane a quote states, where it states one.
-    fn get_ask(&self) -> Option<&Lane>;
-    /// Sets [`Self::get_ask`]; a lane stating nothing is `None`.
-    fn set_ask(&mut self, lane: Option<Lane>);
-
-    /// Continues [`Market::fill_market`] with what an operation implies.
-    ///
-    /// 0. A quote stating one lane and no side is that lane's side: a bid
-    ///    alone is a party willing to pay, so the element is a buy, and an
-    ///    ask alone one willing to be paid, a sell. A quote is an element
-    ///    the lane is the only price of: one stating a price, a last trade
-    ///    or an average of its own is about that, and a lane beside it is
-    ///    context. A side the element states stands, and a quote stating
-    ///    both lanes or neither names no side.
-    /// 1. The price, the quantity, the currency, the unit and the FX parts
-    ///    are the element's own, else what its own side's lane quotes.
-    /// 2. The side's lane is then filled from all of that, by
-    ///    [`Self::fill_lanes`].
-    ///
-    /// Nothing is invented and a stated fact is never overwritten. Running
-    /// it twice changes nothing the first run did not.
-    fn fill_operation(&mut self)
-    where
-        Self: Sized,
-    {
-        if self.get_side() == Side::Unknown
-            && self.get_price().is_none()
-            && self.get_lastpx().is_none()
-            && self.get_avgpx().is_none()
-        {
-            let named = match lanes_stated(self) {
-                (true, false) => Some(Side::Buy),
-                (false, true) => Some(Side::Sell),
-                _ => None,
-            };
-            if let Some(side) = named {
-                self.set_side(side);
-            }
-        }
-        let side = self.get_side();
-        let lane = if side.is_bid() {
-            self.get_bid().cloned()
-        } else if side.is_ask() {
-            self.get_ask().cloned()
-        } else {
-            None
-        };
-        if let Some(lane) = lane {
-            if self.get_price().is_none() {
-                self.set_price(lane.price);
-            }
-            if self.get_quantity().is_none() {
-                self.set_quantity(lane.quantity);
-            }
-            if *self.get_currency() == Ccy::none() {
-                if let Some(currency) = lane.currency {
-                    self.set_currency(currency);
-                }
-            }
-            if self.get_unit().is_none() {
-                if let Some(unit) = lane.unit {
-                    self.set_unit(unit);
-                }
-            }
-            if self.get_spotrate().is_none() {
-                self.set_spotrate(lane.spotrate);
-            }
-            if self.get_forwardpoints().is_none() {
-                self.set_forwardpoints(lane.forwardpoints);
-            }
-        }
-        self.fill_lanes();
-    }
-
-    /// Fills the lane the side implies from the element's own facts, where
-    /// the lane states nothing of its own: a buy at a price is a party
-    /// willing to pay it, and a sell at one a party willing to be paid it.
-    /// Only a stated fact fills a lane - no price or quantity, no currency,
-    /// no unit, is nothing to state on the lane either - and a
-    /// side taking neither lane fills nothing.
-    fn fill_lanes(&mut self)
-    where
-        Self: Sized,
-    {
-        let side = self.get_side();
-        if !side.is_bid() && !side.is_ask() {
-            return;
-        }
-        let own = Lane {
-            price: self.get_price(),
-            spotrate: self.get_spotrate(),
-            forwardpoints: self.get_forwardpoints(),
-            currency: Some(self.get_currency().clone()).filter(|held| *held != Ccy::none()),
-            quantity: self.get_quantity(),
-            unit: Some(self.get_unit().clone()).filter(|unit| !unit.is_none()),
-        };
-        let held = if side.is_bid() {
-            self.get_bid()
-        } else {
-            self.get_ask()
-        };
-        let filled = held.map_or_else(|| own.clone(), |held| held.merged(&own, false));
-        if Some(&filled) == held || (!filled.is_stated() && held.is_none()) {
-            return;
-        }
-        if side.is_bid() {
-            self.set_bid(filled.stated());
-        } else {
-            self.set_ask(filled.stated());
-        }
-    }
-
     /// Continues [`Market::digest_market`] with the operation's facts.
     fn digest_operation(&self) -> Xxh3
     where
@@ -626,7 +545,7 @@ pub trait Operation: Market {
             return None;
         }
         let mut changed = follow_timed(&mut self, previous);
-        changed |= follow_market_of_operation(&mut self, previous);
+        changed |= follow_market(&mut self, previous);
         if !(follow_operation(&mut self, previous) || changed) {
             return None;
         }
@@ -669,13 +588,13 @@ pub(crate) fn restating_market<E: Event + Market>(mut this: E, live: &E) -> E {
     this
 }
 
-/// What restating means for a market operation: [`restating_market`]
+/// What restating means for an operation on the market: [`restating_market`]
 /// continued with the operation's facts.
 pub(crate) fn restating_operation<E: Event + Operation>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
     this.fold_lifecycle(live);
-    restate_market_of_operation(&mut this, live);
+    restate_market(&mut this, live);
     restate_operation(&mut this, live);
     this.finalize();
     this
@@ -689,7 +608,7 @@ pub(crate) fn merge_market_event_into_reference<E: Event + Market>(this: &mut E,
     }
 }
 
-/// Merges a market operation into the reference statement it supplements,
+/// Merges an operation on the market into the reference statement it supplements,
 /// finalizing where anything moved.
 pub(crate) fn merge_operation_event_into_reference<E: Event + Operation>(
     this: &mut E,
@@ -755,6 +674,29 @@ pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
             staged.feed(name, &held.units().to_le_bytes());
         }
     }
+    // Fed only where stated, so an element stating no bid or ask digests as
+    // it did before they were facts.
+    for (name, held) in [
+        ("bidpx", this.get_bidpx()),
+        ("bidqty", this.get_bidqty()),
+        ("askpx", this.get_askpx()),
+        ("askqty", this.get_askqty()),
+    ] {
+        if let Some(held) = held {
+            staged.feed(name, &held.units().to_le_bytes());
+        }
+    }
+    for (name, held) in [("bidccy", this.get_bidccy()), ("askccy", this.get_askccy())] {
+        if let Some(held) = held {
+            staged.feed(name, held.as_str().as_bytes());
+        }
+    }
+    // Fed only where stated, so an element stating no rate digests as it
+    // did before rates were a fact.
+    for (target, rate) in this.get_fxrates() {
+        staged.feed("fxrates", target.as_str().as_bytes());
+        staged.feed("fxrates", &rate.units().to_le_bytes());
+    }
     if let Some(ticker) = this.get_ticker() {
         staged.feed("ticker", ticker.as_bytes());
     }
@@ -766,30 +708,15 @@ pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
 /// Feeds the operation's facts to a digest, each under its name.
 pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) {
     let mut staged = Staged::new(state);
-    if let Some(marketoperationid) = this.get_marketoperationid() {
-        staged.feed("marketoperationid", &marketoperationid.to_le_bytes());
-    }
     if let Some(tif) = this.get_tif() {
         staged.feed("tif", tif.as_str().as_bytes());
     }
     if let Some(tradable) = this.get_tradable() {
         staged.feed("tradable", &[u8::from(tradable)]);
     }
-    for (label, map) in [
-        ("accountids", this.get_accountids()),
-        ("userids", this.get_userids()),
-        ("altids", this.get_altids()),
-    ] {
-        for (key, value) in map.iter() {
-            staged.feed(label, key.as_bytes());
-            staged.feed(label, value.as_bytes());
-        }
-    }
-    if let Some(lane) = this.get_bid() {
-        lane.feed(&mut staged, "bid");
-    }
-    if let Some(lane) = this.get_ask() {
-        lane.feed(&mut staged, "ask");
+    for (key, value) in this.get_altids().iter() {
+        staged.feed("altids", key.as_bytes());
+        staged.feed("altids", value.as_bytes());
     }
 }
 
@@ -797,25 +724,6 @@ pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) 
 /// price and the quantity that statement settled on as the step before this
 /// one, and what the chain is about where this statement says nothing.
 pub(crate) fn follow_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
-    follow_market_facts(this, previous, true)
-}
-
-/// [`follow_market`] for an operation: one quoting a lane of its own says
-/// its side itself - one lane names it and two name none - so the chain's
-/// side is not its to take.
-pub(crate) fn follow_market_of_operation<E: Operation + ?Sized>(
-    this: &mut E,
-    previous: &E,
-) -> bool {
-    let side_from_chain = lanes_stated(this) == (false, false);
-    follow_market_facts(this, previous, side_from_chain)
-}
-
-fn follow_market_facts<E: Market + ?Sized>(
-    this: &mut E,
-    previous: &E,
-    side_from_chain: bool,
-) -> bool {
     let mut changed = false;
     if this.get_prevpx().is_none() {
         let px = previous.get_price();
@@ -825,21 +733,10 @@ fn follow_market_facts<E: Market + ?Sized>(
         let qty = previous.get_quantity();
         changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
     }
-    changed | chain_market(this, previous, side_from_chain)
+    changed | chain_market(this, previous)
 }
 
 fn restate_market<E: Market + ?Sized>(this: &mut E, live: &E) -> bool {
-    restate_market_facts(this, live, true)
-}
-
-/// [`restate_market`] for an operation, its side under the rule of
-/// [`follow_market_of_operation`].
-fn restate_market_of_operation<E: Operation + ?Sized>(this: &mut E, live: &E) -> bool {
-    let side_from_chain = lanes_stated(this) == (false, false);
-    restate_market_facts(this, live, side_from_chain)
-}
-
-fn restate_market_facts<E: Market + ?Sized>(this: &mut E, live: &E, side_from_chain: bool) -> bool {
     let mut changed = moved(
         this.get_prevpx(),
         stated(this.get_prevpx(), live.get_prevpx(), false),
@@ -850,27 +747,25 @@ fn restate_market_facts<E: Market + ?Sized>(this: &mut E, live: &E, side_from_ch
         stated(this.get_prevqty(), live.get_prevqty(), false),
         |qty| this.set_prevqty(qty),
     );
-    changed | chain_market(this, live, side_from_chain)
+    changed | chain_market(this, live)
 }
 
 /// What the chain an element stands in is about, taken from another
 /// statement of that chain where this one says nothing of it. This
 /// statement always leads, and nothing here is about a step. The side is
-/// the chain's to give only where `side_from_chain` says so: an operation
-/// quoting a lane of its own names its side itself.
-fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E, side_from_chain: bool) -> bool {
+/// this statement's own where it states one, and the chain's where it
+/// states none, for an operation as for any other market element.
+fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(
         this.get_currency().clone(),
         better(this.get_currency().clone(), previous.get_currency(), false),
         |currency| this.set_currency(currency),
     );
-    if side_from_chain {
-        changed |= moved(
-            this.get_side(),
-            this.get_side().merge_with(&previous.get_side()),
-            |side| this.set_side(side),
-        );
-    }
+    changed |= moved(
+        this.get_side(),
+        this.get_side().merge_with(previous.get_side()),
+        |side| this.set_side(side),
+    );
     changed |= moved(
         this.get_unit().clone(),
         better(this.get_unit().clone(), previous.get_unit(), false),
@@ -885,6 +780,7 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E, side_from_chain:
     // An element naming another ISIN than its predecessor is another
     // instrument, and takes none of the predecessor's identifiers.
     if !names_other_instrument(this, previous) {
+        changed |= yield_unknown_isin(this, previous);
         for id in previous.get_securityids() {
             if !this.get_securityids().contains_key(id.sectype().as_str()) {
                 changed |= this.insert_securityid(id.clone()).unwrap_or(false);
@@ -904,12 +800,36 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E, side_from_chain:
     changed
 }
 
-/// Whether `this` and `other` each state an ISIN, and not the same one.
+/// Whether an ISIN is filed under `ZZ`, the prefix of no country: an
+/// identifier a better one replaces.
+fn is_unknown_isin(code: &str) -> bool {
+    code.starts_with("ZZ")
+}
+
+/// Whether `this` and `other` each state an ISIN, and not the same one - a
+/// `ZZ` ISIN names no country's instrument, so it is never the other one.
 fn names_other_instrument<E: Market + ?Sized>(this: &E, other: &E) -> bool {
     matches!(
-        (this.get_securityids().get("ISIN"), other.get_securityids().get("ISIN")),
-        (Some(mine), Some(theirs)) if mine != theirs
+        (this.get_isincode(), other.get_isincode()),
+        (Some(mine), Some(theirs))
+            if mine != theirs && !is_unknown_isin(mine) && !is_unknown_isin(theirs)
     )
+}
+
+/// A `ZZ` ISIN `this` states yields to a real one `other` states: taken
+/// out - and every identifier derived from it with it - and replaced, so
+/// what the real one carries derives afresh. Whether it moved.
+fn yield_unknown_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
+    let (Some(mine), Some(theirs)) = (this.get_isincode(), other.get_securityids().get_id("ISIN"))
+    else {
+        return false;
+    };
+    if !is_unknown_isin(mine) || is_unknown_isin(theirs.code()) {
+        return false;
+    }
+    let theirs = theirs.clone();
+    let _ = this.remove_securityid(&theirs.sectype());
+    this.insert_securityid(theirs).unwrap_or(false)
 }
 
 /// The market facts an element takes from another statement of itself:
@@ -945,6 +865,29 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
     optional!(get_prevqty, set_prevqty);
     optional!(get_spotrate, set_spotrate);
     optional!(get_forwardpoints, set_forwardpoints);
+    // The bid and the ask: the leading statement's where it states one.
+    optional!(get_bidpx, set_bidpx);
+    optional!(get_bidqty, set_bidqty);
+    optional!(get_askpx, set_askpx);
+    optional!(get_askqty, set_askqty);
+    changed |= moved(
+        this.get_bidccy().cloned(),
+        stated(
+            this.get_bidccy().cloned(),
+            other.get_bidccy().cloned(),
+            later,
+        ),
+        |ccy| this.set_bidccy(ccy),
+    );
+    changed |= moved(
+        this.get_askccy().cloned(),
+        stated(
+            this.get_askccy().cloned(),
+            other.get_askccy().cloned(),
+            later,
+        ),
+        |ccy| this.set_askccy(ccy),
+    );
     changed |= moved(
         this.get_currency().clone(),
         better(this.get_currency().clone(), other.get_currency(), later),
@@ -952,7 +895,11 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
     );
     changed |= moved(
         this.get_side(),
-        better(this.get_side(), &other.get_side(), later),
+        if later {
+            other.get_side().merge_with(this.get_side())
+        } else {
+            this.get_side().merge_with(other.get_side())
+        },
         |side| this.set_side(side),
     );
     changed |= moved(
@@ -973,10 +920,16 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
                 .is_ok();
         }
     } else {
+        changed |= yield_unknown_isin(this, other);
         for id in other.get_securityids() {
             let key = id.sectype();
             match this.get_securityids().get(key.as_str()) {
                 Some(held) if held == id.code() => {}
+                // A `ZZ` ISIN never replaces a real one, whichever leads.
+                Some(held)
+                    if key.as_str() == "ISIN"
+                        && is_unknown_isin(id.code())
+                        && !is_unknown_isin(held) => {}
                 Some(_) if later => {
                     let _ = this.remove_securityid(&key);
                     changed |= this.insert_securityid(id.clone()).unwrap_or(false);
@@ -1015,12 +968,29 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
             changed = true;
         }
     }
+    // The union by target, the leading statement's rate where both state
+    // one.
+    if !other.get_fxrates().is_empty() {
+        let (lead, supplement) = if later {
+            (other.get_fxrates(), this.get_fxrates())
+        } else {
+            (this.get_fxrates(), other.get_fxrates())
+        };
+        let mut merged = lead.clone();
+        for (target, rate) in supplement {
+            merged.entry(target.clone()).or_insert(*rate);
+        }
+        if &merged != this.get_fxrates() {
+            this.set_fxrates(merged);
+            changed = true;
+        }
+    }
     changed
 }
 
 /// The operation facts an event takes from the statement it follows: the
-/// accounts and users whole, the order's own identifiers, and how long it
-/// stands and whether it can trade where this statement says nothing.
+/// order's own identifiers, how long it stands and whether it can trade
+/// where this statement says nothing.
 pub(crate) fn follow_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
     chain_operation(this, previous)
 }
@@ -1040,16 +1010,6 @@ fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
         stated(this.get_tradable(), previous.get_tradable(), false),
         |tradable| this.set_tradable(tradable),
     );
-    for (key, value) in previous.get_accountids().iter() {
-        if !this.get_accountids().contains_key(key) {
-            changed |= this.insert_accountid(key, value).unwrap_or(false);
-        }
-    }
-    for (key, value) in previous.get_userids().iter() {
-        if !this.get_userids().contains_key(key) {
-            changed |= this.insert_userid(key, value).unwrap_or(false);
-        }
-    }
     for (key, value) in previous.get_altids().iter() {
         if this.is_followed_altid(key) && !this.get_altids().contains_key(key) {
             changed |= this.insert_altid(key, value).unwrap_or(false);
@@ -1061,15 +1021,6 @@ fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
 /// The operation facts an element takes from another statement of itself.
 pub(crate) fn merge_operation<E: Operation + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
     let mut changed = moved(
-        this.get_marketoperationid(),
-        stated(
-            this.get_marketoperationid(),
-            other.get_marketoperationid(),
-            later,
-        ),
-        |marketoperationid| this.set_marketoperationid(marketoperationid),
-    );
-    changed |= moved(
         this.get_tif().cloned(),
         better_stated(this.get_tif().cloned(), other.get_tif(), later),
         |tif| this.set_tif(tif),
@@ -1079,53 +1030,23 @@ pub(crate) fn merge_operation<E: Operation + ?Sized>(this: &mut E, other: &E, la
         stated(this.get_tradable(), other.get_tradable(), later),
         |tradable| this.set_tradable(tradable),
     );
-    macro_rules! map {
-        ($get:ident, $set:ident) => {
-            if !other.$get().is_empty() {
-                let mut merged = if later {
-                    other.$get().clone()
-                } else {
-                    this.$get().clone()
-                };
-                let supplement = if later { this.$get() } else { other.$get() };
-                merged.merge(supplement);
-                if &merged != this.$get() && this.$set(merged).is_ok() {
-                    changed = true;
-                }
-            }
+    if !other.get_altids().is_empty() {
+        let mut merged = if later {
+            other.get_altids().clone()
+        } else {
+            this.get_altids().clone()
         };
-    }
-    map!(get_accountids, set_accountids);
-    map!(get_userids, set_userids);
-    map!(get_altids, set_altids);
-    let bid = merged_lane(this.get_bid(), other.get_bid(), later);
-    if bid.as_ref() != this.get_bid() {
-        this.set_bid(bid);
-        changed = true;
-    }
-    let ask = merged_lane(this.get_ask(), other.get_ask(), later);
-    if ask.as_ref() != this.get_ask() {
-        this.set_ask(ask);
-        changed = true;
+        let supplement = if later {
+            this.get_altids()
+        } else {
+            other.get_altids()
+        };
+        merged.merge(supplement);
+        if &merged != this.get_altids() && this.set_altids(merged).is_ok() {
+            changed = true;
+        }
     }
     changed
-}
-
-fn merged_lane(this: Option<&Lane>, other: Option<&Lane>, later: bool) -> Option<Lane> {
-    match (this, other) {
-        (Some(held), Some(next)) => Some(held.merged(next, later)),
-        (Some(held), None) => Some(held.clone()),
-        (None, Some(next)) => Some(next.clone()),
-        (None, None) => None,
-    }
-}
-
-/// Whether an operation's bid lane and its ask lane each state anything.
-fn lanes_stated<E: Operation + ?Sized>(this: &E) -> (bool, bool) {
-    (
-        this.get_bid().is_some_and(Lane::is_stated),
-        this.get_ask().is_some_and(Lane::is_stated),
-    )
 }
 
 /// The better of two statements of one code: the selected statement

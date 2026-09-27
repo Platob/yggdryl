@@ -118,7 +118,7 @@ mod internal {
 
     /// The four holders' sizes, first pinned when the slim `Market` trait
     /// landed: the nineteen market facts, then the clocks, then the boxed
-    /// lanes and the three identifier maps each operation adds. It moved
+    /// lanes and the identifier maps each operation adds. It moved
     /// when price and quantity became what the element states:
     /// `Option<Decimal>` has no niche, so each costs sixteen bytes more
     /// than the zero that used to stand in. It moved again, by sixteen
@@ -126,11 +126,31 @@ mod internal {
     /// they only derived: one `u64` mask, padded to sixteen bytes. The two
     /// dated holders moved back by sixteen bytes when their `State` became
     /// an `i32` member rather than a twenty-four-byte code string: twenty
-    /// bytes fewer, padded to the sixteen-byte alignment. A moved number is
-    /// a design answer, never a number to re-pin from a whole run.
+    /// bytes fewer, padded to the sixteen-byte alignment. They moved again
+    /// when the market facts gained their FX rates and the operation facts
+    /// lost their category: the two market holders by exactly sixteen - an
+    /// `Option<Box<[FxRate]>>` - and the operation's own facts from 224
+    /// bytes to 216 - an `Option<i32>` `marketoperationid`, eight - so the
+    /// two operation holders are 672 + 216 = 888 and 832 + 216 = 1048, each
+    /// padded to sixteen. They moved once more when the rates became a
+    /// target-to-rate map and the accounts and users left the operation:
+    /// the two market holders by sixteen - an `Option<Box<FxRates>>` is
+    /// eight, and the eight left over fall inside the padding the holders
+    /// already had, so 656 and 816 - and the operation's own facts from 216
+    /// bytes to 104, two fifty-six-byte `IdMap`s fewer, so the two operation
+    /// holders are 656 + 104 = 760 and 816 + 104 = 920, each padded to
+    /// sixteen. They moved again when the bid and ask lanes left the
+    /// operation: the operation's own facts from 104 bytes to 88, two boxed
+    /// lanes of eight fewer, so the two operation holders are 656 + 88 = 744
+    /// and 816 + 88 = 904, each padded to sixteen. They moved again when the
+    /// market facts gained the stated bid and ask (A20): one
+    /// `Option<Box<BidAsk>>` of eight, padded to sixteen, so 672 and 832, and
+    /// the operation holders 672 + 88 = 760 and 832 + 88 = 920, each padded
+    /// to sixteen. A moved number is a design answer, never a number to
+    /// re-pin from a whole run.
     #[test]
     fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
-        assert_eq!(graph_facts::sizes(), [656, 816, 880, 1040]);
+        assert_eq!(graph_facts::sizes(), [672, 832, 768, 928]);
     }
 
     /// An undated holder's identity is RFC 9562 UUIDv8 over the code it

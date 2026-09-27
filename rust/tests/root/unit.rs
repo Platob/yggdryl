@@ -140,7 +140,7 @@ mod coded {
         // every other code.
         assert_eq!(
             DataType::Unit
-                .scalar(DataType::Side.scalar(Scalar::from("BUY")).unwrap())
+                .scalar(DataType::Ccy.scalar(Scalar::from("BUY")).unwrap())
                 .unwrap(),
             Scalar::Unit(Unit::new("BUY").unwrap())
         );

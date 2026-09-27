@@ -226,29 +226,62 @@ export declare class BatchReader {
 export type JsBatchReader = BatchReader
 
 /**
- * One coherent view of a market at one exact nanosecond instant: the bid
- * and ask depth, the executions at that instant and the scopes its last
- * snapshot replaced. Immutable: `withOperations` and every verb answer a
- * new book.
+ * One coherent view of a market at one exact nanosecond instant: every
+ * live entry of both sides, the deltas applied since the book before it,
+ * the executions at that instant, and the price levels of each side.
+ * Immutable: `withOperations` and every verb answer a new book.
  */
 export declare class BookEvent {
   /** An empty book for `symbol` at `currunix` nanoseconds since the epoch. */
   constructor(currunix: bigint | number, symbol: string)
-  /** The bid side. */
-  get bid(): BookSide
-  /** The ask side, shaped as the bid. */
-  get ask(): BookSide
+  /**
+   * Every entry alive on the book, each a `MarketData`: the bid side's,
+   * best price first and every entry stating no price last, then the ask
+   * side's the same way.
+   */
+  alive(): Array<JsMarketData>
+  /**
+   * The deltas applied since the book before this one, each a
+   * `MarketData`: the bid side's in the order they were applied, then the
+   * ask side's.
+   */
+  deltas(): Array<JsMarketData>
   /** The executions at this book's instant. */
-  get executions(): Array<JsExecutionEvent>
-  /** The scopes this book's last full snapshot replaced. */
-  get snapshotPartitions(): Array<SnapshotPartition>
-  /** Whether the best bid is strictly above the best ask. */
+  executions(): Array<JsExecutionEvent>
+  /**
+   * One limit per price level of the side `side` names - read through
+   * the `Side` vocabulary - best first and the one unpriced limit last,
+   * each naming its entries' `curruuid`s in position order; empty for a
+   * side that is neither a bid nor an ask.
+   */
+  limits(side: string | number): Array<BookLimit>
+  /**
+   * The best tradable price on the side `side` names, as decimal text:
+   * the first priced level that can trade; `null` where none can.
+   */
+  bestPrice(side: string | number): string | null
+  /**
+   * The exact aggregate quantity at `bestPrice(side)`, as decimal text,
+   * an entry stating none adding nothing; `null` where `bestPrice` is.
+   */
+  bestQuantity(side: string | number): string | null
+  /**
+   * The exact quantity resting on the first `levels` limits of the side
+   * `side` names, the unpriced one counted where reached, as decimal
+   * text: `'0'` for an empty side or no level, `null` past what a decimal
+   * holds or for a side that is neither a bid nor an ask.
+   */
+  depth(side: string | number, levels: number): string | null
+  /**
+   * Whether the best tradable bid is strictly above the best tradable
+   * ask.
+   */
   get isCrossed(): boolean
-  /** Whether both bests are stated and equal. */
+  /** Whether both best tradable prices are stated and equal. */
   get isLocked(): boolean
   /**
-   * The best ask less the best bid, negative when crossed, as decimal
-   * text; `null` where a side states no best.
+   * The best tradable ask less the best tradable bid, negative when
+   * crossed, as decimal text; `null` where a side states no best.
    */
   get spread(): string | null
   /**
@@ -272,7 +305,7 @@ export declare class BookEvent {
    * order, quote, execution or trade event, a snapshot control, or a
    * `MarketData` holding one.
    */
-  withOperations(operations: Array<MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
+  withOperations(operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
   /** The element's own identity, as its hyphenated text. */
   get curruuid(): string
   /**
@@ -336,13 +369,21 @@ export declare class BookEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -371,6 +412,30 @@ export declare class BookEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -381,6 +446,11 @@ export declare class BookEvent {
    * where none.
    */
   get metadata(): Record<string, string>
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -419,13 +489,11 @@ export declare class BookEvent {
 export type JsBookEvent = BookEvent
 
 /**
- * Books from a sorted stream of operations, one per symbol and effective
- * timestamp, or one consolidated `GLOBAL` book, pulling its items lazily
- * from the caller's iterable. Yields `BookEvent`.
+ * Books from a sorted stream of operations, one per book key and effective
+ * timestamp, pulling its items lazily from the caller's iterable. Yields
+ * `BookEvent`.
  */
 export declare class BookIterator {
-  /** Whether this walk emits one consolidated `GLOBAL` book. */
-  get global(): boolean
   /**
    * Advance the walk: the next book, or `null` at its end. The loader
    * wraps this into the iterator protocol.
@@ -486,161 +554,6 @@ export declare class BookRef {
   toJSON(): BookRefInput
 }
 export type JsBookRef = BookRef
-
-/**
- * One side of a book: persistent live orders and quotes, price ordered,
- * beside the deltas applied since the last emitted book. Immutable:
- * `withOperation` and every verb answer a new side.
- */
-export declare class BookSide {
-  /**
-   * An empty bid or ask side; `side` is read through the core `Side`
-   * vocabulary.
-   */
-  constructor(side: string)
-  /** The live orders and quotes, best price first, each a `MarketData`. */
-  get live(): Array<JsMarketData>
-  /** The deltas applied since the last emitted book, each a `MarketData`. */
-  get deltas(): Array<JsMarketData>
-  /** How many identities are live on this side. */
-  get length(): number
-  /** Whether the side holds no live entry. */
-  get isEmpty(): boolean
-  /**
-   * The best live price on this side, as decimal text: the first priced
-   * level's price, `null` for an empty side or one holding only unpriced
-   * entries.
-   */
-  get bestPrice(): string | null
-  /**
-   * The exact aggregate quantity at the best price, as decimal text, an
-   * entry stating none adding nothing; `null` where `bestPrice` is.
-   */
-  get bestQuantity(): string | null
-  /**
-   * One limit per price level, best first and the one unpriced limit
-   * last, each naming its entries' `curruuid`s in position order.
-   */
-  get limits(): Array<BookLimit>
-  /**
-   * The exact quantity resting on the first `levels` limits, the
-   * unpriced one counted where reached, as decimal text: `'0'` for an
-   * empty side or no level, `null` only past what a decimal holds.
-   */
-  depth(levels: number): string | null
-  /**
-   * This side with one order or quote event - a leaf or a `MarketData` -
-   * atomically applied.
-   */
-  withOperation(operation: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent): BookSide
-  /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
-  /**
-   * The identity every statement of one element shares: derived
-   * from the cross code, the element's own where it names none.
-   */
-  get crossuuid(): string
-  /**
-   * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
-   */
-  get crosscode(): string
-  /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
-  /** The XXH3-64 of the cross code, `0n` where it names none. */
-  get crosshashcode(): bigint
-  /**
-   * The sorted identities of the elements this one was read from:
-   * provenance, never its chain. Empty for one built directly.
-   */
-  get srcuuids(): Array<string>
-  /** The price stated, as decimal text; `null` where none. */
-  get price(): string | null
-  /** The currency, as the `ccy` code it is; `XXX` where none. */
-  get currency(): string
-  /** The quantity stated, as decimal text; `null` where none. */
-  get quantity(): string | null
-  /**
-   * The unit the quantity is counted in, as spelled; empty where
-   * none.
-   */
-  get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
-  get side(): string
-  /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
-   */
-  get securityids(): Record<string, string>
-  /** The instrument's classification; `null` where none. */
-  get cficode(): string | null
-  /** The market, as an ISO 10383 MIC; `null` where none. */
-  get miccode(): string | null
-  /** The price last traded at; `null` where none. */
-  get lastpx(): string | null
-  /** The quantity last traded; `null` where none. */
-  get lastqty(): string | null
-  /** The price averaged; `null` where none. */
-  get avgpx(): string | null
-  /** How much is done; `null` where none. */
-  get cumqty(): string | null
-  /** How much is still open; `null` where none. */
-  get leavesqty(): string | null
-  /**
-   * The price the step before this one settled on; `null` where
-   * none.
-   */
-  get prevpx(): string | null
-  /**
-   * The quantity the step before this one settled on; `null`
-   * where none.
-   */
-  get prevqty(): string | null
-  /** The spot part of an FX price; `null` where none. */
-  get spotrate(): string | null
-  /** The forward points of an FX price; `null` where none. */
-  get forwardpoints(): string | null
-  /**
-   * The ticker a person knows the instrument by; `null` where
-   * none.
-   */
-  get ticker(): string | null
-  /**
-   * Free-form facts beside the typed ones, in key order; empty
-   * where none.
-   */
-  get metadata(): Record<string, string>
-  /**
-   * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
-   */
-  withPrevious(previous: BookSide): BookSide | null
-  /**
-   * This value with another statement of `other` folded in, or
-   * `null` for another element or a fold that changes nothing.
-   */
-  mergeWith(other: BookSide): BookSide | null
-  /** Whether this value comes after `other` in its order. */
-  isAfter(other: BookSide): boolean
-  /** Whether this value comes before `other` in its order. */
-  isBefore(other: BookSide): boolean
-  /** Whether this value states the same facts as `other`. */
-  equals(other: BookSide): boolean
-  /** The code the content digests to, which equal values share. */
-  stableHash(): bigint
-  /** A cheap native clone. */
-  clone(): BookSide
-  /**
-   * The value's one `MarketData` row, as the base64 text of its
-   * Arrow IPC stream, so it survives `JSON.stringify`.
-   */
-  toJSON(): string
-  /** Rebuild a value `toJSON` wrote. */
-  static fromJSON(text: string): BookSide
-  /** `<Class>(<curruuid>, crosscode=..)`. */
-  toString(): string
-}
-export type JsBookSide = BookSide
 
 /** One term resolved against one schema, ready to answer. */
 export declare class Bound {
@@ -1383,13 +1296,21 @@ export declare class Execution {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -1418,6 +1339,30 @@ export declare class Execution {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -1428,8 +1373,6 @@ export declare class Execution {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -1440,16 +1383,13 @@ export declare class Execution {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -1580,13 +1520,21 @@ export declare class ExecutionEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -1615,6 +1563,30 @@ export declare class ExecutionEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -1625,8 +1597,6 @@ export declare class ExecutionEvent {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -1637,16 +1607,13 @@ export declare class ExecutionEvent {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -2316,8 +2283,8 @@ export type JsFilter = Filter
  * Every message it builds is settled as it is parsed: the typed facts are
  * lifted off the line, a nested `XmlData` is exploded into the message,
  * deprecated fields are restated to their latest aliases, the dictionary's
- * `FIX:derivation` rules run, the identifier maps, the security identifiers
- * and the order lanes fill, and
+ * native derivations run, the identifier maps and the security identifiers
+ * fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
  * else a row cell reaching that tag, else the `mtime` of the `TextLine` it
  * was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
@@ -2365,6 +2332,10 @@ export declare class FixCodec {
    * per new message.
    * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
    * nanoseconds; `null`, zero and a negative width disable snapshots;
+   * `sortedLifecycle` states that the messages `lifecycle` is handed
+   * arrive in instant order, so the walk reads them as they come one
+   * epoch hour at a time rather than collecting and sorting the whole
+   * capture, off when unstated;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
    * transaction clock may stand and still date the message, the core's
    * one second when unstated; `marketMetadata` is whether a market
@@ -2405,6 +2376,30 @@ export declare class FixCodec {
    * where snapshots are disabled.
    */
   get snapshotNs(): bigint | null
+  /**
+   * This codec with its lifecycle snapshot grid set to `snapshotNs`, an
+   * epoch-aligned width in exact nanoseconds: `null`, zero and a negative
+   * width disable snapshots. Every other setting, the dictionary included,
+   * is this codec's, so a caller's codec gains a grid without its options
+   * being listed again.
+   */
+  withSnapshotNs(snapshotNs: bigint | null): FixCodec
+  /**
+   * Whether `lifecycle` reads its messages as they come, in instant
+   * order, one epoch hour at a time.
+   */
+  get sortedLifecycle(): boolean
+  /**
+   * This codec with its lifecycle pinned to messages arriving in instant
+   * order - a table read hour partition by hour partition, sorted by
+   * `currunix` - when `sorted`: the walk then holds one epoch hour at a
+   * time, sorts within it exactly as a whole capture is sorted, and walks
+   * an hour once a message two hours past it is read; a message dated
+   * before an hour already walked is walked where it arrives. `false`
+   * collects and sorts the whole capture. Every other setting is this
+   * codec's.
+   */
+  withSortedLifecycle(sorted: boolean): FixCodec
   /**
    * How far from `SendingTime(52)` an official transaction clock may
    * stand and still date the message, in milliseconds.
@@ -2529,7 +2524,7 @@ export declare class FixCodec {
    * schema making no FIX root is refused before a row is read. The source
    * is consumed.
    */
-  marketOperationsArrowReader(source: JsBatchReader): JsBatchReader
+  marketDataArrowReader(source: JsBatchReader): JsBatchReader
   /**
    * A stream of batches of FIX rows as batches under one message field.
    *
@@ -2692,12 +2687,12 @@ export declare class FixMsg {
    */
   get size(): number
   /**
-   * The graph market operations this message expands to: an order, a
-   * quote, an execution or an initial trade report is one; a book `W` or
-   * `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
-   * control for an empty `W` - each a `MarketData`.
+   * The graph market data this message expands to: an order, a quote,
+   * an execution or a trade report is one leaf; a book `W` or `X` one per
+   * `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
+   * empty `W` - each a `MarketData`.
    */
-  marketOperations(): Array<JsMarketData>
+  marketData(): Array<JsMarketData>
   /** The standard header, typed, as one plain object read once. */
   header(): FixHeaderView
   /**
@@ -2715,8 +2710,17 @@ export declare class FixMsg {
    * in sorted order; empty where it stated none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer business-category code lifted from the message type. */
-  get msgcat(): number | null
+  /**
+   * The business category the message's type files under, as the
+   * `marketdatakind` member's stored name - `ORDR`, `QUOT`, `EXEC`,
+   * `TRAD`, `BOOK` - and `UNKN` where it files none.
+   */
+  get msgcat(): string
+  /**
+   * The option strike price the message identifies, `StrikePrice(202)`,
+   * as decimal text, or `null`.
+   */
+  get strikepx(): string | null
   /**
    * This message's own `UUIDv7` identity, ordered by millisecond and
    * sequence with a content payload seeded by its cross hash, as
@@ -2782,25 +2786,52 @@ export declare class FixMsg {
    * group names; empty where the message states none.
    */
   get securityids(): Record<string, string>
+  /** The instrument's ISIN, borrowed from `securityids`, or `null`. */
+  get isincode(): string | null
   /**
-   * The accounts the message names, key to value, upper-cased and in key
-   * order: `Account(1)` and a `CUSTOMERACCOUNT` party; empty where none.
+   * The rates an amount in `currency` is divided by to state it in each
+   * target currency, keyed by the target's `ccy` code, each rate as
+   * decimal text; empty where none - and nothing fills it yet.
    */
-  get accountids(): Record<string, string>
+  get fxrates(): Record<string, string>
   /**
-   * The users the message names, the same way: `SenderSubID(50)`,
-   * `OnBehalfOfSubID(116)`, an `ENTERINGTRADER` or `EXECUTINGTRADER`
-   * party.
+   * The bid price the message states, `BidPx(132)`, as decimal text, or
+   * `null`.
    */
-  get userids(): Record<string, string>
+  get bidpx(): string | null
   /**
-   * The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
+   * The bid size the message states, `BidSize(134)`, as decimal text, or
+   * `null`.
+   */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in: a stated `BidCurrency`, else the
+   * message's currency where it states a bid; `null` otherwise.
+   */
+  get bidccy(): string | null
+  /**
+   * The offer price the message states, `OfferPx(133)`, as decimal text, or
+   * `null`.
+   */
+  get askpx(): string | null
+  /**
+   * The offer size the message states, `OfferSize(135)`, as decimal text,
+   * or `null`.
+   */
+  get askqty(): string | null
+  /**
+   * The currency the offer is stated in: a stated `AskCurrency` or
+   * `OfferCurrency`, else the message's currency where it states an offer;
+   * `null` otherwise.
+   */
+  get askccy(): string | null
+  /**
+   * The names the operation goes by, key to value, upper-cased and in key
+   * order: `ORDERID`, `CLORDID`,
    * `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
    * `TRADEID` and the rest the message states.
    */
   get altids(): Record<string, string>
-  /** The stable integer category of the market operation, or `null`. */
-  get marketoperationid(): number | null
   /**
    * The price stated, as decimal text, or `null` where none is. Never a
    * last executed price, which `lastpx` answers.
@@ -2817,8 +2848,8 @@ export declare class FixMsg {
    */
   get unit(): string
   /**
-   * The side: the one stated, else the lane a single-sided quote states -
-   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   * The side, as the `side` member's stored name: the one stated, else
+   * `UNKNOWN` - never `null`.
    */
   get side(): string
   /** The currency; `XXX` where none is stated. */
@@ -2896,14 +2927,6 @@ export declare class FixMsg {
    */
   get miccode(): string | null
   /**
-   * The bid lane - what the message states a party will pay, in the
-   * currency and unit it states - or `null` where it states no slot of
-   * it. A buy order fills its own lane's size; a quote states both.
-   */
-  get bid(): JsLane | null
-  /** The ask lane, the same way. */
-  get ask(): JsLane | null
-  /**
    * The value the root child an identifier names, or `null`.
    *
    * An identifier is exact and does not fold: `id` is the number
@@ -2975,7 +2998,7 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching the capture's own column - `sourceurl` (65026), by tag
+   * key reaching the capture's own column - `sourceurl` (65031), by tag
    * or by name: a message holds no fact for it, and a row child would put
    * it on the wire.
    */
@@ -3328,8 +3351,8 @@ export declare class FixRegistry {
   /**
    * Every field that names a message by an identifier, one entry per key
    * its `FIX:idmap` states, in tag order. A message rebuilds its
-   * `accountids`, `userids` and `altids` from these, and an operation
-   * that follows another carries the `altids` keys whose entry follows.
+   * `altids` from these, and an operation that follows another carries
+   * the keys whose entry follows.
    */
   idmapSources(): Array<FixIdMapSource>
   /**
@@ -4140,71 +4163,6 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
- * One lane of a quote: what a party is willing to pay or be paid, in the
- * currency and unit it states, with the FX parts of its price where it
- * quotes a forward. Every slot is what the lane states; a lane states
- * nothing of a slot it leaves `null`.
- */
-export declare class Lane {
-  /**
-   * Build a lane from its six slots, one record `Scalar` keyed by slot
-   * name. The row crosses the boundary once, through the lane struct's
-   * own field - `lane_datatype`'s `scalar` - and is read back with
-   * `lane_of`, so every slot is validated exactly as a stored lane is.
-   */
-  constructor(input?: LaneInput | null)
-  /**
-   * The price this lane states, as decimal text; `null` where it states
-   * none.
-   */
-  get price(): string | null
-  /**
-   * The spot part of an FX forward price; `null` where the lane states
-   * none.
-   */
-  get spotrate(): string | null
-  /**
-   * The forward points of an FX forward price; `null` where the lane
-   * states none.
-   */
-  get forwardpoints(): string | null
-  /**
-   * The currency, as the `ccy` code it is; `null` where the lane states
-   * none.
-   */
-  get currency(): string | null
-  /**
-   * The quantity this lane states, as decimal text; `null` where it
-   * states none.
-   */
-  get quantity(): string | null
-  /**
-   * The unit the quantity is counted in, as spelled; `null` where the
-   * lane states none.
-   */
-  get unit(): string | null
-  /** Whether the lane states any slot. */
-  isStated(): boolean
-  /** Whether this lane states the same slots as `other`. */
-  equals(other: Lane): boolean
-  /**
-   * The lane's own stable hash: the six slots it states, digested as
-   * `lane_fact` renders them.
-   */
-  stableHash(): bigint
-  /** A cheap native clone. */
-  clone(): Lane
-  /** `Lane(price=.., spotrate=.., forwardpoints=.., currency=.., quantity=.., unit=..)`. */
-  toString(): string
-  /**
-   * The lane's own six slots, so it survives `JSON.stringify` and is
-   * what `new Lane(...)` reads back.
-   */
-  toJSON(): LaneInput
-}
-export type JsLane = Lane
-
-/**
  * The entries of one listing, one at a time.
  *
  * Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
@@ -4266,17 +4224,24 @@ export type JsManifestFile = ManifestFile
 
 /**
  * One value over every market leaf - an order, a quote or an execution,
- * undated or dated, a book side, a trade, a book or a snapshot control -
+ * undated or dated, a trade, a book or a snapshot control -
  * answering the element and market facts its leaf answers. Immutable:
  * every verb answers a new value.
  */
 export declare class MarketData {
   /** Wrap any market leaf, through the core's own `From`. */
-  constructor(leaf: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent)
+  constructor(leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent)
   /** Every leaf kind a value may be, in declaration order. */
   static kinds(): Array<string>
   /** Which leaf this is, as its `MarketData.kinds()` spelling. */
   get kind(): string
+  /**
+   * The market data category of this value's leaf, as the
+   * `marketdatakind` member's stored name: an order `ORDR`, a quote
+   * `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
+   * `BOOK`.
+   */
+  get marketdatakind(): string
   /** Whether the leaf is one of the six dated ones. */
   get isEvent(): boolean
   /**
@@ -4290,8 +4255,6 @@ export declare class MarketData {
   asQuote(): JsQuote | null
   /** The undated execution this value is, else `null`. */
   asExecution(): JsExecution | null
-  /** The book side this value is, else `null`. */
-  asBookSide(): BookSide | null
   /** The dated order this value is, else `null`. */
   asOrderEvent(): JsOrderEvent | null
   /** The dated quote this value is, else `null`. */
@@ -4305,7 +4268,7 @@ export declare class MarketData {
   /** The snapshot control this value is, else `null`. */
   asSnapshotEvent(): SnapshotEvent | null
   /** The leaf this value holds, as its own class. */
-  intoLeaf(): Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent
+  intoLeaf(): Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent
   /** The lifted `marketdata` row field every leaf is written under. */
   static field(): Field
   /**
@@ -4316,7 +4279,7 @@ export declare class MarketData {
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
   /**
    * The plan one named view is over a `marketdata` stream - `orders`,
-   * `quotes`, `executions`, `trades`, `book_sides`, `books`, or the
+   * `quotes`, `executions`, `trades`, `books`, or the
    * `lifecycle` of the chain `crosscode` names, the one view that takes
    * one - read ignoring ASCII case, with each lift, a `FieldPath` read
    * once, appended as a projection after the view's own columns. Built
@@ -4357,13 +4320,21 @@ export declare class MarketData {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -4392,6 +4363,30 @@ export declare class MarketData {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -4435,7 +4430,7 @@ export type JsMarketData = MarketData
 /**
  * A stream of `MarketData`: the lazy row-decode walk
  * `MarketData.fromArrowReader` answers, and the sorted operations
- * `FixCodec.marketOperations` answers.
+ * `FixCodec.marketData` answers.
  */
 export declare class MarketDataRowIterator {
   /**
@@ -4636,7 +4631,8 @@ export type JsMimeType = MimeType
  */
 export declare class MsgType {
   /**
-   * The symbolic business-category name, or `null` for an unclassified
+   * The business category the type files under, as the
+   * `marketdatakind` member's stored name, or `null` for an unclassified
    * custom definition.
    */
   get msgcat(): string | null
@@ -4819,13 +4815,21 @@ export declare class Order {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -4854,6 +4858,30 @@ export declare class Order {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -4864,8 +4892,6 @@ export declare class Order {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -4876,16 +4902,13 @@ export declare class Order {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -5016,13 +5039,21 @@ export declare class OrderEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -5051,6 +5082,30 @@ export declare class OrderEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -5061,8 +5116,6 @@ export declare class OrderEvent {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -5073,16 +5126,13 @@ export declare class OrderEvent {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -5523,18 +5573,6 @@ export declare class ProtocolField {
    * `altids`, or one key twice throws leaving the field unchanged.
    */
   set idmap(values: Array<FixIdSource>)
-  /**
-   * How this field's value is derived from the message where the message
-   * states none: one expression over the message's fields, in its
-   * canonical text, or `null` for a field nothing derives.
-   */
-  get derivation(): string | null
-  /**
-   * Record the derivation; `null` removes the property, and a text that
-   * is not a term, or one past the grammar's budget, throws leaving the
-   * field unchanged.
-   */
-  set derivation(value: string | undefined | null)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */
@@ -5613,13 +5651,21 @@ export declare class Quote {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -5648,6 +5694,30 @@ export declare class Quote {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -5658,8 +5728,6 @@ export declare class Quote {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -5670,16 +5738,13 @@ export declare class Quote {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -5810,13 +5875,21 @@ export declare class QuoteEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -5845,6 +5918,30 @@ export declare class QuoteEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -5855,8 +5952,6 @@ export declare class QuoteEvent {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -5867,16 +5962,13 @@ export declare class QuoteEvent {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): JsLane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): JsLane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -6751,6 +6843,13 @@ export declare class Server {
   get certificate(): string | null
   /** The bound address, `host:port`. */
   get address(): string
+  /**
+   * The URL clients reach `path` at: under the `publicUrl` the server was
+   * bound with - its path the prefix the proxy adds, so `/xmla` under
+   * `https://data.example.com/olap` is `https://data.example.com/olap/xmla`
+   * - else under `url`.
+   */
+  publicUrlOf(path: string): JsUrl
   /** Connections accepted so far. */
   get connections(): number
   /**
@@ -6943,13 +7042,21 @@ export declare class SnapshotEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -6978,6 +7085,30 @@ export declare class SnapshotEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -6988,6 +7119,11 @@ export declare class SnapshotEvent {
    * where none.
    */
   get metadata(): Record<string, string>
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -7024,41 +7160,6 @@ export declare class SnapshotEvent {
   toString(): string
 }
 export type JsSnapshotEvent = SnapshotEvent
-
-/**
- * One scope a full snapshot replaces: a symbol - `null` in global mode -
- * and the book scope the entries stated.
- */
-export declare class SnapshotPartition {
-  /**
-   * A partition for `scope`, and `symbol` where the operations named
-   * one.
-   */
-  constructor(input: SnapshotPartitionInput)
-  /** The book scope this partition replaces. */
-  get scope(): string
-  /** The symbol this partition is for; `null` in global mode. */
-  get symbol(): string | null
-  /** Total native ordering: `-1`, `0`, or `1`. */
-  compare(other: SnapshotPartition): number
-  /** Whether this partition names the same scope and symbol as `other`. */
-  equals(other: SnapshotPartition): boolean
-  /**
-   * The partition's own stable hash: its symbol and scope, digested as
-   * one record; equal partitions share it.
-   */
-  stableHash(): bigint
-  /** A cheap native clone. */
-  clone(): SnapshotPartition
-  /** `SnapshotPartition(scope=.., symbol=..)`. */
-  toString(): string
-  /**
-   * The partition's own two slots, so it survives `JSON.stringify` and
-   * is what `new SnapshotPartition(...)` reads back.
-   */
-  toJSON(): SnapshotPartitionInput
-}
-export type JsSnapshotPartition = SnapshotPartition
 
 /**
  * One branch or tag, as the metadata records it.
@@ -8190,13 +8291,21 @@ export declare class TradeEvent {
    * none.
    */
   get unit(): string
-  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  /**
+   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * none, never `null`.
+   */
   get side(): string
   /**
    * The instrument's identifiers, one code under each source -
    * `ISIN`, `CUSIP`, `FIGI` - in source order.
    */
   get securityids(): Record<string, string>
+  /**
+   * The instrument's ISIN, borrowed from `securityids`; `null`
+   * where it states none.
+   */
+  get isincode(): string | null
   /** The instrument's classification; `null` where none. */
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
@@ -8225,6 +8334,30 @@ export declare class TradeEvent {
   get spotrate(): string | null
   /** The forward points of an FX price; `null` where none. */
   get forwardpoints(): string | null
+  /** The best bid price stated, as decimal text; `null` where none. */
+  get bidpx(): string | null
+  /** The quantity at the best bid, as decimal text; `null` where none. */
+  get bidqty(): string | null
+  /**
+   * The currency the bid is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get bidccy(): string | null
+  /** The best ask price stated, as decimal text; `null` where none. */
+  get askpx(): string | null
+  /** The quantity at the best ask, as decimal text; `null` where none. */
+  get askqty(): string | null
+  /**
+   * The currency the ask is stated in, as the `ccy` code it is; `null`
+   * where none.
+   */
+  get askccy(): string | null
+  /**
+   * The rates an amount in `currency` is divided by to state it in
+   * each target currency, keyed by the target's `ccy` code, each
+   * rate as decimal text; empty where none.
+   */
+  get fxrates(): Record<string, string>
   /**
    * The ticker a person knows the instrument by; `null` where
    * none.
@@ -8235,8 +8368,6 @@ export declare class TradeEvent {
    * where none.
    */
   get metadata(): Record<string, string>
-  /** The stable integer market-operation category, or `null`. */
-  get marketoperationid(): number | null
   /**
    * How long this stands, as the stored code; `null` where
    * unstated.
@@ -8247,16 +8378,13 @@ export declare class TradeEvent {
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The accounts the operation is for, in key order. */
-  get accountids(): Record<string, string>
-  /** The users the operation is by, in key order. */
-  get userids(): Record<string, string>
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
-  /** The bid lane a quote states; `null` where none. */
-  get bid(): Lane | null
-  /** The ask lane, shaped as the bid; `null` where none. */
-  get ask(): Lane | null
+  /**
+   * The market data category this leaf stands under, as the
+   * `marketdatakind` member's stored name.
+   */
+  get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing.
@@ -8991,7 +9119,7 @@ export interface AvroDecodeLimitsInput {
   maxNodes?: number
 }
 
-/** One price limit of a book side, as the plain object JavaScript reads. */
+/** One price level of a book's side, as the plain object JavaScript reads. */
 export interface BookLimit {
   /**
    * The limit's price as decimal text; `null` on the one limit folding
@@ -9005,6 +9133,11 @@ export interface BookLimit {
   quantity: string
   /** Its entries' `curruuid`s in live order: position, then arrival. */
   uuids: Array<string>
+  /**
+   * Whether the level can trade: any of its entries does not state
+   * `tradable = false`.
+   */
+  tradable: boolean
 }
 
 /**
@@ -9189,19 +9322,19 @@ export interface FixCaptureView {
    * The session event the message was delivered as - `MsgType`,
    * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
    * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-   * `byTag(65065)`.
+   * `byTag(65021)`.
    */
   msgsesseventid: string | null
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65066)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65018)`.
    */
   msgoriginator: string | null
   /**
    * The conversation a bridge filed the message under - a
    * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-   * of its log line; also `byTag(65067)`.
+   * of its log line; also `byTag(65022)`.
    */
   conversationid: string | null
 }
@@ -9257,6 +9390,12 @@ export interface FixCodecOptions {
    * `null`, zero and a negative width disable snapshots.
    */
   snapshotNs?: bigint | null
+  /**
+   * Whether the messages `lifecycle` is handed arrive in instant order,
+   * so the walk holds one epoch hour at a time rather than collecting and
+   * sorting the whole capture; `false` when unstated.
+   */
+  sortedLifecycle?: boolean
   /**
    * How far from `SendingTime(52)` an official transaction clock may
    * stand and still date the message, in milliseconds; the core's one
@@ -9334,10 +9473,10 @@ export interface FixCommitReport {
  * `msgsessionid` - and the `msgsesseventid` the session and the context
  * join to with the message type and sequence; the capture's own column,
  * `sourceurl`, which whoever read the line states on the row and no message
- * holds; the `nofixentries` that counts the content record; and the generic
- * `marketoperationid` shared with market operations. Thirty-one in all,
- * each a fact no FIX dictionary publishes, at the datatype its graph column
- * names.
+ * holds; the `msgcat` the message type files under; and the instrument,
+ * order and bridge facts a message names - each a fact no FIX dictionary
+ * publishes, at the datatype its graph column names, numbered contiguously
+ * from `65001`.
  *
  * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null; `state` is written on every row a message
@@ -9437,7 +9576,7 @@ export interface FixHeaderView {
 export interface FixIdMapSource {
   /** The field's tag. */
   tag: number
-  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  /** The map it lands in: `altids`, the one identifier map. */
   map: string
   /** The upper-case key it lands under. */
   key: string
@@ -9449,7 +9588,7 @@ export interface FixIdMapSource {
 
 /** One identifier-map key a FIX field's value states. */
 export interface FixIdSource {
-  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  /** The map it lands in: `altids`, the one identifier map. */
   map: string
   /** The upper-case key it lands under. */
   key: string
@@ -9621,6 +9760,13 @@ export interface HttpRecorded {
   statusCode: number
   /** Whether the connection was closed before any byte of an answer. */
   closed: boolean
+  /**
+   * The connection's peer as `host:port`, when the socket names one: the
+   * proxy, behind one.
+   */
+  peer?: string
+  /** The client: the address a trusted proxy forwarded, else the peer's. */
+  client?: string
 }
 
 /**
@@ -9699,6 +9845,35 @@ export interface HttpServerOptions {
    * `NNNN-response.http`: a folder path, or a URL a holder resolves.
    */
   trace?: string
+  /**
+   * The URL clients reach the server at, behind a reverse proxy or a
+   * redirect: `http` or `https`, a host, a port when it is not the
+   * scheme's own, and the path prefix the proxy adds
+   * (`https://data.example.com/olap`). Set, it is the base of every URL
+   * the server states, whatever a request's `Host` or forwarded fields
+   * say; a query, a fragment or user information is refused.
+   */
+  publicUrl?: string
+  /**
+   * The peers whose forwarded fields are believed, each an IP address or
+   * a CIDR network (`10.0.0.0/8`, `::1`); none by default, so a client
+   * cannot state a host or a scheme of its own.
+   */
+  trustedProxies?: Array<string>
+  /**
+   * The forwarded fields read from a trusted peer - `Forwarded`,
+   * `X-Forwarded-For`, `-Proto`, `-Host`, `-Port`, `-Prefix` - by default
+   * `X-Forwarded-For` and `X-Forwarded-Proto`. Name only fields the proxy
+   * sets or overwrites on every request: one it passes through is the
+   * client's to write.
+   */
+  forwardedHeaders?: Array<string>
+  /**
+   * The path prefix stripped off a request before it is routed: `/olap`
+   * when a proxy forwards `/olap/xmla` to a server routing `/xmla`. A
+   * request outside it is routed as it is.
+   */
+  pathPrefix?: string
 }
 
 /** What a session is built with, as the loader normalizes it. */
@@ -9785,25 +9960,14 @@ export interface IcebergOptionsInput {
 }
 
 /**
- * The six slots a lane object states, each `undefined` or `null` where not
- * given: a lane has no third state to tell them apart by. Given, a slot is
- * widened through `Scalar.from` as a fact is - a decimal its text, a whole
- * number or a bigint; read back by `toJSON`, decimals and codes are their
- * text, as every graph getter answers them.
+ * One member of the core's market data kind enum - FIX's `MsgCat` code set:
+ * its stored name, the code a `marketdatakind` column stores, and what it
+ * means.
  */
-export interface LaneInput {
-  /** The lane's price, as decimal text. */
-  price?: string | number | bigint | null
-  /** The spot part of an FX forward price, as decimal text. */
-  spotrate?: string | number | bigint | null
-  /** The forward points of an FX forward price, as decimal text. */
-  forwardpoints?: string | number | bigint | null
-  /** The currency, as its code text. */
-  currency?: string | null
-  /** The lane's quantity, as decimal text. */
-  quantity?: string | number | bigint | null
-  /** The unit the quantity is counted in, as spelled. */
-  unit?: string | null
+export interface MarketDataKindMember {
+  name: string
+  code: number
+  description: string
 }
 
 /** One field-metadata key/value pair. */
@@ -9854,12 +10018,18 @@ export interface ScanPlanCounts {
   recordCount: number
 }
 
-/** The two named slots a snapshot-partition object states. */
-export interface SnapshotPartitionInput {
-  /** The book scope this partition replaces. */
-  scope: string
-  /** The symbol this partition is for; `null` in global mode. */
-  symbol?: string | null
+/**
+ * One member of the core's side enum - FIX's `Side(54)`: its stored name,
+ * the code a `side` column stores, what it means, its one-character FIX
+ * code (`null` for `UNKNOWN`), and whether it is a bid or an ask.
+ */
+export interface SideMember {
+  name: string
+  code: number
+  description: string
+  fixCode?: string
+  isBid: boolean
+  isAsk: boolean
 }
 
 /**

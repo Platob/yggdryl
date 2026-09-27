@@ -158,6 +158,93 @@ fn a_chain_folds_to_the_furthest_state_it_knows() {
     assert_eq!(State::Filled.merge_with(State::New), State::Filled);
     // Within one rank the state that stood first stands.
     assert_eq!(State::New.merge_with(State::Acknowledged), State::New);
+    // `UPDATED` is a working state, so later progress folds over it exactly
+    // as it folds over `RUNNING`.
+    assert_eq!(State::New.merge_with(State::Updated), State::Updated);
+    assert_eq!(
+        State::Updated.merge_with(State::PartiallyFilled),
+        State::PartiallyFilled
+    );
+    assert_eq!(State::Updated.merge_with(State::New), State::Updated);
+}
+
+#[test]
+fn updated_is_the_working_band_stated_anew_over_a_live_predecessor() {
+    assert_eq!(State::ALL.len(), 61);
+    assert_eq!(State::Updated.code(), 3004);
+    assert_eq!(State::Updated.rank(), 30);
+    assert_eq!(State::Updated.as_str(), "UPDATED");
+    assert_eq!(State::from_spelling("UPDATED"), Some(State::Updated));
+    assert_eq!(State::from_spelling("updated"), Some(State::Updated));
+    assert_eq!(State::from_code(3004), Some(State::Updated));
+    assert!(State::Updated.is_live());
+    assert!(State::Updated.description().contains("anew"));
+    // New-like: acknowledged and working, or carrying on after a change -
+    // never the pending band, so `PENDING_NEW -> NEW` stays `NEW`.
+    for state in State::ALL {
+        let expected = matches!(state.rank(), 20 | 30)
+            || matches!(
+                state,
+                State::Updated | State::Replaced | State::Restated | State::Amended
+            );
+        assert_eq!(state.is_new_like(), expected, "{state}");
+    }
+    for state in [
+        State::Accepted,
+        State::New,
+        State::Starting,
+        State::Submitted,
+        State::Acknowledged,
+        State::Running,
+        State::Status,
+        State::Triggered,
+        State::Active,
+        State::Updated,
+        State::Replaced,
+        State::Restated,
+        State::Amended,
+    ] {
+        assert!(state.is_new_like(), "{state}");
+    }
+    for state in [
+        State::Unknown,
+        State::Pending,
+        State::PendingNew,
+        State::PartiallyFilled,
+        State::Paused,
+        State::PendingCancel,
+        State::Released,
+        State::Filled,
+        State::Canceled,
+        State::Rejected,
+    ] {
+        assert!(!state.is_new_like(), "{state}");
+    }
+}
+
+#[test]
+fn a_state_answers_the_enum_contract_every_enum_leaf_owes() {
+    use yggdryl::EnumValue;
+
+    assert_eq!(<State as EnumValue>::KIND, "state");
+    assert_eq!(<State as EnumValue>::EXTENSION_NAME, "yggdryl.state");
+    assert_eq!(<State as EnumValue>::ALL, State::ALL);
+    assert_eq!(EnumValue::code(State::Filled), 8003);
+    assert_eq!(EnumValue::as_str(State::Filled), "FILLED");
+    assert_eq!(<State as EnumValue>::from_code(8003), Some(State::Filled));
+    assert_eq!(<State as EnumValue>::read("Filled").unwrap(), State::Filled);
+    assert_eq!(
+        <State as EnumValue>::read_code(8003).unwrap(),
+        State::Filled
+    );
+    assert!(<State as EnumValue>::read_code(4242).is_err());
+    assert!(DataType::State.is_enum());
+    assert!(!DataType::Int32.is_enum());
+    let value = Scalar::State(State::Filled);
+    assert!(value.is_enum());
+    assert_eq!(value.enum_code(), Some(8003));
+    assert_eq!(value.enum_name(), Some("FILLED"));
+    assert_eq!(Scalar::from(8003_i32).enum_code(), None);
 }
 
 #[test]

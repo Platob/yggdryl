@@ -6,7 +6,7 @@ use super::crated_components;
 use super::path as fpath;
 
 use std::path::PathBuf;
-use yggdryl::fix::FixReplacement;
+use yggdryl::fix::{FixIdMapKind, FixIdSource};
 use yggdryl::local::LocalFolder;
 use yggdryl::{
     DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructType,
@@ -135,7 +135,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_049).unwrap();
+    let map = registry.get_field_by_counter(65_030).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
@@ -154,7 +154,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
@@ -166,14 +166,14 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_field_by_counter(65_049).unwrap().clone();
+    let mut map = registry.get_field_by_counter(65_030).unwrap().clone();
     map.as_fix_mut().set_group("metadata").unwrap();
     let component = StructType::from_fields([map])
         .map(DataType::from)
@@ -446,7 +446,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_049).unwrap();
+    let map = registry.get_field_by_counter(65_030).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -460,7 +460,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
@@ -471,7 +471,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -2042,52 +2042,51 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
 #[test]
 fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     // A field's `FIX:codeset` names the set it reads by and is one text, so
-    // the document property this is about is one of the four that still
-    // hold an array: the rules restating a retired field.
-    let mut floor = tagged("MaxFloor", 111, DataType::Float64);
-    floor
+    // the document property this is about is one of the two that still hold
+    // entries: the identifier-map keys a field names a message by.
+    let mut order = tagged("OrderID", 37, DataType::utf8());
+    order
         .as_fix_mut()
-        .set_replacements(&[
-            FixReplacement::new("select maxfloor as displayqty".parse().unwrap())
-                .with_doc("MaxFloor became DisplayQty"),
-            FixReplacement::new("select maxfloor as maxshow".parse().unwrap()),
+        .set_idmap(&[
+            FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true),
+            FixIdSource::new(FixIdMapKind::Alts, "SECONDARYORDERID"),
         ])
         .unwrap();
-    let canonical = floor.get_metadata("FIX:replacements").unwrap().to_owned();
+    let canonical = order.get_metadata("FIX:idmap").unwrap().to_owned();
     assert!(canonical.starts_with("[{"), "{canonical}");
 
     // The store writes the document rather than one escaped line, so the
-    // file an operator opens renders the rules as rules.
-    let document = yggdryl::into_fix_document(floor.clone()).unwrap();
-    let rules = document
+    // file an operator opens renders the entries as entries.
+    let document = yggdryl::into_fix_document(order.clone()).unwrap();
+    let sources = document
         .get_key_str("metadata")
-        .and_then(|metadata| metadata.get_key_str("FIX:replacements"))
-        .expect("the replacement rules");
-    assert_eq!(rules.len(), 2);
+        .and_then(|metadata| metadata.get_key_str("FIX:idmap"))
+        .expect("the identifier-map keys");
+    assert_eq!(sources.len(), 2);
     assert_eq!(
-        rules
+        sources
             .get(0)
             .as_deref()
-            .and_then(|rule| rule.get_key_str("plan"))
+            .and_then(|source| source.get_key_str("key"))
             .and_then(Scalar::as_str),
-        Some("select maxfloor as displayqty"),
+        Some("ORDERID"),
     );
     // And the keys stay in the order the reader walks them, so the file
     // reads the way the document is written.
     assert_eq!(
-        rules.get(0).as_deref().map(Scalar::keys),
-        Some(vec!["plan", "doc"])
+        sources.get(0).as_deref().map(Scalar::keys),
+        Some(vec!["map", "key", "follow"])
     );
 
     // Reading one back restates the canonical text, whatever order the file
     // spelled an entry's keys in.
-    assert_eq!(yggdryl::from_fix_document(document).unwrap(), floor);
+    assert_eq!(yggdryl::from_fix_document(document).unwrap(), order);
     let reordered = yggdryl::from_json_scalar(
-        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,"metadata":{
-            "FIX:tag":"111",
-            "FIX:replacements":[
-                {"doc":"MaxFloor became DisplayQty","plan":"select maxfloor as displayqty"},
-                {"plan":"select maxfloor as maxshow"}
+        r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,"metadata":{
+            "FIX:tag":"37",
+            "FIX:idmap":[
+                {"follow":true,"key":"ORDERID","map":"altids"},
+                {"key":"SECONDARYORDERID","map":"altids"}
             ]
         }}"#,
     )
@@ -2095,7 +2094,7 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     assert_eq!(
         yggdryl::from_fix_document(reordered)
             .unwrap()
-            .get_metadata("FIX:replacements"),
+            .get_metadata("FIX:idmap"),
         Some(canonical.as_str()),
     );
 }
@@ -2105,20 +2104,20 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     // One shape: a property the file spells as text is not read as canonical
     // text, because the store writes the document itself.
     let text = yggdryl::from_json_scalar(
-        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,
-            "metadata":{"FIX:tag":"111",
-            "FIX:replacements":"[{\"plan\":\"select maxfloor as displayqty\"}]"}}"#,
+        r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,
+            "metadata":{"FIX:tag":"37",
+            "FIX:idmap":"[{\"map\":\"altids\",\"key\":\"ORDERID\"}]"}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(text).expect_err("the escaped shape is not the shape");
-    assert!(error.to_string().contains("FIX:replacements"), "{error}");
+    assert!(error.to_string().contains("FIX:idmap"), "{error}");
 
     // An entry stating a key the document does not declare is refused the
     // same way rather than dropped.
     let unknown = yggdryl::from_json_scalar(
-        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,
-            "metadata":{"FIX:tag":"111",
-            "FIX:replacements":[{"plan":"select maxfloor as displayqty","note":"x"}]}}"#,
+        r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,
+            "metadata":{"FIX:tag":"37",
+            "FIX:idmap":[{"map":"altids","key":"ORDERID","note":"x"}]}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(unknown).expect_err("an undeclared key");
@@ -2126,12 +2125,12 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
 
     // And a field holding text no reader can parse is named where it is
     // written rather than copied out for a reader to refuse later.
-    let mut broken = tagged("MaxFloor", 111, DataType::Float64);
+    let mut broken = tagged("OrderID", 37, DataType::utf8());
     broken
-        .set_metadata([("FIX:replacements", "not a document")])
+        .set_metadata([("FIX:idmap", "not a document")])
         .unwrap();
     let error = yggdryl::into_fix_document(broken).expect_err("a malformed document");
-    assert!(error.to_string().contains("FIX:replacements"), "{error}");
+    assert!(error.to_string().contains("FIX:idmap"), "{error}");
 }
 
 #[test]
@@ -2785,25 +2784,18 @@ mod committed {
     #[test]
     fn a_removed_field_is_kept_and_marked_deprecated() {
         let registry = seed();
-        // `MaxFloor(111)` went in 5.0. Its canonical metadata records the one
-        // specification replacement, so every version restates it as DisplayQty.
+        // `MaxFloor(111)` went in 5.0, and the crate's table restates it as
+        // DisplayQty at every version; the field carries the mark alone.
         let floor = registry.field_by_tag(111).expect("MaxFloor");
         assert_eq!(floor.as_fix().deprecated(), Some("5.0"), "{floor:?}");
-        let mut replacements = floor.as_fix().replacements();
-        assert_eq!(
-            replacements
-                .next()
-                .expect("one rule")
-                .expect("a valid rule")
-                .plan(),
-            "select maxfloor as displayqty"
+        assert!(
+            !floor.has_metadata("FIX:replacements"),
+            "no rule on a field"
         );
-        assert!(replacements.next().is_none(), "one canonical replacement");
         // `Signature(89)` went with it and nothing replaces it: the mark stands
         // on its own.
         let signature = registry.field_by_tag(89).expect("Signature");
         assert_eq!(signature.as_fix().deprecated(), Some("5.0"));
-        assert!(signature.as_fix().replacements().next().is_none());
         assert!(
             registry
                 .field_by_tag(11)
@@ -3051,10 +3043,47 @@ mod committed {
     /// description names the stored member rather than the ten-byte code,
     /// and `exprtime` was renamed `exprunix` beside `execunix` - two
     /// definitions and one set document, no tag and no count of the census.
+    /// It last moved when `msgcat` became the `marketdatakind` enum whose
+    /// members describe themselves in `msgcatcodeset`, the crate gained
+    /// `forexcode` (65078) - the currency pair a message is about, detected
+    /// off `Symbol(55)` - `state` gained `UPDATED` (3004), and the FX
+    /// derivations learned ISO 10962's non-deliverable attribute: the
+    /// `msgcat` definition, the new `forexcode` definition and its fixed-row
+    /// member, the `msgcatcodeset` document and the intrinsic
+    /// `statecodeset` - one member more, the `state` definition itself
+    /// unchanged - and the derivation texts of `Currency(15)` and
+    /// `SettlCurrency(120)`, which no longer fill each other on a
+    /// `Product(460)` 4 message, and of `SecurityType(167)` and
+    /// `CFICode(461)`; `scalars` moved by that one field and no other count.
+    /// It last moved when the accounts and users a message names stopped
+    /// being identifier maps: `Account(1)`, `SenderSubID(50)`,
+    /// `OnBehalfOfSubID(116)` and `PartyID(448)` - its three
+    /// `PartyRole(452)` sources - no longer state a `FIX:idmap`, nor do the
+    /// crate's `omsdealeraccount` (65068) and `omsuserid` (65069), whose
+    /// values the message's metadata carries: six definitions lost that one
+    /// property and no document, tag or count of the census moved.
+    /// It last moved when the dictionary stopped carrying rules and the
+    /// residual record became a map: the derivations and the replacements
+    /// are the crate's native code, so `FIX:derivation` left the twenty-nine
+    /// fields that stated one and `FIX:replacements` the thirty-seven retired
+    /// standard fields and the crate's `omsinstrumentid` (65076) and
+    /// `ullinkinstrumentid` (65077); the crate's `nofixentries` (65027) went
+    /// with the list it counted, and `metadata` (65049) now describes every
+    /// key no dictionary resolved - one crate field fewer, and no other
+    /// document, tag or count of the census moved.
+    /// It last moved when the crate's own tags were numbered afresh and the
+    /// option strike joined them: every crate definition runs contiguously
+    /// from 65001 in the fixed row's band order - `currunix` 65001 through
+    /// `metadata` 65030, then `sourceurl`, the bridge's content fields and
+    /// `fixmsg` up to 65042 - with `strikepx` (65028), `StrikePrice(202)` as
+    /// the decimal leaf, in the instrument band, so every crate field, the
+    /// `metadata` group and the `fixmsg` row moved and the crate holds one
+    /// field more; the graph's bid and ask lanes leaving the market rows
+    /// moved no document, and no other tag or count of the census moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 8_714_931_232_048_759_032);
+        assert_eq!(registry.stable_hash(), 14_095_290_045_708_649_326);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

@@ -7,7 +7,9 @@
 //!
 //! A framed request reaches [`Inner::dispatch`](super::Inner::dispatch) as
 //! an HTTP/1.1 one does - the same routes, mounts, faults and log - with its
-//! `:authority` as `Host` and its version stated.
+//! `:authority` as `Host` and its version stated. Its `:scheme` travels
+//! beside it, and says the request was made under `https` over a cleartext
+//! connection only when the peer is a trusted proxy.
 
 use std::io::{self, BufWriter, Write};
 
@@ -44,12 +46,19 @@ pub(super) fn head_of(
         .map_or("/", http::uri::PathAndQuery::as_str)
         .to_owned();
     let mut headers = Headers::new();
-    if let Some(authority) = parts.uri.authority() {
+    let authority = parts.uri.authority();
+    if let Some(authority) = authority {
         headers
             .insert("host", authority.as_str())
             .map_err(|error| (Status::BAD_REQUEST, error.to_string()))?;
     }
     for (name, value) in &parts.headers {
+        // `:authority` is the request's authority; a `Host` sent beside it
+        // is the same fact spelled twice (RFC 9113 8.3.1), never a second
+        // value.
+        if authority.is_some() && name == http::header::HOST {
+            continue;
+        }
         let value = crate::Charset::Utf8.transcribe(value.as_bytes());
         headers
             .append(name.as_str(), &value)

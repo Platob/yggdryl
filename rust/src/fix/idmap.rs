@@ -1,10 +1,10 @@
 //! Which identifier map a field's value names a message by, and under which
 //! key.
 //!
-//! A message goes by the names its fields state - the account it is booked
-//! to, the user who entered it, the order's own and its parent's
-//! identifiers - and the three [`IdMap`](crate::IdMap)s an
-//! [`Operation`](crate::graph::Operation) answers hold them, each under an
+//! A message goes by the names its fields state - the order's own and its
+//! parent's identifiers, the quote's, the execution's - and the
+//! [`IdMap`](crate::IdMap) of alternate identifiers an
+//! [`Operation`](crate::graph::Operation) answers holds them, each under an
 //! upper-cased key. Which field states which key is a fact about the field,
 //! so it travels on the field: `FIX:idmap` is one [canonical
 //! document](super::document) of entries, read borrowed, and the registry
@@ -13,13 +13,12 @@
 //!
 //! ```text
 //! OrderID(37)   [{"map":"altids","key":"ORDERID","follow":true}]
-//! PartyID(448)  [{"map":"accountids","key":"CUSTOMERACCOUNT","role":"24"}, ...]
 //! ```
 //!
 //! An entry states the map and the key, whether an operation that follows
-//! another carries the key forward - an alternate identifier only, because
-//! an account or a user always follows - and, on `PartyID(448)`, the
-//! `PartyRole(452)` code of the `Parties` occurrence that states it.
+//! another carries the key forward, and, on `PartyID(448)`, the
+//! `PartyRole(452)` code of the `Parties` occurrence that states it. The
+//! parties a message names are no identifier: they stay in its metadata.
 
 use std::fmt;
 use std::iter::FusedIterator;
@@ -49,27 +48,22 @@ pub(super) const KEYS: [&str; 4] = [MAP, KEY, FOLLOW, ROLE];
 /// holds.
 const KEY_WIDTH: usize = 32;
 
-/// One of the three identifier maps an operation answers.
+/// The identifier map an operation answers that a field's value names a
+/// message by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FixIdMapKind {
-    /// `accountids`: the accounts a message is booked to.
-    Accounts,
-    /// `userids`: the users and traders who handled it.
-    Users,
     /// `altids`: the alternate identifiers it goes by.
     Alts,
 }
 
 impl FixIdMapKind {
     /// Every map, in the order an operation states them.
-    pub const ALL: [Self; 3] = [Self::Accounts, Self::Users, Self::Alts];
+    pub const ALL: [Self; 1] = [Self::Alts];
 
     /// The map's name, as an operation's accessor spells it.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Accounts => "accountids",
-            Self::Users => "userids",
             Self::Alts => "altids",
         }
     }
@@ -91,7 +85,7 @@ impl FromStr for FixIdMapKind {
             .find(|kind| kind.as_str().eq_ignore_ascii_case(text.trim()))
             .ok_or_else(|| {
                 refused(format_smolstr!(
-                    "expected {MAP:?} to be accountids, userids or altids, got {text:?}"
+                    "expected {MAP:?} to be altids, got {text:?}"
                 ))
             })
     }
@@ -172,9 +166,8 @@ impl FixIdSource {
     }
 
     /// Holds this source to what the document can state: a key of one to
-    /// 32 upper-case ASCII letters and digits, a follow flag on an alternate
-    /// identifier only - an account and a user always follow - and a role
-    /// that is a code of ASCII letters and digits.
+    /// 32 upper-case ASCII letters and digits, and a role that is a code of
+    /// ASCII letters and digits.
     fn validate(&self) -> Result<()> {
         let key = self.key.as_str();
         if key.is_empty()
@@ -186,12 +179,6 @@ impl FixIdSource {
             return Err(refused(format_smolstr!(
                 "expected {KEY:?} to be 1 to {KEY_WIDTH} upper-case ASCII letters or digits, \
                  got {key:?}"
-            )));
-        }
-        if self.follow && self.map != FixIdMapKind::Alts {
-            return Err(refused(format_smolstr!(
-                "expected {FOLLOW:?} on altids only, {} always follows",
-                self.map
             )));
         }
         if let Some(role) = self.role() {
@@ -251,9 +238,8 @@ impl<'field> FixIdSources<'field> {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when a source states a key that is not one
-    /// to 32 upper-case letters or digits, a follow flag on a map that is not
-    /// `altids`, a role that is not a code of letters and digits, or a key
-    /// twice.
+    /// to 32 upper-case letters or digits, a role that is not a code of
+    /// letters and digits, or a key twice.
     pub(super) fn render(sources: &[FixIdSource]) -> Result<String> {
         sources.iter().try_for_each(FixIdSource::validate)?;
         for (index, source) in sources.iter().enumerate() {

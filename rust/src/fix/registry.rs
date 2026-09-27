@@ -178,10 +178,6 @@ type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
 /// name-keyed maps keep the default, which is what an unspread key needs.
 pub(super) type FixMap<K, V> = HashMap<K, V, BuildHasherDefault<Mix>>;
 
-/// One field's replacement rules compiled, in the order the field states
-/// them, a rule that did not parse holding its place as `None`.
-type FieldPlans = Arc<[Option<Arc<crate::Plan>>]>;
-
 /// Fold a name directly into a seeded streaming state.
 ///
 /// The crate's one fold: ASCII case folded, and `_`, `-` and space dropped.
@@ -284,8 +280,8 @@ pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
 ///
 /// A message's child is stated under the dictionary's own field, sharing
 /// its metadata, so what the field states the child states: the tag it
-/// carries, the group it counts, whether a rule restates it and whether
-/// the specification retired it. A field one of these does not read as
+/// carries, the group it counts and whether the specification retired
+/// its tag. A field one of these does not read as
 /// its own - a stored tag that is not a tag - states no facts, and a
 /// reader asks the metadata as it always did.
 #[derive(Clone, Copy, Debug)]
@@ -294,9 +290,8 @@ pub(super) struct FieldFacts {
     pub(super) tag: Option<i32>,
     /// `FIX:counter`, on a group's count field.
     pub(super) counter: Option<i32>,
-    /// Whether a replacement rule could restate the field: one the field
-    /// states on its own `FIX:replacements`, or one the specification
-    /// states of its tag.
+    /// Whether a replacement rule could restate the field: one the
+    /// specification's [retirements](super::retired) state of its tag.
     pub(super) ruled: bool,
 }
 
@@ -307,8 +302,7 @@ impl FieldFacts {
         Some(Self {
             tag,
             counter: view.counter().ok()?,
-            ruled: view.replacements().next_ok().is_some()
-                || tag.is_some_and(|tag| super::retired::rules_of(tag).is_some()),
+            ruled: tag.is_some_and(|tag| super::retired::rules_of(tag).is_some()),
         })
     }
 }
@@ -347,30 +341,21 @@ pub struct FixRegistry {
     /// metadata storage, which a message's child stated under the field
     /// shares. Kept in step by [`Self::index`] and [`Self::unindex`].
     facts: Vec<Option<FieldFacts>>,
-    /// The replacement rules each field carries, compiled once when the
-    /// field is indexed, by position: a rule is data the dictionary states
-    /// once, and a capture of a million messages reads the same forty rules
-    /// a million times. `None` for a field carrying none.
-    plans: Vec<Option<FieldPlans>>,
     by_metadata: FixMap<usize, usize>,
     /// What this dictionary has answered about itself - a key's field, a
     /// field's null spellings, a code's translation - shared by every codec
     /// and every row read against it, and forgotten by every change to the
     /// fields.
     memo: super::memo::Memo,
-    /// The `FIX:derivation` plan, selected once on the first enrichment or
-    /// row fill and shared by every codec and message reading this registry.
-    /// The exact shipped set retains only its native evaluator marker; any
-    /// customization compiles and retains generic bound terms for the whole
-    /// registry. A compile refusal is kept the same way, and every field or
-    /// catalog change empties the cache so the next reader sees the edit.
-    derivations:
-        OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
+    /// The currency pair each symbol names, read once per spelling and shared
+    /// by every codec and message reading this registry: a fact of the
+    /// symbol text alone, so no change to the fields forgets it.
+    forex: super::forex::FxMemo,
     /// The names a message digests its lifted facts under, read off the
-    /// fields once on the first digest and forgotten with the derivations.
+    /// fields once on the first digest and forgotten with the memo.
     lifted_names: OnceLock<LiftedNames>,
     /// Every field's `FIX:idmap`, read once on the first settle and
-    /// forgotten with the derivations.
+    /// forgotten with the memo.
     idmap_sources: OnceLock<Vec<(i32, super::FixIdSource)>>,
 }
 
@@ -431,10 +416,9 @@ impl FixRegistry {
             positions_by_id: Vec::new(),
             identities: Vec::new(),
             facts: Vec::new(),
-            plans: Vec::new(),
             by_metadata: FixMap::default(),
             memo: super::memo::Memo::new(),
-            derivations: OnceLock::new(),
+            forex: super::forex::FxMemo::new(),
             lifted_names: OnceLock::new(),
             idmap_sources: OnceLock::new(),
         };
@@ -571,9 +555,40 @@ impl FixRegistry {
     ///
     /// A canonical name before an alias, both under the crate's one fold,
     /// so an alias can never take a name away from the field that claims it
-    /// canonically.
+    /// canonically; only a name neither reaches is read through the word
+    /// aliases - `offer`/`ask`, `size`/`qty`, `bid`/`demand`, `px`/`price`,
+    /// each way, anywhere in the folded name - and one reaching two fields
+    /// that way reaches none.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = |name: &str, tag: i32| -> yggdryl::Result<yggdryl::Field> {
+    ///     let mut field = DataType::Decimal.nullable_field(name);
+    ///     field.as_fix_mut().set_tag(tag)?;
+    ///     Ok(field)
+    /// };
+    /// let registry = FixRegistry::from_fields([
+    ///     field("BidPx", 132)?,
+    ///     field("OfferPx", 133)?,
+    ///     field("OfferSize", 135)?,
+    /// ])?;
+    /// let tag = |name: &str| {
+    ///     registry
+    ///         .get_field_by_name(name)
+    ///         .and_then(|field| field.as_fix().tag().ok().flatten())
+    /// };
+    /// assert_eq!(tag("OfferPx"), Some(133));
+    /// assert_eq!(tag("AskPx"), Some(133));
+    /// assert_eq!(tag("AskSize"), Some(135));
+    /// assert_eq!(tag("BidPrice"), Some(132));
+    /// assert_eq!(tag("OfferPrice"), Some(133));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn get_field_by_name(&self, name: &str) -> Option<&Field> {
-        self.position_by_name(name)
+        self.read_position_by_name(name)
             .and_then(|position| self.fields.get(position))
             .or_else(|| self.get_definition(crate::FixCategory::Components, name))
             .or_else(|| self.get_definition(crate::FixCategory::Groups, name))
@@ -587,7 +602,10 @@ impl FixRegistry {
             .and_then(|position| self.fields.get(position))
     }
 
-    /// The scalar field a canonical name or alias names, and nothing else.
+    /// The scalar field a canonical name or alias names exactly, and
+    /// nothing else: the catalog's own reading, which a reference and a
+    /// definition check ask, so no word alias ever stands in for the field
+    /// a definition names.
     pub(super) fn get_scalar_by_name(&self, name: &str) -> Option<&Field> {
         self.position_by_name(name)
             .and_then(|position| self.fields.get(position))
@@ -826,61 +844,6 @@ impl FixRegistry {
             self.identities[holder].map_or(0, |(tag, _)| tag),
         )?;
         Ok(())
-    }
-
-    /// Applies generated scalar aliases in one bounded registry pass.
-    ///
-    /// The alias generator owns the spelling combinations; this owner keeps
-    /// the indexes and catalog coherent. A lender changes only for spellings
-    /// no field already answers, in input order, so a dictionary's canonical
-    /// name and earlier aliases keep their first claim. The consumed registry
-    /// makes a refusal atomic to the caller without a full-registry clone.
-    pub(super) fn lend_field_aliases<I>(mut self, lending: I) -> Result<Self>
-    where
-        I: IntoIterator<Item = (SmolStr, Vec<SmolStr>)>,
-    {
-        let mut changed = false;
-        for (name, spellings) in lending {
-            let Some(position) = self.position_by_name(&name) else {
-                continue;
-            };
-            // A spelling another field claims canonically or as an alias is
-            // that field's. Check before cloning the lender or its aliases:
-            // most catalog fields lend nothing new on a repeated call.
-            let mut spellings = spellings;
-            spellings.retain(|spelled| self.get_field_by_name(spelled).is_none());
-            if spellings.is_empty() {
-                continue;
-            }
-            let mut field = self.fields[position].clone();
-            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
-            for spelled in spellings {
-                if !aliases.iter().any(|held| held == &spelled) {
-                    aliases.push(spelled);
-                }
-            }
-            field
-                .as_fix_mut()
-                .set_names(aliases.iter().map(SmolStr::as_str))?;
-            let (tag, id) = canonical_identity(&field)?;
-            let alternate = field.as_fix().tags()?;
-            self.check_free(&field, tag, id, &alternate, Some(position))?;
-            // Existing fields have already been validated. Validate their
-            // catalog once before the first direct replacement, then refresh
-            // references once after every new alias is indexed.
-            if !changed {
-                self.validate_catalog()?;
-            }
-            self.unindex(position, position);
-            self.fields[position] = field;
-            self.index(position);
-            changed = true;
-        }
-        if changed {
-            self.refresh_references()?;
-            self.validate_catalog()?;
-        }
-        Ok(self)
     }
 
     /// Merges a definition into the field with the same canonical identity.
@@ -1491,7 +1454,6 @@ impl FixRegistry {
             self.unindex(last, last);
         }
         self.unindex(position, position);
-        self.derivations.take();
         self.lifted_names.take();
         self.idmap_sources.take();
         // The field departing may be the last, which `index` never touches
@@ -1500,7 +1462,6 @@ impl FixRegistry {
         let removed = self.fields.swap_remove(position);
         let departed = self.identities.swap_remove(position);
         self.facts.swap_remove(position);
-        self.plans.swap_remove(position);
         if position != last {
             self.index(position);
         }
@@ -1644,6 +1605,14 @@ impl FixRegistry {
             .or_else(|| self.alias_position_by_name(name))
     }
 
+    /// [`Self::position_by_name`], else through the word aliases: the one
+    /// lookup a spelled name is read by. A registry's own writes - a fold,
+    /// an alias, a removal - address a field by its exact name alone.
+    fn read_position_by_name(&self, name: &str) -> Option<usize> {
+        self.position_by_name(name)
+            .or_else(|| super::aliases::aliased(name, |spelled| self.position_by_name(spelled)))
+    }
+
     fn alias_position_by_name(&self, name: &str) -> Option<usize> {
         let position = *self.aliases.get(&name_digest(name, ALIAS_SEED))?;
         self.alias_matches(position, name).then_some(position)
@@ -1691,34 +1660,6 @@ impl FixRegistry {
             .get(at)
             .filter(|held| std::ptr::eq(*held, field))
             .map(|_| at)
-    }
-
-    /// The position of `field` in this registry: its own, or the one whose
-    /// metadata it shares - a message's child stated under the
-    /// dictionary's field.
-    fn position_sharing(&self, field: &Field) -> Option<usize> {
-        if let Some(at) = self.position_of_own(field) {
-            return Some(at);
-        }
-        let storage = field.as_metadata().storage_address();
-        let position = self.by_metadata.get(&storage).copied()?;
-        self.fields
-            .get(position)
-            .filter(|held| held.as_metadata().shares_storage_with(field.as_metadata()))
-            .map(|_| position)
-    }
-
-    /// The replacement rules `field` carries, compiled when the field was
-    /// indexed: `None` for a field this registry does not hold and shares
-    /// no metadata with, an empty slice for one carrying no rule.
-    pub(super) fn plans_of(&self, field: &Field) -> Option<&[Option<Arc<crate::Plan>>]> {
-        let position = self.position_sharing(field)?;
-        Some(
-            self.plans
-                .get(position)
-                .and_then(|held| held.as_deref())
-                .unwrap_or(&[]),
-        )
     }
 
     /// What `field`'s metadata states, read off the index: for one of this
@@ -1812,9 +1753,8 @@ impl FixRegistry {
     }
 
     fn index(&mut self, position: usize) {
-        // Every change to the fields lands here, so what was compiled off
-        // them, and what was answered off them, is forgotten here too.
-        self.derivations.take();
+        // Every change to the fields lands here, so what was answered off
+        // them is forgotten here too.
         self.lifted_names.take();
         self.idmap_sources.take();
         self.memo.clear();
@@ -1834,11 +1774,6 @@ impl FixRegistry {
             self.facts.resize(position + 1, None);
         }
         self.facts[position] = facts;
-        let plans = super::latest::compiled_plans(field);
-        if position >= self.plans.len() {
-            self.plans.resize(position + 1, None);
-        }
-        self.plans[position] = (!plans.is_empty()).then(|| Arc::from(plans));
         self.by_metadata
             .insert(field.as_metadata().storage_address(), position);
         let Some((tag, id)) = identity else {
@@ -1944,45 +1879,17 @@ impl FixRegistry {
         super::MsgDirection::from_registry(self)
     }
 
-    /// The `FIX:derivation` plan, selected once and shared.
-    ///
-    /// Built from what the registry holds on the first ask and kept until a
-    /// field or a definition changes, so a stream of a million messages
-    /// proves its dictionary's derivations once, selects the direct shipped
-    /// plan only for the complete canonical set without parsing, binding or
-    /// retaining generic terms, and sends any custom set to the compiled
-    /// generic evaluator as a whole. A registry edit is what the next reader
-    /// evaluates. Cached here rather than on the codec because a row fill -
-    /// [`FixMsg::into_row`](super::FixMsg::into_row), which has no codec in
-    /// hand - uses the same selected plan, and a mutation pays a pointer
-    /// reset and nothing else. A refusal is kept exactly as a compiled list is: a
-    /// derivation naming a field the dictionary lacks refuses every ask,
-    /// on every door, until a field changes, and is compiled once rather
-    /// than once per ask.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidRecord`] naming the field whose derivation
-    /// reads a column no field or group of this registry answers to, does
-    /// not bind against the fields it reads, or whose text a load did not
-    /// validate.
-    pub(super) fn derivations(&self) -> Result<Arc<super::enrich::Derivations>> {
-        match self
-            .derivations
-            .get_or_init(|| super::enrich::Derivations::compile(self).map(Arc::new))
-        {
-            Ok(held) => Ok(Arc::clone(held)),
-            Err(refused) => Err(refused.error()),
-        }
+    /// The currency pair each symbol names, as FX detection reads it.
+    pub(super) const fn forex_memo(&self) -> &super::forex::FxMemo {
+        &self.forex
     }
 
-    /// Forgets the compiled derivations: what the next reader evaluates is
-    /// compiled off the fields and the catalog as they stand then.
+    /// Forgets what was answered off the fields and the catalog: what the
+    /// next reader asks is answered off them as they stand then.
     ///
     /// Every field change reaches [`Self::index`] and forgets them there; a
     /// catalog change that lands without staging a clone calls this.
-    pub(super) fn forget_derivations(&mut self) {
-        self.derivations.take();
+    pub(super) fn forget_answers(&mut self) {
         self.lifted_names.take();
         self.idmap_sources.take();
         self.memo.clear();
@@ -1996,10 +1903,9 @@ impl FixRegistry {
     /// The identifier-map sources the dictionary states, field by field in
     /// iteration order: each the tag of the field whose value names a
     /// message and the [`FIX:idmap`](crate::FixField::idmap) entry saying in
-    /// which map and under which key. A message rebuilds its
-    /// `accountids`, `userids` and `altids` from these at every settle, and
-    /// an operation that follows another carries the `altids` keys whose
-    /// entry follows. Compiled once and forgotten by every change to the
+    /// which map and under which key. A message rebuilds its `altids`
+    /// from these at every settle, and an operation that follows another
+    /// carries the keys whose entry follows. Compiled once and forgotten by every change to the
     /// fields.
     ///
     /// ```
@@ -2060,10 +1966,10 @@ impl FixRegistry {
 
 impl Clone for FixRegistry {
     /// A clone holds the same fields and catalog and none of what was
-    /// compiled off them: every mutation stages itself on a clone before
-    /// replacing the registry, so a compiled derivation never outlives the
-    /// dictionary it was compiled from, and a clone taken to read compiles
-    /// its own once.
+    /// answered off them: every mutation stages itself on a clone before
+    /// replacing the registry, so a remembered answer never outlives the
+    /// dictionary it was read from, and a clone taken to read remembers its
+    /// own.
     fn clone(&self) -> Self {
         Self {
             fields: self.fields.clone(),
@@ -2077,10 +1983,9 @@ impl Clone for FixRegistry {
             positions_by_id: self.positions_by_id.clone(),
             identities: self.identities.clone(),
             facts: self.facts.clone(),
-            plans: self.plans.clone(),
             by_metadata: self.by_metadata.clone(),
             memo: super::memo::Memo::new(),
-            derivations: OnceLock::new(),
+            forex: super::forex::FxMemo::new(),
             lifted_names: OnceLock::new(),
             idmap_sources: OnceLock::new(),
         }
@@ -2166,11 +2071,8 @@ pub mod internals {
     //!
     //! A registry answers a tag, an identity and a name, and that is the whole
     //! of what a caller sees. What it is *made of* - the seeded digests, the
-    //! five position indexes, the compiled derivations and the lifted-name
-    //! cache - is reached here, because a collision and a warm cache cannot be
-    //! staged from outside.
-    use std::sync::Arc;
-
+    //! five position indexes and the lifted-name cache - is reached here,
+    //! because a collision and a warm cache cannot be staged from outside.
     use super::FixRegistry;
     use crate::{Field, FixId, Result};
 
@@ -2224,25 +2126,5 @@ pub mod internals {
     /// collision would land it.
     pub fn force_id_index(registry: &mut FixRegistry, id: FixId, at: usize) {
         registry.ids.insert(id, at);
-    }
-
-    /// The `FIX:derivation` of every field, compiled once and shared.
-    ///
-    /// # Errors
-    ///
-    /// Returns the typed failure the one compile answered, for every ask.
-    pub fn derivations(registry: &FixRegistry) -> Result<Arc<super::super::enrich::Derivations>> {
-        registry.derivations()
-    }
-
-    /// Read the lifted names, which fills the cache that holds them.
-    pub fn warm_lifted_names(registry: &FixRegistry) {
-        let _ = registry.lifted_names();
-    }
-
-    /// Whether the lifted-name cache has been filled.
-    #[must_use]
-    pub fn lifted_names_cached(registry: &FixRegistry) -> bool {
-        registry.lifted_names.get().is_some()
     }
 }

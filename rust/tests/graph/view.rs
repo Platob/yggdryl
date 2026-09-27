@@ -2,7 +2,8 @@
 //! each one plan over the rows every leaf is written in.
 
 use arrow_array::{
-    Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray, TimestampNanosecondArray,
+    Array, ArrayRef, FixedSizeBinaryArray, ListArray, RecordBatch, StringArray,
+    TimestampNanosecondArray,
 };
 use smol_str::SmolStr;
 use yggdryl::arrow::BatchReader;
@@ -10,20 +11,10 @@ use yggdryl::graph::{
     BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketView, OperationEvent,
     OperationKind, OrderEvent, QuoteEvent, TradeEvent,
 };
-use yggdryl::{Decimal, Field, FieldPath, Plan, SecType, SecurityId, Side, State};
+use yggdryl::{Decimal, Field, FieldPath, MarketDataKind, Plan, SecType, SecurityId, Side, State};
 
-/// The nested columns of the root row: what a flat view drops. The nested
-/// `limits` column is named whether or not the root holds it, and a name
-/// the root does not hold excludes nothing.
-const NESTED: [&str; 7] = [
-    "executions",
-    "bidside",
-    "askside",
-    "snapshotpartitions",
-    "live",
-    "deltas",
-    "limits",
-];
+/// The nested columns of the root row: what a flat view drops.
+const NESTED: [&str; 5] = ["alive", "deltas", "executions", "bidlimits", "asklimits"];
 
 const ISIN: &str = "US0378331005";
 
@@ -190,6 +181,17 @@ fn column<'batch>(batch: &'batch RecordBatch, name: &str) -> &'batch ArrayRef {
         .unwrap_or_else(|| panic!("no column {name} in {:?}", names(batch)))
 }
 
+/// The categories an `int32` `marketdatakind` column states.
+fn kinds(array: &ArrayRef) -> Vec<Option<MarketDataKind>> {
+    array
+        .as_any()
+        .downcast_ref::<arrow_array::Int32Array>()
+        .unwrap()
+        .iter()
+        .map(|code| code.and_then(MarketDataKind::from_code))
+        .collect()
+}
+
 fn texts(array: &ArrayRef) -> Vec<Option<&str>> {
     array
         .as_any()
@@ -249,13 +251,12 @@ fn prefixed(nested: &str, prefix: &str) -> Vec<String> {
 
 #[test]
 fn a_view_is_read_by_its_spelling_and_only_the_lifecycle_takes_a_crosscode() {
-    assert_eq!(MarketView::ALL.len(), 7);
+    assert_eq!(MarketView::ALL.len(), 6);
     for (spelling, expected) in [
         ("orders", MarketView::Orders),
         ("QUOTES", MarketView::Quotes),
         ("Executions", MarketView::Executions),
         ("trades", MarketView::Trades),
-        ("book_sides", MarketView::BookSides),
         ("Books", MarketView::Books),
     ] {
         let read = MarketView::read(spelling, None).unwrap();
@@ -275,10 +276,11 @@ fn a_view_is_read_by_its_spelling_and_only_the_lifecycle_takes_a_crosscode() {
     );
     let error = MarketView::read("lifecycle", None).unwrap_err().to_string();
     assert!(error.contains("crosscode"), "{error}");
-    let error = MarketView::read("book-sides", None)
+    // A book side is no leaf, and no view reads one.
+    let error = MarketView::read("book_sides", None)
         .unwrap_err()
         .to_string();
-    assert!(error.contains("book_sides"), "{error}");
+    assert!(error.contains("books, lifecycle"), "{error}");
 }
 
 #[test]
@@ -301,7 +303,7 @@ fn every_plan_is_built_as_its_text_reads_back() {
             .to_string(),
         format!(
             "select * exclude ({nested}), securityids['ISIN'] as isin \
-             where kind in ('order', 'order_event')"
+             where marketdatakind = 'ORDR'"
         )
     );
     assert_eq!(
@@ -310,20 +312,14 @@ fn every_plan_is_built_as_its_text_reads_back() {
             .to_string(),
         format!(
             "select * exclude ({nested}), unnest(executions) as execution \
-             where kind = 'trade_event'"
+             where marketdatakind = 'TRAD'"
         )
-    );
-    assert_eq!(
-        MarketData::plan(&MarketView::BookSides, &[])
-            .unwrap()
-            .to_string(),
-        "select currunix, snapunix, unnest([bidside, askside]) as side where kind = 'book_event'"
     );
     assert_eq!(
         MarketData::plan(&MarketView::Books, &[])
             .unwrap()
             .to_string(),
-        "select * exclude (executions, live, deltas, limits) where kind = 'book_event'"
+        "select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null"
     );
     assert_eq!(
         MarketData::plan(
@@ -356,26 +352,28 @@ fn applying_a_view_is_applying_its_plan() {
 
 #[test]
 fn an_operation_view_keeps_its_two_kinds_and_every_flat_column() {
-    for (target, kinds, rows) in [
-        (MarketView::Orders, ["order", "order_event"], 4),
-        (MarketView::Quotes, ["quote", "quote_event"], 2),
-        (MarketView::Executions, ["execution", "execution_event"], 1),
+    for (target, kind, rows) in [
+        (MarketView::Orders, MarketDataKind::Order, 4),
+        (MarketView::Quotes, MarketDataKind::Quotation, 2),
+        (MarketView::Executions, MarketDataKind::Execution, 1),
     ] {
         let out = view(&target, &[]);
         assert_eq!(names(&out), flat(), "{target}");
         assert_eq!(out.num_rows(), rows, "{target}");
         assert!(
-            texts(column(&out, "kind"))
+            kinds(column(&out, "marketdatakind"))
                 .iter()
-                .all(|kind| kinds.contains(&kind.unwrap())),
+                .all(|held| *held == Some(kind)),
             "{target}"
         );
     }
+    // One category covers a leaf dated and undated: the quote event, then
+    // the undated quote, which states no instant.
     let out = view(&MarketView::Quotes, &[]);
-    assert_eq!(
-        texts(column(&out, "kind")),
-        [Some("quote_event"), Some("quote")]
-    );
+    let dated: Vec<bool> = (0..out.num_rows())
+        .map(|row| !column(&out, "currunix").is_null(row))
+        .collect();
+    assert_eq!(dated, [true, false]);
 }
 
 #[test]
@@ -412,64 +410,56 @@ fn a_trade_is_one_row_per_execution_its_own_columns_beside_it() {
         .collect();
     assert_eq!(read, held);
     assert!(
-        texts(column(&out, "execution.kind"))
+        kinds(column(&out, "execution.marketdatakind"))
             .iter()
-            .all(|kind| kind.is_some())
+            .all(|kind| *kind == Some(MarketDataKind::Execution))
     );
 }
 
 #[test]
-fn a_book_is_two_side_rows_beside_its_clocks() {
-    let out = view(&MarketView::BookSides, &[]);
-    let mut expected = vec!["currunix".to_owned(), "snapunix".to_owned()];
-    expected.extend(prefixed("bidside", "side"));
-    assert_eq!(names(&out), expected);
-    assert_eq!(out.num_rows(), 2 * 2, "two sides per book");
-    let books = [book(11), book(13)];
-    let clocks: Vec<Option<i64>> = books
-        .iter()
-        .flat_map(|book| [Some(book.get_currunix()), Some(book.get_currunix())])
-        .collect();
-    assert_eq!(instants(column(&out, "currunix")), clocks);
-    let snaps: Vec<Option<i64>> = books
-        .iter()
-        .flat_map(|book| [book.get_snapunix(), book.get_snapunix()])
-        .collect();
-    assert_eq!(instants(column(&out, "snapunix")), snaps);
-    // Bid then ask, book by book.
-    let sides: Vec<Option<Vec<u8>>> = books
-        .iter()
-        .flat_map(|book| {
-            [
-                Some(book.bid().get_curruuid().into_bytes().to_vec()),
-                Some(book.ask().get_curruuid().into_bytes().to_vec()),
-            ]
-        })
-        .collect();
-    assert_eq!(uuids(column(&out, "side.curruuid")), sides);
-
+fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
     let out = view(&MarketView::Books, &[]);
     let expected: Vec<String> = MarketData::field()
         .unwrap()
         .fields()
         .iter()
         .map(|field| field.name().to_owned())
-        .filter(|name| !["executions", "live", "deltas", "limits"].contains(&name.as_str()))
+        .filter(|name| name != "executions")
         .collect();
     assert_eq!(names(&out), expected);
     assert_eq!(out.num_rows(), 2);
     assert!(
-        texts(column(&out, "kind"))
+        kinds(column(&out, "marketdatakind"))
             .iter()
-            .all(|kind| *kind == Some("book_event"))
+            .all(|kind| *kind == Some(MarketDataKind::Book))
     );
+    let books = [book(11), book(13)];
+    assert_eq!(
+        instants(column(&out, "currunix")),
+        books.map(|book| Some(book.get_currunix()))
+    );
+    // Each book's one bid and one ask, alive and applied at its instant.
+    for name in ["alive", "deltas"] {
+        let list = column(&out, name)
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap();
+        assert_eq!(
+            (0..out.num_rows())
+                .map(|row| list.value_length(row))
+                .collect::<Vec<_>>(),
+            [2, 2],
+            "{name}"
+        );
+    }
 }
 
 #[test]
 fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     let out = view(
+        // A chain's cross code is stored under its side.
         &MarketView::Lifecycle {
-            crosscode: SmolStr::new("C-1"),
+            crosscode: SmolStr::new("BUY:C-1"),
         },
         &[],
     );
@@ -517,7 +507,7 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
     )
     .unwrap();
     let target = MarketView::Lifecycle {
-        crosscode: SmolStr::new("C-9"),
+        crosscode: SmolStr::new("BUY:C-9"),
     };
     let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
     let current = uuids(column(&out, "curruuid"));
@@ -549,14 +539,14 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
     let codes = texts(column(&out, "crosscode"));
     let isins = texts(column(&out, "isin"));
     for (code, isin) in codes.iter().zip(&isins) {
-        let expected = (*code == Some("O-5")).then_some(ISIN);
+        let expected = (*code == Some("BUY:O-5")).then_some(ISIN);
         assert_eq!(*isin, expected, "{code:?}");
     }
     // A United States ISIN states its CUSIP, which the set derives; no
     // order states a WKN.
     let cusips = texts(column(&out, "cusip"));
     for (code, cusip) in codes.iter().zip(&cusips) {
-        let expected = (*code == Some("O-5")).then_some(&ISIN[2..11]);
+        let expected = (*code == Some("BUY:O-5")).then_some(&ISIN[2..11]);
         assert_eq!(*cusip, expected, "{code:?}");
     }
     assert_eq!(column(&out, "wkn").null_count(), out.num_rows());
@@ -568,7 +558,7 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
     let out = view(&MarketView::Trades, &lifts[..1]);
     assert_eq!(names(&out).last().map(String::as_str), Some("isin"));
     assert_eq!(column(&out, "isin").null_count(), out.num_rows());
-    let out = view(&MarketView::BookSides, &lifts[..1]);
+    let out = view(&MarketView::Books, &lifts[..1]);
     assert_eq!(names(&out).last().map(String::as_str), Some("isin"));
 
     // A lift naming a column the root does not hold is refused where the
@@ -580,7 +570,7 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
         .to_string();
     assert!(error.contains("nothing"), "{error}");
     // Two columns of one name are refused, a lift over a kept column too.
-    let twice: Vec<FieldPath> = vec!["securityids['ISIN'] as kind".parse().unwrap()];
+    let twice: Vec<FieldPath> = vec!["securityids['ISIN'] as marketdatakind".parse().unwrap()];
     let error = MarketData::apply_view(&MarketView::Orders, &twice, stream())
         .and_then(drained)
         .unwrap_err()

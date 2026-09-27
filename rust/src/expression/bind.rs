@@ -352,24 +352,6 @@ impl Bound {
         self.node.eval(&Row::new(Some(&values)))
     }
 
-    /// Evaluate this term over a row held as its column values.
-    ///
-    /// `values` holds the bound schema's columns in order, exactly as
-    /// [`Self::eval`] reads them out of a sequence: the door a pass that
-    /// fills a row evaluates through, writing each answer into the values it
-    /// reads the next one from, so no row is rebuilt to be read.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when `values` does not hold one value per column of
-    /// the schema, a strict cast refuses a value, or checked arithmetic
-    /// overflows, divides by zero, or cannot represent an exact decimal
-    /// result.
-    pub(crate) fn eval_values(&self, values: &[Scalar]) -> Result<Scalar> {
-        self.node
-            .eval(&Row::new(Some(sized(values, &self.schema)?)))
-    }
-
     /// Answer this predicate for one row, reading unknown as "no".
     ///
     /// SQL keeps a row when the predicate is true, and unknown is not true.

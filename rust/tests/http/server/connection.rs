@@ -585,6 +585,156 @@ fn a_writer_that_fails_after_some_bytes_severs_the_transfer() {
 }
 
 #[test]
+fn a_written_body_answering_http_1_0_is_close_delimited() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(Some(Method::Get), "/written", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"streamed")?;
+            Ok(())
+        }))
+    });
+    server.respond(
+        Some(Method::Get),
+        "/held",
+        Response::new(Status::OK)
+            .with_header("Transfer-Encoding", "chunked")
+            .expect("a header")
+            .with_text("held"),
+    );
+    let bytes = raw_bytes(
+        &server,
+        b"GET /written HTTP/1.0\r\nConnection: keep-alive\r\n\r\n",
+    );
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.starts_with("HTTP/1.1 200 OK\r\n"), "{text}");
+    let (head, rest) = text.split_once("\r\n\r\n").expect("a head");
+    let head = head.to_ascii_lowercase();
+    assert!(!head.contains("transfer-encoding"), "{head}");
+    assert!(!head.contains("content-length"), "{head}");
+    assert!(head.contains("connection: close"), "{head}");
+    assert_eq!(rest, "streamed");
+
+    let (status, headers, rest) = raw_head(&server, b"GET /held HTTP/1.0\r\n\r\n");
+    assert_eq!(status, Status::OK);
+    assert_eq!(headers.get("transfer-encoding"), None);
+    assert_eq!(headers.content_length().expect("a length"), Some(4));
+    assert_eq!(rest, b"held");
+
+    // The same route to an HTTP/1.1 peer is chunked as before.
+    let bytes = raw_bytes(&server, &request_line("GET", "/written", ""));
+    let text = String::from_utf8_lossy(&bytes);
+    let (head, rest) = text.split_once("\r\n\r\n").expect("a head");
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("transfer-encoding: chunked"),
+        "{head}"
+    );
+    assert_eq!(rest, "8\r\nstreamed\r\n0\r\n\r\n");
+}
+
+#[test]
+fn a_writer_that_fails_answering_http_1_0_ends_the_body_at_the_close() {
+    // Close-delimited framing has nothing to say a body ended short with:
+    // the peer reads what was written, then the close. This is the
+    // documented limit of HTTP/1.0 upstream; over HTTP/1.1 the missing last
+    // chunk says so (`a_writer_that_fails_after_some_bytes_severs_the_transfer`).
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/writer-fails", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"partial")?;
+            Err(Error::unsupported("writer", "boom"))
+        }))
+    });
+    let bytes = raw_bytes(&server, b"GET /writer-fails HTTP/1.0\r\n\r\n");
+    let text = String::from_utf8_lossy(&bytes);
+    let (head, rest) = text.split_once("\r\n\r\n").expect("a head");
+    let head = head.to_ascii_lowercase();
+    assert!(head.contains("connection: close"), "{head}");
+    assert!(!head.contains("content-length"), "{head}");
+    assert!(!head.contains("transfer-encoding"), "{head}");
+    assert_eq!(rest, "partial");
+}
+
+#[test]
+fn an_http_1_1_request_carries_exactly_one_host_that_is_an_authority() {
+    let server = Server::bind("127.0.0.1:0").expect("bind");
+    server.route(None, "/echo", |request| {
+        Ok(Response::new(Status::OK).with_text(&request.url().to_string()))
+    });
+    let (head, body) = raw(&server, b"GET /echo HTTP/1.1\r\nConnection: close\r\n\r\n");
+    assert_eq!(head.status, Status::BAD_REQUEST);
+    assert!(
+        String::from_utf8_lossy(&body).contains("Host"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let (head, _) = raw(
+        &server,
+        b"GET /echo HTTP/1.1\r\nHost: one\r\nHost: two\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(head.status, Status::BAD_REQUEST);
+
+    // A Host that is no authority is an invalid value (RFC 9112 3.2): it
+    // would otherwise put a path, a query or a credential into the URL a
+    // handler reads, under a path the router never matched.
+    for host in [
+        "x/y",
+        "x/y?",
+        "pub.example#frag",
+        "a@b.com",
+        "u:p@evil.example",
+        "pub.example:",
+        "pub.example:99999",
+        "[::1",
+        "not a host",
+    ] {
+        let request =
+            format!("GET /echo?a=1 HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+        let (head, body) = raw(&server, request.as_bytes());
+        assert_eq!(head.status, Status::BAD_REQUEST, "{host:?}");
+        assert!(
+            String::from_utf8_lossy(&body).contains("Host"),
+            "{host:?}: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+    assert_eq!(server.request_count(), 0, "a refused head is no request");
+
+    for host in ["pub.example", "pub.example:8080", "[::1]:8080", "127.0.0.1"] {
+        let request = format!("GET /echo HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+        let (head, body) = raw(&server, request.as_bytes());
+        assert_eq!(head.status, Status::OK, "{host:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&body),
+            format!("http://{host}/echo")
+        );
+    }
+
+    // HTTP/1.0 needs none, and one that is no authority is left unread:
+    // the socket's own authority is the request's.
+    let socket = format!("http://127.0.0.1:{}/echo", server.port());
+    for request in [
+        &b"GET /echo HTTP/1.0\r\n\r\n"[..],
+        b"GET /echo HTTP/1.0\r\nHost: x/y\r\n\r\n",
+    ] {
+        let (head, body) = raw(&server, request);
+        assert_eq!(head.status, Status::OK, "HTTP/1.0 needs no Host");
+        assert_eq!(String::from_utf8_lossy(&body), socket);
+    }
+
+    // An absolute-form target's authority wins over the Host beside it.
+    let (head, body) = raw(
+        &server,
+        b"GET http://elsewhere.example/echo HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(head.status, Status::OK);
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "http://elsewhere.example/echo"
+    );
+}
+
+#[test]
 fn cut_body_at_on_a_written_answer_delivers_exactly_that_many_bytes_then_severs() {
     let server = Server::bind("127.0.0.1:0").expect("bind");
     server.route(None, "/writer-cut", |_| {

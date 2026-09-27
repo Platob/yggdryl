@@ -2,19 +2,19 @@
 //! states its identity, its cross identity, its codes and its sources; an
 //! event its instant, its state and the optional facts of its lifecycle; a
 //! market its price, quantity, side and instrument; a market operation the
-//! names it goes by and its lanes. The traits are signatures and provided
+//! names it goes by. The traits are signatures and provided
 //! readings, so what a caller can rely on is that a value implementing them
 //! answers through them, including as a trait object, and that following,
 //! merging and syncing fold the lifecycle the way the traits say - over the
 //! crate's own leaves - an [`OrderEvent`] standing for any dated operation,
-//! a [`BookSide`] for an undated market element - and over a foreign type
+//! an [`Order`] for an undated market element - and over a foreign type
 //! that implements only the signatures.
 
 use std::collections::BTreeMap;
 use std::hash::Hasher;
 
 use smol_str::SmolStr;
-use yggdryl::graph::{BookSide, Element, Event, Lane, Market, Operation, OrderEvent};
+use yggdryl::graph::{Element, Event, Market, Operation, Order, OrderEvent};
 use yggdryl::idmap::IdMap;
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::xxhash::Xxh3;
@@ -335,8 +335,7 @@ fn trade(ms: i64) -> OrderEvent {
     trade
 }
 
-/// The same operation, finalized: the lane its side implies is filled,
-/// because finalizing fills.
+/// The same operation, finalized.
 fn operation(ms: i64) -> OrderEvent {
     let mut operation = stated(ms);
     operation.finalize();
@@ -428,16 +427,6 @@ fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
     operation.set_altids(ids).expect("a plain holder");
     assert_eq!(operation.get_altids().len(), 1);
     assert_eq!(operation.get_altids().get("CLORDID"), None);
-    // The accounts and the users are maps of their own.
-    operation
-        .insert_accountid("ACCOUNT", "ACC-1")
-        .expect("a plain holder");
-    operation
-        .insert_userid("SENDERSUBID", "trader")
-        .expect("a plain holder");
-    assert_eq!(operation.get_accountids().get("ACCOUNT"), Some("ACC-1"));
-    assert_eq!(operation.get_userids().get("SENDERSUBID"), Some("trader"));
-    assert_eq!(operation.get_altids().get("ACCOUNT"), None);
     // And a walk written against the signatures alone reads them the same
     // way, whatever holder stands behind them.
     fn execid<E: Operation + ?Sized>(held: &E) -> Option<&str> {
@@ -508,49 +497,48 @@ fn an_event_is_after_another_by_its_instant_and_a_market_element_states_no_order
     assert!(trade(20).is_after(&trade(10)));
     assert!(trade(10).is_before(&trade(20)));
 
-    // A book side has no instant and records no predecessor, so it states no
-    // order: one that followed another is neither after nor before it, and
-    // neither is one unrelated to it.
-    let mut first = BookSide::new(Side::read("Buy").expect("a side")).expect("a bid side");
+    // An undated order has no instant and records no predecessor, so it
+    // states no order: one that followed another is neither after nor
+    // before it, and neither is one unrelated to it.
+    let mut first = Order::new();
     first.set_crosscode("FIRST".to_owned());
     first.finalize();
-    let next = BookSide::new(Side::read("Buy").expect("a side"))
-        .expect("a bid side")
+    let next = Order::new()
         .with_previous(&first)
-        .expect("a side follows another");
+        .expect("an undated order follows another");
     assert!(!next.is_after(&first) && !next.is_before(&first));
     assert!(!first.is_after(&next) && !first.is_before(&next));
-    let stranger = BookSide::new(Side::read("Buy").expect("a side")).expect("a bid side");
+    let stranger = Order::new();
     assert!(!stranger.is_after(&first) && !stranger.is_before(&first));
 }
 
 #[test]
-fn a_book_side_version_inherits_only_an_absent_ticker() {
-    // A side that follows another takes the predecessor's ticker only where
-    // it states none of its own - a name issued at creation holds for the
-    // whole lifecycle, but this side's own word is never overridden.
-    let mut previous = BookSide::new(Side::read("Buy").expect("a side")).expect("a bid side");
-    // A crosscode neither side states of its own forces `changed`, so
+fn an_undated_version_inherits_only_an_absent_ticker() {
+    // An undated element that follows another takes the predecessor's
+    // ticker only where it states none of its own - a name issued at
+    // creation holds for the whole lifecycle, but its own word is never
+    // overridden.
+    let mut previous = Order::new();
+    // A crosscode neither states of its own forces `changed`, so
     // following answers `Some` whatever the ticker does.
     previous.set_crosscode("SCOPE-1".to_owned());
     previous.set_ticker(Some(SmolStr::new("AAPL")));
     previous.finalize();
 
-    let inherited = BookSide::new(Side::read("Buy").expect("a side"))
-        .expect("a bid side")
+    let inherited = Order::new()
         .with_previous(&previous)
-        .expect("a side follows another");
+        .expect("an undated order follows another");
     assert_eq!(inherited.get_ticker(), Some("AAPL"));
 
-    let mut stated = BookSide::new(Side::read("Buy").expect("a side")).expect("a bid side");
+    let mut stated = Order::new();
     stated.set_ticker(Some(SmolStr::new("MSFT")));
     let stated = stated
         .with_previous(&previous)
-        .expect("a side follows another");
+        .expect("an undated order follows another");
     assert_eq!(
         stated.get_ticker(),
         Some("MSFT"),
-        "a stated ticker is this side's own word"
+        "a stated ticker is this element's own word"
     );
 }
 
@@ -755,9 +743,6 @@ fn following_carries_the_lifecycle_forward() {
     named
         .insert_altid("CLORDID", "C-1")
         .expect("a plain holder");
-    named
-        .insert_accountid("ACCOUNT", "ACC-1")
-        .expect("a plain holder");
     named.finalize();
     let mut next = OrderEvent::at(at(20));
     next.set_crosscode("O-100".to_owned());
@@ -768,11 +753,6 @@ fn following_carries_the_lifecycle_forward() {
     assert_eq!(next.get_altids().get("EXECID"), Some("E-2"));
     assert_eq!(next.get_altids().get("CLORDID"), None);
     assert_eq!(next.get_altids().len(), 2);
-    assert_eq!(
-        next.get_accountids().get("ACCOUNT"),
-        Some("ACC-1"),
-        "the accounts carry whole"
-    );
     let mut own = OrderEvent::at(at(20));
     own.set_crosscode("O-100".to_owned());
     own.insert_altid("ORDERID", "O-2").expect("a plain holder");
@@ -935,7 +915,8 @@ fn following_adopts_the_predecessors_cross_code() {
     fill.finalize();
     let before = fill.get_curruuid();
     let fill = fill.with_previous(&placed).expect("follows");
-    assert_eq!(fill.get_crosscode(), "O-100");
+    // The code is stored under the side the event takes.
+    assert_eq!(fill.get_crosscode(), "BUY:O-100");
     assert_eq!(fill.get_crossuuid(), placed.get_crossuuid());
     assert_eq!(fill.get_prevuuid(), Some(placed.get_curruuid()));
     assert_ne!(fill.get_curruuid(), before, "followed, so finalized");
@@ -1836,90 +1817,6 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
 }
 
 #[test]
-fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
-    // A buy is a bid: the bid lane takes the price, the currency, the
-    // quantity and the unit, and the ask lane stays empty.
-    let mut buy = stated(10);
-    assert_eq!((buy.get_bid(), buy.get_ask()), (None, None));
-    buy.fill_lanes();
-    let bid = buy.get_bid().expect("the bid lane the buy fills");
-    assert_eq!(bid.price, Some(decimal("82.5")));
-    assert_eq!(bid.currency.as_ref().map(Ccy::as_str), Some("USD"));
-    assert_eq!(bid.quantity, Some(Decimal::from_int(1_000)));
-    assert_eq!(bid.unit.as_ref().map(Unit::as_str), Some("bbl"));
-    assert_eq!((bid.spotrate, bid.forwardpoints), (None, None));
-    assert_eq!(buy.get_ask(), None);
-    // Finalizing fills the same lane.
-    assert_eq!(operation(10).get_bid(), Some(bid));
-
-    // A sell short is an ask, and what the lane already states stands.
-    let mut sell = stated(20);
-    sell.set_side(Side::read("SellShort").expect("a side"));
-    sell.set_ask(Some(Lane {
-        price: Some(Decimal::from_int(90)),
-        ..Lane::default()
-    }));
-    sell.fill_lanes();
-    let ask = sell.get_ask().expect("the ask lane");
-    assert_eq!(ask.price, Some(Decimal::from_int(90)));
-    assert_eq!(ask.quantity, Some(Decimal::from_int(1_000)));
-    assert_eq!(ask.unit.as_ref().map(Unit::as_str), Some("bbl"));
-    assert_eq!(sell.get_bid(), None);
-
-    // A cross takes neither lane, and a side stated as none neither.
-    for spelling in ["Cross", "Opposite", "UNKNOWN"] {
-        let mut neither = stated(30);
-        neither.set_side(Side::read(spelling).expect("a side"));
-        neither.fill_lanes();
-        assert_eq!(
-            (neither.get_bid(), neither.get_ask()),
-            (None, None),
-            "{spelling}"
-        );
-    }
-
-    // Only a stated fact fills a lane: no price, no quantity, no currency
-    // and no unit are nothing to state on the lane either.
-    let mut unstated = OrderEvent::default();
-    unstated.set_side(Side::read("Buy").expect("a side"));
-    unstated.fill_lanes();
-    assert_eq!(unstated.get_bid(), None);
-    unstated.set_quantity(Some(Decimal::from_int(5)));
-    unstated.fill_lanes();
-    let bid = unstated.get_bid().expect("a lane with one fact");
-    assert_eq!(bid.quantity, Some(Decimal::from_int(5)));
-    assert_eq!(bid.price, None, "still no price to state");
-    assert!(bid.currency.is_none() && bid.unit.is_none());
-    assert!(!Lane::default().is_stated());
-    assert_eq!(Lane::default().stated(), None);
-
-    // Lanes merge as the market's facts do: the later statement's where it
-    // states one, else this one's.
-    let mut quoted = operation(40);
-    quoted.set_bid(Some(Lane {
-        price: Some(Decimal::from_int(80)),
-        ..Lane::default()
-    }));
-    let mut later = quoted.clone();
-    later.set_currunix(at(50));
-    later.set_bid(None);
-    later.set_ask(Some(Lane {
-        price: Some(Decimal::from_int(85)),
-        ..Lane::default()
-    }));
-    later.set_curruuid(quoted.get_curruuid());
-    let merged = quoted.merge_with(&later).expect("the same quote");
-    assert_eq!(
-        merged.get_bid().and_then(|lane| lane.price),
-        Some(Decimal::from_int(80))
-    );
-    assert_eq!(
-        merged.get_ask().and_then(|lane| lane.price),
-        Some(Decimal::from_int(85))
-    );
-}
-
-#[test]
 fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     let event = Report::at(1, 10);
     let same = event.clone();
@@ -1981,7 +1878,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
         trade.digest_market().as_u64()
     );
     // An operation continues with its own facts: a name it goes by moves
-    // the code, and so does a lane.
+    // the code.
     let operation = operation(10);
     let mut named = operation.clone();
     named
@@ -1991,18 +1888,15 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
         operation.digest_operation_event().as_u64(),
         named.digest_operation_event().as_u64()
     );
-    let mut quoted = operation.clone();
-    quoted.set_ask(Some(Lane {
-        price: Some(Decimal::from_int(85)),
-        ..Lane::default()
-    }));
-    assert_ne!(
-        operation.digest_operation_event().as_u64(),
-        quoted.digest_operation_event().as_u64()
-    );
-    assert_ne!(
+    // An operation stating none of its own facts digests as the market
+    // event it is; one it states continues that code.
+    assert_eq!(
         operation.digest_operation_event().as_u64(),
         operation.digest_market_event().as_u64()
+    );
+    assert_ne!(
+        named.digest_operation_event().as_u64(),
+        named.digest_market_event().as_u64()
     );
     let entry = operation.clone().into_element();
     assert_eq!(
@@ -2144,7 +2038,7 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     assert_ne!(
         operation.get_currhashcode(),
         event.get_currhashcode(),
-        "the lane the buy fills is part of what the operation states"
+        "the kind it is is part of what the operation states"
     );
 }
 
@@ -2152,8 +2046,7 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
 fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     // What a report says about a trade and nothing about an order: its
     // last executed price and quantity are those facts and nothing more.
-    // The price and the quantity it states stay none, and no lane is
-    // filled from what it does not state.
+    // The price and the quantity it states stay none.
     let mut fill = OrderEvent::at(at(10));
     fill.set_side(Side::read("Buy").expect("a side"));
     fill.set_lastpx(Some(decimal("82.5")));
@@ -2173,14 +2066,6 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     assert_eq!(fill.get_lastpx(), Some(decimal("82.5")));
     assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(300)));
     assert_eq!(fill.get_avgpx(), Some(decimal("82.25")));
-    assert_eq!(fill.get_bid(), None, "the market ladder fills no lane");
-    fill.fill_operation();
-    assert_eq!(
-        fill.get_bid(),
-        None,
-        "and a lane states only what the element states"
-    );
-    assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
 
     // An average is an average: it stands in for no price either.
     let mut averaged = OrderEvent::at(at(20));
@@ -2197,27 +2082,6 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     working.set_leavesqty(Some(Decimal::from_int(60)));
     working.fill_market();
     assert_eq!(working.get_quantity(), None);
-
-    // A quote states only its lanes, and the side says which one it is
-    // about: the operation's lane rule reads what the side's own lane
-    // quotes, and the market ladder reads no lane at all. Nothing is
-    // invented for a side that takes neither.
-    let mut quote = OrderEvent::at(at(40));
-    quote.set_side(Side::read("Sell").expect("a side"));
-    quote.set_ask(Some(Lane {
-        price: Some(Decimal::from_int(85)),
-        quantity: Some(Decimal::from_int(7)),
-        currency: Some(currency("EUR")),
-        unit: Some(unit("mt")),
-        ..Lane::default()
-    }));
-    quote.fill_market();
-    assert_eq!((quote.get_price(), quote.get_quantity()), (None, None));
-    quote.fill_operation();
-    assert_eq!(quote.get_price(), Some(Decimal::from_int(85)));
-    assert_eq!(quote.get_quantity(), Some(Decimal::from_int(7)));
-    assert_eq!(quote.get_currency().as_str(), "EUR");
-    assert_eq!(quote.get_unit().as_str(), "mt");
 
     // The ISIN's national number fills the source it names, as a derived
     // identifier, only where the element states none under it.
@@ -2251,169 +2115,30 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     assert_eq!(once.get_price(), Some(decimal("82.5")));
     assert_eq!(once.get_lastpx(), Some(Decimal::from_int(1)));
     assert_eq!(once, twice);
-    let mut once = operation(50);
-    once.fill_operation();
-    let twice = {
-        let mut held = once.clone();
-        held.fill_operation();
-        held
-    };
-    assert_eq!(once, twice);
 }
 
-/// A quote stating one lane and no side is that lane's side, and the ladder
-/// then reads the price, the quantity, the currency and the unit off it.
+/// An operation following another keeps the side it states, and one
+/// stating none is about the side its chain took.
 #[test]
-fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
-    // A bid alone is a party willing to pay: a buy at the bid.
-    let mut bid = OrderEvent::at(at(10));
-    assert_eq!(bid.get_side(), Side::Unknown);
-    bid.set_bid(Some(Lane {
-        price: Some(decimal("101.5")),
-        quantity: Some(Decimal::from_int(200)),
-        currency: Some(currency("USD")),
-        unit: Some(unit("shares")),
-        ..Lane::default()
-    }));
-    bid.fill_operation();
-    assert_eq!(bid.get_side().as_str(), "BUY");
-    assert_eq!(bid.get_price(), Some(decimal("101.5")));
-    assert_eq!(bid.get_quantity(), Some(Decimal::from_int(200)));
-    assert_eq!(bid.get_currency().as_str(), "USD");
-    assert_eq!(bid.get_unit().as_str(), "shares");
-    assert_eq!(bid.get_ask(), None, "the other lane stays empty");
-
-    // An offer alone is a party willing to be paid: a sell at the offer.
-    let mut ask = OrderEvent::at(at(20));
-    ask.set_ask(Some(Lane {
-        price: Some(decimal("102")),
-        quantity: Some(Decimal::from_int(50)),
-        ..Lane::default()
-    }));
-    ask.fill_operation();
-    assert_eq!(ask.get_side().as_str(), "SELL");
-    assert_eq!(ask.get_price(), Some(decimal("102")));
-    assert_eq!(ask.get_quantity(), Some(Decimal::from_int(50)));
-    assert_eq!(ask.get_bid(), None);
-
-    // Any fact of a lane states it: a currency alone names the side and
-    // prices the element in it, and invents no price.
-    let mut priced = OrderEvent::at(at(30));
-    priced.set_ask(Some(Lane {
-        currency: Some(currency("EUR")),
-        ..Lane::default()
-    }));
-    priced.fill_operation();
-    assert_eq!(priced.get_side().as_str(), "SELL");
-    assert_eq!(priced.get_currency().as_str(), "EUR");
-    assert_eq!(priced.get_price(), None);
-
-    // The FX parts of a forward price ride the lane too.
-    let mut forward = OrderEvent::at(at(35));
-    forward.set_bid(Some(Lane {
-        price: Some(decimal("1.1025")),
-        spotrate: Some(decimal("1.1")),
-        forwardpoints: Some(decimal("0.0025")),
-        ..Lane::default()
-    }));
-    forward.fill_operation();
-    assert_eq!(forward.get_side().as_str(), "BUY");
-    assert_eq!(forward.get_spotrate(), Some(decimal("1.1")));
-    assert_eq!(forward.get_forwardpoints(), Some(decimal("0.0025")));
-
-    // Two lanes name no side, so nothing reads off either.
-    let mut two = OrderEvent::at(at(40));
-    two.set_bid(Some(Lane {
-        price: Some(decimal("101")),
-        ..Lane::default()
-    }));
-    two.set_ask(Some(Lane {
-        price: Some(decimal("102")),
-        ..Lane::default()
-    }));
-    two.fill_operation();
-    assert_eq!(two.get_side(), Side::Unknown);
-    assert_eq!(two.get_price(), None);
-
-    // A side the element states is its own, whatever lane it quotes: a
-    // cross takes no lane, so the offer it carries dates nothing either.
-    let mut cross = OrderEvent::at(at(50));
-    cross.set_side(Side::read("Cross").expect("a side"));
-    cross.set_ask(Some(Lane {
-        price: Some(decimal("102")),
-        ..Lane::default()
-    }));
-    cross.fill_operation();
-    assert_eq!(cross.get_side().as_str(), "CROSS");
-    assert_eq!(cross.get_price(), None);
-
-    // An element pricing itself is not a quote: a trade at its last
-    // executed price beside a lone bid is about the trade, and names no
-    // side - so the lane is context, and the price it states stays none.
-    let mut traded = OrderEvent::at(at(60));
-    traded.set_lastpx(Some(decimal("100")));
-    traded.set_bid(Some(Lane {
-        price: Some(decimal("99")),
-        ..Lane::default()
-    }));
-    traded.fill_market();
-    traded.fill_operation();
-    assert_eq!(traded.get_side(), Side::Unknown);
-    assert_eq!(
-        traded.get_price(),
-        None,
-        "a last executed price is not the price stated"
-    );
-    assert_eq!(traded.get_lastpx(), Some(decimal("100")));
-
-    // Filling twice changes nothing the first run did not.
-    let twice = {
-        let mut held = bid.clone();
-        held.fill_operation();
-        held
-    };
-    assert_eq!(bid, twice);
-}
-
-/// A chain's side reaches only an element quoting no lane of its own: one
-/// lane names the element's side itself, and two name none, whatever side
-/// the quote before it named.
-#[test]
-fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
-    let quote = |ms: i64, bid: Option<&str>, ask: Option<&str>| {
+fn an_operation_following_another_keeps_its_own_side_or_takes_the_chains() {
+    let order = |ms: i64, side: Option<&str>| {
         let mut held = OrderEvent::at(at(ms));
-        held.set_crosscode("Q1".to_owned());
-        held.set_bid(bid.map(|price| Lane {
-            price: Some(decimal(price)),
-            ..Lane::default()
-        }));
-        held.set_ask(ask.map(|price| Lane {
-            price: Some(decimal(price)),
-            ..Lane::default()
-        }));
+        held.set_crosscode("O1".to_owned());
+        if let Some(side) = side {
+            held.set_side(Side::read(side).expect("a side"));
+        }
         held.finalize();
         held
     };
-    let first = quote(10, Some("101"), None);
-    assert_eq!(first.get_side().as_str(), "BUY");
-
-    let two = quote(20, Some("102"), Some("103"))
+    let first = order(10, Some("Buy"));
+    let own = order(20, Some("Sell"))
         .with_previous(&first)
-        .expect("the next quote");
-    assert_eq!(two.get_side(), Side::Unknown, "two lanes name no side");
-    assert_eq!(two.get_price(), None);
-
-    let offer = quote(30, None, Some("104"))
+        .expect("the next order");
+    assert_eq!(own.get_side().as_str(), "SELL", "its own side stands");
+    let silent = order(30, None)
         .with_previous(&first)
-        .expect("the next quote");
-    assert_eq!(offer.get_side().as_str(), "SELL", "its own lane names it");
-    assert_eq!(offer.get_price(), Some(decimal("104")));
-
-    // A statement quoting nothing is about the side the chain took.
-    let silent = quote(40, None, None)
-        .with_previous(&first)
-        .expect("the next quote");
-    assert_eq!(silent.get_side().as_str(), "BUY");
+        .expect("the next order");
+    assert_eq!(silent.get_side().as_str(), "BUY", "the chain's side");
 }
 
 #[test]

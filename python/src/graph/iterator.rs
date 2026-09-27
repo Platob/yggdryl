@@ -24,7 +24,10 @@ impl PyEventIterator {
     /// Opens a walk over `items`. `sorted` states that they arrive in their
     /// own order already; where they do not, the walk collects and sorts
     /// them first. `snapshot_ns`, given, is the grid step in nanoseconds the
-    /// walk also yields living-identity snapshots at.
+    /// walk also yields living-identity snapshots at: each the live event as
+    /// of its tick, dated at it - `currunix` and `snapunix` both, so its
+    /// `curruuid` is the identity that tick derives - with the live event's
+    /// content, `seqnum`, `prevuuid` and `crossuuid`, advancing no chain.
     #[new]
     #[pyo3(signature = (items, sorted=true, snapshot_ns=None))]
     fn new(items: &Bound<'_, PyAny>, sorted: bool, snapshot_ns: Option<i64>) -> PyResult<Self> {

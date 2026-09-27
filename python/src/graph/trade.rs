@@ -30,7 +30,8 @@ impl PyTradeEvent {
 }
 
 graph_methods!(PyTradeEvent, "TradeEvent"; [
-    element_getters, event_getters, market_getters, operation_getters, common_verbs, event_verbs
+    element_getters, event_getters, market_getters, operation_getters, kind_getters,
+    common_verbs, event_verbs
 ]; {
     /// A trade from its root - any dated operation, whose facts are copied
     /// - and its executions, through the core's own `from_parts`.

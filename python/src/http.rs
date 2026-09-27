@@ -23,9 +23,9 @@ use pyo3::types::{
 
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::http::{
-    Authorization, Client, ContentRange, Fault, Headers, HttpOptions, Link, Method, Pages,
-    Pagination, Recorded, Request, Response, Server, ServerOptions, Session, StatsSnapshot, Status,
-    Stream,
+    Authorization, Client, ContentRange, Fault, ForwardedHeader, Headers, HttpOptions, Link,
+    Method, Pages, Pagination, Recorded, Request, Response, Server, ServerOptions, Session,
+    StatsSnapshot, Status, Stream,
 };
 use yggdryl::{Charset, Codec, FieldPath, IOBase as _, IOKind};
 
@@ -2180,7 +2180,27 @@ fn recorded_dict(py: Python<'_>, recorded: Recorded) -> PyResult<Py<PyDict>> {
     entry.set_item("headers", PyHeaders::from_core(recorded.headers))?;
     entry.set_item("body_len", recorded.body_len)?;
     entry.set_item("status", recorded.status.code())?;
+    entry.set_item("peer", recorded.peer.map(|peer| peer.to_string()))?;
+    entry.set_item("client", recorded.client.map(|client| client.to_string()))?;
     Ok(entry.unbind())
+}
+
+/// Read the option `name`, an iterable of `str` each naming `what`. A bare
+/// string is refused rather than walked character by character.
+fn strings_of(value: &Bound<'_, PyAny>, name: &str, what: &str) -> PyResult<Vec<String>> {
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(format!(
+            "{name} must be an iterable of {what}, not a str"
+        )));
+    }
+    value
+        .try_iter()?
+        .map(|item| {
+            item?.extract::<String>().map_err(|_| {
+                PyTypeError::new_err(format!("{name} must be an iterable of {what} as str"))
+            })
+        })
+        .collect()
 }
 
 /// Read an optional method name; `None` answers every method.
@@ -2218,6 +2238,13 @@ impl PyServer {
     /// timeouts in seconds or a `timedelta`, the sizes in bytes. `trace`
     /// writes every exchange into that folder - a path, a path-like, or a
     /// container `IOBase` - as `NNNN-request.http` and `NNNN-response.http`.
+    /// Behind a reverse proxy, `public_url` - a `str` or a `Url` - is the
+    /// base of every URL the server states, `trusted_proxies` the IP
+    /// addresses or CIDR networks whose forwarded fields are believed,
+    /// `forwarded_headers` the fields read from them - by default
+    /// `X-Forwarded-For` and `X-Forwarded-Proto`; name only fields the proxy
+    /// sets or overwrites - and `path_prefix` what the proxy leaves on a
+    /// request's path, stripped before routing.
     #[staticmethod]
     #[pyo3(signature = (
         address = "127.0.0.1:0",
@@ -2234,6 +2261,10 @@ impl PyServer {
         http3 = None,
         server_header = None,
         trace = None,
+        public_url = None,
+        trusted_proxies = None,
+        forwarded_headers = None,
+        path_prefix = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn bind(
@@ -2251,6 +2282,10 @@ impl PyServer {
         http3: Option<bool>,
         server_header: Option<String>,
         trace: Option<&Bound<'_, PyAny>>,
+        public_url: Option<&Bound<'_, PyAny>>,
+        trusted_proxies: Option<&Bound<'_, PyAny>>,
+        forwarded_headers: Option<&Bound<'_, PyAny>>,
+        path_prefix: Option<&str>,
     ) -> PyResult<Self> {
         let mut options = ServerOptions::default();
         if let Some(timeout) = read_timeout {
@@ -2289,6 +2324,26 @@ impl PyServer {
         if let Some(trace) = trace {
             options = options.with_trace(folder_holder_from_value(trace)?);
         }
+        if let Some(url) = public_url {
+            options = options.with_public_url(core_url_from_value(url)?);
+        }
+        if let Some(networks) = trusted_proxies {
+            let networks =
+                strings_of(networks, "trusted_proxies", "IP addresses or CIDR networks")?;
+            options = options
+                .with_trusted_proxies(networks)
+                .map_err(storage_error)?;
+        }
+        if let Some(headers) = forwarded_headers {
+            let headers = strings_of(headers, "forwarded_headers", "forwarded field names")?
+                .iter()
+                .map(|name| ForwardedHeader::from_str(name).map_err(storage_error))
+                .collect::<PyResult<Vec<_>>>()?;
+            options = options.with_forwarded_headers(headers);
+        }
+        if let Some(prefix) = path_prefix {
+            options = options.with_path_prefix(prefix).map_err(storage_error)?;
+        }
         let server = py
             .detach(|| Server::bind_with(address, options))
             .map_err(storage_error)?;
@@ -2320,6 +2375,17 @@ impl PyServer {
     fn url_of(&self, py: Python<'_>, path: &str) -> PyResult<Py<crate::uri::PyUrl>> {
         let url = self
             .with(|server| server.url_of(path))?
+            .map_err(storage_error)?;
+        url_object(py, url)
+    }
+
+    /// The URL clients reach `path` at: under the `public_url` the server
+    /// was bound with - its path the prefix the proxy adds, so `/xmla`
+    /// under `https://data.example.com/olap` is
+    /// `https://data.example.com/olap/xmla` - else `url_of(path)`.
+    fn public_url_of(&self, py: Python<'_>, path: &str) -> PyResult<Py<crate::uri::PyUrl>> {
+        let url = self
+            .with(|server| server.public_url_of(path))?
             .map_err(storage_error)?;
         url_object(py, url)
     }

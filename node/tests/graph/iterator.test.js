@@ -20,7 +20,9 @@ test('an order chains to the live order it follows', () => {
   assert.ok(walked.every((data) => data instanceof graph.MarketData))
   const head = walked[0].asOrderEvent()
   const tail = walked[1].asOrderEvent()
-  assert.ok(head.equals(first))
+  // The head is the order itself, the walk stating when its chain began.
+  assert.equal(head.curruuid, first.curruuid)
+  assert.equal(head.creaunix, CLOCK)
   assert.equal(head.seqnum, 0)
   assert.equal(head.prevuuid, null)
   assert.equal(tail.prevuuid, first.curruuid)
@@ -32,11 +34,11 @@ test('an execution and every other leaf walk through', () => {
   const first = order(CLOCK)
   // A millisecond later: two instants in one millisecond share an identity.
   const execution = new graph.ExecutionEvent(CLOCK + 1_000_000n, { crosscode: 'O-1', side: 'BUY', lastpx: '101', lastqty: 10 })
-  const side = new graph.BookSide('BUY')
-  const walked = [...new graph.EventIterator([first, execution, side, new graph.Order({ crosscode: 'O-1' })])]
-  assert.deepEqual(walked.map((data) => data.kind), ['order_event', 'execution_event', 'book_side', 'order'])
-  // A book side is yielded unchanged, in place.
-  assert.ok(walked[2].asBookSide().equals(side))
+  const book = new graph.BookEvent(CLOCK + 2_000_000n, 'IBM')
+  const walked = [...new graph.EventIterator([first, execution, book, new graph.Order({ crosscode: 'O-1' })])]
+  assert.deepEqual(walked.map((data) => data.kind), ['order_event', 'execution_event', 'book_event', 'order'])
+  // A book is yielded unchanged, in place.
+  assert.ok(walked[2].asBookEvent().equals(book))
   assert.ok(walked[3].asOrder().equals(new graph.Order({ crosscode: 'O-1' })))
   // The execution follows the order it fills across kinds, keeping its own.
   const fill = walked[1].asExecutionEvent()
@@ -62,8 +64,31 @@ test('alive and the snapshot grid', () => {
   const live = new graph.EventIterator([order(CLOCK)])
   assert.equal(live.snapshotNs, null)
   assert.equal([...live].length, 1)
-  assert.deepEqual(live.alive().map((data) => data.crosscode), ['O-1'])
+  // A sided element's cross code carries its side (A17).
+  assert.deepEqual(live.alive().map((data) => data.crosscode), ['BUY:O-1'])
   assert.ok(live.alive().every((data) => data instanceof graph.MarketData))
+})
+
+test('a snapshot view is the live event as of its tick', () => {
+  // A 5 ms grid: two ticks a millisecond apart derive two identities.
+  const source = order(CLOCK, 'NEW', { exprunix: CLOCK + 10_000_000n })
+  const walked = [...new graph.EventIterator([source], true, 5_000_000n)].map((data) => data.asOrderEvent())
+  assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK + 5_000_000n, null])
+  const [live] = walked
+  const views = walked.filter((event) => event.snapunix !== null)
+  for (const view of views) {
+    // Dated at its tick, so it has the identity that tick derives ...
+    assert.equal(view.currunix, view.snapunix)
+    assert.equal(view.curruuid === live.curruuid, view.snapunix === live.currunix)
+    // ... while its content, its place and its cross element are the live event's.
+    assert.equal(view.currhashcode, live.currhashcode)
+    assert.equal(view.seqnum, live.seqnum)
+    assert.equal(view.prevuuid, live.prevuuid)
+    assert.equal(view.crossuuid, live.crossuuid)
+  }
+  assert.notEqual(views[1].curruuid, live.curruuid)
+  // A view does not advance the chain: the expiry follows the live event.
+  assert.equal(walked.at(-1).prevuuid, live.curruuid)
 })
 
 test('a JavaScript failure is thrown as itself', () => {

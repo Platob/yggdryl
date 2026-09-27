@@ -24,14 +24,14 @@ fn a_source_is_written_once_and_read_back_whole() {
     let mut party = DataType::utf8().nullable_field("partyid");
     party.as_fix_mut().set_tag(448).expect("a tag");
     let stated = [
-        FixIdSource::new(FixIdMapKind::Accounts, "CUSTOMERACCOUNT").with_role("24"),
-        FixIdSource::new(FixIdMapKind::Users, "ENTERINGTRADER").with_role("36"),
+        FixIdSource::new(FixIdMapKind::Alts, "CUSTOMERID").with_role("24"),
+        FixIdSource::new(FixIdMapKind::Alts, "ENTERINGFIRM").with_role("7"),
     ];
     party.as_fix_mut().set_idmap(&stated).expect("two sources");
     assert_eq!(
         party.get_metadata("FIX:idmap"),
         Some(
-            r#"[{"map":"accountids","key":"CUSTOMERACCOUNT","role":"24"},{"map":"userids","key":"ENTERINGTRADER","role":"36"}]"#
+            r#"[{"map":"altids","key":"CUSTOMERID","role":"24"},{"map":"altids","key":"ENTERINGFIRM","role":"7"}]"#
         )
     );
     assert_eq!(sources(&party), stated);
@@ -51,6 +51,9 @@ fn a_map_reads_by_its_name_and_nothing_else() {
         FixIdMapKind::Alts
     );
     assert!("altid".parse::<FixIdMapKind>().is_err());
+    // The accounts and users a message names are no identifier map.
+    assert!("accountids".parse::<FixIdMapKind>().is_err());
+    assert!("userids".parse::<FixIdMapKind>().is_err());
 }
 
 #[test]
@@ -70,11 +73,7 @@ fn a_source_the_document_cannot_state_is_refused_and_the_field_stands() {
             "upper-case",
         ),
         (
-            FixIdSource::new(FixIdMapKind::Accounts, "ACCOUNT").with_follow(true),
-            "altids only",
-        ),
-        (
-            FixIdSource::new(FixIdMapKind::Users, "TRADER").with_role("a role"),
+            FixIdSource::new(FixIdMapKind::Alts, "TRADER").with_role("a role"),
             "PartyRole code",
         ),
     ] {
@@ -106,6 +105,7 @@ fn a_hand_edited_document_is_refused_where_it_stops() {
         r#"[{"map":"altids","key":"ORDERID","follow":"yes"}]"#,
         r#"[{"map":"altids","key":"ORDERID","colour":"red"}]"#,
         r#"[{"map":"trades","key":"ORDERID"}]"#,
+        r#"[{"map":"accountids","key":"ACCOUNT"}]"#,
     ] {
         let mut field = order();
         field
@@ -124,7 +124,7 @@ fn a_registry_takes_a_role_on_partyid_alone() {
     let mut field = order();
     field
         .as_fix_mut()
-        .set_idmap(&[FixIdSource::new(FixIdMapKind::Users, "TRADER").with_role("12")])
+        .set_idmap(&[FixIdSource::new(FixIdMapKind::Alts, "TRADER").with_role("12")])
         .expect("a document");
     let refusal = registry.add_field(field).expect_err("a role off PartyID");
     assert!(refusal.to_string().contains("PartyID(448)"), "{refusal}");
@@ -173,5 +173,13 @@ fn the_committed_dictionary_follows_exactly_what_a_plain_holder_does() {
             "{source:?} is stated once"
         );
     }
-    assert_eq!(sources.len(), 24, "{sources:?}");
+    // Ten fields of the dictionary and six of the crate's own; no account
+    // and no user is an identifier.
+    assert_eq!(sources.len(), 16, "{sources:?}");
+    assert!(
+        sources
+            .iter()
+            .all(|(_, source)| source.map() == FixIdMapKind::Alts && source.role().is_none()),
+        "{sources:?}"
+    );
 }

@@ -45,6 +45,10 @@ mod timezone;
 mod serie;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
+mod marketdatakind;
+#[allow(dead_code)]
+mod side;
+#[allow(dead_code)]
 mod state;
 #[allow(dead_code)]
 mod uri;
@@ -79,11 +83,10 @@ pub use fix::{
     fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use graph::{
-    BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsBookSide, JsEventIterator, JsExecution,
-    JsExecutionEvent, JsLane, JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent,
-    JsQuote, JsQuoteEvent, JsSnapshotEvent, JsSnapshotPartition, JsTradeEvent, LaneInput,
-    SnapshotPartitionInput, graph_entry_id_native, graph_entry_ref_id_native,
-    graph_followed_altids_native, graph_global_symbol_native,
+    BookLimit, BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsEventIterator, JsExecution,
+    JsExecutionEvent, JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent, JsQuote,
+    JsQuoteEvent, JsSnapshotEvent, JsTradeEvent, graph_entry_id_native, graph_entry_ref_id_native,
+    graph_followed_altids_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use http::{

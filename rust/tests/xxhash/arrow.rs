@@ -357,12 +357,24 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("NEW"), Scalar::from("FILLED"), Scalar::Null]),
             ),
             (
+                Field::new("marketdatakind", DataType::MarketDataKind, true),
+                Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
+            ),
+            (
                 Field::new("timeinforce", DataType::TimeInForce, true),
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),
             (
                 Field::new("unit", DataType::Unit, true),
                 Scalar::from_sequence([Scalar::from("Shares"), Scalar::from("Lots"), Scalar::Null]),
+            ),
+            (
+                Field::new("forex", DataType::Forex, true),
+                Scalar::from_sequence([
+                    Scalar::from("EUR/USD"),
+                    Scalar::from("gbpjpy"),
+                    Scalar::Null,
+                ]),
             ),
             (
                 Field::new("uuid", DataType::Uuid, true),

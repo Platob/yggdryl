@@ -31,7 +31,7 @@ let committedRegistry
   // The one graph leaf a message expands to: an order, a quote, an
   // execution or an initial trade report is exactly one `MarketData`.
   function operationOf(message) {
-    const operations = message.marketOperations()
+    const operations = message.marketData()
     assert.equal(operations.length, 1)
     assert.ok(operations[0] instanceof graph.MarketData)
     return operations[0].intoLeaf()
@@ -190,10 +190,6 @@ let committedRegistry
       assert.throws(() => {
         view.msgcat = 'ORDR'
       }, { name: 'TypeError', message: new RegExp(scheme) })
-      assert.throws(() => view.derivation, { name: 'TypeError', message: new RegExp(scheme) })
-      assert.throws(() => {
-        view.derivation = 'orderqty - cumqty'
-      }, { name: 'TypeError', message: new RegExp(scheme) })
       assert.throws(() => {
         view.names = ['Ticker']
       }, { name: 'TypeError', message: new RegExp(scheme) })
@@ -243,38 +239,6 @@ let committedRegistry
       assert.throws(() => { declaration.fix.identifiers = invalid })
       assert.deepEqual(declaration.toJSON(), before)
     }
-  })
-
-  test('a derivation crosses as canonical text', () => {
-    // One term over the message's fields, stored as its canonical spelling;
-    // null removes it, and a text that is not a term throws.
-    const field = new Field('leavesqty', 'float64')
-    field.fix.tag = 151
-    assert.equal(field.fix.derivation, null)
-
-    field.fix.derivation = 'orderqty-cumqty'
-    assert.equal(field.fix.derivation, 'orderqty - cumqty')
-    assert.equal(field.get('FIX:derivation'), 'orderqty - cumqty')
-
-    assert.throws(() => {
-      field.fix.derivation = 'orderqty -'
-    })
-    assert.equal(field.fix.derivation, 'orderqty - cumqty')
-
-    // An edited derivation is what the reader fills by.
-    const registry = seed()
-    const leaves = registry.getFieldByTag(151)
-    leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
-    registry.update(leaves)
-    const codec = fixedCodec(registry)
-    const held = codec.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|')).next().value
-    // An exact column renders as its own text, at the one scale this crate
-    // keeps a number at.
-    assert.equal(held.byTag(151).toJSON(), '200.000000000000000000')
-
-    field.fix.derivation = null
-    assert.equal(field.fix.derivation, null)
-    assert.equal(field.has('FIX:derivation'), false)
   })
 
   test('direction rules cross as a typed list', () => {
@@ -1348,7 +1312,8 @@ let committedRegistry
     // is where its chain was created too; the cross code is the client's
     // order identifier, the first stated of the tags a chain is named by.
     assert.equal(message.side, 'BUY')
-    assert.equal(message.crosscode, 'C-1')
+    // A sided message's cross code carries its side (A17).
+    assert.equal(message.crosscode, 'BUY:C-1')
     assert.equal(message.currunix, SENDING_NS)
     assert.equal(message.creaunix, SENDING_NS)
     // A new order stating no status asks for a new order.
@@ -1385,10 +1350,10 @@ let committedRegistry
     assert.equal(message.byName('MsgType').asJs(), 'D')
     assert.equal(message.byTag(54).asJs(), 'BUY')
     assert.ok(message.byTag(52).equals(SENDING))
-    assert.ok(message.byTag(65003).equals(SENDING), 'unix, as the clock its column holds')
-    assert.equal(message.byTag(65039).asJs(), message.curruuid)
-    assert.equal(message.byTag(65017).asJs(), message.currhashcode)
-    assert.equal(message.byTag(65048).asJs(), 'C-1')
+    assert.ok(message.byTag(65001).equals(SENDING), 'unix, as the clock its column holds')
+    assert.equal(message.byTag(65008).asJs(), message.curruuid)
+    assert.equal(message.byTag(65011).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65010).asJs(), 'BUY:C-1')
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
     assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
@@ -1399,7 +1364,7 @@ let committedRegistry
     // A fact the message states nothing for is absent, not null.
     assert.equal(message.getByTag(44), null, 'no price')
     assert.equal(message.getByTag(58), null, 'no text')
-    assert.equal(message.getByTag(65049), null, 'no metadata')
+    assert.equal(message.getByTag(65030), null, 'no metadata')
     // An identifier is exact: one the dictionary holds no field under misses,
     // and so does one whose field the root does not declare.
     const stray = fixField('TradeID', 'utf8', 5001)
@@ -1447,7 +1412,9 @@ let committedRegistry
     assert.equal(event.recdunix, null)
     // A merge keeps no clock of the reference it chose.
     assert.equal('refrecdunix' in event, false)
-    assert.equal(event.marketoperationid, 10)
+    assert.equal(event.marketdatakind, 'ORDR')
+    assert.equal(message.msgcat, 'ORDR')
+    assert.equal(message.strikepx, null)
     assert.equal(event.price, '10.5')
     assert.equal(event.quantity, '100')
     assert.equal(event.lastpx, '10.25')
@@ -1468,44 +1435,37 @@ let committedRegistry
     assert.equal(event.unit, 'Shares')
     assert.equal(event.side, 'BUY')
     assert.deepEqual(event.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
+    assert.equal(event.isincode, 'US0378331005')
+    assert.deepEqual(event.fxrates, {})
     assert.equal(event.cficode, null)
     assert.equal(event.miccode, null)
     assert.equal(event.spotrate, null)
     assert.equal(event.forwardpoints, null)
     // The metadata is what the message states that no typed column reads:
-    // here the two fields the dictionary derived from the ISIN and the
-    // currency, keyed by name as canonical text.
-    assert.deepEqual(event.metadata, { countryofissue: 'US', currencycodesource: '6' })
-    // The operation facts: each map built from the fields that state it,
-    // upper-cased keys in key order, and the lane a buy at a price fills
-    // for itself - the other lane is the other party's.
-    assert.deepEqual(event.accountids, { ACCOUNT: 'ACC-1' })
-    assert.deepEqual(event.userids, { SENDERSUBID: 'TRADER' })
+    // the account (A1: no account map), and the two fields the dictionary
+    // derived from the ISIN and the currency, keyed by name as canonical
+    // text.
+    assert.deepEqual(event.metadata, { account: 'ACC-1', countryofissue: 'US', currencycodesource: '6' })
+    // The operation facts: the names the order goes by, upper-cased keys in
+    // key order. An order's own price states no bid (A20).
     assert.deepEqual(event.altids, { CLORDID: 'A1', ORDERID: 'O-1' })
-    // The lane crosses whole as a typed `Lane`, never a plain object.
-    assert.equal(event.bid.price, '10.5')
-    assert.equal(event.bid.spotrate, null)
-    assert.equal(event.bid.forwardpoints, null)
-    assert.equal(event.bid.currency, 'USD')
-    assert.equal(event.bid.quantity, '100')
-    assert.equal(event.bid.unit, 'Shares')
-    assert.equal(event.ask, null)
+    assert.equal(event.bidpx, null)
+    assert.equal(event.askpx, null)
     // The message answers the same facts as getters.
     for (const name of [
-      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints',
-      'accountids', 'userids', 'altids',
+      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'altids', 'isincode', 'fxrates',
+      'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy',
     ]) {
       assert.deepEqual(message[name], event[name], name)
     }
     // Except the metadata: the leaf's is computed where the leaf is built,
     // never stored on the message, whose own map feeds its code.
     assert.deepEqual(message.metadata, {})
-    assert.equal(message.ask, event.ask)
-    assert.ok(message.bid.equals(event.bid))
     // The retired spellings are gone rather than aliased.
     for (const gone of [
-      'identifiers', 'isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
-      'bidpx', 'bidqty', 'bidcurrency', 'bidunit', 'askpx', 'askqty', 'askcurrency', 'askunit',
+      'identifiers', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
+      'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'accountids', 'userids', 'marketoperationid',
+      'bid', 'ask',
     ]) {
       assert.equal(gone in event, false, gone)
       assert.equal(gone in message, false, gone)
@@ -1601,20 +1561,16 @@ let committedRegistry
     assert.equal(event.state, message.state)
     assert.equal(event.seqnum, message.seqnum)
     assert.equal(event.prevuuid, message.prevuuid)
-    assert.equal(event.marketoperationid, message.marketoperationid)
+    assert.equal(event.marketdatakind, message.msgcat)
     assert.equal(event.price, message.price)
     assert.equal(event.quantity, message.quantity)
     assert.equal('px' in event, false)
     assert.equal('qty' in event, false)
-    // A buy of a hundred at no price fills the bid lane's size and nothing
-    // else; the other lane is the other party's.
-    assert.equal(event.bid.price, null)
-    assert.equal(event.bid.spotrate, null)
-    assert.equal(event.bid.forwardpoints, null)
-    assert.equal(event.bid.currency, null)
-    assert.equal(event.bid.quantity, '100')
-    assert.equal(event.bid.unit, null)
-    assert.equal(event.ask, null)
+    // A buy of a hundred at no price states no bid or ask: those are what
+    // a quote or a book states (A20).
+    for (const name of ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
+      assert.equal(event[name], null, name)
+    }
     assert.deepEqual(event.securityids, {})
     for (const code of ['cficode', 'miccode']) {
       assert.equal(event[code], null, code)
@@ -1650,7 +1606,7 @@ let committedRegistry
     // goes by.
     assert.equal(message.crosscode, 'ORDER-1')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
-    assert.equal(message.byTag(65065).asJs(), '8:SESSION-1:CONTEXT-1:7')
+    assert.equal(message.byTag(65021).asJs(), '8:SESSION-1:CONTEXT-1:7')
     assert.deepEqual(message.altids, { CLORDID: 'CLIENT-1', ORDERID: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
@@ -1669,7 +1625,7 @@ let committedRegistry
     message.set('msgctxid', null)
     assert.equal(message.capture().msgctxid, null)
     assert.equal(message.capture().msgsesseventid, null)
-    assert.equal(message.getByTag(65065), null)
+    assert.equal(message.getByTag(65021), null)
     assert.equal(message.currhashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
@@ -1682,7 +1638,7 @@ let committedRegistry
     const schema = fix.schema(registry)
     const at = schema.indexOf('msgsesseventid')
     assert.equal(at, schema.indexOf('msgsessionid') + 1)
-    assert.equal(schema.fieldAt(at).fix.tag, 65065)
+    assert.equal(schema.fieldAt(at).fix.tag, 65021)
     assert.equal(schema.indexOf('refrecdunix'), null)
     const row = message.intoRow(schema)
     assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
@@ -1704,8 +1660,8 @@ let committedRegistry
       .next().value
     assert.equal(named.capture().msgoriginator, 'PLUGIN_A')
     assert.equal(named.capture().conversationid, 'c-1')
-    assert.equal(named.byTag(65066).asJs(), 'PLUGIN_A')
-    assert.equal(named.byTag(65067).asJs(), 'c-1')
+    assert.equal(named.byTag(65018).asJs(), 'PLUGIN_A')
+    assert.equal(named.byTag(65022).asJs(), 'c-1')
     assert.equal(bare.capture().msgoriginator, null)
     assert.equal(bare.capture().conversationid, null)
     assert.equal(named.intoText('|'), bare.intoText('|'))
@@ -1731,9 +1687,10 @@ let committedRegistry
 
     // A follow flag belongs to an alternate identifier alone, and a refused
     // list leaves the field as it was.
+    // A1: an identifier map is the alternate identifiers alone.
     assert.throws(() => {
       field.fix.idmap = [{ map: 'accountids', key: 'ORDERID', follow: true }]
-    }, /altids only/)
+    }, /expected "map" to be altids, got "accountids"/)
     assert.throws(() => {
       field.fix.idmap = [{ map: 'altids', key: 'orderid' }]
     }, /upper-case/)
@@ -1742,7 +1699,7 @@ let committedRegistry
     assert.equal(field.has('FIX:idmap'), false)
 
     // The committed dictionary compiles every field's once: OrderID follows,
-    // PartyID names three maps by the role of the occurrence stating it.
+    // and PartyID names no map - the parties stay in the metadata (A1).
     const registry = seed()
     const table = registry.idmapSources()
     assert.deepEqual(
@@ -1751,7 +1708,7 @@ let committedRegistry
     )
     assert.deepEqual(
       table.filter((row) => row.tag === 448).map((row) => [row.map, row.key, row.role]),
-      [['accountids', 'CUSTOMERACCOUNT', '24'], ['userids', 'ENTERINGTRADER', '36'], ['userids', 'EXECUTINGTRADER', '12']],
+      [],
     )
 
     // A bridge's own identifiers land in the maps their fields name.
@@ -1761,8 +1718,8 @@ let committedRegistry
         'PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|',
       ))
       .next().value
-    assert.deepEqual(message.accountids, { OMSDEALERACCOUNT: 'ACC1' })
-    assert.deepEqual(message.userids, { OMSUSERID: 'trader1' })
+    assert.equal('accountids' in message, false)
+    assert.equal('userids' in message, false)
     assert.deepEqual(message.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1', ULTRADERCLORDID: 'U1' })
   })
 
@@ -1778,7 +1735,7 @@ let committedRegistry
     // Joined by `:` with nothing in front of a part, and held by the capture
     // rather than among the names the message goes by.
     assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
-    assert.equal(message.byTag(65065).asJs(), '8:e7256476:9effef3e6a:1094')
+    assert.equal(message.byTag(65021).asJs(), '8:e7256476:9effef3e6a:1094')
     assert.equal('msgsesseventid' in message.altids, false)
 
     // A part missing is no session event at all.
@@ -2183,49 +2140,43 @@ let committedRegistry
     )
   })
 
-  test("a single-sided quote reads as its lane's side", () => {
+  test('a quote states its bid and ask, and a two-sided one splits by side', () => {
     const codec = fixedCodec(seed())
 
-    // A bid alone is a buy at the bid: the price, the quantity and the lane's
-    // currency read off it, and none of it reaches the wire.
+    // A bid alone states the bid facts, in the message's currency (A20);
+    // it names no side, so its side is UNKNOWN, never null (A15).
     const bid = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|'))
-    assert.equal(bid.side, 'BUY')
-    assert.equal(bid.price, '101.5')
-    assert.equal(bid.quantity, '200')
-    assert.equal(bid.currency, 'USD')
+    assert.equal(bid.side, 'UNKNOWN')
+    assert.equal(bid.msgcat, 'QUOT')
+    assert.deepEqual(
+      ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy'].map((name) => bid[name]),
+      ['101.5', '200', 'USD', null, null, null],
+    )
+    assert.equal(bid.price, null)
     assert.ok(!bid.intoText('|').includes('|54='))
-    // The lane itself crosses whole as a typed `Lane`, each slot as stated
-    // and null where none is, and the other lane is the other party's.
-    assert.equal(bid.bid.price, '101.5')
-    assert.equal(bid.bid.spotrate, null)
-    assert.equal(bid.bid.forwardpoints, null)
-    assert.equal(bid.bid.currency, 'USD')
-    assert.equal(bid.bid.quantity, '200')
-    assert.equal(bid.bid.unit, null)
-    assert.equal(bid.ask, null)
+    assert.equal(operationOf(bid).bidpx, bid.bidpx)
 
-    // An offer alone is a sell at the offer.
+    // An offer alone states the ask facts the same way.
     const offer = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|'))
-    assert.equal(offer.side, 'SELL')
-    assert.equal(offer.price, '102')
-    assert.equal(offer.quantity, '50')
-    assert.equal(offer.ask.price, '102')
-    assert.equal(offer.ask.spotrate, null)
-    assert.equal(offer.ask.forwardpoints, null)
-    assert.equal(offer.ask.currency, null)
-    assert.equal(offer.ask.quantity, '50')
-    assert.equal(offer.ask.unit, null)
-    assert.ok(operationOf(offer).ask.equals(offer.ask))
-    assert.equal(offer.bid, null)
+    assert.deepEqual(
+      ['bidpx', 'askpx', 'askqty', 'askccy'].map((name) => offer[name]),
+      [null, '102', '50', null],
+    )
 
-    // Both lanes name no side; a stated side stands whatever lane it quotes.
-    const two = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
+    // A13: a two-sided quote parses as itself and one sided quote per side,
+    // each keeping the pair its source stated and taking its side's price.
+    const [two, buy, sell] = codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
     assert.equal(two.side, 'UNKNOWN')
-    assert.equal(two.bid.price, '101')
-    assert.equal(two.bid.quantity, null)
-    assert.equal(two.ask.price, '102')
-    const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))
-    assert.equal(stated.side, 'SELL')
+    assert.deepEqual([buy.side, buy.price, buy.crosscode], ['BUY', '101', 'BUY:Q3'])
+    assert.deepEqual([sell.side, sell.price, sell.crosscode], ['SELL', '102', 'SELL:Q3'])
+    for (const sided of [buy, sell]) {
+      assert.deepEqual([sided.bidpx, sided.askpx], ['101', '102'])
+    }
+    // A stated side stands whatever it quotes, and one side is one message.
+    const stated = [...codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))]
+    assert.equal(stated.length, 1)
+    assert.equal(stated[0].side, 'SELL')
+    assert.equal(stated[0].crosscode, 'SELL:Q4')
   })
 
   test('an execution report stating no execution clock executed at its instant', () => {
@@ -2278,13 +2229,30 @@ let committedRegistry
     const codec = fixedCodec(registry)
     const snapshots = fixedCodec(registry, { snapshotNs: 1_000_000_000n })
     assert.equal(snapshots.snapshotNs, 1_000_000_000n)
+    // A grid set on a codec in hand keeps every other setting of it.
+    const regridded = codec.withSnapshotNs(3_600_000_000_000n)
+    assert.equal(regridded.snapshotNs, 3_600_000_000_000n)
+    assert.deepEqual(regridded.excludeMsgtypes, codec.excludeMsgtypes)
+    assert.equal(codec.snapshotNs, null)
+    assert.equal(snapshots.withSnapshotNs(null).snapshotNs, null)
+    // The sorted-lifecycle pin: off unless stated, set by the option or on a
+    // codec in hand, every other setting kept.
+    assert.equal(codec.sortedLifecycle, false)
+    assert.equal(new fix.FixCodec(registry, { sortedLifecycle: undefined }).sortedLifecycle, false)
+    assert.equal(fixedCodec(registry, { sortedLifecycle: true }).sortedLifecycle, true)
+    const ordered = snapshots.withSortedLifecycle(true)
+    assert.equal(ordered.sortedLifecycle, true)
+    assert.equal(ordered.snapshotNs, 1_000_000_000n)
+    assert.deepEqual(ordered.excludeMsgtypes, snapshots.excludeMsgtypes)
+    assert.equal(snapshots.sortedLifecycle, false)
+    assert.equal(ordered.withSortedLifecycle(false).sortedLifecycle, false)
     assert.equal(registry.msgtype('D').msgcat, 'ORDR')
 
     const original = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const replay = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const distinct = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|'))
-    assert.equal(original.msgcat, 10)
-    assert.equal(original.marketoperationid, 10)
+    assert.equal(original.msgcat, 'ORDR')
+    assert.equal('marketoperationid' in original, false)
     const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
     assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
     assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 1])
@@ -2307,33 +2275,88 @@ let committedRegistry
     assert.ok(walked.some((message) => message.currunix === deadline && message.state === 'EXPIRED'))
     const emittedSnapshots = walked.filter((message) => message.snapunix !== null)
     assert.ok(emittedSnapshots.length > 0)
-    assert.ok(emittedSnapshots.every((message) => message.currunix <= message.snapunix && message.snapunix < deadline))
+    assert.ok(emittedSnapshots.every((message) => message.snapunix < deadline))
+    // A view is the live message as of its tick: dated at it, so it has the
+    // identity that tick derives, while its content, its place in the chain
+    // and its cross element are the live message's.
+    const [live] = walked
+    assert.equal(live.snapunix, null)
+    for (const view of emittedSnapshots) {
+      assert.equal(view.currunix, view.snapunix)
+      assert.equal(view.currhashcode, live.currhashcode)
+      assert.equal(view.seqnum, live.seqnum)
+      assert.equal(view.prevuuid, live.prevuuid)
+      assert.equal(view.crossuuid, live.crossuuid)
+      assert.equal(view.curruuid === live.curruuid, view.snapunix === live.currunix)
+    }
+    assert.ok(emittedSnapshots.some((view) => view.curruuid !== live.curruuid))
+  })
+
+  // Twelve messages over four hours in instant order: three orders placed,
+  // replaced and filled, an hour of each order's life apart.
+  function fourHours(codec) {
+    const messages = []
+    for (let hour = 10; hour < 14; hour += 1) {
+      for (const [at, order] of [['05', 'A'], ['20', 'B'], ['40', 'C']]) {
+        const status = hour === 13 ? '2' : '0'
+        messages.push(codec.parseFixLine(Buffer.from(
+          `8=FIX.4.4|35=8|52=20260102-${hour}:${at}:00|37=${order}|11=${order}-${hour}|17=E-${order}-${hour}|150=0|39=${status}|54=1|55=AAPL|38=10|44=5|10=0|`,
+        )))
+      }
+    }
+    return messages
+  }
+
+  test('a sorted lifecycle walks an ordered capture as the whole sort does', () => {
+    const codec = fixedCodec(seed())
+    const chain = (walk) => [...walk].map((message) => [message.curruuid, message.seqnum, message.prevuuid])
+    const whole = chain(codec.lifecycle(fourHours(codec)))
+    const sorted = chain(codec.withSortedLifecycle(true).lifecycle(fourHours(codec)))
+    assert.equal(whole.length, 12)
+    assert.deepEqual(sorted, whole)
+
+    // The first hour is walked once the stream has read two hours past it:
+    // its three messages, the next hour's three and the first of the hour
+    // after - never the whole capture.
+    let pulls = 0
+    function* counted(messages) {
+      for (const message of messages) {
+        pulls += 1
+        yield message
+      }
+    }
+    const walk = codec.withSortedLifecycle(true).lifecycle(counted(fourHours(codec)))
+    assert.equal(walk.next().done, false)
+    assert.equal(pulls, 7)
+    assert.equal([...walk].length, 11)
+    assert.equal(pulls, 12)
   })
 
   test('the fixed schema places category beside message type and normalized codes once', () => {
     const registry = seed()
     const schema = fix.schema(registry)
-    assert.equal(CRATE.length, 40)
-    assert.equal(CRATE_SCALARS.length, 39)
-    assert.equal(new fix.FixRegistry().size, 42)
-    assert.equal(scalars(new fix.FixRegistry()).length, 41)
-    assert.equal(schema.fieldLen, 132)
-    assert.equal(fix.schemaTags().length, 127)
+    // One more crate field than before the P2 batch: `forexcode` (W2a) and
+    // `strikepx` (A11) in, `nofixentries` (A8) out.
+    assert.equal(CRATE.length, 41)
+    assert.equal(CRATE_SCALARS.length, 40)
+    assert.equal(new fix.FixRegistry().size, 43)
+    assert.equal(scalars(new fix.FixRegistry()).length, 42)
+    assert.equal(schema.fieldLen, 133)
+    assert.equal(fix.schemaTags().length, 128)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
       ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'],
     )
-    // The three crate views of the security identifiers keep their tags;
-    // the retired identifiers, cusipcode and sedolcode columns are gone and
-    // their tags are never reused.
-    for (const [name, tag] of [['isincode', 65055], ['bloombergcode', 65059], ['miccode', 65060], ['figicode', 65061]]) {
+    // The crate views of the security identifiers, at their A11 tags; the
+    // retired identifiers, cusipcode and sedolcode columns are gone.
+    for (const [name, tag] of [['isincode', 65023], ['bloombergcode', 65025], ['miccode', 65027], ['figicode', 65026]]) {
       assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
     }
     assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
-    for (const retired of [65020, 65056, 65057, 65058]) {
-      assert.equal(fix.schemaTags().includes(retired), false, String(retired))
-    }
+    // A11: the crate's own tags are numbered contiguously from 65001.
+    const crateTags = fix.crateFields().map((field) => field.fix.tag).sort((left, right) => left - right)
+    assert.deepEqual(crateTags, crateTags.map((_, at) => 65001 + at))
     for (const name of ['identifiers', 'cusipcode', 'sedolcode']) {
       assert.equal(schema.indexOf(name), null, name)
     }
@@ -2361,7 +2384,7 @@ let committedRegistry
     assert.equal('FIGI' in bloomberg.securityids, false)
 
     const stated = figi.clone()
-    stated.set(65061, 'BBG000BLNQ16')
+    stated.set(65026, 'BBG000BLNQ16')
     assert.equal(stated.securityids.FIGI, 'BBG000BLNQ16')
   })
 
@@ -2400,7 +2423,8 @@ let committedRegistry
     // names the report goes by.
     assert.equal(latest.price, null)
     assert.equal(latest.lastpx, '10.5')
-    assert.equal(latest.crosscode, 'O1')
+    // A sided report's cross code carries its side (A17).
+    assert.equal(latest.crosscode, 'BUY:O1')
     assert.deepEqual(latest.altids, { EXECID: 'E1', ORDERID: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
     // in force is a day order, one fill's average is that fill's price, and what
@@ -2440,7 +2464,7 @@ let committedRegistry
     assert.equal(message.header().msgdirection, 'R')
     assert.equal(message.byTag(385).asJs(), 'R')
     assert.equal(message.capture().msgpluginid, 'Router_OrderRouting')
-    assert.equal(message.byTag(65009).asJs(), 'Router_OrderRouting')
+    assert.equal(message.byTag(65017).asJs(), 'Router_OrderRouting')
   })
 
   test('a row reads back into a message stating the same facts', () => {
@@ -2716,7 +2740,9 @@ let committedRegistry
 
   const arrow = require('apache-arrow')
 
-  const { BatchReader, DataType, Field, Scalar, TextLine, TextOptions, fields, fix, graph } = require('yggdryl')
+  const {
+    BatchReader, DataType, Field, MarketDataKind, Scalar, Side, State, TextLine, TextOptions, fields, fix, graph,
+  } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 
@@ -3104,9 +3130,10 @@ let committedRegistry
     const header = names.indexOf('beginstring')
     assert.ok(header > 0)
     assert.equal(reader.field.fieldAt(header).fix.tag, 8)
-    // One list closes the row: the whole content record, unresolved keys at
-    // tag 0, under the counter that counts it.
-    assert.deepEqual(names.slice(-2), ['nofixentries', 'fixentries'])
+    // One map closes the row: the residual content keyed `tag:name`, after
+    // the metadata an unmapped key lands in (A8, A9).
+    assert.deepEqual(names.slice(-2), ['metadata', 'fixentries'])
+    assert.equal(reader.field.field('fixentries').dtype.id, 'sorted_map')
     assert.equal(reader.field.fieldAt(names.indexOf('msgtype')).fix.tag, 35)
     // And an empty capture yields no batch at all.
     assert.equal(reader.intoTable().numRows, 0)
@@ -3190,17 +3217,18 @@ let committedRegistry
     ))
     const reader = codec.bookArrowReader([snapshot, update])
     // The one lifted `marketdata` schema every leaf is written under: the
-    // kind, then every fact a column of its own, the book's sides as structs.
+    // kind, then every fact a column of its own, the book's entries and
+    // levels nested (A2, A10).
     assert.ok(reader.field.equals(graph.MarketData.field()))
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
-    assert.equal(names[0], 'kind')
-    for (const name of ['bidside', 'askside', 'executions', 'snapshotpartitions', 'price', 'quantity']) {
+    assert.equal(names[0], 'marketdatakind')
+    for (const name of ['alive', 'deltas', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
       assert.ok(names.includes(name), name)
     }
     assert.ok(!names.includes('px') && !names.includes('qty'))
     const books = reader.intoTable()
     assert.equal(books.numRows, 2)
-    assert.deepEqual([...books.getChild('kind')], ['book_event', 'book_event'])
+    assert.deepEqual([...books.getChild('marketdatakind')], [MarketDataKind.BOOK, MarketDataKind.BOOK])
     assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
 
     // The rows read back as the typed books they were written from.
@@ -3208,37 +3236,48 @@ let committedRegistry
       ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
     ].map((data) => data.asBookEvent())
     assert.ok(first instanceof graph.BookEvent && second instanceof graph.BookEvent)
-    assert.equal(first.bid.bestPrice, '100')
-    assert.equal(second.bid.bestPrice, '101')
-    assert.deepEqual(first.snapshotPartitions.map((partition) => partition.scope), ['Symbol=AAPL'])
-    assert.deepEqual(second.snapshotPartitions, [])
-    assert.equal(second.executions.length, 1)
-    const live = second.bid.live[0].asQuoteEvent()
+    assert.equal(first.bestPrice('BUY'), '100')
+    assert.equal(second.bestPrice('BUY'), '101')
+    // The best tradable levels are the book's own bid and ask (A20, A22).
+    assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
+    assert.equal(second.executions().length, 1)
+    const live = second.alive()[0].asQuoteEvent()
     assert.deepEqual(live.altids, { MDENTRYID: 'B1' })
-    assert.equal(live.bid.quantity, '11')
+    assert.equal(live.quantity, '11')
+    assert.deepEqual(second.limits('BUY').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
   })
 
   test('a lifecycled two-sided trade streams executions without book depth', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
-    const trade = codec.parseFixLine(Buffer.from(
+    // A12: the trade parses as itself and one sided execution per
+    // `NoSides(552)` occurrence, each FILLED (A14) and read from the trade.
+    const messages = [...codec.parseLine(Buffer.from(
       '8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|' +
       '571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|' +
       '54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|' +
       '54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|',
-    ))
-    const books = codec.bookArrowReader(codec.lifecycle([trade])).intoTable()
+    ))]
+    assert.deepEqual(messages.map((message) => [message.msgcat, message.side, message.state]), [
+      ['TRAD', 'UNKNOWN', 'TRADE'],
+      ['EXEC', 'BUY', 'FILLED'],
+      ['EXEC', 'SELL', 'FILLED'],
+    ])
+    assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].curruuid)))
+    const books = codec.bookArrowReader(codec.lifecycle(messages)).intoTable()
     const executions = books.getChild('executions').get(0)
-    const bid = books.getChild('bidside').get(0)
-    const ask = books.getChild('askside').get(0)
+    // A row's enum columns store each member's code.
     const bySide = new Map(Array.from(executions, (execution) => [execution.side, execution]))
-    const buy = bySide.get('BUY')
-    const sell = bySide.get('SELL')
+    const buy = bySide.get(Side.BUY)
+    const sell = bySide.get(Side.SELL)
 
     assert.equal(books.numRows, 1)
-    assert.equal(books.getChild('kind').get(0), 'book_event')
-    assert.deepEqual([...bySide.keys()].sort(), ['BUY', 'SELL'])
-    assert.equal(buy.marketoperationid, 21)
-    assert.equal(sell.marketoperationid, 21)
+    assert.equal(books.getChild('marketdatakind').get(0), MarketDataKind.BOOK)
+    assert.deepEqual([...bySide.keys()].sort(), [Side.BUY, Side.SELL])
+    // Each execution is in the book once (A12).
+    assert.equal(executions.length, 2)
+    assert.equal(buy.marketdatakind, MarketDataKind.EXEC)
+    assert.equal(sell.marketdatakind, MarketDataKind.EXEC)
+    assert.equal(buy.state, State.FILLED)
     // A trade-capture side states no price and no quantity: its last
     // executed price and quantity are `lastpx` and `lastqty`, and the two
     // nullable columns carry the null.
@@ -3250,29 +3289,29 @@ let committedRegistry
     assert.equal(BigInt(sell.lastpx.toString()), 10125n * 10n ** 16n)
     assert.equal(BigInt(buy.lastqty.toString()), 4n * 10n ** 18n)
     assert.equal(BigInt(sell.lastqty.toString()), 6n * 10n ** 18n)
-    assert.equal(new Map(buy.altids).get('SIDEEXECID'), 'BUY-EXEC')
-    assert.equal(new Map(sell.altids).get('SIDEEXECID'), 'SELL-EXEC')
+    // A sided execution goes by its side's own execution identifier (A12).
+    assert.equal(new Map(buy.altids).get('EXECID'), 'BUY-EXEC')
+    assert.equal(new Map(sell.altids).get('EXECID'), 'SELL-EXEC')
     assert.notDeepEqual(buy.curruuid, sell.curruuid)
     assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
     assert.notEqual(buy.crosscode, sell.crosscode)
-    assert.equal(bid.live.length, 0)
-    assert.equal(ask.live.length, 0)
-    assert.equal(bid.deltas.length, 0)
-    assert.equal(ask.deltas.length, 0)
+    assert.equal(books.getChild('alive').get(0).length, 0)
+    assert.equal(books.getChild('deltas').get(0).length, 0)
   })
 
-  test('a trade side without Side refuses at its exact occurrence through the book reader', () => {
+  test('a trade side without Side splits off no execution, so no book reads it', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
-    const missing = codec.parseFixLine(Buffer.from(
+    const line = Buffer.from(
       '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
       '32=4|31=101.25|60=20260921-10:00:00|552=1|' +
       '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
-    ))
-
-    assert.throws(
-      () => codec.bookArrowReader([missing]).intoTable(),
-      /\$\.NoSides\(552\)\[0\]\.Side\(54\)/,
     )
+    // A12: a trade states its fills as the executions its parse splits off,
+    // and a side naming no Side(54) is none of them.
+    const messages = [...codec.parseLine(line)]
+    assert.deepEqual(messages.map((message) => [message.msgcat, message.side]), [['TRAD', 'UNKNOWN']])
+    assert.throws(() => messages[0].marketData(), /a trade states its fills as the executions its parse splits off/)
+    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 0)
   })
 
   // One book snapshot, one incremental update a second later, and session
@@ -3289,20 +3328,20 @@ let committedRegistry
     }
   }
 
-  test('marketOperations is the sorted door over a capture read out of order', () => {
+  test('marketData is the sorted door over a capture read out of order', () => {
     const codec = reading(seed())
     const { snapshot, update, heartbeat } = bookCapture(codec)
-    assert.throws(() => codec.marketOperations(42), /messages must be an iterable/)
+    assert.throws(() => codec.marketData(42), /messages must be an iterable/)
 
     // The later message first: the door collects the capture and places
     // each operation by the instant a book folds it at, so the snapshot's
     // leaves lead; the heartbeat is no book's and contributes nothing.
-    const stream = codec.marketOperations([update, heartbeat, snapshot])
+    const stream = codec.marketData([update, heartbeat, snapshot])
     assert.equal(stream[Symbol.iterator](), stream)
     const operations = [...stream]
     assert.deepEqual(stream.next(), { value: undefined, done: true })
     assert.ok(operations.every((operation) => operation instanceof graph.MarketData))
-    const expected = [snapshot, update].flatMap((message) => message.marketOperations())
+    const expected = [snapshot, update].flatMap((message) => message.marketData())
     assert.deepEqual(operations.map((operation) => operation.kind), expected.map((operation) => operation.kind))
     assert.deepEqual(operations.map((operation) => operation.curruuid), expected.map((operation) => operation.curruuid))
     const clocks = operations.map((operation) => {
@@ -3318,10 +3357,13 @@ let committedRegistry
     assert.deepEqual(rows.map((row) => row.stableHash()), operations.map((operation) => operation.stableHash()))
     const table = codec.marketArrowReader([update, heartbeat, snapshot]).intoTable()
     assert.ok(codec.marketArrowReader([]).field.equals(graph.MarketData.field()))
-    assert.deepEqual([...table.getChild('kind')], operations.map((operation) => operation.kind))
+    assert.deepEqual(
+      [...table.getChild('marketdatakind')],
+      operations.map((operation) => MarketDataKind[operation.marketdatakind]),
+    )
     const schema = fix.schema(seed())
     const twin = [...graph.MarketData.fromArrowReader(
-      codec.marketOperationsArrowReader(codec.arrowReader(schema, [update, heartbeat, snapshot])),
+      codec.marketDataArrowReader(codec.arrowReader(schema, [update, heartbeat, snapshot])),
     )]
     assert.deepEqual(twin.map((row) => row.kind), operations.map((operation) => operation.kind))
     assert.deepEqual(twin.map((row) => row.curruuid), operations.map((operation) => operation.curruuid))
@@ -3330,10 +3372,10 @@ let committedRegistry
     // an Apache Arrow JS table here - is a source.
     const column = new arrow.Field('a', new arrow.Int64(), true)
     const foreign = () => new arrow.Table(new arrow.Schema([column, column]))
-    assert.throws(() => codec.marketOperationsArrowReader(foreign()), /duplicate field name "a"/)
+    assert.throws(() => codec.marketDataArrowReader(foreign()), /duplicate field name "a"/)
     assert.throws(() => codec.lifecycleArrowReader(foreign()), /duplicate field name "a"/)
     const source = codec.arrowReader(schema, [snapshot])
-    codec.marketOperationsArrowReader(source)
+    codec.marketDataArrowReader(source)
     assert.ok(source.consumed)
   })
 
@@ -3346,8 +3388,8 @@ let committedRegistry
     assert.equal(on.marketMetadata, true)
     assert.equal(off.marketMetadata, false)
     assert.equal(reading(seed(), { marketMetadata: undefined }).marketMetadata, true)
-    const [kept] = [...on.marketOperations([on.parseFixLine(line)])]
-    const [dropped] = [...off.marketOperations([off.parseFixLine(line)])]
+    const [kept] = [...on.marketData([on.parseFixLine(line)])]
+    const [dropped] = [...off.marketData([off.parseFixLine(line)])]
     assert.deepEqual(kept.metadata, { countryofissue: 'US', currencycodesource: '6' })
     assert.deepEqual(dropped.metadata, {})
     // The map is part of the leaf's identity, and nothing else moves.
@@ -3370,31 +3412,29 @@ let committedRegistry
     }
     // The sorted door collected what came before the failure and answers it,
     // then throws the failure itself, once, in place of its end.
-    const stream = codec.marketOperations(failing())
-    const expected = [snapshot, update].flatMap((message) => message.marketOperations())
+    const stream = codec.marketData(failing())
+    const expected = [snapshot, update].flatMap((message) => message.marketData())
     for (const operation of expected) {
       assert.equal(stream.next().value.curruuid, operation.curruuid)
     }
     assert.throws(() => stream.next(), RangeError)
     assert.deepEqual(stream.next(), { value: undefined, done: true })
     // An item that is not a message is the same failure.
-    const mixed = codec.marketOperations([snapshot, 'not a message'])
+    const mixed = codec.marketData([snapshot, 'not a message'])
     assert.equal(mixed.next().done, false)
     assert.throws(() => { for (;;) if (mixed.next().done) break }, TypeError)
-    // A refused expansion is thrown by its own `next`, before every
-    // operation, and the stream continues past it.
-    const missing = codec.parseFixLine(Buffer.from(
+    // A trade message is no book's (A12): its executions are, so the door
+    // passes it by rather than refusing it.
+    const trade = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
       '32=4|31=101.25|60=20260921-10:00:00|552=1|' +
       '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
     ))
-    const refusing = codec.marketOperations([snapshot, missing])
-    assert.throws(() => refusing.next(), /\$\.NoSides\(552\)\[0\]\.Side\(54\)/)
-    assert.equal([...refusing].length, snapshot.marketOperations().length)
+    assert.equal([...codec.marketData([snapshot, trade])].length, snapshot.marketData().length)
     // The batch door meets every failure before its first row: the failure
     // is the reader's only item.
     assert.throws(() => codec.marketArrowReader(failing()).intoTable(), /the source broke/)
-    assert.throws(() => codec.marketArrowReader([snapshot, missing]).intoTable(), /\$\.NoSides\(552\)\[0\]\.Side\(54\)/)
+    assert.equal(codec.marketArrowReader([snapshot, trade]).intoTable().numRows, snapshot.marketData().length)
     assert.throws(() => codec.marketArrowReader(5), /messages must be an iterable/)
   })
 
@@ -3406,9 +3446,12 @@ let committedRegistry
     // is parsed, so the row a capture lands in states it already.
     // An exact column crosses as its unscaled coefficient at the one scale
     // this crate keeps a number at.
-    assert.deepEqual(exactColumn(rows, 'leavesqty'), [60n * 10n ** 18n])
+    // A12: the fill parses as its order's report and the execution split
+    // off it, and both rows state what the report implies.
+    assert.equal(rows.numRows, 2)
+    assert.deepEqual(exactColumn(rows, 'leavesqty'), [60n * 10n ** 18n, 60n * 10n ** 18n])
     assert.ok(message.byTag(151).equals(Scalar.decimal(60n)))
-    assert.deepEqual(exactColumn(rows, 'avgpx'), [105n * 10n ** 17n])
+    assert.deepEqual(exactColumn(rows, 'avgpx'), [105n * 10n ** 17n, 105n * 10n ** 17n])
     assert.ok(message.byTag(6).equals(Scalar.decimal(105n, 1)))
     // A derived tag the fixed row does not carry is filled on the message and
     // has no column to appear in: the row is a projection of the message.
@@ -3431,7 +3474,7 @@ let committedRegistry
       // order; the semantic values, supplied identity and fixed row stay exact.
       assert.equal(held.currhashcode, message.currhashcode)
       assert.equal(held.curruuid, message.curruuid)
-      for (const tag of [35, 11, 55, 54, 17, 37, 65017, 65039]) {
+      for (const tag of [35, 11, 55, 54, 17, 37, 65011, 65008]) {
         const value = message.getByTag(tag)
         if (value !== null && value.kind !== 'null') assert.ok(held.byTag(tag).equals(value), `tag ${tag}`)
       }
@@ -3459,8 +3502,9 @@ let committedRegistry
     assert.deepEqual(messages[0].altids, { CLORDID: 'C-001', EXECID: 'E-09', ORDERID: 'O-01' })
     assert.deepEqual(Object.keys(messages[0].altids), ['CLORDID', 'EXECID', 'ORDERID'])
     assert.deepEqual(messages[1].altids, {})
-    assert.deepEqual(messages[0].accountids, {})
-    assert.deepEqual(messages[0].userids, {})
+    // A1: the alternate identifiers are the one identifier map.
+    assert.equal('accountids' in messages[0], false)
+    assert.equal('userids' in messages[0], false)
 
     // No column of its own: the row states the source fields, and a row
     // read back builds the same map from them.
@@ -3491,14 +3535,14 @@ let committedRegistry
     // The scalar answers the folded name a lookup asks for; the group is
     // reached by its counter and by the path grammar.
     assert.equal(registry.fieldByName('metadata').name, 'venueid')
-    assert.equal(registry.fieldByCounter(65049).name, 'metadata')
+    assert.equal(registry.fieldByCounter(65030).name, 'metadata')
     assert.equal(registry.fieldByPath('metadata').name, 'metadata')
     // A message carries the scalar in its row and the map as its own fact.
     const schema = fields.struct('row', [scalar, registry.fieldByTag(52)], { nullable: false })
     const value = new fix.FixMsg(schema, { venueid: 'scalar', sendingtime: SENDING }, registry)
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.deepEqual(value.metadata, {})
-    value.set(65049, new Map([['tech.clientid', 'X1']]))
+    value.set(65030, new Map([['tech.clientid', 'X1']]))
     assert.deepEqual(value.metadata, { 'tech.clientid': 'X1' })
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.equal(value.size, 1, 'the map is a fact, never a row child')
@@ -3617,13 +3661,13 @@ let committedRegistry
     // value, the settled clocks and the chain identity included.
     for (const [tag, value] of before) {
       if (tag === 55 || tag === 54) continue
-      if (tag === 65017 || tag === 65039) {
+      if (tag === 65011 || tag === 65008) {
         assert.equal(message.byTag(tag).equals(value), false, 'the identity follows the content')
         continue
       }
       assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
     }
-    assert.equal(message.byTag(65017).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65011).asJs(), message.currhashcode)
   })
 
   test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -3693,7 +3737,7 @@ let committedRegistry
     assert.equal(message.size, count - 1)
     for (const [tag, value] of before) {
       if (tag === 55) continue
-      if (tag === 65017 || tag === 65039) {
+      if (tag === 65011 || tag === 65008) {
         assert.equal(message.byTag(tag).equals(value), false, 'the identity follows the content')
         continue
       }
@@ -3787,9 +3831,13 @@ let committedRegistry
       Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|'),
     )
     const row = message.intoRow(schema)
+    // A8: the residual is a sorted map keyed `tag:name`; the symbol and the
+    // parties are projected, so neither is in it.
     const residual = row.asJs()[schema.indexOf('fixentries')]
-    assert.ok(residual.every((entry) => entry[0] !== 55 && entry[0] !== 453))
-    assert.ok(residual.some((entry) => entry[0] === 0))
+    assert.ok(residual instanceof Map)
+    assert.ok([...residual.keys()].every((key) => !key.startsWith('55:') && !key.startsWith('453:')))
+    // A9: a key no dictionary resolves lands in the metadata, as spelled.
+    assert.equal(row.asJs()[schema.indexOf('metadata')].get('9999'), 'x')
 
     const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
     assert.equal(rebuilt.byTag(55).asJs(), 'AAPL')
@@ -3848,7 +3896,7 @@ let committedRegistry
       assert.equal(written[schema.indexOf(carrier)], null, carrier)
     }
     assert.equal(written[schema.indexOf('symbol')], 'AAPL')
-    assert.ok(!again.intoText('|').includes('65026='))
+    assert.ok(!again.intoText('|').includes('65031='))
   })
 
   test('a row without the entries column keeps projected content', () => {
@@ -3891,8 +3939,10 @@ let committedRegistry
     assert.equal(rows.length, 1)
     const held = rows[0].asJs()
     assert.equal(held[schema.indexOf('symbol')], 'AAPL')
-    // The record closes a formatted row exactly as it closes a parsed one.
-    assert.ok(held[schema.indexOf('fixentries')].length > 0)
+    // The residual map closes a formatted row exactly as it closes a parsed
+    // one; the unmapped keys are the metadata's (A8, A9).
+    assert.ok(held[schema.indexOf('fixentries')] instanceof Map)
+    assert.equal(held[schema.indexOf('metadata')].get('9999'), 'x')
 
     // The Arrow twin answers the same row, one batch at a time, and decides its
     // schema before a row is read.
@@ -4082,8 +4132,9 @@ let committedRegistry
     })
     const messages = captured(codec)
     // Every line that carries a message is one message, the JSON documents
-    // among them (`rust/tests/fix/ulbridge.rs`).
-    assert.equal(messages.length, 94)
+    // among them, and the parse splits one execution off each of the 56
+    // reports that report a fill (A12; `rust/tests/fix/ulbridge.rs`).
+    assert.equal(messages.length, 94 + 56)
 
     // What a bridge's row header states reaches the capture, and what its own
     // namespaces state reaches the metadata.
@@ -4115,13 +4166,15 @@ let committedRegistry
     // It was 32 while the row header's clock admitted three fractional digits
     // and no more: the capture's last fifteen lines write grouped
     // microseconds, so those lines arrived with no session, context or
-    // sequence and could not be folded onto the deliveries they repeat.
+    // sequence and could not be folded onto the deliveries they repeat. The
+    // 56 executions split off the fills fold, hop onto hop, into the eight
+    // fills they are, each a delivery of its own (A12).
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 27)
+    assert.equal(retained.length, 35)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 28)
+    assert.equal(walked.length, 36)
 
     const counts = (held) => {
       const found = new Map()
@@ -4136,7 +4189,8 @@ let committedRegistry
     const removed = Object.fromEntries(
       [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
     )
-    assert.deepEqual(removed, { 8: 54, '': 6, D: 1, cancelreject: 6 })
+    // The 56 split executions fold into eight (A12): 54 + 48.
+    assert.deepEqual(removed, { 8: 102, '': 6, D: 1, cancelreject: 6 })
 
     // The default cross-code chains six retained bridge messages.
     // Every non-root message states both its predecessor and a positive sequence.
@@ -4150,13 +4204,14 @@ let committedRegistry
     // those lines carried no delivery key to be folded onto. The synthetic
     // expiry keeps its predecessor's provenance and lands at the stated
     // deadline.
-    assert.ok(messages.every((message) => message.srcuuids.length === 1))
+    // A split execution names its report beside the line it was read from
+    // (A12), so an input states one source or two.
+    assert.ok(messages.every((message) => [1, 2].includes(message.srcuuids.length)))
     const inputSources = new Set(messages.flatMap((message) => message.srcuuids))
     assert.ok(retained.every((message) =>
       message.srcuuids.length > 0 && message.srcuuids.every((source) => inputSources.has(source))))
     const retainedSources = retained.flatMap((message) => message.srcuuids)
-    assert.equal(new Set(retainedSources).size, retainedSources.length)
-    assert.equal(retainedSources.length, inputSources.size - 6)
+    assert.equal(new Set(retainedSources).size, inputSources.size - 6)
 
     const [expiry] = expired
     const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
@@ -4243,33 +4298,34 @@ let committedRegistry
     for (const line of IOBase.fromBytes(fs.readFileSync(CAPTURE)).readTextLines(options)) {
       for (const message of codec.parseTextLine(line)) messages.push(message)
     }
-    assert.equal(messages.length, 94)
+    // A12: 56 executions split off the fills.
+    assert.equal(messages.length, 94 + 56)
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 28)
+    assert.equal(walked.length, 36)
 
-    // Eleven deliveries reach a book - eight fills and three orders - and
-    // the one admitted message refused is the trade capture whose side
-    // states no `Side(54)`, thrown first, before every operation.
-    const stream = codec.marketOperations(walked)
-    assert.throws(
-      () => stream.next(),
-      /invalid record value at \$\.NoSides\(552\)\[0\]\.Side\(54\): expected a bid or ask side, got no value/,
-    )
-    const operations = [...stream]
-    assert.equal(operations.length, 11)
+    // Nineteen deliveries reach a book - eight fills, the eight reports they
+    // were split off, now their orders' reports, and three orders - and
+    // nothing is refused: the trade capture is no book input, since a
+    // trade's fills are the executions its parse splits off (A12).
+    const operations = [...codec.marketData(walked)]
+    assert.equal(operations.length, 19)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 8, order_event: 3 })
+    assert.deepEqual(census, { execution_event: 8, order_event: 11 })
 
     // Every operation folds into a book: seven, the last holding nothing,
     // its unpriced order having rested and left at one instant.
-    const books = [...new graph.BookIterator(operations, 0, false)]
+    const books = [...new graph.BookIterator(operations, 0)]
     assert.equal(books.length, 7)
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
-    assert.ok(last.bid.isEmpty && last.ask.isEmpty)
-    assert.deepEqual(last.ask.deltas.map((delta) => delta.price), [null, null])
-    assert.equal(last.currhashcode, 7_839_532_806_895_463_521n)
+    assert.deepEqual([last.limits('BUY'), last.limits('SELL'), last.alive()], [[], [], []])
+    assert.deepEqual(last.deltas().map((delta) => delta.price), [null, null])
+    // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
+    // book digests its entries and deltas rather than side summaries (A2),
+    // no book control but its scope (A1), no lanes (A10), and the deltas'
+    // side-prefixed cross codes (A17).
+    assert.equal(last.currhashcode, 16_200_745_769_023_081_660n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

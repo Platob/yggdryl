@@ -306,9 +306,71 @@ fn an_element_with_no_cross_identity_stands_under_its_own() {
         (at(10), 0, None)
     );
     assert_eq!(restated.get_curruuid(), first.get_curruuid());
+    // The walk states the creation the first left unstated: its own instant.
+    let mut first = first;
+    first.set_creaunix(Some(at(10)));
     assert_eq!(restated, first);
     assert_eq!(walk.alive().count(), 2);
     assert!(walk.alive().any(|event| *event == first));
+}
+
+#[test]
+fn the_walk_states_each_lifecycles_creation_and_never_replaces_a_stated_one() {
+    // A chain whose events state no creation: the first is created at its
+    // own instant, and every event after it at the chain's creation.
+    let mut walk = EventIterator::new(
+        vec![
+            incarnation("O-1", 10),
+            incarnation("O-1", 20),
+            incarnation("O-1", 30),
+        ],
+        true,
+    );
+    let chain: Vec<OrderEvent> = walk.by_ref().collect();
+    assert!(
+        chain
+            .iter()
+            .all(|event| event.get_creaunix() == Some(at(10)))
+    );
+    // The instant is no part of what an event digests: stating it moved no
+    // identity, and the chain keeps one cross element.
+    let first = incarnation("O-1", 10);
+    assert_eq!(chain[0].get_curruuid(), first.get_curruuid());
+    assert!(
+        chain
+            .iter()
+            .all(|event| event.get_crossuuid() == first.get_crossuuid())
+    );
+
+    // A stated creation stands, on the first event and on a later one; an
+    // unstated one after it takes the earliest the fold kept.
+    let mut stated = incarnation("O-2", 10);
+    stated.set_creaunix(Some(at(5)));
+    let mut later = incarnation("O-2", 20);
+    later.set_creaunix(Some(at(1)));
+    let walked: Vec<OrderEvent> =
+        EventIterator::new(vec![stated, later, incarnation("O-2", 30)], true).collect();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| event.get_creaunix())
+            .collect::<Vec<_>>(),
+        [Some(at(5)), Some(at(1)), Some(at(1))]
+    );
+}
+
+#[test]
+fn a_chain_with_no_cross_code_is_one_cross_element() {
+    // An order stating no cross code is its own chain's identity, and a
+    // report joining it by a name it shares carries that identity as its
+    // cross element rather than its own.
+    let order = anonymous(10, &[(CL_ORD_ID, "C-7")]);
+    let report = anonymous(20, &[(CL_ORD_ID, "C-7"), (EXEC_ID, "E-7")]);
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![order, report], true).collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[0].get_crossuuid(), walked[0].get_curruuid());
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    assert_ne!(walked[1].get_crossuuid(), walked[1].get_curruuid());
 }
 
 #[test]
@@ -351,7 +413,8 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     let mut walk = EventIterator::new(arrived, true);
     walk.next().expect("the order");
     let second = walk.next().expect("the fill");
-    assert_eq!(second.get_creaunix(), None);
+    // Stating none, the fill is created when its chain was.
+    assert_eq!(second.get_creaunix(), Some(at(10)));
     let twin = walk.next().expect("the fill, dated");
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
     assert_eq!(twin.get_seqnum(), second.get_seqnum());
@@ -565,7 +628,9 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     order.set_execunix(Some(at(8)));
     order.set_recdunix(Some(at(9)));
     order.set_exprunix(Some(at(20)));
-    let original = order.clone();
+    // The walk states the creation the order left unstated, and nothing else.
+    let mut original = order.clone();
+    original.set_creaunix(Some(at(10)));
     let walked: Vec<_> = EventIterator::new(
         [order, incarnation("O-900", 30), incarnation("O-100", 40)],
         true,
@@ -744,27 +809,37 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
         })
         .collect();
     snapshots.sort_unstable();
+    // A view is the live event as of its tick: dated at it.
     assert_eq!(
         snapshots,
         [
             (10, "O-100", 10),
-            (20, "O-100", 10),
-            (20, "O-900", 15),
-            (30, "O-100", 25),
-            (30, "O-900", 15),
+            (20, "O-100", 20),
+            (20, "O-900", 20),
+            (30, "O-100", 30),
+            (30, "O-900", 30),
         ]
     );
     for snapshot in walked.iter().filter(|event| event.get_snapunix().is_some()) {
+        let tick = snapshot.get_snapunix().expect("a view");
         let source = sources
             .iter()
             .rev()
             .find(|source| {
-                source.get_crosscode() == snapshot.get_crosscode()
-                    && source.get_currunix() == snapshot.get_currunix()
+                source.get_crosscode() == snapshot.get_crosscode() && source.get_currunix() <= tick
             })
             .expect("the living source copied at this tick");
-        assert_eq!(snapshot.get_curruuid(), source.get_curruuid());
+        // Its content, its place and its cross element are the live event's;
+        // its identity is the one its tick derives, so it is a row of its own.
+        assert_eq!(snapshot.get_currunix(), tick);
+        assert_eq!(snapshot.get_currhashcode(), source.get_currhashcode());
         assert_eq!(snapshot.get_seqnum(), source.get_seqnum());
+        assert_eq!(snapshot.get_prevuuid(), source.get_prevuuid());
+        assert_eq!(snapshot.get_crossuuid(), source.get_crossuuid());
+        assert_eq!(
+            snapshot.get_curruuid() == source.get_curruuid(),
+            tick == source.get_currunix()
+        );
     }
     assert!(walked.iter().all(|event| {
         event
@@ -855,25 +930,24 @@ mod naming {
 
 /// The walk over the one value every boundary crosses as: an execution
 /// follows the order it fills across kinds, its twin restates it and the
-/// chain grows by nothing, and a value the walk does not chain - a book
-/// side - is yielded where it is read and changes nothing.
+/// chain grows by nothing, and a value the walk does not chain - an
+/// undated order - is yielded where it is read and changes nothing.
 #[test]
 fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through() {
-    use yggdryl::Side;
-    use yggdryl::graph::{BookSide, MarketData};
+    use yggdryl::graph::{MarketData, Order};
 
     let fill = executed("O-500", 20);
     let arrived = vec![
         MarketData::from(incarnation("O-500", 10)),
-        MarketData::from(BookSide::new(Side::Buy).unwrap()),
+        MarketData::from(Order::new()),
         MarketData::from(fill.clone()),
         MarketData::from(fill),
         MarketData::from(incarnation("O-500", 30)),
     ];
     let mut walk = EventIterator::new(arrived, true);
     let order = walk.next().expect("the order");
-    let side = walk.next().expect("the side, as it came");
-    assert!(side.as_book_side().is_some());
+    let undated = walk.next().expect("the undated order, as it came");
+    assert!(undated.as_order().is_some());
     let second = walk.next().expect("the fill");
     let leaf = second
         .as_execution_event()
@@ -893,4 +967,180 @@ fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through(
         (2, Some(second.get_curruuid()))
     );
     assert_eq!(walk.alive().count(), 1);
+}
+
+/// One event of `order` at `ms` stating `state`.
+fn stating(order: &str, ms: i64, state: State) -> OrderEvent {
+    let mut event = OrderEvent::at(at(ms));
+    event.set_crosscode(order.to_owned());
+    event.set_state(state);
+    event.finalize();
+    event
+}
+
+/// The states a walk over `states`, one event each under one chain, yields.
+fn walked_states(states: &[State]) -> Vec<State> {
+    let arrived: Vec<OrderEvent> = states
+        .iter()
+        .enumerate()
+        .map(|(index, state)| stating("O-1", 10 * (index as i64 + 1), *state))
+        .collect();
+    EventIterator::new(arrived, true)
+        .map(|event| *event.get_state())
+        .collect()
+}
+
+/// A `NEW` stated over a live element that is new, carrying on or
+/// restated is that element updated; the rule reads what was stated, before
+/// the fold keeps the higher rank.
+#[test]
+fn a_new_over_a_new_like_live_element_walks_as_updated() {
+    for held in [State::New, State::Active, State::Running, State::Replaced] {
+        assert_eq!(
+            walked_states(&[held, State::New]),
+            [held, State::Updated],
+            "{held:?}"
+        );
+    }
+    // Updated moves the identity: the flipped state is digested.
+    let arrived = vec![
+        stating("O-1", 10, State::New),
+        stating("O-1", 20, State::New),
+    ];
+    let stated = arrived[1].get_currhashcode();
+    let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
+    assert_eq!(*walked[1].get_state(), State::Updated);
+    assert_ne!(walked[1].get_currhashcode(), stated);
+    assert_eq!(
+        walked[1].get_curruuid(),
+        walked[1].time_uuid().expect("an identity")
+    );
+    // A walk over the walked answers the same chain.
+    let again: Vec<OrderEvent> = EventIterator::new(walked.clone(), true).collect();
+    assert_eq!(again, walked);
+}
+
+/// Only a live element that is itself new-like makes a `NEW` an update:
+/// a `NEW` answering a pending new stays new, a chain already updated stays
+/// updated, and later progress folds over it as it does over working.
+#[test]
+fn updated_is_only_a_new_over_a_new_like_element_and_progress_folds_over_it() {
+    assert_eq!(
+        walked_states(&[State::PendingNew, State::New]),
+        [State::PendingNew, State::New]
+    );
+    assert_eq!(
+        walked_states(&[State::New, State::New, State::New]),
+        [State::New, State::Updated, State::Updated]
+    );
+    assert_eq!(
+        walked_states(&[State::New, State::New, State::PartiallyFilled]),
+        [State::New, State::Updated, State::PartiallyFilled]
+    );
+}
+
+/// A twin of the live element restates it: the restating branch never
+/// reaches the rule, so a restated `NEW` stays `NEW`.
+#[test]
+fn a_restating_twin_of_a_new_element_stays_new() {
+    let first = stating("O-1", 10, State::New);
+    let twin = first.clone();
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![first, twin], true).collect();
+    assert!(walked.iter().all(|event| *event.get_state() == State::New));
+}
+
+/// An event of `order` taking `side` at `ms` in `state`, going by `names`.
+fn sided(
+    order: &str,
+    ms: i64,
+    side: yggdryl::Side,
+    state: State,
+    names: &[(&str, &str)],
+) -> OrderEvent {
+    use yggdryl::graph::Market;
+    let mut event = OrderEvent::at(at(ms));
+    event.set_crosscode(order.to_owned());
+    event.set_side(side);
+    event.set_state(state);
+    for (scheme, name) in names {
+        event.insert_altid(scheme, name).unwrap();
+    }
+    event.finalize();
+    event
+}
+
+/// A15: chains are keyed by side - a buy and a sell under one code are two
+/// chains, a name is alive on each side apart - and an element stating no
+/// side joins the one side alive under its code or its name, taking that
+/// side; where both sides are alive it joins neither.
+#[test]
+fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_the_one_live_side() {
+    use yggdryl::Side;
+    use yggdryl::graph::Market;
+
+    let buy = sided("C-1", 10, Side::Buy, State::New, &[(CL_ORD_ID, "C-1")]);
+    let sell = sided("C-1", 20, Side::Sell, State::New, &[(CL_ORD_ID, "C-1")]);
+    assert_eq!(buy.get_crosscode(), "BUY:C-1");
+    assert_eq!(sell.get_crosscode(), "SELL:C-1");
+    let replaced = sided("C-1", 30, Side::Sell, State::Replaced, &[]);
+    let unsided = sided("C-1", 40, Side::Unknown, State::Canceled, &[]);
+    let walked: Vec<OrderEvent> =
+        EventIterator::new(vec![buy.clone(), sell.clone(), replaced, unsided], true).collect();
+    // The sell's replacement follows the sell, not the buy.
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    // Both sides are alive, so the side-less cancel joins neither.
+    assert_eq!(walked[3].get_prevuuid(), None);
+    assert_eq!(walked[3].get_side(), Side::Unknown);
+    assert_eq!(walked[3].get_crosscode(), "C-1");
+
+    // One side alive: a side-less element joins it by its base code and
+    // takes its side, and so its code.
+    let unsided = sided("C-1", 30, Side::Unknown, State::Canceled, &[]);
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![buy.clone(), unsided], true).collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_side(), Side::Buy);
+    assert_eq!(walked[1].get_crosscode(), "BUY:C-1");
+
+    // By a name too: a side-less element under no code of its own joins
+    // the one live side going by it, a sided one only its own side.
+    let mut nameless = anonymous(30, &[(CL_ORD_ID, "C-1")]);
+    nameless.set_state(State::Canceled);
+    nameless.finalize();
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![buy.clone(), nameless], true).collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    let other = sided(
+        "S-9",
+        30,
+        Side::Sell,
+        State::Canceled,
+        &[(CL_ORD_ID, "C-1")],
+    );
+    let walked: Vec<OrderEvent> = EventIterator::new(vec![buy, other], true).collect();
+    assert_eq!(
+        walked[1].get_prevuuid(),
+        None,
+        "a sell never joins a buy by name"
+    );
+}
+
+/// A12: an execution is a chain of its own - it joins no live order by a
+/// name it shares with it, so a fill never ends its order's chain.
+#[test]
+fn an_execution_joins_no_chain_by_a_name() {
+    use yggdryl::Side;
+    use yggdryl::graph::{Market, MarketData};
+
+    let order = sided("O-1", 10, Side::Buy, State::New, &[(ORDER_ID, "O-1")]);
+    let mut fill = ExecutionEvent::at(at(20));
+    fill.set_crosscode("ExecID=E-1".to_owned());
+    fill.set_side(Side::Buy);
+    fill.set_state(State::Filled);
+    fill.insert_altid(ORDER_ID, "O-1").unwrap();
+    fill.finalize();
+    let mut walk = EventIterator::new(vec![MarketData::from(order), MarketData::from(fill)], true);
+    let _ = walk.next();
+    let fill = walk.next().unwrap();
+    let fill = fill.as_execution_event().expect("the fill keeps its kind");
+    assert_eq!(fill.get_prevuuid(), None);
+    assert_eq!(walk.alive().count(), 1, "the order is still alive");
 }

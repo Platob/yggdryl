@@ -4,6 +4,7 @@
 //! nothing above it names one - so what it learns, refuses and costs is
 //! reached through `yggdryl::internals` in [`internal`].
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use yggdryl::securityid::embedded;
@@ -200,7 +201,7 @@ fn each_source_holds_its_code_to_its_own_rule() {
     assert_eq!(width("RIC"), 32);
     assert_eq!(width("HOUSE"), 32);
 
-    let accepts = |key: &str, code: &str| SecType::read(key).unwrap().validate_code(code).is_ok();
+    let accepts = |key: &str, code: &str| SecType::read(key).unwrap().canonical_code(code).is_ok();
     assert!(accepts("ISIN", "US0378331005"));
     assert!(accepts("ISIN", "us0378331005"));
     assert!(
@@ -245,21 +246,119 @@ fn each_source_holds_its_code_to_its_own_rule() {
     assert!(!accepts("HOUSE", &"h".repeat(33)));
     assert!(!accepts("HOUSE", "tab\tcode"));
 
-    let (path, reason) = located(SecType::read("WKN").unwrap().validate_code("BASI11"));
+    let (path, reason) = located(SecType::read("WKN").unwrap().canonical_code("BASI11"));
     assert_eq!(path, "WKN");
     assert_eq!(
         reason,
         "expected a WKN code, got \"BASI11\", not six of [0-9A-HJ-NP-Z]"
     );
-    let (path, reason) = located(SecType::read("BLOOMBERG").unwrap().validate_code("n/a"));
+    let (path, reason) = located(SecType::read("BLOOMBERG").unwrap().canonical_code("n/a"));
     assert_eq!(path, "BLOOMBERG");
     assert_eq!(
         reason,
         "expected a BLOOMBERG code, got \"n/a\", which states nothing"
     );
     assert!(matches!(
-        SecType::read("ISIN").unwrap().validate_code("US0378331006"),
+        SecType::read("ISIN")
+            .unwrap()
+            .canonical_code("US0378331006"),
         Err(Error::InvalidDataType { kind: "isin", .. })
+    ));
+}
+
+#[test]
+fn forex_is_the_crates_own_key_and_its_code_lands_as_the_canonical_pair() {
+    // FIX gives a currency pair no source code, so the key is the crate's:
+    // one spelling stored, several read, and it packs as a key FIX does not
+    // know.
+    for spelling in [
+        "FOREX",
+        "forex",
+        " Forex ",
+        "forexcode",
+        "ccypair",
+        "CcyPair",
+        "currency_pair",
+    ] {
+        assert_eq!(
+            SecType::read(spelling).unwrap().as_str(),
+            "FOREX",
+            "{spelling:?}"
+        );
+    }
+    for name in [
+        "#FOREXCODE",
+        "ForexCode",
+        "#forex",
+        "CurrencyPair",
+        "SecurityForexID",
+    ] {
+        assert_eq!(
+            SecType::from_field_name(name).map(|key| key.as_str().to_owned()),
+            Some("FOREX".to_owned()),
+            "{name:?}"
+        );
+    }
+    // What FIX names stays FIX's thirty-three, and a currency is not a pair.
+    assert_eq!(SecType::KNOWN.len(), 33);
+    assert_eq!(SecType::read("ISOCCY").unwrap().as_str(), "ISOCCY");
+    assert_eq!(SecType::from_field_name("Currency"), None);
+
+    let forex = SecType::read("forex").unwrap();
+    assert!(!forex.is_known());
+    assert_eq!(forex.fix_source(), None);
+    assert_eq!(forex.max_code_width(), 7);
+
+    // Every accepted spelling lands as the one stored pair; the canonical
+    // spelling is borrowed, as every other source's code is.
+    assert!(matches!(
+        forex.canonical_code("EUR/USD").unwrap(),
+        Cow::Borrowed("EUR/USD")
+    ));
+    for spelling in ["eurusd", "EUR-USD", "eur.usd", "EUR_USD"] {
+        assert_eq!(
+            forex.canonical_code(spelling).unwrap(),
+            "EUR/USD",
+            "{spelling}"
+        );
+    }
+    let pair = SecurityId::new(forex.clone(), "eurusd").unwrap();
+    assert_eq!(pair.code(), "EUR/USD");
+    assert_eq!(pair.sectype().as_str(), "FOREX");
+    assert_eq!(pair.to_string(), "FOREX:EUR/USD");
+    assert!(pair.is_inline());
+    assert_eq!(pair, id("ccypair", " EUR/USD "));
+
+    // A symbol, a pair of one currency, a stranger and a null-like code are
+    // refused by the pair's own rule or the null one.
+    for code in ["EUR/EUR", "EUR/USD 1M", "ABC/USD", "EUR USD"] {
+        let refused = forex.canonical_code(code).unwrap_err();
+        assert!(
+            matches!(refused, Error::InvalidDataType { kind: "forex", .. }),
+            "{code}: {refused}"
+        );
+    }
+    let (path, reason) = located(forex.canonical_code("n/a"));
+    assert_eq!(path, "FOREX");
+    assert_eq!(
+        reason,
+        "expected a FOREX code, got \"n/a\", which states nothing"
+    );
+
+    // Every other source borrows the code it validates.
+    assert!(matches!(
+        SecType::read("ISIN")
+            .unwrap()
+            .canonical_code("us0378331005")
+            .unwrap(),
+        Cow::Borrowed("us0378331005")
+    ));
+    assert!(matches!(
+        SecType::read("HOUSE")
+            .unwrap()
+            .canonical_code("h-1")
+            .unwrap(),
+        Cow::Borrowed("h-1")
     ));
 }
 
@@ -270,13 +369,13 @@ fn a_ric_source_holds_its_code_to_the_ric_rule() {
     let ric = SecType::read("RIC").unwrap();
     assert_eq!(ric.fix_source(), Some('5'));
     for code in ["AAPL.OQ", "VOD.L", ".SPX", "0#.FTSE", "EUR=", "ESc1"] {
-        assert!(ric.validate_code(code).is_ok(), "{code}");
+        assert!(ric.canonical_code(code).is_ok(), "{code}");
     }
     assert_eq!(id("ric", "ESc1").code(), "ESc1", "a RIC does not fold");
     assert_eq!(id("5", "AAPL.OQ").to_string(), "RIC:AAPL.OQ");
 
     // An inner space splits the token, which a generic source would hold.
-    let refused = ric.validate_code("AAPL OQ").unwrap_err();
+    let refused = ric.canonical_code("AAPL OQ").unwrap_err();
     assert!(
         matches!(refused, Error::InvalidDataType { kind: "ric", .. }),
         "{refused}"
@@ -285,12 +384,12 @@ fn a_ric_source_holds_its_code_to_the_ric_rule() {
     assert!(
         SecType::read("HOUSE")
             .unwrap()
-            .validate_code("AAPL OQ")
+            .canonical_code("AAPL OQ")
             .is_ok()
     );
-    assert!(ric.validate_code("IBM\t.N").is_err());
-    assert!(ric.validate_code(&"R".repeat(33)).is_err());
-    let (path, reason) = located(ric.validate_code("n/a"));
+    assert!(ric.canonical_code("IBM\t.N").is_err());
+    assert!(ric.canonical_code(&"R".repeat(33)).is_err());
+    let (path, reason) = located(ric.canonical_code("n/a"));
     assert_eq!(path, "RIC");
     assert_eq!(
         reason,

@@ -15,9 +15,10 @@
 | Enums | A vocabulary is a named code set the registry owns rather than a property of one field: the members are held once under the set's name and a scalar's `FIX:codeset` states that name. A registry refuses a field naming a set it does not hold, so a set is stated before a field reads by it. Every version's values are in the set: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
 | Code sets | `codesets` is a fourth thing the registry holds beside the three categories, and no `FixCategory`: a set carries no tag, no datatype and no reference, so `FixCategory::ALL` is still the three and the sets have doors of their own - `codeset`, `codeset_of`, `codesets`, `set_codeset`, `merge_codeset`, `remove_codeset`. A [store](store.md) writes them to `codesets/<name>.json` and a snapshot to a `codesets` key |
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `FIX:names`, and a field FIX retired is still in the dictionary under its own tag |
-| Replacements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; a registry states a rule of its own on the field as `FIX:replacements`, which wins whole over the table for that field, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
+| Retirements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
+| Rules | A registry carries no rule of its own. What a parse [fills in](capture.md#what-a-message-implied-is-filled-in) and how it [restates](#retired-fields-are-restated-by-the-crates-table) a retired field are the crate's native code, the same for every registry: no `FIX:` key states a derivation or a replacement, and a registry's field for a target only types the answer - a registry lacking that field fills nothing there |
 | Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
-| Identifier maps | A scalar may carry `FIX:idmap`: the [identifier-map keys](#a-field-names-a-message-by-its-identifiers) its value states - map, key, whether a following operation carries it, and on `PartyID(448)` the `PartyRole(452)` of the occurrence stating it; `idmap_sources` compiles every field's once |
+| Identifier maps | A scalar may carry `FIX:idmap`: the [alternate identifier keys](#a-field-names-a-message-by-its-identifiers) its value states - the map, `altids`, the key, whether a following operation carries it, and on `PartyID(448)` the `PartyRole(452)` of the occurrence stating it; `idmap_sources` compiles every field's once |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and Serie/LargeSerie groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
 | Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
@@ -29,8 +30,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 40 definitions from tag 65003: 39 scalar fields and the sorted Map group `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 41 scalar fields and one group: 42 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 41 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 41 definitions, tags 65001 to 65041: 40 scalar fields and the sorted Map group `metadata(65030)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 42 scalar fields and one group: 43 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 42 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -165,7 +166,7 @@ The generator gives every group a collection display. A unique published plural 
 
 ## Component identifiers
 
-`FIX:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; no column carries them - the names a message goes by are its [identifier maps](message.md#the-identifier-maps), read off the fields that state them.
+`FIX:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; no column carries them - the names a message goes by are its [alternate identifiers](message.md#the-identifier-maps), read off the fields that state them.
 
 === "Rust"
 
@@ -276,7 +277,7 @@ The generator gives every group a collection display. A unique published plural 
 | Stored metadata | The same setter normalizes hand-written declarations after references resolve; reload and merge retain final component order, not the caller's spelling order |
 | Selection | Exact canonical member name first; a renamed member's tag only when unique in both the declaration and row; an ambiguous tag selects nothing |
 | Ownership | Rust borrows both values without allocation; Python returns read-only declaration Field clones and Scalar wrappers; Node returns independent mutable Field clones and Scalar wrappers, never a mutable registry member |
-| Filled | Nothing: the `identifiers` Map (65020) that carried the selected values is retired, its tag never reused. A message's names are its [identifier maps](message.md#the-identifier-maps), read off the fields that state them, and the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by `altids` |
+| Filled | Nothing: no column carries the selected values. A message's names are its [alternate identifiers](message.md#the-identifier-maps), read off the fields that state them, and the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by `altids` |
 
 The generator's one explicit identifier-family table annotates every matching direct member across the 109 shipped components that declare one, message definitions among them; a group member is not flattened into its enclosing message. The [CLI definition flags](cli.md#definition-flags) expose the same native setter through `--identifiers`; category replacement and the [whole-list merge rule](#one-merge-with-a-rule-per-key) remain distinct operations.
 
@@ -290,18 +291,16 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
 | `field_by_name(name)` | The canonical fold, then an alias fold |
 | `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
-| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65049` the `metadata` Map - while the counter itself answers `field(453)` |
+| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65030` the `metadata` Map - while the counter itself answers `field(453)` |
 | `MsgType::get_group_by_tag(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a serie, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
-A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `metadata` is reached by its canonical name or its counter, never by scalar `field_by_tag(65049)`; its key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
+A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `metadata` is reached by its canonical name or its counter, never by scalar `field_by_tag(65030)`; its key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
 Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a tag that is not positive and displays as its decimal digest - the [fold and its halves](index.md#identity-is-a-tag-and-a-name) are the vocabulary's. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
-Rust's opt-in `registry.with_default_aliases()?` registers the alternative spellings of canonical field names: `bid` → `demand`, `offer` → `ask`, `px` → `price`, and `size` → `qty`. Combinations apply together, so `offerpx` also answers `askpx`, `offerprice`, and `askprice`. Existing canonical names and aliases keep their owners; when generated spellings compete, the first field in tag-major registry order keeps the spelling. These are the same indexed aliases the codec and message setters already resolve.
-
-Registration changes only fields gaining an alias, then refreshes catalog references once for the complete batch. Calling it again without new eligible fields leaves the registry untouched. The four rules generate at most fifteen alternatives per field; catalog validation and reference expansion are batched, with no alias generation added to message parsing or setters. This registration method is Rust-only.
+Every name lookup reads four word pairs either way - `offer`/`ask`, `size`/`qty`, `bid`/`demand`, `px`/`price` - wherever one stands in the folded name, after every name a field holds exactly, canonically or as an alias. `AskPx`, `ASK_PX`, `askpx` and `AskPrice` reach `OfferPx(133)`, `DemandQty` reaches `BidSize(134)`, and a bridge's `ULLINK.OFFERPRICE` reaches `OfferPx` under its namespace. A name a dictionary defines as a field of its own is that field; a spelling the words make reaching two different fields reaches none. Nothing is written into the registry: the words are read at the lookup, on the stack, so a lookup allocates nothing, and the codec, the message readers and the setters all resolve through it in every language.
 
 === "Rust"
 
@@ -615,11 +614,11 @@ Python registries are mutable and unhashable; `stable_hash()` explicitly compute
 
 ## A field names the code set it reads by
 
-A vocabulary belongs to the dictionary rather than to one field. The specification names each set - `SideCodeSet`, `SecurityIDSourceCodeSet` - and names it from as many fields as draw on it, so the registry holds the members once under that name and a scalar's `FIX:codeset` states only which set it reads by. The committed source dictionary holds 735 sets read by 2,027 fields; the registry adds its builtin `msgcatcodeset`, so a live default registry holds 736. One time-unit set is read by 103 fields alone; `SecurityIDSource(22)` and `UnderlyingSecurityIDSource(305)` are two of the 36 fields that read `securityidsourcecodeset`, and a code named, aliased or documented once is named for every one of them.
+A vocabulary belongs to the dictionary rather than to one field. The specification names each set - `SideCodeSet`, `SecurityIDSourceCodeSet` - and names it from as many fields as draw on it, so the registry holds the members once under that name and a scalar's `FIX:codeset` states only which set it reads by. The committed source dictionary holds 735 sets read by 2,027 fields; the registry adds its builtin `msgcatcodeset` and `statecodeset`, so a live default registry holds 737. One time-unit set is read by 103 fields alone; `SecurityIDSource(22)` and `UnderlyingSecurityIDSource(305)` are two of the 36 fields that read `securityidsourcecodeset`, and a code named, aliased or documented once is named for every one of them.
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
-`msgcatcodeset` and `statecodeset` are intrinsic rather than ordinary mutable vocabularies: the first maps each symbolic category to its stable `int32` market-operation ID, the second names every [State](../types/enum/state.md) member - its stored name, the `int32` code a `state` column stores as the value, and what it means - and both are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `msgcatcodeset`.
+`msgcatcodeset` and `statecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `int32` code a `msgcat` column stores and what it stands for - the second every [State](../types/enum/state.md) member - its stored name, the `int32` code a `state` column stores as the value, and what it means - and both are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `msgcatcodeset`.
 
 === "Rust"
 
@@ -839,10 +838,10 @@ some FIX 4.0 to 5.0 SP2 dictionary declares and the newest lacks -
 thirty-four more - so `field_by_tag` answers for it, because a capture holds
 what was sent.
 
-How a retired field or value is restated travels on the field it is about:
-[`FIX:replacements`](#a-field-carries-what-replaced-it) says which field takes
-what, and a [code set](#a-field-names-the-code-set-it-reads-by) states one reading of
-every value it declares. `FIX:deprecated` is the other half of that fact: it
+How a retired field or value is restated is
+[the crate's table](#retired-fields-are-restated-by-the-crates-table), and a
+[code set](#a-field-names-the-code-set-it-reads-by) states one reading of every
+value it declares. `FIX:deprecated` is the other half of that fact: it
 names the version at which FIX removed the field, and a
 [parse](message.md#restated-under-the-dictionary) then restates such a field's
 value under what replaced it and leaves the source null, so the row holds the
@@ -879,140 +878,26 @@ metadata documents remain on the field and round-trip through both bindings.
 
 `FIX:nulls` is comma-separated, matched case-insensitively against trimmed input after the field is resolved. A matched spelling becomes null in the typed row while arrival entries retain the original bytes; `FixCodec::with_null_values` is the capture-wide counterpart applied before field lookup.
 
-## A field carries what replaced it
+## Retired fields are restated by the crate's table
 
-The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those retirements are facts about FIX itself, the same for every dictionary that declares the tags, so the crate holds them as one table keyed by the retired tag - [the table below](#what-the-specification-retired) - and a [parse](message.md#restated-under-the-dictionary) applies them as it builds the message, with nothing parsed, bound or evaluated per message. A rule a registry states of its own travels on the field as `FIX:replacements`: one canonical document, read borrowed, applied the same way - the same first match, the same writes, the same checks. A field's own document wins whole over the specification's entries for its tag, so a registry restates a retired field by what it states and the table does not fill in behind it. The shipped dictionary states no document: what it carried as documents lives in the table and nowhere else.
+The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those retirements are facts about FIX itself, the same for every dictionary that declares the tags, so the crate holds them as one table keyed by the retired tag - [the table below](#what-the-specification-retired) - and a [parse](message.md#restated-under-the-dictionary) applies them as it builds the message, with nothing parsed, bound or evaluated per message. The table is every replacement rule there is: a registry states none of its own and no `FIX:` key carries one, so two registries holding the same fields restate a message alike, and a registry lacking a target's field fills nothing there. The crate's own bridge fields that name an instrument - `omsinstrumentid` (65040) and `ullinkinstrumentid` (65041) - stand in the table beside the specification's retirements, restated the same way into one `secaltids` occurrence under their own source.
 
-Entries are in **document order**, and the order is semantic: the first entry whose condition a message meets answers, so a catch-all entry stating no condition comes last. The table below is ordered the same way.
-
-```json
-[{"plan":"select 'A' as ordercapacity where rule80a = 'A'","doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]
-```
-
-| Entry key | Required | Value | Meaning |
-| --- | --- | --- | --- |
-| `plan` | yes | expression text | one [plan](../expression/grammar.md) of the crate's own grammar: its `select` names the columns the rule fills and the term each takes, its `where` is the condition the message must meet; a plan naming no column is refused |
-| `doc` | no | text | the specification's wording, where the mapping is not the plain "same value in the replacement field" |
-
-One rule is one plan, and the plan's vocabulary is the whole of what a rule can say - the same grammar [`FIX:derivation`](#a-field-carries-how-it-is-derived) spells a derived column in, with a target list and a condition:
-
-| The rule says | Spelled as | Meaning |
-| --- | --- | --- |
-| a constant | `'A' as ordercapacity` | the target takes that wire text, read as its field reads one; a `MultipleCharValue` target takes its tokens space-separated, `'1 3'` |
-| the source's own value | `maxfloor as displayqty` | the source column, re-typed for the target |
-| another column | `onbehalfofcompid as hopcompid` | that column's stated value at the same level; unstated, the rule does not apply |
-| a join | `concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate` | the wire texts concatenated, every part stated; a day is spelled with two digits, which is how it completes a month-year |
-| a group occurrence | `[{partyid: execbroker, partyrole: '1'}] as parties` | one occurrence of that repeating group at this level - a serie of one record, a member per column - and a member may itself be an occurrence |
-| the held value | `where rule80a = 'A'` | the entry applies to that value of the source; a `MultipleCharValue` source, several codes in one text, is asked with `contains(execinst, 'T')`; a `state` column compares by the code's spelling |
-| the message type | `where :msgtype in ('8', 'AE')` | the root's `MsgType(35)`, crossing as a parameter because it is a fact about the message rather than a column of the level |
-| the enclosing group | `where :group = 'allocgrp'` | the repeating group the level is an occurrence of, the same way; null at the root |
-
-The scanner refuses an unknown key, a key out of order, and a missing `plan` at its byte; a stored plan the grammar refuses is a readable entry that refuses to be a plan when asked for one, and reads as no rule. The writer refuses a plan naming no column and one past the expression budget.
+Entries under one tag are in the specification's order, and the order is semantic: the first entry whose condition the held value meets answers, so a catch-all stating no condition comes last, and `ExecInst(18)`'s FIX 4.4 peg rule stands before its FIX 5.0 peg price types because the `R` the first writes is what the second reads. What a condition and a fill can say is [what a held value is, to a rule](message.md#what-a-held-value-is-to-a-rule).
 
 How one entry is applied at one level - the root, or one occurrence of a repeating group:
 
 | Step | Rule |
 | --- | --- |
-| Source | each child whose field carries `FIX:replacements`, in ascending tag order, so `ExecTransType(20)` writes `ExecType(150)` before `ExecType`'s own rule reads it |
-| Match | the first entry whose `where` holds over the level, with `:msgtype` and `:group` supplied; a condition the level cannot bind does not hold |
-| Plan | every projection evaluated over the level, its value re-typed for the target's field; a value the target cannot hold, or a term that answers null, ends the entry |
-| Check | every target writable: absent, null, or already equal to what would be written; the source field itself is always writable, and a constant written over a multi-valued source replaces the token the condition named |
-| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; an occurrence merges into the one whose literal members all equal the projected ones, else appends one, and sets the counter to the count the group then has |
-| Chain | an entry that rewrote the source's own value leaves a new held value, restated in turn, bounded by the rules the field states |
-
-### Configuring a rule
-
-A rule of a registry's own is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it - and by it alone for that field, the specification's entries for the tag standing down. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `FIX:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
-
-The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows its 4.2 counterparty meant a principal one edits the field, and nothing else:
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use yggdryl::fix::FixReplacement;
-    use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Plan};
-
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
-
-    let mut rule80a = registry.field_by_tag(47)?.clone();
-    let plan: Plan = "select 'P' as ordercapacity where rule80a = 'A'".parse()?;
-    rule80a.as_fix_mut().set_replacements(&[FixReplacement::new(plan)
-        .with_doc("Rule80A A on this venue was a principal order")])?;
-    // The builder writes the one canonical text the reader reads back.
-    assert_eq!(
-        rule80a.get_metadata("FIX:replacements"),
-        Some(concat!(
-            r#"[{"plan":"select 'P' as ordercapacity where rule80a = 'A'","#,
-            r#""doc":"Rule80A A on this venue was a principal order"}]"#,
-        ))
-    );
-    registry.update(rule80a)?;
-
-    // Read back borrowed, in document order, and as the plan it is.
-    let entry = registry.field_by_tag(47)?.as_fix().replacements().next().expect("one rule")?;
-    assert_eq!(entry.parse_plan()?.to_string(), "select 'P' as ordercapacity where rule80a = 'A'");
-
-    // Every reader linked to the registry restates by the edited rule.
-    let reader = FixCodec::new(Arc::new(registry));
-    let latest = reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|")?.next().expect("one frame")?;
-    assert_eq!(latest.by_tag(528)?.as_str(), Some("P"));
-    assert_eq!(latest.by_tag(47)?.as_str(), Some("A"), "the source stays as read");
-    ```
-
-=== "Python"
-
-    ```python
-    from pathlib import Path
-
-    from yggdryl.fix import FixCodec, FixRegistry
-
-    registry = FixRegistry.from_handle(Path("config/fix").resolve())
-
-    rule80a = registry.field_by_tag(47)
-    rule80a.metadata["FIX:replacements"] = (
-        '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]'
-    )
-    registry.update(rule80a)
-    assert "'P' as ordercapacity" in registry.field_by_tag(47).metadata["FIX:replacements"]
-
-    # Every reader linked to the registry restates by the edited rule.
-    reader = FixCodec(registry)
-    latest = next(reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
-    assert latest.by_tag(528).as_py() == "P"
-    assert latest.by_tag(47).as_py() == "A", "the source stays as read"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const path = require('node:path')
-    const { fix } = require('yggdryl')
-
-    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-
-    const rule80a = registry.fieldByTag(47)
-    rule80a.set(
-      'FIX:replacements',
-      '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]',
-    )
-    registry.update(rule80a)
-    assert.match(registry.fieldByTag(47).get('FIX:replacements'), /'P' as ordercapacity/)
-
-    // Every reader linked to the registry restates by the edited rule.
-    const reader = new fix.FixCodec(registry)
-    const latest = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
-    assert.equal(latest.byTag(528).asJs(), 'P')
-    assert.equal(latest.byTag(47).asJs(), 'A', 'the source stays as read')
-    ```
+| Source | each child the table lists, in ascending tag order, so `ExecTransType(20)` writes `ExecType(150)` before `ExecType`'s own entries read it |
+| Match | the first entry whose condition holds over the level - the held value, the message types it is scoped to, the group it applies inside |
+| Plan | every target's value computed and re-typed for the target's field; a value the target cannot hold, or a part a join needs left unstated, ends the entry |
+| Check | every target writable: absent, null, or already equal to what would be written; the source field itself is always writable, and a constant written over a multi-valued source replaces the code the condition named |
+| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; an occurrence merges into the one whose literal members all equal the planned ones, else appends one, and sets the counter to the count the group then has |
+| Chain | an entry that rewrote the source's own value leaves a new held value, restated in turn, bounded by the entries the tag lists |
 
 ### What the specification retired
 
-The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/src/fix/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own test proves the table against the shipped dictionary on every build: every field, group and member an entry names resolves, and a message restates under the table exactly as it restates under the same rules stated as `FIX:replacements` documents - the ulbridge capture and a line per entry, both ways.
+The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/src/fix/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own tests hold the table sorted by tag with each tag once, every entry filling something and a catch-all last.
 
 | FIX | Source | Restated as |
 | --- | --- | --- |
@@ -1045,175 +930,32 @@ The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 
 | 5.0.1 | `PublishTrdIndicator(852)` `Y`, `N` | `TradePublishIndicator(1390)` `1`, `0` |
 | 5.0.1 | `OrderID(37)`, `SecondaryOrderID(198)` on `r` | `MassActionReportID(1369)` |
 
-Deliberately not covered, because the appendix states no value mapping a rule can write: `MDEntryOriginator`, `MDMkt`, `LocationID` and `DeskID` into `PartyRole`; `TargetStrategyParameters` and `ParticipationRate` into `StrategyParameters`; the settlement instruction fields 173 to 187 into `SettlParties`; `SecurityType` `FOR`, which has four candidates; `QuoteType`; `SecondaryTradeReportID` and `SecondaryTradeReportRefID`; `Signature` and the `SecureData` pair; `UnitOfMeasure` `MMbbl`; the `UnderlyingLeg` fields of EP187; `TotalNumPosReports`; `ReceivedDeptID`; `FXBenchmarkRateFix`. `SecurityType` `FUT` and `OPT` and `PutOrCall` into `CFICode` are not rules either, because [`CFICode`'s own derivation](#a-field-carries-how-it-is-derived) already states them. A field the specification removed and replaced with nothing - `SendingDate(51)`, `WaveNo(105)` - is in the dictionary with its `removed` entry and stays in a restated row as read.
+Deliberately not covered, because the appendix states no value mapping a rule can write: `MDEntryOriginator`, `MDMkt`, `LocationID` and `DeskID` into `PartyRole`; `TargetStrategyParameters` and `ParticipationRate` into `StrategyParameters`; the settlement instruction fields 173 to 187 into `SettlParties`; `SecurityType` `FOR`, which has four candidates; `QuoteType`; `SecondaryTradeReportID` and `SecondaryTradeReportRefID`; `Signature` and the `SecureData` pair; `UnitOfMeasure` `MMbbl`; the `UnderlyingLeg` fields of EP187; `TotalNumPosReports`; `ReceivedDeptID`; `FXBenchmarkRateFix`. `SecurityType` `FUT` and `OPT` and `PutOrCall` into `CFICode` are not rules either, because the native [derivation of `CFICode`](capture.md#what-a-message-implied-is-filled-in) already states them. A field the specification removed and replaced with nothing - `SendingDate(51)`, `WaveNo(105)` - is in the dictionary with its `removed` entry and stays in a restated row as read.
 
-Four entries are listed as the specification states them and do not fire on a parse: `OrderID(37)` and `SecondaryOrderID(198)` are lifted out of the row onto the message's own holders before the restatement reads it, and `OddLot(575)` and `PublishTrdIndicator(852)` are boolean fields, whose value spells no text a condition could name - exactly what the same rules answer as a registry's own documents.
+Four entries are listed as the specification states them and do not fire on a parse: `OrderID(37)` and `SecondaryOrderID(198)` are lifted out of the row onto the message's own holders before the restatement reads it, and `OddLot(575)` and `PublishTrdIndicator(852)` are boolean fields, whose value spells no code a condition could name.
 
-## A field carries how it is derived
+## A registry states no derivation
 
-A message implies values it need not carry: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a `SecurityID` a check digit closes has said what standard numbered it, a CFI has said what security type it is. Those are facts about the field being filled, so they travel on it as `FIX:derivation`: one term of the [expression grammar](../expression/grammar.md) over the message's fields, in its canonical text, that a [parse](capture.md#what-a-message-implied-is-filled-in) evaluates where the message states no value for the field. A registry adds or edits a derivation by editing the field. Rust hard-codes the evaluator for the exact generated shipped set, not a second configurable rule table; any metadata difference uses the generic expression evaluator. No column of this crate's derives at all - what a message says about its market is FIX's own field, and the market traits read it there.
-
-```text
-case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end
-```
-
-| Contract | Rule |
-| --- | --- |
-| Key | `FIX:derivation`, the canonical text of one term, read with `FixField::derivation() -> Result<Option<Term>>` (parsed through `Term::from_str`, then budget-checked; a text that is not a term is `InvalidMetadataValue` naming the key) and written with `FixFieldMut::set_derivation(&Term)` / `remove_derivation()`; Python `field.fix.derivation` and JavaScript `field.fix.derivation` cross it as text, `None` / `null` removing it |
-| Names | a field by its canonical folded name and a group by its name with a path into it - `secaltids[securityaltidsource = '4'][0].securityaltid`; an alias is not resolved, because the pass reads the restated row, whose children are canonical |
-| Validated | at insert, update and load alike, the registry parses the text and checks the grammar's depth and node budget, refusing a malformed one by the field's name; on the first parse or row fill, the exact generated signature and expected shapes select the native plan directly, while any custom set proves once that every name is a field or group and that every term binds against those fields, refusing by the field's name before reading a message; the refusal is cached like a compiled list, so a custom registry whose derivations refuse compiles once and refuses every ask, on every door, until a field changes |
-| Merge | `update` merges: an incoming derivation replaces the stored one whole, and a stored one the incoming field omits is kept, as every `FIX:` key is; a derivation is taken away by `remove_derivation` on the field before an `insert`, which replaces the same identity whole, or by a registry built without it |
-| Evaluated | to a fixpoint, in tag order, a stated non-null value never overwritten, an absent input null, a refused value silence - the [parse's contract](capture.md#what-a-message-implied-is-filled-in) |
-| Typed | the answer lands through the dictionary's own field for the tag, so `then 0` on a `decimal128(38, 18)` field is that decimal zero, `then '2'` on a `state` field is the state `2` spells, and a prefix `CountryOfIssue`'s `in (...)` does not list - `XS`, `EU`, an unassigned pair - is refused by nothing but the term's own condition, because the `country` datatype validates width alone |
-
-### Configuring a derivation
-
-A derivation is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry fills by it. The shipped rule on `LeavesQty(151)` reads what is left as what was ordered minus what was done; a desk whose venue reports the remainder in lots of ten edits the field, and nothing else:
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use yggdryl::expression::Term;
-    use yggdryl::local::LocalFolder;
-    use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
-
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
-
-    let mut leaves = registry.field_by_tag(151)?.clone();
-    let shipped = leaves.as_fix().derivation()?.expect("the dictionary derives LeavesQty");
-    assert!(shipped.to_string().contains("orderqty - cumqty"));
-    leaves.as_fix_mut().set_derivation(
-        &"case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end".parse::<Term>()?,
-    )?;
-    // The field stores the canonical text, whatever spelling was parsed.
-    assert_eq!(
-        leaves.get_metadata("FIX:derivation"),
-        Some("case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"),
-    );
-    registry.update(leaves)?;
-
-    // Every reader linked to the registry fills by the edited derivation.
-    let reader = FixCodec::new(Arc::new(registry));
-    let filled = reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|")?.next().expect("one frame")?;
-    // A quantity is exact, so the remainder reads back as the number it is.
-    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal::parse("8")?));
-    ```
-
-=== "Python"
-
-    ```python
-    import decimal
-    from pathlib import Path
-
-    from yggdryl.fix import FixCodec, FixRegistry
-
-    registry = FixRegistry.from_handle(Path("config/fix").resolve())
-
-    leaves = registry.field_by_tag(151)
-    assert "orderqty - cumqty" in leaves.fix.derivation
-    leaves.fix.derivation = "case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"
-    registry.update(leaves)
-
-    # Every reader linked to the registry fills by the edited derivation.
-    reader = FixCodec(registry)
-    filled = next(reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|"))
-    # A quantity is exact, so it crosses as a `decimal.Decimal`.
-    assert filled.by_tag(151).as_py() == decimal.Decimal("8")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const path = require('node:path')
-    const { fix } = require('yggdryl')
-
-    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-
-    const leaves = registry.fieldByTag(151)
-    assert.match(leaves.fix.derivation, /orderqty - cumqty/)
-    leaves.fix.derivation = "case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"
-    registry.update(leaves)
-
-    // Every reader linked to the registry fills by the edited derivation.
-    const reader = new fix.FixCodec(registry)
-    const filled = reader.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|')).next().value
-    // A quantity is exact, so it crosses as its coefficient and its scale
-    // rather than as a number JavaScript would round.
-    assert.equal(filled.byTag(151).unscaled, 8_000_000_000_000_000_000n)
-    assert.equal(filled.byTag(151).scale, 18)
-    ```
-
-### The derivations the dictionary carries
-
-The generator writes the specification's tables - FIX 4.4's Appendix D for an order's life, 4.2's Appendix O for what a foreign exchange trade settles on, Appendix 6-D for the CFI each security type names, and the code sets' own facts - onto 29 fields as one term each, from `DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, every name the term reads validated at generation against the dictionary (a field or a group of it; the crate owns no derived column). The crate recognizes this complete canonical set together with the expected field and group shapes and executes it as a direct native plan, avoiding both startup parsing/binding/retention of a generic schema and per-message expression interpretation or working-row construction. The stored terms remain the contract: editing, removing or adding one, or changing a field shape the native plan expects, automatically selects the compiled expression plan for the entire registry. That fallback preserves custom rules and their dependencies on unchanged shipped rules; it is not a mixed partial fast path. `SecurityType(167)`, `PutOrCall(201)` and `CFICode(461)` are rendered from the Appendix 6-D tables the generator holds, `Product(460)` from the groups the dictionary's own `SecurityType` code set files each value under, and `CountryOfIssue(470)` from the crate's own registry of ISO 3166 codes, `StringEnum::COUNTRIES`, which the generator reads off `rust/src/string.rs` rather than copying: the `country` datatype validates width alone, so the 249 assigned codes are the derivation's `in (...)`, and the one list they come from is the registry's. The texts below are the stored texts, exactly.
-
-Six of them state a scale. Every FIX quantity, price, price offset and
-amount is `decimal128(38, 18)`, and the grammar types a product at the sum
-of its operands' scales, so two such numbers would multiply into scale 36 -
-two integral digits, which overflows on any product past ninety-nine - and a
-decimal and a float share no type at all. A product therefore states each
-operand at half the scale, so it lands back at 18 with twenty integral
-digits, and a sum states a float operand at the exact scale it is added to.
-`try_cast` and never `cast`: a number the stated scale cannot hold exactly
-is a rule that answers nothing, which is what every uncertain rule does,
-rather than a refusal that would fail the message.
-
-| Fills | `FIX:derivation` |
-| --- | --- |
-| `AvgPx(6)` | `case when msgtype in ('8', '9') and cumqty = lastqty and lastqty > 0 then lastpx end` |
-| `CumQty(14)` | `case when msgtype in ('8', '9') and orderqty - leavesqty >= 0 then orderqty - leavesqty end` |
-| `Currency(15)` | `settlcurrency` |
-| `SecurityIDSource(22)` | `case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end` |
-| `LastPx(31)` | `lastspotrate + lastforwardpoints` |
-| `OrderQty(38)` | `case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end` |
-| `OrdStatus(39)` | `case when msgtype in ('8', '9') and exectype in ('0', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'E') then exectype when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty = 0 then '2' when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty > 0 and cumqty > 0 then '1' end` |
-| `SecurityID(48)` | `try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)` |
-| `Symbol(55)` | `coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)` |
-| `TimeInForce(59)` | `case when msgtype in ('D', 'G', '8') then '0' end` |
-| `SettlCurrAmt(119)` | `try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))` |
-| `SettlCurrency(120)` | `currency` |
-| `OrigSendingTime(122)` | `case when possdupflag then sendingtime end` |
-| `BidPx(132)` | `bidspotrate + bidforwardpoints` |
-| `OfferPx(133)` | `offerspotrate + offerforwardpoints` |
-| `LeavesQty(151)` | `case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end` |
-| `SecurityType(167)` | `case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end` |
-| `PutOrCall(201)` | `case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end` |
-| `GrossTradeAmt(381)` | `case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end` |
-| `Product(460)` | `case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end` |
-| `CFICode(461)` | `case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end` |
-| `CountryOfIssue(470)` | `case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end` |
-| `PeggedPrice(839)` | `peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))` |
-| `MinPriceIncrementAmount(1146)` | `minpriceincrement * contractmultiplier` |
-| `TotalTradeQty(2367)` | `lastqty * tradingunitperiodmultiplier` |
-| `LastMultipliedQty(2368)` | `try_cast(lastqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))` |
-| `TotalGrossTradeAmt(2369)` | `try_cast(lastpx as decimal128(38,9)) * try_cast(totaltradeqty as decimal128(38,9))` |
-| `TotalTradeMultipliedQty(2370)` | `try_cast(totaltradeqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))` |
-| `CurrencyCodeSource(2897)` | `case when currency is not null then '6' end` |
-
-Deliberately not derived, because the answer would be a guess: no amount whose scale depends on a convention the message does not state - `GrossTradeAmt(381)` from a percent-of-par price, an FX gross amount absent `SettlPriceFxRateCalc(2366)`, `NetMoney(118)` through `CommType(13)` and every `MiscFeeBasis(891)`; and nothing that needs a second message - `OrigClOrdID(41)`, `ListID(66)`, a bust's effect on `CumQty(14)` - because those are facts about a chain, and chains are the [lifecycle's](lifecycle.md).
+A message implies values it need not carry: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a `SecurityID` a check digit closes has said what standard numbered it, a CFI has said what security type it is. A [parse](capture.md#what-a-message-implied-is-filled-in) fills them by the crate's native rules - twenty-nine, one per target tag, listed with their edges there. They are facts about FIX, the same for every dictionary, so a registry carries none: no `FIX:` key states one, and a field's only part in a rule is to type the answer landing under its tag. A registry lacking the target's field fills nothing there, and one whose field will not hold the answer fills nothing either. `CountryOfIssue(470)` answers only for the 249 ISO 3166 codes `StringEnum::COUNTRIES` lists, because the `country` datatype validates width alone. No column of this crate's derives at all - what a message says about its market is FIX's own field, and the market traits read it there.
 
 ## A field names a message by its identifiers
 
-A message goes by the names its fields state - the account it is booked to, the user who entered it, its order's and its parent order's identifiers - and which field states which is a fact about the field, so it travels on the field as `FIX:idmap`: one canonical document of entries, each the map the value lands in, the upper-case key it lands under, whether an operation that follows another carries it, and - on `PartyID(448)` - the `PartyRole(452)` of the `Parties` occurrence that states it. A message rebuilds its three [identifier maps](message.md#the-identifier-maps) from the dictionary's table at every settle.
+A message goes by the names its fields state - its order's and its parent order's identifiers, the quote's, the execution's - and which field states which is a fact about the field, so it travels on the field as `FIX:idmap`: one canonical document of entries, each the map the value lands in, the upper-case key it lands under, whether an operation that follows another carries it, and - on `PartyID(448)` - the `PartyRole(452)` of the `Parties` occurrence that states it. A message rebuilds its [alternate identifiers](message.md#the-identifier-maps) from the dictionary's table at every settle.
 
 ```text
 OrderID(37)   [{"map":"altids","key":"ORDERID","follow":true}]
-PartyID(448)  [{"map":"accountids","key":"CUSTOMERACCOUNT","role":"24"},{"map":"userids","key":"ENTERINGTRADER","role":"36"},{"map":"userids","key":"EXECUTINGTRADER","role":"12"}]
+ClOrdID(11)   [{"map":"altids","key":"CLORDID"}]
 ```
 
 | Contract | Rule |
 | --- | --- |
 | Key | `FIX:idmap`, read with `FixField::idmap() -> FixIdSources` - each item a `Result<FixIdSource>`: `map() -> FixIdMapKind`, `key()`, `follows()`, `role()` - and written with `FixFieldMut::set_idmap(&[FixIdSource])`, an empty list removing it; Python and JavaScript `field.fix.idmap` cross it as `{map, key, follow, role}` records, `follow` and `role` optional going in |
-| Map | `accountids`, `userids` or `altids` - `FixIdMapKind::ALL`, read ASCII case folded |
+| Map | `altids`, the one map - `FixIdMapKind::ALL`, read ASCII case folded |
 | Key text | one to 32 upper-case ASCII letters or digits, the width an `IdMap` key holds; one map and key once per field |
-| Follow | on `altids` alone, because an account and a user always follow; what an entry marks is what `Operation::is_followed_altid` answers for a message and the lifecycle carries forward |
+| Follow | what an entry marks is what `Operation::is_followed_altid` answers for a message and the lifecycle carries forward |
 | Role | a `PartyRole(452)` code of ASCII letters and digits, and only on `PartyID(448)` - a registry refuses one on any other tag, naming the field |
 | Compiled | `FixRegistry::idmap_sources() -> &[(i32, FixIdSource)]`, every field's entries beside its tag in tag order, compiled once and forgotten by every change to the fields; Python `idmap_sources()` and JavaScript `idmapSources()` answer `{tag, map, key, follow, role}` records, JavaScript leaving `role` out where the entry states none |
-| Shipped | the generator writes the standard fields' from `IDMAP_SOURCES` in `scripts/generate_fix_dictionary.py`, validated against the dictionary at generation; the crate's eight bridge identifiers, 65068 to 65075, state their own |
+| Shipped | the generator writes the standard fields' from `IDMAP_SOURCES` in `scripts/generate_fix_dictionary.py`, validated against the dictionary at generation - `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, `TradeID(1003)`; the crate's six bridge identifiers, 65034 to 65039, state their own. No shipped field states a role: the parties a message names are no identifier, and stay in its leaves' metadata |
 
 ## One merge, with a rule per key
 
@@ -1225,7 +967,6 @@ PartyID(448)  [{"map":"accountids","key":"CUSTOMERACCOUNT","role":"24"},{"map":"
 | `FIX:branches` | Union, folded, sorted: every dictionary that contributed either side |
 | `FIX:tags` | Combine alternate tags under collision validation |
 | `FIX:codeset` | The stored name wins: a field keeps the set it already reads by, and the incoming field's set has already been folded into it, so the field is never moved to a vocabulary holding less than the one it read by |
-| `FIX:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
 | `FIX:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
 | `FIX:identifiers` | Incoming wins whole, then resolves against the final component's members into their canonical order; an omitted key preserves the stored declaration |
 | Other protocol keys | Incoming wins; preserve keys only the stored field declares |
@@ -1377,8 +1118,8 @@ Where the field carries no property the defaults answer, keyed by the set's `Sen
 `set_directions` on the field's FIX view refuses what a field can answer alone: a code named twice under any folded spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. Whether a code is one of the set is no longer its question - the field carries no members, only the [name](#a-field-names-the-code-set-it-reads-by) of the set it reads by, and the dictionary holds them - so membership is checked where the rules are read: `MsgDirection::from_registry` resolves every code against the set in force and drops a rule naming one outside it, warning `expected a code of the set, one of ..., got ...`. A hand-edited dictionary reaches that reading without the setter at all, and every entry the setter would have refused is dropped there too, with a warning that is its refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update`, the vocabulary stated once beside it:
 
 ```bash
-ygg fix codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
-ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
+yggdryl fix codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
+yggdryl fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
 ```
 
 `--codes` names the set because an update replaces the definition whole and the name is what the definition carries; the members stay where they are, so restating a field never restates its vocabulary. The bindings read and write the rules as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
@@ -1408,8 +1149,8 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
     cargo test --features internals -p yggdryl --test fix -- mod_::internal
     cargo test --features internals -p yggdryl --test fix -- mod_::internal::the_fold_table_holds_through_add_field_and_through_merge_with mod_::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one mod_::internal::three_spellings_of_one_name_under_one_tag_are_one_identity mod_::internal::name_indexes_fold_ascii_and_membership_never_resolves
     cargo test -p yggdryl --test fix -- merge:: cfb::a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_standard_field
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::a_replacement_document_round_trips_canonically_and_in_order mod_::internal::the_replacement_writer_refuses_what_the_document_cannot_state mod_::internal::a_merge_lets_the_incoming_replacements_win_whole mod_::internal::the_specifications_retirements_restate_as_documents_of_the_same_rules_would
-    cargo test -p yggdryl --test fix latest::
+    cargo test -p yggdryl --test fix -- retired:: latest:: enrich::
+    cargo test -p yggdryl --test fix -- aliases:: alias_rule::
     ```
 
 === "Python"

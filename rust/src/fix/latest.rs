@@ -6,14 +6,12 @@
 //! newest specification spells as `LastQty`, a `Parties` occurrence,
 //! `OrderCapacity(528)` and `Trade`. Every consumer then restates them
 //! independently, which is how two systems come to disagree about one
-//! message. This pass restates a message once, from what the dictionary
-//! itself says: the registry's field for every tag, the aliases that reach
-//! it, the [`FIX:replacements`](super::replacements) a registry states on a
-//! field of its own, and the [retirements](super::retired) the specification
-//! states of a tag. The two are one kind of rule applied one way: the same
-//! first match, the same writes, the same checks. A field's own document
-//! wins whole over the specification's table, so nothing here decides
-//! between the two per entry.
+//! message. This pass restates a message once: under the registry's field
+//! for every tag and the aliases that reach it, and by the crate's one
+//! [table](super::retired) of what the specification retired of a tag and
+//! what stands in for it. A registry states no replacement rule of its own:
+//! the table is the same for every dictionary that declares the tags, and
+//! nothing is parsed, bound or evaluated per message.
 //!
 //! # The row only
 //!
@@ -29,16 +27,14 @@
 //! it holds, to any depth. Each level is canonicalized first - every child
 //! the registry knows re-expressed under the registry's field, children that
 //! reach one field merged into the most complete one - and then restated:
-//! each child whose field carries replacement rules, in ascending tag order,
-//! applies the first rule whose conditions its held value meets. A rule
+//! each child whose tag the table lists, in ascending tag order, applies the
+//! first rule whose conditions its held value meets. A rule
 //! applies all-or-nothing: every field it would fill is computed and
 //! checked, and one target that cannot take its value blocks the whole
 //! rule. A target takes a value when it is absent, null, or already equal;
 //! anything else is a value the message stated, and what the message stated
 //! stands.
 
-use std::borrow::Cow;
-use std::cell::RefCell;
 use std::sync::Arc;
 
 use smol_str::SmolStr;
@@ -48,10 +44,9 @@ use super::entry::wire_text;
 use super::msg::FixMsg;
 use super::registry::{FixMap, name_key};
 use super::retired::{self, Fill, Part, Rule, When};
-use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
+use super::schema::{item_fields, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
-use crate::expression::{Bound, Term};
-use crate::{DataType, Field, Plan, Result, Scalar, StructType};
+use crate::{DataType, Field, Result, Scalar, StructType};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -81,8 +76,9 @@ enum Shape {
     /// The message the pass would answer: nothing to rename, merge, retype
     /// or replace.
     Canonical,
-    /// Stated under the dictionary's own fields, with a rule at the root
-    /// whose condition holds: the rule's writes are owed and nothing else.
+    /// Stated under the dictionary's own fields, with a rule of the table at
+    /// the root whose condition holds: the rule's writes are owed and
+    /// nothing else.
     Ruled,
     /// Rebuilt whole.
     Rebuilt,
@@ -616,11 +612,10 @@ fn pack_group(serie: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, S
 /// is `G R`, the other instruction kept. A `state` never renders back to a
 /// code, so it takes the constant whole.
 ///
-/// `named` are the literals the rule's condition compared against, which is
-/// how a rule over a `MultipleCharValue` says which of several held codes it
-/// is about without a grammar of its own for one.
+/// `named` are the texts the rule's condition names, which is how a rule
+/// over a `MultipleCharValue` says which of several held codes it is about.
 fn restated_tokens(held: &Scalar, named: &[SmolStr], text: &str) -> SmolStr {
-    if matches!(held, Scalar::State(_)) {
+    if held.is_enum() {
         return SmolStr::new(text);
     }
     let Some(spelled) = wire_text(held) else {
@@ -640,55 +635,6 @@ fn restated_tokens(held: &Scalar, named: &[SmolStr], text: &str) -> SmolStr {
         .map(|token| if token == when { text } else { token })
         .collect();
     SmolStr::new(tokens.join(" "))
-}
-
-/// Every text literal a term holds: for a rule's condition, every value it
-/// named.
-fn named_literals(term: &Term) -> Vec<SmolStr> {
-    let mut held = Vec::new();
-    // Pre-order, each literal once, in the order the condition names them:
-    // the first named the held value spells is the one a restatement
-    // replaces.
-    term.walk(&mut |node| {
-        if let Term::Literal(literal) = node {
-            if let Some(text) = literal.value().as_str() {
-                held.push(SmolStr::new(text));
-            }
-        }
-    });
-    held
-}
-
-/// The members of the one occurrence a group projection states.
-///
-/// A group occurrence is spelled `[{member: term, ...}] as group`: a serie of
-/// exactly one record, because a rule fills one occurrence and the Serie is
-/// what the row holds a group as. The grammar reads `{member: term}` as a
-/// map whose keys are paths, and a member is the one name its key spells;
-/// anything else names no occurrence.
-fn occurrence_members(term: &Term) -> Option<Vec<(SmolStr, &Term)>> {
-    let Term::Serie(items) = term else {
-        return None;
-    };
-    match items.as_ref() {
-        [Term::Struct(members)] => Some(
-            members
-                .iter()
-                .map(|(name, term)| (name.clone(), term))
-                .collect(),
-        ),
-        [Term::Map(entries)] => entries
-            .iter()
-            .map(|(key, term)| match key {
-                Term::Path(steps) => match steps.as_ref() {
-                    [crate::FieldSegment::Field(name)] => Some((name.clone(), term)),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect(),
-        _ => None,
-    }
 }
 
 /// A value another field typed, re-typed for `target`.
@@ -717,47 +663,6 @@ fn converted(registry: &FixRegistry, known: &Field, value: &Scalar) -> Scalar {
     match wire_text(value) {
         Some(text) => typed_spelling_remembered(registry, known, &text),
         None => Scalar::Null,
-    }
-}
-
-/// The rules one field restates by.
-enum Entries<'registry> {
-    /// The field's own `FIX:replacements`, compiled: a plan per entry, `None`
-    /// where the entry's text is not a plan.
-    Own(Cow<'registry, [Option<Arc<Plan>>]>),
-    /// What the specification retired of the field's tag.
-    Retired(&'static [Rule]),
-    None,
-}
-
-/// One entry of [`Entries`].
-enum Entry<'entries> {
-    Plan(&'entries Arc<Plan>),
-    Retired(&'static Rule),
-}
-
-impl Entries<'_> {
-    /// How many entries the field states, readable or not: the bound on
-    /// how many times one source is restated in turn.
-    fn len(&self) -> usize {
-        match self {
-            Self::Own(plans) => plans.len(),
-            Self::Retired(rules) => rules.len(),
-            Self::None => 0,
-        }
-    }
-
-    /// The readable entries, in document order.
-    fn iter(&self) -> impl Iterator<Item = Entry<'_>> {
-        let (own, retired) = match self {
-            Self::Own(plans) => (Some(plans.iter().flatten()), None),
-            Self::Retired(rules) => (None, Some(rules.iter())),
-            Self::None => (None, None),
-        };
-        own.into_iter()
-            .flatten()
-            .map(Entry::Plan)
-            .chain(retired.into_iter().flatten().map(Entry::Retired))
     }
 }
 
@@ -808,44 +713,25 @@ impl<'msg> Restater<'msg> {
             .filter(|held| !held.is_null())
     }
 
-    /// The rules `field` restates by: its own document where it states one,
-    /// whole - an entry of its own that is not a plan is still its own and
-    /// the specification does not fill in behind it - else what the
-    /// specification retired of its tag.
-    fn entries(&self, field: &Field, tag: Option<i32>) -> Entries<'msg> {
-        let own = plans_of(self.registry, field);
-        if !own.is_empty() {
-            return Entries::Own(own);
-        }
-        match tag.and_then(retired::rules_of) {
-            Some(rules) => Entries::Retired(rules),
-            None => Entries::None,
-        }
+    /// The first rule of `rules` whose condition holds at a level.
+    fn first_applying(
+        &self,
+        rules: &'static [Rule],
+        value: &Scalar,
+        group: Option<&str>,
+    ) -> Option<&'static Rule> {
+        rules
+            .iter()
+            .find(|rule| self.retired_applies(rule, value, group))
     }
 
-    /// Whether a rule could restate the registry field `known`: off the
-    /// registry's facts where it indexed the field, else read the same way.
-    fn carries_rules(&self, known: &Field) -> bool {
-        self.registry.facts_of(known).map_or_else(
-            || {
-                known.as_fix().replacements().next_ok().is_some()
-                    || tag_and_counter(self.registry, known)
-                        .0
-                        .is_some_and(|tag| retired::rules_of(tag).is_some())
-            },
-            |facts| facts.ruled,
-        )
-    }
-
-    /// Whether one of the specification's rules holds at a level: the
-    /// message type where the rule names some, the enclosing group where it
-    /// applies inside one, and the held value's wire spelling - or one of
-    /// its codes - where it is about one. What a plan asks of `:msgtype`,
-    /// `:group` and the source column, asked of the facts directly, and
-    /// answered as the plan answers it: a boolean holds no text a condition
-    /// could name, so a condition on a boolean field's value does not hold,
-    /// which is what the two boolean retirements - `OddLot(575)` and
-    /// `PublishTrdIndicator(852)` - answer.
+    /// Whether one of the table's rules holds at a level: the message type
+    /// where the rule names some, the enclosing group where it applies
+    /// inside one, and the held value's wire spelling - one of its codes, or
+    /// its length - where it is about one. A boolean holds no text a
+    /// condition could name, so a condition on a boolean field's value does
+    /// not hold, which is what the two boolean retirements - `OddLot(575)`
+    /// and `PublishTrdIndicator(852)` - answer.
     fn retired_applies(&self, rule: &Rule, value: &Scalar, group: Option<&str>) -> bool {
         if !rule.msgtypes.is_empty()
             && !self
@@ -864,6 +750,10 @@ impl<'msg> Restater<'msg> {
             When::Any => true,
             When::Equals(text) => wire_text(value).is_some_and(|held| held == text),
             When::Contains(text) => wire_text(value).is_some_and(|held| held.contains(text)),
+            When::FitsSource(source) => wire_text(value).is_some_and(|held| {
+                crate::securityid::SecType::read(source)
+                    .is_ok_and(|kind| held.chars().count() <= kind.max_code_width())
+            }),
         }
     }
 
@@ -883,28 +773,20 @@ impl<'msg> Restater<'msg> {
     ///
     /// A rule fires only where its condition holds at the root, so a root
     /// child carrying rules leaves the level canonical exactly when none of
-    /// them applies: the plan is read once per rule and bound to the root
-    /// as the restatement would bind it, and the first that applies makes
-    /// the level ruled - canonical but for that rule's writes, which the
-    /// restatement lands on the level as it stands.
-    fn shape(&self, fields: &[Field], values: &[Scalar], shape: u64) -> Shape {
+    /// them applies: the first that applies makes the level ruled -
+    /// canonical but for that rule's writes, which the restatement lands on
+    /// the level as it stands.
+    fn shape(&self, fields: &[Field], values: &[Scalar]) -> Shape {
         let mut ruled: Vec<(&Field, &Scalar)> = Vec::new();
         if !self.canonical_level(fields, values, false, &mut ruled) {
             return Shape::Rebuilt;
         }
-        if ruled.is_empty() {
-            return Shape::Canonical;
-        }
-        let root = self.msg.as_field();
-        let row = self.msg.as_value();
-        let parameters = self.parameters(None);
         for (field, value) in ruled {
-            let tag = tag_and_counter(self.registry, field).0;
-            let applies = self.entries(field, tag).iter().any(|entry| match entry {
-                Entry::Plan(plan) => Self::applies(plan, root, row, shape, &parameters),
-                Entry::Retired(rule) => self.retired_applies(rule, value, None),
-            });
-            if applies {
+            let rules = tag_and_counter(self.registry, field)
+                .0
+                .and_then(retired::rules_of)
+                .unwrap_or_default();
+            if self.first_applying(rules, value, None).is_some() {
                 return Shape::Ruled;
             }
         }
@@ -976,7 +858,7 @@ impl<'msg> Restater<'msg> {
             {
                 return false;
             }
-            if !value.is_null() && self.carries_rules(known) {
+            if !value.is_null() && carries_rules(self.registry, known) {
                 if member {
                     return false;
                 }
@@ -989,7 +871,7 @@ impl<'msg> Restater<'msg> {
     /// One level canonicalized and restated, its group occurrences first.
     fn level(&self, level: Level, group: Option<&str>) -> Result<Level> {
         let mut level = self.canonicalized(level)?;
-        self.restated(&mut level, group, None);
+        self.restated(&mut level, group);
         Ok(level)
     }
 
@@ -1095,9 +977,8 @@ impl<'msg> Restater<'msg> {
         Ok(Level { children: out })
     }
 
-    /// Every child of `level` whose field carries replacement rules, in
-    /// ascending tag order, restated by the first rule whose condition the
-    /// level meets.
+    /// Every child of `level` whose tag the table lists, in ascending tag
+    /// order, restated by the first rule whose condition the level meets.
     ///
     /// Ascending, so `ExecTransType(20)` writes `ExecType(150)` before
     /// `ExecType`'s own value rule reads it. The first rule whose condition
@@ -1106,18 +987,8 @@ impl<'msg> Restater<'msg> {
     /// leaves a new held value, which is restated in turn - `ExecInst` `T`
     /// becomes `R`, which FIX 5.0 retired for `PegPriceType` - so one pass
     /// reaches what a second pass would otherwise find; a chain is bounded
-    /// by the rules the field states, so two rules restating each other end.
-    ///
-    /// `pristine` is the level as its root and row already state it, where
-    /// the caller hands the level over as it arrived: the first rule read
-    /// against it reads those rather than a view rebuilt from the level,
-    /// and a view is rebuilt only once a write has landed.
-    fn restated(
-        &self,
-        level: &mut Level,
-        group: Option<&str>,
-        pristine: Option<(&Field, &Scalar, u64)>,
-    ) {
+    /// by the rules the tag lists, so two rules restating each other end.
+    fn restated(&self, level: &mut Level, group: Option<&str>) {
         let mut sources: Vec<(i32, usize)> = level
             .children
             .iter()
@@ -1130,87 +1001,33 @@ impl<'msg> Restater<'msg> {
             })
             .collect();
         sources.sort_unstable();
-        let parameters = self.parameters(group);
-        let mut touched = false;
-        // The level's view, built on the first plan that has to be read
-        // against it and kept until a write lands: every later source reads
-        // the level as it then stands, so a field with no rule costs no
-        // clone at all, one the specification rules costs none either, and
-        // the fields a write left untouched share one rebuilt view.
-        let mut view: Option<(Field, Scalar, u64)> = None;
         for (tag, at) in sources {
-            let mut remaining = usize::MAX;
+            // The tag the source was collected under, so the table is
+            // reached without resolving the field twice. A field with no
+            // rule - which is nearly every field of nearly every message -
+            // copies nothing.
+            let Some(rules) = retired::rules_of(tag) else {
+                continue;
+            };
+            let mut remaining = rules.len();
             while remaining > 0 {
-                let mut planned = None;
-                // Copied only where a rule answered, because only the write
-                // that rule plans has anything to compare against. A field
-                // with no replacement rule - which is nearly every field of
-                // nearly every message - copies nothing.
-                let mut before: Option<Scalar> = None;
-                {
-                    let Child::Flat(field, value) = &level.children[at] else {
-                        break;
-                    };
-                    if value.is_null() {
-                        break;
-                    }
-                    // The tag the source was collected under, so the
-                    // table is reached without resolving the field twice.
-                    let entries = self.entries(field, Some(tag));
-                    let count = entries.len();
-                    let source = Source { value, tag };
-                    for entry in entries.iter() {
-                        if planned.is_some() {
-                            continue;
-                        }
-                        let plan = match entry {
-                            Entry::Plan(plan) => plan,
-                            Entry::Retired(rule) => {
-                                if !self.retired_applies(rule, value, group) {
-                                    continue;
-                                }
-                                before = Some(value.clone());
-                                planned =
-                                    Some(self.plan_retired(level, &source, rule, group.is_none()));
-                                continue;
-                            }
-                        };
-                        if view.is_none() {
-                            view = match pristine {
-                                Some((root, row, shape)) if !touched => {
-                                    Some((root.clone(), row.clone(), shape))
-                                }
-                                _ => Self::view(level),
-                            };
-                        }
-                        let Some((root, row, shape)) = view.as_ref() else {
-                            break;
-                        };
-                        if !Self::applies(plan, root, row, *shape, &parameters) {
-                            continue;
-                        }
-                        before = Some(value.clone());
-                        planned = Some(self.plan(
-                            level,
-                            root,
-                            row,
-                            *shape,
-                            &source,
-                            plan,
-                            &parameters,
-                            group.is_none(),
-                        ));
-                    }
-                    remaining = remaining.min(count);
+                let Child::Flat(_, value) = &level.children[at] else {
+                    break;
+                };
+                if value.is_null() {
+                    break;
                 }
-                let Some(Some(writes)) = planned else {
+                let Some(rule) = self.first_applying(rules, value, group) else {
+                    break;
+                };
+                let before = value.clone();
+                let source = Source { value, tag };
+                let Some(writes) = self.plan_retired(level, &source, rule, group.is_none()) else {
                     break;
                 };
                 for write in writes {
                     level.apply(write);
                 }
-                touched = true;
-                view = None;
                 remaining -= 1;
                 // A field the specification deprecated is restated and not
                 // kept: what it said now lives under what replaced it, and
@@ -1222,170 +1039,15 @@ impl<'msg> Restater<'msg> {
                         break;
                     }
                 }
-                if level.value_at(at) == before.as_ref() {
+                if level.value_at(at) == Some(&before) {
                     break;
                 }
             }
         }
     }
 
-    /// One level's schema and row, as a term reads them.
-    ///
-    /// Built only where a field carries a document of its own and holds a
-    /// value, so the clone it costs is paid once per firing rather than once
-    /// per child, and the specification's retirements - which read the
-    /// level as it is - never pay it. Rebuilt after a rule's writes land,
-    /// because the next rule reads the level as it then is.
-    fn view(level: &Level) -> Option<(Field, Scalar, u64)> {
-        let (fields, values) = level.clone().pack().ok()?;
-        // A write replaces the child it reached or appends a field no child
-        // is named as, so the level's children stay named once.
-        let root = DataType::from(StructType::from_unique_fields(fields)).required_field("row");
-        let shape = shape_digest(&root);
-        Some((root, Scalar::from_sequence(values), shape))
-    }
-
-    /// The parameters a rule's condition may name: `:msgtype`, the root's
-    /// `MsgType(35)`, and `:group`, the repeating group the level is an
-    /// occurrence of. Both are facts about the message rather than columns
-    /// of the level, which is why they cross as parameters.
-    fn parameters(&self, group: Option<&str>) -> [(&'static str, Scalar); 2] {
-        [
-            ("msgtype", self.msgtype.map_or(Scalar::Null, Scalar::from)),
-            ("group", group.map_or(Scalar::Null, Scalar::from)),
-        ]
-    }
-
-    /// Whether one rule's condition holds at a level.
-    ///
-    /// A condition the level cannot bind - a column it does not hold, a
-    /// comparison with no common type - does not hold, rather than refusing
-    /// the pass: a rule is data, and one that does not apply here applies
-    /// nowhere.
-    fn applies(
-        plan: &Arc<Plan>,
-        root: &Field,
-        row: &Scalar,
-        shape: u64,
-        parameters: &[(&str, Scalar)],
-    ) -> bool {
-        bound_term(plan, None, root, shape, parameters)
-            .is_some_and(|bound| bound.matches(row).unwrap_or(false))
-    }
-
-    /// Every write one rule makes at `level`, or nothing when one target
-    /// cannot take its value.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one rule's whole context, threaded"
-    )]
-    fn plan(
-        &self,
-        level: &Level,
-        root: &Field,
-        row: &Scalar,
-        shape: u64,
-        source: &Source<'_>,
-        plan: &Arc<Plan>,
-        parameters: &[(&str, Scalar)],
-        rooted: bool,
-    ) -> Option<Vec<Write>> {
-        let named = named_literals(plan.filter_section().term());
-        let mut writes = Vec::new();
-        for projection in plan.selector().projections() {
-            let name = projection.name();
-            let term = projection.term();
-            writes.push(self.plan_projection(
-                level,
-                Some(source),
-                &named,
-                &name,
-                term,
-                plan,
-                root,
-                row,
-                shape,
-                parameters,
-                rooted,
-            )?);
-        }
-        Some(writes)
-    }
-
-    /// One projection planned at `writes`: an occurrence of a repeating
-    /// group where the name is a group's and the term spells one, else one
-    /// column. Every term is read at the rule's own level - `root` and `row`
-    /// - whatever level it is written into.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one rule's whole context, threaded"
-    )]
-    fn plan_projection(
-        &self,
-        writes: &Level,
-        source: Option<&Source<'_>>,
-        named: &[SmolStr],
-        name: &str,
-        term: &Term,
-        plan: &Arc<Plan>,
-        root: &Field,
-        row: &Scalar,
-        shape: u64,
-        parameters: &[(&str, Scalar)],
-        rooted: bool,
-    ) -> Option<Write> {
-        if let Some(definition) = self
-            .registry
-            .get_definition(crate::FixCategory::Groups, name)
-        {
-            let members = occurrence_members(term)?;
-            return self.plan_group(
-                writes, definition, &members, plan, root, row, shape, parameters,
-            );
-        }
-        let value = bound_term(plan, Some(term), root, shape, parameters)?
-            .eval(row)
-            .ok()?;
-        self.plan_column(writes, source, named, name, term, value, rooted)
-    }
-
-    /// One column planned at `writes`: the projected value re-typed for the
-    /// target, and the target found at that level. A constant written over
-    /// the rule's own source replaces the token the condition named.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one rule's whole context, threaded"
-    )]
-    fn plan_column(
-        &self,
-        writes: &Level,
-        source: Option<&Source<'_>>,
-        named: &[SmolStr],
-        name: &str,
-        term: &Term,
-        value: Scalar,
-        rooted: bool,
-    ) -> Option<Write> {
-        let known = self.msg.known_by_name(name)?;
-        let tag = known.as_fix().tag().ok().flatten()?;
-        let own = source.is_some_and(|source| source.tag == tag);
-        let value = match (source, term) {
-            (Some(source), Term::Literal(literal)) if own => match literal.value().as_str() {
-                Some(text) => typed_spelling_remembered(
-                    self.registry,
-                    known,
-                    &restated_tokens(source.value, named, text),
-                ),
-                None => converted(self.registry, known, &value),
-            },
-            _ => converted(self.registry, known, &value),
-        };
-        self.column_write(writes, own, tag, stated_field(known), value, rooted)
-    }
-
-    /// Every write one of the specification's rules makes at `level`, or
-    /// nothing when one target cannot take its value: what [`Self::plan`]
-    /// plans from a plan, planned from the table.
+    /// Every write one of the table's rules makes at `level`, or nothing
+    /// when one target cannot take its value.
     fn plan_retired(
         &self,
         level: &Level,
@@ -1393,13 +1055,13 @@ impl<'msg> Restater<'msg> {
         rule: &Rule,
         rooted: bool,
     ) -> Option<Vec<Write>> {
-        // The literals a plan's condition would name, in its order - the
-        // message types, the group, the value - which is what a constant
-        // written back over a multi-valued source replaces the token by.
+        // The texts the rule's condition names, in its order - the message
+        // types, the group, the value - which is what a constant written
+        // back over a multi-valued source replaces the token by.
         let mut named: Vec<SmolStr> = rule.msgtypes.iter().copied().map(SmolStr::new).collect();
         named.extend(rule.within.map(SmolStr::new));
         match rule.when {
-            When::Any => {}
+            When::Any | When::FitsSource(_) => {}
             When::Equals(text) | When::Contains(text) => named.push(SmolStr::new(text)),
         }
         let mut writes = Vec::with_capacity(rule.fills.len());
@@ -1409,9 +1071,8 @@ impl<'msg> Restater<'msg> {
         Some(writes)
     }
 
-    /// One fill planned at `writes`, as [`Self::plan_projection`] plans a
-    /// projection: an occurrence where the fill is one, else one column
-    /// whose value the fill spells. Every value is read at `reads`, the
+    /// One fill planned at `writes`: an occurrence where the fill is one,
+    /// else one column whose value the fill spells. Every value is read at `reads`, the
     /// rule's own level, whatever level it is written into - an occurrence
     /// filled from the root reads the root's fields. `owning` is whether
     /// the fill stands at the rule's own level, where a fill of the
@@ -1526,111 +1187,13 @@ impl<'msg> Restater<'msg> {
         }))
     }
 
-    /// One group occurrence planned: the occurrence whose literal members
-    /// all equal the projected ones is merged into, else one is appended,
-    /// and the counter child takes the count the group then has.
+    /// One occurrence of `group` planned from fills: merged into the
+    /// occurrence whose constant members all equal the fills' constants,
+    /// else appended, the counter set to the count the group then has.
     ///
-    /// An occurrence stating no literal matches the first occurrence there
+    /// An occurrence stating no constant matches the first occurrence there
     /// is, so a second pass finds what the first wrote rather than appending
     /// it again.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "one rule's whole context, threaded"
-    )]
-    fn plan_group(
-        &self,
-        level: &Level,
-        definition: &Field,
-        members: &[(SmolStr, &Term)],
-        plan: &Arc<Plan>,
-        root: &Field,
-        row: &Scalar,
-        shape: u64,
-        parameters: &[(&str, Scalar)],
-    ) -> Option<Write> {
-        let counter_tag = definition.as_fix().counter().ok().flatten()?;
-        let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
-        let at = level.position_of_group(counter_tag, definition.name());
-        let empty: Vec<Option<Level>> = Vec::new();
-        let (serie, occurrences) = match at {
-            Some(at) => match &level.children[at] {
-                Child::Group(_, occurrences) => (None, occurrences),
-                // A declared group stating no occurrence, opened on apply.
-                Child::Flat(_, value) if value.is_null() => (None, &empty),
-                Child::Flat(..) => return None,
-            },
-            None => {
-                if level.names(definition.name()) {
-                    return None;
-                }
-                let mut serie = definition.clone();
-                serie.set_nullable(true);
-                (Some(serie), &empty)
-            }
-        };
-        // The literal members, typed as their fields hold them, decide which
-        // occurrence this rule is about.
-        let mut constants: Vec<(i32, Scalar)> = Vec::new();
-        for (name, term) in members {
-            let Term::Literal(literal) = term else {
-                continue;
-            };
-            let known = self.msg.known_by_name(name)?;
-            let tag = known.as_fix().tag().ok().flatten()?;
-            constants.push((tag, converted(self.registry, known, literal.value())));
-        }
-        let matched = occurrences.iter().position(|occurrence| {
-            occurrence.as_ref().is_some_and(|held| {
-                constants.iter().all(|(tag, wanted)| {
-                    self.stated_at(held, *tag)
-                        .is_some_and(|stated| stated == wanted)
-                })
-            })
-        });
-        let blank = Level::default();
-        let target = matched
-            .and_then(|at| occurrences[at].as_ref())
-            .unwrap_or(&blank);
-        let mut planned = Vec::with_capacity(members.len());
-        for (name, term) in members {
-            planned.push(self.plan_projection(
-                target,
-                None,
-                &[],
-                name,
-                term,
-                plan,
-                root,
-                row,
-                shape,
-                parameters,
-                // A group's occurrence, never the root: no typed fact lives
-                // here.
-                false,
-            )?);
-        }
-        let count = occurrences.len() + usize::from(matched.is_none());
-        let value = counter_field
-            .scalar(Scalar::from(i64::try_from(count).ok()?))
-            .ok()?;
-        let counter = FieldWrite {
-            at: self.position_of(level, counter_tag),
-            field: counter_field,
-            value,
-        };
-        Some(Write::Group {
-            at,
-            serie,
-            occurrence: matched,
-            members: planned,
-            counter,
-        })
-    }
-
-    /// One occurrence of `group` planned from fills, as [`Self::plan_group`]
-    /// plans one from a projection: merged into the occurrence whose
-    /// constant members all equal the fills' constants, else appended, the
-    /// counter set to the count the group then has.
     fn occurrence_write(
         &self,
         level: &Level,
@@ -1723,175 +1286,31 @@ fn retyped(registry: &FixRegistry, known: &Field, held: &Field, value: &Scalar) 
     converted(registry, known, value)
 }
 
-/// One term of one plan bound against one shape of root under one pair of
-/// parameters: what names a binding this thread may read again.
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct BoundKey {
-    /// The plan, by address: kept alive beside the binding, so the address
-    /// names it for as long as the binding is remembered.
-    plan: usize,
-    /// The term within the plan, by address, or zero for the plan's own
-    /// condition.
-    term: usize,
-    shape: u64,
-    msgtype: Option<SmolStr>,
-    group: Option<SmolStr>,
-}
-
-/// What one binding remembers: the plan it is read from, the generation of
-/// the shape it was bound against, and the binding - or none, for a term
-/// that does not bind against that shape.
-type Remembered = (Arc<Plan>, u64, Option<Arc<Bound>>);
-
-/// The bindings one thread has read, by what names each.
-type BoundTerms = FixMap<BoundKey, Remembered>;
-
-/// The root one shape digest currently stands for, and the generation a
-/// binding read against that shape carries: a digest two shapes share
-/// takes a new generation when the other shape arrives, so no binding of
-/// the first is read for it.
-struct ShapeRoot {
-    root: Field,
-    generation: u64,
-}
-
-thread_local! {
-    /// Every rule term this thread has bound, by the shape of the root it
-    /// was bound against: a term binds by column position and type, so a
-    /// binding read against one root answers every root of that shape, and
-    /// a capture states a few shapes a hundred thousand times each.
-    static BOUND_TERMS: RefCell<BoundTerms> = RefCell::new(BoundTerms::default());
-    /// The root each shape digest stands for. A root is compared against it
-    /// once and then stands for the shape itself, so the rules read against
-    /// one message's root verify its shape once between them.
-    static SHAPE_ROOTS: RefCell<FixMap<u64, ShapeRoot>> = RefCell::new(FixMap::default());
-    static SHAPE_GENERATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-/// How many bindings one thread remembers; past it a term is still bound
-/// and simply not kept.
-const REMEMBERED_BINDINGS: usize = 4_096;
-
-/// How many shapes one thread remembers a root for; past it a shape takes a
-/// fresh generation on every read and its terms are bound every time.
-const REMEMBERED_SHAPES: usize = 4_096;
-
-/// The generation of the shape `root` is, whose digest is `shape`.
-fn shape_generation(root: &Field, shape: u64) -> u64 {
-    SHAPE_ROOTS.with(|held| {
-        let mut held = held.borrow_mut();
-        if let Some(known) = held.get_mut(&shape) {
-            if std::ptr::eq(known.root.fields(), root.fields()) {
-                return known.generation;
-            }
-            if same_shape(&known.root, root) {
-                known.root = root.clone();
-                return known.generation;
-            }
-        }
-        let generation = SHAPE_GENERATIONS.with(|next| {
-            let generation = next.get();
-            next.set(generation + 1);
-            generation
-        });
-        if held.len() < REMEMBERED_SHAPES || held.contains_key(&shape) {
-            held.insert(
-                shape,
-                ShapeRoot {
-                    root: root.clone(),
-                    generation,
-                },
-            );
-        }
-        generation
-    })
-}
-
-/// The text one parameter supplies, where it supplies one.
-fn parameter_text(parameters: &[(&str, Scalar)], name: &str) -> Option<SmolStr> {
-    parameters
-        .iter()
-        .find(|(held, _)| *held == name)
-        .and_then(|(_, value)| value.as_str().map(SmolStr::new))
-}
-
-/// `term` of `plan` - the plan's own condition where `None` - bound against
-/// `root`, whose shape digests to `shape`, under `parameters`, read once
-/// per shape of root per thread; nothing where it does not bind, exactly
-/// as a bind's refusal reads.
-///
-/// The shape digest names a bucket; the root it currently stands for says
-/// whether this root is that shape, compared once per root, so a digest two
-/// shapes share costs a bind and never a wrong answer.
-fn bound_term(
-    plan: &Arc<Plan>,
-    term: Option<&Term>,
-    root: &Field,
-    shape: u64,
-    parameters: &[(&str, Scalar)],
-) -> Option<Arc<Bound>> {
-    let key = BoundKey {
-        plan: Arc::as_ptr(plan) as usize,
-        term: term.map_or(0, |term| std::ptr::from_ref(term) as usize),
-        shape,
-        msgtype: parameter_text(parameters, "msgtype"),
-        group: parameter_text(parameters, "group"),
-    };
-    let generation = shape_generation(root, shape);
-    let known = BOUND_TERMS.with(|held| {
-        held.borrow()
-            .get(&key)
-            .filter(|(_, held, _)| *held == generation)
-            .map(|(_, _, bound)| bound.clone())
-    });
-    if let Some(bound) = known {
-        return bound;
-    }
-    let bound = match term {
-        Some(term) => term.bind_with(root, parameters),
-        None => plan.filter_section().bind_with(root, parameters),
-    }
-    .ok()
-    .map(Arc::new);
-    BOUND_TERMS.with(|held| {
-        let mut held = held.borrow_mut();
-        if held.len() < REMEMBERED_BINDINGS || held.contains_key(&key) {
-            held.insert(key, (Arc::clone(plan), generation, bound.clone()));
-        }
-    });
-    bound
-}
-
-/// The rules `field` carries, compiled: read off the registry, which
-/// compiled them once when it indexed the field, or off the field's own
-/// document for a field the registry does not hold. `None` stands for a
-/// rule whose text is not a plan, kept in its place so the count and the
-/// order of the rules are the document's.
-fn plans_of<'registry>(
-    registry: &'registry FixRegistry,
-    field: &Field,
-) -> Cow<'registry, [Option<Arc<Plan>>]> {
-    match registry.plans_of(field) {
-        Some(plans) => Cow::Borrowed(plans),
-        None => Cow::Owned(compiled_plans(field)),
-    }
-}
-
-/// Whether writing `tag` could restate anything at all: what the
-/// specification retired of it, or the rule the registry's field for it
-/// states of its own.
+/// Whether writing `tag` could restate anything at all: what the table
+/// lists of it, or of the canonical tag of the registry's field for it.
 ///
 /// A write of a tag no rule is about restates nothing, so a door that
 /// writes pays for the rules its writes could fire and never for the pass
 /// itself - which is what lets every write run it.
 pub(super) fn restates(registry: &FixRegistry, tag: i32) -> bool {
     retired::rules_of(tag).is_some()
-        || registry.get_field_by_tag(tag).is_some_and(|field| {
-            registry.facts_of(field).map_or_else(
-                || field.as_fix().replacements().next_ok().is_some(),
-                |facts| facts.ruled,
-            )
-        })
+        || registry
+            .get_field_by_tag(tag)
+            .is_some_and(|field| carries_rules(registry, field))
+}
+
+/// Whether a rule of the table could restate the registry field `known`:
+/// off the registry's facts where it indexed the field, else off its
+/// canonical tag.
+fn carries_rules(registry: &FixRegistry, known: &Field) -> bool {
+    registry.facts_of(known).map_or_else(
+        || {
+            tag_and_counter(registry, known)
+                .0
+                .is_some_and(|tag| retired::rules_of(tag).is_some())
+        },
+        |facts| facts.ruled,
+    )
 }
 
 /// Synchronizes one keyed occurrence of a root repeating group.
@@ -2158,18 +1577,6 @@ pub(super) fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> Re
     Ok(true)
 }
 
-/// Every rule `field` carries, in the document's order, each the plan it
-/// is or `None` where its text is not a plan; the walk stops where the
-/// document itself refuses an entry, exactly as reading the rules does.
-pub(super) fn compiled_plans(field: &Field) -> Vec<Option<Arc<Plan>>> {
-    let mut rules = field.as_fix().replacements();
-    let mut plans = Vec::new();
-    while let Some(rule) = rules.next_ok() {
-        plans.push(rule.parse_plan().ok().map(Arc::new));
-    }
-    plans
-}
-
 /// The message restated under the dictionary its registry holds.
 ///
 /// The levels are rebuilt whole, because canonicalizing merges and drops
@@ -2205,12 +1612,11 @@ pub(super) fn restate(msg: &mut FixMsg) -> Result<()> {
         // retype or replace, so nothing is rebuilt. One a rule applies to
         // is that message but for the rule's writes, which land on the
         // level as it arrived.
-        let shape = shape_digest(root);
-        match restater.shape(children, values, shape) {
+        match restater.shape(children, values) {
             Shape::Canonical => return Ok(()),
             Shape::Ruled => {
                 let mut level = Level::unpack(children, values);
-                restater.restated(&mut level, None, Some((root, msg.as_value(), shape)));
+                restater.restated(&mut level, None);
                 level.pack()?
             }
             Shape::Rebuilt => restater

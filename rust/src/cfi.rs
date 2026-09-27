@@ -16,7 +16,9 @@ use crate::{DataType, Result, Scalar, Value};
 /// Information, the standard's Maintenance Agency (`cfi-20210507-current`).
 /// An attribute set is the letters that position accepts *besides* `X`; an
 /// empty one means the position is not applicable to that group and only `X`
-/// reads there.
+/// reads there. Where the list and the standard's own group pages disagree
+/// the pages win, and the row says so: JF and SF deliver non-deliverable
+/// (`N`) in position 6.
 pub const CFI_CATEGORIES: [CfiCategory; 14] = [
     CfiCategory {
         letter: 'E',
@@ -268,10 +270,12 @@ pub const CFI_CATEGORIES: [CfiCategory; 14] = [
                 name: "Equity",
                 attributes: ["BIMS", "CDLMPTV", "", "CEP"],
             },
+            // ISO 10962:2021's SF group page lists `N`, non-deliverable, as a
+            // delivery beside physical; the generated list lacked it.
             CfiGroup {
                 letter: 'F',
                 name: "Foreign exchange",
-                attributes: ["ACM", "", "", "CP"],
+                attributes: ["ACM", "", "", "CNP"],
             },
             CfiGroup {
                 letter: 'M',
@@ -356,10 +360,12 @@ pub const CFI_CATEGORIES: [CfiCategory; 14] = [
                 name: "Equity",
                 attributes: ["BFIOS", "", "CFS", "CP"],
             },
+            // ISO 10962:2021's JF group page lists `N`, non-deliverable, as a
+            // delivery beside physical and cash; the generated list lacked it.
             CfiGroup {
                 letter: 'F',
                 name: "Foreign exchange",
-                attributes: ["FJKLNORSTUVW", "", "CFRS", "CP"],
+                attributes: ["FJKLNORSTUVW", "", "CFRS", "CNP"],
             },
             CfiGroup {
                 letter: 'R',
@@ -502,16 +508,22 @@ impl Cfi {
     /// applicable or unknown". Never valid as a category or a group.
     pub const UNKNOWN: char = 'X';
 
+    /// The code that classifies nothing: every position unknown.
+    pub(crate) const UNCLASSIFIED: &str = "XXXXXX";
+
     /// The better of two classifications, as
     /// [`CodeValue::merge_with`](crate::CodeValue::merge_with)
-    /// answers it: [`Self::merged`] where the two describe one instrument -
-    /// every `X` filled from the other, a disagreement `X` - and this code
-    /// as it is where they do not.
+    /// answers it: an unclassified code - all `X`, or a letter no group
+    /// accepts - yields whole to a classified other; otherwise
+    /// [`Self::merged`] where the two describe one instrument - every `X`
+    /// filled from the other, a disagreement `X` - and this code as it is
+    /// where they do not.
     ///
     /// ```
     /// use yggdryl::{Cfi, CodeValue};
     ///
     /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
     /// assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
     /// // Two different instruments are not one: this code stands.
     /// assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
@@ -519,6 +531,9 @@ impl Cfi {
     /// # }
     /// ```
     pub(super) fn filled(self, other: &Self) -> Self {
+        if !Self::is_classified(self.as_str()) && Self::is_classified(other.as_str()) {
+            return other.clone();
+        }
         Self::merged(self.as_str(), other.as_str())
             .and_then(|text| Self::new(text).ok())
             .unwrap_or(self)

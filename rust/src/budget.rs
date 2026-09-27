@@ -334,7 +334,11 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal32 { .. }
+                // An enum member is the `int32` code of its leaf.
+                | DataType::State
+                | DataType::MarketDataKind
+                | DataType::Side => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -351,10 +355,9 @@ mod limits {
                 | DataType::Bbg
                 | DataType::Ric
                 | DataType::Figi
-                | DataType::Side
-                | DataType::State
                 | DataType::TimeInForce
-                | DataType::Unit => {
+                | DataType::Unit
+                | DataType::Forex => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }
@@ -459,7 +462,11 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal32 { .. }
+                // An enum member is the `int32` code of its leaf.
+                | DataType::State
+                | DataType::MarketDataKind
+                | DataType::Side => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -476,10 +483,9 @@ mod limits {
                 | DataType::Bbg
                 | DataType::Ric
                 | DataType::Figi
-                | DataType::Side
-                | DataType::State
                 | DataType::TimeInForce
-                | DataType::Unit => {
+                | DataType::Unit
+                | DataType::Forex => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }

@@ -15,13 +15,10 @@ use super::seeded_fields;
 
 #[cfg(feature = "internals")]
 mod internal {
-    use std::sync::Arc;
-
     use yggdryl::internals::fix_registry::{
-        ALIAS_SEED, NAME_SEED, canonical_id, derivations as compiled, fields, force_alias_index,
-        force_id_index, force_name_index, lifted_names_cached, name_digest, warm_lifted_names,
+        ALIAS_SEED, NAME_SEED, canonical_id, fields, force_alias_index, force_id_index,
+        force_name_index, name_digest,
     };
-    use yggdryl::internals::metadata::shares_storage_with;
     use yggdryl::{DataType, Error, Field, FixRegistry};
 
     fn tagged(name: &str, tag: i32) -> Field {
@@ -97,7 +94,7 @@ mod internal {
     }
 
     #[test]
-    fn default_aliases_refuse_a_digest_collision_without_mutating_the_source() {
+    fn a_colliding_alias_digest_is_rechecked_and_the_words_answer() {
         let offer = tagged("offerpx", 1);
         let unrelated = tagged("Unrelated", 2);
         let mut registry = FixRegistry::from_fields([offer, unrelated]).unwrap();
@@ -111,51 +108,11 @@ mod internal {
             unrelated_at,
         );
 
-        assert!(
-            registry.get_field_by_name("askpx").is_none(),
-            "a colliding alias digest is rechecked before lookup answers"
-        );
-        let before = registry.clone();
-        let error = registry.clone().with_default_aliases().unwrap_err();
-        assert!(
-            matches!(&error, Error::Conflict { path, .. } if path.contains("askpx")),
-            "{error}"
-        );
+        // The forced hit is rechecked and refused, so the spelling reaches
+        // the field its words name rather than the one the digest landed on.
         assert_eq!(
-            registry, before,
-            "the consumed attempt leaves its source intact"
-        );
-    }
-
-    #[test]
-    fn default_aliases_do_not_reindex_an_unchanged_second_pass() {
-        let registry = FixRegistry::from_fields([tagged("offerpx", 1)])
-            .unwrap()
-            .with_default_aliases()
-            .unwrap();
-        let before = registry
-            .get_field_by_name("offerpx")
-            .expect("the lender")
-            .as_metadata()
-            .clone();
-        let derivations = compiled(&registry).unwrap();
-        warm_lifted_names(&registry);
-        let registry = registry.with_default_aliases().unwrap();
-        let after = registry
-            .get_field_by_name("offerpx")
-            .expect("the lender")
-            .as_metadata();
-        assert!(
-            shares_storage_with(after, &before),
-            "an unchanged field keeps its metadata storage"
-        );
-        assert!(
-            Arc::ptr_eq(&derivations, &compiled(&registry).unwrap()),
-            "an unchanged pass keeps the compiled derivations"
-        );
-        assert!(
-            lifted_names_cached(&registry),
-            "an unchanged pass keeps the lifted-name cache"
+            registry.get_field_by_name("askpx").map(Field::name),
+            Some("offerpx")
         );
     }
 }
@@ -1588,5 +1545,66 @@ mod lenient {
             left.field_by_tag(55).unwrap().description(),
             right.field_by_tag(55).unwrap().description()
         );
+    }
+}
+
+/// Every name lookup reads the four word pairs - `offer`/`ask`,
+/// `size`/`qty`, `bid`/`demand`, `px`/`price` - either way, wherever one
+/// stands in the folded name, after the names a field holds exactly; a
+/// spelling the words make reaching two fields reaches none.
+mod word_aliases {
+    use yggdryl::{DataType, Field, FixRegistry};
+
+    fn tagged(name: &str, tag: i32) -> Field {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field
+    }
+
+    fn tag_of(registry: &FixRegistry, name: &str) -> Option<i32> {
+        registry
+            .get_field_by_name(name)
+            .and_then(|field| field.as_fix().tag().ok().flatten())
+    }
+
+    #[test]
+    fn every_pair_reads_either_way_in_any_spelling() {
+        let registry = FixRegistry::from_fields([
+            tagged("BidPx", 132),
+            tagged("OfferPx", 133),
+            tagged("BidSize", 134),
+            tagged("OfferSize", 135),
+        ])
+        .unwrap();
+        for (spelled, tag) in [
+            ("AskPx", 133),
+            ("ask_px", 133),
+            ("ASKPX", 133),
+            ("AskPrice", 133),
+            ("OfferPrice", 133),
+            ("AskSize", 135),
+            ("AskQty", 135),
+            ("BidPrice", 132),
+            ("DemandPx", 132),
+            ("DEMAND-QTY", 134),
+            ("bidqty", 134),
+        ] {
+            assert_eq!(tag_of(&registry, spelled), Some(tag), "{spelled}");
+        }
+        // A spelling no word reaches a field through stays unresolved.
+        assert_eq!(tag_of(&registry, "AskCurrency"), None);
+        assert_eq!(tag_of(&registry, "Quantity"), None);
+    }
+
+    #[test]
+    fn an_exact_name_wins_and_an_ambiguous_alias_reaches_nothing() {
+        // `AskPx` is a field of its own here: the exact name answers it.
+        let registry =
+            FixRegistry::from_fields([tagged("OfferPx", 133), tagged("AskPx", 9001)]).unwrap();
+        assert_eq!(tag_of(&registry, "AskPx"), Some(9001));
+        assert_eq!(tag_of(&registry, "OfferPx"), Some(133));
+        // `AskPrice` reads as `OfferPrice` - none - `AskPx` and `OfferPx`: two
+        // fields, so it reaches neither.
+        assert_eq!(tag_of(&registry, "AskPrice"), None);
     }
 }

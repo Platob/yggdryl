@@ -137,16 +137,6 @@
     "nullable": true,
     "metadata": {
       "FIX:codeset": "underlyingsecuritytypecodeset",
-      "FIX:replacements": [
-        {
-          "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'",
-          "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'",
-          "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "310",
       "description": "Underlying security's SecurityType.",
       "display": "UnderlyingSecurityType"
@@ -198,12 +188,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate",
-          "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "314",
       "display": "UnderlyingMaturityDay"
     }
@@ -920,12 +904,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hops",
-          "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "370",
       "display": "OnBehalfOfSendingTime"
     }
@@ -1065,7 +1043,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:derivation": "case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end",
       "FIX:tag": "381",
       "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
       "display": "GrossTradeAmt"

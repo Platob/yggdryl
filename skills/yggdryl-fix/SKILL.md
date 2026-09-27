@@ -1,6 +1,6 @@
 ---
 name: yggdryl-fix
-description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows or FIXML from logs (parse_line / parseLine, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow or Parquet (fix_schema, arrow_reader / arrowReader), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market operations and books (market_operations, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, from_cfb_file, merge_with, commit, code sets, FIX metadata) or running the ygg fix CLI.
+description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows or FIXML from logs (parse_line / parseLine, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow or Parquet (fix_schema, arrow_reader / arrowReader), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market data and books (market_data, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, from_cfb_file, merge_with, commit, code sets, FIX metadata) or running the yggdryl fix CLI.
 ---
 
 # yggdryl FIX
@@ -14,6 +14,10 @@ run; its `parse_*` readers turn captured bytes into `FixMsg` values - a market
 event (identity, clocks, state, side, price...) over a content row typed by the
 dictionary. Every message projects onto one fixed row, `fix_schema(registry)`,
 decided from the dictionary alone, so a whole capture streams as Arrow batches.
+Each message states its `msgcat` - the `MarketDataKind` its type files under
+(`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, ...) - and the parse splits what it
+reports once: a filling execution report adds its `EXEC` message, a trade one
+execution per side, a two-sided quote a `BUY` and a `SELL` quote.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never looks at
@@ -41,7 +45,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `add_cfb_files(&folder, "*.cfb", None)?`, `merge_with(&other)?` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")`, `merge_with(other)` | not bound (`ygg fix sync`) |
+| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `add_cfb_files(&folder, "*.cfb", None)?`, `merge_with(&other)?` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")`, `merge_with(other)` | not bound (`yggdryl fix sync`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
@@ -51,6 +55,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | decode text-reader lines | `codec.parse_text_lines(lines)` | `codec.parse_text_lines(lines)` | `codec.parseTextLines(lines)` |
 | a capture's batches to FIX rows | `codec.parse_text_arrow_reader(reader)?` | `codec.parse_text_arrow_reader(reader)` | `codec.parseTextArrowReader(reader)` |
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
+| the category, the strike | `msg.msgcat()`, `msg.strikepx()` | `msg.msgcat`, `msg.strikepx` | `msg.msgcat`, `msg.strikepx` |
 | compose a message | `FixMsg::with_registry(Arc, root, value)?` | `FixMsg(root, value, registry)` | `new fix.FixMsg(root, value, registry)` |
 | write or clear a fact | `msg.set(key, scalar)?`, `msg.remove(key)?` | `msg.set(key, value)`, `msg.remove(key)` | `msg.set(key, value)`, `msg.remove(key)` |
 | encode to the wire | `msg.into_text('\x01')?`, `msg.into_bytes(SOH)` | `msg.into_text()`, `msg.into_bytes()` | `msg.intoText()`, `msg.intoBytes()` |
@@ -61,11 +66,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
-| sorted market operations | `codec.market_operations(messages)` | `codec.market_operations(messages)` | `codec.marketOperations(messages)` |
-| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, false)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0, global_=False)` | `codec.bookArrowReader(msgs, 0, false)` |
-| sorted operations as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
-| FIX rows in Arrow to operation rows | `codec.market_operations_arrow_reader(reader)?` | `codec.market_operations_arrow_reader(reader)` | `codec.marketOperationsArrowReader(reader)` |
-| manage a dictionary from a shell | `ygg fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
+| one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
+| sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
+| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.bookArrowReader(msgs, 0)` |
+| sorted market data as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
+| FIX rows in Arrow to `marketdata` rows | `codec.market_data_arrow_reader(reader)?` | `codec.market_data_arrow_reader(reader)` | `codec.marketDataArrowReader(reader)` |
+| manage a dictionary from a shell | `yggdryl fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
 
 ## Rules for fast, correct use
 
@@ -76,7 +82,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    anything resolves the default.
 2. Pin a run on the codec, never per call: `threads`, `batch_byte_size`
    (128 MiB target) / `batch_row_size` (32,768), `include_msgtypes`,
-   `payload_column`, `default_sending_time`, `snapshot_ns`. One codec reads a
+   `payload_column`, `default_sending_time`, `snapshot_ns`,
+   `sorted_lifecycle`. One codec reads a
    line and a batch alike; there is no second options struct.
 3. For bulk, stay in Arrow: `parse_text_arrow_reader` over the text reader's
    batches pools parsing across workers and merges rows in source order under
@@ -87,17 +94,25 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    one look. By default `Heartbeat`, `TestRequest` and the untyped row are
    refused (`DEFAULT_REFUSED_MSGTYPES`); pass an empty exclude list to audit.
 5. Decode is embarrassingly parallel; lifecycle is not. `lifecycle`,
-   `lifecycle_arrow_reader` and `market_operations` collect the whole finite
+   `lifecycle_arrow_reader` and `market_data` collect the whole finite
    capture (they sort by event time), so feed them one session or day, not an
-   unbounded stream. Parse and project in the parallel doors; chain once.
-6. Market hand-off is `market_operations(lifecycle(messages))`: the walk
-   settles each message, the sorted door orders every operation by the instant
-   a book folds it. `book_arrow_reader` is strict - it refuses out-of-order
-   input - and neither door runs the lifecycle for you. For a capture already
-   landed as FIX rows, `market_operations_arrow_reader` reads each row as its
-   message (no line parsed again) and sorts its operations; it runs no
-   lifecycle either, and a `lifecycle_arrow_reader` row lacks what the walk
-   settled (`prevpx`, a carried side), so hand walked messages, not rows.
+   unbounded stream. A source already in instant order - a table read hour
+   partition by hour partition, sorted by `currunix` - pins
+   `sorted_lifecycle` (`with_sorted_lifecycle(true)`, `sortedLifecycle`):
+   `lifecycle` then holds one epoch hour at a time, walking an hour once a
+   message two hours past it is read, and answers the same walk. Parse and
+   project in the parallel doors; chain once.
+6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
+   each message, the sorted door orders every leaf by the instant a book folds
+   it. One message is one leaf - an order, a one-sided quote, an execution -
+   and a `W`/`X` message one per entry; a trade and a two-sided quote reach
+   the book as the messages their parse split off, never twice.
+   `book_arrow_reader` is strict - it refuses out-of-order input - and neither
+   door runs the lifecycle for you. For a capture already landed as FIX rows,
+   `market_data_arrow_reader` reads each row as its message (no line parsed
+   again) and sorts its leaves; it runs no lifecycle either, and a
+   `lifecycle_arrow_reader` row lacks what the walk settled (`prevpx`, a
+   carried side), so hand walked messages, not rows.
 7. Pin `default_sending_time` for reproducible reads. A frame stating no
    `SendingTime(52)` whose line carries no clock is dated by one UTC-now read,
    and the clock feeds `curruuid`; a pinned instant (or a row-header `mtime`
@@ -111,7 +126,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    stated none; `beginstring` and `msgdirection` columns are per-row
    parameters. A `timestamp` capture never dates a message - name it `mtime`
    to date the line.
-10. Store and reload a dictionary through `commit`/`from_handle` (or `ygg fix`).
+10. Store and reload a dictionary through `commit`/`from_handle` (or `yggdryl fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated
     shards, and state a code set before the field that names it. Folds
@@ -122,8 +137,16 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.
 12. Row door and wire agree: `into_row` keeps typed facts in their columns and
-    only unexplained arrival content in `fixentries`; `write_arrow_reader`
-    rebuilds each message from both and refuses a batch with no `fixentries`.
+    only what no column holds in `fixentries`, a sorted `map<utf8, utf8>`
+    keyed `tag:name` (`58:text`) - a scalar as its wire text, a group or a
+    component as JSON keyed the same way, a repeated key as the JSON array of
+    its occurrences. A key the dictionary does not resolve is no field: it
+    lands in the row's `metadata` under its own spelling, and a row read back
+    restores it, so the wire re-emits it. `write_arrow_reader` rebuilds each
+    message from the row and refuses a batch with no `fixentries`.
+13. The derived fills and the retired-field restatements are native code: a
+    registry carries no rule of its own, and nothing in `FIX:` metadata
+    changes how a field is filled.
 
 ## Pitfalls
 
@@ -137,10 +160,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - An empty line through `parse_lines` is an error *item*, not a stream end:
   iterate and handle per item (Rust `Result`, Python raises at `next`).
 - Names are folded (ASCII case, `_`, `-`, space dropped): `MsgType`,
-  `msg_type`, `MSG-TYPE` are one name; `Größe` and `GRÖSSE` are two.
-- A coded value reads as its name (`by_tag(54)` -> `BUY`) but emits as its
-  wire code (`54=1`); set it with the wire code or any spelling the code set
-  resolves.
+  `msg_type`, `MSG-TYPE` are one name; `Größe` and `GRÖSSE` are two. Every
+  name lookup also reads four word pairs either way inside the folded name -
+  offer/ask, size/qty, bid/demand, px/price - so `AskPrice` is
+  `OfferPx(133)` and `DemandQty` is `BidSize(134)`; an exact name wins, and a
+  spelling reaching two fields reaches none.
+- A coded value reads as its name (`by_tag(54)` -> `BUY`; Python answers the
+  `Side.BUY` member) but emits as its wire code (`54=1`); set it with the wire
+  code or any spelling the code set resolves.
 - A group member needs its index on a message: `Parties[0].PartyID`;
   `Parties.PartyID` is the schema spelling and misses on a value.
 - `into_text` output reflects what the dictionary derived (a day order's
@@ -150,8 +177,15 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `parseLine` takes a `Buffer`; `parseLines` accepts strings or buffers.
 - Without a dictionary (`FixRegistry()` / `new fix.FixRegistry()`) frames
   still parse and the header, the lifted numbers and identifiers (11, 37, 38,
-  44...) and the crate's own columns are typed, but every other key lands under
-  tag 0 with its raw spelling: no code names, no groups, no typed row.
+  44...), the market facts (`side`, `price`...) and the crate's own columns are
+  typed, but every other key is unmapped - it lands in `metadata` under its raw
+  spelling: no code names, no groups, no `fixentries`.
+- A sided message's `crosscode` carries its side (`BUY:A1`); a derived
+  execution is keyed by its fill (`BUY:ExecID=E-1`). Count messages after the
+  parse, not lines: one filling report is two messages.
+- A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
+  a RIC's `EURUSD=` - states the derived `FOREX` security identifier `EUR/USD`
+  (the `forexcode` column); a pair a row states is stated, never re-derived.
 - A row header that stops matching silently changes lifecycle results (no
   session context, no delivery folding); assert the matched-line count beside
   the parsed-message count.
@@ -161,7 +195,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - Rust: [references/rust.md](references/rust.md) - `yggdryl::{FixCodec, FixRegistry, FixMsg, fix_schema}`, `Arc`, iterators of `Result`.
 - Python: [references/python.md](references/python.md) - `yggdryl.fix`, pyarrow readers in and out.
 - JavaScript: [references/javascript.md](references/javascript.md) - the `fix` namespace, `Buffer` input, `BatchReader`.
-- CLI: [references/cli.md](references/cli.md) - `ygg fix` catalog commands.
+- CLI: [references/cli.md](references/cli.md) - `yggdryl fix` catalog commands.
 
 Read the one for the language you write; recipes appear in the same order in each.
 
@@ -177,8 +211,8 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Capture, fixed row, clocks: https://platob.github.io/yggdryl/fix/capture/
 - Lifecycle walk: https://platob.github.io/yggdryl/fix/lifecycle/
 - CLI: https://platob.github.io/yggdryl/fix/cli/
-- Sibling skills: `yggdryl-market-data` (the operations and books FIX turns
+- Sibling skills: `yggdryl-market-data` (the market data and books FIX turns
   into), `yggdryl-records` (text reader, row headers, Parquet/IPC sinks),
   `yggdryl-arrow` (`Serie`, `BatchReader`), `yggdryl-types` (`Field`,
-  `Scalar`), `yggdryl-expressions` (the plans `FIX:replacements` spell),
+  `Scalar`, the `side` and `marketdatakind` enums, the `forex` code),
   `yggdryl-hashing` (the identities a message settles).

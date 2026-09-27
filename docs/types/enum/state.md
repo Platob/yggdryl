@@ -1,6 +1,6 @@
 # State
 
-What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty members, stored as the `int32` code of its member, the hundreds of the code its rank.
+What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty-one members, stored as the `int32` code of its member, the hundreds of the code its rank.
 
 ## Contract
 
@@ -216,7 +216,7 @@ A member's code is its **rank times one hundred plus its place in the rank**. Th
 | `0` | `0` | stated, but not a state anything reached | `UNKNOWN` |
 | `10` | `1000`-`1099` | asked for, not yet acknowledged | `PENDING`, `PENDING_NEW`, `QUEUED`, `RECEIVED`, `PENDING_VERIFICATION`, `PENDING_ALLOCATION`, `PENDING_APPROVAL` |
 | `20` | `2000`-`2099` | acknowledged, not yet working | `ACCEPTED`, `NEW`, `STARTING`, `SUBMITTED`, `ACKNOWLEDGED` |
-| `30` | `3000`-`3099` | working | `RUNNING`, `STATUS`, `TRIGGERED`, `ACTIVE` |
+| `30` | `3000`-`3099` | working | `RUNNING`, `STATUS`, `TRIGGERED`, `ACTIVE`, `UPDATED` |
 | `40` | `4000`-`4099` | working, and something has happened | `IN_PROGRESS`, `PARTIALLY_FILLED`, `TRADE`, `TRADE_CORRECT`, `TRADE_CANCEL`, `TRADE_IN_CLEARING_HOLD` |
 | `50` | `5000`-`5099` | halted, and able to resume | `PAUSED`, `STOPPED`, `SUSPENDED`, `LOCKED`, `DISPUTED`, `INCOMPLETE` |
 | `60` | `6000`-`6099` | a change is outstanding | `PENDING_CANCEL`, `PENDING_REPLACE`, `PENDING_REVERSAL` |
@@ -321,6 +321,60 @@ assert_eq!(State::Unknown.merge_with(State::New), State::New);
 assert_eq!(State::New.merge_with(State::Filled), State::Filled);
 assert_eq!(State::Filled.merge_with(State::New), State::Filled);
 ```
+
+## Stated anew over a live one
+
+`UPDATED` (`3004`) is the working band's member for a thing stated anew while it is live. `is_new_like` answers which states something can be stated anew over: acknowledged (rank `20`) or working (rank `30`), or one of the changes that carry on - `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED`. Never the pending band, because a `NEW` after a `PENDING_NEW` is the first acknowledgement rather than a restatement, and never a state that progressed or ended. The [lifecycle walk](../../graph/event.md#lifecycle-walk) reads it: a statement of `NEW` following a live element whose state is new-like is that element `UPDATED`, and later progress folds over it by rank as over any state. `is_new_like` is Rust only.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::State;
+
+    assert_eq!(State::Updated.code(), 3004);
+    assert_eq!(State::Updated.rank(), 30);
+    assert!(State::Updated.is_live());
+
+    // Acknowledged, working and carrying on can be stated anew over ...
+    for state in [State::New, State::Active, State::Updated, State::Replaced, State::Restated] {
+        assert!(state.is_new_like(), "{state}");
+    }
+    // ... asked for, progressed and ended cannot.
+    for state in [State::PendingNew, State::PartiallyFilled, State::Filled, State::Canceled] {
+        assert!(!state.is_new_like(), "{state}");
+    }
+
+    // Later progress folds over it by rank, and a `NEW` does not undo it.
+    assert_eq!(State::Updated.merge_with(State::PartiallyFilled), State::PartiallyFilled);
+    assert_eq!(State::Updated.merge_with(State::New), State::Updated);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import State
+
+    assert State.UPDATED == 3004 and State.UPDATED.rank == 30
+    assert State.UPDATED.is_live()
+    assert State.from_spelling("UPDATED") is State.UPDATED
+    assert sorted([State.PARTIALLY_FILLED, State.UPDATED, State.NEW]) == [
+        State.NEW,
+        State.UPDATED,
+        State.PARTIALLY_FILLED,
+    ]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, State } = require('yggdryl')
+
+    assert.equal(State.UPDATED, 3004)
+    assert.equal(Math.floor(State.UPDATED / 100), 30)
+    assert.ok(State.NEW < State.UPDATED && State.UPDATED < State.PARTIALLY_FILLED)
+    assert.equal(new DataType('state').scalar('UPDATED').asJs(), 'UPDATED')
+    ```
 
 ## Edges
 

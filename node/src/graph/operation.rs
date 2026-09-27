@@ -1,18 +1,17 @@
 //! Native Node.js view of the operation leaves - [`CoreOrder`],
 //! [`CoreQuote`] and [`CoreExecution`] undated, [`CoreOrderEvent`],
-//! [`CoreQuoteEvent`] and [`CoreExecutionEvent`] dated - and of the two
-//! typed values they carry, [`CoreLane`] and [`CoreBookRef`].
+//! [`CoreQuoteEvent`] and [`CoreExecutionEvent`] dated - and of the book
+//! control they carry, [`CoreBookRef`].
 
 use napi::bindgen_prelude::{BigInt, Either, Null, Result};
 use napi_derive::napi;
-use yggdryl::graph::operation_column::{lane_datatype, lane_fact, lane_of};
 use yggdryl::graph::{
     BookRef as CoreBookRef, Execution as CoreExecution, ExecutionEvent as CoreExecutionEvent,
-    ExecutionKind, Lane as CoreLane, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
+    ExecutionKind, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
     OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
     QuoteKind,
 };
-use yggdryl::{DataType, Decimal, Field, Scalar};
+use yggdryl::{DataType, Decimal, Scalar};
 
 use super::{decimal_text, instant_of, stated_operation};
 use crate::napi_error;
@@ -70,10 +69,10 @@ pub struct JsExecutionEvent {
 }
 
 /// One undated operation class over the core alias `$core` of kind `$kind`,
-/// dated into `$event`: its constructor, `kind`, `at` and the shared
-/// segments.
+/// the leaf `$market`, dated into `$event`: its constructor, `kind`, `at`
+/// and the shared segments.
 macro_rules! operation_element_class {
-    ($class:ident, $name:literal, $core:ty, $kind:ty, $event:ident) => {
+    ($class:ident, $name:literal, $core:ty, $kind:ty, $market:ident, $event:ident) => {
         impl $class {
             /// Wrap a value the core built.
             pub(crate) const fn from_core(inner: $core) -> Self {
@@ -115,16 +114,17 @@ macro_rules! operation_element_class {
         element_getters!($class);
         market_getters!($class);
         operation_getters!($class);
+        marketdatakind_getter!($class, $market);
         common_verbs!($class);
         element_repr!($class, $name);
     };
 }
 
 /// One dated operation class over the core alias `$core` of kind `$kind`,
-/// undated into `$element`: its constructor, `kind`, the book control,
-/// `intoElement` and the shared segments.
+/// the leaf `$market`, undated into `$element`: its constructor, `kind`, the
+/// book control, `intoElement` and the shared segments.
 macro_rules! operation_event_class {
-    ($class:ident, $name:literal, $core:ty, $kind:ty, $element:ident) => {
+    ($class:ident, $name:literal, $core:ty, $kind:ty, $market:ident, $element:ident) => {
         impl $class {
             /// Wrap a value the core built.
             pub(crate) const fn from_core(inner: $core) -> Self {
@@ -208,18 +208,20 @@ macro_rules! operation_event_class {
         event_getters!($class);
         market_getters!($class);
         operation_getters!($class);
+        marketdatakind_getter!($class, $market);
         common_verbs!($class);
         event_verbs!($class, $name);
     };
 }
 
-operation_element_class!(JsOrder, "Order", CoreOrder, OrderKind, JsOrderEvent);
-operation_element_class!(JsQuote, "Quote", CoreQuote, QuoteKind, JsQuoteEvent);
+operation_element_class!(JsOrder, "Order", CoreOrder, OrderKind, Order, JsOrderEvent);
+operation_element_class!(JsQuote, "Quote", CoreQuote, QuoteKind, Quote, JsQuoteEvent);
 operation_element_class!(
     JsExecution,
     "Execution",
     CoreExecution,
     ExecutionKind,
+    Execution,
     JsExecutionEvent
 );
 operation_event_class!(
@@ -227,6 +229,7 @@ operation_event_class!(
     "OrderEvent",
     CoreOrderEvent,
     OrderKind,
+    OrderEvent,
     JsOrder
 );
 operation_event_class!(
@@ -234,6 +237,7 @@ operation_event_class!(
     "QuoteEvent",
     CoreQuoteEvent,
     QuoteKind,
+    QuoteEvent,
     JsQuote
 );
 operation_event_class!(
@@ -241,6 +245,7 @@ operation_event_class!(
     "ExecutionEvent",
     CoreExecutionEvent,
     ExecutionKind,
+    ExecutionEvent,
     JsExecution
 );
 
@@ -277,51 +282,6 @@ fn slot_text<T: std::fmt::Display>(slot: Option<T>) -> String {
         || "null".to_owned(),
         |value| format!("{:?}", value.to_string()),
     )
-}
-
-/// The six slots a lane object states, each `undefined` or `null` where not
-/// given: a lane has no third state to tell them apart by. Given, a slot is
-/// widened through `Scalar.from` as a fact is - a decimal its text, a whole
-/// number or a bigint; read back by `toJSON`, decimals and codes are their
-/// text, as every graph getter answers them.
-#[napi(object)]
-#[derive(Clone, Default)]
-pub struct LaneInput {
-    /// The lane's price, as decimal text.
-    #[napi(ts_type = "string | number | bigint | null")]
-    pub price: Option<Either<String, Null>>,
-    /// The spot part of an FX forward price, as decimal text.
-    #[napi(ts_type = "string | number | bigint | null")]
-    pub spotrate: Option<Either<String, Null>>,
-    /// The forward points of an FX forward price, as decimal text.
-    #[napi(ts_type = "string | number | bigint | null")]
-    pub forwardpoints: Option<Either<String, Null>>,
-    /// The currency, as its code text.
-    #[napi(ts_type = "string | null")]
-    pub currency: Option<Either<String, Null>>,
-    /// The lane's quantity, as decimal text.
-    #[napi(ts_type = "string | number | bigint | null")]
-    pub quantity: Option<Either<String, Null>>,
-    /// The unit the quantity is counted in, as spelled.
-    #[napi(ts_type = "string | null")]
-    pub unit: Option<Either<String, Null>>,
-}
-
-/// One lane of a quote: what a party is willing to pay or be paid, in the
-/// currency and unit it states, with the FX parts of its price where it
-/// quotes a forward. Every slot is what the lane states; a lane states
-/// nothing of a slot it leaves `null`.
-#[napi(js_name = "Lane")]
-#[derive(Clone)]
-pub struct JsLane {
-    pub(crate) inner: CoreLane,
-}
-
-impl JsLane {
-    /// Wrap a value the core built.
-    pub(crate) const fn from_core(inner: CoreLane) -> Self {
-        Self { inner }
-    }
 }
 
 /// The slots `input` states, in `names` order, each `Null` where it states
@@ -374,138 +334,10 @@ fn text_slot(owner: &str, name: &str, value: &Scalar) -> Result<Option<String>> 
     }
 }
 
-/// A slot the lane states, as the object slot `toJSON` writes: `null` where
+/// A slot a control states, as the object slot `toJSON` writes: `null` where
 /// it states none.
 fn slot_value(value: Option<String>) -> Either<String, Null> {
     value.map_or(Either::B(Null), Either::A)
-}
-
-#[napi]
-impl JsLane {
-    /// Build a lane from its six slots, one record `Scalar` keyed by slot
-    /// name. The row crosses the boundary once, through the lane struct's
-    /// own field - `lane_datatype`'s `scalar` - and is read back with
-    /// `lane_of`, so every slot is validated exactly as a stored lane is.
-    #[napi(constructor, ts_args_type = "input?: LaneInput | null")]
-    pub fn new(input: Option<&JsScalar>) -> Result<Self> {
-        let raw = Scalar::from_sequence(named_slots(
-            "Lane",
-            input,
-            [
-                "price",
-                "spotrate",
-                "forwardpoints",
-                "currency",
-                "quantity",
-                "unit",
-            ],
-        )?);
-        let dtype = lane_datatype().map_err(napi_error)?;
-        let field = Field::new("lane", dtype, true);
-        let checked = field.scalar(raw).map_err(napi_error)?;
-        Ok(Self::from_core(lane_of(&checked).unwrap_or_default()))
-    }
-
-    /// The price this lane states, as decimal text; `null` where it states
-    /// none.
-    #[napi(getter)]
-    pub fn price(&self) -> Option<String> {
-        decimal_text(self.inner.price)
-    }
-
-    /// The spot part of an FX forward price; `null` where the lane states
-    /// none.
-    #[napi(getter)]
-    pub fn spotrate(&self) -> Option<String> {
-        decimal_text(self.inner.spotrate)
-    }
-
-    /// The forward points of an FX forward price; `null` where the lane
-    /// states none.
-    #[napi(getter)]
-    pub fn forwardpoints(&self) -> Option<String> {
-        decimal_text(self.inner.forwardpoints)
-    }
-
-    /// The currency, as the `ccy` code it is; `null` where the lane states
-    /// none.
-    #[napi(getter)]
-    pub fn currency(&self) -> Option<String> {
-        self.inner
-            .currency
-            .as_ref()
-            .map(|held| held.as_str().to_owned())
-    }
-
-    /// The quantity this lane states, as decimal text; `null` where it
-    /// states none.
-    #[napi(getter)]
-    pub fn quantity(&self) -> Option<String> {
-        decimal_text(self.inner.quantity)
-    }
-
-    /// The unit the quantity is counted in, as spelled; `null` where the
-    /// lane states none.
-    #[napi(getter)]
-    pub fn unit(&self) -> Option<String> {
-        self.inner
-            .unit
-            .as_ref()
-            .map(|held| held.as_str().to_owned())
-    }
-
-    /// Whether the lane states any slot.
-    #[napi]
-    pub fn is_stated(&self) -> bool {
-        self.inner.is_stated()
-    }
-
-    /// Whether this lane states the same slots as `other`.
-    #[napi]
-    pub fn equals(&self, other: &JsLane) -> bool {
-        self.inner == other.inner
-    }
-
-    /// The lane's own stable hash: the six slots it states, digested as
-    /// `lane_fact` renders them.
-    #[napi]
-    pub fn stable_hash(&self) -> BigInt {
-        BigInt::from(lane_fact(&self.inner).stable_hash())
-    }
-
-    /// A cheap native clone.
-    #[napi(js_name = "clone")]
-    pub fn clone_js(&self) -> Self {
-        self.clone()
-    }
-
-    /// `Lane(price=.., spotrate=.., forwardpoints=.., currency=.., quantity=.., unit=..)`.
-    #[napi(js_name = "toString")]
-    pub fn js_string(&self) -> String {
-        format!(
-            "Lane(price={}, spotrate={}, forwardpoints={}, currency={}, quantity={}, unit={})",
-            slot_text(self.inner.price),
-            slot_text(self.inner.spotrate),
-            slot_text(self.inner.forwardpoints),
-            slot_text(self.inner.currency.as_ref().map(yggdryl::Ccy::as_str)),
-            slot_text(self.inner.quantity),
-            slot_text(self.inner.unit.as_ref().map(yggdryl::Unit::as_str)),
-        )
-    }
-
-    /// The lane's own six slots, so it survives `JSON.stringify` and is
-    /// what `new Lane(...)` reads back.
-    #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> LaneInput {
-        LaneInput {
-            price: Some(slot_value(self.price())),
-            spotrate: Some(slot_value(self.spotrate())),
-            forwardpoints: Some(slot_value(self.forwardpoints())),
-            currency: Some(slot_value(self.currency())),
-            quantity: Some(slot_value(self.quantity())),
-            unit: Some(slot_value(self.unit())),
-        }
-    }
 }
 
 /// The five slots a book-control object states, each `undefined` or `null`

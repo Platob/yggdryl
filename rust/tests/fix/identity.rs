@@ -44,7 +44,7 @@ mod categories {
         let cases = [
             (
                 b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|".as_slice(),
-                65_055,
+                65_023,
                 "US0378331005",
             ),
             (
@@ -54,12 +54,12 @@ mod categories {
             ),
             (
                 b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|".as_slice(),
-                65_059,
+                65_025,
                 "AAPL US Equity",
             ),
             (
                 b"8=FIX.4.4|35=D|11=M|207=XNAS|10=0|".as_slice(),
-                65_060,
+                65_027,
                 "XNAS",
             ),
         ];
@@ -147,13 +147,12 @@ mod categories {
             Some("B0YBKJ7")
         );
 
-        // The crate lifts neither into a column of its own: the retired tags
-        // 65057 and 65058 name no column, and the set travels as
-        // `securityids` on the graph side.
-        for tag in [65_057, 65_058] {
+        // The crate lifts neither into a column of its own: the set travels
+        // as `securityids` on the graph side.
+        for name in ["cusipcode", "sedolcode"] {
             assert!(
-                yggdryl::fix_column_of(&schema, tag).is_none(),
-                "tag {tag} is retired and never reused"
+                schema.fields().iter().all(|field| field.name() != name),
+                "no {name} column"
             );
         }
 

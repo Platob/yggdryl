@@ -5,7 +5,7 @@ use std::collections::TryReserveError;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::push_field_name_path;
-use crate::{Error, Field, Result, Scalar, TimeUnit};
+use crate::{DataTypeId, Error, Field, Result, Scalar, TimeUnit};
 
 use crate::DataType;
 
@@ -35,11 +35,8 @@ enum DefaultPlan {
     PointEmpty,
     /// The nil identifier, sixteen zero bytes in its hyphenated spelling.
     Uuid,
-    /// The state stated as none, code zero.
-    State,
-    /// The side stated as none, `UNKNOWN`: a closed vocabulary with no empty
-    /// member, so the empty text a code defaults to is no side.
-    Side,
+    /// An enum leaf's member stated as none: code zero.
+    Enum(DataTypeId),
     /// The minimum canonical version.
     Version,
     Url,
@@ -246,8 +243,10 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Figi
             | DataType::Side
             | DataType::State
+            | DataType::MarketDataKind
             | DataType::TimeInForce
             | DataType::Unit
+            | DataType::Forex
             | DataType::Uuid
             | DataType::Version
             | DataType::Url | DataType::Urn
@@ -364,9 +363,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Ric
         | D::Figi
         | D::TimeInForce
-        | D::Unit => scalar(DefaultPlan::String, false),
-        D::Side => scalar(DefaultPlan::Side, false),
-        D::State => scalar(DefaultPlan::State, false),
+        | D::Unit
+        | D::Forex => scalar(DefaultPlan::String, false),
+        held @ crate::enum_dtypes!() => scalar(DefaultPlan::Enum(held.id()), false),
         D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }
@@ -629,8 +628,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::FixedBigDecimal => Ok(Scalar::BigDecimal(crate::BigDecimal::ZERO)),
         DefaultPlan::Interval(unit) => crate::Interval::new(0, 0, 0, unit).map(Scalar::Interval),
         DefaultPlan::String => Ok(Scalar::from("")),
-        DefaultPlan::State => Ok(Scalar::State(crate::State::Unknown)),
-        DefaultPlan::Side => Ok(Scalar::Side(crate::Side::Unknown)),
+        DefaultPlan::Enum(id) => crate::enums::read_enum_code(id, 0),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
             bytes
@@ -737,8 +735,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         }
         DefaultPlan::Interval(unit) => interval_is_zero(value, *unit),
         DefaultPlan::String => value.as_str() == Some(""),
-        DefaultPlan::State => matches!(value, Scalar::State(crate::State::Unknown)),
-        DefaultPlan::Side => matches!(value, Scalar::Side(crate::Side::Unknown)),
+        DefaultPlan::Enum(id) => value.id() == *id && value.enum_code() == Some(0),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),

@@ -1,6 +1,6 @@
 {
   "name": "yggdryl",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Native Yggdryl schemas, fields, Arrow interop, URIs, and structured codecs for Node.js",
   "license": "Apache-2.0",
   "repository": {
@@ -16,13 +16,7 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
-    },
-    "./replay": {
-      "types": "./replay.d.ts",
-      "require": "./replay.js",
-      "default": "./replay.js"
-    },
-    "./web/*": "./web/*"
+    }
   },
   "files": [
     "index.js",
@@ -34,13 +28,6 @@
     "*.node",
     "records.js",
     "values.js",
-    "replay.js",
-    "replay.d.ts",
-    "replay/*.js",
-    "web/*.js",
-    "web/*.css",
-    "web/package.json",
-    "web/app/*",
     "benchmarks"
   ],
   "engines": {

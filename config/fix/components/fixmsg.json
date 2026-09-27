@@ -11,7 +11,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "currunix",
-          "FIX:tag": "65003"
+          "FIX:tag": "65001"
         }
       },
       {
@@ -22,7 +22,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "execunix",
-          "FIX:tag": "65062"
+          "FIX:tag": "65002"
         }
       },
       {
@@ -33,7 +33,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "recdunix",
-          "FIX:tag": "65063"
+          "FIX:tag": "65003"
         }
       },
       {
@@ -44,7 +44,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "creaunix",
-          "FIX:tag": "65023"
+          "FIX:tag": "65004"
         }
       },
       {
@@ -55,7 +55,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "prevunix",
-          "FIX:tag": "65021"
+          "FIX:tag": "65005"
         }
       },
       {
@@ -66,7 +66,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "snapunix",
-          "FIX:tag": "65025"
+          "FIX:tag": "65006"
         }
       },
       {
@@ -77,7 +77,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "exprunix",
-          "FIX:tag": "65053"
+          "FIX:tag": "65007"
         }
       },
       {
@@ -176,7 +176,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "curruuid",
-          "FIX:tag": "65039"
+          "FIX:tag": "65008"
         }
       },
       {
@@ -187,7 +187,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "crossuuid",
-          "FIX:tag": "65040"
+          "FIX:tag": "65009"
         }
       },
       {
@@ -198,7 +198,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "crosscode",
-          "FIX:tag": "65048"
+          "FIX:tag": "65010"
         }
       },
       {
@@ -209,7 +209,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "currhashcode",
-          "FIX:tag": "65017"
+          "FIX:tag": "65011"
         }
       },
       {
@@ -220,7 +220,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "crosshashcode",
-          "FIX:tag": "65018"
+          "FIX:tag": "65012"
         }
       },
       {
@@ -231,7 +231,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "prevuuid",
-          "FIX:tag": "65022"
+          "FIX:tag": "65013"
         }
       },
       {
@@ -242,7 +242,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "seqnum",
-          "FIX:tag": "65042"
+          "FIX:tag": "65014"
         }
       },
       {
@@ -253,7 +253,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "srcuuids",
-          "FIX:tag": "65051"
+          "FIX:tag": "65015"
         }
       },
       {
@@ -286,7 +286,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgcat",
-          "FIX:tag": "65054"
+          "FIX:tag": "65016"
         }
       },
       {
@@ -352,7 +352,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgpluginid",
-          "FIX:tag": "65009"
+          "FIX:tag": "65017"
         }
       },
       {
@@ -363,7 +363,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgoriginator",
-          "FIX:tag": "65066"
+          "FIX:tag": "65018"
         }
       },
       {
@@ -374,7 +374,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgctxid",
-          "FIX:tag": "65008"
+          "FIX:tag": "65019"
         }
       },
       {
@@ -385,7 +385,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsessionid",
-          "FIX:tag": "65032"
+          "FIX:tag": "65020"
         }
       },
       {
@@ -396,7 +396,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsesseventid",
-          "FIX:tag": "65065"
+          "FIX:tag": "65021"
         }
       },
       {
@@ -407,7 +407,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "conversationid",
-          "FIX:tag": "65067"
+          "FIX:tag": "65022"
         }
       },
       {
@@ -451,7 +451,18 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "isincode",
-          "FIX:tag": "65055"
+          "FIX:tag": "65023"
+        }
+      },
+      {
+        "name": "forexcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "forexcode",
+          "FIX:tag": "65024"
         }
       },
       {
@@ -462,7 +473,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "bloombergcode",
-          "FIX:tag": "65059"
+          "FIX:tag": "65025"
         }
       },
       {
@@ -473,7 +484,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "figicode",
-          "FIX:tag": "65061"
+          "FIX:tag": "65026"
         }
       },
       {
@@ -484,7 +495,18 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "miccode",
-          "FIX:tag": "65060"
+          "FIX:tag": "65027"
+        }
+      },
+      {
+        "name": "strikepx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "strikepx",
+          "FIX:tag": "65028"
         }
       },
       {
@@ -1034,7 +1056,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "state",
-          "FIX:tag": "65052"
+          "FIX:tag": "65029"
         }
       },
       {
@@ -1429,44 +1451,21 @@
         }
       },
       {
-        "name": "nofixentries",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nofixentries",
-          "FIX:tag": "65027"
-        }
-      },
-      {
         "name": "fixentries",
         "dtype": {
-          "type": "serie",
-          "field": {
-            "name": "fixentry",
+          "type": "map",
+          "entries": {
+            "name": "entries",
             "dtype": {
               "type": "struct",
               "fields": [
                 {
-                  "name": "tag",
-                  "dtype": {
-                    "type": "int32"
-                  },
-                  "nullable": false,
-                  "metadata": {
-                    "display": "Tag"
-                  }
-                },
-                {
-                  "name": "name",
+                  "name": "key",
                   "dtype": {
                     "type": "string"
                   },
                   "nullable": false,
-                  "metadata": {
-                    "display": "Name"
-                  }
+                  "metadata": {}
                 },
                 {
                   "name": "value",
@@ -1474,124 +1473,18 @@
                     "type": "string"
                   },
                   "nullable": true,
-                  "metadata": {
-                    "display": "Value"
-                  }
-                },
-                {
-                  "name": "fixentries",
-                  "dtype": {
-                    "type": "serie",
-                    "field": {
-                      "name": "fixentry",
-                      "dtype": {
-                        "type": "struct",
-                        "fields": [
-                          {
-                            "name": "tag",
-                            "dtype": {
-                              "type": "int32"
-                            },
-                            "nullable": false,
-                            "metadata": {
-                              "display": "Tag"
-                            }
-                          },
-                          {
-                            "name": "name",
-                            "dtype": {
-                              "type": "string"
-                            },
-                            "nullable": false,
-                            "metadata": {
-                              "display": "Name"
-                            }
-                          },
-                          {
-                            "name": "value",
-                            "dtype": {
-                              "type": "string"
-                            },
-                            "nullable": true,
-                            "metadata": {
-                              "display": "Value"
-                            }
-                          },
-                          {
-                            "name": "fixentries",
-                            "dtype": {
-                              "type": "serie",
-                              "field": {
-                                "name": "fixentry",
-                                "dtype": {
-                                  "type": "struct",
-                                  "fields": [
-                                    {
-                                      "name": "tag",
-                                      "dtype": {
-                                        "type": "int32"
-                                      },
-                                      "nullable": false,
-                                      "metadata": {
-                                        "display": "Tag"
-                                      }
-                                    },
-                                    {
-                                      "name": "name",
-                                      "dtype": {
-                                        "type": "string"
-                                      },
-                                      "nullable": false,
-                                      "metadata": {
-                                        "display": "Name"
-                                      }
-                                    },
-                                    {
-                                      "name": "value",
-                                      "dtype": {
-                                        "type": "string"
-                                      },
-                                      "nullable": true,
-                                      "metadata": {
-                                        "display": "Value"
-                                      }
-                                    },
-                                    {
-                                      "name": "fixentries",
-                                      "dtype": {
-                                        "type": "string"
-                                      },
-                                      "nullable": true,
-                                      "metadata": {}
-                                    }
-                                  ]
-                                },
-                                "nullable": false,
-                                "metadata": {}
-                              }
-                            },
-                            "nullable": false,
-                            "metadata": {}
-                          }
-                        ]
-                      },
-                      "nullable": false,
-                      "metadata": {}
-                    }
-                  },
-                  "nullable": false,
                   "metadata": {}
                 }
               ]
             },
             "nullable": false,
             "metadata": {}
-          }
+          },
+          "keys_sorted": true
         },
         "nullable": true,
         "metadata": {
-          "FIX:counter": "65027",
-          "description": "Content not represented by another column, in arrival order, beside what the dictionary made of it.",
+          "description": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way.",
           "display": "FixEntries"
         }
       }
@@ -1599,7 +1492,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:tag": "65050",
+    "FIX:tag": "65042",
     "description": "The fixed row every message answers as: the crate's own columns, the standard header, the fields a financial consumer reads, the groups persisted whole, the trailer, and the arrival record that closes it.",
     "display": "FixMsg"
   }
