@@ -585,13 +585,18 @@ root.remove(true)?;
 
 `FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect on everything it produced;
-`add_cfb_file` / `add_cfb_files` fold one or a glob of them into a held
-registry (dialect defaulting to each file's stem), and `merge_with` folds a
-whole other registry. Every fold is atomic.
+`add_cfb_file` folds one into a held registry, `add_cfb_files` folds the files
+themselves - a glob listing, several listings or single holders chained, a
+container passed by, a file named twice folding once - and `merge_with` folds
+a whole other registry, dialect defaulting to each file's own stem. A fold
+keeps every declaration the dictionary already holds and passes over what a
+source states otherwise, naming it in the answered `FixMerge` rather than
+refusing the whole source; only a source that leaves nothing to keep -
+malformed XML or JSON, a catalog that does not validate - is refused whole.
 
 ```rust
-use yggdryl::FixRegistry;
 use yggdryl::local::{LocalFile, LocalFolder};
+use yggdryl::{FixRegistry, IOBase};
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
@@ -608,9 +613,12 @@ let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha
 assert_eq!(venue.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
 assert!(roots.is_empty());
 
+// `add_cfb_files` takes the files themselves: a glob listing, anchored and
+// walked exactly as `IOBase::glob` walks it.
 let mut registry = FixRegistry::new();
-let (files, _added, _merged) = registry.add_cfb_files(&LocalFolder::new(&path)?, "*.cfb", None)?;
-assert_eq!(files, 2);
+let merge = registry.add_cfb_files(LocalFolder::new(&path)?.glob("*.cfb", false)?, None)?;
+assert_eq!(merge.sources, 2);
+assert!(merge.is_clean(), "{:?}", merge.dropped);
 // Ascending URL order, each file stamped with its stem.
 assert_eq!(registry.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["alpha", "beta"]);
 

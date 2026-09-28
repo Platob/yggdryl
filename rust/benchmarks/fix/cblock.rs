@@ -1,8 +1,9 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use criterion::{Criterion, Throughput};
-use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
+use criterion::{BatchSize, Criterion, Throughput};
+use yggdryl::fs::{FileSystem, FsFile, FsFolder, MemoryFileSystem};
+use yggdryl::holder::Holder;
 use yggdryl::{DataType, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
@@ -10,6 +11,10 @@ use yggdryl::{DataType, FixId, FixRegistry, IOBase};
 /// A production CBlock is megabytes over hundreds of thousands of elements;
 /// this is the same shape at a size a benchmark can run repeatedly.
 const TAGS: usize = crate::bench_profile::corpus(2_000, 200);
+
+/// How many counterparty files one glob folds: one vocabulary under as many
+/// dialects, which is what a folder of bridge configurations looks like.
+const FILES: usize = crate::bench_profile::corpus(8, 2);
 
 /// A CBlock of `TAGS` tags, including a counter and its nested group member.
 fn document() -> String {
@@ -112,6 +117,22 @@ fn handle(body: &str) -> impl IOBase {
     file
 }
 
+/// `FILES` copies of one document under one folder, each its own dialect.
+fn tree(body: &str) -> Holder {
+    let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    filesystem.create_dir("cblocks", true).expect("a container");
+    for index in 0..FILES {
+        let mut file = FsFile::from_path(
+            Arc::clone(&filesystem),
+            format!("cblocks/venue{index:02}.cfb"),
+            None,
+        )
+        .expect("a path");
+        file.write_all_bytes(body.as_bytes()).expect("the document");
+    }
+    Holder::from(FsFolder::from_path(filesystem, "cblocks", None).expect("the folder"))
+}
+
 pub fn benchmarks(criterion: &mut Criterion) {
     let body = document();
     let handle = handle(&body);
@@ -160,6 +181,23 @@ pub fn benchmarks(criterion: &mut Criterion) {
         ["NOVENDORENTRIES_ALT"]
     );
 
+    // A second dialect of the same vocabulary merges every field, and a glob
+    // of them folds whole, each file under its own stem.
+    let mut folded = registry.clone();
+    let merge = folded
+        .add_cfb_file(&handle, Some("desk"))
+        .expect("the same vocabulary folds");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    assert_eq!(merge.added, 0);
+    let files = tree(&body);
+    let mut globbed = FixRegistry::new();
+    let merge = globbed
+        .add_cfb_files(files.glob("*.cfb", false).expect("a glob"), None)
+        .expect("every file folds");
+    assert_eq!(merge.sources, FILES);
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    assert_eq!(globbed.dialects().len(), FILES);
+
     let mut group = criterion.benchmark_group("fix/cblock");
     group.throughput(Throughput::Bytes(body.len() as u64));
     // The whole parse: skip unrelated children, build the vocabulary, bind
@@ -170,6 +208,31 @@ pub fn benchmarks(criterion: &mut Criterion) {
             FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(dialect)))
                 .expect("a readable CBlock")
         });
+    });
+    // A file whose every field the dictionary already holds: each one merges,
+    // and the catalog is resolved once for the file, never once per field.
+    group.bench_function("fold", |bencher| {
+        bencher.iter_batched(
+            || registry.clone(),
+            |mut held| {
+                held.add_cfb_file(black_box(&handle), Some(black_box("desk")))
+                    .expect("the same vocabulary folds")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // `FILES` dialects through one glob: parsed side by side, folded in URL
+    // order into one staged copy, resolved once.
+    group.throughput(Throughput::Bytes((body.len() * FILES) as u64));
+    group.bench_function("fold_files", |bencher| {
+        bencher.iter_batched(
+            FixRegistry::new,
+            |mut held| {
+                held.add_cfb_files(files.glob("*.cfb", false).expect("a glob"), None)
+                    .expect("every file folds")
+            },
+            BatchSize::LargeInput,
+        );
     });
     group.finish();
 }

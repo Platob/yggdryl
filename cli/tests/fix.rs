@@ -681,3 +681,147 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
     assert_eq!(cleared.get_metadata("FIX:directions"), None);
     assert_eq!(cleared.as_fix().codeset(), Some("msgdirectioncodeset"));
 }
+
+/// One `CBlock` declaring tag 532 as `declared` and binding it in message `r`.
+fn rejection(declared: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="532" alt="MassCancelRejectReason" type="{declared}" />
+		<vocabulary-tag name="58" alt="Text" type="string" />
+	</vocabulary>
+	<grammar-binding type="r"><grammar>
+		<tag-constraint name="532" />
+		<tag-constraint name="58" />
+	</grammar></grammar-binding>
+</cplugin-configuration>"#
+    )
+}
+
+impl Workspace {
+    /// Writes `CBlock`s under `cblocks/`, answering the folder.
+    fn cblocks(&self, files: &[(&str, &str)]) -> PathBuf {
+        let folder = self.0.join("cblocks");
+        std::fs::create_dir_all(&folder).expect("a folder of CBlocks");
+        for (name, body) in files {
+            std::fs::write(folder.join(name), body).expect("one CBlock");
+        }
+        folder
+    }
+
+    fn loaded(&self) -> FixRegistry {
+        FixRegistry::from_handle(&LocalFolder::new(self.root()).expect("store folder"))
+            .expect("a stored dictionary")
+    }
+}
+
+#[test]
+fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() {
+    let workspace = Workspace::new();
+    let folder = workspace.cblocks(&[
+        ("bloomberg_fix44_dropcopy.cfb", &rejection("integer")),
+        ("axessiq_fix44.cfb", &rejection("string")),
+        ("tradeweb_fix44.cfb", &rejection("string")),
+        ("notes.txt", "not a dictionary"),
+    ]);
+    let pattern = folder.join("*.cfb");
+    let output = workspace.success(&["ingest", pattern.to_str().expect("test path")]);
+    let text = output_text(&output);
+    // One fold of every file: the disagreeing declaration is named with its
+    // file and its dialect, and the rest arrived in one commit.
+    assert!(text.contains("3 file(s)"), "{text}");
+    assert!(text.contains("1 passed over"), "{text}");
+    assert!(
+        text.contains("bloomberg_fix44_dropcopy.cfb [bloomberg_fix44_dropcopy]"),
+        "{text}"
+    );
+    assert!(text.contains("masscancelrejectreason (532)"), "{text}");
+    assert!(text.contains("committed: "), "{text}");
+    let stored = workspace.loaded();
+    let held = stored.field_by_tag(532).expect("tag 532 stored");
+    assert_eq!(held.dtype(), &DataType::utf8());
+    assert_eq!(
+        held.as_fix().branches().collect::<Vec<_>>(),
+        ["axessiq_fix44", "tradeweb_fix44"]
+    );
+    assert!(stored.msgtype("r").is_ok(), "the message arrived");
+
+    // The same files again change nothing, so nothing is committed.
+    let again = output_text(&workspace.success(&["ingest", pattern.to_str().expect("test path")]));
+    assert!(!again.contains("committed: "), "{again}");
+    assert_eq!(workspace.loaded(), stored);
+
+    // A shell that expanded the glob hands over the files; they fold as one,
+    // and under --annotate each passed-over declaration is a workflow warning.
+    let files: Vec<String> = [
+        "tradeweb_fix44.cfb",
+        "bloomberg_fix44_dropcopy.cfb",
+        "axessiq_fix44.cfb",
+    ]
+    .iter()
+    .map(|name| folder.join(name).to_str().expect("test path").to_owned())
+    .collect();
+    let mut arguments = vec!["ingest", "--annotate", "--dialect", "desk"];
+    arguments.extend(files.iter().map(String::as_str));
+    let annotated = output_text(&workspace.success(&arguments));
+    assert!(annotated.contains("3 file(s)"), "{annotated}");
+    assert!(
+        annotated.lines().any(
+            |line| line.starts_with("::warning title=fix passed over::file:")
+                && line.contains("bloomberg_fix44_dropcopy.cfb")
+        ),
+        "{annotated}"
+    );
+}
+
+#[test]
+fn ingest_refuses_a_pattern_matching_nothing_and_sync_names_the_verb_for_a_cblock() {
+    let workspace = Workspace::new();
+    let folder = workspace.cblocks(&[("venue.cfb", &rejection("string"))]);
+    let output = workspace.failure(&["ingest", folder.join("*.xml").to_str().expect("test path")]);
+    assert!(
+        output_text(&output).contains("*.xml"),
+        "{}",
+        output_text(&output)
+    );
+    let output = workspace.failure(&["ingest", folder.to_str().expect("test path")]);
+    assert!(
+        output_text(&output).contains("got directory"),
+        "{}",
+        output_text(&output)
+    );
+    let output = workspace.failure(&[
+        "sync",
+        folder.join("venue.cfb").to_str().expect("test path"),
+    ]);
+    assert!(
+        output_text(&output).contains("ingest"),
+        "{}",
+        output_text(&output)
+    );
+    assert!(
+        !workspace.root().join("fields").exists(),
+        "nothing was written"
+    );
+
+    // A single file under a named dialect.
+    let text = output_text(&workspace.success(&[
+        "ingest",
+        folder.join("venue.cfb").to_str().expect("test path"),
+        "--dialect",
+        "venue",
+    ]));
+    assert!(text.contains("1 file(s)"), "{text}");
+    assert_eq!(
+        workspace
+            .loaded()
+            .field_by_tag(532)
+            .expect("stored")
+            .as_fix()
+            .branches()
+            .collect::<Vec<_>>(),
+        ["venue"]
+    );
+}

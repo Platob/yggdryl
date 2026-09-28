@@ -45,7 +45,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `add_cfb_files(&folder, "*.cfb", None)?`, `merge_with(&other)?` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")`, `merge_with(other)` | not bound (`yggdryl fix sync`) |
+| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(folder.glob("*.cfb", false)?, None)?`, `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
@@ -129,10 +129,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 10. Store and reload a dictionary through `commit`/`from_handle` (or `yggdryl fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated
-    shards, and state a code set before the field that names it. Folds
-    (`add_cfb_file`, `add_cfb_files`, `merge_with`) are atomic; `add_cfb_files`
-    folds in ascending URL order, so the last-sorting file wins a disputed tag,
-    and a code set only widens (the held name wins a shared value).
+    shards, and state a code set before the field that names it. A fold
+    (`add_cfb_file`, `add_cfb_files`, `merge_with`) keeps every declaration the
+    dictionary already holds and passes over what a source states otherwise -
+    a disagreeing datatype, a member a held definition declares in another
+    shape, a group on another counter - naming each in the answered
+    `FixMerge` rather than refusing the whole source; it refuses whole only
+    where nothing is left to keep (malformed XML or JSON, a source whose own
+    catalog does not validate). `add_cfb_files` folds in ascending URL order,
+    so where two files disagree about one tag the first-sorting file's
+    declaration is held and the later one is passed over, and a code set only
+    widens (the held name wins a shared value).
 11. Mutations are atomic: a refused `insert`, `set` or `set_codeset` leaves the
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.

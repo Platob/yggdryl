@@ -5,8 +5,9 @@ use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, Field, FixCategory, FixDirection, FixRegistry, IOKind, Result};
+use yggdryl::{
+    DataType, Field, FixCategory, FixDirection, FixMerge, FixRegistry, IOBase, IOKind, Result, Url,
+};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
@@ -37,31 +38,39 @@ pub enum Command {
         #[command(subcommand)]
         command: CodesetCommand,
     },
-    /// Read an Ullink `CBlock` into the dictionary.
+    /// Fold Ullink `CBlock`s into the dictionary: files, or globs of them.
+    ///
+    /// Every file is parsed side by side and folded into one staged
+    /// dictionary in ascending URL order, which is then committed once,
+    /// writing only the documents that moved. What a file declares otherwise
+    /// than the dictionary already does - a tag typed two ways by two
+    /// counterparties - is passed over and named, and the rest still folds.
+    #[command(
+        after_help = "Examples:\n  yggdryl fix ingest cblocks/venue.cfb --dialect venue\n  yggdryl fix ingest 'cblocks/*.cfb'\n  yggdryl fix ingest 'cblocks/**/*.cfb' --annotate\n  yggdryl fix ingest cblocks/a.cfb cblocks/b.cfb\n\nQuote a glob to have it walked here - `*` stays inside one name, `**` spans folders - or let the shell expand it; either way every file folds in one staged dictionary and one commit.\nWithout --dialect each file's own stem names its dialect (MSFIX44.cfb stamps msfix44).\nWhere two files disagree about one tag, the first in URL order is held and the other is passed over; --annotate prints each as a workflow warning."
+    )]
     Ingest {
-        /// The `.cfb` file.
-        path: PathBuf,
-        /// The dictionary name stamped on every definition the file produces.
+        /// `.cfb` files, or glob patterns such as `cblocks/*.cfb`.
+        ///
+        /// A pattern matching nothing is refused, so a mistyped glob never
+        /// reads as a silent success.
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// The dictionary name stamped on every definition the files produce.
         ///
         /// Membership (`FIX:branches`) is provenance a listing filters on; it
-        /// never decides how a tag or a name resolves.
+        /// never decides how a tag or a name resolves. With none given, each
+        /// file's own stem names its dialect.
         #[arg(long)]
         dialect: Option<String>,
-        /// Fold each field into what is already there rather than replacing.
-        #[arg(long)]
-        merge: bool,
     },
-    /// Fold another source into the dictionary.
+    /// Fold another dictionary folder into this one.
     Sync {
-        /// A folder holding another dictionary, or a `.cfb` file.
-        source: PathBuf,
-        /// The dictionary name stamped on every definition a `.cfb` produces.
+        /// A folder holding another dictionary.
         ///
-        /// A `CBlock` never names itself, so with none given the file's own
-        /// stem names the dialect. A folder says nothing to this: its fields
-        /// carry the membership they were written with.
-        #[arg(long)]
-        dialect: Option<String>,
+        /// Its fields carry the membership they were written with, which the
+        /// fold unions onto what this dictionary holds. A `.cfb` is
+        /// `yggdryl fix ingest`'s.
+        source: PathBuf,
     },
     /// Print the one row shape a whole capture lands in.
     Schema {
@@ -287,7 +296,8 @@ pub fn run(root: &Path, annotate: bool, command: Option<&Command>) -> Result<Exi
     };
     let outcome = execute(&mut store, annotate, command)?;
     if store.changed() {
-        store.save()?;
+        let report = store.save()?;
+        style::good(&registry::committed(&report));
     }
     Ok(outcome)
 }
@@ -298,15 +308,11 @@ fn execute(store: &mut registry::Store, annotate: bool, command: &Command) -> Re
         Command::Components { command } => category(store, FixCategory::Components, command)?,
         Command::Groups { command } => category(store, FixCategory::Groups, command)?,
         Command::Codesets { command } => codesets(store, command)?,
-        Command::Ingest {
-            path,
-            dialect,
-            merge,
-        } => {
-            ingest(store, path, dialect.as_deref(), *merge)?;
+        Command::Ingest { paths, dialect } => {
+            ingest(store, paths, dialect.as_deref(), annotate)?;
         }
-        Command::Sync { source, dialect } => {
-            sync(store, source, dialect.as_deref())?;
+        Command::Sync { source } => {
+            sync(store, source, annotate)?;
         }
         Command::Schema {
             rowheader,
@@ -381,103 +387,143 @@ fn codesets(store: &mut registry::Store, command: &CodesetCommand) -> Result<()>
     }
 }
 
-/// Folds whatever one location holds into the dictionary.
+/// Folds another dictionary folder into this one.
 ///
-/// The location decides which reader answers it, and nothing else does: a
-/// folder is another dictionary, a `.cfb` is one counterparty's vocabulary,
-/// and anything else is refused rather than guessed at. Both sources arrive
-/// through the one fold, so a tag this dictionary lacks is added, one it holds
-/// keeps every key only it declares, and the membership either source stamps
-/// is unioned onto them - and because that fold is one mutation, a source it
-/// refuses leaves the dictionary exactly as it was.
-fn sync(store: &mut registry::Store, source: &Path, dialect: Option<&str>) -> Result<()> {
+/// A folder is another dictionary and nothing else is: a `.cfb` is one
+/// counterparty's vocabulary, which [`ingest`] reads, and anything else is
+/// refused rather than guessed at. The fold is the core's one: a tag this
+/// dictionary lacks is added, one it holds keeps every key only it declares,
+/// the membership the other stamps is unioned onto it, and what it declares
+/// otherwise than this dictionary does is passed over and named.
+fn sync(store: &mut registry::Store, source: &Path, annotate: bool) -> Result<()> {
     let mut progress = style::Progress::start(format!("reading {}", source.display()));
     progress.tick();
     let held = Holder::local(registry::located(source)?)?;
-    let (added, folded) = match held.as_io().kind() {
-        IOKind::Directory => {
-            let other = FixRegistry::from_handle(held.as_io())?;
-            progress.tick();
-            store.registry_mut().merge_with(&other)?
-        }
-        // A CBlock declares no media type of its own, so the name is the only
-        // thing that says what the bytes are before they are read. Read whole
-        // rather than for its vocabulary alone, so its groups, components and
-        // messages arrive with its fields, each stamped with the dialect.
-        IOKind::File
-            if source
-                .extension()
-                .is_some_and(|held| held.eq_ignore_ascii_case("cfb")) =>
-        {
-            progress.tick();
-            store.registry_mut().add_cfb_file(held.as_io(), dialect)?
-        }
-        kind => {
-            return Err(yggdryl::Error::InvalidRecord {
-                path: source.display().to_string().into(),
-                reason: format!(
-                    "expected a folder holding a dictionary or a .cfb file, got {kind}"
-                )
-                .into(),
-            });
-        }
-    };
-    progress.finish(&format!("{added} added, {folded} merged"));
+    let kind = held.as_io().kind();
+    if kind != IOKind::Directory {
+        return Err(yggdryl::Error::InvalidRecord {
+            path: source.display().to_string().into(),
+            reason: format!(
+                "expected a folder holding a dictionary, got {kind}; a .cfb is `yggdryl fix ingest`'s"
+            )
+            .into(),
+        });
+    }
+    let other = FixRegistry::from_handle(held.as_io())?;
+    progress.tick();
+    let merge = store.registry_mut().merge_with(&other)?;
+    progress.finish(&folded(&merge, "dictionary"));
+    passed_over(&merge, annotate);
     Ok(())
 }
 
-/// Reads one `CBlock` into the dictionary.
+/// Folds every `CBlock` the paths name into the dictionary, in one fold.
 ///
-/// Creating is the default and merging is asked for, because the two answer
-/// different questions: a new counterparty is a new dictionary, and a revised
-/// configuration is a change to one that exists. Merging folds each field
-/// into what is already there, so a description a `CBlock` does not carry is
-/// not lost by reading one that does not.
+/// Each path is a file or a glob. A glob the shell left alone is walked by
+/// the core - its fixed prefix descended, `*` inside one name, `**` across
+/// folders, private entries never matched - and a shell that expanded one
+/// hands over the files it matched; both arrive as one list, which the core
+/// parses side by side, folds in ascending URL order into one staged
+/// dictionary and resolves once. So a hundred files cost one load, one
+/// resolution and one commit, and where two of them disagree about one tag
+/// the first in URL order is held and the other is named.
+///
+/// A path matching nothing is refused, and so is one naming anything but a
+/// file: a mistyped pattern is a mistake, never a silent success.
 fn ingest(
     store: &mut registry::Store,
-    path: &std::path::Path,
+    paths: &[PathBuf],
     dialect: Option<&str>,
-    merge: bool,
+    annotate: bool,
 ) -> Result<()> {
-    let mut progress = style::Progress::start(format!("reading {}", path.display()));
+    let mut progress = style::Progress::start(match paths {
+        [path] => format!("reading {}", path.display()),
+        paths => format!("reading {} locations", paths.len()),
+    });
     progress.tick();
-    let path = registry::located(path)?;
-    let held = LocalFolder::new(
-        path.parent()
-            .map(std::path::Path::to_path_buf)
-            .unwrap_or_default(),
-    )?;
-    let name = path
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or_default();
-    let handle = yggdryl::IOBase::child_by_path(&held, name)?;
-    let (parsed, roots) = FixRegistry::from_cfb_file(&handle, dialect)?;
-    progress.tick();
-
-    let (added, folded) = if merge {
-        store.registry_mut().merge_with(&parsed)?
-    } else {
-        let mut next = store.registry().clone();
-        let mut added = 0;
-        let mut replaced = 0;
-        for category in FixCategory::ALL {
-            for field in parsed.definitions(category) {
-                if next.insert_definition(category, field.clone())?.is_some() {
-                    replaced += 1;
-                } else {
-                    added += 1;
-                }
+    let mut files = Vec::new();
+    for path in paths {
+        let located = registry::located(path)?;
+        let (root, pattern) = Url::from_path(&located)?.glob_parts()?;
+        let matched: Vec<Result<Holder>> = if let Some(pattern) = pattern {
+            Holder::folder(root.into_path()?)?
+                .glob(&pattern, false)?
+                .collect()
+        } else {
+            let held = Holder::local(&located)?;
+            let kind = held.as_io().kind();
+            if kind != IOKind::File {
+                return Err(yggdryl::Error::InvalidRecord {
+                    path: path.display().to_string().into(),
+                    reason: format!("expected a .cfb file or a glob of them, got {kind}").into(),
+                });
             }
+            vec![Ok(held)]
+        };
+        if matched.is_empty() {
+            return Err(yggdryl::Error::Absent {
+                expected: "a .cfb file the pattern matches",
+                path: path.display().to_string().into(),
+            });
         }
-        *store.registry_mut() = next;
-        (added, replaced)
-    };
-    progress.finish(&format!(
-        "{added} added, {folded} merged, {} message root(s) read",
-        roots.len()
-    ));
+        files.extend(matched);
+    }
+    progress.tick();
+    let merge = store.registry_mut().add_cfb_files(files, dialect)?;
+    progress.finish(&folded(&merge, "file"));
+    passed_over(&merge, annotate);
     Ok(())
+}
+
+/// What one fold did, in one line.
+fn folded(merge: &FixMerge, source: &str) -> String {
+    format!(
+        "{} {source}(s): {} added, {} merged, {} passed over",
+        merge.sources,
+        merge.added,
+        merge.merged,
+        merge.dropped.len()
+    )
+}
+
+/// Names every declaration a fold passed over: one line each, or one
+/// workflow warning each under `--annotate`.
+fn passed_over(merge: &FixMerge, annotate: bool) {
+    if merge.dropped.is_empty() {
+        return;
+    }
+    if annotate {
+        for drop in &merge.dropped {
+            outln!(
+                "::warning title=fix passed over::{}",
+                style::annotation(&drop.to_string())
+            );
+        }
+        return;
+    }
+    style::warn(&format!(
+        "{} declaration(s) passed over: the dictionary already declares them otherwise",
+        merge.dropped.len()
+    ));
+    for drop in &merge.dropped {
+        let source = drop
+            .source
+            .as_deref()
+            .and_then(|source| Url::from_str(source).ok())
+            .and_then(|url| url.file_name().map(str::to_owned));
+        let dialects = drop
+            .incoming
+            .as_fix()
+            .branches()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut line: Vec<String> = source.into_iter().collect();
+        if !dialects.is_empty() {
+            line.push(format!("[{dialects}]"));
+        }
+        line.push(drop.reason.to_string());
+        style::note(&line.join(" "));
+    }
 }
 
 /// The interactive shell.
@@ -586,8 +632,8 @@ struct ShellCommand {
 /// Runs one shell line through the same commands the flags reach.
 fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
     if line == "save" {
-        store.save()?;
-        style::good("written");
+        let report = store.save()?;
+        style::good(&registry::committed(&report));
         return Ok(());
     }
     if line == "help" {

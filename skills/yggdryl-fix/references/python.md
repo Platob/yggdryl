@@ -554,9 +554,13 @@ with tempfile.TemporaryDirectory() as directory:
 
 `FixRegistry.from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect on everything it produced;
-`add_cfb_file` / `add_cfb_files` fold one or a glob of them into a held
-registry (dialect defaulting to each file's stem), and `merge_with` folds a
-whole other registry. Every fold is atomic.
+`add_cfb_file` folds one into a held registry, `add_cfb_files` folds every
+file a glob pattern selects under a folder, and `merge_with` folds a whole
+other registry, dialect defaulting to each file's own stem. Each answers the
+same `dict` `commit` does - `sources`, `added`, `merged` and `dropped` - and a
+fold keeps every declaration the dictionary already holds, passing over what a
+source states otherwise into `dropped` rather than refusing the whole source;
+only a source that leaves nothing to keep is refused whole.
 
 ```python
 import pathlib
@@ -579,8 +583,9 @@ with tempfile.TemporaryDirectory() as directory:
     assert venue.field(4).fix.branches == ["venue"] and roots == []
 
     registry = FixRegistry()
-    files, added, merged = registry.add_cfb_files(folder, "*.cfb")
-    assert files == 2
+    report = registry.add_cfb_files(folder, "*.cfb")
+    assert report["sources"] == 2
+    assert report["dropped"] == []
     # Ascending URL order, each file stamped with its stem.
     assert registry.field(4).fix.branches == ["alpha", "beta"]
     # A code set only widens: the held name wins a shared value.

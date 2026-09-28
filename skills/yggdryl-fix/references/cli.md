@@ -97,7 +97,8 @@ that field. The crate-owned `msgcatcodeset` and `statecodeset` are immutable.
 
 ```bash
 yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
-yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
+yggdryl fix --root scratch/catalog ingest 'cblocks/*.cfb'
+yggdryl fix --root scratch/catalog ingest 'cblocks/**/*.cfb' --annotate
 yggdryl fix --root scratch/catalog sync ../desk/config/fix
 yggdryl fix --root config/fix schema --out fix-message.json
 yggdryl fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
@@ -107,11 +108,42 @@ yggdryl fix --root config/fix diff ../desk/config/fix --annotate
 
 | Command | Does |
 | --- | --- |
-| `ingest FILE.cfb` | reads an Ullink CBlock into all three categories; creates by default, `--merge` folds |
-| `sync DIR\|FILE.cfb` | always folds another catalog folder or CBlock into this one |
+| `ingest PATH...` | folds one or more `.cfb` files or glob patterns into all three categories, in one staged dictionary and one commit |
+| `sync DIR` | always folds another dictionary folder into this one; no `--dialect`, and a `.cfb` is refused naming `ingest` |
 | `schema` | renders the fixed capture row (`fix_schema`); `--rowheader` prepends the typed captures a row header yields; `--out` writes native JSON |
 | `check` | validates relationships and code sets; exits nonzero on an error finding |
 | `diff DIR` | compares definitions and metadata against another catalog; read-only |
+
+`ingest` takes one or more `.cfb` files or glob patterns - quote a glob
+(`'cblocks/*.cfb'`, `'cblocks/**/*.cfb'`) to have the core walk it, or let the
+shell expand one; either way every matched file parses side by side and folds
+into one staged dictionary in ascending URL order. Without `--dialect` each
+file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); where two
+files disagree about one tag, the first-sorting file's declaration is held and
+the later one is passed over and named with its file. A path matching
+nothing, or naming a folder, is refused.
+
+A run that folds prints, in order: what the fold did, what was passed over
+(only when something was), then what the commit wrote (only when the store
+changed; a commit writes only the documents whose bytes moved):
+
+```text
+✓ 2 file(s): 5 added, 3 merged, 1 passed over 340ms
+! 1 declaration(s) passed over: the dictionary already declares them otherwise
+· venue.cfb [venue] invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+✓ committed: 8 written, 0 unchanged, 0 removed
+```
+
+Under `--annotate` (or `GITHUB_ACTIONS`) each drop prints as a workflow
+warning instead of the `·` line, `%`, `\r` and `\n` escaped:
+
+```text
+::warning title=fix passed over::file:///desk/cblocks/venue.cfb: invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+```
+
+`sync` names its source `dictionary(s)` rather than `file(s)`, and takes no
+`--dialect`: a folder's fields already carry the membership they were written
+with.
 
 ## Gotchas
 

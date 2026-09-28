@@ -1339,9 +1339,21 @@ fn merging_a_complete_catalog_commits_references_together() {
     let source = catalog();
     let mut target = FixRegistry::new();
     // SendingTime and TransactTime are real stored definitions, not crate fields.
-    assert_eq!(target.merge_with(&source).unwrap(), (2, 2));
+    assert_eq!(
+        target
+            .merge_with(&source)
+            .map(|merge| (merge.added, merge.merged))
+            .unwrap(),
+        (2, 2)
+    );
     assert_eq!(target, source);
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
+    assert_eq!(
+        target
+            .merge_with(&source)
+            .map(|merge| (merge.added, merge.merged))
+            .unwrap(),
+        (0, 4)
+    );
     assert_eq!(target, source);
 }
 
@@ -1416,7 +1428,13 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
     }] {
         let mut target = original.clone();
         let incoming = source(respell);
-        assert_eq!(target.merge_with(&incoming).unwrap(), (0, 4));
+        assert_eq!(
+            target
+                .merge_with(&incoming)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (0, 4)
+        );
         assert_eq!(target, original);
         for (_, name) in [
             (FixCategory::Components, "Party"),
@@ -1456,7 +1474,13 @@ fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
     source.insert(message).unwrap();
     let before_source = source.clone();
 
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
+    assert_eq!(
+        target
+            .merge_with(&source)
+            .map(|merge| (merge.added, merge.merged))
+            .unwrap(),
+        (0, 4)
+    );
     for path in [
         "PartyID",
         "Party.PartyID",
@@ -1488,7 +1512,7 @@ fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
 }
 
 #[test]
-fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_atomically() {
+fn merging_catalogs_extends_referenced_definitions_and_passes_over_a_changed_member() {
     let mut target = catalog();
     let mut coded = target.field(448).unwrap().clone();
     coded.as_fix_mut().set_branches(["incoming"]).unwrap();
@@ -1510,7 +1534,13 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
 
     // The member the source adds to the component reaches the group and the
     // message that restate it, through the references they keep.
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 3));
+    assert_eq!(
+        target
+            .merge_with(&source)
+            .map(|merge| (merge.added, merge.merged))
+            .unwrap(),
+        (0, 3)
+    );
     for path in [
         "Party.Extra",
         "Parties.Extra",
@@ -1546,7 +1576,8 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
         target
     );
 
-    // A member both hold under another datatype refuses the whole merge.
+    // A member both hold under another datatype is passed over and named: the
+    // held member stays, and a source that says nothing else changes nothing.
     let before = target.clone();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
@@ -1555,8 +1586,10 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
         .unwrap()
         .required_field("Party");
     source.insert(changed).unwrap();
-    let error = target.merge_with(&source).unwrap_err().to_string();
-    assert!(error.contains("Party.Extra"), "{error}");
+    let merge = target.merge_with(&source).unwrap();
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert_eq!(passed.len(), 1, "{passed:?}");
+    assert!(passed[0].contains("Party.Extra"), "{passed:?}");
     assert_eq!(target, before);
     assert_eq!(target.stable_hash(), before.stable_hash());
 }
@@ -2244,7 +2277,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
 
     let mut registry = FixRegistry::new();
     let file = yggdryl::local::LocalFile::new(&path).unwrap();
-    let (added, merged) = registry.add_json_file(&file).unwrap();
+    let yggdryl::FixMerge { added, merged, .. } = registry.add_json_file(&file).unwrap();
     assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
     assert!(

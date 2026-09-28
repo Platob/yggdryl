@@ -8,7 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
-use super::{FixId, FixRegistry, MsgType};
+use super::{FixDrop, FixId, FixRegistry, MsgType};
 use crate::folds_equal;
 use crate::{DataType, Error, Field, FixCategory, Result, StructType};
 
@@ -604,9 +604,12 @@ fn set_merged_dtype(field: &mut Field, dtype: DataType) -> Result<()> {
 /// output is the store's input. The index beside it finds a document by the
 /// folded name the catalog keys it under, and every hit is rechecked against
 /// the key, exactly as the catalog rechecks its own.
-struct Documents {
+pub(super) struct Documents {
     raw: BTreeMap<DefinitionKey, Field>,
     keys: HashMap<(FixCategory, u64), Vec<DefinitionKey>>,
+    /// The derived tag each document holds, so a definition arriving with
+    /// another dictionary's derivation is seen to collide before it lands.
+    tags: HashMap<i32, DefinitionKey>,
 }
 
 impl Documents {
@@ -614,6 +617,7 @@ impl Documents {
         let mut documents = Self {
             raw: BTreeMap::new(),
             keys: HashMap::new(),
+            tags: HashMap::new(),
         };
         for (key, document) in registry.compact_catalog()? {
             documents.put(key, document);
@@ -634,6 +638,9 @@ impl Documents {
         let held = self.keys.entry(Catalog::key(key.0, &key.1)).or_default();
         if !held.contains(&key) {
             held.push(key.clone());
+        }
+        if let Some(tag) = document.as_fix().tag().ok().flatten() {
+            self.tags.insert(tag, key.clone());
         }
         self.raw.insert(key, document);
     }
@@ -985,7 +992,7 @@ impl FixRegistry {
         // whose Null placeholders no longer carry their scalar tags.
         let field = canonical_occurrences(field, true)?;
         let mut documents = Documents::from_registry(self)?;
-        self.fold_document(&mut documents, category, &field)?;
+        self.fold_document(&mut documents, category, &field, &mut None)?;
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()?;
         Ok(false)
@@ -996,33 +1003,59 @@ impl FixRegistry {
     /// A document nothing stored answers to is added as the store would read
     /// it; one a stored document answers to, by folded name, is merged into
     /// that document under the stored key.
+    ///
+    /// `drops` is the one difference between the two folds that call this.
+    /// A definition written on its own is refused whole when it disagrees
+    /// with what is held; a definition arriving with another dictionary
+    /// passes the disagreeing part over, into `drops`, and folds the rest.
     fn fold_document(
         &self,
         documents: &mut Documents,
         category: FixCategory,
         incoming: &Field,
+        drops: &mut Option<&mut Vec<FixDrop>>,
     ) -> Result<()> {
         let incoming = compact(incoming.clone(), true)?;
         let Some((key, stored)) = documents.get(category, incoming.name()) else {
             let key = (category, incoming.name().to_owned());
+            let incoming = self.untangled(documents, &key, incoming)?;
             documents.put(key, incoming);
             return Ok(());
         };
         let (key, stored) = (key.clone(), stored.clone());
-        let merged = self.merge_documents(documents, category, &stored, &incoming)?;
-        documents.put(key, merged);
+        if let Some(merged) =
+            self.merge_documents(documents, category, &stored, &incoming, drops)?
+        {
+            documents.put(key, merged);
+        }
         Ok(())
     }
 
-    /// One level of `incoming` folded into `stored`, both compact.
+    /// One level of `incoming` folded into `stored`, both compact: `None`
+    /// where the incoming definition was passed over whole, its own
+    /// identity disagreeing with the stored one's.
     fn merge_documents(
         &self,
         documents: &mut Documents,
         category: FixCategory,
         stored: &Field,
         incoming: &Field,
-    ) -> Result<Field> {
-        let mut merged = merge_root(stored, incoming)?;
+        drops: &mut Option<&mut Vec<FixDrop>>,
+    ) -> Result<Option<Field>> {
+        let reconciled;
+        let incoming = if category == FixCategory::Groups && drops.is_some() {
+            reconciled = self.reconciled_group(documents, stored, incoming, drops)?;
+            &reconciled
+        } else {
+            incoming
+        };
+        let mut merged = match merge_root(stored, incoming) {
+            Ok(merged) => merged,
+            Err(error) => {
+                passed_over(drops, incoming, error)?;
+                return Ok(None);
+            }
+        };
         let dtype = if category == FixCategory::Groups {
             let held =
                 occurrence_of(stored).ok_or_else(|| invalid(stored, "a group occurrence"))?;
@@ -1036,31 +1069,24 @@ impl FixRegistry {
                 // group, with every other reference, reads them back from
                 // there once the documents resolve.
                 (Some((FixCategory::Components, name)), None) => {
-                    let Some((key, component)) = documents.get(FixCategory::Components, name)
-                    else {
-                        return Err(Error::absent(FixCategory::Components.as_str(), name));
-                    };
-                    let (key, mut component) = (key.clone(), component.clone());
-                    let members = self.merge_children(
-                        documents,
-                        component.name(),
-                        component.fields(),
-                        item.fields(),
-                    )?;
-                    set_merged_dtype(
-                        &mut component,
-                        DataType::from(StructType::from_fields(members)?),
-                    )?;
-                    documents.put(key, component);
+                    let name = name.to_owned();
+                    self.fold_members(documents, FixCategory::Components, &name, item, drops)?;
                     held.clone()
                 }
                 (None, None) => {
-                    let mut occurrence = merge_root(held, item)?;
+                    let mut occurrence = match merge_root(held, item) {
+                        Ok(occurrence) => occurrence,
+                        Err(error) => {
+                            passed_over(drops, incoming, error)?;
+                            return Ok(None);
+                        }
+                    };
                     let members = self.merge_children(
                         documents,
                         stored.name(),
                         held.fields(),
                         item.fields(),
+                        drops,
                     )?;
                     set_merged_dtype(
                         &mut occurrence,
@@ -1069,7 +1095,9 @@ impl FixRegistry {
                     occurrence
                 }
                 _ => {
-                    self.agree(documents, stored.name(), held, item)?;
+                    if let Some(error) = self.disagreement(documents, stored.name(), held, item)? {
+                        self.reconcile(documents, held, item, error, drops, 0)?;
+                    }
                     held.clone()
                 }
             };
@@ -1080,10 +1108,46 @@ impl FixRegistry {
                 stored.name(),
                 stored.fields(),
                 incoming.fields(),
+                drops,
             )?)?)
         };
         set_merged_dtype(&mut merged, dtype)?;
-        Ok(merged)
+        Ok(Some(merged))
+    }
+
+    /// A group arriving on the counter the held group of its name counts,
+    /// with its occurrences drawn from another component: the one repeating
+    /// group read two ways, as a dialect reads it when it split the
+    /// component for one message. The incoming component's members fold into
+    /// the held component, and the group arrives drawing from that one.
+    /// Anything else arrives as it came, for the root merge to settle.
+    fn reconciled_group(
+        &self,
+        documents: &mut Documents,
+        stored: &Field,
+        incoming: &Field,
+        drops: &mut Option<&mut Vec<FixDrop>>,
+    ) -> Result<Field> {
+        let (Some(held), Some(other)) =
+            (stored.as_fix().component(), incoming.as_fix().component())
+        else {
+            return Ok(incoming.clone());
+        };
+        if folds_equal(held, other) || stored.as_fix().counter()? != incoming.as_fix().counter()? {
+            return Ok(incoming.clone());
+        }
+        let held = held.to_owned();
+        if !self.fold_members_at(
+            documents,
+            FixCategory::Components,
+            &held,
+            incoming,
+            drops,
+            0,
+        )? {
+            return Ok(incoming.clone());
+        }
+        with_component(incoming, &held)
     }
 
     /// The stored children, then every incoming child no stored one answers
@@ -1094,25 +1158,218 @@ impl FixRegistry {
     /// the order it was declared.
     fn merge_children(
         &self,
-        documents: &Documents,
+        documents: &mut Documents,
         owner: &str,
         stored: &[Field],
         incoming: &[Field],
+        drops: &mut Option<&mut Vec<FixDrop>>,
+    ) -> Result<Vec<Field>> {
+        self.merge_children_at(documents, owner, stored, incoming, drops, 0)
+    }
+
+    fn merge_children_at(
+        &self,
+        documents: &mut Documents,
+        owner: &str,
+        stored: &[Field],
+        incoming: &[Field],
+        drops: &mut Option<&mut Vec<FixDrop>>,
+        depth: usize,
     ) -> Result<Vec<Field>> {
         let mut merged: Vec<Field> = stored.to_vec();
         for child in incoming {
             match merged
                 .iter()
                 .find(|held| folds_equal(held.name(), child.name()))
+                .cloned()
             {
-                Some(held) => self.agree(documents, owner, held, child)?,
+                Some(held) => {
+                    if let Some(error) = self.disagreement(documents, owner, &held, child)? {
+                        self.reconcile(documents, &held, child, error, drops, depth)?;
+                    }
+                }
                 None => merged.push(child.clone()),
             }
         }
         Ok(merged)
     }
 
-    /// Whether an incoming child restates the stored one its name folds onto.
+    /// Settles one member the stored and the incoming definition declare
+    /// differently, the stored member staying where it is.
+    ///
+    /// Written alone, a definition is refused. Folded with another
+    /// dictionary, two references to two groups or two components are one
+    /// member read two ways - a dialect splits a group it declares
+    /// differently for one message, and names the split after that message -
+    /// so what the incoming target declares folds into the target the stored
+    /// member already reads, under these same rules. Anything else is passed
+    /// over into `drops`: a reference against an inline child, a field
+    /// against a field, a group against a component, two groups on two
+    /// counters.
+    fn reconcile(
+        &self,
+        documents: &mut Documents,
+        held: &Field,
+        child: &Field,
+        error: Error,
+        drops: &mut Option<&mut Vec<FixDrop>>,
+        depth: usize,
+    ) -> Result<()> {
+        if drops.is_none() {
+            return Err(error);
+        }
+        if !self.fold_referenced(documents, held, child, drops, depth)? {
+            passed_over(drops, child, error)?;
+        }
+        Ok(())
+    }
+
+    /// Folds the definition `child` references into the one `held` does, both
+    /// of one nested category: whether it could.
+    ///
+    /// Only the members fold: the target's own identity - its name, its tag,
+    /// its counter - is the stored one's, and an incoming group on another
+    /// counter is another group, which is not folded. Bounded by the depth a
+    /// reference graph may reach, so a fold that would chase its own tail is
+    /// passed over rather than followed.
+    fn fold_referenced(
+        &self,
+        documents: &mut Documents,
+        held: &Field,
+        child: &Field,
+        drops: &mut Option<&mut Vec<FixDrop>>,
+        depth: usize,
+    ) -> Result<bool> {
+        let (Some((category, stored)), Some((other, incoming))) =
+            (reference(held), reference(child))
+        else {
+            return Ok(false);
+        };
+        if category != other || category == FixCategory::Fields || depth >= 64 {
+            return Ok(false);
+        }
+        let Some((_, target)) = documents.get(category, incoming) else {
+            return Ok(false);
+        };
+        let target = target.clone();
+        let stored = stored.to_owned();
+        if category == FixCategory::Components {
+            return self.fold_members_at(documents, category, &stored, &target, drops, depth + 1);
+        }
+        let Some((_, group)) = documents.get(category, &stored) else {
+            return Ok(false);
+        };
+        let group = group.clone();
+        if group.as_fix().counter()? != target.as_fix().counter()? {
+            return Ok(false);
+        }
+        let (Some(held), Some(item)) = (occurrence_of(&group), occurrence_of(&target)) else {
+            return Ok(false);
+        };
+        match reference(held) {
+            Some((FixCategory::Components, _)) if reference(item).is_some() => {
+                let (held, item) = (held.clone(), item.clone());
+                self.fold_referenced(documents, &held, &item, drops, depth + 1)
+            }
+            Some((FixCategory::Components, name)) => {
+                let name = name.to_owned();
+                let item = item.clone();
+                self.fold_members_at(
+                    documents,
+                    FixCategory::Components,
+                    &name,
+                    &item,
+                    drops,
+                    depth + 1,
+                )
+            }
+            Some(_) => Ok(false),
+            None => self.fold_members_at(documents, category, &stored, &target, drops, depth + 1),
+        }
+    }
+
+    /// Folds the members `incoming` declares - its own children, or the
+    /// children of the component it references - into the stored definition
+    /// `name`: a component's own children, or an inline group occurrence's.
+    fn fold_members(
+        &self,
+        documents: &mut Documents,
+        category: FixCategory,
+        name: &str,
+        incoming: &Field,
+        drops: &mut Option<&mut Vec<FixDrop>>,
+    ) -> Result<()> {
+        if self.fold_members_at(documents, category, name, incoming, drops, 0)? {
+            return Ok(());
+        }
+        Err(Error::absent(category.as_str(), name))
+    }
+
+    fn fold_members_at(
+        &self,
+        documents: &mut Documents,
+        category: FixCategory,
+        name: &str,
+        incoming: &Field,
+        drops: &mut Option<&mut Vec<FixDrop>>,
+        depth: usize,
+    ) -> Result<bool> {
+        let Some((key, stored)) = documents.get(category, name) else {
+            return Ok(false);
+        };
+        let (key, mut stored) = (key.clone(), stored.clone());
+        // What the incoming side declares: an inline struct's children, a
+        // group's inline occurrence's, or the component a reference names.
+        let member = occurrence_of(incoming).unwrap_or(incoming);
+        let members = match reference(member) {
+            Some((FixCategory::Components, component)) => {
+                match documents.get(FixCategory::Components, component) {
+                    Some((_, target)) => target.fields().to_vec(),
+                    None => return Ok(false),
+                }
+            }
+            Some(_) => return Ok(false),
+            None => member.fields().to_vec(),
+        };
+        if category == FixCategory::Groups {
+            let Some(held) = occurrence_of(&stored).cloned() else {
+                return Ok(false);
+            };
+            let mut occurrence = held.clone();
+            let merged = self.merge_children_at(
+                documents,
+                stored.name(),
+                held.fields(),
+                &members,
+                drops,
+                depth,
+            )?;
+            set_merged_dtype(
+                &mut occurrence,
+                DataType::from(StructType::from_fields(merged)?),
+            )?;
+            let dtype = group_dtype(&stored, occurrence)?;
+            set_merged_dtype(&mut stored, dtype)?;
+        } else {
+            let merged = self.merge_children_at(
+                documents,
+                stored.name(),
+                stored.fields(),
+                &members,
+                drops,
+                depth,
+            )?;
+            set_merged_dtype(
+                &mut stored,
+                DataType::from(StructType::from_fields(merged)?),
+            )?;
+        }
+        documents.put(key, stored);
+        Ok(true)
+    }
+
+    /// Whether an incoming child restates the stored one its name folds onto:
+    /// `None` where it does, else the refusal naming both sides.
     ///
     /// Two references agree on the target they name, never on the expansion
     /// either side happens to hold, because two registries expand one
@@ -1124,7 +1381,13 @@ impl FixRegistry {
     /// stored side is what is kept, whichever form it has. One level and
     /// nothing else: a child both sides declare is the stored one, so what
     /// its own children say is not this merge's to read.
-    fn agree(&self, documents: &Documents, owner: &str, held: &Field, child: &Field) -> Result<()> {
+    fn disagreement(
+        &self,
+        documents: &Documents,
+        owner: &str,
+        held: &Field,
+        child: &Field,
+    ) -> Result<Option<Error>> {
         // Resolved only where one side is a reference and the other is not:
         // two references agree or disagree on what they name, and resolving
         // them would ask for a target that may be arriving in this very fold.
@@ -1144,15 +1407,15 @@ impl FixRegistry {
             }
         };
         if same {
-            return Ok(());
+            return Ok(None);
         }
-        Err(Error::InvalidRecord {
+        Ok(Some(Error::InvalidRecord {
             path: format_smolstr!("{owner}.{}", held.name()),
             reason: crate::text::expected_got(
                 format_args!("{} stored for it", describe(held, held_target.as_ref())),
                 describe(child, child_target.as_ref()),
             ),
-        })
+        }))
     }
 
     /// The datatype the reference `field` carries resolves to, in the compact
@@ -1261,23 +1524,37 @@ impl FixRegistry {
     /// Returns [`Error::InvalidRecord`] when every slot in the block is
     /// taken, which needs a million definitions in one registry.
     pub(super) fn derived_definition_tag(&self, name: &str) -> Result<i32> {
-        let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
-        let hash = crate::xxhash::xxh32(name.as_bytes());
-        #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-        let start = (hash % (span as u32)) as i32;
-        for step in 0..span {
-            let tag = FixId::DEFINITION_TAG_MIN + (start + step) % span;
-            if !self.definition_tag_in_use(tag) {
-                return Ok(tag);
-            }
+        derived_tag(name, |tag| self.definition_tag_in_use(tag))
+    }
+
+    /// `incoming` under a derived tag nothing else in the fold holds.
+    ///
+    /// A definition arriving with another dictionary carries the tag that
+    /// dictionary derived for it, probed against what *it* held; here that
+    /// slot can be another definition's, and two definitions on one tag is a
+    /// catalog defect. So a colliding slot is derived again, the same probe
+    /// against what this fold holds - its fields, and every document stored
+    /// or already arrived. Nothing restates a definition's tag: a reference
+    /// names its target, so the move is seen by nothing but the target.
+    fn untangled(
+        &self,
+        documents: &Documents,
+        key: &DefinitionKey,
+        mut incoming: Field,
+    ) -> Result<Field> {
+        let taken = |tag: i32| {
+            documents.tags.get(&tag).is_some_and(|held| held != key)
+                || self.get_field_by_tag(tag).is_some()
+        };
+        let Some(tag) = incoming.as_fix().tag()? else {
+            return Ok(incoming);
+        };
+        if !FixId::is_definition_tag(tag) || !taken(tag) {
+            return Ok(incoming);
         }
-        Err(Error::InvalidRecord {
-            path: name.into(),
-            reason: crate::text::expected_got(
-                "a free derived definition tag",
-                format_args!("all {span} slots taken"),
-            ),
-        })
+        let tag = derived_tag(incoming.name(), taken)?;
+        incoming.as_fix_mut().set_tag(tag)?;
+        Ok(incoming)
     }
 
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
@@ -1561,35 +1838,308 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Folds every named definition of `other` into this catalog, the way
+    /// The catalog as the documents a store writes, for a fold to write over.
+    pub(super) fn documents(&self) -> Result<Documents> {
+        Documents::from_registry(self)
+    }
+
+    /// Resolves the documents a fold wrote into this catalog, and proves it.
+    pub(super) fn settle(&mut self, documents: Documents) -> Result<()> {
+        self.resolve_catalog(documents.raw)?;
+        self.validate_catalog()
+    }
+
+    /// Folds every named definition of `other` into `documents`, the way
     /// [`Self::insert`] folds one.
     ///
-    /// Settled on documents and resolved once at the end, so a definition
-    /// that arrives referencing another that arrives beside it resolves
-    /// whatever order the categories are walked in, and one that merges is
-    /// seen extended by everything referencing it. The fields were folded
-    /// before this, so a field reference resolves against the union.
-    pub(super) fn merge_catalog(&mut self, other: &Self) -> Result<()> {
-        let mut documents = Documents::from_registry(self)?;
+    /// Settled on documents and resolved once, by [`Self::settle`], so a
+    /// definition that arrives referencing another that arrives beside it
+    /// resolves whatever order the categories are walked in, and one that
+    /// merges is seen extended by everything referencing it. The fields were
+    /// folded before this, so a field reference resolves against the union.
+    ///
+    /// What disagrees with a held definition is passed over into `dropped`
+    /// rather than refusing the fold, as [`Self::merge_with`] states. Before
+    /// anything folds, each incoming definition is made to read this
+    /// dictionary: a member reads a field as the scalar fold left it -
+    /// `remap` rewrites the identity of a field merged by name and passes over
+    /// the member of one passed over - a group whose counter is no int32
+    /// field here, or whose own identity disagrees with the group held under
+    /// its name, is passed over with every member reading it, and a message
+    /// whose name another wire code holds is named for its own code.
+    pub(super) fn merge_catalog(
+        &self,
+        documents: &mut Documents,
+        other: &Self,
+        remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
+        dropped: &mut Vec<FixDrop>,
+    ) -> Result<()> {
+        let mut incoming = Vec::new();
+        for category in [FixCategory::Components, FixCategory::Groups] {
+            for field in other.catalog.iter(category) {
+                let document = compact(field.clone(), true)?;
+                let document = if remap.is_empty() {
+                    document
+                } else {
+                    members_read(document, dropped, &mut |owner, member| {
+                        remapped(owner, member, remap)
+                    })?
+                };
+                incoming.push((category, document));
+            }
+        }
+        let mut lost: Vec<String> = Vec::new();
+        let mut kept = Vec::with_capacity(incoming.len());
+        for (category, document) in incoming {
+            match self.standing(documents, category, document)? {
+                Ok(document) => kept.push((category, document)),
+                Err((document, error)) => {
+                    if category == FixCategory::Groups {
+                        lost.push(document.name().to_owned());
+                    }
+                    dropped.push(FixDrop::new(document, &error));
+                }
+            }
+        }
+        if !lost.is_empty() {
+            for (_, document) in &mut kept {
+                *document = members_read(document.clone(), dropped, &mut |owner, member| {
+                    Ok(member
+                        .as_fix()
+                        .group()
+                        .filter(|group| lost.iter().any(|held| folds_equal(held, group)))
+                        .map(|group| Error::InvalidRecord {
+                            path: format_smolstr!("{owner}.{}", member.name()),
+                            reason: format_smolstr!(
+                                "expected a group this dictionary holds, got {group:?}, which the merge passed over"
+                            ),
+                        }))
+                })?;
+            }
+        }
+        let mut drops = Some(dropped);
         // What arrives new is put before anything merges, so a member that
         // references it on one side and states it inline on the other is
         // compared against it whatever category it belongs to.
         let mut folding = Vec::new();
-        for category in [FixCategory::Components, FixCategory::Groups] {
-            for field in other.catalog.iter(category) {
-                if documents.get(category, field.name()).is_none() {
-                    self.fold_document(&mut documents, category, field)?;
-                } else {
-                    folding.push((category, field));
+        for (category, document) in kept {
+            if documents.get(category, document.name()).is_none() {
+                self.fold_document(documents, category, &document, &mut drops)?;
+            } else {
+                folding.push((category, document));
+            }
+        }
+        for (category, document) in folding {
+            self.fold_document(documents, category, &document, &mut drops)?;
+        }
+        Ok(())
+    }
+
+    /// Whether one incoming definition can stand beside what the fold holds:
+    /// the definition, maybe renamed, or the refusal it is passed over with.
+    ///
+    /// A group counts its occurrences by an int32 field, so one whose counter
+    /// is no such field here - a counter the scalar fold passed over, or one
+    /// this dictionary types otherwise - cannot stand. A definition whose own
+    /// identity - its counter, its component, its message code - disagrees
+    /// with the one held under its name is another definition: a message is
+    /// then named for its own wire code, as a CBlock names one no spelling
+    /// names, and anything else is passed over.
+    #[allow(clippy::type_complexity)]
+    fn standing(
+        &self,
+        documents: &Documents,
+        category: FixCategory,
+        mut document: Field,
+    ) -> Result<std::result::Result<Field, (Field, Error)>> {
+        if category == FixCategory::Groups
+            && matches!(
+                document.dtype(),
+                DataType::Serie(_) | DataType::LargeSerie(_)
+            )
+        {
+            if let Some(counter) = document.as_fix().counter()? {
+                let held = self.get_field_by_tag(counter);
+                if held.is_none_or(|field| field.dtype() != &DataType::Int32) {
+                    let error = Error::InvalidRecord {
+                        path: document.name().into(),
+                        reason: crate::text::expected_got(
+                            "an int32 repeating-group counter this dictionary holds",
+                            format_args!(
+                                "tag {counter} as {}",
+                                held.map_or_else(
+                                    || SmolStr::new("nothing"),
+                                    |field| format_smolstr!("{}", field.dtype())
+                                )
+                            ),
+                        ),
+                    };
+                    return Ok(Err((document, error)));
                 }
             }
         }
-        for (category, field) in folding {
-            self.fold_document(&mut documents, category, field)?;
+        let Some((_, stored)) = documents.get(category, document.name()) else {
+            return Ok(Ok(document));
+        };
+        // One group on one counter drawn from two components is one group:
+        // the fold reconciles the component, so only the rest has to agree.
+        let probe = match stored.as_fix().component() {
+            Some(component)
+                if category == FixCategory::Groups
+                    && stored.as_fix().counter()? == document.as_fix().counter()? =>
+            {
+                with_component(&document, component)?
+            }
+            _ => document.clone(),
+        };
+        let Err(error) = merge_root(stored, &probe) else {
+            return Ok(Ok(document));
+        };
+        let renamed = document
+            .as_fix()
+            .msgtype()
+            .filter(|wire| stored.as_fix().msgtype() != Some(*wire))
+            .map(super::msgtype::derived_name)
+            .filter(|name| !folds_equal(name, document.name()));
+        let Some(name) = renamed else {
+            return Ok(Err((document, error)));
+        };
+        log::debug!(
+            "message type {:?} takes {name:?}: {:?} names message type {:?}",
+            document.as_fix().msgtype().unwrap_or_default(),
+            document.name(),
+            stored.as_fix().msgtype().unwrap_or_default()
+        );
+        document.set_name(name);
+        match documents.get(category, document.name()) {
+            Some((_, held)) => match merge_root(held, &document) {
+                Ok(_) => Ok(Ok(document)),
+                Err(error) => Ok(Err((document, error))),
+            },
+            None => Ok(Ok(document)),
         }
-        self.resolve_catalog(documents.raw)?;
-        self.validate_catalog()
     }
+}
+
+/// `group` drawing its occurrences from the component `name`.
+fn with_component(group: &Field, name: &str) -> Result<Field> {
+    let mut group = group.clone();
+    group.as_fix_mut().set_component(name)?;
+    if let Some(item) = occurrence_of(&group) {
+        let mut item = item.clone();
+        item.as_fix_mut().set_component(name)?;
+        let dtype = group_dtype(&group, item)?;
+        group.set_dtype(dtype)?;
+    }
+    Ok(group)
+}
+
+/// The first free slot of the derived block for `name`: XXH32 of the name
+/// places it, and a slot `taken` answers for is stepped past, wrapping.
+fn derived_tag(name: &str, taken: impl Fn(i32) -> bool) -> Result<i32> {
+    let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
+    let hash = crate::xxhash::xxh32(name.as_bytes());
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    let start = (hash % (span as u32)) as i32;
+    for step in 0..span {
+        let tag = FixId::DEFINITION_TAG_MIN + (start + step) % span;
+        if !taken(tag) {
+            return Ok(tag);
+        }
+    }
+    Err(Error::InvalidRecord {
+        path: name.into(),
+        reason: crate::text::expected_got(
+            "a free derived definition tag",
+            format_args!("all {span} slots taken"),
+        ),
+    })
+}
+
+/// A member reading a field the scalar fold did not keep under the identity
+/// it names: rewritten to the identity that holds it now, or the refusal it
+/// is passed over with.
+fn remapped(
+    owner: &str,
+    member: &mut Field,
+    remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
+) -> Result<Option<Error>> {
+    let view = member.as_fix();
+    let (Some(name), Some(tag)) = (view.field_ref(), view.tag()?) else {
+        return Ok(None);
+    };
+    let Ok(id) = FixId::of(tag, name) else {
+        return Ok(None);
+    };
+    match remap.get(&id) {
+        None => Ok(None),
+        Some(Some((held, named))) => {
+            member.as_fix_mut().set_field_ref(named)?;
+            member.as_fix_mut().set_tag(*held)?;
+            Ok(None)
+        }
+        Some(None) => Ok(Some(Error::InvalidRecord {
+            path: format_smolstr!("{owner}.{}", member.name()),
+            reason: format_smolstr!(
+                "expected a field this dictionary holds, got {name} ({tag}), which the merge passed over"
+            ),
+        })),
+    }
+}
+
+/// Passes one declaration over into `drops`, or refuses it where there are
+/// none to pass it into.
+fn passed_over(
+    drops: &mut Option<&mut Vec<FixDrop>>,
+    incoming: &Field,
+    error: Error,
+) -> Result<()> {
+    match drops.as_deref_mut() {
+        Some(drops) => {
+            drops.push(FixDrop::new(incoming.clone(), &error));
+            Ok(())
+        }
+        None => Err(error),
+    }
+}
+
+/// `field` with every member it states read by `member`: rewritten in place,
+/// or, where `member` answers a refusal, passed over into `drops`.
+///
+/// Walks what the document states inline and stops at a reference, which is
+/// its target's to answer for.
+fn members_read(
+    mut field: Field,
+    drops: &mut Vec<FixDrop>,
+    member: &mut impl FnMut(&str, &mut Field) -> Result<Option<Error>>,
+) -> Result<Field> {
+    let dtype = match field.dtype() {
+        DataType::Struct(children) => {
+            let mut kept = Vec::with_capacity(children.len());
+            for child in children.iter() {
+                let mut child = child.clone();
+                if let Some(error) = member(field.name(), &mut child)? {
+                    drops.push(FixDrop::new(child, &error));
+                    continue;
+                }
+                kept.push(if reference(&child).is_some() {
+                    child
+                } else {
+                    members_read(child, drops, member)?
+                });
+            }
+            DataType::from(StructType::from_fields(kept)?)
+        }
+        DataType::Serie(item) if reference(item).is_none() => {
+            DataType::serie(members_read(item.as_ref().clone(), drops, member)?)
+        }
+        DataType::LargeSerie(item) if reference(item).is_none() => {
+            DataType::large_serie(members_read(item.as_ref().clone(), drops, member)?)
+        }
+        _ => return Ok(field),
+    };
+    field.set_dtype(dtype)?;
+    Ok(field)
 }
 
 #[cfg(feature = "internals")]

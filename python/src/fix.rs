@@ -20,13 +20,13 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyList, PyType};
 
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
-    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey,
+    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
     MsgType as CoreMsgType, Scalar, StructType, TimeInForce as CoreTimeInForce, TimeUnit, Timezone,
 };
@@ -44,6 +44,27 @@ use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
 use crate::{Failed, Pulled, python_failure, value_error};
+
+/// A fold's report as the ordinary mapping `commit`'s is: `sources`,
+/// `added` and `merged` counted, and `dropped` one mapping per declaration
+/// passed over - its `source` URL or `None`, the `incoming` `Field`, and the
+/// `reason` naming what the dictionary keeps.
+fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDict>> {
+    let answer = PyDict::new(python);
+    answer.set_item("sources", merge.sources)?;
+    answer.set_item("added", merge.added)?;
+    answer.set_item("merged", merge.merged)?;
+    let dropped = PyList::empty(python);
+    for drop in merge.dropped {
+        let entry = PyDict::new(python);
+        entry.set_item("source", drop.source.as_deref())?;
+        entry.set_item("incoming", PyField::from_inner(drop.incoming))?;
+        entry.set_item("reason", drop.reason.as_str())?;
+        dropped.append(entry)?;
+    }
+    answer.set_item("dropped", dropped)?;
+    Ok(answer)
+}
 
 /// Read one dictionary file through whatever Python named it with.
 ///
@@ -449,34 +470,53 @@ impl PyFixRegistry {
     /// `add_fields` folds one, its membership unioned onto the field it
     /// merges into, and every definition folds beside them.
     ///
-    /// Answers the count added and the count merged, over the fields. One
-    /// mutation: a refusal anywhere leaves the dictionary exactly as it was.
-    fn merge_with(&mut self, other: &Self) -> PyResult<(usize, usize)> {
+    /// What the other dictionary declares otherwise than this one does - a
+    /// tag typed two ways, a member a held definition declares in another
+    /// shape, a group on another counter under a held name - is passed over
+    /// rather than raised: the declaration held stays, and the rest folds.
+    /// The answer is the same ordinary mapping `commit`'s is: `sources`,
+    /// `added` and `merged` count, over the fields, and `dropped` lists what
+    /// was passed over, each a mapping of its `source` (the file's URL, or
+    /// `None`), the `incoming` declaration as a `Field`, and the `reason`
+    /// naming what the dictionary keeps. One mutation: a refusal that leaves
+    /// nothing to keep leaves the dictionary exactly as it was.
+    fn merge_with<'py>(
+        &mut self,
+        python: Python<'py>,
+        other: &Self,
+    ) -> PyResult<Bound<'py, PyDict>> {
         let incoming = Arc::clone(&other.inner);
-        self.inner_mut()?.merge_with(&incoming).map_err(value_error)
+        let merge = self
+            .inner_mut()?
+            .merge_with(&incoming)
+            .map_err(value_error)?;
+        merge_report(python, merge)
     }
 
     /// Read one Ullink `CBlock` into this dictionary, whole.
     ///
     /// The one call an ingest takes: the file's vocabulary folds in the way
-    /// `add_fields` folds any source, every field it produces stamped with
-    /// the dialect in `FIX:branches` and that membership unioned onto
+    /// `merge_with` folds any dictionary, every field it produces stamped
+    /// with the dialect in `FIX:branches` and that membership unioned onto
     /// whatever it merges into.
     ///
     /// `dialect` names the dictionary, and the location's own stem stands in
     /// when the caller does not; a name that is empty or carries a comma is
     /// a `ValueError`.
     ///
-    /// Answers the count added and the count merged. One mutation: a refusal
-    /// leaves the dictionary exactly as it was.
+    /// Answers `merge_with`'s mapping, each drop naming the file. One
+    /// mutation: a file that will not parse leaves the dictionary exactly as
+    /// it was.
     #[pyo3(signature = (location, dialect=None))]
-    fn add_cfb_file(
+    fn add_cfb_file<'py>(
         &mut self,
+        python: Python<'py>,
         location: &Bound<'_, PyAny>,
         dialect: Option<&str>,
-    ) -> PyResult<(usize, usize)> {
+    ) -> PyResult<Bound<'py, PyDict>> {
         let registry = self.inner_mut()?;
-        read_located(location, |handle| registry.add_cfb_file(handle, dialect))
+        let merge = read_located(location, |handle| registry.add_cfb_file(handle, dialect))?;
+        merge_report(python, merge)
     }
 
     /// Read every Ullink `CBlock` a pattern selects into this dictionary.
@@ -487,30 +527,36 @@ impl PyFixRegistry {
     /// levels - and a pattern selecting nothing folds nothing rather than
     /// raising. Private entries are never matched.
     ///
-    /// Files fold in ascending URL order whatever order the listing arrived
-    /// in, so where two files disagree about one tag the last-sorting file
-    /// wins and every spelling of one pattern answers the same dictionary.
+    /// The files parse side by side and fold in ascending URL order whatever
+    /// order the listing arrived in, into one staged dictionary resolved
+    /// once, so where two files disagree about one tag the first-sorting
+    /// file's declaration is held, the later one is passed over, and every
+    /// spelling of one pattern answers the same dictionary.
     ///
     /// `dialect` is resolved per file: a name supplied here stamps every
     /// matched file with it, and `None` lets each file's own stem stand in,
     /// which is what globbing a folder of counterparty files is for.
     ///
-    /// Answers the count of files folded, the count of fields added and the
-    /// count merged. One mutation, and one copy of the dictionary for the
-    /// whole call: a file that will not parse leaves it exactly as it was and
-    /// the `ValueError` names that file.
+    /// Answers `merge_with`'s mapping, `sources` counting the files folded
+    /// and each drop naming its file. One mutation, and one copy of the
+    /// dictionary for the whole call: a file that will not parse leaves it
+    /// exactly as it was and the `ValueError` names that file.
     #[pyo3(signature = (location, pattern, dialect=None))]
-    fn add_cfb_files(
+    fn add_cfb_files<'py>(
         &mut self,
+        python: Python<'py>,
         location: &Bound<'_, PyAny>,
         pattern: &str,
         dialect: Option<&str>,
-    ) -> PyResult<(usize, usize, usize)> {
+    ) -> PyResult<Bound<'py, PyDict>> {
         // A glob is walked from a container, where a `CBlock` is a leaf.
         let root = folder_holder_from_value(location)?;
-        self.inner_mut()?
-            .add_cfb_files(root.as_io(), pattern, dialect)
-            .map_err(value_error)
+        let files = root.as_io().glob(pattern, false).map_err(value_error)?;
+        let merge = self
+            .inner_mut()?
+            .add_cfb_files(files, dialect)
+            .map_err(value_error)?;
+        merge_report(python, merge)
     }
 
     /// Read one JSON registry snapshot into this dictionary, whole.
@@ -525,13 +571,18 @@ impl PyFixRegistry {
     /// field and definition in it already carries the `FIX:branches` its
     /// writer meant.
     ///
-    /// Answers the count added and the count merged. One mutation: a document
-    /// that does not parse, a reference naming a definition nothing holds, or
-    /// a datatype disagreeing with a stored field leaves it as it was, and
-    /// the `ValueError` names the file.
-    fn add_json_file(&mut self, location: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
+    /// Answers `merge_with`'s mapping, each drop naming the file. One
+    /// mutation: a document that does not parse, or a reference naming a
+    /// definition nothing holds, leaves it as it was, and the `ValueError`
+    /// names the file.
+    fn add_json_file<'py>(
+        &mut self,
+        python: Python<'py>,
+        location: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyDict>> {
         let registry = self.inner_mut()?;
-        read_located(location, |handle| registry.add_json_file(handle))
+        let merge = read_located(location, |handle| registry.add_json_file(handle))?;
+        merge_report(python, merge)
     }
 
     /// Register a message definition and answer its immutable view.

@@ -576,7 +576,7 @@ mod internal {
         // The other dictionary holds the crate's own fields as every registry
         // does, and they are neither added nor merged: a fold never counts them.
         // Standard SendingTime and TransactTime are ordinary definitions and do merge.
-        let (added, merged) = dictionary.merge_with(&other).unwrap();
+        let yggdryl::FixMerge { added, merged, .. } = dictionary.merge_with(&other).unwrap();
         assert_eq!((added, merged), (1, 3));
         assert_eq!(dictionary.len(), 3 + seeded_fields());
         // A folded input name retains the canonical identity's stored spelling.
@@ -609,21 +609,33 @@ mod internal {
         );
         assert_eq!(dictionary.dialects(), ["cme", "globex"]);
 
-        // One mutation: a refusal leaves the dictionary as it was, memberships
-        // too.
+        // A declaration the dictionary already makes otherwise is passed over
+        // and named; the rest of the source folds, its membership with it.
         let before = dictionary.clone();
-        let mut refusing = FixRegistry::from_fields([tagged("symbol", 55)]).unwrap();
-        refusing
+        let mut disagreeing = FixRegistry::from_fields([tagged("symbol", 55)]).unwrap();
+        disagreeing
             .insert({
                 let mut widened = tagged("SYMBOL", 55);
                 widened.set_dtype(DataType::large_utf8()).unwrap();
                 widened
             })
             .unwrap();
-        refusing.insert(member("BlpSym", "blp", 5_070)).unwrap();
-        assert!(dictionary.merge_with(&refusing).is_err());
-        assert_eq!(dictionary, before);
-        assert_eq!(dictionary.dialects(), ["cme", "globex"]);
+        disagreeing.insert(member("BlpSym", "blp", 5_070)).unwrap();
+        let merge = dictionary.merge_with(&disagreeing).unwrap();
+        assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
+        assert_eq!(merge.dropped[0].incoming.dtype(), &DataType::large_utf8());
+        assert_eq!(
+            dictionary.field_by_tag(55).unwrap(),
+            before.field_by_tag(55).unwrap()
+        );
+        assert!(
+            dictionary
+                .field_by_tag(5_070)
+                .unwrap()
+                .as_fix()
+                .has_branch("blp")
+        );
+        assert_eq!(dictionary.dialects(), ["blp", "cme", "globex"]);
     }
 
     #[test]
@@ -1316,7 +1328,9 @@ mod internal {
         });
         fold_table("merge_with", 2, |registry, field| {
             let other = FixRegistry::from_fields([field]).unwrap();
-            registry.merge_with(&other).unwrap()
+            let merge = registry.merge_with(&other).unwrap();
+            assert!(merge.is_clean(), "{:?}", merge.dropped);
+            (merge.added, merge.merged)
         });
     }
 

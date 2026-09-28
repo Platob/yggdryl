@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixRegistry, Result};
+use yggdryl::{Field, FixCategory, FixCommit, FixRegistry, Result};
 
 use crate::style;
 
@@ -72,16 +72,20 @@ impl Store {
         self.registry != self.original
     }
 
-    /// Writes the dictionary back where it came from.
+    /// Writes the dictionary back where it came from, answering what moved.
+    ///
+    /// The core's commit: every document is compared with the one it would
+    /// replace and written only where it differs, so a change of one field
+    /// writes one document however large the store.
     ///
     /// # Errors
     ///
     /// Returns the store's own refusal when the folder cannot be written.
-    pub fn save(&mut self) -> Result<()> {
+    pub fn save(&mut self) -> Result<FixCommit> {
         let mut folder = LocalFolder::new(self.root.clone())?;
-        self.registry.write_into(&mut folder)?;
+        let report = self.registry.commit(&mut folder)?;
         self.original = self.registry.clone();
-        Ok(())
+        Ok(report)
     }
 
     /// Where this dictionary lives.
@@ -89,6 +93,17 @@ impl Store {
     pub fn root(&self) -> &Path {
         &self.root
     }
+}
+
+/// What one commit moved, in one line.
+#[must_use]
+pub fn committed(report: &FixCommit) -> String {
+    format!(
+        "committed: {} written, {} unchanged, {} removed",
+        report.written.len(),
+        report.skipped,
+        report.removed.len()
+    )
 }
 
 /// One field's row in a listing.

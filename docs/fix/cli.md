@@ -12,7 +12,7 @@
 | Operations | Every category supports `list`, `read`, `create`, `update`, and `delete`; `codesets` supports `list`, `read`, `write` and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
 | Keys | A field key is a decimal tag or a name; a named category's key is its definition name. The registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to, and no key spells an identity |
-| Dialect | `--dialect NAME` stamps membership (`FIX:branches`) on `ingest`, `sync`, `create`, and `update`; on `list` it is a filter; `read` and `delete` take none |
+| Dialect | `--dialect NAME` stamps membership (`FIX:branches`) on `ingest`, `create`, and `update`; on `list` it is a filter; `sync`, `read` and `delete` take none |
 | Create | Refuses an existing name or field identity |
 | Update | Replaces an existing definition completely, preserving identity; omitted metadata is removed |
 | Delete | Refuses absence and live references |
@@ -150,17 +150,39 @@ yggdryl fix --root scratch/catalog fields delete 453
 
 ## Ingest and sync
 
-`ingest` reads an Ullink CBlock into all three categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `FIX:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
+`ingest PATH...` folds one or more Ullink `CBlock`s into all three categories; `sync DIR` folds another dictionary folder. Both fold, and the fold itself decides what stands: a declaration the dictionary already holds otherwise is passed over and named rather than overwritten, and everything else arrives or merges. `ingest` takes `--dialect NAME`, the name stamped into `FIX:branches` on every field, group, component and message a file produces, standard tags included, because membership means "this dictionary speaks it"; `sync` takes no `--dialect` at all, because a folder's fields already carry the membership they were written with.
+
+A path to `ingest` is a `.cfb` file or a glob pattern. A quoted glob - `'cblocks/*.cfb'`, `'cblocks/**/*.cfb'` - is walked by the core itself: `*` stays inside one name, `**` spans folders, and a private entry is never matched. An unquoted one is expanded by the shell before the command ever sees it. Either way every matched file parses side by side, on every core, and folds into one staged dictionary in ascending URL order, resolved and committed once - so `cblocks/*.cfb`, `cblocks/**/*.cfb` and the shell's own expansion of either all answer the same dictionary. A path matching nothing, or naming a folder, is refused. Without `--dialect` each file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); with it, every matched file folds under that one name instead. Where two files disagree about one tag, the first-sorting file's declaration is held and the later file's is passed over and named with its own URL.
 
 ```bash
 yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
-yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect desk --merge
-yggdryl fix --root scratch/catalog sync ../desk/config/fix
-yggdryl fix --root scratch/catalog sync cblocks/venue.cfb
-yggdryl fix --root scratch/catalog sync cblocks/venue.cfb --dialect desk
+yggdryl fix --root scratch/catalog ingest 'cblocks/*.cfb'
+yggdryl fix --root scratch/catalog ingest 'cblocks/**/*.cfb' --annotate
+yggdryl fix --root scratch/catalog ingest cblocks/a.cfb cblocks/b.cfb
 ```
 
-After the first line, `fields read 10001` shows `dialects venue` and `fields list --dialect venue` lists every tag the file declared, `8` and `35` among them; the merge under `desk` unions the membership to `desk, venue`. An `ingest` without `--dialect` stamps nothing. A `.cfb` synchronization without `--dialect` takes the file's stem through [`add_cfb_file`](registry.md#folding-a-second-source-in) where it reads as a name - non-empty and opening with a letter - so `venue.cfb` stamps `venue`, and a stem that is not a name stamps nothing rather than refusing. A folder synchronization takes no name: its fields carry the membership they were written with, and the fold unions it onto what the catalog holds. Membership never decides how a tag or a name resolves; the version a CBlock's root declares is read past, and a capture is read at the version its own rows or lines state. Every in-memory fold is atomic, and native [storage](store.md) handles the resulting documents.
+`sync` folds a folder holding another dictionary; a `.cfb`, or any location that is not a folder, is refused naming `yggdryl fix ingest` and the role the location turned out to be.
+
+```bash
+yggdryl fix --root scratch/catalog sync ../desk/config/fix
+```
+
+A run that folds something prints, in order: what the fold did, what was passed over, then what the commit wrote - the commit compares every document with the one it would replace and writes only those whose bytes moved.
+
+```text
+✓ 2 file(s): 5 added, 3 merged, 1 passed over 340ms
+! 1 declaration(s) passed over: the dictionary already declares them otherwise
+· venue.cfb [venue] invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+✓ committed: 8 written, 0 unchanged, 0 removed
+```
+
+The passed-over lines print only when something was passed over, and the commit line only when the fold changed the store - folding nothing but what the dictionary already declares leaves both silent. Under `--annotate` (or `GITHUB_ACTIONS`) each drop prints as a workflow warning instead of a `·` line, `%`, `\r` and `\n` escaped so a reason spanning a document reads as one line:
+
+```text
+::warning title=fix passed over::file:///desk/cblocks/venue.cfb: invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+```
+
+`sync` counts its one folder as a `dictionary(s)` rather than a `file(s)`: `✓ 1 dictionary(s): 5 added, 3 merged, 0 passed over 12ms`. Membership never decides how a tag or a name resolves; the version a CBlock's root declares is read past, and a capture is read at the version its own rows or lines state. Every fold is staged and adopted whole - a file that will not parse, or a source whose own catalog does not validate, leaves the dictionary exactly as it was - and native [storage](store.md) handles the resulting documents.
 
 ## Schema, check, and diff
 
@@ -194,9 +216,9 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - Wire group counters remain separate `int32` fields. The built-in `metadata` (65030) Map group has no scalar counter; a map's length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
 - `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
-- `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
-- `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
-- `sync` of a `.cfb` whose stem does not read as a name - empty, or not opening with a letter - stamps no membership, exactly as [`FixRegistry::from_cfb_file`](registry.md#folding-a-second-source-in) stamps none; a `--dialect` that is empty or carries a comma is refused before a byte is folded, on `ingest` and `sync` alike.
+- `ingest` always folds, whatever it is pointed at: a declaration the dictionary already holds otherwise is passed over and named, and the rest still arrives or merges, so running it again over an unchanged file leaves the store as it was.
+- An `ingest` path matching nothing, or naming a folder, is refused before anything folds; a `sync` location that is not a folder - a `.cfb` among them, and one that does not exist yet reads as `unknown` - is refused the same way, naming `yggdryl fix ingest`.
+- A `--dialect` that is empty or carries a comma is refused before a byte of `ingest` folds; without one, each file's own stem names its dialect where the stem reads as a name - non-empty and opening with a letter - and stamps nothing where it does not. `sync` takes no `--dialect`: its folder's fields already carry the membership they were written with.
 - Two fields may hold one tag under two names; the bare tag answers the first holder, the store writes the holder first so it survives a reload, and a listing filtered on that tag shows both. Deleting the holder leaves the other alone on the tag.
 - `FIX:branches` is written inside each field's document; the store keeps no manifest and no per-dialect folder, so a `--dialect` on `create` changes one shard and nothing else.
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
