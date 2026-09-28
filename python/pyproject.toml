@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "yggdryl"
-version = "0.1.15"
+version = "0.1.16"
 description = "Native Yggdryl schemas, dataclass field definitions, identifiers, and byte codecs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,14 @@ test = [
 
 [tool.maturin]
 bindings = "pyo3"
+# One stable-ABI extension serves every CPython from 3.11 on, so a platform
+# builds it once rather than once per interpreter. 3.11 is the floor because
+# the buffer protocol (`pyo3::buffer`) joined the limited API there. The
+# feature is conditional here rather than set in Cargo.toml so a 3.10
+# interpreter builds without it: maturin then compiles 3.10 an extension of
+# its own, where a feature set in the manifest would put the 3.11 build in a
+# wheel tagged for 3.10.
+features = [{ feature = "pyo3/abi3-py311", python-version = ">=3.11" }]
 # The `yggdryl` command ships in the same wheel as the extension module. maturin
 # copies this directory's `scripts/` into `yggdryl-<version>.data/scripts/`,
 # which an installer puts straight on PATH - so `pip install yggdryl` answers

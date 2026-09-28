@@ -510,7 +510,17 @@ fn decimal_integer(value: Borrowed<'_, '_, PyAny>, name: &str) -> PyResult<i128>
         });
     }
 
-    value.extract::<i128>().map_err(|error| {
+    // `i64` reads any object with `__index__`, under every ABI; the stable
+    // ABI's 128-bit read shifts with `>>`, which only an `int` answers, so it
+    // runs only for a value `i64` cannot hold.
+    let integer = match value.extract::<i64>() {
+        Ok(narrow) => Ok(i128::from(narrow)),
+        Err(error) if error.is_instance_of::<PyOverflowError>(value.py()) => {
+            value.extract::<i128>().map_err(|_| error)
+        }
+        Err(error) => Err(error),
+    };
+    integer.map_err(|error| {
         if error.is_instance_of::<PyTypeError>(value.py()) {
             let type_name = value
                 .get_type()

@@ -9,8 +9,9 @@ name: Release
 # preflight, so ordinary commits cost one small job.
 #
 # One job per platform builds everything that platform ships: the `yggdryl`
-# command, a wheel per CPython, and - on the five platforms the npm package
-# carries - the Node.js module. The extension and the Node.js module link the
+# command, the wheels - one stable-ABI wheel for every CPython from 3.11 on,
+# and one for 3.10 - and, on the five platforms the npm package carries, the
+# Node.js module. The extension and the Node.js module link the
 # same core with the same features, so a platform compiles it once, and the
 # registries hear from this run only after every platform has built and
 # smoke-tested what it ships. A release is thirteen jobs; it was twenty while
@@ -209,23 +210,28 @@ jobs:
           compression-level: 0
 
   build:
-    # One job per platform and libc, each building a wheel per CPython the
-    # project supports (3.10 through 3.14; Windows on ARM starts at 3.11,
-    # the first CPython published for it) and, where `node` names the npm
-    # package's platform, the Node.js module. The interpreters are named bare
-    # so maturin resolves them from the manylinux and musllinux images on
-    # Linux and from the setup-python tool cache elsewhere; where a smoke test
-    # runs, 3.12 is listed last so it is the default `python` it runs under.
-    # `smoke: false` marks the targets whose wheels cannot install on their
-    # own build host - musl wheels on a glibc runner - or where PyArrow, the
-    # hard runtime dependency, publishes no wheel to install against; the
-    # build is still shipped so the platform works the day its stack does.
+    # One job per platform and libc, each building two wheels and, where
+    # `node` names the npm package's platform, the Node.js module. The
+    # extension targets the stable ABI from 3.11 (python/Cargo.toml), so
+    # maturin builds one `cp311-abi3` wheel that every CPython from 3.11 on
+    # loads, and a version-specific wheel for 3.10, which predates the buffer
+    # protocol's place in the limited API; Windows on ARM starts at 3.11, the
+    # first CPython published for it, so it builds the one. The interpreters
+    # are named bare so maturin resolves them from the manylinux and
+    # musllinux images on Linux and from the setup-python tool cache
+    # elsewhere. `pythons` is every CPython the wheels claim, and the smoke
+    # test installs them into each one; 3.12 is listed last so it is the
+    # default `python` the job's own scripts run under. `smoke: false` marks
+    # the targets whose wheels cannot install on their own build host - musl
+    # wheels on a glibc runner - or where PyArrow, the hard runtime
+    # dependency, publishes no wheel to install against; the build is still
+    # shipped so the platform works the day its stack does.
     #
     # Both macOS targets build on Apple silicon. x86_64 is a cross build
     # there that pyo3 and maturin treat as native: a Mac CPython describes
     # the same extension for either architecture, so the arm64 CPythons build
     # the x86_64 wheels. The smoke tests run what ships under Rosetta 2 - the
-    # wheel in a self-contained x86_64 CPython from uv, because the x64 ones
+    # wheels in self-contained x86_64 CPythons from uv, because the x64 ones
     # setup-python installs link Intel Homebrew's gettext and do not start
     # there, and the Node.js module under the x64 Node.js. The Intel runner
     # that built it before took 15 minutes per CPython's link where Apple
@@ -267,7 +273,7 @@ jobs:
             target: x86_64
             triple: x86_64-unknown-linux-gnu
             manylinux: auto
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.10
               3.11
@@ -281,7 +287,7 @@ jobs:
             target: aarch64
             triple: aarch64-unknown-linux-gnu
             manylinux: auto
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.10
               3.11
@@ -295,7 +301,7 @@ jobs:
             target: x86_64
             triple: x86_64-unknown-linux-musl
             manylinux: musllinux_1_2
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.12
             smoke: false
@@ -304,7 +310,7 @@ jobs:
             target: aarch64
             triple: aarch64-unknown-linux-musl
             manylinux: musllinux_1_2
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.12
             smoke: false
@@ -316,7 +322,7 @@ jobs:
             rosetta: true
             macos: "10.12"
             manylinux: auto
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.10
               3.11
@@ -331,7 +337,7 @@ jobs:
             triple: aarch64-apple-darwin
             macos: "11.0"
             manylinux: auto
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.10
               3.11
@@ -345,7 +351,7 @@ jobs:
             target: x64
             triple: x86_64-pc-windows-msvc
             manylinux: auto
-            interpreters: 3.10 3.11 3.12 3.13 3.14
+            interpreters: 3.10 3.11
             pythons: |
               3.10
               3.11
@@ -359,7 +365,7 @@ jobs:
             target: aarch64
             triple: aarch64-pc-windows-msvc
             manylinux: auto
-            interpreters: 3.11 3.12 3.13 3.14
+            interpreters: 3.11
             pythons: |
               3.11
               3.13
@@ -441,17 +447,36 @@ jobs:
           args: >-
             --release --locked --manifest-path python/Cargo.toml --out dist
             --interpreter ${{ matrix.interpreters }}
-      # A wheel that quietly lost the command is worse than a failed build, so
-      # every row asserts what it shipped rather than trusting the step above.
-      - name: The wheels carry the command
+      # A wheel that quietly lost the command is worse than a failed build, and
+      # a wheel per CPython is what the stable ABI retired, so every row
+      # asserts what it shipped rather than trusting the step above: the one
+      # `cp311-abi3` wheel, a version-specific one per interpreter older than
+      # 3.11, and in each the command.
+      - name: The wheels are the ones the row owes, and carry the command
         shell: bash
+        env:
+          INTERPRETERS: ${{ matrix.interpreters }}
         run: |
           python - <<'EOF'
           import glob
+          import os
           import zipfile
 
           wheels = sorted(glob.glob("dist/*.whl"))
           assert wheels, "no wheel was built"
+          older = [
+              version
+              for version in os.environ["INTERPRETERS"].split()
+              if tuple(map(int, version.split("."))) < (3, 11)
+          ]
+          expected = {"cp311-abi3"} | {
+              f"cp{version.replace('.', '')}-cp{version.replace('.', '')}" for version in older
+          }
+          # `yggdryl-<version>-<python tag>-<abi tag>-<platform tag>.whl`
+          built = [os.path.basename(wheel).split("-")[2:4] for wheel in wheels]
+          assert sorted("-".join(tags) for tags in built) == sorted(expected), (
+              f"expected {sorted(expected)}, built {wheels}"
+          )
           for wheel in wheels:
               scripts = [
                   name
@@ -465,20 +490,34 @@ jobs:
               ), f"{wheel} carries {scripts}"
               print(f"{wheel} carries {scripts[0]}")
           EOF
-      - name: Smoke test the wheel
+      # Every CPython the wheels claim installs one and runs the smoke test in
+      # an environment of its own: 3.10 its version-specific wheel, 3.11 to
+      # 3.14 the one stable-ABI wheel, which is what proves that wheel loads
+      # on interpreters newer than the one that built it. On the macOS x86_64
+      # row each is a self-contained x86_64 CPython from uv under Rosetta 2,
+      # because the x64 ones setup-python installs do not start there.
+      - name: Smoke test the wheels
         if: matrix.smoke
         shell: bash
         run: |
-          python=python
-          if [ "${{ matrix.rosetta }}" = true ]; then
-            python -m pip install uv
-            uv venv --seed --python cpython-3.12-macos-x86_64-none "$RUNNER_TEMP/x86_64"
-            python="$RUNNER_TEMP/x86_64/bin/python"
-            "$python" -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
-          fi
-          "$python" -m pip install "pyarrow>=18" --only-binary ":all:"
-          "$python" -m pip install --no-index --find-links dist yggdryl
-          "$python" scripts/check_wheel_smoke.py
+          python -m pip install uv
+          for version in $(printf '%s' "${{ matrix.pythons }}" | sort -V); do
+            spec=$version
+            if [ "${{ matrix.rosetta }}" = true ]; then
+              spec="cpython-$version-macos-x86_64-none"
+            fi
+            venv="$RUNNER_TEMP/smoke-$version"
+            uv venv --seed --python "$spec" "$venv"
+            python="$venv/bin/python"
+            [ -x "$python" ] || python="$venv/Scripts/python.exe"
+            "$python" -c "import platform, sys; print(sys.version, platform.machine()); assert '%d.%d' % sys.version_info[:2] == '$version'"
+            if [ "${{ matrix.rosetta }}" = true ]; then
+              "$python" -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
+            fi
+            "$python" -m pip install "pyarrow>=18" "typing_extensions>=4.4" --only-binary ":all:"
+            "$python" -m pip install --no-index --find-links dist yggdryl
+            "$python" scripts/check_wheel_smoke.py
+          done
       # Each platform builds and tests its own native module; the npm package
       # ships every one of them, and the generated loader picks the matching
       # binary at require time. The loader and its declarations are the
@@ -565,10 +604,14 @@ jobs:
           skip-existing: true
 
   publish-npm:
-    # Waits on the source packages it does not ship, as PyPI waits on the
-    # Node.js modules: a crate that cannot package stops all three registries.
+    # Waits on PyPI, and through it on every platform and the source
+    # packages: a registry that has answered cannot be taken back, so they
+    # publish one after another, the one that has refused a version before
+    # first. PyPI refused 0.1.15 (the project had reached its size limit)
+    # after npm had it; a refusal there now publishes nothing anywhere, and
+    # the same run repaired publishes all three.
     name: npm (yggdryl)
-    needs: [preflight, sources, build]
+    needs: [preflight, sources, build, publish-pypi]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment: npm
