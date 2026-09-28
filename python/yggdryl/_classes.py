@@ -308,13 +308,10 @@ def _resolved_hints(cls: type[Any], localns: Mapping[str, Any] | None = None) ->
         namespace.update(vars(base))
         namespace[base.__name__] = base
     namespace[cls.__name__] = cls
+    from ._hints import _class_type_hints
+
     try:
-        resolved = typing.get_type_hints(
-            cls,
-            globalns=globalns,
-            localns=namespace,
-            include_extras=True,
-        )
+        resolved = _class_type_hints(cls, globalns, namespace)
     except NameError as error:
         raise _UnresolvedAnnotation(
             f"cannot resolve annotations for {cls.__module__}.{cls.__qualname__}: {error}"
@@ -1557,13 +1554,10 @@ def _nested_annotations(
             namespace.update(vars(base))
             namespace[base.__name__] = base
         namespace[hint.__name__] = hint
+        from ._hints import _class_type_hints
+
         try:
-            resolved = typing.get_type_hints(
-                hint,
-                globalns=globalns,
-                localns=namespace,
-                include_extras=True,
-            )
+            resolved = _class_type_hints(hint, globalns, namespace)
         except (NameError, TypeError) as error:
             raise TypeError(
                 f"cannot resolve nested annotations for "
