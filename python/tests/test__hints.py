@@ -9,6 +9,7 @@ import datetime
 import decimal
 import enum
 import pathlib
+import sys
 import typing
 import uuid
 from dataclasses import dataclass
@@ -229,6 +230,12 @@ class _AnnotationExtension(pa.ExtensionType):
     def __init__(self) -> None:
         super().__init__(pa.int32(), "yggdryl.tests.annotation-extension")
 
+    # CPython 3.10's typing hashes every member of a union, so an option value
+    # inside `X | None` must hash there; pyarrow's ExtensionType compares
+    # equal by name and storage and hashes nothing.
+    def __hash__(self) -> int:
+        return hash((self.extension_name, self.storage_type))
+
     def __arrow_ext_serialize__(self) -> bytes:
         return b"v1"
 
@@ -274,11 +281,12 @@ def test_extension_override_preserves_identity_and_protects_metadata() -> None:
         assert field.into_arrow().type == extension
         assert field.metadata["owner"] == "test"
 
+        # Pairs, not a mapping: a union's members must hash on CPython 3.10.
         member = Annotated[
             int,
             ("arrow_type", extension),
             ("id", 17),
-            ("metadata", {"member": "preserved"}),
+            ("member", "preserved"),
         ]
         promoted = Field.from_pyhint("code", member | None)
         assert promoted.into_arrow().type == extension
@@ -650,7 +658,7 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
         cabc.ItemsView[Annotated[str, {"role": "key"}], int | None]
     )
     pair = items[0].dtype
-    union = DataType.from_pyhint(Annotated[int, {"source": "integer"}] | str)
+    union = DataType.from_pyhint(Annotated[int, ("source", "integer")] | str)
 
     assert items.id == "serie"
     assert pair.id == "struct"
@@ -687,7 +695,7 @@ def test_none_among_several_members_is_a_null_member_appended_last() -> None:
 
 def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> None:
     hint = list[
-        dict[str, Annotated[int, {"branch": "count"}] | str]
+        dict[str, Annotated[int, ("branch", "count")] | str]
         | tuple[bytes, float]
     ]
 
@@ -704,6 +712,45 @@ def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> N
     assert mapping_value.id == "union"
     assert tuple(mapping_value.into_arrow().type_codes) == (0, 1)
     assert mapping_value[0].metadata["branch"] == "count"
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="CPython 3.10's typing hashes every member of a union",
+)
+def test_unhashable_options_inside_unions() -> None:
+    # The mapping spellings the tests above write as hashable pairs, on the
+    # CPython releases that can build these unions at all.
+    union = DataType.from_pyhint(Annotated[int, {"source": "integer"}] | str)
+    assert union[0].metadata["source"] == "integer"
+
+    deep = DataType.from_pyhint(
+        list[dict[str, Annotated[int, {"branch": "count"}] | str] | tuple[bytes, float]]
+    )
+    assert deep[0].dtype[0].dtype[0].dtype[1].dtype[0].metadata["branch"] == "count"
+
+    class Unhashable(_AnnotationExtension):
+        __hash__ = None  # type: ignore[assignment]
+
+    extension = Unhashable()
+    try:
+        pa.unregister_extension_type(extension.extension_name)
+    except pa.ArrowKeyError:
+        pass
+    pa.register_extension_type(extension)
+    try:
+        member = Annotated[
+            int,
+            ("arrow_type", extension),
+            ("id", 17),
+            ("metadata", {"member": "preserved"}),
+        ]
+        promoted = Field.from_pyhint("code", member | None)
+        assert promoted.into_arrow().type == extension
+        assert promoted.parquet_field_id == 17
+        assert promoted.metadata["member"] == "preserved"
+    finally:
+        pa.unregister_extension_type(extension.extension_name)
 
 
 def test_counter_and_generic_mapping_subclasses_keep_parameters() -> None:

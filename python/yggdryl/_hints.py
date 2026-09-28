@@ -1424,6 +1424,49 @@ def _class_identity_metadata(hint: object) -> dict[str, str]:
     return dict(declared.properties)
 
 
+def _class_type_hints(
+    cls: type[Any],
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
+) -> dict[str, Any]:
+    """`typing.get_type_hints` over a class, `Annotated` extras kept.
+
+    CPython 3.10 requires a string annotation to evaluate to something
+    callable, which a dataclass `InitVar[...]` - a pseudo-field, not a type -
+    is not; 3.11 dropped the requirement. On 3.10 a class the resolution
+    refuses is resolved one annotation at a time, and an annotation refused
+    only because it is an `InitVar` stands as the `InitVar` it evaluates to;
+    every other annotation, and every other error, is typing's own.
+    """
+    try:
+        return typing.get_type_hints(
+            cls, globalns=globalns, localns=localns, include_extras=True
+        )
+    except TypeError:
+        if sys.version_info >= (3, 11):
+            raise
+    hints: dict[str, Any] = {}
+    for base in reversed(cls.__mro__):
+        for name, value in base.__dict__.get("__annotations__", {}).items():
+            single = type(
+                base.__name__,
+                (),
+                {"__annotations__": {name: value}, "__module__": base.__module__},
+            )
+            try:
+                hints[name] = typing.get_type_hints(
+                    single, globalns=globalns, localns=localns, include_extras=True
+                )[name]
+            except TypeError:
+                evaluated = (
+                    eval(value, globalns, localns) if isinstance(value, str) else value
+                )
+                if not isinstance(evaluated, dataclasses.InitVar):
+                    raise
+                hints[name] = evaluated
+    return hints
+
+
 def _resolved_annotations(
     cls: type[Any],
     path: str,
@@ -1437,12 +1480,7 @@ def _resolved_annotations(
         localns[base.__name__] = base
     localns[cls.__name__] = cls
     try:
-        return typing.get_type_hints(
-            cls,
-            globalns=globalns,
-            localns=localns,
-            include_extras=True,
-        )
+        return _class_type_hints(cls, globalns, localns)
     except (NameError, TypeError) as error:
         raise TypeError(
             f"cannot resolve Python annotations for "
