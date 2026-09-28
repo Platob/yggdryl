@@ -192,7 +192,8 @@ test('an order follows the order it replaces', () => {
   assert.notEqual(followed, null)
   assert.equal(followed.prevuuid, first.curruuid)
   assert.equal(followed.prevunix, first.currunix)
-  assert.equal(followed.seqnum, 1)
+  // A later instant keeps its own place.
+  assert.equal(followed.seqnum, 0)
   assert.equal(later.prevuuid, null) // immutable: the verb answered a new event
   assert.ok(first.isBefore(later) && later.isAfter(first))
   assert.ok(!first.isAfter(first))

@@ -822,7 +822,14 @@ fn lifecycle_drops_republications_and_true_retransmissions_but_keeps_distinct_de
     assert_eq!(walked.len(), 2);
     assert_eq!(walked[0].header().msgseqnum(), Some(7));
     assert_eq!(walked[1].header().msgseqnum(), Some(8));
-    assert_eq!(walked[1].get_seqnum(), 1, "replays take no chain place");
+    // The distinct delivery stands at its own later instant, so following
+    // the settled original leaves its place alone: dropped duplicates never
+    // borrowed one for it to inherit.
+    assert_eq!(
+        walked[1].get_seqnum(),
+        0,
+        "a later delivery keeps its own place"
+    );
     assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
 }
 
@@ -1055,11 +1062,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             Some(100),
             "the latest recording selects the base while the merged fact remains the earliest"
         );
-        assert_eq!(
-            message.get_seqnum(),
-            0,
-            "one delivery takes one chain place"
-        );
+        assert_eq!(message.get_seqnum(), 0, "one delivery takes one place");
         assert!(message.get_prevuuid().is_none());
     }
 
@@ -1184,14 +1187,24 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         400,
         130,
     );
+    // Two deliveries, which the walk answers under one identity: the
+    // second restates the first, and the window yields that identity once.
+    let contexts = [first_context, other_context];
+    let every = codec
+        .clone()
+        .with_dedup_window_ms(0)
+        .lifecycle(contexts.clone())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(every.len(), 2, "all four capture identity facts must match");
+    assert_eq!(every[1].get_curruuid(), every[0].get_curruuid());
     assert_eq!(
         codec
-            .lifecycle([first_context, other_context])
+            .lifecycle(contexts)
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap()
             .len(),
-        2,
-        "all four capture identity facts must match"
+        1
     );
 
     let expiring = captured(
@@ -1209,7 +1222,9 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     let expired = &walked[1];
     assert_eq!(expired.get_currunix(), live.get_exprunix().unwrap());
     assert_eq!(expired.get_prevuuid(), Some(live.get_curruuid()));
-    assert_eq!(expired.get_seqnum(), live.get_seqnum() + 1);
+    // The deadline (10:15:31) falls after the live event's own instant
+    // (10:15:30), so the expiry keeps the place it started at, zero.
+    assert_eq!(expired.get_seqnum(), 0);
     assert_eq!(*expired.get_state(), yggdryl::State::Expired);
     assert_eq!(
         live.capture().msgsesseventid(),
@@ -1417,7 +1432,9 @@ fn lifecycle_headerless_reordered_content_is_one_delivery_through_arrow() {
 
 #[test]
 fn lifecycle_remembers_deliveries_across_the_whole_finite_capture() {
-    let codec = codec();
+    // The delivery set is what this pins, so the window stays out of it: the
+    // deliveries restate one event, which a windowed walk yields once.
+    let codec = codec().with_dedup_window_ms(0);
     let first = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=LONG-CAPTURE|10=0|")
         .unwrap();
@@ -1429,15 +1446,24 @@ fn lifecycle_remembers_deliveries_across_the_whole_finite_capture() {
     }
     messages.push(first);
     assert_eq!(
-        codec.lifecycle(messages).map(Result::unwrap).count(),
+        codec
+            .lifecycle(messages.clone())
+            .map(Result::unwrap)
+            .count(),
         4_097,
         "a repeated delivery remains a repeat after many distinct deliveries"
     );
+    let windowed = codec.with_dedup_window_ms(FixCodec::DEFAULT_DEDUP_WINDOW_MS);
+    assert_eq!(windowed.lifecycle(messages).map(Result::unwrap).count(), 1);
 }
 
 #[test]
 fn lifecycle_deduplicates_headerless_repeats_within_one_capture_context_only() {
-    let codec = codec().with_capture_names(["msgsessionid"]);
+    // The delivery set is what this pins; the window, which yields the one
+    // identity both sessions' deliveries restate once, stays out of it.
+    let codec = codec()
+        .with_capture_names(["msgsessionid"])
+        .with_dedup_window_ms(0);
     let captured = |session: &[u8]| {
         let line = TextLine::from_bytes(
             0,
@@ -1450,18 +1476,32 @@ fn lifecycle_deduplicates_headerless_repeats_within_one_capture_context_only() {
         .unwrap()
         .with_captures(vec![Some(TextBytes::from_bytes(session).unwrap())])
         .unwrap();
-        codec.parse_text_line(&line).unwrap().next().unwrap()
+        codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
     };
     let first = captured(b"SESSION-A");
     let repeated = captured(b"SESSION-A");
     let other_session = captured(b"SESSION-B");
     let walked: Vec<_> = codec
-        .lifecycle([first, repeated, other_session])
+        .lifecycle([first.clone(), repeated, other_session.clone()])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(walked.len(), 2);
     assert_eq!(walked[0].capture().msgsessionid(), Some("SESSION-A"));
     assert_eq!(walked[1].capture().msgsessionid(), Some("SESSION-B"));
+    assert_eq!(walked[1].get_curruuid(), walked[0].get_curruuid());
+    let windowed = codec
+        .clone()
+        .with_dedup_window_ms(FixCodec::DEFAULT_DEDUP_WINDOW_MS)
+        .lifecycle([first, other_session])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(windowed.len(), 1);
+    assert_eq!(windowed[0].capture().msgsessionid(), Some("SESSION-A"));
 
     let sequenced = [
         codec.parse_fix_line(
@@ -1604,7 +1644,9 @@ fn lifecycle_expiry_keeps_fix_content_and_retires_at_the_exact_deadline() {
     assert_eq!(expired.get_currunix(), source.get_exprunix().unwrap());
     assert!(expired.get_state().is_failed());
     assert_eq!(expired.get_prevuuid(), Some(source.get_curruuid()));
-    assert_eq!(expired.get_seqnum(), source.get_seqnum() + 1);
+    // The deadline (10:15:32) falls after the source's own instant
+    // (10:15:30), so the expiry keeps the place it started at, zero.
+    assert_eq!(expired.get_seqnum(), 0);
     assert!(Arc::ptr_eq(expired.registry(), source.registry()));
     assert_eq!(
         expired.entries(),
@@ -1870,7 +1912,9 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         "the order, its fill's report, the execution"
     );
     assert_eq!(chained[1].get_prevuuid(), Some(chained[0].get_curruuid()));
-    assert_eq!(chained[1].get_seqnum(), 1);
+    // The report's line stamped one nanosecond after the order's, a later
+    // instant of its own, so following the order leaves its place alone.
+    assert_eq!(chained[1].get_seqnum(), 0);
     assert!(
         chained[1].get_state().is_done(),
         "{}",

@@ -10,7 +10,7 @@
 | Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it |
 | Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child on neither side (`.side`), at another instant (`.currunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`) |
 | Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's cross code carrying its [side](market.md#sides-and-cross-codes) |
-| Root | the maximum child sequence, the earliest creation and recording instants, the latest execution instant; its digest feeds the execution count and each child's `curruuid` - never a child's `currhashcode` or content |
+| Root | the highest child place, the earliest creation and recording instants, the latest execution instant; its digest feeds the execution count and each child's `curruuid` - never a child's `currhashcode` or content |
 | `is_execution` | always true |
 | `set_currunix` | rebases the root and every child atomically and re-finalizes them; each child keeps its `execunix` |
 | Following, merging | only under the same root cross code: children combine by execution cross code, then rebase to the resulting instant |

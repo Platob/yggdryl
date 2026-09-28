@@ -9,7 +9,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Trait | Page | Answers |
 | --- | --- | --- |
 | `Element` | [Element](element.md) | identity, cross element/code, digest, sources; order, finalization, following, merging |
-| `Event: Element` | [Event](event.md) | instant, state, chain place, clocks, UUIDv7 identity; lifecycle walk `EventIterator` |
+| `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks, UUIDv7 identity; lifecycle walk `EventIterator` |
 | `Market` | [Market](market.md) | twenty-seven facts: price, quantity, currency/unit, side, security ids and the ISIN, classification/market, trade and FX numbers, bid and ask, FX rates, ticker, metadata; the side-prefixed cross code and the book key |
 | `Operation: Market` | [Operation](operation.md) | three more: time in force, tradability, alternate identifiers |
 

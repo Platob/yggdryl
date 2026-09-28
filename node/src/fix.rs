@@ -1440,7 +1440,8 @@ impl JsFixMsg {
         self.inner.get_state().as_str().to_owned()
     }
 
-    /// The message's place in its chain, `0` until a lifecycle states it.
+    /// The message's place among the messages of its instant: zero for the
+    /// first its stream hands over there, one more for each next.
     #[napi(getter)]
     pub fn seqnum(&self) -> Result<f64> {
         exact_f64(self.inner.get_seqnum(), "seqnum")
@@ -2067,6 +2068,15 @@ fn separator_byte(separator: Option<f64>) -> Result<u8> {
     u8::try_from(exact_i64(held, "separator")?).map_err(|_| napi_error("a separator is one byte"))
 }
 
+/// The lifecycle's deduplication window a caller states: a whole number of
+/// milliseconds, `null` remembering none as a nonpositive window does.
+fn dedup_window_of(window: Either<f64, Null>) -> Result<i64> {
+    match window {
+        Either::A(held) => exact_i64(held, "dedupWindowMs"),
+        Either::B(Null) => Ok(0),
+    }
+}
+
 /// One separator character, or the FIX default where none was named.
 fn separator_char(separator: Option<String>) -> Result<char> {
     let Some(held) = separator else {
@@ -2264,8 +2274,12 @@ impl JsFixCodec {
     /// capture, off when unstated;
     /// `officialTimeDelayMs` is how far from `SendingTime(52)` an official
     /// transaction clock may stand and still date the message, the core's
-    /// one second when unstated; `marketMetadata` is whether a market
-    /// operation carries its message's unmapped fields, on when unstated.
+    /// one second when unstated; `dedupWindowMs` is how long, in
+    /// milliseconds of event time, `lifecycle` remembers an identity it
+    /// yielded so it yields that identity once - the core's one minute when
+    /// unstated, and `null`, zero or a negative window remembering none;
+    /// `marketMetadata` is whether a market operation carries its message's
+    /// unmapped fields, on when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2335,6 +2349,9 @@ impl JsFixCodec {
         if let Some(held) = options.official_time_delay_ms {
             let delay = exact_i64(held, "officialTimeDelayMs")?;
             inner = inner.with_official_time_delay_ms(delay);
+        }
+        if let Some(held) = options.dedup_window_ms {
+            inner = inner.with_dedup_window_ms(dedup_window_of(held)?);
         }
         if let Some(held) = options.include_msgtypes {
             inner = inner.with_include_msgtypes(held);
@@ -2477,6 +2494,30 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn official_time_delay_ms(&self) -> f64 {
         self.inner.official_time_delay_ms() as f64
+    }
+
+    /// How long, in milliseconds of event time, `lifecycle` remembers an
+    /// identity it yielded so it yields that identity once, or `null` where
+    /// it remembers none.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn dedup_window_ms(&self) -> Option<f64> {
+        self.inner.dedup_window_ms().map(|window| window as f64)
+    }
+
+    /// This codec with its lifecycle remembering the identities it yielded
+    /// for `dedupWindowMs` milliseconds of event time: `null`, zero and a
+    /// negative window remember none. Every other setting, the dictionary
+    /// included, is this codec's.
+    #[napi]
+    pub fn with_dedup_window_ms(&self, dedup_window_ms: Either<f64, Null>) -> Result<Self> {
+        Ok(Self {
+            inner: self
+                .inner
+                .clone()
+                .with_dedup_window_ms(dedup_window_of(dedup_window_ms)?),
+            registry: Arc::clone(&self.registry),
+        })
     }
 
     /// The message types a parse keeps, empty where it keeps every type the
@@ -2906,8 +2947,10 @@ impl JsFixCodec {
     /// instant, and each is stated as the one after the live message it
     /// follows - the last message of its chain, under the cross identity its
     /// cross code derives, still alive - so a chained message carries its
-    /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain and
-    /// the chain's `creaunix`, and is settled again around them. A message no live one precedes is
+    /// predecessor's `prevuuid` and `prevunix`, its place at `seqnum` - its
+    /// own unless the predecessor happened at the same instant or later,
+    /// where it takes the higher of its own and one past the predecessor's -
+    /// and the chain's `creaunix`, and is settled again around them. A message no live one precedes is
     /// answered as it came. The loader turns the iterable into the pull
     /// function this takes; a failure of the iterable throws and ends the
     /// stream. The walk reads the structured message first: one whose
@@ -3010,6 +3053,12 @@ pub struct FixCodecOptions<'env> {
     /// second when unstated, and a nonpositive delay admits only a
     /// transaction clock equal to the sending clock.
     pub official_time_delay_ms: Option<f64>,
+    /// How long, in milliseconds of event time, `lifecycle` remembers an
+    /// identity it yielded so it yields that identity once; the core's one
+    /// minute when unstated, and `null`, zero or a negative window
+    /// remembering none.
+    #[napi(ts_type = "number | null")]
+    pub dedup_window_ms: Option<Either<f64, Null>>,
     /// The message types a parse keeps, spelled as codes or as names -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
     /// or unstated keeps every type the refusals leave.

@@ -1306,8 +1306,8 @@ mod s3 {
     use yggdryl::s3::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
     use yggdryl::text::TextOptions;
     use yggdryl::{
-        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
-        fix_schema, fix_schema_carrying,
+        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, Timezone, fix_schema,
+        fix_schema_carrying,
     };
 
     use super::server::FakeS3;
@@ -1578,20 +1578,10 @@ mod s3 {
         let carrier = log.read_arrow_field(&text()).expect("the text field");
         let fixed = fix_schema(&registry, "row").expect("the fixed schema");
         let carried = fix_schema_carrying(&carrier, &fixed).expect("the carried schema");
-        // The capture's millisecond stamp is declared at the microsecond
-        // resolution Iceberg spells - the write casts it - and the FIX
-        // clocks are nanosecond instants, which only a v3 table stores.
-        let columns = carried.fields().iter().cloned().map(|mut column| {
-            if column.name() == "timestamp" {
-                column
-                    .set_dtype(
-                        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)
-                            .expect("a microsecond clock"),
-                    )
-                    .expect("the stamp takes the resolution");
-            }
-            column
-        });
+        // The row header's clock dates each line, so no capture stamp leads
+        // the row; the FIX clocks are nanosecond instants, which only a v3
+        // table stores.
+        let columns = carried.fields().iter().cloned();
         // The FIX clocks and hashes are unsigned 64-bit counts, which Iceberg
         // has no column for: the schema takes the lossless widening the
         // compatibility walk names before the table numbers it.

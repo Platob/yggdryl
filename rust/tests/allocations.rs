@@ -3740,7 +3740,11 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// out of the vector they arrived in; and the frame walk's vector of
 /// arrivals, an unmarked frame now walked straight into its pairs: 32 to
 /// 28 at four pairs, 33 to 29 at sixteen and 34 to 30 at sixty-four.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 30)];
+///
+/// It rose by one at every width when that table of names came to be held
+/// in the `Arc` a clone of the message shares it through, rather than built
+/// again on the clone's first miss: 28 to 29, 29 to 30 and 30 to 31.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 29), (16, 30), (64, 31)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -3790,9 +3794,9 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 ///
-/// It last moved with [`FIX_LINE_COSTS`], by the same four in both columns.
+/// It last moved with [`FIX_LINE_COSTS`], by the same one in both columns.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (28, 34)), (16, (29, 59)), (64, (30, 156))];
+    [(4, (29, 35)), (16, (30, 60)), (64, (31, 157))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -3904,7 +3908,10 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// one each, at both widths - and when a packed value's members were sized
 /// once rather than grown by doubling, two fewer at sixteen: 57 to 54 at
 /// four members and 79 to 74 at sixteen.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 54), (16, 74)];
+///
+/// It rose by one at both widths with [`FIX_LINE_COSTS`], the `Arc` the
+/// message's table of names is shared through: 54 to 55 and 74 to 75.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 55), (16, 75)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -3947,9 +3954,10 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// The arrival record's one shared allocation and the name table sized once
 /// are in all three, as they are in [`FIX_LINE_COSTS`].
 ///
-/// It last moved with [`FIX_LINE_COSTS`], by the same four: 31 to 27 at
-/// four pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 28), (64, 29)];
+/// It moved with [`FIX_LINE_COSTS`], by the same four: 31 to 27 at four
+/// pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four; and last by the
+/// same one: 28, 29 and 30.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 30)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -4706,7 +4714,16 @@ struct StageCosts {
 /// spelled each alternative as a `String`, took 24, 24 and 8 back off the
 /// parse (629, 230, 1028) and 8 off the bridge row's walk (35); and a key no
 /// dictionary resolves that a row states empty is kept in `metadata` as
-/// `{}` rather than dropped, the bridge row's `into_row` 78 to 79.
+/// `{}` rather than dropped, the bridge row's `into_row` 78 to 79. A
+/// message's table of names came to be shared by its clones through one
+/// `Arc`: a parse building one pays that `Arc` (1028 to 1029), a clone read
+/// or walked no longer builds its own (`into_row` 79 to 77, 58 to 57 and
+/// 244 to 243), and a bridge row's parse, whose split execution shares its
+/// report's table, fell by one net (629 to 628). Each walk pays one table
+/// for the identities its deduplication window keeps and, walking a clone,
+/// no longer pays a table of names: a frame's walk stands at 7; and a bridge
+/// row's fell from 35 to 8 when redating a message a parse built settled
+/// what its clock moved alone.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -4714,12 +4731,12 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 629,
-            into_row: 79,
+            parse: 628,
+            into_row: 77,
             landing: 1381,
             batch: 190,
             digest: 24,
-            lifecycle: 35,
+            lifecycle: 8,
         },
     ),
     (
@@ -4727,7 +4744,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         72,
         StageCosts {
             parse: 230,
-            into_row: 58,
+            into_row: 57,
             landing: 1362,
             batch: 190,
             digest: 24,
@@ -4738,8 +4755,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1028,
-            into_row: 244,
+            parse: 1029,
+            into_row: 243,
             landing: 1398,
             batch: 190,
             digest: 16,

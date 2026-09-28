@@ -205,14 +205,15 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
 
     # The sixteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
-    # placed by its row number - and a null wherever it states nothing; the
-    # captures it matched are its own columns beside them.
+    # placed by its row number, created when the object's first line was
+    # dated - and a null wherever it states nothing; the captures it matched
+    # are its own columns beside them.
     def event(row: int, seqnum: int) -> dict[str, object]:
         # A record spells an identity as text, where the table holds a UUID.
         identity = str(table.column("curruuid")[row].as_py())
         return {
             "currunix": MTIME,
-            "creaunix": None,
+            "creaunix": MTIME,
             "execunix": None,
             "recdunix": None,
             "exprunix": None,
@@ -403,7 +404,17 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
     reader = source.read_arrow_reader(options=options)
     assert reader.schema.names == EVENT_COLUMNS + ["body"]
     assert reader.schema.field("currunix").type == pa.timestamp("ns", "UTC")
-    assert reader.read_all().column("currunix").to_pylist() == [captured, MTIME]
+    table = reader.read_all()
+    assert table.column("currunix").to_pylist() == [captured, MTIME]
+    # The object's lines are one chain, created when its first line was dated.
+    assert table.column("creaunix").to_pylist() == [captured, captured]
+
+    # A line dated before every line ahead of it moves the creation back from
+    # there on: the earliest instant the read dated a line of the object by.
+    reversed_source = handle(tmp_path, b"undated\n2026-08-14T09:30:15 dated\n", "reversed.log")
+    table = reversed_source.read_arrow_reader(options=options).read_all()
+    assert table.column("currunix").to_pylist() == [MTIME, captured]
+    assert table.column("creaunix").to_pylist() == [MTIME, captured]
 
     # Off, the name is an ordinary capture again: it trails the body in a
     # column of its own, keeps the resolution its own syntax declares, and is
@@ -771,3 +782,24 @@ def test_a_text_read_is_shaped_by_select_and_where_given_as_properties(tmp_path)
         == "INFO"
     )
     shout.unregister()
+
+
+def test_a_lines_row_number_is_its_place_and_orders_its_identity(tmp_path: pathlib.Path) -> None:
+    # Three lines saying the same thing at one instant: one content, three
+    # places. The row number is the place, so the identities differ and sort
+    # in row order within the millisecond, while the code is one.
+    source = handle(
+        tmp_path,
+        b"2026-08-14T09:30:15 same\n2026-08-14T09:30:15 same\n2026-08-14T09:30:15 same\n",
+        "placed.log",
+    )
+    options = text_options()
+    options.rowheader = r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) "
+    options.timezone = Timezone.UTC
+    options.start_rownum = 1
+    lines = list(source.read_text_lines(options=options))
+    assert [line.seqnum for line in lines] == [1, 2, 3]
+    identities = [line.curruuid for line in lines]
+    assert identities == sorted(identities)
+    assert len(set(identities)) == 3
+    assert len({line.currhashcode for line in lines}) == 1

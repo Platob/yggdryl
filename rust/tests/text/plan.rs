@@ -172,7 +172,7 @@ mod columns {
     }
 
     #[test]
-    fn seqnum_is_null_where_the_line_has_no_place_in_its_chain() {
+    fn seqnum_is_null_where_the_lines_place_is_zero() {
         // Every read answers `seqnum`, numbered or not. Asked for no first row
         // number, the place is the physical line number, and the first line's
         // zero is no place at all: the column counts what came before a line,
@@ -282,9 +282,9 @@ mod columns {
         let error = reader.next().unwrap().unwrap_err().to_string();
         assert!(error.contains("text row number exceeds i64::MAX"));
 
-        // The place in a chain is a count, so a row number below zero is no
-        // place at all: the read refuses it by name rather than numbering a
-        // line backwards.
+        // A place is a count, so a row number below zero is no place at all:
+        // the read refuses it by name rather than numbering a line
+        // backwards.
         let mut below = TextOptions::new();
         below.start_rownum = Some(-1);
         let error = named("rows.log", b"first\n")

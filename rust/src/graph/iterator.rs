@@ -7,6 +7,7 @@ use std::iter::FusedIterator;
 use std::vec;
 
 use super::Element;
+use super::element::InstantSequence;
 use super::market::unsided_crosscode;
 use crate::idmap::IdMap;
 use crate::{Side, State, Uuid};
@@ -15,6 +16,14 @@ mod sealed {
     use super::super::{Element, Event, MarketData, Operation};
     use crate::idmap::IdMap;
     use crate::{Side, State};
+
+    /// [`Walked::walked_made`] over an event's own facts.
+    fn made<E: Event + ?Sized>(event: &E) -> bool {
+        event.get_snapunix().is_some()
+            || (*event.get_state() == State::Expired
+                && event.get_prevuuid().is_some()
+                && event.get_exprunix() == Some(event.get_currunix()))
+    }
 
     /// What a walk needs of an element beyond [`Element`]: sealed, so only
     /// `E: Event + Operation + Clone` and [`MarketData`] can name it. Every
@@ -46,6 +55,13 @@ mod sealed {
         fn walked_set_recdunix(&mut self, unix: Option<i64>);
         /// [`Event::set_snapunix`].
         fn walked_set_snapunix(&mut self, unix: Option<i64>);
+        /// [`Event::set_seqnum`], restating only where the place moves.
+        fn walked_set_seqnum(&mut self, seqnum: u64);
+        /// Whether a walk made the element rather than read it: a grid
+        /// view, stating the instant it was read as the view of, or the
+        /// expiration a walk emitted - an `EXPIRED` event following the
+        /// live one, dated at its own deadline.
+        fn walked_made(&self) -> bool;
         /// [`Operation::get_altids`]; `None` for an element the walk does
         /// not chain.
         fn walked_altids(&self) -> Option<&IdMap>;
@@ -98,6 +114,14 @@ mod sealed {
         }
         fn walked_set_snapunix(&mut self, unix: Option<i64>) {
             self.set_snapunix(unix);
+        }
+        fn walked_set_seqnum(&mut self, seqnum: u64) {
+            if self.get_seqnum() != seqnum {
+                self.set_seqnum(seqnum);
+            }
+        }
+        fn walked_made(&self) -> bool {
+            made(self)
         }
         fn walked_altids(&self) -> Option<&IdMap> {
             Some(self.get_altids())
@@ -170,6 +194,16 @@ mod sealed {
             if let Some(operation) = self.as_event_operation_mut() {
                 operation.set_snapunix(unix);
             }
+        }
+        fn walked_set_seqnum(&mut self, seqnum: u64) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                if operation.get_seqnum() != seqnum {
+                    operation.set_seqnum(seqnum);
+                }
+            }
+        }
+        fn walked_made(&self) -> bool {
+            self.as_event_operation().is_some_and(made)
         }
         fn walked_altids(&self) -> Option<&IdMap> {
             match self.as_event_operation() {
@@ -253,7 +287,7 @@ enum Source<E, I> {
 /// name a live element goes by, so a report that spells only the `ClOrdID`
 /// a live order was placed under still finds the order - is stated as the
 /// one after it by its own [`Element::with_previous`], so it records its
-/// predecessor, takes the next place in the chain and carries the
+/// predecessor, stands after it where they share an instant and carries the
 /// lifecycle forward; what that answers is what the walk yields. The
 /// yielded element then stands as the live one under that identity where
 /// it is still alive, and retires it where it is not: a filled order, an
@@ -280,7 +314,7 @@ enum Source<E, I> {
 /// under - the same instant, the same content: one message a capture
 /// logged at every hop it passed - is another statement of the live
 /// element and not the one after it. It is yielded [restating](super::Event::restating)
-/// the live one, so it takes the place the live one holds in its chain and
+/// the live one, so it takes the live one's predecessor and place and
 /// finalizes to the same identity, and the chain grows by nothing.
 ///
 /// Opened over elements the caller says are sorted, the walk reads them as
@@ -295,7 +329,10 @@ enum Source<E, I> {
 /// that exact instant in the `EXPIRED` state, then retires. Replacing or
 /// ending its generation removes the old scheduled deadline. A deadline at
 /// the same instant as source input is read first; after the source ends,
-/// the finite deadlines still live are drained in their own order.
+/// the finite deadlines still live are drained in their own order. The
+/// expirations of one deadline take its places in the order the walk hands
+/// them over - the order of the identities they retire - each the next;
+/// a source element keeps the place it came with.
 ///
 /// Given a grid - [`Self::with_snapshot_ns`], a step in nanoseconds aligned
 /// on the epoch - the walk also yields an owned view of every living identity
@@ -303,7 +340,7 @@ enum Source<E, I> {
 /// instant: dated at it - [`Event::get_currunix`](super::Event::get_currunix) and
 /// [`Event::get_snapunix`](super::Event::get_snapunix) both - so it has the
 /// identity that instant derives, a row of its own wherever rows are keyed by
-/// identity within a time, while its content, its place in the chain and its
+/// identity within a time, while its content, its place and its
 /// cross element are the live event's; it does not advance the chain. All source events at an exact
 /// boundary are read before its views, while expirations at that boundary are
 /// read before either. Source events keep the snapshot fact they stated.
@@ -348,9 +385,9 @@ enum Source<E, I> {
 /// let other = walk.next().expect("the other order's");
 /// assert_eq!((other.get_crosscode(), other.get_seqnum()), ("O-900", 0));
 /// let second = walk.next().expect("the partial fill");
-/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (1, Some(first.get_curruuid())));
+/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_curruuid())));
 /// let filled = walk.next().expect("the fill");
-/// assert_eq!((filled.get_seqnum(), filled.get_prevuuid()), (2, Some(second.get_curruuid())));
+/// assert_eq!((filled.get_seqnum(), filled.get_prevuuid()), (0, Some(second.get_curruuid())));
 /// // A filled order ended its chain: the next event under its identity
 /// // starts one afresh, and is alive beside the other order.
 /// let again = walk.next().expect("the late one");
@@ -369,8 +406,8 @@ enum Source<E, I> {
 /// let first = walk.next().expect("the order");
 /// let second = walk.next().expect("the partial fill");
 /// let twin = walk.next().expect("the partial fill, logged again");
-/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (1, Some(first.get_curruuid())));
-/// assert_eq!((twin.get_seqnum(), twin.get_prevuuid(), twin.get_curruuid()), (1, second.get_prevuuid(), second.get_curruuid()));
+/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_curruuid())));
+/// assert_eq!((twin.get_seqnum(), twin.get_prevuuid(), twin.get_curruuid()), (0, second.get_prevuuid(), second.get_curruuid()));
 /// ```
 #[derive(Debug)]
 pub struct EventIterator<E, I> {
@@ -412,6 +449,12 @@ pub struct EventIterator<E, I> {
     /// The latest source or emitted deadline reached. It bounds a grid at
     /// EOF after the last finite deadline is removed from the schedule.
     watermark: Option<i64>,
+    /// The places the walk gives at each instant: its expirations always,
+    /// and where it places what it reads, every source element too.
+    sequence: InstantSequence,
+    /// Whether the walk places the source elements it reads, rather than
+    /// keeping the places they came with.
+    placing: bool,
 }
 
 /// One identity's live element and the identity it arrived under - what it
@@ -459,7 +502,21 @@ where
             snapshot_index: 0,
             after_group: None,
             watermark: None,
+            sequence: InstantSequence::default(),
+            placing: false,
         }
+    }
+
+    /// The walk placing every source element it reads by content among
+    /// what it handed over at that instant, before it follows anything -
+    /// after the expirations of that instant, which the walk hands over
+    /// first - rather than keeping the place the element came with. What a
+    /// walk made - [`Walked::walked_made`] - keeps the place the walk gave
+    /// it, so a walked stream read again answers itself.
+    #[must_use]
+    pub(crate) fn with_placing(mut self, placing: bool) -> Self {
+        self.placing = placing;
+        self
     }
 
     /// The walk reading one snapshot per grid step of `snapshot_ns`
@@ -469,6 +526,15 @@ where
     pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self {
         self.snapshot_ns = snapshot_ns;
         self
+    }
+
+    /// Places `element` by content among what the walk handed over at its
+    /// instant.
+    fn place(&mut self, element: &mut E) {
+        if let Some(unix) = element.walked_currunix() {
+            let seqnum = self.sequence.place(unix, Some(element.get_currhashcode()));
+            element.walked_set_seqnum(seqnum);
+        }
     }
 
     /// The grid step in nanoseconds, where the walk reads snapshots.
@@ -496,12 +562,16 @@ where
         if is_alive(element) {
             let side = element.walked_side();
             for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
-                let slots = self
-                    .named
-                    .entry(scheme.to_owned())
-                    .or_default()
-                    .entry(name.to_owned())
-                    .or_default();
+                // Looked up borrowed first, as the bases are: a chain settled
+                // again under the names it already goes by allocates nothing.
+                let names = match self.named.get_mut(scheme) {
+                    Some(names) => names,
+                    None => self.named.entry(scheme.to_owned()).or_default(),
+                };
+                let slots = match names.get_mut(name) {
+                    Some(slots) => slots,
+                    None => names.entry(name.to_owned()).or_default(),
+                };
                 // One identity per side a name is alive on.
                 let held = match slots.iter_mut().find(|(held, _)| *held == side) {
                     Some(slot) => Some(std::mem::replace(&mut slot.1, identity)),
@@ -671,7 +741,11 @@ where
         expired.walked_set_execunix(None);
         expired.walked_set_recdunix(None);
         expired.walked_set_snapunix(None);
+        // An expiration is an event of its own deadline, handed over before
+        // anything the walk reads at it: it takes the next place the walk
+        // gives there, and stands after the live one where that is later.
         expired.finalize();
+        self.place(&mut expired);
         let fallback = expired.clone();
         Some(expired.with_previous(&previous).unwrap_or(fallback))
     }
@@ -879,6 +953,10 @@ where
             self.watermark = Some(self.watermark.map_or(unix, |held| held.max(unix)));
             if self.lookahead.as_ref().and_then(Walked::walked_currunix) != Some(unix) {
                 self.after_group = Some(unix);
+            }
+            let mut element = element;
+            if self.placing && element.is_walked() && !element.walked_made() {
+                self.place(&mut element);
             }
             return Some(self.walk_source(element));
         }

@@ -114,7 +114,8 @@ def event(unix: int, state: str) -> graph.OrderEvent:
 placed = event(T, "NEW")
 filled = event(T + 1_000_000_000, "PARTIALLY_FILLED").with_previous(placed)
 assert filled is not None
-assert (filled.prevuuid, filled.prevunix, filled.seqnum) == (placed.curruuid, T, 1)
+# A later instant keeps its own place: the first there.
+assert (filled.prevuuid, filled.prevunix, filled.seqnum) == (placed.curruuid, T, 0)
 assert filled.crossuuid == placed.crossuuid, "one chain"
 assert filled.prevpx is not None and filled.prevpx.as_py() == Decimal("189.50")
 # Never itself, never one that happened after it.
@@ -159,7 +160,10 @@ arrived = [
     event(4, "O-1001", "NEW"),
 ]
 chained = walk(arrived, sorted=False)
-assert [held.seqnum for held in chained] == [0, 1, 1, 2, 0]
+# Each step is at an instant of its own, so each is the first there; the
+# chain is in prevuuid.
+assert [held.seqnum for held in chained] == [0, 0, 0, 0, 0]
+assert chained[3].prevuuid == chained[1].curruuid
 assert chained[1].curruuid == chained[2].curruuid, "a twin, not a successor"
 assert chained[4].prevuuid is None, "the fill ended the chain"
 # A chain's creation instant is its first element's, carried along it.
@@ -501,8 +505,9 @@ assert len(last.executions) == 1
   never `None` - `Side.UNKNOWN` is unstated.
 - `graph.BookIterator(items, snapshot_millis=0)`;
   `EventIterator(items, sorted=True, snapshot_ns=None)` defaults to trusting
-  the order - an unsorted list is not refused, it yields broken chains (every
-  `seqnum` 0); pass `sorted=False` for one you have not sorted.
+  the order - an unsorted list is not refused, it yields broken chains (a step
+  before its live element yielded as it came, `prevuuid` None); pass
+  `sorted=False` for one you have not sorted.
 - Prices and quantities take `Decimal("189.5")` (or an `int`): a float
   `price=189.5` is refused at `$.price` (`got f64`). `fxrates` takes
   `{"EUR": Decimal("1.1")}` and reads back as `dict[str, Scalar]`: each rate

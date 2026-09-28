@@ -111,7 +111,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     let second = walk.next().expect("the second incarnation");
     assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(second.get_prevunix(), Some(at(10)));
-    assert_eq!(second.get_seqnum(), 1);
+    assert_eq!(second.get_seqnum(), 0);
     assert_eq!(second.get_crossuuid(), first.get_crossuuid());
     // Enriched by the element's own reading: the lifecycle carried forward,
     // the order's own identifier with it, and the identity re-derived
@@ -124,7 +124,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     );
     let third = walk.next().expect("the third incarnation");
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
-    assert_eq!(third.get_seqnum(), 2);
+    assert_eq!(third.get_seqnum(), 0);
     assert_eq!(third.get_creaunix(), Some(at(5)));
     // A walk over the walked answers the same chain.
     assert!(walk.next().is_none());
@@ -155,10 +155,10 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
         places(walked.iter().cloned()),
         [
             (10, 0, None),
-            (20, 1, Some(10)),
-            (30, 2, Some(20)),
-            (40, 3, Some(30)),
-            (40, 4, Some(40)),
+            (20, 0, Some(10)),
+            (30, 0, Some(20)),
+            (40, 0, Some(30)),
+            (40, 1, Some(40)),
         ]
     );
     assert_eq!(walked[3].get_altids().get(EXEC_ID), Some("E-5"));
@@ -175,7 +175,7 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
     let mut walk = EventIterator::new(arrived, true);
     walk.next().expect("the first");
     let done = walk.next().expect("the fill");
-    assert_eq!(done.get_seqnum(), 1, "the ending element still follows");
+    assert_eq!(done.get_seqnum(), 0, "the ending element still follows");
     assert_eq!(walk.alive().count(), 0, "and nothing is alive after it");
     let fresh = walk.next().expect("the late one");
     assert_eq!((fresh.get_seqnum(), fresh.get_prevuuid()), (0, None));
@@ -198,9 +198,9 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
         places(walked.clone().into_iter()),
         [
             (10, 0, None),
-            (20, 1, Some(10)),
+            (20, 0, Some(10)),
             (30, 0, None),
-            (31, 1, Some(30)),
+            (31, 0, Some(30)),
             (40, 0, None),
         ]
     );
@@ -274,7 +274,7 @@ fn replay_keeps_each_execution_clock_and_the_chain() {
 
     let replayed: Vec<_> = EventIterator::new(first, true).collect();
     assert_eq!(replayed[1].get_execunix(), Some(at(20)));
-    assert_eq!(replayed[1].get_seqnum(), 1);
+    assert_eq!(replayed[1].get_seqnum(), 0);
     assert_eq!(replayed[1].get_prevuuid(), Some(replayed[0].get_curruuid()));
 }
 
@@ -389,10 +389,10 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     let second = walk.next().expect("the fill");
     assert_eq!(
         (second.get_seqnum(), second.get_prevuuid()),
-        (1, Some(first.get_curruuid()))
+        (0, Some(first.get_curruuid()))
     );
     let twin = walk.next().expect("the fill, logged again");
-    assert_eq!(twin.get_seqnum(), 1, "the chain grows by nothing");
+    assert_eq!(twin.get_seqnum(), 0, "the chain grows by nothing");
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
     assert_eq!(twin.get_curruuid(), second.get_curruuid());
     assert_eq!(twin, second);
@@ -400,7 +400,7 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     let third = walk.next().expect("the third");
     assert_eq!(
         (third.get_seqnum(), third.get_prevuuid()),
-        (2, Some(second.get_curruuid()))
+        (0, Some(second.get_curruuid()))
     );
     assert_eq!(walk.alive().count(), 1);
 
@@ -436,7 +436,9 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     let second = walk.next().expect("the fill");
     let successor = walk.next().expect("the fill, named");
     assert_eq!(successor.get_prevuuid(), Some(second.get_curruuid()));
-    assert_eq!(successor.get_seqnum(), 2);
+    // The named statement arrives at the fill's own instant, so it takes
+    // the place after it rather than keeping its own.
+    assert_eq!(successor.get_seqnum(), 1);
     assert_eq!(successor.get_altids().get(EXEC_ID), Some("E-2"));
     assert_eq!(
         walk.alive().next().map(Element::get_curruuid),
@@ -444,7 +446,7 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     );
 
     // On a grid, source statements stay source statements. The owned views
-    // are separate and a twin changes no chain place in either one.
+    // are separate and a twin changes no place in either one.
     let first = incarnation("O-100", 10);
     let arrived = vec![
         first.clone(),
@@ -460,9 +462,9 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
             (0, None),
             (0, None),
             (0, Some(10)),
-            (1, None),
-            (2, None),
-            (2, Some(20)),
+            (0, None),
+            (0, None),
+            (0, Some(20)),
         ]
     );
 }
@@ -480,7 +482,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     let order = walk.next().expect("the order");
     let report = walk.next().expect("the report");
     assert_eq!(report.get_prevuuid(), Some(order.get_curruuid()));
-    assert_eq!(report.get_seqnum(), 1);
+    assert_eq!(report.get_seqnum(), 0);
     // Followed, the report carries the chain's cross code and stands as
     // the live one under the chain's identity, its own names with it.
     assert_eq!(report.get_crosscode(), "O-100");
@@ -542,13 +544,13 @@ fn an_element_before_the_live_one_is_yielded_as_it_came_and_changes_nothing() {
     let mut walk = EventIterator::new(arrived, true);
     walk.next().expect("the first");
     let third = walk.next().expect("the third");
-    assert_eq!(third.get_seqnum(), 1);
+    assert_eq!(third.get_seqnum(), 0);
     let stray = walk.next().expect("the late one");
     assert_eq!((stray.get_seqnum(), stray.get_prevuuid()), (0, None));
     // The live element is still the third, and the fourth follows it.
     let fourth = walk.next().expect("the fourth");
     assert_eq!(fourth.get_prevuuid(), Some(third.get_curruuid()));
-    assert_eq!(fourth.get_seqnum(), 2);
+    assert_eq!(fourth.get_seqnum(), 0);
 }
 
 #[test]
@@ -658,7 +660,7 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     );
     assert_eq!(expired.get_recdunix(), None, "expiry is a new event");
     assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
-    assert_eq!(expired.get_seqnum(), 1);
+    assert_eq!(expired.get_seqnum(), 0);
     assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());
     assert_eq!(
         (walked[3].get_seqnum(), walked[3].get_prevuuid()),
@@ -696,6 +698,33 @@ fn deadlines_precede_equal_time_sources_and_views_and_eof_drains_in_order() {
             (30, None, "O-900", true),
         ]
     );
+}
+
+#[test]
+fn the_expirations_of_one_deadline_take_its_places_in_order() {
+    // Two orders sharing one deadline and a third at that very instant: the
+    // walk hands the expirations over first - in the order of the
+    // identities they retire - each at the next place of the deadline, and
+    // keeps the place the source element came with.
+    let mut first = incarnation("O-100", 10);
+    first.set_exprunix(Some(at(20)));
+    let mut second = incarnation("O-200", 15);
+    second.set_exprunix(Some(at(20)));
+    let walked: Vec<_> =
+        EventIterator::new([first, second, incarnation("O-900", 20)], true).collect();
+
+    assert_eq!(
+        walked[2..]
+            .iter()
+            .map(|event| (
+                ms(event.get_currunix()),
+                event.get_state().is_failed(),
+                event.get_seqnum()
+            ))
+            .collect::<Vec<_>>(),
+        [(20, true, 0), (20, true, 1), (20, false, 0)]
+    );
+    assert_eq!(walked[4].get_crosscode(), "O-900");
 }
 
 #[test]
@@ -954,7 +983,7 @@ fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through(
         .expect("the fill keeps its kind");
     assert_eq!(
         (leaf.get_seqnum(), leaf.get_prevuuid()),
-        (1, Some(order.get_curruuid()))
+        (0, Some(order.get_curruuid()))
     );
     let twin = walk.next().expect("the fill, logged again");
     assert_eq!(twin, second, "the chain grows by nothing");
@@ -964,7 +993,7 @@ fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through(
             third.as_order_event().unwrap().get_seqnum(),
             third.as_order_event().unwrap().get_prevuuid()
         ),
-        (2, Some(second.get_curruuid()))
+        (0, Some(second.get_curruuid()))
     );
     assert_eq!(walk.alive().count(), 1);
 }

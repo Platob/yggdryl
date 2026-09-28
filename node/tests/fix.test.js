@@ -2209,6 +2209,36 @@ let committedRegistry
     assert.equal(order.execunix, null)
   })
 
+  test('the lifecycle yields an identity once within its dedup window', () => {
+    const registry = seed()
+    // The core's pin: one minute unless stated, null clearing it.
+    assert.equal(new fix.FixCodec(registry).dedupWindowMs, 60_000)
+    assert.equal(new fix.FixCodec(registry, { dedupWindowMs: undefined }).dedupWindowMs, 60_000)
+    assert.equal(new fix.FixCodec(registry, { dedupWindowMs: 5_000 }).dedupWindowMs, 5_000)
+    assert.equal(new fix.FixCodec(registry, { dedupWindowMs: null }).dedupWindowMs, null)
+    assert.equal(new fix.FixCodec(registry, { dedupWindowMs: 0 }).dedupWindowMs, null)
+    assert.equal(new fix.FixCodec(registry, { dedupWindowMs: -1 }).dedupWindowMs, null)
+    assert.throws(() => new fix.FixCodec(registry, { dedupWindowMs: 1.5 }), /whole number/i)
+    const codec = fixedCodec(registry)
+    // Set on a codec in hand, it keeps every other setting.
+    const wide = codec.withSortedLifecycle(true).withDedupWindowMs(7_200_000)
+    assert.deepEqual([wide.dedupWindowMs, wide.sortedLifecycle], [7_200_000, true])
+    assert.deepEqual(wide.excludeMsgtypes, codec.excludeMsgtypes)
+    assert.equal(wide.withDedupWindowMs(null).dedupWindowMs, null)
+
+    const order = (sequence, clordid) => codec.parseFixLine(Buffer.from(
+      `8=FIX.4.4|35=D|49=S|56=T|34=${sequence}|52=20260102-10:15:30|11=${clordid}|55=AAPL|54=1|38=100|10=0|`,
+    ))
+    // The order delivered again under another sequence restates the live
+    // order, under its identity, after another order rather than beside it.
+    const messages = [order(1, 'A1'), order(2, 'B1'), order(3, 'A1')]
+    const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
+    assert.equal(every.length, 3)
+    assert.equal(every[2].curruuid, every[0].curruuid)
+    const once = [...codec.lifecycle(messages)]
+    assert.deepEqual(once.map((held) => held.curruuid), every.slice(0, 2).map((held) => held.curruuid))
+  })
+
   test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
     const intrinsic = new fix.FixRegistry()
     assert.throws(() => intrinsic.setCodeset('msgcatcodeset', []), /fixed MsgCat operation identifiers/)
@@ -2255,7 +2285,8 @@ let committedRegistry
     assert.equal('marketoperationid' in original, false)
     const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
     assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
-    assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 1])
+    // distinct lands at its own later instant, so it keeps its own place.
+    assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 0])
 
     const later = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|'))
     const earlier = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|'))
@@ -2277,8 +2308,8 @@ let committedRegistry
     assert.ok(emittedSnapshots.length > 0)
     assert.ok(emittedSnapshots.every((message) => message.snapunix < deadline))
     // A view is the live message as of its tick: dated at it, so it has the
-    // identity that tick derives, while its content, its place in the chain
-    // and its cross element are the live message's.
+    // identity that tick derives, while its content, its place and its
+    // cross element are the live message's.
     const [live] = walked
     assert.equal(live.snapunix, null)
     for (const view of emittedSnapshots) {
@@ -4105,7 +4136,7 @@ let committedRegistry
     const back = [...codec.messages(walked)]
     assert.equal(back.length, LIFE.length)
     // The same walk the message stream answers, through the rows: each
-    // message states its place in the chain, the one before it, and the
+    // message states its place, the one before it, and the
     // semantic row of the corresponding stream message. Projected columns and
     // residual entries may rebuild in another child order; the row identity
     // and the chain it names are what the walk states.
@@ -4127,7 +4158,7 @@ let committedRegistry
   test('a bridge capture parses whole and walks its chains', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['timestamp', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'level'],
+      captureNames: ['mtime', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'loglevel'],
       defaultSendingTime: SENDING,
     })
     const messages = captured(codec)
@@ -4168,13 +4199,27 @@ let committedRegistry
     // microseconds, so those lines arrived with no session, context or
     // sequence and could not be folded onto the deliveries they repeat. The
     // 56 executions split off the fills fold, hop onto hop, into the eight
-    // fills they are, each a delivery of its own (A12).
+    // fills they are, each a delivery of its own (A12). It was 31 since the
+    // walk yields each identity once within its deduplication window: four
+    // of the 35 were twins restating the live message they repeat. It is 37
+    // since the row header dates each line by the clock in front of it: the
+    // ten rows stating no FIX type state no sending time either, so each is
+    // dated by its line - seven deliveries at their own instants, none a
+    // twin, where the one instant every line shared made them two, one of
+    // them a twin.
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 35)
+    assert.equal(retained.length, 37)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 36)
+    assert.equal(walked.length, 38)
+    // A walk remembering nothing answers the three as well, each an identity
+    // it had already answered, and nothing else.
+    const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
+    assert.equal(every.length, 41)
+    const seen = new Set()
+    const once = every.filter((message) => !seen.has(message.curruuid) && seen.add(message.curruuid))
+    assert.deepEqual(once.map((message) => message.curruuid), walked.map((message) => message.curruuid))
 
     const counts = (held) => {
       const found = new Map()
@@ -4189,17 +4234,23 @@ let committedRegistry
     const removed = Object.fromEntries(
       [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
     )
-    // The 56 split executions fold into eight (A12): 54 + 48.
-    assert.deepEqual(removed, { 8: 102, '': 6, D: 1, cancelreject: 6 })
+    // The 56 split executions fold into eight (A12): 54 + 48; and the three
+    // twins the window yields once - a report, an execution and a cancel
+    // reject. Of the ten typeless rows nine are deliveries of their own.
+    assert.deepEqual(removed, { 8: 104, '': 1, D: 1, cancelreject: 7 })
 
-    // The default cross-code chains six retained bridge messages.
-    // Every non-root message states both its predecessor and a positive sequence.
+    // The default cross-code chains six retained bridge messages, each
+    // stating its predecessor.
     assert.equal(walked.filter((message) => message.prevuuid !== null).length, 6)
-    assert.equal(walked.filter((message) => message.seqnum > 0).length, 6)
+    // seqnum > 0 now marks a place after another event of the same instant:
+    // split executions beside their reports, and same-instant chain steps.
+    assert.equal(walked.filter((message) => message.seqnum > 0).length, 11)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
-    // one output; only the six rows that state no FIX type lose their
-    // provenance. Two cancel rejects lost theirs as well until the row
+    // one output; only the four twins the window yields once take their own
+    // sources with them, now that seqnum no longer feeds currhashcode and the
+    // six rows that state no FIX type fold their provenance in instead of
+    // losing it. Two cancel rejects lost theirs as well until the row
     // header's clock admitted the bridge's grouped microseconds - unread,
     // those lines carried no delivery key to be folded onto. The synthetic
     // expiry keeps its predecessor's provenance and lands at the stated
@@ -4211,13 +4262,15 @@ let committedRegistry
     assert.ok(retained.every((message) =>
       message.srcuuids.length > 0 && message.srcuuids.every((source) => inputSources.has(source))))
     const retainedSources = retained.flatMap((message) => message.srcuuids)
-    assert.equal(new Set(retainedSources).size, inputSources.size - 6)
+    assert.equal(new Set(retainedSources).size, inputSources.size - 4)
 
     const [expiry] = expired
     const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
     assert.ok(predecessor)
     assert.equal(expiry.currunix, predecessor.exprunix)
-    assert.equal(expiry.seqnum, predecessor.seqnum + 1)
+    // The expiry starts at 0, and its deadline is a later instant than its
+    // live predecessor, so it keeps that place.
+    assert.equal(expiry.seqnum, 0)
     assert.deepEqual(expiry.srcuuids, predecessor.srcuuids)
 
     // And the Arrow twin answers the same walk over the same corpus.
@@ -4282,18 +4335,19 @@ let committedRegistry
   test('a bridge capture reads as sorted market operations that fold into books', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['timestamp', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'level'],
+      captureNames: ['mtime', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'loglevel'],
       defaultSendingTime: SENDING,
       threads: 1,
     })
     // The capture read off its bytes, as `rust/tests/fix/ulbridge.rs` reads
-    // it: nothing has a modification time, so an undated line takes the
-    // codec's clock rather than the file's `mtime` - which is what makes the
-    // book identity below the same in every language.
+    // it: each line is dated by the clock the bridge wrote in front of it,
+    // which is what makes the book identity below the same in every
+    // language.
     const options = new TextOptions()
     options.rowheader = ROWHEADER
     options.startRownum = 1n
-    options.timezone = 'UTC'
+    // The bridge writes Zurich's local time.
+    options.timezone = 'Europe/Zurich'
     const messages = []
     for (const line of IOBase.fromBytes(fs.readFileSync(CAPTURE)).readTextLines(options)) {
       for (const message of codec.parseTextLine(line)) messages.push(message)
@@ -4301,17 +4355,25 @@ let committedRegistry
     // A12: 56 executions split off the fills.
     assert.equal(messages.length, 94 + 56)
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 36)
+    assert.equal(walked.length, 38)
 
-    // Nineteen deliveries reach a book - eight fills, the eight reports they
-    // were split off, now their orders' reports, and three orders - and
-    // nothing is refused: the trade capture is no book input, since a
-    // trade's fills are the executions its parse splits off (A12).
+    // Seventeen deliveries reach a book - eight fills, the eight reports they
+    // were split off, now their orders' reports, and three orders, less a
+    // fill and a report the window yields once - and nothing is refused: the
+    // trade capture is no book input, since a trade's fills are the
+    // executions its parse splits off (A12).
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 19)
+    assert.equal(operations.length, 17)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 8, order_event: 11 })
+    assert.deepEqual(census, { execution_event: 7, order_event: 10 })
+    // The two a walk remembering nothing answers beside them each repeat an
+    // identity already there.
+    const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
+    assert.equal(every.length, 19)
+    const seen = new Set()
+    const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
+    assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
     // Every operation folds into a book: seven, the last holding nothing,
     // its unpriced order having rested and left at one instant.
@@ -4324,8 +4386,9 @@ let committedRegistry
     // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
     // book digests its entries and deltas rather than side summaries (A2),
     // no book control but its scope (A1), no lanes (A10), and the deltas'
-    // side-prefixed cross codes (A17).
-    assert.equal(last.currhashcode, 16_200_745_769_023_081_660n)
+    // side-prefixed cross codes (A17), and each event's place out of its
+    // content code, a delta's place its instant's.
+    assert.equal(last.currhashcode, 10_559_977_729_007_194_651n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {
@@ -4348,20 +4411,67 @@ let committedRegistry
     for (let at = 0; at < captures.fieldLen; at += 1) {
       names.push(captures.fieldAt(at).name)
     }
-    assert.deepEqual(names.slice(-7), [
-      'timestamp',
+    assert.deepEqual(names.slice(-6), [
       'msgthreadid',
       'msgsessionid',
       'msgctxid',
       'msgseqnum',
       'msgpluginid',
-      'level',
+      'loglevel',
     ])
     assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
-    // The clock is the capture's own column rather than `currunix`, so this
-    // header dates no line: it is typed by its own syntax, where an `mtime`
-    // capture would be consumed into `currunix` and read at nanoseconds UTC.
-    assert.equal(String(captures.field('timestamp').dtype), 'datetime64(us)')
-    assert.ok(!names.slice(-7).includes('mtime'))
+    // The clock is `mtime`, consumed into each line's `currunix`, so it
+    // leads no column of its own.
+    assert.ok(!names.includes('mtime') && !names.includes('timestamp'))
+  })
+
+  test('the bridge row header dates each line by its own clock', () => {
+    const options = new TextOptions()
+    options.rowheader = ROWHEADER
+    options.timezone = 'UTC'
+    // A file has a modification time of its own, which dates no line the
+    // header matched.
+    const lines = [...new IOBase(CAPTURE).readTextLines(options)]
+    assert.equal(lines.length, 144)
+    // `2026-08-14 14:46:39.769` in front of the first line, read in UTC.
+    assert.equal(lines[0].currunix, 1_786_718_799_769_000_000n)
+    assert.equal(lines[0].mtime, lines[0].currunix)
+    const clocks = new Set(
+      fs
+        .readFileSync(CAPTURE, 'latin1')
+        .split('\n')
+        .filter((line) => line.length > 0)
+        .map((line) => line.split(' [')[0]),
+    )
+    const dated = new Set(lines.map((line) => line.currunix))
+    assert.equal(clocks.size, 40)
+    assert.equal(dated.size, clocks.size)
+    assert.ok(!dated.has(BigInt(Math.trunc(fs.statSync(CAPTURE).mtimeMs)) * 1_000_000n))
+    // A point or a comma opens the fraction, and a clock may state none.
+    const loose = IOBase.fromBytes(
+      Buffer.from(
+        '2026-08-14 14:46:39.769 [7] [P] (INFO) a\n2026-08-14 14:46:39,769_123 [7] [P] (INFO) b\n2026-08-14 14:46:40 [7] [P] (WARN) c\n',
+      ),
+    )
+    assert.deepEqual(
+      [...loose.readTextLines(options)].map((line) => line.currunix),
+      [1_786_718_799_769_000_000n, 1_786_718_799_769_123_000n, 1_786_718_800_000_000_000n],
+    )
+  })
+
+  test('a parse places each message among the messages of its instant', () => {
+    const order = '8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|'
+    const other = '8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=B1|55=MSFT|54=1|38=100|10=0|'
+    const later = '8=FIX.4.4|35=D|52=20260102-10:15:31.000|11=C1|55=IBM|54=1|38=100|10=0|'
+    for (const threads of [1, 4]) {
+      const parsed = [...reading(seed(), { threads }).parseLines([order, other, order, later])]
+      // By order: the order read again stands third at its instant, an
+      // identity of its own.
+      assert.deepEqual(parsed.map((held) => held.seqnum), [0, 1, 2, 0])
+      assert.notEqual(parsed[0].curruuid, parsed[2].curruuid)
+      assert.equal(parsed[0].currhashcode, parsed[2].currhashcode)
+      // The place orders the identities of one millisecond.
+      assert.ok(parsed[1].curruuid > parsed[0].curruuid)
+    }
   })
 }

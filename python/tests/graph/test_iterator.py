@@ -30,7 +30,8 @@ def test_an_order_chains_to_the_live_order_it_follows() -> None:
     assert head.seqnum == 0 and head.prevuuid is None
     assert first.creaunix is None and head.creaunix == CLOCK and tail.creaunix == CLOCK
     assert tail.prevuuid == first.curruuid
-    assert tail.prevunix == CLOCK and tail.seqnum == 1
+    # A later instant keeps its own place, even one nanosecond on.
+    assert tail.prevunix == CLOCK and tail.seqnum == 0
 
 
 def test_an_execution_and_every_other_leaf_walk_through() -> None:
@@ -46,7 +47,7 @@ def test_an_execution_and_every_other_leaf_walk_through() -> None:
     # The execution follows the order it fills across kinds, keeping its own.
     fill = walked[1].as_execution_event()
     assert fill is not None and fill.crossuuid == first.crossuuid
-    assert fill.prevuuid == first.curruuid and fill.seqnum == 1
+    assert fill.prevuuid == first.curruuid and fill.seqnum == 0
 
 
 def test_unsorted_items_are_sorted_first() -> None:
@@ -90,8 +91,9 @@ def test_a_view_is_the_live_event_as_of_its_tick() -> None:
         assert view.currhashcode == source.currhashcode
         assert (view.seqnum, view.prevuuid, view.crossuuid) == (source.seqnum, source.prevuuid, source.crossuuid)
         assert (view.curruuid == source.curruuid) == (tick == source.currunix)
-    # The tick past the replacement views it, the chain it follows kept.
-    assert views[-1].prevuuid == first.curruuid and views[-1].seqnum == 1
+    # The tick past the replacement views it: a later instant keeps its own
+    # place, the chain it follows kept.
+    assert views[-1].prevuuid == first.curruuid and views[-1].seqnum == 0
     assert views[1].curruuid != first.curruuid
 
 

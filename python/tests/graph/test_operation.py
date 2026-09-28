@@ -202,7 +202,8 @@ def test_an_order_follows_the_order_it_replaces() -> None:
     assert followed is not None
     assert followed.prevuuid == first.curruuid
     assert followed.prevunix == first.currunix
-    assert followed.seqnum == 1
+    # A later instant keeps its own place.
+    assert followed.seqnum == 0
     assert later.prevuuid is None  # immutable: the verb answered a new event
     assert first.is_before(later) and later.is_after(first)
     assert not first.is_after(first)

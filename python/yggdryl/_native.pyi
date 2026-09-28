@@ -6113,8 +6113,11 @@ class FixCodec:
     identifier maps off the fields that state them, splits the executions and
     two-sided quotes a message states into sided messages of their own, and
     settles the identity - there is no separate enriching step. Chaining:
-    ``lifecycle`` walks a stream of messages as one lifecycle, each stated
-    as the one after the live message it follows under its cross identity.
+    ``lifecycle`` walks a stream of messages as one lifecycle, each placed
+    among the messages of its instant by content, then stated as following
+    the live message under its cross identity - its own place unless the
+    predecessor happened at the same instant or later, where it takes the
+    higher of its own and one past the predecessor's.
     Each has an Arrow twin over ``pyarrow.RecordBatchReader``:
     ``parse_text_arrow_reader`` parses a capture's batches into batches of FIX
     rows, ``lifecycle_arrow_reader`` walks batches of FIX rows in place,
@@ -6168,6 +6171,7 @@ class FixCodec:
         snapshot_ns: int | None = None,
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
+        dedup_window_ms: int | None | EllipsisType = ...,
         market_metadata: bool = True,
     ) -> None: ...
     @property
@@ -6197,6 +6201,9 @@ class FixCodec:
     @property
     def official_time_delay_ms(self) -> int: ...
     @property
+    def dedup_window_ms(self) -> int | None: ...
+    def with_dedup_window_ms(self, dedup_window_ms: int | None) -> FixCodec: ...
+    @property
     def market_metadata(self) -> bool: ...
     @property
     def include_msgtypes(self) -> list[str]: ...
@@ -6220,6 +6227,7 @@ class FixCodec:
         snapshot_ns: int | None = None,
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
+        dedup_window_ms: int | None | EllipsisType = ...,
         market_metadata: bool = True,
     ) -> FixCodec: ...
     @staticmethod

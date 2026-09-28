@@ -1230,6 +1230,75 @@ fn a_sorted_lifecycle_walks_an_hour_before_it_reads_the_last() {
     assert_eq!(pulls.get(), 12);
 }
 
+#[test]
+fn the_lifecycle_yields_an_identity_once_within_its_dedup_window() {
+    let codec = super::fixed_codec(super::committed_registry());
+    assert_eq!(FixCodec::DEFAULT_DEDUP_WINDOW_MS, 60_000);
+    assert_eq!(codec.dedup_window_ms(), Some(60_000));
+    for (window, read) in [(1, Some(1)), (0, None), (-1, None)] {
+        assert_eq!(
+            codec.clone().with_dedup_window_ms(window).dedup_window_ms(),
+            read
+        );
+    }
+    let parse = |line: String| codec.parse_fix_line(line.as_bytes()).expect("a message");
+    let order = |at: &str, clordid: &str, sequence: u64| {
+        parse(format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={sequence}|52=20260102-{at}|11={clordid}|55=AAPL|54=1|38=100|10=0|"
+        ))
+    };
+    // The order delivered again under another sequence is another delivery
+    // of the same event: the walk restates the live order with it, so it
+    // answers the order's own identity - after another order, not beside
+    // its twin.
+    let messages = vec![
+        order("10:15:30", "A1", 1),
+        order("10:15:30", "B1", 2),
+        order("10:15:30", "A1", 3),
+    ];
+    let every = walked(&codec.clone().with_dedup_window_ms(0), messages.clone());
+    assert_eq!(every.len(), 3);
+    assert_eq!(every[2], every[0], "the repeat restates the order");
+    assert_eq!(walked(&codec, messages), every[..2]);
+
+    // The window is event time: a repeat read after the walk has moved
+    // further than the window past it is yielded again. A sorted source
+    // walks a message dated before an hour it already walked where it
+    // arrives, after what the walk yielded since.
+    let late = vec![
+        order("10:15:30", "A1", 1),
+        order("12:00:00", "X1", 2),
+        order("14:00:00", "Z1", 3),
+        order("10:15:30", "A1", 4),
+    ];
+    let sorted = codec.clone().with_sorted_lifecycle(true);
+    let minute = walked(&sorted, late.clone());
+    assert_eq!(minute.len(), 4, "an hour and forty-five minutes on");
+    assert_eq!(minute[2], minute[0]);
+    let hours = walked(&sorted.with_dedup_window_ms(2 * 3_600_000), late);
+    assert_eq!(hours.len(), 3);
+    assert_eq!(hours, [minute[0], minute[1], minute[3]]);
+}
+
+#[test]
+fn a_grid_view_is_never_a_repeat_of_what_it_views() {
+    // A view at the live message's own instant derives the live message's
+    // identity; it is a view, one per tick and chain, and the window
+    // neither drops nor remembers it.
+    use yggdryl::graph::Element;
+    let codec = super::fixed_codec(super::committed_registry()).with_snapshot_ns(1_000_000_000);
+    let message = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|52=20260102-10:15:30|10=0|")
+        .expect("a message");
+    let walked: Vec<FixMsg> = codec
+        .lifecycle([message])
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(walked.len(), 2, "the order and its view at its own tick");
+    assert_eq!(walked[1].get_snapunix(), Some(walked[0].get_currunix()));
+    assert_eq!(walked[1].get_curruuid(), walked[0].get_curruuid());
+}
+
 /// A cancel reject stating no `Side(54)` joins the one live side of its
 /// order and states that side from then on: in the message the walk yields
 /// and in the row it lands as, so a book folding the row reads it.
@@ -1268,4 +1337,163 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
     )
     .expect("the row reads");
     assert_eq!(again.get_side(), Side::Sell);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::holder::Buffer;
+    use yggdryl::internals::fix_enrich::dated_by_transaction_whole;
+    use yggdryl::text::{TextOptions, read_text_lines};
+    use yggdryl::{FixMsg, Timezone, Url};
+
+    /// A redated message settles what its clock moves alone where no rule
+    /// answers anew, and that is the whole pass's answer: every message of
+    /// the bridge's capture, read as bare frames and as the capture's own
+    /// lines, redated both ways, answers one message - most of them moved.
+    #[test]
+    fn a_redated_message_settles_its_clock_as_the_whole_pass_does() {
+        let codec = super::super::fixed_codec(super::super::committed_registry())
+            .with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let log = include_bytes!("ulbridge.log");
+        let bodies: Vec<Vec<u8>> = log
+            .split(|byte| *byte == b'\n')
+            .filter_map(|line| {
+                let at = line.windows(2).position(|pair| pair == b") ")? + 2;
+                Some(line[at..].to_vec())
+            })
+            .filter(|body| !body.is_empty())
+            .collect();
+        let framed: Vec<FixMsg> = codec.parse_lines(&bodies).filter_map(Result::ok).collect();
+        let source = Buffer::from_bytes(log.to_vec()).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+        let mut options = TextOptions::new()
+            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .expect("the bridge's row header compiles")
+            .with_timezone(Timezone::UTC);
+        options.start_rownum = Some(1);
+        options.parse_mimetype = true;
+        let lined: Vec<FixMsg> = codec
+            .clone()
+            .with_capture_names(options.capture_names())
+            .parse_text_lines(read_text_lines(&source, &options).expect("the capture's lines"))
+            .filter_map(Result::ok)
+            .collect();
+        for messages in [framed, lined] {
+            assert_eq!(messages.len(), 94 + 56);
+            let mut moved = 0;
+            for message in messages {
+                let settled = message.clone().dated_by_transaction().expect("redated");
+                let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+                assert_eq!(settled, whole, "{}", message.header().msgtype());
+                assert_eq!(settled.get_curruuid(), whole.get_curruuid());
+                assert_eq!(settled.get_execunix(), whole.get_execunix());
+                moved += usize::from(settled.get_currunix() != message.get_currunix());
+            }
+            assert!(moved > 100, "{moved} moved");
+        }
+    }
+
+    /// A pair no parse detected - a symbol written after the parse, which a
+    /// write leaves to intake to detect - is detected by the redate as by
+    /// the whole pass, and the message is enriched whole.
+    #[test]
+    fn a_redated_message_detects_a_pair_no_parse_read() {
+        let codec = super::super::fixed_codec(super::super::committed_registry());
+        let mut message = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|11=A1|38=100|60=20260102-10:15:30|10=0|")
+            .expect("a message");
+        message
+            .set(55, yggdryl::Scalar::from("EUR/USD"))
+            .expect("a symbol");
+        assert_eq!(message.get_by_tag(15), None, "no parse detected the pair");
+        let settled = message.clone().dated_by_transaction().expect("redated");
+        let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+        assert_ne!(settled.get_currunix(), message.get_currunix());
+        assert_eq!(settled, whole);
+        assert_eq!(
+            settled
+                .get_by_tag(15)
+                .as_ref()
+                .and_then(yggdryl::Scalar::as_str),
+            Some("EUR")
+        );
+    }
+}
+
+#[test]
+fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
+    use yggdryl::graph::Element;
+    let codec = super::fixed_codec(super::committed_registry());
+    let parse = |line: &str| codec.parse_fix_line(line.as_bytes()).expect("a message");
+    // The order, its retransmission a second later - one delivery, dated by
+    // its resend - and another order at that second: the dropped resend
+    // takes no place, so the other order is the first at its instant.
+    let messages = vec![
+        parse("8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=A|55=AAPL|54=1|38=100|10=0|"),
+        parse(
+            "8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=A|55=AAPL|54=1|38=100|10=0|",
+        ),
+        parse("8=FIX.4.4|35=D|49=S|56=T|34=9|52=20260102-10:15:31|11=B|55=MSFT|54=1|38=100|10=0|"),
+    ];
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(chained.len(), 2);
+    assert_eq!(chained[1].get_seqnum(), 0);
+    let again: Vec<FixMsg> = codec
+        .lifecycle(chained.clone())
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk again");
+    assert_eq!(again, chained);
+
+    // Orders sharing one deadline, and an order at that very instant: the
+    // walk hands the expirations over first there, each at the next place,
+    // and the order after them; they stand where it placed them, so the
+    // walk over its own answer answers it again.
+    let dated = |sequence: u64, at: &str, clordid: &str| {
+        parse(&format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={sequence}|52=20260102-{at}|126=20260102-10:15:32|11={clordid}|55=AAPL|54=1|38=100|10=0|"
+        ))
+    };
+    let messages = vec![
+        dated(1, "10:15:30", "E1"),
+        dated(2, "10:15:31", "E2"),
+        parse("8=FIX.4.4|35=D|49=S|56=T|34=3|52=20260102-10:15:32|11=S1|55=IBM|54=1|38=100|10=0|"),
+    ];
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let deadline = chained
+        .iter()
+        .filter(|message| message.get_currunix() == chained[2].get_currunix())
+        .map(|message| (*message.get_state(), message.get_seqnum()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        deadline,
+        [
+            (State::Expired, 0),
+            (State::Expired, 1),
+            (State::PendingNew, 2)
+        ],
+    );
+    let again: Vec<FixMsg> = codec
+        .lifecycle(chained.clone())
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk again");
+    assert_eq!(
+        again
+            .iter()
+            .map(|held| (held.get_curruuid(), held.get_seqnum()))
+            .collect::<Vec<_>>(),
+        chained
+            .iter()
+            .map(|held| (held.get_curruuid(), held.get_seqnum()))
+            .collect::<Vec<_>>(),
+    );
 }

@@ -225,8 +225,13 @@ impl FixMsg {
 
 /// A lazy, fallible projection of sorted FIX messages into graph market
 /// operations. Direct messages occupy no intermediate vector; one book
-/// message retains only its own expanded entries. The first source,
-/// conversion, or ordering error is yielded once and fuses the iterator.
+/// message retains only its own expanded entries. Each leaf takes the
+/// [place](crate::graph::Event::get_seqnum) its message holds - the parse's,
+/// or the lifecycle's where the messages were walked - so a chain's steps at
+/// one instant keep the order the walk gave them whatever order a table
+/// read them back in, and the entries one book message states share it. The
+/// first source, conversion, or ordering error is yielded once and fuses
+/// the iterator.
 pub struct FixMarketIterator<I>
 where
     I: Iterator,
@@ -721,7 +726,14 @@ impl FixMsg {
             if !self.reports_execution() {
                 return (self, Vec::new());
             }
-            let sides = trade_sides(&mut self);
+            let mut sides = trade_sides(&mut self);
+            // By side then chain, whatever order the group stated them in:
+            // the order a stream hands them over in is the place each takes
+            // at the trade's instant, so it must not be the group's.
+            sides.sort_by(|left, right| {
+                (left.get_side(), left.get_crosscode())
+                    .cmp(&(right.get_side(), right.get_crosscode()))
+            });
             return (self, sides);
         }
         if category == MarketDataKind::Quotation {

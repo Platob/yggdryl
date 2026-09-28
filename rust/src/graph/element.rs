@@ -479,8 +479,8 @@ fn union_sources<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
 
 /// The facts an event takes from restating `live`, another statement of
 /// the same event: the predecessor's chain facts as [`follow_element`]
-/// takes them, and the place `live` holds in its chain - its predecessor, its position, its snapshot - because the two
-/// statements are one event and the chain grows by nothing. Its sources
+/// takes them, and `live`'s predecessor, place and snapshot, because the
+/// two statements are one event and the chain grows by nothing. Its sources
 /// stay its own: where a statement was read from travels along no chain,
 /// so a twin keeps the line it came from and never the live one's.
 pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
@@ -623,8 +623,9 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 }
 
 /// The timed facts an event takes from following `previous`: the
-/// predecessor's identity and instant, the next place in the chain, and
-/// what any element takes from following - the cross code, the names it went by - with the
+/// predecessor's identity and instant, the higher of its own place and one
+/// past the predecessor's where that happened at this event's instant or
+/// later, and what any element takes from following - the cross code, the names it went by - with the
 /// lifecycle carried forward. An unstamped execution input dates itself, then
 /// the later of that precise clock and the predecessor's remains the latest
 /// execution the lifecycle has reached; whether any fact moved.
@@ -639,11 +640,15 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     changed |= moved(this.get_prevunix(), Some(previous.get_currunix()), |unix| {
         this.set_prevunix(unix)
     });
-    changed |= moved(
-        this.get_seqnum(),
-        previous.get_seqnum().saturating_add(1),
-        |place| this.set_seqnum(place),
-    );
+    // A step at a later instant keeps the place its own instant gave it;
+    // one at its predecessor's instant, or before it, stands after it.
+    let seqnum = if previous.get_currunix() >= this.get_currunix() {
+        this.get_seqnum()
+            .max(previous.get_seqnum().saturating_add(1))
+    } else {
+        this.get_seqnum()
+    };
+    changed |= moved(this.get_seqnum(), seqnum, |place| this.set_seqnum(place));
     changed |= follow_element(this, previous);
     let stated_expiry = this.get_exprunix();
     changed |= this.fold_lifecycle(previous);
@@ -659,7 +664,7 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 
 /// The timed facts an event takes from another statement of itself: the
 /// earliest execution and recording instants, the reference statement's
-/// instant and code, the further place in the chain, the lifecycle folded,
+/// instant and code, the higher place, the lifecycle folded,
 /// and the reference's predecessor and snapshot where stated, otherwise the
 /// other statement's; whether any moved.
 pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
@@ -759,8 +764,7 @@ impl Drop for Staged<'_> {
 }
 
 /// Feeds what [`Event::digest_event`] feeds, less the cross code: the selected
-/// names the event goes by, its state, its place in the chain and
-/// its predecessor's identity. A holder can leave out a name that records
+/// names the event goes by, its state and its predecessor's identity. A holder can leave out a name that records
 /// capture provenance rather than event content without duplicating the
 /// framing this digest owns.
 pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
@@ -768,13 +772,165 @@ pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 }
 
 /// Continues a digest with the facts an event states that are not
-/// instants: the state, the place in the chain and the predecessor's
-/// identity.
+/// instants: the state and the predecessor's identity. The place an event
+/// takes among the events of its instant is where it stands, never what it
+/// says, so two statements of one event digest alike wherever a stream
+/// placed them, and the place reaches the identity through
+/// [`Event::time_uuid`] alone.
 fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
     feed(state, "state", &this.get_state().code().to_le_bytes());
-    feed(state, "seqnum", &this.get_seqnum().to_le_bytes());
     if let Some(previous) = this.get_prevuuid() {
         feed(state, "prevuuid", &previous.into_bytes());
+    }
+}
+
+/// How many distinct contents one instant places inline before a run
+/// spills its codes into a map: a message and what its parse split off.
+const INLINE_PLACES: usize = 4;
+
+/// How many contents past the inline ones a run remembers: a run is the
+/// events of one nanosecond, so only a stream stamping thousands of events
+/// with one clock - every undated message under one default sending time -
+/// reaches it, and a content past it takes the next place without being
+/// remembered, a later statement of it taking a place of its own. One
+/// megabyte of held state at most.
+const SPILLED_PLACES: usize = 1 << 16;
+
+/// The place each event of a stream takes among the events of its instant,
+/// in the order the stream hands them over: the one rule [`Event::get_seqnum`]
+/// states, held once per stream by every door that places what it yields.
+///
+/// A run is the events a stream hands over at one `currunix`, one after
+/// another, and the next instant starts a run of its own at zero. A door
+/// places either by order - every event the next place of its run, which is
+/// what a parse hands over - or by content - the first content of a run
+/// place zero, each content after it the next, and a statement of a content
+/// the run already placed that content's place, which is what a walk reads,
+/// so two statements of one event are one identity. Its state is the one
+/// run it is in: the instant, how many it placed, the codes it placed by
+/// content - inline to [`INLINE_PLACES`], so a run of a message and its
+/// splits costs no allocation, and past them to [`SPILLED_PLACES`] in a
+/// map - and the identities its last [`INLINE_PLACES`] placings moved, so a
+/// message split off one, handed over right after it, names the identity
+/// its source was placed under.
+#[derive(Debug, Default)]
+pub(crate) struct InstantSequence {
+    /// The instant the current run stands at, none before the first event.
+    unix: Option<i64>,
+    /// How many places the current run has given.
+    placed: u64,
+    /// The first contents of the run, in place order.
+    inline: [u64; INLINE_PLACES],
+    /// The run's contents past the inline ones, each to its place.
+    spilled: std::collections::HashMap<u64, u64>,
+    /// Each identity the run's last placings moved, beside the one it moved
+    /// to, oldest first: at most [`INLINE_PLACES`], because a message a
+    /// parse split off another is handed over right after it, so held
+    /// inline and never allocated.
+    moved: [(Uuid, Uuid); INLINE_PLACES],
+    /// How many of `moved`, from the first, the current run holds.
+    moves: usize,
+}
+
+impl InstantSequence {
+    /// The place an event at `unix` takes after what this stream handed
+    /// over before it, counted into the run: by content `code` where one is
+    /// given - a content the run placed takes its place again - else by
+    /// order.
+    pub(crate) fn place(&mut self, unix: i64, code: Option<u64>) -> u64 {
+        let seqnum = self.find(unix, code);
+        self.record(unix, code, seqnum);
+        seqnum
+    }
+
+    /// Places `event` by order after what this stream handed over before
+    /// it - the next place of its instant's run - first naming each source a
+    /// placing of this run moved by the identity it moved to: a message a
+    /// parse split off another follows it at its instant, and names it.
+    pub(crate) fn place_naming_sources<E: Event + ?Sized>(&mut self, event: &mut E) {
+        let unix = event.get_currunix();
+        let moved = &self.moved[..self.moves];
+        if self.unix == Some(unix) && !moved.is_empty() {
+            let named = event.get_srcuuids();
+            if named
+                .iter()
+                .any(|source| moved.iter().any(|(from, _)| from == source))
+            {
+                let renamed = named
+                    .iter()
+                    .map(|source| {
+                        moved
+                            .iter()
+                            .find(|(from, _)| from == source)
+                            .map_or(*source, |(_, to)| *to)
+                    })
+                    .collect();
+                event.set_srcuuids(renamed);
+            }
+        }
+        let seqnum = self.find(unix, None);
+        let before = event.get_curruuid();
+        restate(event, seqnum);
+        self.record(unix, None, seqnum);
+        let after = event.get_curruuid();
+        if after != before {
+            if self.moves == INLINE_PLACES {
+                self.moved.copy_within(1.., 0);
+                self.moves -= 1;
+            }
+            self.moved[self.moves] = (before, after);
+            self.moves += 1;
+        }
+    }
+
+    /// The place an event of content `code` takes at `unix`, counting
+    /// nothing: by content, the one its content already took in the run;
+    /// else the next.
+    fn find(&self, unix: i64, code: Option<u64>) -> u64 {
+        if self.unix != Some(unix) {
+            return 0;
+        }
+        let Some(code) = code else {
+            return self.placed;
+        };
+        let inline =
+            usize::try_from(self.placed).map_or(INLINE_PLACES, |placed| placed.min(INLINE_PLACES));
+        if let Some(at) = self.inline[..inline].iter().position(|held| *held == code) {
+            return at as u64;
+        }
+        self.spilled.get(&code).copied().unwrap_or(self.placed)
+    }
+
+    /// Counts an event placed at `seqnum` at `unix` into the run - its
+    /// content `code` where it was placed by content - a new instant
+    /// starting a run of its own.
+    fn record(&mut self, unix: i64, code: Option<u64>, seqnum: u64) {
+        if self.unix != Some(unix) {
+            self.unix = Some(unix);
+            self.placed = 0;
+            self.spilled.clear();
+            self.moves = 0;
+        }
+        if seqnum != self.placed {
+            return;
+        }
+        if let Some(code) = code {
+            match usize::try_from(seqnum) {
+                Ok(index) if index < INLINE_PLACES => self.inline[index] = code,
+                _ if self.spilled.len() < SPILLED_PLACES => {
+                    self.spilled.insert(code, seqnum);
+                }
+                _ => {}
+            }
+        }
+        self.placed = seqnum.saturating_add(1);
+    }
+}
+
+/// Restates `event`'s place where it moves.
+fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
+    if event.get_seqnum() != seqnum {
+        event.set_seqnum(seqnum);
     }
 }
 
@@ -782,8 +938,8 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///
 /// The instant is `currunix`: a count of nanoseconds since the Unix epoch, UTC,
 /// held as an `i64`, the count every clock this crate reads states. Coupled
-/// with the code the element's content digests to, its place in the chain and
-/// its cross code, it is the event's identity: [`Self::txhash`] is the crate's
+/// with the code the element's content digests to, its place at that instant
+/// and its cross code, it is the event's identity: [`Self::txhash`] is the crate's
 /// own [`TxHash`] of the instant and [`Element::get_currhashcode`], and
 /// [`Self::time_uuid`] is RFC 9562 UUIDv7 ordered by millisecond and sequence,
 /// with an XXH3 payload seeded by the cross hash code. That UUID is what an
@@ -793,8 +949,22 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// Where the event stands is its [`State`], the crate's ranked lifecycle
 /// code, and every event has one: an event that reached no state says so
 /// with the code that means exactly that, `UNKNOWN`, never with an
-/// absence. Where it stands in its chain is `seqnum`: the count of events
-/// before it, which following increments and merging keeps the highest of.
+/// absence. Where it stands among the events of its instant is `seqnum`:
+/// zero for the first event a stream hands over at an instant, one more for
+/// each next one at that same instant, and zero again at the next instant.
+/// A FIX parse places by order, every message the next place of its
+/// instant; the FIX lifecycle places what it reads by content, a content
+/// repeated at an instant taking the place it took there, after the
+/// expirations it hands over first at that instant; a market leaf takes its
+/// message's place, and a text line's place is its row number. Following
+/// keeps an event's own place, unless the predecessor happened at the same
+/// instant or later, where it takes the higher of its own and one past the
+/// predecessor's; merging keeps the higher of two. So an identity sorts by
+/// its millisecond, then by its place - two instants inside one millisecond
+/// each counting from zero - and regenerating any stretch of a stream that
+/// starts at a new instant places every event in it as the whole stream
+/// did. A place is where an event stands, never what it says: no content
+/// code feeds it.
 /// Six more instants and one more identity are optional, because an event
 /// states them only where it knows them: when it was created, the latest
 /// execution its lifecycle has reached, when it was recorded and when it
@@ -1000,13 +1170,16 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
 /// assert_eq!(second.get_prevunix(), Some(10_000));
 /// // Following carries the lifecycle forward: the earliest creation known,
-/// // the cross code the chain shares - its digest and the cross identity in
-/// // step - and the next place in it.
+/// // and the cross code the chain shares - its digest and the cross
+/// // identity in step. A later instant is a place of its own, so the place
+/// // stays the first; a step at its predecessor's instant takes the next.
 /// assert_eq!(second.get_creaunix(), Some(5_000));
 /// assert_eq!(second.get_crosscode(), "O-100");
 /// assert_ne!(second.get_crosshashcode(), 0);
 /// assert_eq!(second.get_crossuuid(), second.cross_uuid());
-/// assert_eq!(second.get_seqnum(), 1);
+/// assert_eq!(second.get_seqnum(), 0);
+/// let third = Report::at(3, 20_000).with_previous(&second).expect("the same instant follows");
+/// assert_eq!(third.get_seqnum(), 1);
 /// // An event follows neither itself nor one that happened after it.
 /// assert!(Report::at(1, 10_000).with_previous(&first).is_none());
 /// assert!(Report::at(3, 5_000).with_previous(&second).is_none());
@@ -1016,9 +1189,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// assert_eq!(held.get_currunix(), 20_000);
 /// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
-/// // The identity its millisecond, sequence and seeded content derive.
-/// let earlier = first.time_uuid().expect("an instant a TxHash holds");
-/// let later = second.time_uuid().expect("an instant a TxHash holds");
+/// // The identity its millisecond, place and seeded content derive: two
+/// // events of one millisecond sort by their places.
+/// let earlier = second.time_uuid().expect("an instant a TxHash holds");
+/// let later = third.time_uuid().expect("an instant a TxHash holds");
 /// assert!(earlier < later);
 /// assert_eq!(first.txhash().expect("a TxHash").unix(), 10_000);
 /// ```
@@ -1047,10 +1221,11 @@ pub trait Event: Element {
         self.get_state().is_execution()
     }
 
-    /// Where this event stands in its chain: how many came before it.
+    /// Where this event stands among the events of its instant: zero for
+    /// the first its stream handed over there, one more for each next.
     fn get_seqnum(&self) -> u64;
 
-    /// Records where this event stands in its chain.
+    /// Records where this event stands among the events of its instant.
     fn set_seqnum(&mut self, seqnum: u64);
 
     /// When this event was created, in the same count as [`Self::get_currunix`],
@@ -1114,8 +1289,9 @@ pub trait Event: Element {
     /// because it already follows it.
     ///
     /// The predecessor's identity and instant are recorded on it, its place
-    /// in the chain is the one after the predecessor's, and the lifecycle
-    /// carries forward: the creation is the earliest the two know, the
+    /// is its own unless the predecessor happened at the same instant, where
+    /// it is the one after the predecessor's, and the lifecycle carries
+    /// forward: the creation is the earliest the two know, the
     /// expiration the latest, the state the furthest along, and each where
     /// only one states it is that one's; the names the predecessor went by
     /// and this event does not state are taken, because a name issued at
@@ -1185,7 +1361,7 @@ pub trait Event: Element {
     /// the reference's. The reference is the statement with the latest
     /// `recdunix`; a stated clock leads an unstated one, a tie falls back
     /// to the later event instant, and an exact tie keeps this one. The
-    /// place in the chain is the further of the two; the
+    /// place is the higher of the two; the
     /// lifecycle folds as [`Self::following`] folds it - earliest creation,
     /// latest expiration, furthest state; the execution and recording clocks
     /// are the earliest either statement of this event knows; and the
@@ -1269,8 +1445,8 @@ pub trait Event: Element {
     }
 
     /// Continues [`Element::digest`] with the facts an event states that
-    /// are not instants: the state, the place in the chain and the
-    /// predecessor's identity.
+    /// are not instants and not its place: the state and the predecessor's
+    /// identity.
     ///
     /// Provided, for an implementor's [`Element::finalize`] to feed its own
     /// content behind. The instants - when it happened, was created,
@@ -1326,5 +1502,23 @@ pub(super) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Optio
         other.or(this)
     } else {
         this.or(other)
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/graph/element.rs` pins and a caller cannot reach.
+
+    /// The places one stream's events take, each given as its instant and
+    /// its content code, in the order the stream hands them over: by
+    /// content, or by order where `by_content` is false.
+    #[must_use]
+    pub fn instant_places(events: &[(i64, u64)], by_content: bool) -> Vec<u64> {
+        let mut sequence = super::InstantSequence::default();
+        events
+            .iter()
+            .map(|&(unix, code)| sequence.place(unix, by_content.then_some(code)))
+            .collect()
     }
 }

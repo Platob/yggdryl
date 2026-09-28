@@ -578,7 +578,7 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
         80,
         "a filled state sits on the done rank"
     );
-    assert_eq!(event.get_seqnum(), 0, "no place in a chain yet");
+    assert_eq!(event.get_seqnum(), 0, "first at its instant");
     event.set_seqnum(4);
     assert_eq!(event.get_seqnum(), 4);
 
@@ -634,20 +634,20 @@ fn following_records_the_predecessor_and_refuses_what_cannot_follow() {
         .expect("a later element follows an earlier one");
     assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(second.get_prevunix(), Some(10));
-    // The place in the chain is the one after the predecessor's, and what
-    // the element itself says stays: its instant.
-    assert_eq!(second.get_seqnum(), 1);
+    // A later instant keeps the place it already had.
+    assert_eq!(second.get_seqnum(), 0);
     assert_eq!(second.get_currunix(), 20);
-    // A chain of three ends two places after its first element and records
-    // only the one before it; following what it already follows changes
-    // nothing.
+    // A step at a later instant keeps its own place, however many steps its
+    // chain has taken; following what it already follows changes nothing.
     let third = Report::at(4, 30).with_previous(&second).expect("follows");
-    assert_eq!(third.get_seqnum(), 2);
+    assert_eq!(third.get_seqnum(), 0);
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
     assert!(third.clone().with_previous(&second).is_none());
+    // An equal instant is not later: it takes the place after its
+    // predecessor's, saturating past the widest one a predecessor can hold.
     let mut deep = Report::at(5, 40);
     deep.set_seqnum(u64::MAX);
-    let capped = Report::at(6, 50).with_previous(&deep).expect("follows");
+    let capped = Report::at(6, 40).with_previous(&deep).expect("follows");
     assert_eq!(
         capped.get_seqnum(),
         u64::MAX,
@@ -659,6 +659,8 @@ fn following_records_the_predecessor_and_refuses_what_cannot_follow() {
         .with_previous(&first)
         .expect("an equal instant follows");
     assert_eq!(same.get_prevuuid(), Some(first.get_curruuid()));
+    // An equal instant stands after its predecessor's place.
+    assert_eq!(same.get_seqnum(), 1);
 
     // An element follows neither itself nor one that happened after it.
     assert!(Report::at(1, 10).with_previous(&first).is_none());
@@ -902,8 +904,9 @@ fn following_adopts_the_predecessors_cross_code() {
     let mut shared = Report::at(4, 40);
     shared.set_crosscode("O-100".to_owned());
     shared.finalize();
-    let shared = shared.with_previous(&order).expect("follows by its place");
-    assert_eq!(shared.get_seqnum(), 1);
+    let shared = shared.with_previous(&order).expect("follows");
+    // A later instant keeps its own place.
+    assert_eq!(shared.get_seqnum(), 0);
     assert_eq!(shared.get_crossuuid(), order.get_crossuuid());
 
     // The crate's own event does the same, and re-derives its identity.
@@ -961,7 +964,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     // The place the live one holds is the twin's: the chain grows by nothing.
     assert_eq!(twin.get_prevuuid(), Some(Uuid::from_v8(1)));
     assert_eq!(twin.get_prevunix(), Some(10));
-    assert_eq!(twin.get_seqnum(), 1);
+    assert_eq!(twin.get_seqnum(), 0);
     assert_eq!(twin.get_snapunix(), Some(20));
     // The chain's cross code is forced, and its codes brought in step.
     assert_eq!(twin.get_crosscode(), "O-100");
@@ -1075,7 +1078,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     later.set_seqnum(3);
     let merged = first.clone().merge_with(&later).expect("the same element");
     // The later statement has the last word on the instant and the code,
-    // and the further place in the chain stands.
+    // and the higher place stands.
     assert_eq!(merged.get_currunix(), 20);
     assert_eq!(merged.get_currhashcode(), 0xB);
     assert_eq!(merged.get_seqnum(), 3);
@@ -1437,16 +1440,18 @@ fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
     event.set_currunix(at(0));
     assert_eq!(event.get_curruuid(), uncrossed);
 
-    // The place in the chain owns rand_a and is also fed whole into rand_b.
+    // The place at the instant owns rand_a and is also fed whole into
+    // rand_b, and it is where the event stands, never what it says: the
+    // code is the same wherever a stream placed it.
     let placed = event.digest_market_event().as_u64();
     event.set_seqnum(1);
     assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
     assert_ne!(event.get_curruuid(), uncrossed);
     assert_eq!(decoded(event.get_curruuid()).1, 1);
-    assert_ne!(
+    assert_eq!(
         event.digest_market_event().as_u64(),
         placed,
-        "the place is inside the code"
+        "the place is outside the code"
     );
     event.set_seqnum(0);
     assert_eq!(event.get_curruuid(), uncrossed);
@@ -1630,7 +1635,8 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
         (
             next.time_uuid().expect("an identity"),
             at(20),
-            1,
+            // A later instant keeps its own place.
+            0,
             Some(held.get_curruuid()),
             // What the trade itself says moves nowhere.
             Some(decimal("82.5")),
@@ -1837,7 +1843,8 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
     // What an element states moves the code: a cross code, the state, the
-    // place in its chain, the predecessor.
+    // predecessor - never the place, which is where an event stands rather
+    // than what it says.
     let mut crossed = same.clone();
     crossed.set_crosscode("O-1".to_owned());
     assert_ne!(code(&event), code(&crossed));
@@ -1984,7 +1991,9 @@ fn merging_two_incarnations_of_one_identity_unions_their_sources_once() {
         [Uuid::from_v8(70), Uuid::from_v8(71), Uuid::from_v8(72)]
     );
     assert_eq!(merged.get_prevuuid(), Some(other.get_curruuid()));
-    assert_eq!(merged.get_seqnum(), 2);
+    // Every step of both chains stood at a later instant than the one
+    // before it, so each kept its own place; merging keeps the higher.
+    assert_eq!(merged.get_seqnum(), 0);
     // Each identity once: the same statement folded again changes nothing,
     // and a fold that changes nothing is no fold.
     assert!(
@@ -2158,7 +2167,8 @@ fn a_linked_market_event_still_inherits_a_missing_ticker() {
         .expect("market facts can change when the timed link is unchanged");
     assert_eq!(inherited.get_ticker(), Some("AAPL"));
     assert_eq!(inherited.get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(inherited.get_seqnum(), 1);
+    // A later instant keeps its own place.
+    assert_eq!(inherited.get_seqnum(), 0);
     assert_ne!(inherited.get_curruuid(), before);
     assert!(inherited.with_previous(&previous).is_none());
 }
@@ -2204,7 +2214,8 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     // one it followed.
     assert_eq!(followed.get_price(), Some(Decimal::from_int(83)));
     assert_eq!(followed.get_quantity(), Some(Decimal::from_int(400)));
-    assert_eq!(followed.get_seqnum(), 1);
+    // A later instant keeps its own place.
+    assert_eq!(followed.get_seqnum(), 0);
 
     // A statement of its own never gives way to the chain's.
     let mut own = OrderEvent::at(at(20));
@@ -2304,4 +2315,81 @@ fn an_isin_derives_only_the_deterministic_missing_identifiers() {
         .expect("a plain holder");
     foreign.finalize();
     assert_eq!(foreign.get_securityids().len(), 1);
+}
+
+#[test]
+fn following_keeps_its_own_place_unless_the_predecessor_shares_or_passes_its_instant() {
+    let mut first = OrderEvent::at(at(0));
+    first.set_crosscode("O-1".to_owned());
+    first.finalize();
+    // A later instant is a place of its own: following keeps it.
+    let later = OrderEvent::at(at(1))
+        .with_previous(&first)
+        .expect("a later event follows");
+    assert_eq!(later.get_seqnum(), 0);
+    assert_eq!(later.get_prevuuid(), Some(first.get_curruuid()));
+    let mut placed = OrderEvent::at(at(1));
+    placed.set_seqnum(3);
+    let placed = placed.with_previous(&first).expect("a later event follows");
+    assert_eq!(
+        placed.get_seqnum(),
+        3,
+        "a later event keeps the place its instant gave it"
+    );
+    // A step at its predecessor's instant stands after it, and keeps a
+    // higher place its instant already gave it.
+    let mut same = OrderEvent::at(at(0));
+    same.set_state(State::Filled);
+    let same = same
+        .with_previous(&first)
+        .expect("the same instant follows");
+    assert_eq!(same.get_seqnum(), 1);
+    let mut ahead = OrderEvent::at(at(0));
+    ahead.set_state(State::Filled);
+    ahead.set_seqnum(5);
+    let ahead = ahead
+        .with_previous(&first)
+        .expect("the same instant follows");
+    assert_eq!(ahead.get_seqnum(), 5);
+    // At the same instant, the later place's identity sorts after its
+    // predecessor's.
+    assert!(same.get_curruuid() > first.get_curruuid());
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::graph_element::instant_places;
+
+    #[test]
+    fn a_place_counts_the_contents_of_one_instant_and_restarts_at_the_next() {
+        const A: u64 = 0xA;
+        const B: u64 = 0xB;
+        const C: u64 = 0xC;
+        let stream = [
+            (10, A),
+            (10, B),
+            (10, A),
+            (10, C),
+            (20, A),
+            (20, A),
+            (10, B),
+        ];
+        // By order, a run counts its events from zero and the next instant
+        // restarts - even an instant the stream stood at before.
+        assert_eq!(instant_places(&stream, false), [0, 1, 2, 3, 0, 1, 0]);
+        // By content, a content already placed in the run takes its place
+        // again.
+        assert_eq!(instant_places(&stream, true), [0, 1, 0, 2, 0, 0, 0]);
+        // Past the inline places a run keeps counting and still answers a
+        // repeated content its place.
+        let run: Vec<(i64, u64)> = (0..9)
+            .map(|code| (7, code))
+            .chain([(7, 5), (7, 8)])
+            .collect();
+        assert_eq!(
+            instant_places(&run, true),
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 5, 8]
+        );
+        assert!(instant_places(&[], true).is_empty());
+    }
 }

@@ -27,7 +27,8 @@ test('an order chains to the live order it follows', () => {
   assert.equal(head.prevuuid, null)
   assert.equal(tail.prevuuid, first.curruuid)
   assert.equal(tail.prevunix, CLOCK)
-  assert.equal(tail.seqnum, 1)
+  // A later instant keeps its own place.
+  assert.equal(tail.seqnum, 0)
 })
 
 test('an execution and every other leaf walk through', () => {
@@ -44,7 +45,8 @@ test('an execution and every other leaf walk through', () => {
   const fill = walked[1].asExecutionEvent()
   assert.equal(fill.crossuuid, first.crossuuid)
   assert.equal(fill.prevuuid, first.curruuid)
-  assert.equal(fill.seqnum, 1)
+  // A later instant keeps its own place.
+  assert.equal(fill.seqnum, 0)
 })
 
 test('unsorted items are sorted first', () => {

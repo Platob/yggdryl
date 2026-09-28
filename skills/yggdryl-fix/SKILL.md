@@ -20,11 +20,14 @@ reports once: a filling execution report adds its `EXEC` message, a trade one
 execution per side, a two-sided quote a `BUY` and a `SELL` quote.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
-own, in parallel (`threads`), answers in input order, and never looks at
-another message. **Lifecycle is the only cross-message stage**: `lifecycle`
-collects a finite capture, sorts it by event time, folds duplicate deliveries,
-chains each message to the live one of its order (`crossuuid`, `prevuuid`,
-`seqnum`) and learns instrument associations. Nothing chains unasked.
+own, in parallel (`threads`), answers in input order, and never reads another
+message - it only takes the next place (`seqnum`) of its instant in stream
+order, so a report and the execution split off it are places 0 and 1.
+**Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
+capture, sorts it by event time, folds duplicate deliveries, places each
+message by content among the messages of its instant (a content repeated
+there keeps its place), chains it to the live one of its order (`crossuuid`,
+`prevuuid`) and learns instrument associations. Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
 (fields, 181 messages, 737 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
@@ -83,7 +86,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 2. Pin a run on the codec, never per call: `threads`, `batch_byte_size`
    (128 MiB target) / `batch_row_size` (32,768), `include_msgtypes`,
    `payload_column`, `default_sending_time`, `snapshot_ns`,
-   `sorted_lifecycle`. One codec reads a
+   `sorted_lifecycle`, `dedup_window_ms`. One codec reads a
    line and a batch alike; there is no second options struct.
 3. For bulk, stay in Arrow: `parse_text_arrow_reader` over the text reader's
    batches pools parsing across workers and merges rows in source order under
@@ -101,7 +104,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `sorted_lifecycle` (`with_sorted_lifecycle(true)`, `sortedLifecycle`):
    `lifecycle` then holds one epoch hour at a time, walking an hour once a
    message two hours past it is read, and answers the same walk. Parse and
-   project in the parallel doors; chain once.
+   project in the parallel doors; chain once. The walk yields each
+   `curruuid` once within `dedup_window_ms` of event time (one minute by
+   default; `None`/`null`/`0` yields every restated twin too), so a
+   consumer keyed by `curruuid` needs no dedup of its own.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
    it. One message is one leaf - an order, a one-sided quote, an execution -
@@ -121,11 +127,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `fix_column_of(&schema, 35)` in Rust. Columns are the dictionary's folded
    names; the tag stays on each column's `FIX:tag`. Two captures under one
    dictionary share one schema exactly.
-9. A capture's own columns (`url`, `rownum`, `timestamp`, `level`...) lead the
+9. A capture's own columns (`url`, `rownum`, `loglevel`...) lead the
    row; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
-   parameters. A `timestamp` capture never dates a message - name it `mtime`
-   to date the line.
+   parameters. An `mtime` capture dates the line - its messages' `recdunix`
+   and the sending clock of any stating no `SendingTime(52)` - read under the
+   text options' `timezone`; a `timestamp` capture of your own dates nothing.
+   `ULBRIDGE_ROWHEADER` captures `mtime` and `loglevel`, so it dates every
+   line it matches (set `timezone` to the bridge's local zone).
 10. Store and reload a dictionary through `commit`/`from_handle` (or `yggdryl fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated
@@ -193,9 +202,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
   a RIC's `EURUSD=` - states the derived `FOREX` security identifier `EUR/USD`
   (the `forexcode` column); a pair a row states is stated, never re-derived.
-- A row header that stops matching silently changes lifecycle results (no
-  session context, no delivery folding); assert the matched-line count beside
-  the parsed-message count.
+- A row header that stops matching silently changes lifecycle results: the
+  line keeps its body but is dated by its file's modification time and
+  carries no session context (no delivery folding); assert the matched-line
+  count beside the parsed-message count.
 
 ## Language references
 

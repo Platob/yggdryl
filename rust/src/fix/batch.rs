@@ -67,9 +67,10 @@ use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8Str
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
-use super::codec::{FixCodec, SOH, Spread};
+use super::codec::{FixCodec, Placed, SOH, Spread};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
+use crate::graph::element::InstantSequence;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -96,6 +97,12 @@ impl FixCodec {
     /// One thread reads rows where they stand. Several threads hand one owned
     /// input batch to each worker, at most one batch per worker ahead, then
     /// flatten its rows in source order before this reader closes output.
+    /// A message's [place](crate::graph::Event::get_seqnum) among the
+    /// messages of its instant is known only once the rows before it are
+    /// read, so a worker places and fills every row past its batch's first
+    /// instant, and the messages of that first instant - which may continue
+    /// the run the batch before ended on - are placed and filled where the
+    /// batches meet.
     ///
     /// # Errors
     ///
@@ -107,52 +114,38 @@ impl FixCodec {
         let field = super::fix_schema_carrying(&carrier, &read)?;
         let reader = self.row_reader(&carrier, &read)?;
         let schema = field.clone();
+        if self.threads() == 1 {
+            let rows = BatchRows::over(source, Arc::clone(&reader));
+            let messages = Placed::over(rows.flat_map(move |held| {
+                carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
+            }));
+            return self.closing_reader(
+                field,
+                messages.map(move |message| charged(message, &schema)),
+            );
+        }
         // A row is parsed and every message it carries filled into its
         // fixed row on the one thread that was handed the row, so no
-        // message crosses a thread between the two halves; the rows come
-        // back in row order and the batches close on the thread that pulls
-        // them.
-        let rows = if self.threads() == 1 {
-            Spread::Sequential(
-                crate::parallel::ordered(
-                    BatchRows::over(source, Arc::clone(&reader)),
-                    1,
-                    self.chunk(),
-                    move |held: Result<(Arc<Landed>, usize)>| -> Vec<Result<Charged>> {
-                        carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
-                            .map(|message| charged(message, &schema))
-                            .collect()
-                    },
-                )
-                .flatten(),
-            )
-        } else {
-            Spread::Threaded(
-                crate::parallel::ordered(
-                    CaptureBatches::over(source),
-                    self.threads(),
-                    1,
-                    move |held| -> Vec<Result<Charged>> {
-                        match held.and_then(|batch| reader.land(batch)) {
-                            Err(error) => vec![Err(error)],
-                            Ok(batch) => {
-                                let mut rows = Vec::with_capacity(batch.records.len());
-                                for row in 0..batch.records.len() {
-                                    rows.extend(
-                                        carried_messages(reader.row(&batch, row))
-                                            .map(|message| charged(message, &schema)),
-                                    );
-                                }
-                                rows
-                            }
-                        }
-                    },
-                )
-                .with_lane_depth(1)
-                .flatten(),
-            )
-        };
-        self.closing_reader(field, rows)
+        // message crosses a thread between the two halves - but the messages
+        // of a batch's first instant, which cross once to be placed.
+        let worker = schema.clone();
+        let batches = crate::parallel::ordered(
+            CaptureBatches::over(source),
+            self.threads(),
+            1,
+            move |held| -> SeamedBatch {
+                match held.and_then(|batch| reader.land(batch)) {
+                    Err(error) => SeamedBatch::of(std::iter::once(Err(error)), &worker),
+                    Ok(batch) => SeamedBatch::of(
+                        (0..batch.records.len())
+                            .flat_map(|row| carried_messages(reader.row(&batch, row))),
+                        &worker,
+                    ),
+                }
+            },
+        )
+        .with_lane_depth(1);
+        self.closing_reader(field, Seams::over(batches, schema))
     }
 
     /// Parses a stream of Arrow batches of capture rows into the stream of
@@ -213,10 +206,22 @@ impl FixCodec {
         let read = super::fix_schema(self.registry(), ROOT_NAME)?;
         let carrier = Self::row_field(source.schema().as_ref())?;
         let reader = self.row_reader(&carrier, &read)?;
+        Ok(self.carried_arrow_messages(source, reader))
+    }
+
+    /// The messages every row of `source` carries, read through `reader`
+    /// and placed among the messages of their instants in row order.
+    fn carried_arrow_messages(
+        &self,
+        source: BatchReader,
+        reader: Arc<RowReader>,
+    ) -> impl Iterator<Item = Result<FixMsg>> + Send + use<> {
         let threads = self.threads();
+        // A bulk configuration document expands into one message per
+        // configuration, each carrying its source row's own cells.
         if threads == 1 {
             let rows = BatchRows::over(source, Arc::clone(&reader));
-            return Ok(Spread::Sequential(rows.flat_map(move |held| {
+            return Placed::over(Spread::Sequential(rows.flat_map(move |held| {
                 carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
             })));
         }
@@ -239,9 +244,7 @@ impl FixCodec {
         )
         .with_lane_depth(1)
         .flatten();
-        // A bulk configuration document expands into one message per
-        // configuration, each carrying its source row's own cells.
-        Ok(Spread::Threaded(rows))
+        Placed::over(Spread::Threaded(rows))
     }
 
     /// What every row of `carrier` is read through: where each column sits
@@ -829,6 +832,107 @@ type Charged = (u64, Scalar);
 fn charged(message: Result<FixMsg>, schema: &Field) -> Result<Charged> {
     let row = message?.into_row(schema)?;
     Ok((appended_bytes(&row), row))
+}
+
+/// One capture batch's messages as a worker read them: those of the
+/// batch's first instant still to place, because the run the batch before
+/// ended on may continue into them, then every row past that instant
+/// placed and filled here, and the run the batch ends on.
+struct SeamedBatch {
+    head: Vec<Result<FixMsg>>,
+    rest: Vec<Result<Charged>>,
+    /// Where the batch's last run stands, once its rows were placed here.
+    tail: Option<InstantSequence>,
+}
+
+impl SeamedBatch {
+    fn of(messages: impl Iterator<Item = Result<FixMsg>>, schema: &Field) -> Self {
+        let mut head = Vec::new();
+        let mut rest = Vec::new();
+        let mut first = None;
+        let mut tail: Option<InstantSequence> = None;
+        for message in messages {
+            let placing = match (&tail, &message) {
+                (Some(_), _) => true,
+                (None, Ok(held)) => {
+                    let unix = crate::graph::Event::get_currunix(held);
+                    let opens = first.is_some_and(|first| first != unix);
+                    first = Some(unix);
+                    opens
+                }
+                (None, Err(_)) => false,
+            };
+            if !placing {
+                head.push(message);
+                continue;
+            }
+            let sequence = tail.get_or_insert_with(InstantSequence::default);
+            rest.push(charged(
+                message.map(|mut held| {
+                    sequence.place_naming_sources(&mut held);
+                    held
+                }),
+                schema,
+            ));
+        }
+        Self { head, rest, tail }
+    }
+}
+
+/// The rows of seamed batches in source order: each batch's first instant
+/// placed after the run the batch before ended on, and filled here, then
+/// the rows its worker filled.
+struct Seams<I> {
+    batches: I,
+    schema: Field,
+    sequence: InstantSequence,
+    head: std::vec::IntoIter<Result<FixMsg>>,
+    rest: std::vec::IntoIter<Result<Charged>>,
+    tail: Option<InstantSequence>,
+}
+
+impl<I> Seams<I> {
+    fn over(batches: I, schema: Field) -> Self {
+        Self {
+            batches,
+            schema,
+            sequence: InstantSequence::default(),
+            head: Vec::new().into_iter(),
+            rest: Vec::new().into_iter(),
+            tail: None,
+        }
+    }
+}
+
+impl<I: Iterator<Item = SeamedBatch>> Iterator for Seams<I> {
+    type Item = Result<Charged>;
+
+    fn next(&mut self) -> Option<Result<Charged>> {
+        loop {
+            if let Some(message) = self.head.next() {
+                let sequence = &mut self.sequence;
+                return Some(charged(
+                    message.map(|mut held| {
+                        sequence.place_naming_sources(&mut held);
+                        held
+                    }),
+                    &self.schema,
+                ));
+            }
+            // The batch's own runs past its first instant stand where its
+            // worker left them.
+            if let Some(tail) = self.tail.take() {
+                self.sequence = tail;
+            }
+            if let Some(row) = self.rest.next() {
+                return Some(row);
+            }
+            let batch = self.batches.next()?;
+            self.head = batch.head.into_iter();
+            self.rest = batch.rest.into_iter();
+            self.tail = batch.tail;
+        }
+    }
 }
 
 /// The capture's own cells one row states, each under the column's name.

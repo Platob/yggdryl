@@ -330,3 +330,26 @@ test('a text read is shaped by select and where given as properties', () => {
   )
   assert.equal(options.select.isAll, true)
 })
+
+test('a line\'s row number is its place and orders its identity', () => {
+  // Three lines saying the same thing at one instant: one content, three
+  // places. The row number is the place, so the identities differ and sort
+  // in row order within the millisecond, while the code is one.
+  const options = new TextOptions()
+  options.rowheader = '^(?<mtime>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}) '
+  options.timezone = 'UTC'
+  options.startRownum = 1n
+  const lines = [
+    ...IOBase.fromBytes(
+      Buffer.from('2026-08-14T09:30:15 same\n2026-08-14T09:30:15 same\n2026-08-14T09:30:15 same\n'),
+    ).readTextLines(options),
+  ]
+  assert.deepEqual(
+    lines.map((line) => line.seqnum),
+    [1n, 2n, 3n],
+  )
+  const identities = lines.map((line) => line.curruuid)
+  assert.deepEqual([...identities].sort(), identities)
+  assert.equal(new Set(identities).size, 3)
+  assert.equal(new Set(lines.map((line) => line.currhashcode)).size, 1)
+})

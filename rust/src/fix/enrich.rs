@@ -100,11 +100,37 @@ pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> crate::Res
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
     held.derive_forex(registry.forex_memo())?;
+    enrich_detected(held)
+}
+
+/// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
+/// the one settle.
+fn enrich_detected(msg: FixMsg) -> crate::Result<FixMsg> {
+    let mut held = msg;
     super::native_derivations::fill_all(&mut held)?;
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
     held.settle();
+    Ok(held)
+}
+
+/// [`enrich_restated`] for a message whose clock alone moved -
+/// [`FixMsg::dated_by_transaction`] - over fields a pass already enriched.
+///
+/// Detection and the rules read the fields, and no field moved, so where
+/// detection moves nothing and no rule lands an answer the fixpoint stands
+/// and the pass would derive what the message already holds: what the clock
+/// moves is settled alone, [`FixMsg::settle_clock`]. A message detection or
+/// a rule still answers for - fields a caller wrote without a pass - is
+/// enriched whole.
+pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+    let mut held = msg;
+    if held.derive_forex(registry.forex_memo())? || super::native_derivations::lands_anything(&held)
+    {
+        return enrich_detected(held);
+    }
+    held.settle_clock();
     Ok(held)
 }
 
@@ -126,8 +152,12 @@ enum DeliveryKey {
     },
     /// A headerless bridge row can only prove an exact repeated event. Its
     /// capture facts keep equal content observed in distinct contexts apart.
+    /// A headerless delivery, known by its millisecond and its chain beside
+    /// its content - the identity its content derives there, whatever place
+    /// a run of that instant gave it.
     Exact {
-        uuid: crate::Uuid,
+        millisecond: i64,
+        cross: u64,
         content: u64,
         sequence: Option<u64>,
         capture_session: Option<SmolStr>,
@@ -152,7 +182,8 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
         header.msgseqnum(),
     ) else {
         return DeliveryKey::Exact {
-            uuid: message.get_curruuid(),
+            millisecond: message.get_currunix().div_euclid(1_000_000),
+            cross: message.get_crosshashcode(),
             content,
             sequence: header.msgseqnum(),
             capture_session,
@@ -227,6 +258,9 @@ fn session_event_key(message: &FixMsg) -> Option<SmolStr> {
 struct SessionEventObservations {
     message: FixMsg,
     others: Vec<FixMsg>,
+    /// The first observation's [`session_event_key`], built once where the
+    /// observations wait to be walked.
+    key: Option<SmolStr>,
 }
 
 /// Latest recording first; the event instant breaks absent/equal recording
@@ -267,6 +301,7 @@ fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -
             merged.push(SessionEventObservations {
                 message,
                 others: Vec::new(),
+                key: None,
             });
             continue;
         };
@@ -276,6 +311,7 @@ fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -
                 merged.push(SessionEventObservations {
                     message,
                     others: Vec::new(),
+                    key: None,
                 });
             }
             Entry::Occupied(entry) => merged[*entry.get()].others.push(message),
@@ -709,12 +745,13 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
                         }
                     }
                     let bucket = self.buckets.entry(hour).or_default();
-                    if let Some(key) = key {
-                        self.held.insert(key, (hour, bucket.len()));
+                    if let Some(key) = &key {
+                        self.held.insert(key.clone(), (hour, bucket.len()));
                     }
                     bucket.push(SessionEventObservations {
                         message,
                         others: Vec::new(),
+                        key,
                     });
                 }
                 Some(Err(error)) => self
@@ -734,8 +771,8 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
             let mut failures = self.failures.lock().unwrap_or_else(PoisonError::into_inner);
             let mut messages = Vec::with_capacity(bucket.len());
             for observations in bucket {
-                if let Some(key) = session_event_key(&observations.message) {
-                    self.held.remove(&key);
+                if let Some(key) = &observations.key {
+                    self.held.remove(key);
                 }
                 messages.push(fold_observations(observations, &mut failures));
             }
@@ -746,12 +783,82 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
     }
 }
 
+/// The identities a walk yielded within its deduplication window, so it
+/// yields each once.
+///
+/// An identity is remembered at the `currunix` it was yielded under and
+/// forgotten once the walk has yielded a message more than the window after
+/// it: the bound is the event time a window spans, never the capture's
+/// length. Every identity is keyed once, beside the instant it was yielded
+/// at; a sweep drops what fell out of the window whenever the table has
+/// doubled since the last one, so remembering costs amortized constant time
+/// and the table holds at most twice what the window does.
+struct Window {
+    /// The window in nanoseconds of event time; nonpositive remembers none.
+    span: i64,
+    /// Each identity yielded, at the instant it was yielded under.
+    held: HashMap<Uuid, i64>,
+    /// The latest instant yielded: how far the walk has come.
+    watermark: i64,
+    /// The size past which the table is swept again.
+    sweep_at: usize,
+}
+
+impl Window {
+    /// The fewest identities a table holds before it is swept at all.
+    const SWEEP_FLOOR: usize = 1_024;
+
+    fn new(span: i64) -> Self {
+        Self {
+            span,
+            held: HashMap::new(),
+            watermark: i64::MIN,
+            sweep_at: Self::SWEEP_FLOOR,
+        }
+    }
+
+    /// Whether the walk already yielded `message`'s identity within the
+    /// window, remembering it where it did not. A grid view is exempt and
+    /// never remembered: a view is the live message as of a tick, one per
+    /// tick and chain, and the one at the live message's own instant derives
+    /// the live message's identity. A nil identity is no identity at all.
+    fn repeats(&mut self, message: &FixMsg) -> bool {
+        if self.span <= 0 || message.get_snapunix().is_some() {
+            return false;
+        }
+        let uuid = message.get_curruuid();
+        if uuid.is_nil() {
+            return false;
+        }
+        let unix = message.get_currunix();
+        self.watermark = self.watermark.max(unix);
+        let horizon = self.watermark.saturating_sub(self.span);
+        match self.held.entry(uuid) {
+            // Within the window, inclusive of its edge.
+            Entry::Occupied(held) if *held.get() >= horizon => return true,
+            Entry::Occupied(mut held) => {
+                held.insert(unix);
+            }
+            Entry::Vacant(held) => {
+                held.insert(unix);
+            }
+        }
+        if self.held.len() >= self.sweep_at {
+            self.held.retain(|_, at| *at >= horizon);
+            self.sweep_at = (self.held.len() * 2).max(Self::SWEEP_FLOOR);
+        }
+        false
+    }
+}
+
 /// A capture walked in event-time order. Collected whole, its intake
 /// failures are reported before its messages, because sorting consumes the
 /// capture first; read sorted, one hour at a time, each is reported as the
 /// walk reaches it.
 pub(super) struct Walked<I> {
     walk: EventIterator<LifecycleMessage, Prepared<I>>,
+    /// What the walk already yielded within the codec's window.
+    window: Window,
     /// What the whole capture's intake could not read, in its order.
     failures: VecDeque<Error>,
     /// What an hourly intake could not read, found as the walk reads on:
@@ -762,8 +869,9 @@ pub(super) struct Walked<I> {
 impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
     /// The walk of `source`: collected and sorted whole, or, where `sorted`
     /// says the source is already in instant order, read as it comes and
-    /// held one hour at a time ([`Hourly`]).
-    pub(super) fn new(source: I, snapshot_ns: i64, sorted: bool) -> Self {
+    /// held one hour at a time ([`Hourly`]); a positive `window_ns` yields
+    /// each identity once within that span of event time ([`Window`]).
+    pub(super) fn new(source: I, snapshot_ns: i64, sorted: bool, window_ns: i64) -> Self {
         let mut failures = VecDeque::new();
         let mut reading = None;
         let intake = if sorted {
@@ -790,7 +898,10 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
             Intake::Whole(messages.into_iter())
         };
         Self {
-            walk: EventIterator::new(Prepared::new(intake), true).with_snapshot_ns(snapshot_ns),
+            walk: EventIterator::new(Prepared::new(intake), true)
+                .with_snapshot_ns(snapshot_ns)
+                .with_placing(true),
+            window: Window::new(window_ns),
             failures,
             reading,
         }
@@ -811,19 +922,25 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Walked<I> {
     type Item = Result<FixMsg>;
 
     fn next(&mut self) -> Option<Result<FixMsg>> {
-        if let Some(error) = self.failure() {
-            return Some(Err(error));
-        }
-        match self.walk.next() {
-            Some(held) => Some(match held.failure {
-                Some(reason) => Err(Error::InvalidRecord {
+        loop {
+            if let Some(error) = self.failure() {
+                return Some(Err(error));
+            }
+            let Some(held) = self.walk.next() else {
+                // Reading the source's end can find a last failure.
+                return self.failure().map(Err);
+            };
+            if let Some(reason) = held.failure {
+                return Some(Err(Error::InvalidRecord {
                     path: "fix.lifecycle".into(),
                     reason,
-                }),
-                None => Ok(held.message),
-            }),
-            // Reading the source's end can find a last failure.
-            None => self.failure().map(Err),
+                }));
+            }
+            // The walk has already moved on it; only its copy goes.
+            if self.window.repeats(&held.message) {
+                continue;
+            }
+            return Some(Ok(held.message));
         }
     }
 }
@@ -832,3 +949,29 @@ impl<I: Iterator<Item = Result<FixMsg>>> FusedIterator for Walked<I> {}
 
 crate::graph::delegate_market!(LifecycleMessage, message);
 crate::graph::delegate_operation!(LifecycleMessage, message);
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/enrich.rs` pins and a caller cannot reach.
+    //!
+    //! A redated message settles its clock alone where no rule answers
+    //! anew; the whole pass is what that stands for, so it is forwarded here
+    //! for the test that holds the two to one answer.
+    use std::sync::Arc;
+
+    use super::FixMsg;
+
+    /// [`FixMsg::dated_by_transaction`] through the whole enriching pass.
+    ///
+    /// # Errors
+    ///
+    /// Returns the enriching pass's refusal.
+    pub fn dated_by_transaction_whole(mut msg: FixMsg) -> crate::Result<FixMsg> {
+        if !msg.redate_by_transaction() {
+            return Ok(msg);
+        }
+        let registry = Arc::clone(msg.registry());
+        super::enrich_restated(&registry, msg)
+    }
+}

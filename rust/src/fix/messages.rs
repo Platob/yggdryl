@@ -5,6 +5,7 @@ use std::sync::Arc;
 use super::build::RowStamp;
 use super::{FixCodec, FixMsg};
 use crate::Result;
+use crate::graph::element::InstantSequence;
 use crate::text::TextEntries;
 
 enum Source {
@@ -34,12 +35,18 @@ enum Source {
 /// opens over the page the row already holds, and each message read is
 /// followed by the messages it splits into - an order's execution, a
 /// trade's sided executions, an unsided quote's sided quotes - which the
-/// parse splits off once, here. Nothing is collected. An error is yielded
-/// once and ends this iterator.
+/// parse splits off once, here. Each message takes its
+/// [place](crate::graph::Event::get_seqnum) among the row's messages of its
+/// instant, so a report and the execution split off it are places zero and
+/// one, each naming its source by the identity its place gave it. Nothing
+/// is collected. An error is yielded once and ends this iterator.
 pub struct FixMessages {
     source: Source,
     /// The messages the last one read split off, still to yield.
     split: std::vec::IntoIter<FixMsg>,
+    /// The place each message yielded takes among the row's messages of
+    /// its instant.
+    sequence: InstantSequence,
 }
 
 impl FixMessages {
@@ -56,6 +63,7 @@ impl FixMessages {
         Self {
             source,
             split: Vec::new().into_iter(),
+            sequence: InstantSequence::default(),
         }
     }
 
@@ -89,6 +97,7 @@ impl FixMessages {
             source => Self {
                 source,
                 split: self.split,
+                sequence: self.sequence,
             },
         }
     }
@@ -98,6 +107,17 @@ impl Iterator for FixMessages {
     type Item = Result<FixMsg>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let mut held = self.next_unplaced()?;
+        if let Ok(message) = &mut held {
+            self.sequence.place_naming_sources(message);
+        }
+        Some(held)
+    }
+}
+
+impl FixMessages {
+    /// The next message, split but not yet placed.
+    fn next_unplaced(&mut self) -> Option<Result<FixMsg>> {
         if let Some(split) = self.split.next() {
             return Some(Ok(split));
         }

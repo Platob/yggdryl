@@ -651,6 +651,10 @@ const wholeCodec: FixCodec = sortedCodec.withSortedLifecycle(false)
 const officialDelayCodec = new fix.FixCodec(loaded, { officialTimeDelayMs: 250 })
 const officialTimeDelayMs: number = officialDelayCodec.officialTimeDelayMs
 
+const dedupCodec = new fix.FixCodec(loaded, { dedupWindowMs: 5_000 })
+const dedupWindowMs: number | null = dedupCodec.dedupWindowMs
+const undeduplicated: FixCodec = new fix.FixCodec(loaded, { dedupWindowMs: null }).withDedupWindowMs(null)
+
 field.fix.counter = 453
 const counterTag: number | null = field.fix.counter
 field.fix.component = 'party'

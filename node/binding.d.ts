@@ -767,9 +767,11 @@ declare module './index' {
     parseTextLines(lines: Iterable<TextLine>): FixMessages
     /**
      * The one walk over a whole stream of messages, lazily: sorted by
-     * instant, each stated as the one after the live message it follows -
-     * its `prevuuid`, `prevunix`, `seqnum` and the chain's `creaunix` - and
-     * settled again. The capture is collected and sorted whole, unless
+     * instant, each placed among the messages of its instant by content,
+     * then stated as following the live message - its `prevuuid`,
+     * `prevunix`, the higher of its own `seqnum` and one past the
+     * predecessor's where that happened at the same instant or later, and
+     * the chain's `creaunix` - and settled again. The capture is collected and sorted whole, unless
      * `sortedLifecycle` states it arrives in instant order: then it is read
      * as it comes, one epoch hour held at a time.
      */
@@ -4195,18 +4197,18 @@ export interface FixMsgConstructor {
 export interface Fix {
   /**
    * The row header a ULBridge log writes in front of every line, as a
-   * `rowheader` for a text read. Four of its seven captures are named for
-   * the fields they fill - `msgsessionid`, `msgctxid`, `msgseqnum` and
-   * `msgpluginid`; `timestamp`, `msgthreadid` and `level` name none and are
-   * the capture's own columns, carried in front, so the header dates
-   * neither its line nor its message. A caller who wants the line dated -
-   * and with it the `recdunix` of its messages and the sending clock of one
-   * stating no `SendingTime(52)` - names that capture `mtime` in a header of
-   * their own, which costs the `timestamp` column and reads the clock at
-   * nanoseconds UTC whatever the expression spells. Its clock reads both
-   * fractions the bridge writes, three digits and grouped microseconds, and
-   * a line a row header does not match carries no capture context - which
-   * is what the lifecycle folds deliveries on.
+   * `rowheader` for a text read. Its clock is `mtime`, so the header dates
+   * each line it matches: the capture is consumed into the line's
+   * `currunix` - the `recdunix` of its messages and the sending clock of one
+   * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
+   * options' `timezone`, never the file's modification time. Four of the
+   * other six captures are named for the fields they fill - `msgsessionid`,
+   * `msgctxid`, `msgseqnum` and `msgpluginid`; `msgthreadid` and `loglevel`
+   * name none and are the capture's own columns, carried in front. Its
+   * clock reads what bridges write, a point or a comma before three digits
+   * or grouped microseconds, or no fraction at all, and a line a row header
+   * does not match carries no capture context - which is what the lifecycle
+   * folds deliveries on.
    */
   readonly ULBRIDGE_ROWHEADER: string
   /**

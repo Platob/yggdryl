@@ -377,7 +377,9 @@ sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`; a report stating no side joins the
 one side alive under its identifiers. A fill's execution, split off at the
 parse, is a chain of its own. A codec pinned `sorted_lifecycle=True` reads a source already in
-instant order as it comes, one epoch hour at a time, and answers the same walk.
+instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
+each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+the codec says otherwise; `dedup_window_ms=None` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
 `curruuid` is that instant's, with the live message's content and place.
 
@@ -396,13 +398,16 @@ lines = [
 ]
 # Parsed, nothing follows anything: each names only the chain it spells.
 parsed = list(codec.parse_lines(lines))
-assert all(held.seqnum == 0 and held.prevuuid is None for held in parsed)
+assert all(held.prevuuid is None for held in parsed)
+# Each takes its place at its instant: the execution stands after its report.
+assert [held.seqnum for held in parsed] == [0, 1, 0, 0]
 # Three lines, four messages: the fill's report and the execution it reports.
 assert len(parsed) == 4
 
 order, ack, fill, execution = codec.lifecycle(parsed)
-# Sorted by event time, joined by the identifiers each message went by.
-assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 1, 2)
+# Sorted by event time, joined by the identifiers each message went by; each
+# follows one of an earlier instant, so each keeps its own place.
+assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 0, 0)
 assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
@@ -411,7 +416,7 @@ assert (fill.msgcat, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
 assert ack.creaunix == fill.creaunix == order.currunix
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
-assert (execution.seqnum, execution.prevuuid) == (0, None)
+assert (execution.seqnum, execution.prevuuid) == (1, None)
 
 # Rows already in Arrow chain in place, under the schema they were read with.
 rows = codec.arrow_reader(fix_schema(registry), codec.parse_lines(lines))
@@ -605,7 +610,9 @@ with tempfile.TemporaryDirectory() as directory:
   shares it, mutation is refused. Build the dictionary, then the codecs.
 - A hashed `FixMsg` is frozen: `set` after `hash(message)` is a `TypeError`;
   `copy.copy(message)` takes writes again.
-- `snapshot_ns=` is exact integer nanoseconds; `sorted_lifecycle=` is a `bool`,
+- `snapshot_ns=` is exact integer nanoseconds; `dedup_window_ms=` is whole
+  milliseconds, not given keeping one minute and `None` clearing it;
+  `sorted_lifecycle=` is a `bool`,
   `False` unless the source is in instant order; `default_sending_time=` takes an
   aware UTC `datetime` or a nanosecond `Scalar` - pin it for reproducible reads
   of undated frames.

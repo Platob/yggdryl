@@ -16,6 +16,7 @@ use regex_automata::{Input, nfa::thompson, util::syntax};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::BatchReader;
+use crate::graph::Event;
 use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
@@ -112,11 +113,14 @@ fn text_lines(
     // The row errors want an owned location, which only a located read has.
     let url = source.as_ref().and_then(LineSource::url).cloned();
     let raw = RawRows::new(bytes, url, Arc::clone(&options));
+    let captures_creation = options.capture_names().any(|name| name == "creaunix");
     Ok(TextLines {
         raw,
         source,
         mtime,
         options,
+        created: None,
+        captures_creation,
     })
 }
 
@@ -1318,6 +1322,13 @@ pub struct TextLines {
     /// The options every line of this read resolves its readings under,
     /// shared with the splitter rather than cloned per line.
     options: Arc<TextOptions>,
+    /// The earliest instant this read has dated a line by: when the object's
+    /// lines began - the first line's, in a log written in order - which
+    /// every line stating no creation of its own states.
+    created: Option<i64>,
+    /// Whether the row header captures a `creaunix` of its own, which a line
+    /// matching it states instead.
+    captures_creation: bool,
 }
 
 impl Iterator for TextLines {
@@ -1339,12 +1350,27 @@ impl TextLines {
     /// bytes as they were, and the counts it took are counts of those bytes.
     /// Nothing else is read: the header is stated only where the cut
     /// matched it, and every other reading is the line's, on its first ask.
-    fn convert(&self, row: RawRow) -> Result<TextLine> {
+    ///
+    /// Every line of an object is one chain - its lines share the object as
+    /// their cross code - so its creation is the earliest instant the read
+    /// has dated a line by: a line stating no `creaunix` of its own states
+    /// that one - the first line's in a log written in order, and never an
+    /// instant after the line's own. A capture stating one stands, and a
+    /// capture that does not read stays refused by name.
+    fn convert(&mut self, row: RawRow) -> Result<TextLine> {
         let mut line =
             TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
         line.state_source(self.source.clone());
         line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
+        if let Some(dated) = line.dated_unix() {
+            self.created = Some(self.created.map_or(dated, |created| created.min(dated)));
+        }
+        if let Some(created) = self.created {
+            if !self.captures_creation || matches!(line.creaunix(), Ok(None)) {
+                line.set_creaunix(Some(created));
+            }
+        }
         Ok(line)
     }
 }
