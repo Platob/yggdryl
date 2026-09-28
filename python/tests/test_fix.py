@@ -1342,9 +1342,11 @@ def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     before_source = source.into_json()
 
     # The counts are over the fields, which both dictionaries already hold.
-    added, merged = target.merge_with(source)
-    assert (added, merged) == (0, merged)
-    assert merged >= 2
+    report = target.merge_with(source)
+    assert report["sources"] == 1
+    assert report["added"] == 0
+    assert report["merged"] >= 2
+    assert report["dropped"] == []
     for path in ("PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID"):
         member = target.field_by_path(path)
         assert member.fix.codeset == "partyidcodeset", path
@@ -2197,6 +2199,42 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     assert registry.into_json() == before
 
 
+def _rejection(declared: str) -> str:
+    """One CBlock declaring tag 532 as ``declared`` and binding it in ``r``."""
+    return f"""<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+  <vocabulary>
+    <vocabulary-tag name="35" alt="MsgType" type="string" />
+    <vocabulary-tag name="532" alt="MassCancelRejectReason" type="{declared}" />
+    <vocabulary-tag name="58" alt="Text" type="string" />
+  </vocabulary>
+  <grammar-binding type="r"><grammar>
+    <tag-constraint name="532" />
+    <tag-constraint name="58" />
+  </grammar></grammar-binding>
+</cplugin-configuration>"""
+
+
+def test_a_glob_of_cblocks_passes_over_a_tag_typed_two_ways(tmp_path: pathlib.Path) -> None:
+    folder = tmp_path / "cblocks"
+    folder.mkdir()
+    (folder / "bloomberg_fix44_dropcopy.cfb").write_text(_rejection("integer"))
+    (folder / "axessiq_fix44.cfb").write_text(_rejection("string"))
+    dictionary = FixRegistry()
+    report = dictionary.add_cfb_files(folder, "*.cfb")
+
+    # Every file folds; the first in URL order is held, the other is named.
+    assert report["sources"] == 2
+    [dropped] = report["dropped"]
+    assert dropped["source"].endswith("bloomberg_fix44_dropcopy.cfb")
+    assert dropped["incoming"].fix.tag == 532
+    assert dropped["incoming"].fix.branches == ["bloomberg_fix44_dropcopy"]
+    assert "utf8" in dropped["reason"] and "int32" in dropped["reason"]
+    held = dictionary.field_by_tag(532)
+    assert held.fix.branches == ["axessiq_fix44"]
+    assert dictionary.get_msgtype("r") is not None
+
+
 def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "bloomberg.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
@@ -2233,9 +2271,9 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
 
     # The vocabulary folds into a dictionary that already exists.
     dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
-    added, merged = dictionary.add_cfb_file(path, "bloomberg")
-    assert added == 1, "excludeddealers is the one definition nothing held"
-    assert merged >= 1, "symbol is the dictionary's own, stamped by the fold"
+    report = dictionary.add_cfb_file(path, "bloomberg")
+    assert report["added"] == 1, "excludeddealers is the one definition nothing held"
+    assert report["merged"] >= 1, "symbol is the dictionary's own, stamped by the fold"
     assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]
     assert dictionary.field_by_name("excludeddealers").fix.branches == ["bloomberg"]
 

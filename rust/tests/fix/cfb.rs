@@ -720,6 +720,118 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
     );
 }
 
+/// Three grammars declaring one repeating group three ways: plainly under
+/// `8`, with one more member under `D`, which tag 35's own map names
+/// `NewOrderSingle`, and with another under `AE`, which nothing names.
+const SPLIT: &str = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="35" alt="MsgType" type="string" />
+        <vocabulary-tag name="711" alt="NoUnderlyings" type="integer" />
+        <vocabulary-tag name="311" alt="UnderlyingSymbol" type="string" />
+        <vocabulary-tag name="1044" alt="UnderlyingAdjustedQuantity" type="float" />
+        <vocabulary-tag name="879" alt="UnderlyingQty" type="float" />
+      </vocabulary>
+      <grammar-binding type="8"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+        </grammar>
+      </grammar></grammar-binding>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+          <tag-constraint name="1044" />
+        </grammar>
+      </grammar></grammar-binding>
+      <grammar-binding type="AE"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+          <tag-constraint name="879" />
+        </grammar>
+      </grammar></grammar-binding>
+      <maps>
+        <map name="MSGTYPE"><entries><entry key="NewOrderSingle" value="D" /></entries></map>
+      </maps>
+    </cplugin-configuration>"#;
+
+#[test]
+fn a_split_definition_is_named_for_the_message_it_was_read_in() {
+    use yggdryl::FixCategory::{Components, Groups};
+
+    let (registry, _) = parse(SPLIT);
+    // The first shape keeps the plain names; every later shape is split under
+    // the name the message is catalogued by - tag 35's own name for `D`, the
+    // wire value's hex where nothing names `AE` - and never under a bare hex
+    // fragment of the wire value alone.
+    assert_eq!(registry.msgtype("8").unwrap().name(), "message38");
+    assert_eq!(registry.msgtype("D").unwrap().name(), "newordersingle");
+    assert_eq!(registry.msgtype("AE").unwrap().name(), "message4145");
+    for (message, component, group, member) in [
+        ("8", "underlying", "underlyings", None),
+        (
+            "D",
+            "underlying_newordersingle",
+            "underlyings_newordersingle",
+            Some("underlyingadjustedquantity"),
+        ),
+        (
+            "AE",
+            "underlying_message4145",
+            "underlyings_message4145",
+            Some("underlyingqty"),
+        ),
+    ] {
+        let occurrence = registry.definition(Components, component).unwrap();
+        assert_eq!(
+            occurrence.fields().len(),
+            1 + usize::from(member.is_some()),
+            "{component}"
+        );
+        if let Some(member) = member {
+            assert!(occurrence.get_field(member).is_some(), "{component}");
+        }
+        let held = registry.definition(Groups, group).unwrap();
+        assert_eq!(held.as_fix().component(), Some(component), "{group}");
+        // The message reaches the split it was read with.
+        let root = registry.msgtype(message).unwrap().as_field();
+        assert!(
+            root.fields()
+                .iter()
+                .any(|member| member.as_fix().group() == Some(group)),
+            "{message}"
+        );
+    }
+    for hex in ["underlying44", "underlyings44", "underlying4145"] {
+        assert!(registry.get_definition(Components, hex).is_none(), "{hex}");
+        assert!(registry.get_definition(Groups, hex).is_none(), "{hex}");
+    }
+
+    // A second binding of one wire type is that message again: it folds, and
+    // its split is the one the first binding took.
+    let rebound = SPLIT.replace(
+        "<maps>",
+        r#"<grammar-binding type="D"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+          <tag-constraint name="1044" />
+        </grammar>
+      </grammar></grammar-binding>
+      <maps>"#,
+    );
+    let (again, _) = parse(&rebound);
+    assert_eq!(
+        again.definitions(Components).count(),
+        registry.definitions(Components).count()
+    );
+    assert_eq!(
+        again.definitions(Groups).count(),
+        registry.definitions(Groups).count()
+    );
+}
+
 #[test]
 fn a_published_group_spelling_uses_the_shipped_collection_and_occurrence_names() {
     let body = r#"<cplugin-configuration fix-version="4.4">
@@ -1633,7 +1745,7 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
         .expect("one file's vocabulary");
     let before = dictionary.len();
 
-    let (added, merged) = dictionary
+    let yggdryl::FixMerge { added, merged, .. } = dictionary
         .add_cfb_file(&handle(OVERLAY), Some("morgan"))
         .expect("the second file folds into the first");
     // One tag the second file alone declares, and three that fold: the one
@@ -1666,7 +1778,7 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
     // identifies a field on the wire and no dictionary owns a range of them.
     // Sixteen rather than fifteen: the parsed dictionary states the standard
     // clock this one already holds back at it, and a restated field merges.
-    let (added, merged) = dictionary
+    let yggdryl::FixMerge { added, merged, .. } = dictionary
         .add_cfb_file(&named_handle(CBLOCK, "morgan.cfb"), None)
         .expect("the same vocabulary under a second dialect");
     assert_eq!(
@@ -1682,19 +1794,60 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
 }
 
 #[test]
-fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
+fn folding_a_cblock_into_the_committed_dictionary_keeps_what_it_holds_and_names_what_it_passes_over()
+ {
     let mut seeded = super::committed_registry().as_ref().clone();
     let before = seeded.clone();
 
-    // The imported AvgPx datatype disagrees with its committed physical width.
+    // The imported AvgPx datatype disagrees with its committed physical width:
+    // the committed field stays, the file's declaration is named, and the
+    // rest of the file still folds.
     let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
-    let error = seeded.merge_with(&vocabulary).unwrap_err();
-    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
-    assert!(error.to_string().contains("float32"), "{error}");
+    let merge = seeded.merge_with(&vocabulary).unwrap();
+    // Two declarations disagree, and the fold meets both rather than
+    // stopping at the first: AvgPx's width and LegCurrency's `ccy`, which the
+    // file spells as plain text.
+    let dropped: Vec<Option<i32>> = merge
+        .dropped
+        .iter()
+        .map(|drop| drop.incoming.as_fix().tag().unwrap())
+        .collect();
+    assert_eq!(dropped, [Some(6), Some(556)]);
     assert_eq!(
-        seeded, before,
-        "a conflicting scalar datatype does not mutate the catalog"
+        seeded.field_by_tag(556).unwrap(),
+        before.field_by_tag(556).unwrap()
     );
+    let avgpx = merge
+        .dropped
+        .iter()
+        .find(|drop| drop.incoming.as_fix().tag().unwrap() == Some(6))
+        .expect("AvgPx passed over");
+    assert_eq!(avgpx.incoming.dtype(), &DataType::Float32);
+    assert!(
+        avgpx.reason.contains("avgpx") && avgpx.reason.contains("float32"),
+        "{avgpx}"
+    );
+    assert_eq!(avgpx.source, None, "a dictionary in hand names no file");
+    let held = seeded.field_by_tag(6).unwrap();
+    assert_eq!(held.dtype(), &DataType::DECIMAL);
+    assert_eq!(
+        held,
+        before.field_by_tag(6).unwrap(),
+        "nothing of it folded"
+    );
+    assert!(
+        seeded
+            .field_by_tag(10001)
+            .unwrap()
+            .as_fix()
+            .has_branch("bloomberg"),
+        "the rest of the file arrived"
+    );
+    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::utf8());
+
+    // A field written on its own is still refused whole: a caller stating one
+    // field asked for that field, and nothing else is there to keep.
+    let before = seeded.clone();
     let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
     let error = seeded.add_fields([avgpx]).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
@@ -1703,10 +1856,7 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         message.contains("avgpx") && message.contains("float32"),
         "{message}"
     );
-    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::utf8());
-    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::DECIMAL);
-
-    assert_eq!(seeded, before, "a refused fold writes nothing");
+    assert_eq!(seeded, before, "a refused write writes nothing");
 }
 
 #[test]
@@ -1959,7 +2109,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
 #[test]
 fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     let mut dictionary = FixRegistry::new();
-    let (added, merged) = dictionary
+    let yggdryl::FixMerge { added, merged, .. } = dictionary
         .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some("morgan"))
         .expect("a readable CBlock");
     // Fourteen new fields; declared TransactTime merges into its seed, and
@@ -1992,7 +2142,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // Reading a second file is not a statement that the first one's names were
     // wrong: a field both speak is one field naming both dictionaries, and
     // with no dialect named the stem is the name.
-    let (added, merged) = dictionary
+    let yggdryl::FixMerge { added, merged, .. } = dictionary
         .add_cfb_file(&named_handle(SELLSIDE, "morgan-2024.cfb"), None)
         .expect("the same dialect, read again");
     assert_eq!(
@@ -2049,7 +2199,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         </grammar>
       </grammar></grammar-binding>
     </cplugin-configuration>"#;
-    let (added, merged) = seeded
+    let yggdryl::FixMerge { added, merged, .. } = seeded
         .add_cfb_file(&named_handle(body, "VENUE.cfb"), None)
         .expect("a compatible vocabulary folds");
     assert_eq!(
@@ -2104,7 +2254,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
 
     // The same file under a second name unions, and the list is sorted and
     // folded whichever order the dictionaries arrived in.
-    let (added, merged) = seeded
+    let yggdryl::FixMerge { added, merged, .. } = seeded
         .add_cfb_file(&handle(body), Some("Other"))
         .expect("the same vocabulary again");
     assert_eq!(
@@ -2129,18 +2279,40 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
 }
 
 #[test]
-fn reading_a_cblock_in_whole_is_one_mutation() {
-    // A changed scalar width refuses the whole imported document.
+fn reading_a_cblock_in_whole_passes_over_a_changed_width_and_names_the_file() {
+    // A changed scalar width is one declaration, passed over and named with
+    // the file it came from; the rest of the file is still a dictionary.
     let mut seeded = super::committed_registry().as_ref().clone();
     let before = seeded.clone();
+    let file = named_handle(CBLOCK, "blpfix44.cfb");
+    let merge = seeded
+        .add_cfb_file(&file, Some(DIALECT))
+        .expect("a readable CBlock folds");
+    assert_eq!(merge.sources, 1);
+    let url = file.url().unwrap().to_string();
+    assert_eq!(merge.dropped.len(), 2);
+    for drop in &merge.dropped {
+        assert_eq!(drop.source.as_deref(), Some(url.as_str()));
+        assert!(drop.to_string().starts_with(&url), "{drop}");
+        assert_eq!(branches(&drop.incoming), [DIALECT]);
+    }
+    assert_eq!(
+        seeded.field_by_tag(6).unwrap(),
+        before.field_by_tag(6).unwrap()
+    );
+    assert_eq!(seeded.dialects(), [DIALECT]);
 
+    // What leaves nothing to keep is still refused whole: a document that is
+    // not XML folds nothing.
+    let before = seeded.clone();
     let error = seeded
-        .add_cfb_file(&handle(CBLOCK), Some(DIALECT))
+        .add_cfb_file(
+            &handle("<cplugin-configuration><vocabulary>"),
+            Some("other"),
+        )
         .unwrap_err();
-    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
-    assert!(error.to_string().contains("float32"), "{error}");
+    assert!(matches!(error, Error::Parse { .. }), "{error}");
     assert_eq!(seeded, before, "neither a membership nor a field arrived");
-    assert!(seeded.dialects().is_empty());
 }
 
 #[test]
@@ -2723,8 +2895,13 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
         ("notes.txt", "not a dictionary"),
     ]);
     let mut registry = FixRegistry::new();
-    let (files, added, merged) = registry
-        .add_cfb_files(tree.as_io(), "*.cfb", None)
+    let yggdryl::FixMerge {
+        sources: files,
+        added,
+        merged,
+        ..
+    } = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
         .expect("two readable CBlocks");
 
     // The pattern is the filter: the text file is not selected, and the two
@@ -2740,7 +2917,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     // A name supplied here stamps every matched file with the one membership.
     let mut named = FixRegistry::new();
     named
-        .add_cfb_files(tree.as_io(), "*.cfb", Some("venues"))
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), Some("venues"))
         .expect("two readable CBlocks");
     assert_eq!(branches(named.field_by_tag(9001).unwrap()), ["venues"]);
     assert_eq!(branches(named.field_by_tag(9002).unwrap()), ["venues"]);
@@ -2748,7 +2925,10 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     // A pattern selecting nothing folds nothing rather than refusing.
     let mut empty = FixRegistry::new();
     assert_eq!(
-        empty.add_cfb_files(tree.as_io(), "*.xml", None).unwrap(),
+        empty
+            .add_cfb_files(tree.glob("*.xml", false).unwrap(), None)
+            .map(|merge| (merge.sources, merge.added, merge.merged))
+            .unwrap(),
         (0, 0, 0)
     );
     assert_eq!(empty, FixRegistry::new());
@@ -2763,7 +2943,7 @@ fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
     let mut registry = FixRegistry::new();
     let before = registry.stable_hash();
     let error = registry
-        .add_cfb_files(tree.as_io(), "*.cfb", None)
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
         .expect_err("the second file stops inside an element");
 
     // The refusal names the file among the matched ones, and nothing the
@@ -2771,6 +2951,477 @@ fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
     assert!(error.to_string().contains("zzz.cfb"), "{error}");
     assert_eq!(registry.stable_hash(), before);
     assert!(registry.get_field_by_tag(9001).is_none());
+}
+
+/// One CBlock declaring tag 532 as `type` and binding it in message `r`.
+fn rejection(declared: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="532" alt="MassCancelRejectReason" type="{declared}" />
+		<vocabulary-tag name="58" alt="Text" type="string" />
+	</vocabulary>
+	<grammar-binding type="r"><grammar>
+		<tag-constraint name="532" />
+		<tag-constraint name="58" />
+	</grammar></grammar-binding>
+</cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn counterparties_typing_one_tag_two_ways_fold_whole_and_name_the_file_passed_over() {
+    // Three dialects over one wire tag: two type it as text, one as an
+    // integer. Every file still folds; the first-sorting file's declaration
+    // is the one held, and the disagreement is named with its file.
+    let tree = cblock_tree(&[
+        ("bloomberg_fix44_dropcopy.cfb", &rejection("integer")),
+        ("axessiq_fix44.cfb", &rejection("string")),
+        ("tradeweb_fix44.cfb", &rejection("string")),
+    ]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("every file folds");
+    assert_eq!(merge.sources, 3);
+    assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
+    let drop = &merge.dropped[0];
+    assert_eq!(drop.incoming.as_fix().tag().unwrap(), Some(532));
+    assert_eq!(drop.incoming.dtype(), &DataType::Int32);
+    assert_eq!(branches(&drop.incoming), ["bloomberg_fix44_dropcopy"]);
+    assert!(
+        drop.source
+            .as_deref()
+            .is_some_and(|source| source.ends_with("bloomberg_fix44_dropcopy.cfb")),
+        "{drop}"
+    );
+    assert!(
+        drop.reason.contains("utf8") && drop.reason.contains("int32"),
+        "{drop}"
+    );
+    let held = registry.field_by_tag(532).unwrap();
+    assert_eq!(held.dtype(), &DataType::utf8());
+    assert_eq!(branches(held), ["axessiq_fix44", "tradeweb_fix44"]);
+    // The message the dropped declaration's file bound still arrived, and
+    // reads tag 532 the way the dictionary holds it.
+    let message = registry.msgtype("r").unwrap().as_field();
+    assert!(
+        branches(message).contains(&"bloomberg_fix44_dropcopy"),
+        "{:?}",
+        branches(message)
+    );
+    let member = message
+        .fields()
+        .iter()
+        .find(|member| member.as_fix().tag().unwrap() == Some(532))
+        .expect("tag 532 in the message");
+    assert_eq!(member.dtype(), &DataType::utf8());
+
+    // The files fold in URL order whatever order the listing arrived in, and
+    // parsing them side by side answers what one file at a time answers.
+    let mut sequential = FixRegistry::new();
+    for name in [
+        "axessiq_fix44.cfb",
+        "bloomberg_fix44_dropcopy.cfb",
+        "tradeweb_fix44.cfb",
+    ] {
+        let file = tree.child_by_path(name).unwrap();
+        sequential.add_cfb_file(file.as_io(), None).unwrap();
+    }
+    assert_eq!(sequential, registry);
+}
+
+#[test]
+fn a_field_passed_over_by_its_name_takes_the_members_reading_it_along() {
+    // The first dialect calls tag 5001 `VendorCode`, an integer; the second
+    // calls tag 6001 the same, as text. A name reaching a field under another
+    // tag is that field spelled another way, and here the datatype says it is
+    // not - so the second declaration is passed over, and so is the member
+    // of its message that reads it, which would otherwise read tag 6001 as
+    // the held field under a tag that is not its own.
+    let first = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary><vocabulary-tag name="5001" alt="VendorCode" type="integer" /></vocabulary>
+    </cplugin-configuration>"#;
+    let second = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="6001" alt="VendorCode" type="string" />
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <tag-constraint name="55" />
+        <tag-constraint name="6001" />
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both files fold");
+    let passed: Vec<(&str, Option<i32>)> = merge
+        .dropped
+        .iter()
+        .map(|drop| (drop.incoming.name(), drop.incoming.as_fix().tag().unwrap()))
+        .collect();
+    assert_eq!(
+        passed,
+        [("vendorcode", Some(6001)), ("vendorcode", Some(6001))]
+    );
+    assert!(
+        merge.dropped[1].reason.contains("passed over"),
+        "{:?}",
+        merge.dropped
+    );
+    assert_eq!(
+        registry.field_by_name("VendorCode").unwrap().dtype(),
+        &DataType::Int32
+    );
+    assert!(registry.get_field_by_tag(6001).is_none());
+    let message = registry.msgtype("D").unwrap().as_field();
+    let tags: Vec<Option<i32>> = message
+        .fields()
+        .iter()
+        .map(|member| member.as_fix().tag().unwrap())
+        .collect();
+    assert!(
+        tags.contains(&Some(55)) && !tags.contains(&Some(6001)),
+        "{tags:?}"
+    );
+}
+
+/// One CBlock whose message `D` carries the `Underlyings` group with
+/// `members`, beside message `8` carrying it with UnderlyingSymbol alone -
+/// so a file whose `D` states more splits the group under `D`'s name.
+fn underlyings(members: &str) -> String {
+    format!(
+        r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="35" alt="MsgType" type="string" />
+        <vocabulary-tag name="711" alt="NoUnderlyings" type="integer" />
+        <vocabulary-tag name="311" alt="UnderlyingSymbol" type="string" />
+        <vocabulary-tag name="1044" alt="UnderlyingAdjustedQuantity" type="float" />
+        <vocabulary-tag name="879" alt="UnderlyingQty" type="float" />
+      </vocabulary>
+      <grammar-binding type="8"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+        </grammar>
+      </grammar></grammar-binding>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />
+          <tag-constraint name="311" required="true" />
+          {members}
+        </grammar>
+      </grammar></grammar-binding>
+      <maps>
+        <map name="MSGTYPE"><entries><entry key="NewOrderSingle" value="D" /></entries></map>
+      </maps>
+    </cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_reads() {
+    use yggdryl::FixCategory::{Components, Groups};
+
+    // The first dialect declares `Underlyings` one way for both messages; the
+    // second declares one more member under `D`, so its `D` reads the split
+    // `underlyings_newordersingle`. Folding the second into the first is one
+    // message `D` reading one group: the split's members fold into the group
+    // `D` already reads, and nothing is passed over.
+    let tree = cblock_tree(&[
+        ("a.cfb", &underlyings("")),
+        ("b.cfb", &underlyings(r#"<tag-constraint name="1044" />"#)),
+    ]);
+    // A group two messages of one file declare alike is one group.
+    let (alone, _) = parse(&underlyings(""));
+    assert!(
+        alone
+            .get_definition(Groups, "underlyings_newordersingle")
+            .is_none()
+    );
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both dialects fold");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let held = registry.definition(Components, "underlying").unwrap();
+    assert!(
+        held.get_field("underlyingadjustedquantity").is_some(),
+        "the member the split added joins the group D reads"
+    );
+    // The split still arrives as a definition of its own, named for the
+    // message it was read in, and D reads the group it always read.
+    assert!(
+        registry
+            .get_definition(Groups, "underlyings_newordersingle")
+            .is_some()
+    );
+    let message = registry.msgtype("D").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .any(|member| member.as_fix().group() == Some("underlyings")),
+        "D reads the held group"
+    );
+
+    // A group on another counter is another group, which is not folded: the
+    // member D holds stays, and the other reading is named.
+    let recounted = underlyings("")
+        .replace(
+            r#"<vocabulary-tag name="879" alt="UnderlyingQty" type="float" />"#,
+            r#"<vocabulary-tag name="712" alt="NoOtherUnderlyings" type="integer" />"#,
+        )
+        .replace(
+            r#"<grammar-binding type="D"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="711" />"#,
+            r#"<grammar-binding type="D"><grammar>
+        <grammar rg-name="Underlyings">
+          <tag-constraint name="712" />"#,
+        );
+    let tree = cblock_tree(&[("a.cfb", &underlyings("")), ("c.cfb", &recounted)]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both dialects fold");
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert_eq!(passed.len(), 1, "{passed:?}");
+    assert!(
+        passed[0].contains("c.cfb: ")
+            && passed[0].contains("newordersingle.underlyings")
+            && passed[0].contains("underlyings_newordersingle"),
+        "{passed:?}"
+    );
+    let message = registry.msgtype("D").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .any(|member| member.as_fix().group() == Some("underlyings")),
+        "D reads the group it held"
+    );
+    assert_eq!(
+        registry
+            .definition(Groups, "underlyings_newordersingle")
+            .unwrap()
+            .as_fix()
+            .counter()
+            .unwrap(),
+        Some(712),
+        "the other group arrives as one of its own"
+    );
+}
+
+#[test]
+fn a_field_merged_by_its_name_is_read_by_the_members_of_its_file_under_the_held_identity() {
+    // Both dialects call a field `VenueRef` and agree it is text, under two
+    // tags: the second is the first spelled with another number, and the
+    // members of the second file's message read the one field that holds it.
+    let first = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary><vocabulary-tag name="9001" alt="VenueRef" type="string" /></vocabulary>
+    </cplugin-configuration>"#;
+    let second = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="9002" alt="VenueRef" type="string" />
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <tag-constraint name="55" />
+        <tag-constraint name="9002" />
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both files fold");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let held = registry.field_by_tag(9002).unwrap();
+    assert_eq!(held.as_fix().tag().unwrap(), Some(9001));
+    let message = registry.msgtype("D").unwrap().as_field();
+    let member = message
+        .fields()
+        .iter()
+        .find(|member| member.as_fix().field_ref() == Some("venueref"))
+        .expect("the member reading VenueRef");
+    assert_eq!(member.as_fix().tag().unwrap(), Some(9001));
+}
+
+#[test]
+fn a_spelling_another_field_holds_is_passed_over_with_the_members_reading_it() {
+    // The first dialect holds 9001 as `VenueOrderType` and `ClientRef` as
+    // 9002; the second calls 9001 `ClientRef`. That is neither field, and
+    // the name is already the other's, so it cannot be held beside them.
+    let first = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="9001" alt="VenueOrderType" type="string" />
+        <vocabulary-tag name="9002" alt="ClientRef" type="string" />
+      </vocabulary>
+    </cplugin-configuration>"#;
+    let second = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="9001" alt="ClientRef" type="string" />
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <tag-constraint name="55" />
+        <tag-constraint name="9001" />
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both files fold");
+    let passed: Vec<(&str, Option<i32>)> = merge
+        .dropped
+        .iter()
+        .map(|drop| (drop.incoming.name(), drop.incoming.as_fix().tag().unwrap()))
+        .collect();
+    assert_eq!(
+        passed,
+        [("clientref", Some(9001)), ("clientref", Some(9001))]
+    );
+    assert_eq!(
+        registry.field_by_tag(9001).unwrap().name(),
+        "venueordertype"
+    );
+    assert_eq!(
+        registry
+            .field_by_name("ClientRef")
+            .unwrap()
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(9002)
+    );
+    let message = registry.msgtype("D").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .all(|member| member.as_fix().tag().unwrap() != Some(9001)),
+        "the member reading the passed-over field went with it"
+    );
+}
+
+#[test]
+fn a_group_counted_by_a_field_held_as_text_is_passed_over_with_its_members() {
+    // The first dialect binds 711 plainly and types it as text; the second
+    // counts `Underlyings` by it. A group counts by an int32 field, and this
+    // dictionary holds 711 as text: the second file's counter and its group
+    // are passed over, and so is the member of its message reading the group.
+    let first = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary><vocabulary-tag name="711" alt="NoUnderlyings" type="string" /></vocabulary>
+    </cplugin-configuration>"#;
+    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", &underlyings(""))]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both files fold");
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert!(
+        passed
+            .iter()
+            .any(|drop| drop.contains("int32 repeating-group counter")),
+        "{passed:?}"
+    );
+    assert!(
+        passed
+            .iter()
+            .any(|drop| drop.contains("which the merge passed over")),
+        "{passed:?}"
+    );
+    assert_eq!(
+        registry.field_by_tag(711).unwrap().dtype(),
+        &DataType::utf8()
+    );
+    assert!(
+        registry
+            .get_definition(yggdryl::FixCategory::Groups, "underlyings")
+            .is_none()
+    );
+    let message = registry.msgtype("D").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .all(|member| member.as_fix().group().is_none()),
+        "no member reads a group nothing holds"
+    );
+}
+
+#[test]
+fn a_message_name_another_wire_code_holds_is_named_for_its_own_code() {
+    // Two dialects name two custom codes `CustomReport`. They are two
+    // messages, so the second takes the name its own wire value derives.
+    let custom = |wire: &str| {
+        format!(
+            r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="35" alt="MsgType" type="string" />
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+      </vocabulary>
+      <grammar-binding type="{wire}"><grammar><tag-constraint name="55" /></grammar></grammar-binding>
+      <maps><map name="MSGTYPE"><entries><entry key="CustomReport" value="{wire}" /></entries></map></maps>
+    </cplugin-configuration>"#
+        )
+    };
+    let tree = cblock_tree(&[("a.cfb", &custom("U7")), ("b.cfb", &custom("U8"))]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .expect("both files fold");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    assert_eq!(registry.msgtype("U7").unwrap().name(), "customreport");
+    assert_eq!(registry.msgtype("U8").unwrap().name(), "message5538");
+}
+
+#[test]
+fn a_definition_another_dictionary_derived_a_held_tag_for_takes_a_free_one() {
+    // A definition arrives carrying the tag its own file derived for it, and
+    // in a dictionary that already holds definitions that slot can be taken.
+    // Whatever it collides with, every definition ends on a tag of its own.
+    let mut seeded = super::committed_registry().as_ref().clone();
+    let venue = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="9100" alt="NoVenueLegs" type="integer" />
+        <vocabulary-tag name="9101" alt="VenueLegRef" type="string" />
+      </vocabulary>
+      <grammar-binding type="UV"><grammar>
+        <grammar rg-name="VenueGrp263">
+          <tag-constraint name="9100" />
+          <tag-constraint name="9101" required="true" />
+        </grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let merge = seeded
+        .add_cfb_file(&handle(venue), Some("venue"))
+        .expect("the venue folds");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let mut tags = std::collections::HashMap::new();
+    for category in [
+        yggdryl::FixCategory::Components,
+        yggdryl::FixCategory::Groups,
+    ] {
+        for definition in seeded.definitions(category) {
+            let tag = definition.as_fix().tag().unwrap().unwrap();
+            if let Some(held) = tags.insert(tag, definition.name().to_owned()) {
+                panic!("{held:?} and {:?} both hold {tag}", definition.name());
+            }
+        }
+    }
+    assert!(
+        seeded
+            .definitions(yggdryl::FixCategory::Groups)
+            .any(|group| group.as_fix().counter().unwrap() == Some(9100)),
+        "the venue's group arrived"
+    );
 }
 
 /// A CBlock declaring both cases of one letter declares two message types.

@@ -502,25 +502,27 @@ impl FixRegistry {
     /// rather than refused: every registry holds those from construction, so
     /// the held definition stays and the counts do not move.
     ///
-    /// Answers the count added and the count merged, over the fields; the
-    /// two seeded clocks every parsed snapshot carries always merge, so a
-    /// file adding nothing else answers `(0, 2)`. Named definitions that
-    /// arrive or merge are not counted, exactly as [`Self::merge_with`] does
-    /// not count them.
+    /// Answers the [`FixMerge`](super::FixMerge), each drop naming the
+    /// handle's URL: the counts are over the fields, and the two seeded
+    /// clocks every parsed snapshot carries always merge, so a file adding
+    /// nothing else merges 2. Named definitions that arrive or merge are not
+    /// counted, exactly as [`Self::merge_with`] does not count them, and a
+    /// declaration the dictionary already makes otherwise is passed over and
+    /// named as [`Self::merge_with`] names it.
     ///
     /// One mutation: a document that does not parse, a reference naming a
-    /// definition nothing holds, a cycle, or a datatype disagreeing with a
-    /// stored field leaves this dictionary exactly as it was.
+    /// definition nothing holds, or a cycle leaves this dictionary exactly as
+    /// it was.
     ///
     /// # Errors
     ///
     /// Returns what [`Self::from_json`] returns, located at the handle's URL,
     /// and what [`Self::merge_with`] returns for the fold.
-    pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)> {
+    pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<super::FixMerge> {
         let parsed = crate::from_json_scalar(handle.read_all_bytes()?)
             .and_then(|document| Self::from_snapshot(&document))
             .map_err(|error| located(error, handle))?;
-        self.merge_with(&parsed)
+        Ok(self.merge_with(&parsed)?.located(handle))
     }
 
     fn snapshot(&self) -> Result<Scalar> {

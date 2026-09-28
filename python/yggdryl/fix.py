@@ -31,8 +31,9 @@ stamped with the dialect in ``FIX:branches`` and reading by the code set the
 file's maps decode for it, which the dictionary carries under a name of its
 own - and the message roots its grammar bindings describe.
 :meth:`FixRegistry.add_cfb_file` folds that same file into a dictionary that
-already exists, adding what is absent, merging what is stored, and writing
-nothing at all when it refuses.
+already exists, adding what is absent, merging what is stored, and passing
+over - and naming, in the report it answers - what the file declares otherwise
+than the dictionary already does; a file that will not parse writes nothing.
 
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - the facts the core's graph

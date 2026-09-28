@@ -976,17 +976,99 @@ ClOrdID(11)   [{"map":"altids","key":"CLORDID"}]
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole source has folded, and a disagreement the source states is passed over rather than ending the fold - see below for which disagreements those are. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. Both fall back to their own decimal, the name a tag declaring no `alt` already takes, and keep the declared spelling as `display`, so every tag is left named and nothing the file said is lost. Contention is decided by the key a name is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` contends with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
 A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag already answers to, or one the core could not store drops on its own.
 
-`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its code sets folded first, its named definitions folded member by member and each field's membership unioned - the sets lead because a field keeps the set it already reads by, so the members the other dictionary states have to be in that set by the time the field is folded, and a merge therefore widens a vocabulary and never narrows one; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its code sets folded first, its named definitions folded member by member and each field's membership unioned - the sets lead because a field keeps the set it already reads by, so the members the other dictionary states have to be in that set by the time the field is folded, and a merge therefore widens a vocabulary and never narrows one; `add_fields` folds a scalar field iterable the same way and answers its `(added, merged)` pair. `add_cfb_file(handle, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused.
+
+`add_cfb_files` is the plural, and it **takes the files themselves** rather than a location and a pattern: `files` is any run of `Result<Holder>` - the listing [`IOBase::glob`](../holder/index.md) answers, several listings chained, or handles named one by one - so a folder of counterparty files is `registry.add_cfb_files(folder.glob("*.cfb", false)?, None)?`, anchored and walked exactly as the glob walks it: `*` inside one name, `**` across folders, private entries never matched. A container among the files is passed by, since a dictionary is a file, and a file named twice folds once. Python's plural is `add_cfb_files(location, pattern, dialect=None)`: it walks `pattern` from `location` through the same glob and hands the core the files. **Files fold in ascending URL order** whatever order they arrived in, because the fold's precedence is its input order and a listing's sequence is not a caller's to see: it varies with how a pattern decomposed and with the backend beneath. So where two files disagree about one tag **the first-sorting file's declaration is held**, the later one is passed over, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. **Files parse on every core, and fold on one:** a parse reads nothing but its own bytes, so the files are read in order and parsed side by side, at most one file per thread in hand; each parsed file then folds into the one staged dictionary in URL order, and the catalog resolves once for all of them - a hundred files cost one resolution, not a hundred. `dialect` is resolved per file: a name supplied here stamps every file with it, and none lets each file's own stem stand in, which is what globbing a folder of counterparty files is for - `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from `MSFIX44.cfb` and `BLPFIX44.cfb`'s own stems.
+
+`add_json_file(handle)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant.
+
+`merge_with`, `add_cfb_file`, `add_cfb_files` and `add_json_file` each answer a `FixMerge`, [below](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): `sources` counts the dictionaries or files folded - the file count is a fact only the plural calls hold, since an empty match and a match whose files all merged into stored fields both answer zero `added` and `merged` - `added` and `merged` the scalar fields over every source, `dropped` what was passed over in the order the fold met it, and `is_clean()` whether `dropped` is empty. Each of these operations is one mutation, staged and adopted whole, and a plural one pays one copy of the dictionary for the whole call rather than one per file: what leaves nothing to keep - a file that will not parse, an incoming dictionary whose own catalog does not validate - leaves the dictionary exactly as it was, and the refusal names that source among however many were read.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a constraint naming a tag the file's own vocabulary never declared, a mapping to a type nothing listed, a `fix-version` the version grammar cannot read - is dropped and the rest of the file is still a dictionary. Each drop is a `log` record at warn level carrying the located sentence a refusal would have: the byte, what was expected, what arrived, and the element the file spells it in. Only a document that is not well-formed XML, or that stops with an element open, is refused across each binding as a native located error, because neither leaves anything to keep.
 
 What the file states twice is not a drop. A type its listing and one of its bindings both declare, a grammar bound under a wire type another grammar already bound, and a member the held message already carries are each what a dialect looks like: the declarations fold, the members union - the held ones first in their order, then every member only the later declaration states - and the fold is a `log` record at info level rather than a warning. Warn stays reserved for what is actually lost.
+
+A CBlock that binds a group or a component under a name this parse already registered, with other members than the one already there, is naming a second definition rather than restating the first: the split reads under `{name}_{message}`, `message` the name the message is catalogued under - tag 35's own code-set name lower-cased (`underlying_newordersingle`), or, where nothing names the type, `message` and the wire value's own bytes in hex (`underlying_message4145`). Two messages that bind one group or component alike share the one definition. The split never touches the member's own name: a message's row still reads `underlyings` whichever definition its `FIX:group` or `FIX:component` reference names.
+
+### What a source says otherwise than the dictionary is passed over
+
+A fold of another source is not all-or-nothing the way a single [`insert`](#insert-update-and-remove) is: what the source says otherwise than the dictionary already says is named in `FixMerge::dropped` - one `FixDrop` per declaration: an `incoming` `Field` (the declaration as the source stated it - a scalar, or a member or a definition in the compact shape a [store](store.md) writes), a `reason` naming what the dictionary keeps, and a `source`, the file's URL where the fold read one - while the rest of the source still folds. Five kinds are passed over rather than raised:
+
+1. a scalar whose datatype disagrees with the field its identity (tag and folded name) or its folded name reaches - merging never changes a declared datatype;
+2. a scalar whose spelling or alternate tag another field already holds;
+3. a member a held definition already declares in another shape;
+4. a group whose counter is not an `int32` field of this dictionary, or whose counter, component or message code disagrees with the definition held under its name, together with every member that reads that group;
+5. a member reading a field the fold passed over, which nothing here now answers to under the identity it named.
+
+`add_field`, `add_fields`, `insert` and `update` are unaffected by any of this and stay strict: met alone, outside a fold, a datatype disagreement is still refused rather than passed over. A fold refuses the whole source, adopting nothing from it, only where nothing is left to keep: malformed XML or JSON, an incoming dictionary whose own catalog does not validate, or a code set that does not parse or would rewrite one this crate owns - `msgcatcodeset`, `statecodeset`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixRegistry};
+
+    let mut price = DataType::Float64.nullable_field("Price");
+    price.as_fix_mut().set_tag(44)?;
+    let mut held = FixRegistry::from_fields([price])?;
+
+    // The other source types tag 44 otherwise, and brings a field of its own.
+    let mut retyped = DataType::utf8().nullable_field("Price");
+    retyped.as_fix_mut().set_tag(44)?;
+    let mut side = DataType::utf8().nullable_field("Side");
+    side.as_fix_mut().set_tag(54)?;
+    let other = FixRegistry::from_fields([retyped, side])?;
+
+    // The held declaration stays: the disagreement is named and passed
+    // over, and Side still folds in beside it.
+    let merge = held.merge_with(&other)?;
+    assert_eq!(merge.added, 1);
+    assert!(!merge.is_clean());
+    assert_eq!(merge.dropped.len(), 1);
+    assert!(merge.dropped[0].reason.contains("float64"));
+    assert_eq!(merge.dropped[0].incoming.dtype(), &DataType::utf8());
+    assert_eq!(held.field_by_tag(44)?.dtype(), &DataType::Float64, "merging never changes a declared datatype");
+    assert_eq!(held.field_by_name("Side")?.dtype(), &DataType::utf8());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+    from yggdryl.fix import FixRegistry
+
+    price = Field("Price", "float64")
+    price.fix.tag = 44
+    held = FixRegistry.from_fields([price])
+
+    # The other source types tag 44 otherwise, and brings a field of its own.
+    retyped = Field("Price", "utf8")
+    retyped.fix.tag = 44
+    side = Field("Side", "utf8")
+    side.fix.tag = 54
+    other = FixRegistry.from_fields([retyped, side])
+
+    # The held declaration stays: the disagreement is named and passed
+    # over, and Side still folds in beside it.
+    report = held.merge_with(other)
+    assert report["added"] == 1
+    assert report["dropped"]
+    assert "float64" in report["dropped"][0]["reason"]
+    assert report["dropped"][0]["incoming"].dtype == DataType("utf8")
+    assert held.field(44).dtype == DataType("float64"), "merging never changes a declared datatype"
+    assert held.field_by_name("Side").dtype == DataType("utf8")
+    ```
+
+Node has no binding over these folds; a JavaScript reader runs [the CLI](cli.md) instead.
+
+Two references under one member name to two groups or two components are one member read two ways rather than a conflict: a dialect that split a group or a component differently for one message - one file drawing `Parties` from one component, another from a second, on the same counter - has still named one member, so the incoming target's members fold into the held target under these same rules, recursively; a group held under its name and counter that a source draws from another component widens the held component the same way. Two groups the fold meets on different counters are not this case: they are two definitions, and the incoming reading is passed over as kind 4 above states.
+
+A member reading a field that merged into a held field by folded name under another tag is rewritten to the held field's identity as the source folds, so nothing that reads it afterward is passed over for naming a tag that moved. A message whose name another wire code already holds takes the name its own wire value derives - `message` and the wire bytes in hex, so `U8` becomes `message5538` - the same name a CBlock binds when nothing spells the type a store can file. A new definition whose derived tag another definition already holds derives a free one instead.
 
 ## Registering a message type
 
@@ -1148,7 +1230,8 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
     cargo test -p yggdryl --test fix
     cargo test --features internals -p yggdryl --test fix -- mod_::internal
     cargo test --features internals -p yggdryl --test fix -- mod_::internal::the_fold_table_holds_through_add_field_and_through_merge_with mod_::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one mod_::internal::three_spellings_of_one_name_under_one_tag_are_one_identity mod_::internal::name_indexes_fold_ascii_and_membership_never_resolves
-    cargo test -p yggdryl --test fix -- merge:: cfb::a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_standard_field
+    cargo test -p yggdryl --test fix -- registry::lenient
+    cargo test -p yggdryl --test fix -- cfb::
     cargo test -p yggdryl --test fix -- retired:: latest:: enrich::
     cargo test -p yggdryl --test fix -- aliases:: alias_rule::
     ```

@@ -201,7 +201,8 @@ pub use market::FixMarketIterator;
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
-pub use registry::{FixFieldIter, FixRegistry};
+pub use registry::{FixDrop, FixFieldIter, FixMerge, FixRegistry};
+pub use store::FixCommit;
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{

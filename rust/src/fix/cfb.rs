@@ -59,11 +59,22 @@
 //! `logs`.
 //!
 //! A CBlock's generic numeric types may disagree with the FIX dictionary.
-//! For example, its `float` resolves to float32 while FIX `AvgPx` is float64.
-//! The parser does not consult another registry or promote values by tag.
-//! Merging incompatible datatypes or shared code sets fails atomically.
-//! Replacing a referenced field also fails when its existing layouts would
-//! become inconsistent; an unreferenced identity may be replaced directly.
+//! For example, its `float` resolves to float32 while FIX `AvgPx` is a
+//! decimal. The parser does not consult another registry or promote values
+//! by tag. Folding the file into a dictionary keeps the dictionary's
+//! declaration and passes the file's over, named in the
+//! [`FixMerge`](super::FixMerge) the fold answers, so one counterparty
+//! typing a tag its own way never stops the rest of its file - or the other
+//! files of a glob - from folding. Replacing a referenced field still fails
+//! when its existing layouts would become inconsistent; an unreferenced
+//! identity may be replaced directly.
+//!
+//! A group or component one message declares with members another message
+//! already declared under that name is split under the name the message is
+//! catalogued by - `underlying_newordersingle`, or `underlying_message414e`
+//! where tag 35 names the type nothing a store can file - while the member
+//! the message holds keeps the grammar's name; two messages declaring one
+//! group alike share one definition.
 //!
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
@@ -327,9 +338,16 @@ impl FixRegistry {
     /// fold, the members union, and the fold is recorded at info level where
     /// it is recorded at all.
     pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)> {
-        let bytes = handle.read_all_bytes()?;
-        Parse::new(&bytes, dialect)?.run()
+        parse(&handle.read_all_bytes()?, dialect)
     }
+}
+
+/// One document's bytes, read the way [`FixRegistry::from_cfb_file`] reads
+/// them: what the parse needs is the bytes and nothing else, so a caller that
+/// already holds them - a fold spreading its files over threads - parses them
+/// where it holds them.
+pub(super) fn parse(bytes: &[u8], dialect: Option<&str>) -> Result<(FixRegistry, Vec<Field>)> {
+    Parse::new(bytes, dialect)?.run()
 }
 
 /// The dialect a handle's own stem names, where it names one.
@@ -541,8 +559,9 @@ impl<'doc> Parse<'doc> {
         Ok((registry, roots))
     }
 
-    /// One root as the catalog holds it: its members registered, its name
-    /// resolved through tag 35's own code set, and the entry itself written.
+    /// One root as the catalog holds it: its name resolved through tag 35's
+    /// own code set, its members registered under that name, and the entry
+    /// itself written.
     ///
     /// **One wire type is one message, however many grammars the file binds
     /// under it.** A name here is derived from the wire value alone, so `6
@@ -553,57 +572,25 @@ impl<'doc> Parse<'doc> {
     /// caller is handed are still one per binding - that is what the file
     /// bound - but the dictionary holds the union, which is the message the
     /// dialect actually speaks.
+    ///
+    /// **The name is settled before a member is.** A group or component
+    /// whose name another context already holds with other members is split
+    /// under this message's name - `underlying_newordersingle`, or
+    /// `underlying_message414e` where tag 35 names the type nothing
+    /// readable - so a split definition says which message it came from.
     fn catalogued(&self, registry: &mut FixRegistry, root: Field, wire: &str) -> Result<Field> {
-        let scope = wire
-            .bytes()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
-        let mut root = catalog_members(registry, root, &scope)?;
+        let qualifier = message_name(registry, wire);
+        let mut root = catalog_members(registry, root, &qualifier)?;
         // The root a caller is handed is the file's too, so it carries the
         // membership the catalogued message carries; only its name differs,
         // the caller's keeping the wire's spelling.
         self.stamp(&mut root)?;
         let held = root.clone();
-        let named = registry
-            .get_field_by_tag(MSGTYPE_TAG_NAME.0)
-            .and_then(|field| registry.codeset_of(field))
-            .and_then(|set| set.code_name(wire))
-            .filter(|name| {
-                name.bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-            })
-            .filter(|name| *name != wire)
-            .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
-        root.set_name(named);
+        // Asked again rather than reused: a member the file named exactly as
+        // this message is now a component of that name, and the message is
+        // not the member.
+        root.set_name(message_name(registry, wire));
         root.as_fix_mut().set_msgtype(wire)?;
-        // A name derived from the wire value reaches the same entry for every
-        // grammar bound under one type, so a held one is this same message
-        // and folds; `catalog_entry`'s qualification stays where distinct
-        // contexts really do share a spelling, which is the members.
-        //
-        // **The wire value decides, never the derived name.** The name is
-        // lower-cased out of a spelling the file chose, so two case-bearing
-        // types can reach one spelling - a dialect naming `B` "News" and `b`
-        // "news" derives `news` twice - and folding on that would merge two
-        // messages the file was explicit about. A held entry under another
-        // wire value is therefore a different message wearing this name, and
-        // this one takes the value-derived name that no spelling can contend.
-        let held_entry = registry.get_definition(crate::FixCategory::Components, root.name());
-        let folds = match held_entry {
-            Some(entry) => entry.as_fix().msgtype() == Some(wire),
-            None => false,
-        };
-        if held_entry.is_some() && !folds {
-            let derived = format!("message{scope}");
-            log::debug!(
-                "message type {wire:?} takes {derived:?}: {:?} names message type {:?}",
-                root.name(),
-                held_entry
-                    .and_then(|entry| entry.as_fix().msgtype())
-                    .unwrap_or_default()
-            );
-            root.set_name(derived);
-        }
         if registry
             .get_definition(crate::FixCategory::Components, root.name())
             .is_some()
@@ -617,7 +604,7 @@ impl<'doc> Parse<'doc> {
             );
             registry.fold_definition(crate::FixCategory::Components, root)?;
         } else {
-            catalog_entry(registry, crate::FixCategory::Components, root, &scope)?;
+            catalog_entry(registry, crate::FixCategory::Components, root, &qualifier)?;
         }
         Ok(held)
     }
@@ -2185,20 +2172,66 @@ fn single_line(text: &str) -> String {
     held
 }
 
+/// The name the catalog holds the message of wire type `wire` under.
+///
+/// Tag 35's own code set names the type where it spells a name a store can
+/// file, lower-cased; the wire value's own name
+/// ([`derived_name`](super::msgtype::derived_name), `message` and its bytes
+/// in hex) stands in where it does not.
+///
+/// **The wire value decides, never the derived name.** The name is
+/// lower-cased out of a spelling the file chose, so two case-bearing types
+/// can reach one spelling - a dialect naming `B` "News" and `b` "news"
+/// derives `news` twice - and folding on that would merge two messages the
+/// file was explicit about. A held entry under another wire value, or one
+/// that is no message at all, is therefore a different definition wearing
+/// this name, and this type takes the value-derived name no spelling can
+/// contend. A held entry under this wire value is this same message, bound
+/// by another grammar, and keeps the name so the second binding folds.
+fn message_name(registry: &FixRegistry, wire: &str) -> String {
+    let derived = || super::msgtype::derived_name(wire);
+    let named = registry
+        .get_field_by_tag(MSGTYPE_TAG_NAME.0)
+        .and_then(|field| registry.codeset_of(field))
+        .and_then(|set| set.code_name(wire))
+        .filter(|name| {
+            name.bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        })
+        .filter(|name| *name != wire)
+        .map_or_else(derived, str::to_ascii_lowercase);
+    match registry.get_definition(crate::FixCategory::Components, &named) {
+        Some(entry) if entry.as_fix().msgtype() != Some(wire) => {
+            log::debug!(
+                "message type {wire:?} takes {:?}: {named:?} names message type {:?}",
+                derived(),
+                entry.as_fix().msgtype().unwrap_or_default()
+            );
+            derived()
+        }
+        _ => named,
+    }
+}
+
 /// Stores a named definition, qualifying distinct message contexts once.
+///
+/// A name the catalog already holds with other members is split under the
+/// message it was read in, `{name}_{message}`: the split says where it came
+/// from, and a message is one wire type, so two bindings of one type reach
+/// one split rather than two.
 fn catalog_entry(
     registry: &mut FixRegistry,
     category: crate::FixCategory,
     mut field: Field,
-    scope: &str,
+    message: &str,
 ) -> Result<Field> {
     if let Some(held) = registry.get_definition(category, field.name()) {
-        if held == &field {
+        if restated(held, &field) {
             return Ok(field);
         }
-        field.set_name(format!("{}{scope}", field.name()));
+        field.set_name(format!("{}_{message}", field.name()));
         if let Some(held) = registry.get_definition(category, field.name()) {
-            if held != &field {
+            if !restated(held, &field) {
                 return Err(Error::Conflict {
                     expected: "one CBlock definition per context",
                     actual: "conflicting definitions",
@@ -2212,26 +2245,45 @@ fn catalog_entry(
     Ok(field)
 }
 
-fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) -> Result<Field> {
+/// Whether the held definition is `field` as the catalog stored it.
+///
+/// The catalog stamps a definition with the tag it derives from the name, and
+/// the field a grammar produced has not been given one, so the two compare on
+/// everything but that tag: a group two messages declare alike is one group,
+/// never a split of itself.
+fn restated(held: &Field, field: &Field) -> bool {
+    let mut held = held.clone();
+    held.remove_metadata(super::field::TAG_KEY);
+    &held == field
+}
+
+fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) -> Result<Field> {
     match field.dtype() {
         DataType::Struct(children) => {
             let children = children
                 .iter()
                 .cloned()
-                .map(|child| catalog_members(registry, child, scope))
+                .map(|child| catalog_members(registry, child, message))
                 .collect::<Result<Vec<_>>>()?;
             field.set_dtype(DataType::from(StructType::from_fields(children)?))?;
         }
         DataType::Serie(item) => {
-            let item = catalog_members(registry, item.as_ref().clone(), scope)?;
-            let mut item = catalog_entry(registry, crate::FixCategory::Components, item, scope)?;
+            // A split renames the definition and never the member: the
+            // message still holds `underlyings`, reading the definition split
+            // for it, so every dialect's message names one group one way and
+            // a fold meets the two readings as one member.
+            let (member, occurrence) = (field.name().to_owned(), item.name().to_owned());
+            let item = catalog_members(registry, item.as_ref().clone(), message)?;
+            let mut item = catalog_entry(registry, crate::FixCategory::Components, item, message)?;
             let component = item.name().to_owned();
             item.as_fix_mut().set_component(&component)?;
+            item.set_name(occurrence);
             field.set_dtype(DataType::serie(item))?;
             field.as_fix_mut().set_component(&component)?;
-            field = catalog_entry(registry, crate::FixCategory::Groups, field, scope)?;
+            field = catalog_entry(registry, crate::FixCategory::Groups, field, message)?;
             let name = field.name().to_owned();
             field.as_fix_mut().set_group(&name)?;
+            field.set_name(member);
         }
         _ => {
             // By identity where the child kept the dictionary's name, else by

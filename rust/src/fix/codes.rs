@@ -1193,10 +1193,15 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when either document does not parse.
+    ///
+    /// A fold that already holds every member leaves the set alone, and a
+    /// deferred one leaves the answers it would forget to the resolution that
+    /// ends its fold.
     pub(super) fn unify_codeset(
         &mut self,
         stored: Option<&str>,
         incoming: Option<&str>,
+        references: super::registry::References,
     ) -> Result<()> {
         let (Some(stored), Some(incoming)) = (stored, incoming) else {
             return Ok(());
@@ -1211,10 +1216,15 @@ impl FixRegistry {
         let Some(merged) = FixCodes::merge(held, Some(other))? else {
             return Ok(());
         };
+        if held == Some(merged.as_str()) {
+            return Ok(());
+        }
         let key = self.codeset_key(stored)?;
         validate_intrinsic_codeset(&key, Some(&merged))?;
         self.codesets.insert(key, Arc::from(merged.as_str()));
-        self.forget_codesets();
+        if references == super::registry::References::Refresh {
+            self.forget_codesets();
+        }
         Ok(())
     }
 

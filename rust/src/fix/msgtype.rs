@@ -77,6 +77,18 @@ pub(super) fn wire_value(spelling: &str) -> &str {
     spelling.split_whitespace().next().unwrap_or(spelling)
 }
 
+/// The name a message of wire type `wire` takes where no spelling names it
+/// one a store can file, or where its name is another code's: `message` and
+/// the wire value's bytes in hex, which no two codes share.
+pub(super) fn derived_name(wire: &str) -> String {
+    let mut name = String::with_capacity(7 + 2 * wire.len());
+    name.push_str("message");
+    for byte in wire.bytes() {
+        name.push_str(&format!("{byte:02x}"));
+    }
+    name
+}
+
 pub(super) fn validate_code(value: &str) -> Result<()> {
     if value.is_empty() || value.chars().any(char::is_control) {
         return Err(Error::InvalidMetadataValue {

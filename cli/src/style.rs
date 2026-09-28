@@ -96,6 +96,16 @@ pub fn write_out(text: std::fmt::Arguments<'_>) {
     }
 }
 
+/// `text` as a workflow command's message carries it: the three characters
+/// the runner reads as structure escaped, so a reason quoting a document
+/// arrives whole on one line.
+#[must_use]
+pub fn annotation(text: &str) -> String {
+    text.replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+}
+
 /// A heading over a section of output.
 pub fn heading(text: &str) {
     outln!("\n{}", bold(&cyan(text)));

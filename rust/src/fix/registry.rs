@@ -250,13 +250,150 @@ fn absent(what: impl fmt::Display) -> Error {
 
 /// The refusal a merge raises when the incoming datatype is not the stored
 /// one: merging metadata never changes a field's declared datatype.
-fn datatype_disagreement(stored: &Field, id: FixId, incoming: &Field) -> Error {
+fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
     Error::InvalidRecord {
         path: incoming.name().into(),
         reason: crate::text::expected_got(
-            format_args!("the datatype {} stored for {id}", stored.dtype()),
+            format_args!(
+                "the datatype {} stored for {} ({tag})",
+                stored.dtype(),
+                stored.name()
+            ),
             incoming.dtype(),
         ),
+    }
+}
+
+/// When a change to a field is re-resolved into the definitions that
+/// reference it.
+///
+/// A named definition holds its referenced fields resolved, so a field whose
+/// metadata moved leaves them stale until the catalog is resolved again.
+/// One change on its own settles at once; a fold of many settles once, at
+/// its end, because re-resolving the whole catalog per field makes a fold
+/// of a source the size of a dictionary quadratic in it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum References {
+    /// Re-resolve them now.
+    Refresh,
+    /// The caller re-resolves them once every change is in.
+    Defer,
+}
+
+/// Where one incoming scalar lands under [`FixRegistry::add_field`]'s rules.
+#[derive(Clone, Copy)]
+enum Route {
+    /// One of the crate's own fields: every dictionary's already.
+    Own,
+    /// The identity the field at this position holds: rule 3.
+    Identity(usize),
+    /// A tag another field holds under another name: rule 5, beside it.
+    Beside,
+    /// A name the field at this position answers to: rule 4.
+    Named(usize),
+    /// Nothing held answers to it: rule 5.
+    New,
+}
+
+impl Route {
+    /// The stored field the incoming one would fold into.
+    const fn target(self) -> Option<usize> {
+        match self {
+            Self::Identity(position) | Self::Named(position) => Some(position),
+            Self::Own | Self::Beside | Self::New => None,
+        }
+    }
+}
+
+/// What one fold of another source into a dictionary did.
+///
+/// The answer of [`FixRegistry::merge_with`] and every door over it:
+/// [`FixRegistry::add_cfb_file`], [`FixRegistry::add_cfb_files`] and
+/// [`FixRegistry::add_json_file`]. The counts are the scalars'; the
+/// definitions fold beside them under their own rules. `dropped` is what a
+/// source said that the dictionary already says otherwise: the fold keeps
+/// the dictionary's declaration, passes the source's over, and names it
+/// here rather than refusing the whole source for it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FixMerge {
+    /// The sources folded: one for a dictionary or a file, the files a
+    /// pattern matched for [`FixRegistry::add_cfb_files`].
+    pub sources: usize,
+    /// The scalar fields that arrived.
+    pub added: usize,
+    /// The scalar fields folded into ones already held.
+    pub merged: usize,
+    /// The declarations passed over, in the order the fold met them.
+    pub dropped: Vec<FixDrop>,
+}
+
+impl FixMerge {
+    /// Whether the fold kept every declaration its sources made.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.dropped.is_empty()
+    }
+
+    /// Adds another fold's counts and drops to this one's.
+    fn absorb(&mut self, other: Self) {
+        self.sources += other.sources;
+        self.added += other.added;
+        self.merged += other.merged;
+        self.dropped.extend(other.dropped);
+    }
+
+    /// Names the source every drop was read from.
+    pub(super) fn located(mut self, handle: &dyn IOBase) -> Self {
+        if let Some(url) = handle.url() {
+            let source = format_smolstr!("{url}");
+            for drop in &mut self.dropped {
+                drop.source = Some(source.clone());
+            }
+        }
+        self
+    }
+}
+
+/// One declaration a fold passed over, because the dictionary already
+/// declares the same thing otherwise.
+///
+/// A scalar whose datatype disagrees with the field its identity or name
+/// reaches, a member a definition already holds in another shape, a
+/// definition whose own identity - its counter, component or message code -
+/// disagrees with the one held under its name, and a member reading a field
+/// the fold passed over. The dictionary's declaration is what stays: merging
+/// never changes a declared datatype, and a source is never the reason a
+/// dictionary forgets what it said.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixDrop {
+    /// Where the declaration was read, where the fold read a file: its URL.
+    pub source: Option<SmolStr>,
+    /// The declaration as the source stated it: the scalar field, or the
+    /// member or definition in the compact shape a store writes, a
+    /// reference standing for its target.
+    pub incoming: Field,
+    /// The refusal the fold would otherwise have ended on, naming what the
+    /// dictionary keeps.
+    pub reason: SmolStr,
+}
+
+impl FixDrop {
+    pub(super) fn new(incoming: Field, reason: &Error) -> Self {
+        log::warn!("fix merge passed over {}: {reason}", incoming.name());
+        Self {
+            source: None,
+            incoming,
+            reason: format_smolstr!("{reason}"),
+        }
+    }
+}
+
+impl fmt::Display for FixDrop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(source) = &self.source {
+            write!(formatter, "{source}: ")?;
+        }
+        formatter.write_str(&self.reason)
     }
 }
 
@@ -758,15 +895,19 @@ impl FixRegistry {
         }
         if self.position_of_identity(&field)?.is_some() {
             let mut staged = self.clone();
-            let prior = staged.insert_resolved(field)?;
+            let prior = staged.insert_resolved(field, References::Refresh)?;
             staged.validate_catalog()?;
             *self = staged;
             return Ok(prior);
         }
-        self.insert_resolved(field)
+        self.insert_resolved(field, References::Refresh)
     }
 
-    fn insert_resolved(&mut self, mut field: Field) -> Result<Option<Field>> {
+    fn insert_resolved(
+        &mut self,
+        mut field: Field,
+        references: References,
+    ) -> Result<Option<Field>> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (tag, id) = canonical_identity(&field)?;
         let alternate = field.as_fix().tags()?;
@@ -776,12 +917,14 @@ impl FixRegistry {
             field.set_name(self.fields[position].name());
         }
         match replacing {
-            Some(position) => self.replace_field(position, field, tag).map(Some),
+            Some(position) => self
+                .replace_field(position, field, tag, references)
+                .map(Some),
             None => {
                 // A tag another field already holds is not this field's to
                 // answer; the holder learns the arrival's name instead.
                 if let Some(holder) = self.tags.get(&tag).copied() {
-                    self.lend_alias(holder, field.name())?;
+                    self.lend_alias(holder, field.name(), references)?;
                 }
                 let position = self.fields.len();
                 self.fields.push(field);
@@ -799,7 +942,7 @@ impl FixRegistry {
     ///
     /// Idempotent under the fold, and a spelling the holder already claims
     /// canonically is not lent to it twice.
-    fn lend_alias(&mut self, holder: usize, name: &str) -> Result<()> {
+    fn lend_alias(&mut self, holder: usize, name: &str, references: References) -> Result<()> {
         let stored = &self.fields[holder];
         if folds_equal(stored.name(), name)
             || stored
@@ -842,6 +985,7 @@ impl FixRegistry {
             holder,
             lent,
             self.identities[holder].map_or(0, |(tag, _)| tag),
+            references,
         )?;
         Ok(())
     }
@@ -854,22 +998,21 @@ impl FixRegistry {
             return Ok(());
         }
         let mut staged = self.clone();
-        staged.update_resolved(field)?;
+        staged.update_resolved(field, References::Refresh)?;
         staged.validate_catalog()?;
         *self = staged;
         Ok(())
     }
 
-    fn update_resolved(&mut self, field: Field) -> Result<()> {
+    fn update_resolved(&mut self, field: Field, references: References) -> Result<()> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (tag, id) = canonical_identity(&field)?;
         let Some(position) = self.position_of_identity(&field)? else {
             return Err(absent(FixKey::Id(id)));
         };
-        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         if stored.dtype() != field.dtype() {
-            return Err(datatype_disagreement(stored, id, &field));
+            return Err(datatype_disagreement(stored, tag, &field));
         }
         // The incoming definition is what the merge folds the stored one
         // into, so the caller's ordering is the precedence: a generator
@@ -885,17 +1028,27 @@ impl FixRegistry {
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = merged.as_fix().tags()?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
-        self.replace_field(position, merged, tag)?;
+        // Last before the write, so a refusal above leaves every set as it
+        // was: the fold keeps the stored field's set name, and what the
+        // incoming field's set declares is in that set by the time the field
+        // naming it is written.
+        self.unify_named_codeset(position, &field, references)?;
+        self.replace_field(position, merged, tag, references)?;
         Ok(())
     }
 
     /// Folds the set `field` reads by into the one the stored field at
     /// `position` reads by, so the fold that keeps the stored name keeps
     /// every member too.
-    fn unify_named_codeset(&mut self, position: usize, field: &Field) -> Result<()> {
+    fn unify_named_codeset(
+        &mut self,
+        position: usize,
+        field: &Field,
+        references: References,
+    ) -> Result<()> {
         let stored = self.fields[position].as_fix().codeset().map(SmolStr::new);
         let incoming = field.as_fix().codeset().map(SmolStr::new);
-        self.unify_codeset(stored.as_deref(), incoming.as_deref())
+        self.unify_codeset(stored.as_deref(), incoming.as_deref(), references)
     }
 
     /// Folds `field` into the stored field at `position`, which its name
@@ -917,14 +1070,10 @@ impl FixRegistry {
     fn merge_named(&mut self, position: usize, field: Field) -> Result<()> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (incoming, _) = canonical_identity(&field)?;
-        // Before the fold, because the fold keeps the stored field's set
-        // name: what the incoming field's set declares has to be in that set
-        // by the time the name is settled.
-        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         let (tag, id) = canonical_identity(stored)?;
         if stored.dtype() != field.dtype() {
-            return Err(datatype_disagreement(stored, id, &field));
+            return Err(datatype_disagreement(stored, tag, &field));
         }
         let mut merged = field.clone();
         merged.set_name(stored.name());
@@ -967,7 +1116,12 @@ impl FixRegistry {
         merged.as_fix_mut().set_names(&aliases)?;
         let alternate = merged.as_fix().tags()?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
-        self.replace_field(position, merged, tag)?;
+        // As `update_resolved` does, last before the write: the fold keeps
+        // the stored field's set name, so what the incoming field's set
+        // declares has to be in that set by the time the field is written.
+        self.unify_named_codeset(position, &field, References::Defer)?;
+        // Only a fold merges by name, and a fold settles its references once.
+        self.replace_field(position, merged, tag, References::Defer)?;
         Ok(())
     }
 
@@ -977,10 +1131,18 @@ impl FixRegistry {
     /// `merged` carries the tag `tag` the position already answers to, and
     /// the caller has proven every key it holds free. A change to the
     /// metadata alone is what the catalog's references restate, so that one
-    /// re-resolves them; a change to the datatype is one they refuse, and the
-    /// caller's validation is what refuses it.
-    fn replace_field(&mut self, position: usize, merged: Field, tag: i32) -> Result<Field> {
-        let refresh = metadata_only_change(&self.fields[position], &merged);
+    /// re-resolves them - now, or where `references` defers it, by the
+    /// caller once its last change is in; a change to the datatype is one
+    /// they refuse, and the caller's validation is what refuses it.
+    fn replace_field(
+        &mut self,
+        position: usize,
+        merged: Field,
+        tag: i32,
+        references: References,
+    ) -> Result<Field> {
+        let refresh = references == References::Refresh
+            && metadata_only_change(&self.fields[position], &merged);
         if refresh {
             self.validate_catalog()?;
         }
@@ -1082,6 +1244,7 @@ impl FixRegistry {
         }
         let mut staged = self.clone();
         let added = staged.fold_scalar(field)?.unwrap_or(false);
+        staged.refresh_references()?;
         staged.validate_catalog()?;
         *self = staged;
         Ok(added)
@@ -1135,6 +1298,7 @@ impl FixRegistry {
     {
         let mut staged = self.clone();
         let counts = staged.fold(fields)?;
+        staged.refresh_references()?;
         staged.validate_catalog()?;
         *self = staged;
         Ok(counts)
@@ -1154,7 +1318,22 @@ impl FixRegistry {
     /// source is not a statement that the first one's names were wrong, and
     /// the caller's order is the precedence here as it is everywhere else.
     ///
-    /// Answers the count added and the count merged, over the fields.
+    /// **What the other dictionary says otherwise is passed over, and named;
+    /// the rest of it still folds.** Counterparties disagree about one tag -
+    /// one file types tag 532 `int32`, the next `utf8` - and merging never
+    /// changes a declared datatype, so the declaration already held stays and
+    /// the other is a [`FixDrop`] in the answer: a scalar whose datatype
+    /// disagrees with the field its identity or name reaches, a member a
+    /// held definition already declares in another shape, a definition whose
+    /// counter, component or message code disagrees with the one held under
+    /// its name, and a member reading a field passed over. Two references
+    /// under one member name to two groups or two components are one member
+    /// read two ways: the members the incoming target declares fold into the
+    /// held target under these same rules, so a group one dialect split for
+    /// one message still widens the group the dictionary reads there.
+    ///
+    /// Answers the [`FixMerge`]: the scalars added and merged, and what was
+    /// passed over.
     ///
     /// ```
     /// use yggdryl::{DataType, FixRegistry, StructType};
@@ -1175,27 +1354,46 @@ impl FixRegistry {
     /// other.insert(DataType::from(StructType::from_fields([symbol, venue])?).required_field("Instrument"))?;
     ///
     /// // Symbol and the two standard clock seeds merge.
-    /// assert_eq!(held.merge_with(&other)?, (0, 3));
+    /// let merge = held.merge_with(&other)?;
+    /// assert_eq!((merge.added, merge.merged), (0, 3));
+    /// assert!(merge.is_clean());
     /// let stored = held.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
     /// assert_eq!(stored.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
     /// let instrument = held.field_by_name("Instrument")?;
     /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
+    ///
+    /// // A third dictionary types tag 44 otherwise: the field held stays,
+    /// // the declaration is named, and everything else still folds.
+    /// let mut price = DataType::Float64.nullable_field("Price");
+    /// price.as_fix_mut().set_tag(44)?;
+    /// held.add_field(price.clone())?;
+    /// price.set_dtype(DataType::utf8())?;
+    /// let mut side = DataType::utf8().nullable_field("Side");
+    /// side.as_fix_mut().set_tag(54)?;
+    /// let merge = held.merge_with(&FixRegistry::from_fields([price, side])?)?;
+    /// assert_eq!(merge.added, 1);
+    /// assert_eq!(merge.dropped.len(), 1);
+    /// assert!(merge.dropped[0].reason.contains("float64"));
+    /// assert_eq!(held.field_by_tag(44)?.dtype(), &DataType::Float64);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::add_field`] and [`Self::insert`] return.
-    /// One mutation: the fields and the definitions are staged together and
-    /// adopted together, so a refusal anywhere leaves this dictionary exactly
-    /// as it was.
-    pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
+    /// Returns what leaves nothing to keep: an incoming dictionary whose own
+    /// catalog does not validate, a code set that does not parse or would
+    /// rewrite one this crate owns, and what [`Self::add_field`] and
+    /// [`Self::insert`] refuse beyond a disagreeing shape - an alias or an
+    /// alternate tag another field holds. One mutation: the fields and the
+    /// definitions are staged together and adopted together, so a refusal
+    /// anywhere leaves this dictionary exactly as it was.
+    pub fn merge_with(&mut self, other: &Self) -> Result<FixMerge> {
         let mut staged = self.clone();
-        let counts = staged.fold_registry(other)?;
+        let merge = staged.fold_registry(other)?;
         *self = staged;
-        Ok(counts)
+        Ok(merge)
     }
 
     /// Folds another dictionary in, the way [`Self::merge_with`] folds one,
@@ -1206,7 +1404,31 @@ impl FixRegistry {
     /// dictionary calls this so the copy is paid once rather than once per
     /// source. That is the same relationship [`Self::add_fields`] has to
     /// [`Self::fold`], one level up.
-    fn fold_registry(&mut self, other: &Self) -> Result<(usize, usize)> {
+    ///
+    /// Every scalar folds with its references deferred, and the catalog is
+    /// resolved against the folded fields once, at the end: a source of
+    /// thousands of fields costs one resolution of the catalog, never one
+    /// per field.
+    fn fold_registry(&mut self, other: &Self) -> Result<FixMerge> {
+        let mut documents = self.documents()?;
+        let merge = self.fold_source(other, &mut documents)?;
+        self.settle(documents)?;
+        Ok(merge)
+    }
+
+    /// One source folded into the fields and into `documents`, the catalog
+    /// as the documents a store writes, which the caller resolves once when
+    /// its last source is in.
+    ///
+    /// Nothing between the two reads the resolved catalog: the scalar rules
+    /// route on the fields, and a document names a field by its identity
+    /// rather than holding its metadata, so every source a caller folds can
+    /// share one set of documents and one resolution.
+    fn fold_source(
+        &mut self,
+        other: &Self,
+        documents: &mut super::catalog::Documents,
+    ) -> Result<FixMerge> {
         other.validate_catalog()?;
         // In the order the other dictionary *answers*, never the order it
         // happens to be stored in. The fold's precedence is its input order,
@@ -1221,12 +1443,62 @@ impl FixRegistry {
         // to be in that set by the time the field is folded. Fold them after
         // and a merge would narrow a vocabulary instead of widening one.
         self.merge_codesets(other)?;
+        let mut merge = FixMerge {
+            sources: 1,
+            ..FixMerge::default()
+        };
+        // How a member of the other dictionary's definitions reads each field
+        // the scalar fold did not keep under the identity the member names: a
+        // field merged by its name alone now answers under the held identity,
+        // and one passed over with nothing here answering to its identity is
+        // gone, so the members reading it go with it.
+        let mut remap = HashMap::new();
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
         // one fold twice.
-        let counts = self.fold(other.scalars().cloned())?;
-        self.merge_catalog(other)?;
-        Ok(counts)
+        for field in other.scalars() {
+            let route = self.route(field)?;
+            let refusal = match route
+                .target()
+                .map(|position| &self.fields[position])
+                .filter(|stored| stored.dtype() != field.dtype())
+            {
+                Some(stored) => datatype_disagreement(stored, canonical_identity(stored)?.0, field),
+                None => match self.fold_routed(route, field.clone()) {
+                    Ok(Some(true)) => {
+                        merge.added += 1;
+                        continue;
+                    }
+                    Ok(Some(false)) => {
+                        merge.merged += 1;
+                        if let Route::Named(position) = route {
+                            let (tag, _) = canonical_identity(&self.fields[position])?;
+                            let name = SmolStr::new(self.fields[position].name());
+                            remap.insert(canonical_id(field)?, Some((tag, name)));
+                        }
+                        continue;
+                    }
+                    Ok(None) => continue,
+                    // A spelling or an alternate tag another field already
+                    // answers to: the field cannot be held beside it, and the
+                    // fold refused it before writing a thing.
+                    Err(error) if error.is_conflict() => error,
+                    Err(error) => return Err(error),
+                },
+            };
+            merge.dropped.push(FixDrop::new(field.clone(), &refusal));
+            if !matches!(route, Route::Identity(_)) {
+                remap.insert(canonical_id(field)?, None);
+            }
+        }
+        self.merge_catalog(documents, other, &remap, &mut merge.dropped)?;
+        log::debug!(
+            "added {} and merged {} fix fields, passing over {}",
+            merge.added,
+            merge.merged,
+            merge.dropped.len()
+        );
+        Ok(merge)
     }
 
     /// Reads one Ullink `CBlock` into this dictionary, whole.
@@ -1244,97 +1516,126 @@ impl FixRegistry {
     /// at is the row's own `beginstring` where the transport states one, else
     /// what the line implies.
     ///
-    /// Answers the count added and the count merged. The message roots are
-    /// dropped; take [`Self::from_cfb_file`] when they matter.
+    /// Answers the [`FixMerge`], each drop naming the handle's URL as its
+    /// source. The message roots are dropped; take [`Self::from_cfb_file`]
+    /// when they matter.
     ///
     /// # Errors
     ///
     /// Returns what [`Self::from_cfb_file`] and [`Self::merge_with`] return,
     /// and the membership refusal when the supplied name is empty or carries
     /// a comma.
-    pub fn add_cfb_file(
-        &mut self,
-        handle: &dyn IOBase,
-        dialect: Option<&str>,
-    ) -> Result<(usize, usize)> {
+    pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<FixMerge> {
         let dialect = dialect.or_else(|| super::cfb::stem_dialect(handle));
         let (parsed, _) = Self::from_cfb_file(handle, dialect)?;
-        self.merge_with(&parsed)
+        Ok(self.merge_with(&parsed)?.located(handle))
     }
 
-    /// Reads every Ullink `CBlock` a pattern selects into this dictionary.
+    /// Reads every Ullink `CBlock` among `files` into this dictionary.
     ///
-    /// The plural of [`Self::add_cfb_file`], over the crate's one glob walk:
-    /// `pattern` is anchored at `root` exactly as [`IOBase::glob`] anchors
-    /// it - a fixed prefix is descended rather than listed and filtered, `**`
-    /// spans any number of levels - and a pattern that selects nothing folds
-    /// nothing. Private entries are never matched: a dot-prefixed file is not
-    /// a dictionary.
+    /// The plural of [`Self::add_cfb_file`]. `files` is any run of handles -
+    /// the listing [`IOBase::glob`] answers, several of them chained, or files
+    /// a caller names one by one - so a folder of counterparty files is
+    /// `add_cfb_files(folder.glob("*.cfb", false)?, None)`, anchored and
+    /// walked exactly as the glob walks it. A container among them is passed
+    /// by, since a dictionary is a file, and a file named twice folds once.
     ///
-    /// **Files fold in ascending URL order**, whatever order the listing
-    /// arrived in, because the fold's precedence is its input order and a
-    /// glob's sequence is not a caller's to see: it varies with how the
-    /// pattern decomposed and with the backend beneath. So where two files
-    /// disagree about one tag the last-sorting file wins, and
-    /// `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same
-    /// files all answer the same dictionary.
+    /// **Files fold in ascending URL order**, whatever order they arrived in,
+    /// because the fold's precedence is its input order and a listing's
+    /// sequence is not a caller's to see: it varies with how a pattern
+    /// decomposed and with the backend beneath. So where two files disagree
+    /// about one tag the first-sorting file's declaration is the one held and
+    /// the later one is passed over, and `cblocks/*.cfb`, `cblocks/**/*.cfb`
+    /// and `**/venue-*.cfb` over the same files all answer the same
+    /// dictionary.
+    ///
+    /// **Files parse on every core, and fold on one.** A parse reads nothing
+    /// but its own bytes, so the files are read in order and parsed side by
+    /// side, at most one file per thread in hand; each parsed file then folds
+    /// into the one staged dictionary in URL order, and the catalog is
+    /// resolved once for all of them - so the answer is the sequential one,
+    /// sooner, and a hundred files cost one resolution, not a hundred.
     ///
     /// **`dialect` is resolved per file.** A name supplied here stamps every
-    /// matched file with the one membership; `None` lets each file's own stem
-    /// stand in, which is what globbing a folder of counterparty files is
-    /// for - `cblocks/*.cfb` over `MSFIX44.cfb` and `BLPFIX44.cfb` stamps
-    /// `msfix44` and `blpfix44` rather than one name for both.
+    /// file with the one membership; `None` lets each file's own stem stand
+    /// in, which is what globbing a folder of counterparty files is for -
+    /// `cblocks/*.cfb` over `MSFIX44.cfb` and `BLPFIX44.cfb` stamps `msfix44`
+    /// and `blpfix44` rather than one name for both.
     ///
-    /// Answers the count of files folded, the count of fields added and the
-    /// count merged. The file count is a fact only this call holds: an empty
-    /// match and a match whose files all folded into stored fields both
-    /// answer zeroes for the other two, so without it a mistyped pattern
-    /// reads as a silent success.
+    /// Answers the [`FixMerge`] of every file together: `sources` counts the
+    /// files folded, and each drop names the file it was read from. The file
+    /// count is a fact only this call holds: an empty listing and one whose
+    /// files all folded into stored fields both answer zeroes for the
+    /// counts, so without it a mistyped pattern reads as a silent success.
     ///
     /// One mutation, and one copy of the dictionary for the whole call rather
-    /// than one per file: nothing is adopted until every matched file has
-    /// parsed and folded, so a file that is not well-formed XML, a tag whose
-    /// datatype disagrees with a stored one, or a name the core will not
-    /// store leaves this dictionary exactly as it was and the refusal names
-    /// the file among however many matched.
+    /// than one per file: nothing is adopted until every file has parsed and
+    /// folded, so a listing entry that fails, a file that is not well-formed
+    /// XML, or a name the core will not store leaves this dictionary exactly
+    /// as it was and the refusal names the file among however many there
+    /// were.
     ///
     /// # Errors
     ///
-    /// Returns what [`IOBase::glob`] returns for a pattern it cannot
-    /// decompose or a fixed prefix it cannot resolve, what a failing listing
-    /// entry carries, and what [`Self::add_cfb_file`] returns for each
-    /// matched file, located at that file's URL.
-    pub fn add_cfb_files(
-        &mut self,
-        root: &dyn IOBase,
-        pattern: &str,
-        dialect: Option<&str>,
-    ) -> Result<(usize, usize, usize)> {
+    /// Returns the first failing entry of `files`, and what
+    /// [`Self::add_cfb_file`] returns for each file, located at that file's
+    /// URL.
+    pub fn add_cfb_files<I>(&mut self, files: I, dialect: Option<&str>) -> Result<FixMerge>
+    where
+        I: IntoIterator<Item = Result<crate::holder::Holder>>,
+    {
         // Collected before anything is parsed, so a listing that fails part
         // way is a refusal rather than a half-read dictionary. What is held
-        // is one handle per match, never a registry per file.
-        let mut files: Vec<crate::holder::Holder> =
-            root.glob(pattern, false)?.collect::<Result<Vec<_>>>()?;
-        // A pattern may select a directory; a dictionary is a file.
+        // is one handle per file, never a registry per file.
+        let mut files: Vec<crate::holder::Holder> = files.into_iter().collect::<Result<_>>()?;
         files.retain(|file| !file.is_container());
-        files.sort_by_key(|file| file.url().map(ToString::to_string));
-        let mut staged = self.clone();
-        let (mut added, mut merged) = (0_usize, 0_usize);
-        for file in &files {
+        files.sort_by_cached_key(|file| file.url().map(ToString::to_string));
+        files.dedup_by_key(|file| file.url().map(ToString::to_string));
+        // Read here, in order, and parsed on the workers: the bytes and the
+        // name each file is stamped with cross by value, the dictionary each
+        // parse answers comes back, and at most one file per thread is held.
+        let threads = std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(files.len())
+            .max(1);
+        let reads = files.iter().map(|file| {
             let handle = file.as_io();
-            let named = dialect.or_else(|| super::cfb::stem_dialect(handle));
-            let (parsed, _) = Self::from_cfb_file(handle, named)
+            let named = dialect
+                .or_else(|| super::cfb::stem_dialect(handle))
+                .map(str::to_owned);
+            (handle.read_all_bytes(), named)
+        });
+        let parsed = crate::parallel::ordered(
+            reads,
+            threads,
+            1,
+            |(bytes, named): (Result<Vec<u8>>, Option<String>)| {
+                bytes.and_then(|bytes| super::cfb::parse(&bytes, named.as_deref()))
+            },
+        )
+        .with_lane_depth(1);
+        let mut staged = self.clone();
+        let mut documents = staged.documents()?;
+        let mut merge = FixMerge::default();
+        for (file, parsed) in files.iter().zip(parsed) {
+            let handle = file.as_io();
+            let (parsed, _) = parsed.map_err(|error| super::store::located(error, handle))?;
+            let folded = staged
+                .fold_source(&parsed, &mut documents)
                 .map_err(|error| super::store::located(error, handle))?;
-            let (file_added, file_merged) = staged
-                .fold_registry(&parsed)
-                .map_err(|error| super::store::located(error, handle))?;
-            added += file_added;
-            merged += file_merged;
+            merge.absorb(folded.located(handle));
         }
+        // One resolution for every file, whatever the count.
+        staged.settle(documents)?;
         *self = staged;
-        let count = files.len();
-        log::debug!("added {added} and merged {merged} fix fields from {count} cblock files");
-        Ok((count, added, merged))
+        log::debug!(
+            "added {} and merged {} fix fields from {} cblock files, passing over {}",
+            merge.added,
+            merge.merged,
+            merge.sources,
+            merge.dropped.len()
+        );
+        Ok(merge)
     }
 
     /// Adds every field, the way [`Self::fold_field`] adds one.
@@ -1387,7 +1688,20 @@ impl FixRegistry {
 
     /// One scalar through rules 2 to 5 of [`Self::add_field`], without the
     /// staging and without the catalog validation the staged verbs run.
+    ///
+    /// References are deferred: the caller resolves the catalog once when its
+    /// last field is in.
     fn fold_scalar(&mut self, field: Field) -> Result<Option<bool>> {
+        let route = self.route(&field)?;
+        self.fold_routed(route, field)
+    }
+
+    /// Where rules 2 to 5 of [`Self::add_field`] land `field`.
+    ///
+    /// The one reading of those rules, so the fold that folds a field and the
+    /// fold that asks first whether it would disagree cannot route it two
+    /// ways.
+    fn route(&self, field: &Field) -> Result<Route> {
         // The crate's own fields are every dictionary's, so folding one is
         // folding a field onto itself, and never a source's to redefine.
         if field
@@ -1397,25 +1711,40 @@ impl FixRegistry {
             .flatten()
             .is_some_and(super::is_crate_tag)
         {
-            return Ok(None);
+            return Ok(Route::Own);
         }
-        let (tag, _) = canonical_identity(&field)?;
-        if self.position_of_identity(&field)?.is_some() {
-            self.update_resolved(field)?;
-            return Ok(Some(false));
+        let (tag, _) = canonical_identity(field)?;
+        if let Some(position) = self.position_of_identity(field)? {
+            return Ok(Route::Identity(position));
         }
         // A held tag under another name is a field of its own; a held name
         // under another tag is the same field spelled with another number.
         if self.tags.contains_key(&tag) {
-            self.insert_resolved(field)?;
-            return Ok(Some(true));
+            return Ok(Route::Beside);
         }
-        if let Some(position) = self.position_by_name(field.name()) {
-            self.merge_named(position, field)?;
-            return Ok(Some(false));
+        Ok(self
+            .position_by_name(field.name())
+            .map_or(Route::New, Route::Named))
+    }
+
+    /// Folds `field` where [`Self::route`] landed it: `None` when it was this
+    /// crate's own and so neither added nor merged, else whether it arrived.
+    fn fold_routed(&mut self, route: Route, field: Field) -> Result<Option<bool>> {
+        match route {
+            Route::Own => Ok(None),
+            Route::Identity(_) => {
+                self.update_resolved(field, References::Defer)?;
+                Ok(Some(false))
+            }
+            Route::Named(position) => {
+                self.merge_named(position, field)?;
+                Ok(Some(false))
+            }
+            Route::Beside | Route::New => {
+                self.insert_resolved(field, References::Defer)?;
+                Ok(Some(true))
+            }
         }
-        self.insert_resolved(field)?;
-        Ok(Some(true))
     }
 
     /// Removes an unreferenced field a tag, identifier, name, or alias reaches.

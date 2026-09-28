@@ -673,7 +673,13 @@ mod lenient {
         let before_source = source.clone();
 
         // The two standard clock seeds are ordinary definitions and merge too.
-        assert_eq!(target.merge_with(&source).unwrap(), (1, 4));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (1, 4)
+        );
         let party = target.field_by_name("Party").unwrap();
         assert_eq!(names(party), ["PartyID", "PartyNote"]);
         assert_eq!(party.description(), Some("stored wording"));
@@ -692,16 +698,86 @@ mod lenient {
             target
         );
         let before = target.clone();
-        assert_eq!(target.merge_with(&source).unwrap(), (0, 5));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (0, 5)
+        );
         assert_eq!(target, before);
 
-        // A member that disagrees refuses the whole merge.
+        // A member that disagrees is passed over and named; the member held
+        // stays, and so does everything else.
         let disagreeing = catalog_with([DataType::Int64.nullable_field("Extra")]);
         let mut target = catalog_with([DataType::Int32.nullable_field("Extra")]);
         let before = target.clone();
-        let error = target.merge_with(&disagreeing).unwrap_err();
-        assert!(error.to_string().contains("Party.Extra"), "{error}");
+        let merge = target.merge_with(&disagreeing).unwrap();
+        assert_eq!(merge.dropped.len(), 1);
+        let drop = &merge.dropped[0];
+        assert_eq!(drop.incoming.name(), "Extra");
+        assert_eq!(drop.incoming.dtype(), &DataType::Int64);
+        assert!(
+            drop.reason.contains("Party.Extra") && drop.reason.contains("int32"),
+            "{drop}"
+        );
         assert_eq!(target, before);
+    }
+
+    #[test]
+    fn a_group_one_dialect_draws_from_another_component_widens_the_held_one() {
+        // The source's `Parties` counts 453 as the target's does, but draws
+        // its occurrences from a component of its own: one repeating group
+        // read two ways. Its component's members fold into the component the
+        // held group draws from, and nothing is passed over.
+        let mut target = catalog();
+        let mut source = FixRegistry::from_fields([
+            tagged("NoPartyIDs", 453, DataType::Int32),
+            tagged("PartyID", 448, DataType::utf8()),
+            tagged("PartyRole", 452, DataType::Int32),
+        ])
+        .unwrap();
+        let members: Vec<Field> = [(448, "PartyID"), (452, "PartyRole")]
+            .into_iter()
+            .map(|(tag, name)| {
+                let mut member = source.field(tag).unwrap().clone();
+                member.as_fix_mut().set_field_ref(name).unwrap();
+                member
+            })
+            .collect();
+        source
+            .insert(
+                StructType::from_fields(members)
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("PartyExtra"),
+            )
+            .unwrap();
+        let component = source.field_by_name("PartyExtra").unwrap().clone();
+        let mut group = DataType::serie(component).nullable_field("Parties");
+        group.as_fix_mut().set_counter(453).unwrap();
+        group.as_fix_mut().set_component("PartyExtra").unwrap();
+        source.insert(group).unwrap();
+
+        let before = target.field_by_name("Parties").unwrap().clone();
+        let merge = target.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        let party = target.field_by_name("Party").unwrap();
+        assert_eq!(names(party), ["PartyID", "PartyRole"]);
+        let parties = target.field_by_name("Parties").unwrap();
+        assert_eq!(parties.as_fix().component(), before.as_fix().component());
+        assert_eq!(names(occurrence(parties)), ["PartyID", "PartyRole"]);
+        assert!(
+            target.get_field_by_name("PartyExtra").is_some(),
+            "it still arrives"
+        );
+        assert_eq!(
+            target
+                .field_by_path(&fpath("NewOrderSingle.Parties.PartyRole"))
+                .unwrap()
+                .dtype(),
+            &DataType::Int32
+        );
     }
 
     #[test]
@@ -1006,7 +1082,13 @@ mod lenient {
             )
             .unwrap();
 
-        assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (0, 4)
+        );
         let route = target.field_by_name("Route").unwrap();
         assert_eq!(names(route), ["Hops", "RouteID"]);
         assert!(route.fields()[0].as_fix().group().is_none(), "kept inline");
@@ -1235,7 +1317,13 @@ mod lenient {
         let mut registry = holders();
         let source = FixRegistry::from_fields(arrivals()).unwrap();
         let before_source = source.clone();
-        assert_eq!(registry.merge_with(&source).unwrap(), (2, 4));
+        assert_eq!(
+            registry
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (2, 4)
+        );
         assert_fold_table(&registry);
         assert_eq!(source, before_source);
 
@@ -1243,7 +1331,13 @@ mod lenient {
         // source's `VenueSymbol` is then the first holder of 55, and `Symbol`
         // arrives beside it.
         let mut reversed = FixRegistry::from_fields(arrivals()).unwrap();
-        assert_eq!(reversed.merge_with(&holders()).unwrap(), (1, 4));
+        assert_eq!(
+            reversed
+                .merge_with(&holders())
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (1, 4)
+        );
         assert_eq!(super::scalars(&reversed), 5 + super::seeded_fields());
         assert_eq!(reversed.field_by_tag(55).unwrap().name(), "VenueSymbol");
         assert_eq!(
@@ -1312,7 +1406,13 @@ mod lenient {
         let mut price = tagged("Price", 44, DataType::Float64);
         price.as_fix_mut().set_branches(["venue"]).unwrap();
         let source = FixRegistry::from_fields([price, symbol]).unwrap();
-        assert_eq!(target.merge_with(&source).unwrap(), (1, 3));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (1, 3)
+        );
         assert_eq!(
             target
                 .field_by_tag(44)
@@ -1384,7 +1484,13 @@ mod lenient {
         let mut target = catalog();
         let mut source = FixRegistry::new();
         source.insert(venue).unwrap();
-        assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (0, 2)
+        );
         assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
         assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
         assert_eq!(super::msgtypes(&target).count(), 2);
@@ -1440,7 +1546,13 @@ mod lenient {
         assert!(target.add_field(msgtype).unwrap());
         let mut source = FixRegistry::new();
         source.insert(algo).unwrap();
-        assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+        assert_eq!(
+            target
+                .merge_with(&source)
+                .map(|merge| (merge.added, merge.merged))
+                .unwrap(),
+            (0, 2)
+        );
         assert_eq!(target.msgtype("AlgoOrder").unwrap().as_str(), "D");
         assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
         let restored = FixRegistry::from_json(&target.into_json().unwrap()).unwrap();
