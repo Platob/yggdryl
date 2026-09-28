@@ -94,8 +94,9 @@ macro_rules! element_getters {
     };
 }
 
-/// The facts [`yggdryl::graph::Event`] adds: the clocks, the state, the
-/// place in the chain, and whether the observation reports an execution.
+/// The facts [`yggdryl::graph::Event`] adds: the clocks, the state, its
+/// place among the events of its instant, and whether the observation
+/// reports an execution.
 macro_rules! event_getters {
     ($class:ident) => {
         #[napi]
@@ -116,7 +117,8 @@ macro_rules! event_getters {
                     .to_owned()
             }
 
-            /// How many elements came before this one in its chain.
+            /// Its place among the events of its instant: zero for the
+            /// first its stream hands over there, one more for each next.
             #[napi(getter)]
             pub fn seqnum(&self) -> ::napi::bindgen_prelude::Result<f64> {
                 $crate::exact_f64(::yggdryl::graph::Event::get_seqnum(&self.inner), "seqnum")
@@ -536,8 +538,8 @@ macro_rules! event_verbs {
     ($class:ident, $name:literal) => {
         #[napi]
         impl $class {
-            /// This event stated as another statement of `live`, taking the
-            /// place `live` holds in its chain.
+            /// This event stated as another statement of `live`, taking
+            /// live's predecessor, place and snapshot.
             #[napi]
             pub fn restating(&self, live: &$class) -> $class {
                 Self::from_core(::yggdryl::graph::Event::restating(

@@ -433,7 +433,7 @@ milliseconds, `sequence.min(4095)` fills the 12-bit `rand_a` lane, and the low
 sequence in its payload, so overflowed values remain probabilistically distinct
 inside the terminal sequence band. `TxHash::into_sequenced_uuid` builds that
 payload as XXH3 over its 64-bit digest and whole sequence with the caller's
-seed; `Event::time_uuid` supplies its sequence and cross-chain code. `Uuid::from_v8` sets the version and variant bits over a payload that is
+seed; `Event::time_uuid` supplies its place among the events of its instant and its cross hash, so two instants inside one millisecond each count from 0 and an event later in it may sort first. `Uuid::from_v8` sets the version and variant bits over a payload that is
 already resolved. None reads a clock, allocates, or supplies randomness of its
 own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection) projects an
 instant and digest through the exact `from_v7` layout instead.

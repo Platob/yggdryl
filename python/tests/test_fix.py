@@ -620,17 +620,37 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert live.metadata == {}
 
 
+def test_a_parse_places_each_message_among_the_messages_of_its_instant(seed_batch: FixRegistry) -> None:
+    """A run of one instant counts its messages from zero in order; the next instant restarts."""
+    order = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|"
+    other = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=B1|55=MSFT|54=1|38=100|10=0|"
+    later = b"8=FIX.4.4|35=D|52=20260102-10:15:31.000|11=C1|55=IBM|54=1|38=100|10=0|"
+    for threads in (1, 4):
+        codec = _fixed_batch(seed_batch, threads=threads)
+        parsed = list(codec.parse_lines([order, other, order, later]))
+        # By order: the order read again stands third at its instant, an
+        # identity of its own.
+        assert [held.seqnum for held in parsed] == [0, 1, 2, 0]
+        assert parsed[0].curruuid != parsed[2].curruuid
+        assert parsed[0].currhashcode == parsed[2].currhashcode
+        # The place orders the identities of one millisecond.
+        assert parsed[1].curruuid > parsed[0].curruuid
+        # A place is where a message stands, never what it says.
+        assert parsed[0].currhashcode != parsed[1].currhashcode
+
+
 ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "fix" / "ulbridge.log"
 
 
 def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     seed_batch: FixRegistry,
 ) -> None:
-    # The capture exactly as the bridge wrote it, read off an in-memory
-    # handle so no file's modification time dates a line.
+    # The capture exactly as the bridge wrote it; the row header dates each
+    # line by the clock written in front of it.
     options = TextOptions()
     options.rowheader = ULBRIDGE_ROWHEADER
-    options.timezone = "UTC"
+    # The bridge writes Zurich's local time.
+    options.timezone = "Europe/Zurich"
     options.start_rownum = 1
     source = IOBase.from_bytes(ULBRIDGE_LOG.read_bytes())
     source.media_type = Url("file:///ulbridge.log").media_type
@@ -641,14 +661,24 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # Executions and two-sided quotes split once, at the parse (A12, A13).
     assert len(messages) == 150
     walked = list(codec.lifecycle(messages))
-    assert len(walked) == 36
+    # Three of the 41 deliveries are twins restating the live message they
+    # repeat, under its identity: the window yields each identity once. The
+    # capture's ten typeless rows state no sending time, so each is dated by
+    # its own line: seven deliveries, none a twin.
+    assert len(walked) == 38
+    every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
+    assert len(every) == 41
+    seen: set[object] = set()
+    once = [held.curruuid for held in every if not (held.curruuid in seen or seen.add(held.curruuid))]
+    assert once == [held.curruuid for held in walked]
 
-    # Nineteen deliveries reach a book - eight fills and eleven order
-    # reports - and none is refused: a trade whose side states no Side(54)
-    # splits into no fill rather than into one a book cannot place.
+    # Seventeen deliveries reach a book - seven fills and ten order reports,
+    # a fill and a report of the nineteen yielded once - and none is
+    # refused: a trade whose side states no Side(54) splits into no fill
+    # rather than into one a book cannot place.
     operations = list(codec.market_data(walked))
-    assert len(operations) == 19
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 11
+    assert len(operations) == 17
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 7 + ["order_event"] * 10
 
     # Every operation folds; the unpriced sell order of 2454 rests at its
     # side's unpriced level and leaves at the same instant, so the last of
@@ -661,7 +691,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert last.ticker == "2454"
     assert last.alive == []
     assert [delta.price for delta in last.deltas] == [None, None]
-    assert last.currhashcode == 16_200_745_769_023_081_660
+    assert last.currhashcode == 10_559_977_729_007_194_651
 
     # No leaf keys a typed fact - Account(1) is no typed fact since A1 - and
     # the fill line 105 carries states its bridge's own namespaced key.
@@ -961,16 +991,17 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry
     ]
     parsed = list(codec.parse_lines(life))
     table = codec.arrow_reader(schema, parsed).read_all()
-    # A parse chains nothing: the place in the chain and the predecessor are
-    # what the walk states.
+    # A parse chains nothing, but places each message within its instant:
+    # all four are undated, so they share the codec's default and count up.
     # The fill splits into its report and an execution of its own (A12).
-    assert _column(table, "seqnum") == [None, None, None, None]
+    assert _column(table, "seqnum") == [None, 1, 2, 3]
     assert _column(table, "prevuuid") == [None, None, None, None]
 
     walked = codec.lifecycle_arrow_reader(table).read_all()
     assert walked.schema == table.schema, "the same schema in and out"
-    # The execution walks a chain of its own, where it starts.
-    assert _column(walked, "seqnum") == [None, 1, 2, None], "the first of a chain is where it starts"
+    # The order's later steps each keep their own place; the execution
+    # shares the fill's instant with its report and stands after it.
+    assert _column(walked, "seqnum") == [None, None, None, 1], "a later instant keeps its own place"
     assert _column(walked, "prevuuid")[0] is None and _column(walked, "prevuuid")[3] is None
     assert all(held is not None for held in _column(walked, "prevuuid")[1:3])
     assert _column(walked, "fixentries") == _column(table, "fixentries"), "the record is untouched"
@@ -3454,8 +3485,10 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     """The one walk, over any iterable, lazily."""
     codec = _fixed(seed)
     parsed = list(codec.parse_lines(LIFE))
-    # A parse chains nothing: every message stands alone.
-    assert all(held.seqnum == 0 and held.prevuuid is None for held in parsed)
+    # A parse chains nothing: every message stands alone, except the split
+    # pair, which shares the fill's instant and takes the next place in it.
+    assert [held.seqnum for held in parsed] == [0, 0, 0, 1]
+    assert all(held.prevuuid is None for held in parsed)
 
     stream = codec.lifecycle(parsed)
     assert isinstance(stream, FixMessages)
@@ -3469,7 +3502,9 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     order_chain, execution = walked[:3], walked[3]
     assert len({held.crossuuid.as_py() for held in order_chain}) == 1
     assert execution.crossuuid not in {held.crossuuid for held in order_chain}
-    assert [held.seqnum for held in walked] == [0, 1, 2, 0]
+    # Each later step in the order chain is a later instant, so it keeps its
+    # own place; the execution shares the fill's instant and stands after it.
+    assert [held.seqnum for held in walked] == [0, 0, 0, 1]
     assert walked[0].prevuuid is None and execution.prevuuid is None
     for earlier, later in zip(order_chain, order_chain[1:]):
         assert later.prevuuid == earlier.curruuid
@@ -3506,7 +3541,9 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     # chained in the order the messages happened in.
     reordered = list(codec.lifecycle([parsed[2], parsed[0], parsed[1]]))
     assert [held.currunix for held in reordered] == sorted(held.currunix for held in reordered)
-    assert [held.seqnum for held in reordered] == [0, 1, 2]
+    # Sorted, each is again a later instant than its predecessor, so each
+    # keeps its own place.
+    assert [held.seqnum for held in reordered] == [0, 0, 0]
 
     # A message naming no chain has an identity and no predecessor. A
     # `Heartbeat` is what the default refuses, so this reader is told to
@@ -3638,10 +3675,64 @@ def test_a_sorted_lifecycle_walks_one_hour_at_a_time_as_the_whole_capture(seed: 
     whole = walk(codec)
     # Each fill splits into its report and one execution (A12).
     assert len(whole) == len(HOURS) + 2
-    # The second chain follows its order across the hours it spans.
-    assert max(seqnum for _, seqnum, _ in whole) == 2
+    # Every step across the hours is a later instant and keeps its own
+    # place; only a fill's split pair ever shares one.
+    assert max(seqnum for _, seqnum, _ in whole) == 1
     assert walk(codec.with_sorted_lifecycle(True)) == whole
     assert walk(_fixed(seed, sorted_lifecycle=True)) == whole
+
+
+def test_the_lifecycle_hands_the_expirations_of_an_instant_over_first(seed: FixRegistry) -> None:
+    """Expirations sharing a deadline take its first places; what arrives there follows."""
+    codec = _fixed(seed)
+    messages = codec.parse_lines(
+        [
+            b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=E1|55=AAPL|54=1|38=100|10=0|",
+            b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|126=20260102-10:15:32|11=E2|55=AAPL|54=1|38=100|10=0|",
+            b"8=FIX.4.4|35=D|49=S|56=T|34=3|52=20260102-10:15:32|11=S1|55=IBM|54=1|38=100|10=0|",
+        ]
+    )
+    walked = list(codec.lifecycle(messages))
+    deadline = [held for held in walked if held.currunix == walked[-1].currunix]
+    assert [(held.state, held.seqnum) for held in deadline] == [
+        (State.EXPIRED, 0),
+        (State.EXPIRED, 1),
+        (State.PENDING_NEW, 2),
+    ]
+    # What the walk made keeps its place, so the walk answers itself.
+    again = list(codec.lifecycle(walked))
+    assert [(held.curruuid, held.seqnum) for held in again] == [(held.curruuid, held.seqnum) for held in walked]
+
+
+def test_the_lifecycle_yields_an_identity_once_within_its_dedup_window(seed: FixRegistry) -> None:
+    """The window is the core's pin: one minute unless given, None clearing it."""
+    codec = _fixed(seed)
+    assert codec.dedup_window_ms == 60_000
+    assert FixCodec(seed).dedup_window_ms == 60_000
+    assert FixCodec(seed, dedup_window_ms=5_000).dedup_window_ms == 5_000
+    assert FixCodec(seed, dedup_window_ms=None).dedup_window_ms is None
+    assert FixCodec(seed, dedup_window_ms=0).dedup_window_ms is None
+    assert FixCodec(seed, dedup_window_ms=-1).dedup_window_ms is None
+    assert FixCodec.from_env(dedup_window_ms=None).dedup_window_ms is None
+    # Set on a codec in hand, it keeps every other setting.
+    wide = codec.with_sorted_lifecycle(True).with_dedup_window_ms(7_200_000)
+    assert (wide.dedup_window_ms, wide.sorted_lifecycle) == (7_200_000, True)
+    assert wide.exclude_msgtypes == codec.exclude_msgtypes
+    assert wide.with_dedup_window_ms(None).dedup_window_ms is None
+
+    def order(sequence: int, clordid: str) -> FixMsg:
+        return codec.parse_fix_line(
+            f"8=FIX.4.4|35=D|49=S|56=T|34={sequence}|52=20260102-10:15:30|11={clordid}|55=AAPL|54=1|38=100|10=0|".encode()
+        )
+
+    # The order delivered again under another sequence restates the live
+    # order, under its identity, after another order rather than beside it.
+    messages = [order(1, "A1"), order(2, "B1"), order(3, "A1")]
+    every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
+    assert len(every) == 3
+    assert every[2].curruuid == every[0].curruuid
+    once = list(codec.lifecycle(messages))
+    assert [held.curruuid for held in once] == [held.curruuid for held in every[:2]]
 
 
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
@@ -3694,7 +3785,9 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     assert original.msgcat is MarketDataKind.ORDR and original.msgcat == 10
     deduplicated = list(codec.lifecycle([original, copy.copy(original), replay, distinct]))
     assert [held.header().msgseqnum for held in deduplicated] == [7, 8]
-    assert [held.seqnum for held in deduplicated] == [0, 1]
+    # The twin merges into the live message; `distinct`, a later instant,
+    # keeps its own place too.
+    assert [held.seqnum for held in deduplicated] == [0, 0]
 
     later = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|"
@@ -4189,18 +4282,46 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
     options.rowheader = ULBRIDGE_ROWHEADER
     captures = options.source_field()
     names = [child.name for child in captures]
-    assert names[-7:] == [
-        "timestamp",
+    assert names[-6:] == [
         "msgthreadid",
         "msgsessionid",
         "msgctxid",
         "msgseqnum",
         "msgpluginid",
-        "level",
+        "loglevel",
     ]
     assert str(captures.field("msgseqnum").dtype) == "int64"
-    # The clock is the capture's own column rather than `currunix`, so this
-    # header dates no line: it is typed by its own syntax, where an `mtime`
-    # capture would be consumed into `currunix` and read at nanoseconds UTC.
-    assert str(captures.field("timestamp").dtype) == "datetime64(us)"
-    assert "mtime" not in names[-7:]
+    # The clock is `mtime`, consumed into each line's `currunix`, so it leads
+    # no column of its own.
+    assert "mtime" not in names and "timestamp" not in names
+
+
+def test_the_bridge_row_header_dates_each_line_by_its_own_clock(tmp_path: pathlib.Path) -> None:
+    """A file's modification time dates no line the header matched."""
+    capture = tmp_path / "ulbridge.log"
+    capture.write_bytes(ULBRIDGE_LOG.read_bytes())
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    lines = list(IOBase(capture).read_text_lines(options=options))
+    assert len(lines) == 144
+    # `2026-08-14 14:46:39.769` in front of the first line, read in UTC.
+    assert lines[0].currunix == 1_786_718_799_769_000_000
+    assert lines[0].mtime == lines[0].currunix
+    # One instant per clock the bridge wrote, none of them the file's.
+    clocks = {line.split(" [", 1)[0] for line in ULBRIDGE_LOG.read_text(encoding="utf-8", errors="replace").splitlines() if line}
+    dated = {line.currunix for line in lines}
+    assert len(clocks) == 40
+    assert len(dated) == len(clocks)
+    assert int(capture.stat().st_mtime_ns) not in dated
+    # A point or a comma opens the fraction, and a clock may state none.
+    loose = IOBase.from_bytes(
+        b"2026-08-14 14:46:39.769 [7] [P] (INFO) a\n"
+        b"2026-08-14 14:46:39,769_123 [7] [P] (INFO) b\n"
+        b"2026-08-14 14:46:40 [7] [P] (WARN) c\n"
+    )
+    assert [line.currunix for line in loose.read_text_lines(options=options)] == [
+        1_786_718_799_769_000_000,
+        1_786_718_799_769_123_000,
+        1_786_718_800_000_000_000,
+    ]

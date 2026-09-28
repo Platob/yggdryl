@@ -456,12 +456,11 @@ impl TextLine {
         self.index
     }
 
-    /// Set the physical line number; the place in the chain and the current
+    /// Set the physical line number; the place it is and the current
     /// identity it answers resolve afresh.
     pub fn set_index(&mut self, index: u64) {
         self.index = index;
         self.resolved.seqnum = OnceLock::new();
-        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 
@@ -993,7 +992,21 @@ impl TextLine {
         self.answer(reading)
     }
 
-    /// When the line's record was created: a `creaunix` capture, else none.
+    /// The instant the line is dated by where anything dates it: the stated
+    /// instant, else [`Self::mtime`] - the handle's own time over a refused
+    /// capture - and none for a line nothing dates, which
+    /// [`Event::get_currunix`] answers as the epoch.
+    pub(super) fn dated_unix(&self) -> Option<i64> {
+        if let Some(stated) = self.stated.currunix {
+            return Some(stated);
+        }
+        let _ = self.mtime();
+        self.resolved.mtime.get().and_then(|reading| reading.value)
+    }
+
+    /// When the line's record was created: a `creaunix` capture, else what
+    /// the reader that cut it stated - the earliest instant it had dated a
+    /// line of the object by - else none.
     ///
     /// # Errors
     ///
@@ -1146,7 +1159,7 @@ impl TextLine {
 
     /// Drops the *resolved* content code and the identities it derives, for a
     /// fact the code digests: the names the line goes by, its parents, its
-    /// state, its place in the chain and what it follows.
+    /// state and what it follows.
     ///
     /// Resolved and never stated: a code a caller set or a row carried is a
     /// word, and a word stands until the one who said it takes it back -
@@ -1373,8 +1386,8 @@ impl Element for TextLine {
     }
 
     /// The XXH3-64 of what the line states: the facts every event digests -
-    /// the names it goes by, its parents, its state, its place and what it
-    /// follows - and then the body, behind them.
+    /// the names it goes by, its parents, its state and what it follows -
+    /// and then the body, behind them.
     ///
     /// The names a line goes by are its row header's captures, so a header
     /// that lifts a level, an id or a symbol out of a line puts them in the
@@ -1465,15 +1478,7 @@ impl Event for TextLine {
     /// time over a refused capture, and the epoch where the line has no
     /// instant at all.
     fn get_currunix(&self) -> i64 {
-        if let Some(stated) = self.stated.currunix {
-            return stated;
-        }
-        let _ = self.mtime();
-        self.resolved
-            .mtime
-            .get()
-            .and_then(|reading| reading.value)
-            .unwrap_or(0)
+        self.dated_unix().unwrap_or(0)
     }
 
     fn set_currunix(&mut self, unix: i64) {
@@ -1508,7 +1513,6 @@ impl Event for TextLine {
 
     fn set_seqnum(&mut self, seqnum: u64) {
         self.stated.seqnum = Some(seqnum);
-        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 

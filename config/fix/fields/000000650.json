@@ -194,7 +194,7 @@
     "metadata": {
       "FIX:tag": "65014",
       "FIX:transient": "false",
-      "description": "The event's place in its chain: how many came before it.",
+      "description": "The event's place among the events of its instant: 0 for the first its stream hands over there, one more for each next.",
       "display": "SeqNum"
     }
   },

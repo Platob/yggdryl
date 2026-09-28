@@ -2894,7 +2894,9 @@ mod clock_intake_tests {
     use std::sync::Arc;
 
     use yggdryl::graph::Event;
-    use yggdryl::internals::fix_codec::{default_official_time_delay_ns, official_time_delay_ns};
+    use yggdryl::internals::fix_codec::{
+        dedup_window_ns, default_official_time_delay_ns, official_time_delay_ns,
+    };
     use yggdryl::internals::fix_schema::clock_datatype;
     use yggdryl::text::{TextBytes, TextLine};
     use yggdryl::{DataType, Error, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone};
@@ -3009,6 +3011,25 @@ mod clock_intake_tests {
                 official_time_delay_ns(&codec.clone().with_official_time_delay_ms(delay)),
                 expected,
                 "a {delay} ms delay"
+            );
+        }
+    }
+
+    #[test]
+    fn the_dedup_window_converts_to_nanoseconds_and_saturates() {
+        let codec = codec();
+        assert_eq!(
+            dedup_window_ns(&codec),
+            FixCodec::DEFAULT_DEDUP_WINDOW_MS * 1_000_000
+        );
+        // A nonpositive window remembers nothing, and one no span of
+        // nanoseconds could hold saturates rather than wrapping into a
+        // negative span that would remember nothing either.
+        for (window, expected) in [(500, 500_000_000), (0, 0), (-1, 0), (i64::MAX, i64::MAX)] {
+            assert_eq!(
+                dedup_window_ns(&codec.clone().with_dedup_window_ms(window)),
+                expected,
+                "a {window} ms window"
             );
         }
     }
@@ -4278,5 +4299,35 @@ mod threads {
             output.next().is_none(),
             "Arrow output fuses at the first error"
         );
+    }
+}
+
+#[test]
+fn a_message_split_off_another_names_the_identity_its_place_gave_it() {
+    let codec = codec();
+    // An order, then a fill at the order's instant: the report stands
+    // after the order, and the execution split off it names the report as
+    // it was placed - on one line of two frames, and across two lines.
+    let order = "8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=A|55=AAPL|54=1|38=10|10=0|";
+    let fill = "8=FIX.4.4|35=8|52=20260102-10:15:30.000|11=A|17=E1|37=O1|39=1|150=F|32=2|31=10|55=AAPL|54=1|10=0|";
+    let two: String = [order, fill].concat();
+    let one_line: Vec<yggdryl::FixMsg> = codec
+        .parse_line(two.as_bytes())
+        .expect("a row")
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    for threads in [1, 4] {
+        let two_lines: Vec<yggdryl::FixMsg> = codec
+            .clone()
+            .with_threads(threads)
+            .parse_lines([order, fill])
+            .collect::<yggdryl::Result<_>>()
+            .expect("the messages");
+        for parsed in [&one_line, &two_lines] {
+            assert_eq!(parsed.len(), 3);
+            let places: Vec<u64> = parsed.iter().map(Event::get_seqnum).collect();
+            assert_eq!(places, [0, 1, 2]);
+            assert_eq!(parsed[2].get_srcuuids(), [parsed[1].get_curruuid()]);
+        }
     }
 }

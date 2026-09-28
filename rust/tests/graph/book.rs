@@ -957,11 +957,13 @@ fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() 
     )])
     .unwrap();
     let replacement = alive(&book, true).into_iter().next().unwrap();
-    assert_eq!(op(replacement).get_seqnum(), 1);
+    // A later instant keeps its own place, and so does the book that
+    // reset to it.
+    assert_eq!(op(replacement).get_seqnum(), 0);
     assert_eq!(op(replacement).get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(replacement.get_prevpx(), first.get_price());
     assert_eq!(replacement.get_prevqty(), first.get_quantity());
-    assert_eq!(book.get_seqnum(), 1);
+    assert_eq!(book.get_seqnum(), 0);
 
     let before = book.clone();
     let error = book
@@ -1058,7 +1060,8 @@ fn partial_market_updates_continue_orders_without_restating_order_id() {
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(live.get_prevpx(), previous.get_price());
     assert_eq!(live.get_prevqty(), previous.get_quantity());
-    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
+    // A later instant keeps its own place.
+    assert_eq!(op(live).get_seqnum(), 0);
     let mut finalized = live.clone();
     finalized.finalize();
     assert_eq!(*live, finalized);
@@ -1127,7 +1130,8 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(live.get_prevpx(), previous.get_price());
     assert_eq!(live.get_prevqty(), previous.get_quantity());
-    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
+    // A later instant keeps its own place.
+    assert_eq!(op(live).get_seqnum(), 0);
     assert_eq!(altids(live).get(ENTRY_ID), Some("O-2"));
     let previous = live.clone();
 
@@ -1146,7 +1150,8 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
     assert_eq!(live.get_price(), Some(Decimal::from_int(101)));
     assert_eq!(live.get_quantity(), previous.get_quantity());
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
+    // A later instant keeps its own place.
+    assert_eq!(op(live).get_seqnum(), 0);
 }
 
 #[test]
@@ -1215,7 +1220,8 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
     assert_eq!(live.get_price(), previous.get_price());
     assert_eq!(altids(live).get(ORDER_ID), Some("ORDER-1"));
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
+    // A later instant keeps its own place.
+    assert_eq!(op(live).get_seqnum(), 0);
 }
 
 #[test]

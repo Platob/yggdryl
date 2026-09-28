@@ -223,9 +223,9 @@ fn the_enum_is_the_size_of_its_widest_inline_leaf() {
 }
 
 /// An execution follows the order it fills across kinds, through the facts
-/// both hold: it takes the order's place in the chain, keeps its own kind and
-/// digests as an execution; a trade still follows nothing of another
-/// variant.
+/// both hold: it follows the same place rule as within one kind, keeps its
+/// own kind and digests as an execution; a trade still follows nothing of
+/// another variant.
 #[test]
 fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
     let first = MarketData::from(order(1_000_000, "O-1"));
@@ -235,7 +235,8 @@ fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
         .expect("an execution follows the order it fills");
     let leaf = followed.as_execution_event().expect("the kind is kept");
     assert_eq!(leaf.get_prevuuid(), Some(first.get_curruuid()));
-    assert_eq!(leaf.get_seqnum(), 1);
+    // A later instant keeps its own place.
+    assert_eq!(leaf.get_seqnum(), 0);
     assert_eq!(leaf.get_prevpx(), first.get_price());
     assert!(leaf.is_execution());
     assert_ne!(

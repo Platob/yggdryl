@@ -137,15 +137,18 @@ impl FixMsg {
     ///   nor `SettlDate(64)` is stated.
     ///
     /// Written through the lenient unsettled row write the derivations use,
-    /// so a value the dictionary's field refuses is silence.
+    /// so a value the dictionary's field refuses is silence. Answers whether
+    /// detection moved anything - a cell written or taken back, the derived
+    /// pair set or dropped, a cell it owns - which a message a pass already
+    /// read never has.
     ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the written children do not
     /// make a root.
-    pub(super) fn derive_forex(&mut self, memo: &FxMemo) -> Result<()> {
+    pub(super) fn derive_forex(&mut self, memo: &FxMemo) -> Result<bool> {
         if self.states_forex() {
-            return Ok(());
+            return Ok(false);
         }
         let owned = self.detected_fx();
         // A cell detection wrote is its own, and reads as absent to it.
@@ -167,7 +170,7 @@ impl FixMsg {
             .filter(|symbol| admits(symbol, &stated));
         let Some(symbol) = detected else {
             if owned == 0 && !self.derives_pair() {
-                return Ok(());
+                return Ok(false);
             }
             // What an earlier detection derived no longer derives.
             let retracted: SmallVec<[(i32, Scalar); 6]> = CELLS
@@ -180,7 +183,7 @@ impl FixMsg {
                 self.set_each(retracted)?;
             }
             self.set_detected_fx(0);
-            return Ok(());
+            return Ok(true);
         };
         let forex = &symbol.forex;
         let metal = forex.is_metal();
@@ -254,15 +257,17 @@ impl FixMsg {
                 None => {}
             }
         }
-        if !self.derives_pair_of(forex.as_str()) {
+        let paired = !self.derives_pair_of(forex.as_str());
+        if paired {
             let key = SecType::read("FOREX")?;
             self.set_derived_pair(Some(SecurityId::new(key, forex.as_str())?));
         }
-        if !writes.is_empty() {
+        let wrote = !writes.is_empty();
+        if wrote {
             self.set_each(writes)?;
         }
         self.set_detected_fx(detected_fx);
-        Ok(())
+        Ok(paired || wrote || detected_fx != owned)
     }
 }
 
@@ -310,7 +315,7 @@ pub mod internals {
     ///
     /// Returns what detection's row write returns.
     pub fn derive(message: &mut FixMsg, memo: &FxMemo) -> Result<()> {
-        message.derive_forex(memo)
+        message.derive_forex(memo).map(|_| ())
     }
 
     /// A memo remembering nothing yet.

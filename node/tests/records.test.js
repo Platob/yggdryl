@@ -527,6 +527,18 @@ test('a row header that dates a line fills currunix rather than adding a column'
     [1_577_934_245_123_456_789n],
   )
 
+  // An object's lines are one chain, created when its first line was dated:
+  // each line states that instant as its creation.
+  const lines = IOBase.fromBytes(
+    Buffer.from('2020-01-02T03:04:05Z id=7 first\n2020-01-02T03:04:06Z id=8 second\n'),
+  )
+    .readArrowReader(options)
+    .intoTable()
+  assert.deepEqual(
+    [...lines.getChild('creaunix').toArray()],
+    [1_577_934_245_000_000_000n, 1_577_934_245_000_000_000n],
+  )
+
   // With the flag off, the same name is an ordinary trailing capture,
   // typed by its own syntax and sitting after body.
   const undated = new TextOptions()

@@ -1071,6 +1071,24 @@ impl Ladder {
         self.deltas.clear();
         self.rehash();
     }
+
+    /// This side as it stands, deltas and all, the walk's copy keeping its
+    /// entries and none of its deltas: `clone` then [`Self::clear_deltas`],
+    /// the deltas handed over rather than copied.
+    fn emit(&mut self) -> Self {
+        let deltas = std::mem::take(&mut self.deltas);
+        let hashcode = self.hashcode;
+        if !deltas.is_empty() {
+            self.rehash();
+        }
+        Self {
+            side: self.side,
+            levels: self.levels.clone(),
+            index: Arc::clone(&self.index),
+            deltas,
+            hashcode,
+        }
+    }
 }
 
 /// The facts a book entry's data holds, whichever kind it is - never
@@ -1134,6 +1152,9 @@ impl ChangedSides {
 
 #[derive(Clone, Copy)]
 struct EventBounds {
+    /// The member's instant: its place bounds the book's only at the book's
+    /// own instant, because a place counts the events of one instant.
+    currunix: i64,
     seqnum: u64,
     creaunix: Option<i64>,
     recdunix: Option<i64>,
@@ -1143,6 +1164,7 @@ struct EventBounds {
 impl EventBounds {
     fn of<E: Event + ?Sized>(event: &E) -> Self {
         Self {
+            currunix: event.get_currunix(),
             seqnum: event.get_seqnum(),
             creaunix: event.get_creaunix(),
             recdunix: event.get_recdunix(),
@@ -1686,6 +1708,7 @@ impl BookEvent {
         let mut next = self.clone();
         if next.event.get_currunix() != unix {
             next.clear_changes();
+            next.event.set_seqnum(0);
         }
         next.event.set_currunix(unix);
         next.event.set_snapunix(None);
@@ -1715,6 +1738,7 @@ impl BookEvent {
         let result = (|| {
             if advancing {
                 self.clear_changes();
+                self.event.set_seqnum(0);
             }
             self.event.set_currunix(unix);
             self.event.set_snapunix(None);
@@ -1756,6 +1780,7 @@ impl BookEvent {
         let mut next = self.clone();
         if next.event.get_currunix() != unix {
             next.clear_changes();
+            next.event.set_seqnum(0);
         }
         next.event.set_currunix(unix);
         next.event.set_snapunix(Some(unix));
@@ -1869,9 +1894,14 @@ impl BookEvent {
         Ok(changed)
     }
 
+    /// Folds a member's facts into the book's: the highest place of the
+    /// members at the book's instant, a new instant having started the
+    /// book's own at zero, the earliest creation and recording, and the
+    /// latest execution.
     fn fold_bounds(&mut self, bounds: EventBounds) {
-        self.event
-            .set_seqnum(self.event.get_seqnum().max(bounds.seqnum));
+        if bounds.currunix == self.event.get_currunix() && bounds.seqnum > self.event.get_seqnum() {
+            self.event.set_seqnum(bounds.seqnum);
+        }
         self.event
             .set_creaunix(earliest(self.event.get_creaunix(), bounds.creaunix));
         self.event
@@ -1964,6 +1994,19 @@ impl BookEvent {
         self.snapshots.clear();
     }
 
+    /// The book as it stands, changes and all, the walk's copy kept cleared
+    /// of them: `clone` then [`Self::clear_changes`], the changes an instant
+    /// applied handed over rather than copied into a book that drops them.
+    fn emit(&mut self) -> Self {
+        Self {
+            event: self.event.clone(),
+            bid: self.bid.emit(),
+            ask: self.ask.emit(),
+            executions: std::mem::take(&mut self.executions),
+            snapshots: std::mem::take(&mut self.snapshots),
+        }
+    }
+
     fn record_snapshot_partitions(&mut self, partitions: &BTreeSet<SnapshotPartition>) {
         self.snapshots.extend(partitions.iter().cloned());
     }
@@ -1976,31 +2019,58 @@ impl BookEvent {
 }
 
 /// One instant's inputs of one book in the order their chains place them:
-/// each chain's steps by their place in it, each chain where its first step
-/// arrived. An instant orders nothing by itself, so a source that read two
+/// each chain's steps by their place at the instant - a step following
+/// another of that instant stands after it - each chain where its first
+/// step arrived. An instant orders nothing by itself, so a source that read two
 /// steps of one chain back in another order - a table sorting a first
 /// step's unstated place after the second's - still folds the chain as it
-/// happened; inputs already in their chains' order are left as they came,
-/// and checking that allocates nothing.
+/// happened; inputs already in their chains' order are left as they came.
+///
+/// A step is out of order where an earlier step of its chain stands at a
+/// later place: where the furthest place its chain reached so far is past
+/// its own. A place orders a chain only where a walk gave it - a step
+/// following a step of its chain at its own instant stands after it - so a
+/// step following none there reads as the first, and places a parse gave
+/// runs of one instant apart in a file order nothing. A group of at most [`CHAINS_SCANNED`] inputs is checked against
+/// the ones before it and allocates nothing; a larger one keeps each chain's
+/// first arrival and furthest place in one table, so an instant thousands
+/// deep costs one pass rather than every pair.
 fn order_chains(operations: &mut Vec<MarketData>) {
-    let place = |operation: &MarketData| operation.as_event().map_or(0, |event| event.get_seqnum());
-    let disordered = operations.iter().enumerate().any(|(at, later)| {
-        operations[..at].iter().any(|earlier| {
-            earlier.get_crossuuid() == later.get_crossuuid() && place(earlier) > place(later)
+    let place = |operation: &MarketData| {
+        operation.as_event().map_or(0, |event| {
+            if event.get_prevunix() == Some(event.get_currunix()) {
+                event.get_seqnum()
+            } else {
+                0
+            }
         })
-    });
+    };
+    if operations.len() <= CHAINS_SCANNED {
+        let disordered = operations.iter().enumerate().any(|(at, later)| {
+            operations[..at].iter().any(|earlier| {
+                earlier.get_crossuuid() == later.get_crossuuid() && place(earlier) > place(later)
+            })
+        });
+        if !disordered {
+            return;
+        }
+    }
+    // Each chain's first arrival and the furthest place it reached.
+    let mut chains: HashMap<Uuid, (usize, u64)> = HashMap::with_capacity(operations.len());
+    let mut disordered = false;
+    let mut firsts = Vec::with_capacity(operations.len());
+    for (at, operation) in operations.iter().enumerate() {
+        let step = place(operation);
+        let chain = chains
+            .entry(operation.get_crossuuid())
+            .or_insert((at, step));
+        disordered |= chain.1 > step;
+        chain.1 = chain.1.max(step);
+        firsts.push(chain.0);
+    }
     if !disordered {
         return;
     }
-    let firsts: Vec<usize> = (0..operations.len())
-        .map(|at| {
-            let cross = operations[at].get_crossuuid();
-            operations
-                .iter()
-                .position(|held| held.get_crossuuid() == cross)
-                .unwrap_or(at)
-        })
-        .collect();
     let mut keyed: Vec<(usize, u64, MarketData)> = operations
         .drain(..)
         .zip(firsts)
@@ -2009,6 +2079,9 @@ fn order_chains(operations: &mut Vec<MarketData>) {
     keyed.sort_by_key(|(first, place, _)| (*first, *place));
     operations.extend(keyed.into_iter().map(|(_, _, operation)| operation));
 }
+
+/// The most inputs of one instant [`order_chains`] checks pair by pair.
+const CHAINS_SCANNED: usize = 32;
 
 fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal> {
     match (bid, ask) {
@@ -2306,8 +2379,7 @@ where
                 continue;
             }
             book.set_book_time(snapshot, true);
-            self.pending.push_back(Ok(book.clone()));
-            book.clear_changes();
+            self.pending.push_back(Ok(book.emit()));
         }
         self.next_snapshot = self.snapshot_ns.and_then(|step| snapshot.checked_add(step));
     }
@@ -2385,6 +2457,9 @@ where
             operation.operation_event_mut().set_execunix(None);
             operation.operation_event_mut().set_recdunix(None);
             operation.operation_event_mut().set_snapunix(None);
+            // An event of its own deadline, placed first there, so a step of
+            // its chain at that instant folds after it.
+            operation.operation_event_mut().set_seqnum(0);
             operation.finalize();
             expired.entry(expiration.book).or_default().push(operation);
         }
@@ -2598,8 +2673,7 @@ where
                         continue;
                     };
                     book.set_book_time(unix, snapshot_views.contains(symbol));
-                    self.pending.push_back(Ok(book.clone()));
-                    book.clear_changes();
+                    self.pending.push_back(Ok(book.emit()));
                 }
             }
             for symbol in &touched {
@@ -2899,7 +2973,9 @@ where
 {
     for (index, operation) in operations.into_iter().enumerate() {
         let path = |field: &str| format_smolstr!("$.{name}[{index}].{field}");
-        if event.get_seqnum() < operation.get_seqnum() {
+        if operation.get_currunix() == event.get_currunix()
+            && event.get_seqnum() < operation.get_seqnum()
+        {
             return Err(invalid(
                 path("seqnum"),
                 format_smolstr!(

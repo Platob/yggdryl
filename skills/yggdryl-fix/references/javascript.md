@@ -369,7 +369,9 @@ sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`; a report stating no side joins the
 one side alive under its identifiers. A fill's execution, split off at the
 parse, is a chain of its own. A codec pinned `{ sortedLifecycle: true }` reads a source already in
-instant order as it comes, one epoch hour at a time, and answers the same walk.
+instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
+each `curruuid` once within `dedupWindowMs` of event time, one minute unless
+the codec says otherwise; `{ dedupWindowMs: null }` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
 `curruuid` is that instant's, with the live message's content and place.
 
@@ -387,13 +389,16 @@ const lines = [
 ]
 // Parsed, nothing follows anything: each names only the chain it spells.
 const parsed = [...codec.parseLines(lines)]
-assert.ok(parsed.every((held) => held.seqnum === 0 && held.prevuuid === null))
+assert.ok(parsed.every((held) => held.prevuuid === null))
+// Each takes its place at its instant: the execution stands after its report.
+assert.deepEqual(parsed.map((held) => held.seqnum), [0, 1, 0, 0])
 // Three lines, four messages: the fill's report and the execution it reports.
 assert.equal(parsed.length, 4)
 
 const [order, ack, fill, execution] = codec.lifecycle(parsed)
-// Sorted by event time, joined by the identifiers each message went by.
-assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 1, 2])
+// Sorted by event time, joined by the identifiers each message went by; each
+// follows one of an earlier instant, so each keeps its own place.
+assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 0, 0])
 assert.equal(ack.prevuuid, order.curruuid)
 assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
@@ -403,7 +408,7 @@ assert.deepEqual([fill.msgcat, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
 assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
 assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
-assert.deepEqual([execution.seqnum, execution.prevuuid], [0, null])
+assert.deepEqual([execution.seqnum, execution.prevuuid], [1, null])
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 const rows = codec.arrowReader(fix.schema(registry), codec.parseLines(lines))

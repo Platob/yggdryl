@@ -359,10 +359,13 @@ fn combine_executions(left: &[ExecutionEvent], right: &[ExecutionEvent]) -> Vec<
     combined.into_values().collect()
 }
 
+/// Dates every execution at the trade's instant `unix`; one moved there is
+/// an event of that instant, so it starts at its first place.
 fn rebase_executions(executions: &mut [ExecutionEvent], unix: i64) {
     for execution in executions {
         if execution.get_currunix() != unix {
             execution.set_currunix(unix);
+            execution.set_seqnum(0);
             execution.finalize();
         }
     }

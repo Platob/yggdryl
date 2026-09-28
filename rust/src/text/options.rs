@@ -170,8 +170,9 @@ pub struct TextOptions {
     /// from the zero-based physical index. Each nonnegative row number
     /// supplies `seqnum`; a negative one is refused.
     ///
-    /// There is no column of its own: the row number is the event's place in
-    /// its chain, and `seqnum` is where an event states that.
+    /// There is no column of its own: the row number is the line's place,
+    /// and `seqnum` is where an event states its place - so it reaches the
+    /// line's `curruuid`, ordering the lines of one millisecond by row.
     pub start_rownum: Option<i64>,
     /// Whether the row header's `mtime` capture dates the line.
     ///

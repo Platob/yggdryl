@@ -956,7 +956,9 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
 
-`TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+`TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. The row number is the line's [place](../fix/lifecycle.md#a-place-counts-one-instant), where it stands and never what it says: two lines stating the same thing share their `currhashcode` and differ by `curruuid` alone, which sorts the lines of one millisecond by row. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+
+An object's lines are one chain - they share the object as their cross code - so a read states when that chain began: every line whose own `creaunix` capture states none takes the earliest `currunix` the read has dated a line of its object by so far - never an instant after its own, the first line its own instant. A line the header does not date, of a handle with no time of its own, is dated by nothing and states no creation until a line that is dated; a `creaunix` capture that does not read as an instant stays refused by name. A line built by hand states what it is given.
 
 === "Rust"
 
@@ -986,7 +988,7 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
         .unwrap()?;
     // The sixteen event columns, then the body, then the header's captures.
     assert_eq!(text_batch.schema().fields().len(), 19);
-    // The record's place in its chain is its row number, under `seqnum`.
+    // The record's place is its row number, under `seqnum`.
     assert_eq!(
         text_batch
             .column(13)

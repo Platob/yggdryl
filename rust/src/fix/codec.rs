@@ -503,6 +503,10 @@ pub struct FixCodec {
     /// stand and still date the message, in milliseconds; nonpositive
     /// leaves only a clock equal to it.
     official_time_delay_ms: i64,
+    /// How long, in milliseconds of event time, the lifecycle remembers an
+    /// identity it yielded so it yields that identity once; nonpositive
+    /// remembers none.
+    dedup_window_ms: i64,
     /// Whether a market data element this codec builds carries what its
     /// message states that no typed column reads.
     market_metadata: bool,
@@ -550,6 +554,38 @@ where
             Self::Sequential(held) => held.next(),
             Self::Threaded(held) => held.next(),
         }
+    }
+}
+
+/// A stream of messages, each taking its [place](crate::graph::Event::get_seqnum)
+/// among the messages of its instant in the order the stream hands them
+/// over: what every parse door yields, so a run of messages sharing one
+/// `currunix` counts up from zero across the rows it spans, and a message
+/// split off another names it by the identity its place gave it. An error
+/// item passes through and places nothing.
+pub(super) struct Placed<I> {
+    source: I,
+    sequence: crate::graph::element::InstantSequence,
+}
+
+impl<I> Placed<I> {
+    pub(super) fn over(source: I) -> Self {
+        Self {
+            source,
+            sequence: crate::graph::element::InstantSequence::default(),
+        }
+    }
+}
+
+impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Placed<I> {
+    type Item = Result<FixMsg>;
+
+    fn next(&mut self) -> Option<Result<FixMsg>> {
+        let mut held = self.source.next()?;
+        if let Ok(message) = &mut held {
+            self.sequence.place_naming_sources(message);
+        }
+        Some(held)
     }
 }
 
@@ -605,6 +641,19 @@ impl FixCodec {
     pub(super) const DEFAULT_OFFICIAL_TIME_DELAY_NS: i64 =
         Self::DEFAULT_OFFICIAL_TIME_DELAY_MS * 1_000_000;
 
+    /// How long the lifecycle remembers an identity it yielded, when the
+    /// caller states none: one minute of event time.
+    ///
+    /// An identity is an instant to the millisecond and what the message
+    /// states, so the same `curruuid` read again is the same event read
+    /// again - one message a bridge logged at another hop, reaching the walk
+    /// after the chain had already moved past it, or a restatement the walk
+    /// yields in the place of the one it restates. A capture's hops land
+    /// within milliseconds of each other and a late log line within seconds;
+    /// a minute holds both and bounds what is remembered by the event time a
+    /// minute spans rather than by the capture's length.
+    pub const DEFAULT_DEDUP_WINDOW_MS: i64 = 60_000;
+
     /// Borrows the message type declared by a captured line without parsing a message.
     #[must_use]
     pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]> {
@@ -647,6 +696,7 @@ impl FixCodec {
             snapshot_ns: 0,
             sorted_lifecycle: false,
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
+            dedup_window_ms: Self::DEFAULT_DEDUP_WINDOW_MS,
             market_metadata: true,
             beginstring,
         }
@@ -981,6 +1031,36 @@ impl FixCodec {
         self.official_time_delay_ms
     }
 
+    /// Sets how long, in milliseconds of event time, [`Self::lifecycle`]
+    /// remembers the identity of a message it yielded, so a message under
+    /// that `curruuid` is yielded once.
+    ///
+    /// The window is measured on `currunix`: an identity stays remembered
+    /// until the walk has yielded a message more than this many
+    /// milliseconds after it, and a later message under a remembered
+    /// identity is dropped - adjacent or not, a restated twin or a hop
+    /// logged after its chain moved on. The dropped message still moved the
+    /// walk; only its copy is not yielded again. A grid view is exempt and
+    /// never remembered, and a nil identity is never a repeat. The default
+    /// is [`Self::DEFAULT_DEDUP_WINDOW_MS`]; a nonpositive window remembers
+    /// nothing and yields every message the walk answers.
+    #[must_use]
+    pub const fn with_dedup_window_ms(mut self, dedup_window_ms: i64) -> Self {
+        self.dedup_window_ms = dedup_window_ms;
+        self
+    }
+
+    /// How long the lifecycle remembers an identity it yielded, in
+    /// milliseconds, where it remembers any.
+    #[must_use]
+    pub const fn dedup_window_ms(&self) -> Option<i64> {
+        if self.dedup_window_ms > 0 {
+            Some(self.dedup_window_ms)
+        } else {
+            None
+        }
+    }
+
     /// Sets whether a market data element this codec builds carries, in its
     /// metadata, what its message states that no typed column reads.
     ///
@@ -1012,6 +1092,16 @@ impl FixCodec {
             return 0;
         }
         self.official_time_delay_ms.saturating_mul(1_000_000)
+    }
+
+    /// The deduplication window as the nanosecond span a `currunix` is
+    /// compared over: zero where there is none, saturating rather than
+    /// wrapping.
+    pub(super) const fn dedup_window_ns(&self) -> i64 {
+        if self.dedup_window_ms <= 0 {
+            return 0;
+        }
+        self.dedup_window_ms.saturating_mul(1_000_000)
     }
 
     /// The lines one chunk holds where the doors read on several threads:
@@ -1391,22 +1481,24 @@ impl FixCodec {
         // crosses to a thread, and every key and value the messages record
         // is a range of it.
         let pages = lines.into_iter().map(|line| paged(line.as_ref()));
-        crate::parallel::ordered(
-            pages,
-            threads,
-            self.chunk(),
-            move |page: Result<TextBytes>| {
-                let messages = FixMessages::from_result(
-                    page.and_then(|page| codec.parse_page_with(&page, RowExtras::NONE)),
-                );
-                if threads > 1 {
-                    messages.collected()
-                } else {
-                    messages
-                }
-            },
+        Placed::over(
+            crate::parallel::ordered(
+                pages,
+                threads,
+                self.chunk(),
+                move |page: Result<TextBytes>| {
+                    let messages = FixMessages::from_result(
+                        page.and_then(|page| codec.parse_page_with(&page, RowExtras::NONE)),
+                    );
+                    if threads > 1 {
+                        messages.collected()
+                    } else {
+                        messages
+                    }
+                },
+            )
+            .flatten(),
         )
-        .flatten()
     }
 
     /// Parses one decoded line into the messages it carries.
@@ -1525,17 +1617,17 @@ impl FixCodec {
         let lines = lines.into_iter().map(Into::<Result<L>>::into);
         if self.threads() == 1 {
             // Where it stands: a borrowed line is read borrowed.
-            return Spread::Sequential(lines.flat_map(move |line| {
+            return Placed::over(Spread::Sequential(lines.flat_map(move |line| {
                 FixMessages::from_result(
                     line.and_then(|line: L| codec.parse_text_line(line.borrow())),
                 )
-            }));
+            })));
         }
         // A line crosses to a thread owned: an owned one moves, and a
         // borrowed one is made the door's own first - a reference count per
         // page it is a range of, never a byte - and read where it lands.
         let owned = lines.map(|line| line.map(Into::<TextLine>::into));
-        Spread::Threaded(
+        Placed::over(Spread::Threaded(
             crate::parallel::ordered(
                 owned,
                 self.threads(),
@@ -1546,7 +1638,7 @@ impl FixCodec {
                 },
             )
             .flatten(),
-        )
+        ))
     }
 
     /// One row's payload read under what the row stated, a row of nothing
@@ -2332,8 +2424,11 @@ impl FixCodec {
     /// as the one after the live message it follows - the last message of
     /// its chain, under the cross identity its cross code derives, still
     /// alive - so a chained message carries its predecessor's identity and
-    /// instant, its place in the chain, the predecessor as a parent and the
-    /// lifecycle carried forward, and is settled again around them.
+    /// instant, the predecessor as a parent and the lifecycle carried
+    /// forward, and is settled again around them. The walk places each
+    /// message it reads by content among the messages of its instant, after
+    /// the expirations it hands over first there, and a message following a
+    /// predecessor of the same instant or a later one stands after it.
     /// [`Self::lifecycle_arrow_reader`] is the same walk over batches of
     /// rows. Intake errors are retained in source order and yielded before
     /// the sorted messages; they never advance the walk, and exhaustion is
@@ -2367,6 +2462,14 @@ impl FixCodec {
     /// identity are emitted on that epoch-aligned grid without advancing its
     /// chain.
     ///
+    /// What the walk yields is yielded once within
+    /// [`Self::dedup_window_ms`] of event time, one minute unless the codec
+    /// says otherwise: a message whose `curruuid` the walk already yielded,
+    /// no more than the window before the latest `currunix` it yielded, is
+    /// dropped - a twin restating the live message, a hop logged again after
+    /// its chain moved on - while the walk still reads it, so the chain keeps
+    /// what it said. A grid view is exempt, and a nil identity never repeats.
+    ///
     /// The walk reads the structured message before it walks: a message
     /// whose sending clock the parse supplied rather than read is dated by
     /// the `TransactTime(60)` it states, [`FixMsg::dated_by_transaction`],
@@ -2399,7 +2502,12 @@ impl FixCodec {
                 // The walk reads the structured message: a frame the parse
                 // dated by a stand-in clock is dated by its transaction.
                 .map(|held: Result<FixMsg>| held.and_then(FixMsg::dated_by_transaction));
-        super::enrich::Walked::new(walked, self.snapshot_ns, self.sorted_lifecycle)
+        super::enrich::Walked::new(
+            walked,
+            self.snapshot_ns,
+            self.sorted_lifecycle,
+            self.dedup_window_ns(),
+        )
     }
 
     /// Builds one message from pairs the caller already split.
@@ -3437,5 +3545,12 @@ pub mod internals {
     #[must_use]
     pub const fn official_time_delay_ns(codec: &FixCodec) -> i64 {
         codec.official_time_delay_ns()
+    }
+
+    /// One codec's lifecycle deduplication window as the nanosecond span a
+    /// `currunix` is compared over.
+    #[must_use]
+    pub const fn dedup_window_ns(codec: &FixCodec) -> i64 {
+        codec.dedup_window_ns()
     }
 }

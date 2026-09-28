@@ -102,8 +102,9 @@ macro_rules! element_getters {
     };
 }
 
-/// The facts [`yggdryl::graph::Event`] adds: the clocks, the state, the
-/// place in the chain, and whether the observation reports an execution.
+/// The facts [`yggdryl::graph::Event`] adds: the clocks, the state, its
+/// place among the events of its instant, and whether the observation
+/// reports an execution.
 macro_rules! event_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
@@ -119,7 +120,8 @@ macro_rules! event_getters {
                 $crate::graph::member(py, *::yggdryl::graph::Event::get_state(&self.inner))
             }
 
-            /// How many elements came before this one in its chain.
+            /// Its place among the events of its instant: zero for the
+            /// first its stream hands over there, one more for each next.
             #[getter]
             fn seqnum(&self) -> u64 {
                 ::yggdryl::graph::Event::get_seqnum(&self.inner)
@@ -518,8 +520,8 @@ macro_rules! element_repr {
 macro_rules! event_verbs {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
-            /// This event stated as another statement of `live`, taking the
-            /// place `live` holds in its chain.
+            /// This event stated as another statement of `live`, taking
+            /// live's predecessor, place and snapshot.
             fn restating(&self, live: &Self) -> Self {
                 Self::from_core(::yggdryl::graph::Event::restating(self.inner.clone(), &live.inner))
             }

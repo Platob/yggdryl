@@ -851,7 +851,8 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
     table.schema.fields.map((field) => field.name),
     [...EVENT_COLUMNS, 'body', 'level', 'id'],
   )
-  // The row number is the event's place in its chain, and states it alone.
+  // The row number is the event's place among the lines of its instant, and
+  // states it alone.
   assert.deepEqual([...table.getChild('seqnum')], [10n, 11n, 12n])
   // The body is the line past its row header; the edges are what stripping
   // removes, and the header is what the reader took off.

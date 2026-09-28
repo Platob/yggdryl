@@ -121,9 +121,11 @@ batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
 document expands to - closed on the bytes each row lands as against the
 codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
-of messages lazily - each stated as the one after the live message it
-follows under its cross identity, carrying ``prevuuid``, ``prevunix``,
-``seqnum`` and the lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+of messages lazily - each placed among the messages of its instant by
+content, then stated as following the live message under its cross
+identity, carrying ``prevuuid``, ``prevunix``, its place at ``seqnum`` the
+higher of its own and one past the predecessor's where that happened at
+the same instant or later, and the lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
@@ -149,8 +151,8 @@ field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
 ``payload_column``, ``null_values``, ``direction``, ``batch_byte_size``,
-``snapshot_ns``, ``sorted_lifecycle``, ``official_time_delay_ms`` and
-``market_metadata`` - is on the codec; a positive
+``snapshot_ns``, ``sorted_lifecycle``, ``official_time_delay_ms``,
+``dedup_window_ms`` and ``market_metadata`` - is on the codec; a positive
 ``snapshot_ns`` emits independent living views on its epoch-aligned grid -
 each the live event as of its tick, dated at it, so its ``curruuid`` is the
 identity that tick derives - and
@@ -158,7 +160,10 @@ zero, a negative width or ``None`` disables them; ``sorted_lifecycle`` states
 that the lifecycle's messages arrive in instant order, so it walks them one
 epoch hour at a time instead of sorting the whole capture, while
 ``official_time_delay_ms`` is how far from ``SendingTime(52)`` an official
-transaction clock may stand and still date the message. A stage is a call, and
+transaction clock may stand and still date the message, and ``dedup_window_ms``
+is how long, in milliseconds of event time, the lifecycle remembers an identity
+it yielded so it yields that identity once - one minute when not given, and
+``None``, zero or a negative window remembering none. A stage is a call, and
 no pin decides a version: a row states one in its ``beginstring`` capture, else
 the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - the
@@ -230,16 +235,18 @@ declaration and row.
 ``ULBRIDGE_ROWHEADER`` is the row header a ULBridge log writes in front of
 every line, as a ``rowheader`` for
 :class:`~yggdryl.text.TextOptions` - the crate's own text rather than a
-second copy of it. Four of its seven captures are named for the fields they
-fill - ``msgsessionid``, ``msgctxid``, ``msgseqnum`` and ``msgpluginid`` -
-and ``timestamp``, ``msgthreadid`` and ``level`` name none and are the
-capture's own columns, carried in front, so the header dates neither its line
-nor its message: a caller who wants the line dated names that capture
-``mtime`` in a header of their own, which costs the ``timestamp`` column and
-reads the clock at ``datetime64(ns, UTC)`` whatever the expression spells.
-Its clock reads both fractions the bridge writes, three digits and grouped
-microseconds - and a line a row header does not match carries no capture
-context, which is what the lifecycle folds deliveries on.
+second copy of it. Its clock is ``mtime``, so the header dates each line it
+matches: the capture is consumed into the line's ``currunix`` - the
+``recdunix`` of its messages and the sending clock of one stating no
+``SendingTime(52)`` - and read at ``datetime64(ns, UTC)`` under the text
+options' ``timezone``, never the file's modification time. Four of the other
+six captures are named for the fields they fill - ``msgsessionid``,
+``msgctxid``, ``msgseqnum`` and ``msgpluginid`` - and ``msgthreadid`` and
+``loglevel`` name none and are the capture's own columns, carried in front.
+Its clock reads what bridges write, a point or a comma before three digits or
+grouped microseconds, or no fraction at all - and a line a row header does not
+match carries no capture context, which is what the lifecycle folds
+deliveries on.
 """
 
 from __future__ import annotations

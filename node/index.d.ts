@@ -331,7 +331,10 @@ export declare class BookEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -479,8 +482,8 @@ export declare class BookEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): BookEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: BookEvent): BookEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -1482,7 +1485,10 @@ export declare class ExecutionEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -1642,8 +1648,8 @@ export declare class ExecutionEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): ExecutionEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: ExecutionEvent): ExecutionEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -2338,8 +2344,12 @@ export declare class FixCodec {
    * capture, off when unstated;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
    * transaction clock may stand and still date the message, the core's
-   * one second when unstated; `marketMetadata` is whether a market
-   * operation carries its message's unmapped fields, on when unstated.
+   * one second when unstated; `dedupWindowMs` is how long, in
+   * milliseconds of event time, `lifecycle` remembers an identity it
+   * yielded so it yields that identity once - the core's one minute when
+   * unstated, and `null`, zero or a negative window remembering none;
+   * `marketMetadata` is whether a market operation carries its message's
+   * unmapped fields, on when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
@@ -2408,6 +2418,19 @@ export declare class FixCodec {
    * count at this boundary is.
    */
   get officialTimeDelayMs(): number
+  /**
+   * How long, in milliseconds of event time, `lifecycle` remembers an
+   * identity it yielded so it yields that identity once, or `null` where
+   * it remembers none.
+   */
+  get dedupWindowMs(): number | null
+  /**
+   * This codec with its lifecycle remembering the identities it yielded
+   * for `dedupWindowMs` milliseconds of event time: `null`, zero and a
+   * negative window remember none. Every other setting, the dictionary
+   * included, is this codec's.
+   */
+  withDedupWindowMs(dedupWindowMs: number | null): FixCodec
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -2745,7 +2768,10 @@ export declare class FixMsg {
    * states none.
    */
   get state(): string
-  /** The message's place in its chain, `0` until a lifecycle states it. */
+  /**
+   * The message's place among the messages of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
   get prevuuid(): string | null
@@ -5001,7 +5027,10 @@ export declare class OrderEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -5161,8 +5190,8 @@ export declare class OrderEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): OrderEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: OrderEvent): OrderEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -5837,7 +5866,10 @@ export declare class QuoteEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -5997,8 +6029,8 @@ export declare class QuoteEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): QuoteEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: QuoteEvent): QuoteEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -7004,7 +7036,10 @@ export declare class SnapshotEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -7152,8 +7187,8 @@ export declare class SnapshotEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): SnapshotEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: SnapshotEvent): SnapshotEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -8253,7 +8288,10 @@ export declare class TradeEvent {
   get currunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
-  /** How many elements came before this one in its chain. */
+  /**
+   * Its place among the events of its instant: zero for the
+   * first its stream hands over there, one more for each next.
+   */
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
@@ -8413,8 +8451,8 @@ export declare class TradeEvent {
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): TradeEvent
   /**
-   * This event stated as another statement of `live`, taking the
-   * place `live` holds in its chain.
+   * This event stated as another statement of `live`, taking
+   * live's predecessor, place and snapshot.
    */
   restating(live: TradeEvent): TradeEvent
   /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
@@ -9403,6 +9441,13 @@ export interface FixCodecOptions {
    * transaction clock equal to the sending clock.
    */
   officialTimeDelayMs?: number
+  /**
+   * How long, in milliseconds of event time, `lifecycle` remembers an
+   * identity it yielded so it yields that identity once; the core's one
+   * minute when unstated, and `null`, zero or a negative window
+   * remembering none.
+   */
+  dedupWindowMs?: number | null
   /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty

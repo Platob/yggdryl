@@ -62,6 +62,12 @@ pub(super) fn fill_all(msg: &mut FixMsg) -> Result<()> {
     Ok(())
 }
 
+/// Whether any rule answers for `msg` anew: false where the fixpoint
+/// already stands, which one sweep proves.
+pub(super) fn lands_anything(msg: &FixMsg) -> bool {
+    !NativeRow::new(msg).settle().is_empty()
+}
+
 /// The message plus answers landed during this pass. Reading landed answers
 /// before the message is what gives a dependency chain its fixpoint without a
 /// materialized working row.
@@ -105,11 +111,7 @@ impl<'message> NativeRow<'message> {
     /// answer is evaluated, so later fixpoint sweeps do no work for settled
     /// rules.
     fn has(&self, tag: i32) -> bool {
-        self.landed.iter().any(|(held, _)| *held == tag)
-            || self
-                .msg
-                .indexed_by_tag(tag)
-                .is_some_and(|value| !value.is_null())
+        self.landed.iter().any(|(held, _)| *held == tag) || self.msg.states_indexed_tag(tag)
     }
 
     fn with_text<T>(&self, tag: i32, read: impl FnOnce(&str) -> T) -> Option<T> {

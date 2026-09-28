@@ -34,7 +34,8 @@ use yggdryl::{
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
 use crate::graph::{
-    code_scalar, decimal_scalar, fxrates_dict, idmap_dict, member, securityids_dict, uuid_scalar,
+    code_scalar, decimal_scalar, ellipsis, fxrates_dict, idmap_dict, member, securityids_dict,
+    uuid_scalar,
 };
 use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
@@ -1995,7 +1996,8 @@ impl PyFixMsg {
         member(py, *self.inner.get_state())
     }
 
-    /// The message's place in its chain: how many came before it.
+    /// The message's place among the messages of its instant: zero for the
+    /// first its stream hands over there, one more for each next.
     #[getter]
     fn seqnum(&self) -> u64 {
         self.inner.get_seqnum()
@@ -2523,7 +2525,11 @@ impl PyFixCodec {
     /// `official_time_delay_ms` is how far from `SendingTime(52)` an
     /// official transaction clock may stand and still date the message, the
     /// core's one second when unstated, and a nonpositive delay admits only
-    /// a transaction clock equal to the sending clock; `market_metadata`
+    /// a transaction clock equal to the sending clock; `dedup_window_ms` is
+    /// how long, in milliseconds of event time, `lifecycle` remembers an
+    /// identity it yielded so it yields that identity once - not given, the
+    /// core's one minute, and `None`, zero or a negative window remembering
+    /// none; `market_metadata`
     /// is whether a market operation the codec builds carries, in its
     /// metadata, what its message states that no typed column reads - on by
     /// default, and part of the leaf's identity.
@@ -2545,10 +2551,13 @@ impl PyFixCodec {
         snapshot_ns=None,
         sorted_lifecycle=false,
         official_time_delay_ms=None,
+        dedup_window_ms=ellipsis(),
         market_metadata=true,
     ))]
     #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn new(
+        py: Python<'_>,
         registry: Option<PyRef<'_, PyFixRegistry>>,
         default_sending_time: Option<&Bound<'_, PyAny>>,
         separator: Option<u8>,
@@ -2564,6 +2573,7 @@ impl PyFixCodec {
         snapshot_ns: Option<i64>,
         sorted_lifecycle: bool,
         official_time_delay_ms: Option<i64>,
+        dedup_window_ms: Py<PyAny>,
         market_metadata: bool,
     ) -> PyResult<Self> {
         let registry = registry_or_env(registry)?;
@@ -2607,6 +2617,11 @@ impl PyFixCodec {
         inner = inner.with_sorted_lifecycle(sorted_lifecycle);
         if let Some(held) = official_time_delay_ms {
             inner = inner.with_official_time_delay_ms(held);
+        }
+        let window = dedup_window_ms.bind(py);
+        if !window.is(py.Ellipsis()) {
+            let window: Option<i64> = window.extract()?;
+            inner = inner.with_dedup_window_ms(window.unwrap_or(0));
         }
         inner = inner.with_market_metadata(market_metadata);
         Ok(Self { inner, registry })
@@ -2721,6 +2736,29 @@ impl PyFixCodec {
     #[getter]
     fn official_time_delay_ms(&self) -> i64 {
         self.inner.official_time_delay_ms()
+    }
+
+    /// How long, in milliseconds of event time, `lifecycle` remembers an
+    /// identity it yielded so it yields that identity once, or `None` where
+    /// it remembers none.
+    #[getter]
+    fn dedup_window_ms(&self) -> Option<i64> {
+        self.inner.dedup_window_ms()
+    }
+
+    /// This codec with its lifecycle remembering the identities it yielded
+    /// for `dedup_window_ms` milliseconds of event time: `None`, zero and a
+    /// negative window remember none. Every other setting, the dictionary
+    /// included, is this codec's.
+    #[pyo3(signature = (dedup_window_ms))]
+    fn with_dedup_window_ms(&self, dedup_window_ms: Option<i64>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_dedup_window_ms(dedup_window_ms.unwrap_or(0)),
+            registry: Arc::clone(&self.registry),
+        }
     }
 
     /// Whether a market operation this codec builds carries its message's
@@ -3123,8 +3161,10 @@ impl PyFixCodec {
     /// as the one after the live message it follows - the last message of
     /// its chain, under the cross identity its cross code derives, still
     /// alive - so a chained message carries its predecessor's identity and
-    /// instant as `prevuuid` and `prevunix`, its place in the chain as
-    /// `seqnum`, the lifecycle's creation carried forward as `creaunix`, and
+    /// instant as `prevuuid` and `prevunix`, its place at `seqnum` - its own
+    /// unless the predecessor happened at the same instant or later, where
+    /// it takes the higher of its own and one past the predecessor's - the
+    /// lifecycle's creation carried forward as `creaunix`, and
     /// is settled
     /// again around
     /// them; a message that arrives before the live one it would follow is

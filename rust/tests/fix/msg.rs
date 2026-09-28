@@ -1850,13 +1850,16 @@ mod identifier_maps {
 
 /// A message naming no currency pair digests exactly as it did before FX
 /// detection existed: detection writes nothing where it finds no pair.
+///
+/// The pin last moved when an event's place left its content code: the
+/// code no longer feeds `seqnum`, which this message states as zero.
 #[test]
 fn a_message_naming_no_pair_digests_as_it_did_before_detection() {
     let (_, reader) = reader();
     let message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=100|40=2|44=10.5|15=USD|167=CS|10=0|")
         .expect("an order");
-    assert_eq!(message.get_currhashcode(), 17_802_254_102_850_403_896);
+    assert_eq!(message.get_currhashcode(), 12_856_949_354_363_238_690);
 }
 
 /// What settle derives about the market a message is in: the rates it

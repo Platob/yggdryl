@@ -63,12 +63,14 @@ mod dataset {
     }
 
     /// The text options a bridge log is read under: its own row header, each
-    /// line numbered and classified.
+    /// line numbered and classified, and the zone its clock is written in -
+    /// the bridge logs Zurich's local time, so a line stamped `14:46:39.769`
+    /// recorded a frame the venue sent at `12:46:39.743` UTC.
     fn reading() -> RecordOptions {
         let mut options = TextOptions::new()
             .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
             .expect("the bridge's row header compiles")
-            .with_timezone(Timezone::UTC);
+            .with_timezone(Timezone::from_str("Europe/Zurich").expect("a bundled zone"));
         options.start_rownum = Some(1);
         options.parse_mimetype = true;
         options.into()
@@ -105,6 +107,92 @@ mod dataset {
             .expect("a line reader")
             .map(|line| line.expect("a line"))
             .collect()
+    }
+
+    #[test]
+    fn the_shipped_header_dates_each_line_by_the_clock_written_in_front_of_it() {
+        // A file on disk has a modification time of its own, which dated
+        // every line of it while the header's clock was a capture that
+        // dated nothing.
+        let path = yggdryl::local::LocalFolder::temporary()
+            .expect("a temporary folder")
+            .path()
+            .expect("a local path")
+            .join(format!("yggdryl-ulbridge-{}.log", std::process::id()));
+        std::fs::write(&path, LOG).expect("the capture is written");
+        let file = yggdryl::holder::Holder::local(path.clone()).expect("a local file");
+        let handle = yggdryl::IOBase::mtime(file.as_io());
+        let RecordOptions::Text(options) = reading() else {
+            panic!("a text read")
+        };
+        let lines: Vec<TextLine> = read_text_lines(file.as_io(), &options)
+            .expect("a line reader")
+            .map(|line| line.expect("a line"))
+            .collect();
+        let _ = std::fs::remove_file(&path);
+        assert!(handle.is_some(), "the file states a time of its own");
+        assert_eq!(lines.len(), LINES);
+        // `2026-08-14 14:46:39.769` in front of the first line, Zurich's
+        // local time: `12:46:39.769` UTC.
+        assert_eq!(lines[0].get_currunix(), 1_786_711_599_769_000_000);
+        assert_eq!(
+            lines[0].mtime().expect("a clock"),
+            Some(lines[0].get_currunix())
+        );
+        // One instant per clock the bridge wrote, and none of them the
+        // file's.
+        let clocks: std::collections::BTreeSet<&[u8]> = LOG
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                let end = line
+                    .windows(2)
+                    .position(|pair| pair == b" [")
+                    .expect("a clock then a bracket");
+                &line[..end]
+            })
+            .collect();
+        let dated: std::collections::BTreeSet<i64> =
+            lines.iter().map(|line| line.get_currunix()).collect();
+        assert_eq!(clocks.len(), 40);
+        assert_eq!(dated.len(), clocks.len());
+        assert!(!dated.contains(&handle.expect("the file's time")));
+        // The clock is consumed into `currunix`, so no column carries it; the
+        // level is the capture's own column.
+        let names = header_captures();
+        assert_eq!(names.first().map(String::as_str), Some("mtime"));
+        assert_eq!(names.last().map(String::as_str), Some("loglevel"));
+        let carried = options.source_field().expect("the source field");
+        assert!(carried.field("mtime").is_err() && carried.field("timestamp").is_err());
+        assert!(carried.field("loglevel").is_ok());
+    }
+
+    #[test]
+    fn the_shipped_header_reads_a_point_a_comma_or_no_fraction() {
+        let options = TextOptions::new()
+            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .expect("the bridge's row header compiles");
+        let lines: Vec<TextLine> = read_text_lines(
+            &Buffer::from_bytes(
+                b"2026-08-14 14:46:39.769 [7] [P] (INFO) a\n2026-08-14 14:46:39,769_123 [7] [P] (INFO) b\n2026-08-14 14:46:40 [7] [P] (WARN) c\n"
+                    .to_vec(),
+            ),
+            &options,
+        )
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .collect();
+        let dated: Vec<i64> = lines.iter().map(|line| line.get_currunix()).collect();
+        assert_eq!(
+            dated,
+            [
+                1_786_718_799_769_000_000,
+                1_786_718_799_769_123_000,
+                1_786_718_800_000_000_000
+            ]
+        );
+        let bodies: Vec<&str> = lines.iter().map(TextLine::body).collect();
+        assert_eq!(bodies, ["a", "b", "c"]);
     }
 
     /// The instrument every named order flow of the capture reads as: its
@@ -303,7 +391,19 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         let whole = walk(&codec);
-        assert_eq!(whole.len(), 36);
+        assert_eq!(whole.len(), 38);
+        // The window yields each identity once: a walk remembering none also
+        // answers the three twins it restated, each an identity it had
+        // already answered, and nothing else.
+        let every = walk(&codec.clone().with_dedup_window_ms(0));
+        assert_eq!(every.len(), 41);
+        let mut seen = std::collections::HashSet::new();
+        let once: Vec<_> = every
+            .iter()
+            .copied()
+            .filter(|held| seen.insert(held.0))
+            .collect();
+        assert_eq!(once, whole);
         assert_eq!(walk(&codec.clone().with_sorted_lifecycle(true)), whole);
     }
 
@@ -329,10 +429,21 @@ mod dataset {
         // built no `msgsesseventid`, and so could not be folded onto the
         // deliveries they are repeats of. Reading them is what folds them.
         //
-        // It is 36 since the parse splits each fill's execution off its
+        // It was 36 since the parse splits each fill's execution off its
         // report (A12): the 56 executions fold, hop onto hop, into the eight
         // fills they are, each a delivery of its own.
-        assert_eq!(direct.len(), 36);
+        //
+        // It was 32 since the walk yields each identity once within its
+        // deduplication window: four of the 36 were twins restating the
+        // live message they repeat, under its identity.
+        //
+        // It is 38 since the row header dates each line by the clock in
+        // front of it: the capture's ten typeless rows - documents, a
+        // statistics line, empty bodies - state no sending time, so each is
+        // dated by its line. Under the one instant every line shared, they
+        // were two deliveries, one of them a twin the window dropped; at
+        // their own instants they are seven deliveries and no twin.
+        assert_eq!(direct.len(), 38);
         assert_eq!(
             direct
                 .iter()
@@ -1085,15 +1196,17 @@ mod dataset {
         assert_eq!(messages.len(), EVERY_ROW, "nothing refused");
 
         // The walk folds the 94 observations and the 56 executions their
-        // parse split off into the 36 deliveries the lifecycle pin states -
-        // the 28 it folded before the split, and one per fill (A12), every
-        // hop's execution of one fill folded onto one - and the sorted door
-        // expands those.
+        // parse split off into the 41 deliveries the lifecycle pin states -
+        // the 33 it folded before the split, five more than while every line
+        // shared one instant because each typeless row is now dated by its
+        // own line, and one per fill (A12), every hop's execution of one
+        // fill folded onto one - less the three twins its window yields
+        // once, and the sorted door expands those.
         let walked = codec
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the capture walks");
-        assert_eq!(walked.len(), 36);
+        assert_eq!(walked.len(), 38);
         let (operations, refused): (Vec<_>, Vec<_>) =
             codec.market_data(walked.clone()).partition(Result::is_ok);
         let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
@@ -1101,22 +1214,43 @@ mod dataset {
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Nineteen of the deliveries reach a book - eight fills, the eight
+        // Seventeen of the deliveries reach a book - eight fills, the eight
         // reports they were split off, now their orders' reports, and three
-        // orders; the rest are acknowledgements, rejects, session traffic
-        // and bridge rows no book takes. Nothing is refused: the trade
-        // capture of line 112 is no book input, since a trade's fills are the
-        // executions its parse splits off - and its single side states no
-        // `Side(54)`, so it split off none.
+        // orders, less a fill and a report the window yields once; the rest are
+        // acknowledgements, rejects, session traffic and bridge rows no book
+        // takes. Nothing is refused: the trade capture of line 112 is no
+        // book input, since a trade's fills are the executions its parse
+        // splits off - and its single side states no `Side(54)`, so it split
+        // off none.
         assert!(refused.is_empty(), "{refused:?}");
-        assert_eq!(operations.len(), 19);
+        assert_eq!(operations.len(), 17);
+        // The two a walk remembering nothing answers beside them each repeat
+        // an identity already there.
+        let every: Vec<MarketData> = codec
+            .market_data(
+                codec
+                    .clone()
+                    .with_dedup_window_ms(0)
+                    .lifecycle(line_messages(&codec))
+                    .collect::<yggdryl::Result<Vec<_>>>()
+                    .expect("the capture walks"),
+            )
+            .collect::<yggdryl::Result<_>>()
+            .expect("every delivery reads");
+        assert_eq!(every.len(), 19);
+        let mut seen = std::collections::HashSet::new();
+        let once: Vec<&MarketData> = every
+            .iter()
+            .filter(|operation| seen.insert(operation.get_curruuid()))
+            .collect();
+        assert_eq!(once, operations.iter().collect::<Vec<_>>());
         let mut census: BTreeMap<&str, usize> = BTreeMap::new();
         for operation in &operations {
             *census.entry(operation.kind().as_str()).or_default() += 1;
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 8), ("order_event", 11)])
+            BTreeMap::from([("execution_event", 7), ("order_event", 10)])
         );
         assert!(operations.windows(2).all(|pair| {
             let at = |operation: &MarketData| {
@@ -1175,8 +1309,11 @@ mod dataset {
         // again when the bid and ask lanes left the operations: the lane each
         // delta held - its quantity alone - no longer feeds its digest. It
         // moved again when a sided element's cross code took its side (A17):
-        // each delta's cross code, and so its identity, reads `SELL:`.
-        assert_eq!(last.get_currhashcode(), 16_200_745_769_023_081_660);
+        // each delta's cross code, and so its identity, reads `SELL:`. It
+        // moved again when an event's place left its content code - the
+        // book's own and each delta's - and a delta's place became its
+        // instant's rather than its chain's.
+        assert_eq!(last.get_currhashcode(), 10_559_977_729_007_194_651);
 
         // No leaf keys a typed fact.
         for operation in &operations {
@@ -1189,9 +1326,10 @@ mod dataset {
             }
         }
         // The bridge's own namespaced keys ride every leaf of the message
-        // that states them, as the message holds them: 80 of them over the
-        // nineteen leaves - a fill's report and the execution split off it
-        // each carry the 40 the fill's leaf alone carried before the split.
+        // that states them, as the message holds them: 66 of them over the
+        // seventeen leaves - a fill's report and the execution split off it
+        // each carry the 33 the fill's leaf alone carried before the split,
+        // the seven of one twin each the window yields once.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1204,7 +1342,7 @@ mod dataset {
                 carried += 1;
             }
         }
-        assert_eq!(carried, 80);
+        assert_eq!(carried, 66);
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1551,16 +1689,16 @@ mod pipeline {
         // takes is not carried in front, it fills that column: the reader's
         // `msgtype`, and the header's `bridgesessionid`, `msgctxid` and
         // `msgseqnum`, each named for the field it fills. What is left in
-        // front is what no column is spelled for - the clock the bridge
-        // printed, which is the line's own text and not the message's
-        // `SendingTime`, the thread that wrote the line and its level. Where
+        // front is what no column is spelled for - the thread that wrote the
+        // line and its level; the clock the bridge printed dates the line, so
+        // it is the line's `currunix` and leads no column of its own. Where
         // the line came out of, which line it was and when it was written lead
         // nothing any more: they are `crosscode`, `seqnum` and `currunix`, the
         // event columns both halves already open with, so they stand in the
         // fixed band with the rest of them.
         assert_eq!(
             &names[..5],
-            ["mimetype", "body", "timestamp", "msgthreadid", "level"],
+            ["mimetype", "body", "msgthreadid", "loglevel", "currunix"],
             "{names:?}"
         );
         // The crate's own clocks open the fixed columns; the standard header
@@ -1571,7 +1709,7 @@ mod pipeline {
                 .position(|held| *held == name)
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
-        for pair in ["level", "currunix", "creaunix", "prevunix"].windows(2) {
+        for pair in ["loglevel", "currunix", "creaunix", "prevunix"].windows(2) {
             assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
         }
         let header = names
@@ -1588,7 +1726,7 @@ mod pipeline {
             "crosscode",
             "seqnum",
             "currunix",
-            "timestamp",
+            "loglevel",
             "msgsessionid",
             "msgctxid",
             "msgpluginid",
@@ -1605,18 +1743,21 @@ mod pipeline {
         assert!(!names.contains(&"direction"), "{names:?}");
         assert_eq!(names.last(), Some(&"fixentries"));
 
-        // The timestamp capture was typed from its pattern before a byte was
-        // read and took the zone the options declared; updatedat is independently
-        // settled as an exact nanosecond UTC instant on every row.
+        // The header's clock is consumed into each line's `currunix`, an
+        // exact nanosecond UTC instant, so neither the stage nor the rows
+        // carry it under a name of its own; every row is settled on an
+        // instant of the same type.
         let stage = text_stage(&CAPTURE);
         let captured = stage.schema();
+        assert!(captured.field_with_name("mtime").is_err());
+        assert!(captured.field_with_name("timestamp").is_err());
         let clock = captured
-            .field_with_name("timestamp")
-            .expect("the timestamp capture");
+            .field_with_name("currunix")
+            .expect("the line's clock");
         assert!(
             matches!(
                 clock.data_type(),
-                arrow_schema::DataType::Timestamp(_, Some(_))
+                arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some(_))
             ),
             "{clock:?}"
         );
@@ -1682,9 +1823,10 @@ mod pipeline {
         // Which line a message came out of is no longer a number riding in
         // front of the row. A line's place is its own `seqnum` - the text
         // stage numbers every line from one, as the options said - and the
-        // fixed row's `seqnum` is the *message's* place, which none of these
-        // five states, so the column is null on every row rather than
-        // repeating the line's. What ties a row to its line is the line's
+        // fixed row's `seqnum` is the *message's* place among the messages of
+        // its instant, never the line's: each is the first at its instant but
+        // the two executions split off the fill and the routed fill, which
+        // stand after their reports. What ties a row to its line is the line's
         // identity: the row names it under `srcuuids`, and the six silent
         // lines are simply missing from that.
         let stage_seqnum = stage
@@ -1695,9 +1837,13 @@ mod pipeline {
             stage_seqnum.values().iter().copied().collect::<Vec<_>>(),
             (1..=CAPTURE.len() as u64).collect::<Vec<u64>>()
         );
-        assert!(
-            column(&read, "seqnum").iter().all(Scalar::is_null),
-            "a message the bridge logged states no place of its own"
+        assert_eq!(
+            column(&read, "seqnum")
+                .iter()
+                .map(Scalar::as_u64)
+                .collect::<Vec<_>>(),
+            [None, None, None, None, Some(1), None, Some(1)],
+            "a first place states none"
         );
         let lines = column(&stage, "curruuid");
         let sources = column(&read, "srcuuids");
@@ -1725,7 +1871,7 @@ mod pipeline {
         // wrote the line and the level, and the bracket's sequence number - null
         // where the bracket held only the thread.
         assert_eq!(
-            text_column(&read, "level")[FILL_ROW].as_deref(),
+            text_column(&read, "loglevel")[FILL_ROW].as_deref(),
             Some("INFO")
         );
         let thread = column(&read, "msgthreadid");
@@ -1854,14 +2000,14 @@ mod pipeline {
             sent[HEARTBEAT_ROW]
         );
         assert!(sent[RELAY_ROW].is_temporal(), "{:?}", sent[RELAY_ROW]);
-        // A row states tag 52 only where the message did: the explicit codec
-        // default is intake's stand-in for a line that named no clock, and it
-        // lands in the event's own instant rather than in the header's column.
+        // A row states tag 52 only where the message did: the line's clock is
+        // intake's stand-in for a message that named none, and it lands in
+        // the event's own instant rather than in the header's column.
         assert!(sent[RESPONSE_ROW].is_null(), "{:?}", sent[RESPONSE_ROW]);
         assert_eq!(
             tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0)[RESPONSE_ROW]
                 .temporal_count_at(TimeUnit::Nanosecond),
-            Some(1_704_190_530_000_000_000),
+            Some(1_786_689_982_255_000_000),
             "an unstated sending time stands in as the event's instant"
         );
 
@@ -1917,34 +2063,39 @@ mod pipeline {
         let read = read(&CAPTURE);
         let stage = text_stage(&CAPTURE);
 
-        // A capture instant is ordinary context. The message's own clocks date
-        // the event independently of when the bridge logged it, and a row
-        // stating no `SendingTime` - the routed fill, keyed by name - takes the
-        // codec's clock, its `TransactTime` standing far outside the delay that
-        // would let it date the message instead.
-        let clock = column(&stage, "timestamp");
-        let carried = column(&read, "timestamp");
+        // The clock in front of a line is when the bridge recorded what the
+        // line carries, and the instant of a message stating no `SendingTime`
+        // - the document, and the routed fill, keyed by name. A message
+        // stating one keeps its own clock whenever the bridge logged it.
+        let clock = column(&stage, "currunix");
+        let recorded = tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0);
         let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
         let snapshot = tag_column(&read, yggdryl::SNAPUNIX_TAG_NAME.0);
         let created = tag_column(&read, yggdryl::CREAUNIX_TAG_NAME.0);
         assert_eq!(stamp.len(), MESSAGES);
         assert_eq!(clock.len(), CAPTURE.len());
         for (row, line) in CARRYING.into_iter().enumerate() {
-            assert_eq!(carried[row], clock[line], "capture context for row {row}");
+            assert_eq!(
+                recorded[row], clock[line],
+                "recorded as its line says for row {row}"
+            );
             // No snapshot was taken of any of these, so the column stays empty
             // and the event instant is readable as `createdat`.
             assert!(snapshot[row].is_null());
             assert_eq!(created[row], stamp[row]);
-            assert_ne!(stamp[row], clock[line]);
+        }
+        for undated in [RESPONSE_ROW, ROUTED_ROW] {
+            assert_eq!(stamp[undated], clock[CARRYING[undated]], "row {undated}");
+        }
+        for dated in [HEARTBEAT_ROW, FILL_ROW] {
+            assert_ne!(stamp[dated], clock[CARRYING[dated]], "row {dated}");
         }
         let millis = |row: usize| stamp[row].temporal_count_at(TimeUnit::Millisecond);
-        assert_eq!(millis(RESPONSE_ROW), Some(1_704_190_530_000));
         assert_eq!(
             stamp[HEARTBEAT_ROW].temporal_count_at(TimeUnit::Nanosecond),
             Some(1_786_682_790_415_655_000)
         );
         assert_eq!(millis(FILL_ROW), Some(1_786_682_796_000));
-        assert_eq!(millis(ROUTED_ROW), Some(1_704_190_530_000));
 
         // Every row says which FIX it was read as: the wire's own `BeginString`
         // where the frame stated one, and `FIX.` and the version the row was read
@@ -2022,8 +2173,9 @@ mod pipeline {
             entries[RESPONSE_ROW]
         );
         assert_eq!(
-            column(&read, "timestamp")[RESPONSE_ROW],
-            column(&stage, "timestamp")[CARRYING[RESPONSE_ROW]]
+            tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0)[RESPONSE_ROW],
+            column(&stage, "currunix")[CARRYING[RESPONSE_ROW]],
+            "the document was recorded when its line says"
         );
         assert_eq!(
             tag_text(&read, yggdryl::MSGPLUGINID_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
@@ -2237,14 +2389,15 @@ mod pipeline {
         assert_eq!(tag_column(&read, 34)[0].as_i64(), Some(696));
         assert_eq!(tag_column(&read, 34)[1].as_i64(), Some(935));
 
-        // Capture context is shared, while each frame keeps its own event clock.
+        // The line's clock is shared - both frames were recorded when it
+        // says - while each frame keeps its own event clock.
         let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
         assert_ne!(stamp[0], stamp[1]);
         assert_eq!(stamp, tag_column(&read, 52));
-        let captured = column(&read, "timestamp");
-        assert_eq!(captured[0], captured[1]);
+        let recorded = tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0);
+        assert_eq!(recorded[0], recorded[1]);
         assert_eq!(
-            captured[0].temporal_count_at(TimeUnit::Millisecond),
+            recorded[0].temporal_count_at(TimeUnit::Millisecond),
             Some(1_786_689_990_947)
         );
         assert_eq!(

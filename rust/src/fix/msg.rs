@@ -279,8 +279,9 @@ pub struct FixMsg {
     /// child named as the dictionary names the tag, and the child named by
     /// the tag's decimal spelling - and both end in a child found by name.
     /// Derived from the field alone, and derived lazily, so a message nobody
-    /// projects pays nothing for it.
-    named: OnceLock<FixMap<SmolStr, usize>>,
+    /// projects pays nothing for it; shared, so a clone - which holds the
+    /// same field - keeps it for a reference count.
+    named: OnceLock<Arc<FixMap<SmolStr, usize>>>,
     /// Group positions keyed by their `FIX:counter`, separate from tag values.
     groups: Vec<(i32, usize)>,
     field: Field,
@@ -1643,25 +1644,7 @@ impl FixMsg {
         let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
-        // Execution time is not the message time. It is stated directly by
-        // the crate column, then by FIX's execution-specific timestamp,
-        // regulatory execution member, a bridge's event timestamp, or the
-        // transaction time of an actual trade. Corrections and cancels do
-        // not make their transaction clock an execution clock.
-        let execunix = self
-            .execution_instant(by_tag(2749))
-            .or_else(|| self.trdreg_execution_instant())
-            .or_else(|| {
-                self.execution_instant(
-                    self.get_by_name(EVENT_TIMESTAMP)
-                        .or_else(|| self.named_value(EVENT_TIMESTAMP)),
-                )
-            })
-            .or_else(|| {
-                self.reports_execution()
-                    .then(|| self.execution_instant(by_tag(60)))
-                    .flatten()
-            });
+        let execunix = self.stated_execution_instant();
         // What a price moved from.
         let prevpx = number(140);
         // The FX parts of the last price, each from its own lifted slot:
@@ -1740,23 +1723,66 @@ impl FixMsg {
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
         }
-        // A clock the fields state is the execution's. Where they state none,
-        // a raw execution report executed when it happened, so intake dates
-        // it rather than leaving that to a walk; a message a walk placed
-        // keeps the latest execution its chain reached, which is the walk's
-        // to state - a walk that carried the same instant states nothing new
-        // - and its state may be one it inherited, which read as its own
-        // report would date an execution it never made.
         if row_stated & ROW_STATED_EXECUTION == 0 {
-            let execunix = execunix.or_else(|| {
-                if self.event.get_prevuuid().is_some() {
-                    self.event.get_execunix()
-                } else {
-                    self.reports_execution().then(|| self.event.get_currunix())
-                }
-            });
+            let execunix = self.execution_or_placed(execunix);
             self.event.set_execunix(execunix);
         }
+    }
+
+    /// When the fields say the message executed. Execution time is not the
+    /// message time: it is stated directly by the crate column, then by
+    /// FIX's execution-specific timestamp, a regulatory execution member, a
+    /// bridge's event timestamp, or the transaction time of an actual trade.
+    /// Corrections and cancels do not make their transaction clock an
+    /// execution clock.
+    fn stated_execution_instant(&self) -> Option<i64> {
+        let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
+        self.execution_instant(by_tag(2749))
+            .or_else(|| self.trdreg_execution_instant())
+            .or_else(|| {
+                self.execution_instant(
+                    self.get_by_name(EVENT_TIMESTAMP)
+                        .or_else(|| self.named_value(EVENT_TIMESTAMP)),
+                )
+            })
+            .or_else(|| {
+                self.reports_execution()
+                    .then(|| self.execution_instant(by_tag(60)))
+                    .flatten()
+            })
+    }
+
+    /// The execution instant a message states, else the one its place gives
+    /// it. A clock the fields state is the execution's. Where they state
+    /// none, a raw execution report executed when it happened, so intake
+    /// dates it rather than leaving that to a walk; a message a walk placed
+    /// keeps the latest execution its chain reached, which is the walk's to
+    /// state - a walk that carried the same instant states nothing new - and
+    /// its state may be one it inherited, which read as its own report would
+    /// date an execution it never made.
+    fn execution_or_placed(&self, stated: Option<i64>) -> Option<i64> {
+        stated.or_else(|| {
+            if self.event.get_prevuuid().is_some() {
+                self.event.get_execunix()
+            } else {
+                self.reports_execution().then(|| self.event.get_currunix())
+            }
+        })
+    }
+
+    /// What a settle moves when the clock alone moved: the execution instant
+    /// of a report nothing else dates, which is its own instant, and the
+    /// identity the instant derives. Everything else a settle reads - the
+    /// fields, the row's word, what a walk forced - stood still, so the
+    /// market, the maps and the code it would derive again are the ones the
+    /// message holds.
+    pub(super) fn settle_clock(&mut self) {
+        if !self.forced && self.row_stated & ROW_STATED_EXECUTION == 0 {
+            let execunix = self.execution_or_placed(self.stated_execution_instant());
+            self.event.set_execunix(execunix);
+        }
+        let code = self.event.get_currhashcode();
+        self.event.finalized(code);
     }
 
     /// The instrument's identifier under one of `sources`, read as the code
@@ -2210,7 +2236,7 @@ impl FixMsg {
             })
     }
 
-    /// The code the message digests to: the event's own facts - its parents, its state, its place in the chain and its
+    /// The code the message digests to: the event's own facts - its parents, its state and its
     /// predecessor - then every field the message states but the standard
     /// header and trailer - the text, the metadata, the FIX fields it
     /// lifted and every row child that holds a value, by name - and never
@@ -2313,11 +2339,23 @@ impl FixMsg {
     /// Returns the enriching pass's refusal, which a message this crate
     /// built never raises.
     pub fn dated_by_transaction(mut self) -> Result<Self> {
-        if self.header.stated_sendingtime() {
+        if !self.redate_by_transaction() {
             return Ok(self);
         }
+        let registry = Arc::clone(&self.registry);
+        super::enrich::redated(&registry, self)
+    }
+
+    /// Moves the message's clock to its transaction where the sending clock
+    /// was supplied rather than read, answering whether it did: the instant,
+    /// the stand-in sending clock, and the creation it began at - nothing a
+    /// field states, so nothing any reading of the fields answers anew.
+    pub(super) fn redate_by_transaction(&mut self) -> bool {
+        if self.header.stated_sendingtime() {
+            return false;
+        }
         let Some(unix) = self.transact_unix() else {
-            return Ok(self);
+            return false;
         };
         let current = self.get_currunix();
         let created = self.get_creaunix();
@@ -2337,8 +2375,7 @@ impl FixMsg {
         if let Some(origin) = origin.filter(|origin| *origin < unix) {
             self.event.set_creaunix(Some(origin));
         }
-        let registry = Arc::clone(&self.registry);
-        super::enrich::enrich_restated(&registry, self)
+        true
     }
 
     /// The event this message is: every fact the three graph traits answer,
@@ -3040,7 +3077,7 @@ impl FixMsg {
                 if let (Some(named), Some(child)) =
                     (named.as_mut(), self.field.fields().get(change.index))
                 {
-                    named
+                    Arc::make_mut(named)
                         .entry(SmolStr::new(child.name()))
                         .or_insert(change.index);
                 }
@@ -3180,6 +3217,17 @@ impl FixMsg {
         self.value.get(self.index_of_tag(tag)?).map(Cow::into_owned)
     }
 
+    /// Whether [`Self::indexed_by_tag`] answers a value other than null, read
+    /// where the value lies rather than copied out of it.
+    pub(super) fn states_indexed_tag(&self, tag: i32) -> bool {
+        if identity::is_typed_tag(tag) {
+            return self.typed_fact(tag).is_some_and(|value| !value.is_null());
+        }
+        self.index_of_tag(tag)
+            .and_then(|index| self.value.get(index))
+            .is_some_and(|value| !value.is_null())
+    }
+
     /// The child a tag reaches: the one carrying the tag, by one hash-free
     /// binary search over the index resolved at construction, else the one
     /// either fallback names.
@@ -3200,7 +3248,7 @@ impl FixMsg {
             for (index, child) in self.field.fields().iter().enumerate() {
                 named.entry(SmolStr::new(child.name())).or_insert(index);
             }
-            named
+            Arc::new(named)
         });
         match self.known_by_tag(tag) {
             Some(known) => named.get(known.name()).copied(),
@@ -4026,8 +4074,8 @@ impl From<FixMsg> for OperationEventFacts {
 }
 
 impl Clone for FixMsg {
-    /// The message, without its name table, which the clone rebuilds on its
-    /// own first ask; the entries, derived from the same row, are shared.
+    /// The message, its name table and its entries - each derived from the
+    /// same row - shared rather than derived again.
     fn clone(&self) -> Self {
         Self {
             registry: Arc::clone(&self.registry),
@@ -4042,7 +4090,7 @@ impl Clone for FixMsg {
             text: self.text.clone(),
             metadata: self.metadata.clone(),
             tags: self.tags.clone(),
-            named: OnceLock::new(),
+            named: self.named.clone(),
             groups: self.groups.clone(),
             field: self.field.clone(),
             value: self.value.clone(),
@@ -4189,8 +4237,8 @@ impl Event for FixMsg {
     }
 
     /// The timed restatement, and then the market's: a message logged at a
-    /// second hop takes the live message's place in its chain - the
-    /// predecessor, the position, the snapshot and the step before it - and
+    /// second hop takes the live message's predecessor, place and snapshot
+    /// and the step before it - and
     /// what that chain is about where this reading stated none of it.
     fn restating(self, live: &Self) -> Self {
         crate::graph::market::restating_operation(self, live)

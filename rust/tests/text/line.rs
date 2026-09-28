@@ -942,9 +942,9 @@ mod text {
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
             // The identity: the instant coupled with the content code, and no
             // cross-hash seed on this unlocated line. The code is the event the
-            // line is - the names the header lifts out of it, its state, its
-            // place, the element it follows - with the body behind them, so the
-            // body alone does not digest to it.
+            // line is - the names the header lifts out of it, its state, the
+            // element it follows - with the body behind them, so the body
+            // alone does not digest to it.
             assert_ne!(
                 line.get_currhashcode(),
                 yggdryl::xxhash::xxh3(line.body().as_bytes()),
@@ -959,9 +959,12 @@ mod text {
             // when the names an element went by left the event: the named
             // captures are the line's own reading, no longer an event fact
             // `digest_event` feeds, so the code is the state, the place, what
-            // it follows and the body. It last moved when the state fed its
-            // `int32` code rather than its ten-byte spelling.
-            assert_eq!(line.get_currhashcode(), 591_008_855_044_230_877);
+            // it follows and the body. It moved when the state fed its
+            // `int32` code rather than its ten-byte spelling. It last moved
+            // when the place left the code: a line's row number is where it
+            // stands, never what it says, and reaches its identity through
+            // `curruuid` alone.
+            assert_eq!(line.get_currhashcode(), 4_198_288_935_991_861_489);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
             // The one capture left out of the code is the one that dates the
             // line, because the instant is coupled with the code rather than
@@ -1135,8 +1138,8 @@ mod text {
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
             assert_eq!(line.get_state().as_str(), "UNKNOWN");
-            // The place in the chain is the row number under `start_rownum`,
-            // else the physical line number.
+            // The place is the row number under `start_rownum`, else the
+            // physical line number.
             assert_eq!(line.get_seqnum(), 0);
             line.set_index(3);
             assert_eq!(line.get_seqnum(), 3);
@@ -1564,7 +1567,9 @@ mod text {
             assert_eq!((first.get_seqnum(), first.get_prevuuid()), (0, None));
             assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
             assert_eq!(second.get_prevunix(), Some(first.get_currunix()));
-            assert_eq!(second.get_seqnum(), 1);
+            // A line's place is its row number, and a later line keeps its
+            // own: each of these was read as a first line.
+            assert_eq!(second.get_seqnum(), 0);
             assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
             assert!(third.get_state().is_done());
             assert!(walked.iter().all(|line| line.get_srcuuids().is_empty()));

@@ -406,7 +406,9 @@ sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`; a report stating no side joins the
 one side alive under its identifiers. A fill's execution, split off at the
 parse, is a chain of its own. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
-instant order as it comes, one epoch hour at a time, and answers the same walk.
+instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
+each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+the codec says otherwise; `with_dedup_window_ms(0)` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
 `curruuid` is that instant's, with the live message's content and place.
 
@@ -427,14 +429,18 @@ let lines = [
 ];
 // Parsed, nothing follows anything: each names only the chain it spells.
 let parsed: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
-assert!(parsed.iter().all(|held| held.get_seqnum() == 0 && held.get_prevuuid().is_none()));
+assert!(parsed.iter().all(|held| held.get_prevuuid().is_none()));
+// Each takes its place at its instant: the execution stands after its report.
+let places: Vec<u64> = parsed.iter().map(Event::get_seqnum).collect();
+assert_eq!(places, [0, 1, 0, 0]);
 
 // Three lines, four messages: the fill's report and the execution it reports.
 assert_eq!(parsed.len(), 4);
 
 let [order, ack, fill, execution] = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("four");
-// Sorted by event time, joined by the identifiers each message went by.
-assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 1, 2));
+// Sorted by event time, joined by the identifiers each message went by; each
+// follows one of an earlier instant, so each keeps its own place.
+assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 0, 0));
 assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
 assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
@@ -444,7 +450,7 @@ assert_eq!((fill.msgcat(), *fill.get_state()), (MarketDataKind::Order, State::Fi
 // Every walked message states when its chain began.
 assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
 assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
-assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (0, None));
+assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (1, None));
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 let schema = fix_schema(&registry, "fix")?;

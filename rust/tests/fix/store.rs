@@ -3113,10 +3113,14 @@ mod committed {
     /// `metadata` group and the `fixmsg` row moved and the crate holds one
     /// field more; the graph's bid and ask lanes leaving the market rows
     /// moved no document, and no other tag or count of the census moved.
+    /// It last moved when `seqnum` (65014) came to be an event's place among
+    /// the events of its instant rather than in its chain: the one
+    /// description of that crate field moved, and no document, tag or count
+    /// of the census with it.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 14_095_290_045_708_649_326);
+        assert_eq!(registry.stable_hash(), 16_320_696_011_309_504_681);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

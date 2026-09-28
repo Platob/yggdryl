@@ -75,8 +75,8 @@ pub enum EventColumn {
     CrossHashCode,
     /// The identity of the event this one follows, where it follows one.
     PrevUuid,
-    /// The event's place in its chain: how many came before it; none where
-    /// none did.
+    /// The event's place among the events of its instant: 0 for the first
+    /// its stream hands over there, one more for each next; null at 0.
     SeqNum,
     /// The identities this event was read from: provenance, never its chain.
     SrcUuids,
@@ -189,7 +189,9 @@ impl EventColumn {
                 "The XXH3-64 of the cross code; zero where the event names none."
             }
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
-            Self::SeqNum => "The event's place in its chain: how many came before it.",
+            Self::SeqNum => {
+                "The event's place among the events of its instant: 0 for the first its stream hands over there, one more for each next."
+            }
             Self::SrcUuids => {
                 "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."
             }

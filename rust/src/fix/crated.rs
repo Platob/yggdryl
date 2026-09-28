@@ -7,7 +7,7 @@
 //! it has across its lifecycle and the code that names it there, the names
 //! it goes by, its parents, the lines it was read from, the code its content
 //! digests to, when it happened, was created, executed, recorded and was read
-//! as a snapshot, the element it follows and its place in the chain. Beside
+//! as a snapshot, the element it follows and its place at its instant. Beside
 //! them stand the facts a capture states
 //! about the line - where it was read from and how many pairs it carried -
 //! and the ones a bridge's own log states about the line it wrote: the
@@ -177,8 +177,9 @@ pub const CURRUUID_TAG_NAME: (i32, &str) = (65_008, "curruuid");
 /// shares, where the message names one.
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_009, "crossuuid");
 
-/// The tag and name carrying the message's place in its chain: how many
-/// came before it.
+/// The tag and name carrying the message's place among the messages of its
+/// instant: 0 for the first its stream hands over there, one more for each
+/// next.
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 
 /// The tag and name carrying the cross code: the identifier every message
@@ -459,7 +460,7 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 ///
 /// The instants, because a later message has its own; the identities and
 /// the codes, because they are computed from the message that carries them;
-/// the place in the chain and the element it follows, because a walk states
+/// the place at its instant and the element it follows, because a walk states
 /// them per message; the state it reached and when it expires, because a
 /// walk folds them per message; the session event it was delivered as,
 /// because it joins this message's own type and sequence; `sourceurl` and

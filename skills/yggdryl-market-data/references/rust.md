@@ -122,7 +122,8 @@ let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
 };
 let placed = event(T, "New")?;
 let filled = event(T + 1_000_000_000, "PartiallyFilled")?.with_previous(&placed).expect("a later event follows");
-assert_eq!((filled.get_prevuuid(), filled.get_prevunix(), filled.get_seqnum()), (Some(placed.get_curruuid()), Some(T), 1));
+// A later instant keeps its own place: the first there.
+assert_eq!((filled.get_prevuuid(), filled.get_prevunix(), filled.get_seqnum()), (Some(placed.get_curruuid()), Some(T), 0));
 assert_eq!(filled.get_crossuuid(), placed.get_crossuuid(), "one chain");
 assert_eq!(filled.get_prevpx(), Some("189.50".parse()?));
 // Never itself, never one that happened after it.
@@ -173,8 +174,11 @@ let arrived = vec![
     event(4, "O-1001", Side::Unknown, "New"),
 ];
 let chained: Vec<OrderEvent> = EventIterator::new(arrived, false).collect();
+// Each step is at an instant of its own, so each is the first there; the
+// chain is in `prevuuid`.
 let places: Vec<u64> = chained.iter().map(Event::get_seqnum).collect();
-assert_eq!(places, [0, 1, 1, 2, 0]);
+assert_eq!(places, [0, 0, 0, 0, 0]);
+assert_eq!(chained[3].get_prevuuid(), Some(chained[1].get_curruuid()));
 assert_eq!(chained[1].get_curruuid(), chained[2].get_curruuid(), "a twin, not a successor");
 assert_eq!(chained[4].get_prevuuid(), None, "the fill ended the chain");
 // A chain's creation instant is its first element's, carried along it.
@@ -593,7 +597,8 @@ assert_eq!(last.executions().len(), 1);
   as; a lifecycle view and a lookup name the stored spelling.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
-  not refused, it yields broken chains (every `seqnum` 0).
+  not refused, it yields broken chains (a step before its live element
+  yielded as it came, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
   `Result<BookEvent>`.

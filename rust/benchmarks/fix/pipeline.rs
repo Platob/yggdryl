@@ -239,6 +239,23 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    // The same walk remembering no identity it yielded: what the one-minute
+    // deduplication window above costs, beside the walk it filters.
+    let whole = composed.clone().with_dedup_window_ms(0);
+    group.bench_function("decoded_lifecycle_undeduplicated", |bencher| {
+        bencher.iter_batched(
+            || decoded.clone(),
+            |held| {
+                whole
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
     // The same walk over the messages as a table read by `currunix` hands
     // them over, held one hour at a time rather than sorted whole.
     let mut ordered = decoded.clone();
@@ -406,7 +423,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     });
     // The parse settled the identifiers a message goes by; the walk states
-    // each message's place in its chain, and the rows carry both.
+    // each message's place, and the rows carry both.
     assert!(
         messages
             .iter()

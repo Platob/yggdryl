@@ -1612,6 +1612,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     snapshot_ns=1_000_000_000,
     sorted_lifecycle=True,
     official_time_delay_ms=250,
+    dedup_window_ms=5_000,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
 fix_reader_separator: int | None = fix_reader_pinned.separator
@@ -1624,6 +1625,9 @@ fix_reader_sorted_lifecycle: bool = fix_reader_pinned.sorted_lifecycle
 fix_reader_unsorted: fix.FixCodec = fix_reader_pinned.with_sorted_lifecycle(False)
 assert fix_reader_sorted_lifecycle and not fix_reader_unsorted.sorted_lifecycle
 fix_reader_official_time_delay_ms: int = fix_reader_pinned.official_time_delay_ms
+fix_reader_dedup_window_ms: int | None = fix_reader_pinned.dedup_window_ms
+fix_reader_undeduplicated: fix.FixCodec = fix_reader_pinned.with_dedup_window_ms(None)
+assert fix_reader_dedup_window_ms == 5_000 and fix_reader_undeduplicated.dedup_window_ms is None
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,

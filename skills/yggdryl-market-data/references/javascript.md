@@ -100,7 +100,8 @@ const event = (unix, state) => new graph.OrderEvent(unix, {
 
 const placed = event(T, 'NEW')
 const filled = event(T + 1_000_000_000n, 'PARTIALLY_FILLED').withPrevious(placed)
-assert.deepEqual([filled.prevuuid, filled.prevunix, filled.seqnum], [placed.curruuid, T, 1])
+// A later instant keeps its own place: the first there.
+assert.deepEqual([filled.prevuuid, filled.prevunix, filled.seqnum], [placed.curruuid, T, 0])
 assert.equal(filled.crossuuid, placed.crossuuid, 'one chain')
 assert.equal(filled.prevpx, '189.5')
 // Never itself, never one that happened after it.
@@ -143,7 +144,10 @@ const chained = walk([
   event(2n, 'O-1001', 'PARTIALLY_FILLED'),
   event(4n, 'O-1001', 'NEW'),
 ], false)
-assert.deepEqual(chained.map((held) => held.seqnum), [0, 1, 1, 2, 0])
+// Each step is at an instant of its own, so each is the first there; the
+// chain is in prevuuid.
+assert.deepEqual(chained.map((held) => held.seqnum), [0, 0, 0, 0, 0])
+assert.equal(chained[3].prevuuid, chained[1].curruuid)
 assert.equal(chained[1].curruuid, chained[2].curruuid, 'a twin, not a successor')
 assert.equal(chained[4].prevuuid, null, 'the fill ended the chain')
 // A chain's creation instant is its first element's, carried along it.
@@ -445,8 +449,9 @@ assert.equal(last.executions().length, 1)
   for `'UNKNOWN'`. `side` is never `null`; an Arrow column stores the code
   (`Side.BUY`, `MarketDataKind.ORDR`), a getter answers the name.
 - `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
-  order: an unsorted array is not refused, it yields broken chains (every
-  `seqnum` 0); pass `false` for one you have not sorted.
+  order: an unsorted array is not refused, it yields broken chains (a step
+  before its live element yielded as it came, `prevuuid` null); pass `false`
+  for one you have not sorted.
 - Iterators (`BookIterator`, `EventIterator`, `fromArrowReader`) and
   `BatchReader`s are one-shot: spread once, or rebuild the reader.
 - A book's `alive()`, `deltas()`, `executions()`, `limits(side)`,

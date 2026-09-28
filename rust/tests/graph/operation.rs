@@ -313,7 +313,8 @@ fn an_operation_follows_and_merges_and_keeps_its_kind() {
         .expect("the later order follows");
     assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(second.get_prevpx(), Some(Decimal::from_int(80)));
-    assert_eq!(second.get_seqnum(), 1);
+    // A later instant keeps its own place.
+    assert_eq!(second.get_seqnum(), 0);
     assert_eq!(second.kind(), MarketKind::Order);
 
     // The same facts as a quote are another operation.

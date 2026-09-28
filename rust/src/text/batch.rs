@@ -706,7 +706,7 @@ fn apply(
                         line.state_source(Some(source));
                     }
                 }
-                // The place in the chain is the row number, so it restores
+                // The place at its instant is the row number, so it restores
                 // the line's index under the same offset the read counted
                 // from; a number before that offset is refused rather than
                 // wrapped.

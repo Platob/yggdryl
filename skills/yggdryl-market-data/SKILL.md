@@ -8,7 +8,7 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-chain place, clocks), `Market` (twenty-seven facts: price, quantity, currency,
+place at its instant, clocks), `Market` (twenty-seven facts: price, quantity, currency,
 unit, side, security ids and the `isincode` they hold, classification, market,
 last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
@@ -26,7 +26,7 @@ Hold five facts:
   Python ints, JavaScript `bigint`s, Arrow `datetime64(ns, UTC)`.
 - **Identity is derived, not assigned.** A leaf is finalized on construction:
   `currhashcode` is the XXH3-64 of its content, `curruuid` a UUIDv7 of
-  instant + chain place for a dated leaf (UUIDv8 of content otherwise),
+  millisecond + place for a dated leaf (UUIDv8 of content otherwise),
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null, and it keys the chain.** `Side` and
   `MarketDataKind` are `int32` enums; an element stating no side holds
@@ -34,7 +34,9 @@ Hold five facts:
   `BUY:O-1001` - so the two sides of one identifier are two chains; `UNKNOWN`
   and books keep the bare code.
 - **Chains are walked, not rebuilt.** An event names only its predecessor
-  (`prevuuid`, `seqnum`); `EventIterator` joins a stream by cross identity and
+  (`prevuuid`); `seqnum` is its place among the events of its instant, which
+  orders the identities of one millisecond, and a step keeps its own unless
+  its predecessor shares or passes its instant. `EventIterator` joins a stream by cross identity and
   by the `altids` a live element went by, folds twins, emits expiries, and
   leaves every element stating `creaunix`. A grid view is the live element
   as of its tick: dated at it (`currunix` = `snapunix`), so its `curruuid`
@@ -142,8 +144,8 @@ Hold five facts:
   `$.operations[i].kind`. A live entry or an execution whose side is
   `UNKNOWN` cannot be placed on a side.
 - `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
-  unsorted stream is not refused, it silently yields broken chains (every
-  event `seqnum` 0). Pass `sorted=False` / `false` for a stream you have not
+  unsorted stream is not refused, it silently yields broken chains (an
+  element before the live one is yielded as it came and joins nothing). Pass `sorted=False` / `false` for a stream you have not
   sorted (it collects to sort); only `BookIterator` refuses a regression.
 - A trade is built only through `TradeEvent.from_parts`: at least one
   execution, each bid- or ask-sided, at the root's instant, one ticker,

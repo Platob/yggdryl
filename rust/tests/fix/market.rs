@@ -917,7 +917,9 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_altids().get(ENTRY_ID), Some("B1"));
         assert_eq!(operation.get_altids().get("ORDERID"), Some("O1"));
-        assert_eq!(operation.get_seqnum(), index as u64);
+        // Each version stands alone at its own, later instant (one second
+        // apart), so following the one before it leaves its place alone.
+        assert_eq!(operation.get_seqnum(), 0);
         assert_eq!(
             text(operation.get_price()).as_deref(),
             Some(["100", "100", "101"][index])
@@ -991,7 +993,9 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     assert_eq!(deleted.get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
-    assert_eq!(deleted.get_seqnum(), previous.get_seqnum() + 1);
+    // The delete arrives a second after the order, a later instant of its
+    // own, so following the order leaves its place alone.
+    assert_eq!(deleted.get_seqnum(), 0);
     assert_eq!(deleted.get_prevpx(), previous.get_price());
     assert_eq!(deleted.get_prevqty(), previous.get_quantity());
 }

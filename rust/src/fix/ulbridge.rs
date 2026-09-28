@@ -15,6 +15,17 @@
 /// them. Those three are optional as a whole, so a line that carries only
 /// the thread still frames and leaves them null rather than failing the row.
 ///
+/// The clock is `mtime`, so the header dates the lines it matches: a text
+/// read consumes the capture into the line's `currunix` rather than
+/// carrying it beside it, and reads it at `datetime64(ns, UTC)` - the
+/// text options' `timezone` stating the zone a bridge's local clock is in -
+/// so every line it matches is dated by what the bridge wrote in front of
+/// it, never by the file's modification time. The line's instant is its messages'
+/// `recdunix` and the sending clock of any that states no
+/// `SendingTime(52)`; a message stating one keeps its own. The fraction is
+/// what bridges write: a point or a comma, three digits, and the grouped
+/// microseconds a bridge spells `23:59:46.524_315`, or no fraction at all.
+///
 /// A capture that names a field fills it, so the registry's one namespace
 /// is what lands it and nothing translates in between: `msgctxid` fills the
 /// crate's own [`MsgCtxId`](super::MSGCTXID_TAG_NAME); `msgseqnum` fills
@@ -24,26 +35,9 @@
 /// [`MsgPluginId`](super::MSGPLUGINID_TAG_NAME) - the session names the
 /// line moved between are what the line itself spells, never the plugin.
 ///
-/// The other three name no field, and are the capture's own columns carried
-/// in front of the row: `timestamp`, `msgthreadid` and `level`.
-///
-/// `timestamp` dates nothing, and is not this header's failing but its
-/// shape. It is not the line's clock: that is `currunix`, which a capture
-/// spelled `mtime` fills where the header declares one, so a line read
-/// through this header falls back to the handle's own modification time and
-/// an unlocated handle leaves every line at the epoch. It is not the
-/// message's clock either: a message is dated by the `SendingTime(52)` it
-/// states, else the `TransactTime(60)` it states, else the line's
-/// `currunix` - through this header, the handle's time where it has one -
-/// else the codec's `default_sending_time`. A caller who wants this header
-/// to date its lines, and the undated messages on them, renames the
-/// capture `mtime`, and pays two prices for it: an `mtime`
-/// capture is consumed into `currunix` instead of being carried beside it,
-/// so the `timestamp` column goes; and it is read at `datetime64(ns, UTC)`
-/// whatever fraction the expression spells, so the syntax no longer types
-/// the clock.
-/// `level` is the bridge's own log level and answers no column but its own,
-/// which a caller who wants it elsewhere renames the same way.
+/// The other two name no field, and are the capture's own columns carried
+/// in front of the row: `msgthreadid`, and `loglevel`, the bridge's own log
+/// level, which answers no column but its own.
 ///
 /// The bridge writes the session, the context and the sequence in camel
 /// case - `senderSessionId`, `msgCtxId`, `seqNum` - and they were captured
@@ -61,23 +55,26 @@
 /// # Widening or narrowing this expression moves a lifecycle
 ///
 /// A line the expression does not match yields no captures at all rather
-/// than failing the row, so it keeps its body, settles at the epoch pin, and
-/// arrives at [`FixCodec::lifecycle`](super::FixCodec::lifecycle)
+/// than failing the row, so it keeps its body, is dated by the handle's
+/// modification time - the epoch where the handle has none - and arrives
+/// at [`FixCodec::lifecycle`](super::FixCodec::lifecycle)
 /// carrying no session instance, no message context and no sequence. Those
 /// three with the message type are what the capture's
 /// [`MsgSessEventId`](super::MSGSESSEVENTID_TAG_NAME) joins, and that is
 /// the key two observations of one session event are merged on, so a line
 /// this expression misses is a line the walk cannot fold. Editing the
 /// fraction, the bracket or any other part of it therefore changes how many
-/// events a walk over one unchanged capture answers, while every message
-/// still parses and every content digest still agrees. The count of lines a
-/// header matched is worth asserting next to the count of messages parsed.
+/// events a walk over one unchanged capture answers - and a missed line's
+/// instant, so its identity - while every message still parses and every
+/// content digest still agrees. The count of lines a header matched is
+/// worth asserting next to the count of messages parsed.
 ///
-/// This one reads both fractions the bridge writes: three digits, and the
-/// grouped microseconds it writes as `23:59:46.524_315`. It admitted only
-/// the first until 0.1.10, which is why it could not read the last fifteen
-/// lines of the capture shipped beside it - and why a walk over that capture
-/// answered four events more than the same capture read whole.
+/// It admitted only three fractional digits until 0.1.10, which is why it
+/// could not read the last fifteen lines of the capture shipped beside it -
+/// and why a walk over that capture answered four events more than the
+/// same capture read whole. Until 0.1.17 its clock was a capture named
+/// `timestamp`, which dated nothing, so every line of a read took the one
+/// modification time of its file.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -85,21 +82,26 @@
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "level"]));
+/// // The clock is consumed into each line's `currunix`, so it leads no column.
+/// assert!(names.ends_with(&["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]));
+/// assert!(!names.contains(&"mtime"));
 /// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
-/// // The expression's own fraction types the capture it is part of, and
-/// // the widest fraction it admits is what names the unit - microseconds
-/// // here, from the grouped form, though most lines spell milliseconds.
-/// // Which lines the expression matches is the separate and larger
-/// // consequence the section above states.
+/// let lines = yggdryl::text::read_text_lines(
+///     &yggdryl::holder::Buffer::from_bytes(
+///         b"2026-01-02 10:15:30.125 [7] [OMS] (INFO) one\n2026-01-02 10:15:31,250 [7] [OMS] (INFO) two\n2026-01-02 10:15:32 [7] [OMS] (INFO) three\n".to_vec(),
+///     ),
+///     &options,
+/// )?
+/// .collect::<yggdryl::Result<Vec<_>>>()?;
+/// let dated: Vec<Option<i64>> = lines.iter().map(|line| line.mtime().ok().flatten()).collect();
 /// assert_eq!(
-///     captures.field("timestamp")?.dtype(),
-///     &yggdryl::DataType::datetime64(yggdryl::TimeUnit::Microsecond, yggdryl::Timezone::NAIVE)?,
+///     dated,
+///     [Some(1_767_348_930_125_000_000), Some(1_767_348_931_250_000_000), Some(1_767_348_932_000_000_000)],
 /// );
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}(?:_\d{3})?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<loglevel>[A-Z]+)\) ";
 
 /// The plugin a message came into the bridge through, as the prose in front
 /// of its payload names it, the first of three sentences that reads:

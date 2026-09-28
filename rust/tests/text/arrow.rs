@@ -198,7 +198,7 @@ mod text {
 
     mod intake {
 
-        use yggdryl::graph::Event as _;
+        use yggdryl::graph::{Element as _, Event as _};
         use yggdryl::text::TextOptions;
         use yggdryl::text::{from_arrow_batch, from_arrow_reader};
         use yggdryl::text::{into_arrow_batch, read_text_lines};
@@ -269,9 +269,9 @@ mod text {
         fn a_column_that_states_nothing_leaves_its_field_at_the_default() {
             let mut with_offset = TextOptions::new();
             with_offset.start_rownum = Some(5);
-            // Written with no offset, so the first line has no place in a
-            // chain and its `seqnum` cell is null - a place is a count, and
-            // `seqnum` is null at zero.
+            // Written with no offset, so the first line has no place and its
+            // `seqnum` cell is null - a place is a count, and `seqnum` is
+            // null at zero.
             let lines = decode(b"only\n", &TextOptions::new());
             let batch = into_arrow_batch(lines, &TextOptions::new()).expect("a batch");
             // The reading options count from five. Nothing stated is nothing
@@ -299,6 +299,100 @@ mod text {
                 .collect();
             assert_eq!(back.len(), 3);
             assert_eq!(back[2].body(), "c");
+        }
+
+        #[test]
+        fn a_read_states_the_earliest_instant_it_dated_a_line_by_as_each_lines_creation() {
+            // One object's lines are one chain, so each states when the chain
+            // began as far as the read has seen: the earliest instant it dated
+            // a line of the object by, the first line its own - in the line
+            // and in the column it lands in.
+            let options = TextOptions::new()
+                .try_with_rowheader(r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ")
+                .expect("a header");
+            let lines = decode(
+                b"2026-01-02T10:15:30Z first\n2026-01-02T10:15:31Z second\nundated\n",
+                &options,
+            );
+            let first = lines[0].get_currunix();
+            assert_eq!(first, 1_767_348_930_000_000_000);
+            assert_ne!(lines[1].get_currunix(), first);
+            assert!(lines.iter().all(|line| line.get_creaunix() == Some(first)));
+            let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+            let back = from_arrow_batch(&batch, &options).expect("lines read back");
+            assert!(back.iter().all(|line| line.get_creaunix() == Some(first)));
+
+            // A line dated before every line ahead of it moves the creation
+            // back from there on, and never states one after its own instant.
+            let lines = decode(
+                b"2026-01-02T10:15:31Z second\n2026-01-02T10:15:30Z first\n2026-01-02T10:15:32Z third\n",
+                &options,
+            );
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.get_creaunix())
+                    .collect::<Vec<_>>(),
+                [Some(first + 1_000_000_000), Some(first), Some(first)]
+            );
+
+            // A line stating its own creation keeps it; one that does not
+            // takes the read's. A capture that does not read as an instant
+            // stays refused by name rather than filled over.
+            let options = TextOptions::new()
+                .try_with_rowheader(
+                    r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) (?:(?<creaunix>\S+) )?",
+                )
+                .expect("a header");
+            let lines = decode(
+                b"2026-01-02T10:15:30Z line\n2026-01-02T10:15:31Z 2026-01-01T00:00:00Z line\n2026-01-02T10:15:32Z nonsense line\n",
+                &options,
+            );
+            assert_eq!(lines[0].get_creaunix(), Some(first));
+            assert_eq!(lines[1].get_creaunix(), Some(1_767_225_600_000_000_000));
+            assert!(
+                lines[2].creaunix().is_err(),
+                "a refused capture stays refused"
+            );
+
+            // Nothing dates a line of a handle with no time of its own, and
+            // nothing states a creation for it.
+            let lines = decode(b"first\nsecond\n", &TextOptions::new());
+            assert!(lines.iter().all(|line| line.get_creaunix().is_none()));
+        }
+
+        #[test]
+        fn a_lines_row_number_is_its_place_and_orders_its_identity() {
+            // Three lines saying the same thing at one instant: one content,
+            // three places. The row number is the place, so the identities
+            // differ and sort in row order within the millisecond, while
+            // the code - what a line says - is one.
+            let mut options = TextOptions::new()
+                .try_with_rowheader(r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ")
+                .expect("a header");
+            options.start_rownum = Some(1);
+            let lines = decode(
+                b"2026-01-02T10:15:30Z same\n2026-01-02T10:15:30Z same\n2026-01-02T10:15:30Z same\n",
+                &options,
+            );
+            let places: Vec<u64> = lines.iter().map(|line| line.get_seqnum()).collect();
+            assert_eq!(places, [1, 2, 3]);
+            let lanes: Vec<u128> = lines
+                .iter()
+                .map(|line| (line.get_curruuid().get() >> 64) & 0xfff)
+                .collect();
+            assert_eq!(lanes, [1, 2, 3]);
+            assert!(
+                lines
+                    .windows(2)
+                    .all(|pair| pair[0].get_curruuid() < pair[1].get_curruuid())
+            );
+            assert!(
+                lines
+                    .windows(2)
+                    .all(|pair| pair[0].get_currhashcode() == pair[1].get_currhashcode()),
+                "the place is outside the code"
+            );
         }
 
         #[test]
