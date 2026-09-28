@@ -8,6 +8,14 @@ name: Release
 # fully out. A push whose version is already tagged does nothing beyond the
 # preflight, so ordinary commits cost one small job.
 #
+# One job per platform builds everything that platform ships: the `yggdryl`
+# command, a wheel per CPython, and - on the five platforms the npm package
+# carries - the Node.js module. The extension and the Node.js module link the
+# same core with the same features, so a platform compiles it once, and the
+# registries hear from this run only after every platform has built and
+# smoke-tested what it ships. A release is thirteen jobs; it was twenty while
+# each binding built its platforms in jobs of its own.
+#
 # Every publish is idempotent - a registry that already has the version is
 # skipped, never failed - so a run that died halfway is repaired by re-running
 # it (or by the next push to `main`): only the missing registries publish, and
@@ -48,13 +56,15 @@ jobs:
   preflight:
     # The workspace manifest, the Python project, and the npm package each
     # spell the version; a release where they disagree - or where a pushed
-    # tag names none of them - stops here, before anything is built. The one
-    # decision this job publishes: whether this run releases (`publish`), and
-    # which version it is.
+    # tag names none of them - stops here, before anything is built. The
+    # decisions this job publishes: which version it is, whether this run
+    # builds (`build`: a release or a rehearsal), and whether it publishes
+    # what it builds (`publish`).
     name: Versions agree
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.decide.outputs.version }}
+      build: ${{ steps.decide.outputs.build }}
       publish: ${{ steps.decide.outputs.publish }}
     steps:
       - uses: actions/checkout@v6
@@ -95,45 +105,41 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # A hand-run rehearses: build and verify everything, publish
             # nothing.
+            echo "build=true" >> "$GITHUB_OUTPUT"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "rehearsal for $version"
           elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "releasing $version from its tag"
           elif git ls-remote --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "$version is already tagged; nothing to release"
           else
+            echo "build=true" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "releasing $version from main"
           fi
 
-  consistency:
-    # The tag is the only record that a version is out, so a version with no
-    # tag can still be half out - and republishing a half-published version
-    # from a tree that has moved is how one number comes to name two
-    # different libraries. crates.io and npm cannot be rewritten, PyPI
-    # cannot be rewritten, and the registries that already answered are the
-    # ones that decide what the version means.
-    #
-    # So: all three or none, when `main` is the ref. A version some
-    # registries already carry is finished from the commit they were built
-    # at, by pushing `v<version>` there - which pins the tree the wheels are
-    # built from - or it is abandoned and `main` bumps. Neither is a push to
-    # `main`, and this is where that is refused rather than discovered.
-    #
-    # A rehearsal runs it too, because every build job needs it and a job
-    # whose need was skipped is skipped with it: a hand-run that skipped this
-    # built nothing at all. A rehearsal publishes nothing, so there a half-out
-    # version is reported and not refused.
-    name: No version is half out
-    needs: preflight
-    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - name: All three registries, or none
+      # The tag is the only record that a version is out, so a version with
+      # no tag can still be half out - and republishing a half-published
+      # version from a tree that has moved is how one number comes to name
+      # two different libraries. crates.io and npm cannot be rewritten, PyPI
+      # cannot be rewritten, and the registries that already answered are the
+      # ones that decide what the version means.
+      #
+      # So: all three or none, when `main` is the ref. A version some
+      # registries already carry is finished from the commit they were built
+      # at, by pushing `v<version>` there - which pins the tree the wheels are
+      # built from - or it is abandoned and `main` bumps. Neither is a push to
+      # `main`, and this is where that is refused rather than discovered: a
+      # refusal fails this job, so nothing builds. A rehearsal publishes
+      # nothing, so there a half-out version is reported and not refused.
+      - name: No version is half out
+        if: steps.decide.outputs.build == 'true'
         env:
-          VERSION: ${{ needs.preflight.outputs.version }}
+          VERSION: ${{ steps.decide.outputs.version }}
           REF_TYPE: ${{ github.ref_type }}
           EVENT: ${{ github.event_name }}
         run: |
@@ -171,49 +177,87 @@ jobs:
           EOF
           exit 1
 
-  crate:
-    # crates.io carries only the core: the binding crates are `publish =
-    # false` because their artifacts are the wheel and the npm package. The
-    # dry run always happens, so a rehearsal exercises the same packaging and
-    # verification a release performs; the sparse index says whether the
-    # version is already up, so a repaired run skips instead of failing.
-    name: crates.io (yggdryl)
-    needs: [preflight, consistency]
-    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+  sources:
+    # The two source packages. The crate crates.io carries - only the core:
+    # the binding crates are `publish = false` because their artifacts are the
+    # wheel and the npm package - is packaged and built from the package alone
+    # here, and published by `release` once every platform has smoke-tested
+    # its binaries. The source distribution carries the whole workspace -
+    # maturin includes the core as a path dependency and prunes the Node
+    # member - so an architecture without a wheel can still build from source.
+    name: Source packages
+    needs: preflight
+    if: needs.preflight.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
-      - name: Package and verify
+      - name: Package and verify the crate
         run: cargo publish --locked -p yggdryl --dry-run
-      - name: Publish
-        if: needs.preflight.outputs.publish == 'true'
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          version="${{ needs.preflight.outputs.version }}"
-          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$version\""; then
-            echo "crates.io already has yggdryl $version; skipping"
-          else
-            cargo publish --locked -p yggdryl
-          fi
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.15.0
+          command: sdist
+          args: --manifest-path python/Cargo.toml --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
 
-  wheels:
+  build:
     # One job per platform and libc, each building a wheel per CPython the
     # project supports (3.10 through 3.14; Windows on ARM starts at 3.11,
-    # the first CPython published for it). The interpreters are named bare so
-    # maturin resolves them from the manylinux and musllinux images on Linux
-    # and from the setup-python tool cache elsewhere; where a smoke test
+    # the first CPython published for it) and, where `node` names the npm
+    # package's platform, the Node.js module. The interpreters are named bare
+    # so maturin resolves them from the manylinux and musllinux images on
+    # Linux and from the setup-python tool cache elsewhere; where a smoke test
     # runs, 3.12 is listed last so it is the default `python` it runs under.
     # `smoke: false` marks the targets whose wheels cannot install on their
     # own build host - musl wheels on a glibc runner - or where PyArrow, the
     # hard runtime dependency, publishes no wheel to install against; the
     # build is still shipped so the platform works the day its stack does.
-    name: Wheel (${{ matrix.label }})
-    needs: [preflight, consistency]
-    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+    #
+    # Both macOS targets build on Apple silicon. x86_64 is a cross build
+    # there that pyo3 and maturin treat as native: a Mac CPython describes
+    # the same extension for either architecture, so the arm64 CPythons build
+    # the x86_64 wheels. The smoke tests run what ships under Rosetta 2 - the
+    # wheel in a self-contained x86_64 CPython from uv, because the x64 ones
+    # setup-python installs link Intel Homebrew's gettext and do not start
+    # there, and the Node.js module under the x64 Node.js. The Intel runner
+    # that built it before took 15 minutes per CPython's link where Apple
+    # silicon took 6 (the 0.1.14 rehearsal), and 29 minutes for the Node.js
+    # module where Apple silicon took 16 (the 0.1.15 release).
+    #
+    # The wheels and the Node.js module link one core, compiled once: the
+    # second binding to build finds the core's artifacts fresh in the target
+    # directory the first left them in - the extension on Linux, where the
+    # container builds the Node.js module first, the Node.js module
+    # elsewhere. That holds only while every build in the job sees the same
+    # features (the workspace manifest keeps them equal), the same
+    # `--target`, and the same environment - which is why the rehearsal's
+    # debug settings, the macOS deployment target and maturin's macOS link
+    # flags are set for the whole job rather than for one build.
+    name: Build (${{ matrix.label }})
+    needs: preflight
+    if: needs.preflight.outputs.build == 'true'
     runs-on: ${{ matrix.runner }}
+    env:
+      # A rehearsal publishes nothing, so it keeps the symbols and line
+      # tables the shipped binaries strip: a crash its smoke tests find is
+      # then named by function and line in the stack the failure step
+      # prints, rather than by an offset into a stripped binary. Neither
+      # setting changes the code the compiler emits.
+      CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
+      CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
+      # sccache's server exits after ten idle minutes, and a compile in
+      # flight did not keep it: on the 0.1.14 rehearsal's Intel row the
+      # core's compile lost the server ten minutes in and started over
+      # without it. Zero keeps the server for the job's lifetime.
+      SCCACHE_IDLE_TIMEOUT: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -221,6 +265,7 @@ jobs:
           - label: manylinux-x86_64
             runner: ubuntu-latest
             target: x86_64
+            triple: x86_64-unknown-linux-gnu
             manylinux: auto
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -230,9 +275,11 @@ jobs:
               3.14
               3.12
             smoke: true
+            node: linux-x64-gnu
           - label: manylinux-aarch64
             runner: ubuntu-24.04-arm
             target: aarch64
+            triple: aarch64-unknown-linux-gnu
             manylinux: auto
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -242,9 +289,11 @@ jobs:
               3.14
               3.12
             smoke: true
+            node: linux-arm64-gnu
           - label: musllinux-x86_64
             runner: ubuntu-latest
             target: x86_64
+            triple: x86_64-unknown-linux-musl
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -253,14 +302,19 @@ jobs:
           - label: musllinux-aarch64
             runner: ubuntu-24.04-arm
             target: aarch64
+            triple: aarch64-unknown-linux-musl
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.12
             smoke: false
           - label: macos-x86_64
-            runner: macos-15-intel
+            runner: macos-14
             target: x86_64
+            triple: x86_64-apple-darwin
+            node-arch: x64
+            rosetta: true
+            macos: "10.12"
             manylinux: auto
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -270,9 +324,12 @@ jobs:
               3.14
               3.12
             smoke: true
+            node: darwin-x64
           - label: macos-aarch64
             runner: macos-14
             target: aarch64
+            triple: aarch64-apple-darwin
+            macos: "11.0"
             manylinux: auto
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -282,9 +339,11 @@ jobs:
               3.14
               3.12
             smoke: true
+            node: darwin-arm64
           - label: windows-x64
             runner: windows-latest
             target: x64
+            triple: x86_64-pc-windows-msvc
             manylinux: auto
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
@@ -294,9 +353,11 @@ jobs:
               3.14
               3.12
             smoke: true
+            node: win32-x64
           - label: windows-arm64
             runner: windows-11-arm
             target: aarch64
+            triple: aarch64-pc-windows-msvc
             manylinux: auto
             interpreters: 3.11 3.12 3.13 3.14
             pythons: |
@@ -310,16 +371,51 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.pythons }}
+      - uses: actions/setup-node@v6
+        if: matrix.node
+        with:
+          node-version: "22"
+          architecture: ${{ matrix.node-arch }}
+          package-manager-cache: false
+      # Linux builds everything inside the manylinux or musllinux container,
+      # which installs its own toolchain; the runner compiles nothing.
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.triple }}
+      - name: Install Node.js build tooling
+        if: matrix.node
+        run: npm ci --prefix node
+      # maturin sets the deployment target for its own build when none is
+      # set, and the C the core's dependencies compile reads it, so a build
+      # without it would compile those crates - and the core above them -
+      # again. Set for the whole job, every build agrees; the values are
+      # maturin's own defaults, so the wheel tags do not move.
+      - name: Pin the macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=${{ matrix.macos }}" >> "$GITHUB_ENV"
       # maturin copies python/wheel-data/ into the wheel and builds no binary
       # of its own, so `yggdryl` is staged first - and staged where the wheel is
       # built. Off Linux that is the runner; on Linux it is inside the
       # manylinux or musllinux container, because a binary linked against the
-      # runner's own glibc would defeat the tag the wheel carries.
+      # runner's own glibc would defeat the tag the wheel carries. `--target`
+      # puts it in the directory the wheels build in, so the crates the two
+      # resolve alike are compiled once. Its core is its own: the terminal
+      # crates it links change features under the core's dependencies.
       - name: Stage the yggdryl command
         if: runner.os != 'Linux'
-        run: python scripts/stage_cli.py
+        run: python scripts/stage_cli.py --target ${{ matrix.triple }}
+      # maturin links a macOS extension with `-undefined dynamic_lookup` and
+      # hands the flags to every crate in the build, and a crate compiled
+      # under other flags is not reused. Stated here for the rest of the job,
+      # maturin finds them set and adds nothing, and the Node.js module - whose
+      # own build script asks the linker for the same thing - compiles against
+      # the core the extension left behind. The command above links without.
+      - name: Link the bindings the way maturin links the extension
+        if: runner.os == 'macOS'
+        run: echo "RUSTFLAGS=-C link-arg=-undefined -C link-arg=dynamic_lookup" >> "$GITHUB_ENV"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -333,7 +429,15 @@ jobs:
           sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          before-script-linux: python3 scripts/stage_cli.py
+          # On Linux the Node.js module is built here too, in the container
+          # the wheels build in: it shares their core, and it links against
+          # the container's glibc 2.17 rather than the runner's. Built on the
+          # runner, 0.1.15's module asked for GLIBC_2.39 (`readelf -V`), so it
+          # could not load on Ubuntu 22.04 or Debian 12. The runner's
+          # `RUSTC_WRAPPER` names an sccache the container does not have yet.
+          before-script-linux: >-
+            python3 scripts/stage_cli.py --target ${{ matrix.triple }}
+            ${{ matrix.node && format('&& env -u RUSTC_WRAPPER cargo build --release --locked -p yggdryl-node --target {0}', matrix.triple) || '' }}
           args: >-
             --release --locked --manifest-path python/Cargo.toml --out dist
             --interpreter ${{ matrix.interpreters }}
@@ -365,42 +469,81 @@ jobs:
         if: matrix.smoke
         shell: bash
         run: |
-          python -m pip install "pyarrow>=18" --only-binary ":all:"
-          python -m pip install --no-index --find-links dist yggdryl
-          python scripts/check_wheel_smoke.py
+          python=python
+          if [ "${{ matrix.rosetta }}" = true ]; then
+            python -m pip install uv
+            uv venv --seed --python cpython-3.12-macos-x86_64-none "$RUNNER_TEMP/x86_64"
+            python="$RUNNER_TEMP/x86_64/bin/python"
+            "$python" -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
+          fi
+          "$python" -m pip install "pyarrow>=18" --only-binary ":all:"
+          "$python" -m pip install --no-index --find-links dist yggdryl
+          "$python" scripts/check_wheel_smoke.py
+      # Each platform builds and tests its own native module; the npm package
+      # ships every one of them, and the generated loader picks the matching
+      # binary at require time. The loader and its declarations are the
+      # committed ones, which CI keeps equal to what `napi build` generates.
+      - name: Build the release native module
+        if: matrix.node && runner.os != 'Linux'
+        run: npm run build --prefix node
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.triple }}
+      # The container is what holds the module to the wheels' glibc floor, and
+      # nothing else would notice it building somewhere newer, so the floor
+      # is read back out of the binary.
+      - name: Take the native module the container built
+        if: matrix.node && runner.os == 'Linux'
+        run: |
+          module="node/yggdryl.${{ matrix.node }}.node"
+          cp "target/${{ matrix.triple }}/release/libyggdryl_node.so" "$module"
+          newest=$(objdump -T "$module" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sort -uV | tail -n 1)
+          echo "$module asks for $newest at most"
+          test "$(printf '%s\n' "$newest" GLIBC_2.17 | sort -V | tail -n 1)" = GLIBC_2.17
+      - name: Smoke tests against the release binary
+        id: node-tests
+        if: matrix.node
+        run: npm test --prefix node
+      # A crash names its file and never its test: the runner reads each file
+      # in a child whose report dies with it, and a reporter writes on a later
+      # turn of the event loop than the test it reports. Each failing file is
+      # read again with `scripts/trace-tests.js` preloaded, which names every
+      # test synchronously as it starts, and where lldb is at hand, under it,
+      # for every thread's native stack at the fault.
+      - name: Name the test a failing file stopped in
+        if: failure() && steps.node-tests.outcome == 'failure'
+        shell: bash
+        working-directory: node
+        run: |
+          for file in tests/*.test.js tests/*/*.test.js; do
+            [ -f "$file" ] || continue
+            status=0
+            node --require ./scripts/trace-tests.js --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::$file (exit $status)"
+              tail -n 80 "$file.log"
+              if [ "$status" -gt 128 ] && command -v lldb > /dev/null; then
+                lldb --batch -o run -k "thread backtrace all -c 60" -k "quit 1" -- \
+                  "$(command -v node)" --require ./scripts/trace-tests.js "$file" 2>&1 | tail -n 400 || true
+              fi
+              echo "::endgroup::"
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.label }}
           path: dist/*.whl
           if-no-files-found: error
           compression-level: 0
-
-  sdist:
-    # The source distribution carries the whole workspace - maturin includes
-    # the core as a path dependency and prunes the Node member - so an
-    # architecture without a wheel can still build from source.
-    name: Source distribution
-    needs: [preflight, consistency]
-    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          maturin-version: v1.15.0
-          command: sdist
-          args: --manifest-path python/Cargo.toml --out dist
       - uses: actions/upload-artifact@v4
+        if: matrix.node
         with:
-          name: wheels-sdist
-          path: dist/*.tar.gz
+          name: node-${{ matrix.node }}
+          path: node/*.node
           if-no-files-found: error
-          compression-level: 0
 
   publish-pypi:
     name: PyPI (yggdryl)
-    needs: [preflight, wheels, sdist]
+    needs: [preflight, sources, build]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment: pypi
@@ -421,84 +564,11 @@ jobs:
           # A repaired run re-uploads only what is missing.
           skip-existing: true
 
-  node:
-    # Each platform builds and tests its own native module; the npm package
-    # ships every one of them, and the generated loader picks the matching
-    # binary at require time.
-    name: Node binary (${{ matrix.label }})
-    needs: [preflight, consistency]
-    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: linux-x64-gnu
-            runner: ubuntu-latest
-          - label: linux-arm64-gnu
-            runner: ubuntu-24.04-arm
-          - label: darwin-x64
-            runner: macos-15-intel
-          - label: darwin-arm64
-            runner: macos-14
-          - label: win32-x64
-            runner: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          package-manager-cache: false
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - name: Install Node.js build tooling
-        run: npm ci --prefix node
-      - name: Build the release native module
-        run: npm run build --prefix node
-        env:
-          # A rehearsal publishes nothing, so it keeps the symbols and line
-          # tables the shipped module strips: a crash its smoke tests find is
-          # then named by function and line in the stack the failure step
-          # prints, rather than by an offset into a stripped binary. Neither
-          # setting changes the code the compiler emits.
-          CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
-          CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
-      - name: Smoke tests against the release binary
-        run: npm test --prefix node
-      # A crash names its file and never its test: the runner reads each file
-      # in a child whose report dies with it, and a reporter writes on a later
-      # turn of the event loop than the test it reports. Each failing file is
-      # read again with `scripts/trace-tests.js` preloaded, which names every
-      # test synchronously as it starts, and where lldb is at hand, under it,
-      # for every thread's native stack at the fault.
-      - name: Name the test a failing file stopped in
-        if: failure()
-        shell: bash
-        working-directory: node
-        run: |
-          for file in tests/*.test.js tests/*/*.test.js; do
-            [ -f "$file" ] || continue
-            status=0
-            node --require ./scripts/trace-tests.js --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
-            if [ "$status" -ne 0 ]; then
-              echo "::group::$file (exit $status)"
-              tail -n 80 "$file.log"
-              if [ "$status" -gt 128 ] && command -v lldb > /dev/null; then
-                lldb --batch -o run -k "thread backtrace all -c 60" -k "quit 1" -- \
-                  "$(command -v node)" --require ./scripts/trace-tests.js "$file" 2>&1 | tail -n 400 || true
-              fi
-              echo "::endgroup::"
-            fi
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: node-${{ matrix.label }}
-          path: node/*.node
-          if-no-files-found: error
-
   publish-npm:
+    # Waits on the source packages it does not ship, as PyPI waits on the
+    # Node.js modules: a crate that cannot package stops all three registries.
     name: npm (yggdryl)
-    needs: [preflight, node]
+    needs: [preflight, sources, build]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment: npm
@@ -557,18 +627,33 @@ jobs:
           fi
 
   release:
-    # The tag and the GitHub release land last, after every registry has the
-    # version: their existence is the statement that the release is complete,
-    # and their absence is what makes the next run on `main` finish a
-    # half-published one.
-    name: Tag and GitHub release
-    needs: [preflight, crate, publish-pypi, publish-npm]
+    # crates.io, then the tag and the GitHub release, after PyPI and npm: the
+    # crate goes out once every platform has smoke-tested what it ships, like
+    # the other two, and the tag and the release land last because their
+    # existence is the statement that the release is complete, and their
+    # absence is what makes the next run on `main` finish a half-published
+    # one. The sparse index says whether the crate is already up, so a
+    # repaired run skips instead of failing.
+    name: crates.io, tag and GitHub release
+    needs: [preflight, sources, publish-pypi, publish-npm]
     if: needs.preflight.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v6
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Publish the crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          version="${{ needs.preflight.outputs.version }}"
+          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$version\""; then
+            echo "crates.io already has yggdryl $version; skipping"
+          else
+            cargo publish --locked -p yggdryl
+          fi
       - name: Create the tag and the release once
         env:
           GH_TOKEN: ${{ github.token }}
@@ -595,12 +680,12 @@ jobs:
     # issue rather than opening another, and the issue is the thing to close
     # once the repair run is green.
     #
-    # It fires on a failed `preflight` too. A preflight that refuses is the
-    # loudest failure there is - three manifests disagreeing, or a tag naming
-    # a version nothing spells - and it is the one case where no version
+    # It fires on a failed `preflight` too: three manifests disagreeing, a
+    # tag naming a version nothing spells, or a version already half out on
+    # a push to `main`. The first two are the one case where no version
     # output exists to name, so the commit names the report instead.
     name: Say so when a release did not finish
-    needs: [preflight, consistency, crate, wheels, sdist, publish-pypi, node, publish-npm, release]
+    needs: [preflight, sources, build, publish-pypi, publish-npm, release]
     if: >-
       always() && github.event_name != 'workflow_dispatch'
       && (needs.preflight.result == 'failure'
