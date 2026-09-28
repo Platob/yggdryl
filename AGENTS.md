@@ -2062,8 +2062,8 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   created after registry publication, and manual runs rehearse only.
 - Publishes are idempotent, the tag is last, and a released version is never
   reused.
-- A version is out on all three registries or on none. The `consistency` job
-  reads crates.io, PyPI and npm before anything builds and refuses a branch
+- A version is out on all three registries or on none. `preflight` reads
+  crates.io, PyPI and npm before anything builds and refuses a branch
   push that would publish a version some of them already carry, because the
   tree under a branch is not the tree those artifacts were built from and one
   number would come to name two libraries. Such a version is finished from the
@@ -2078,6 +2078,13 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   publishes no version to name, so the report reads the tree instead.
 - Root Cargo, Python, and Node versions match exactly. Publish crates.io, PyPI,
   npm only after platform smoke tests import and exercise the artifacts.
+- One job per platform builds everything the platform ships: the `yggdryl`
+  command, the wheels and, where npm carries the platform, the Node.js module,
+  over one compile of the core for both bindings. That holds while the core
+  resolves to one crate graph under both: a feature one binding's dependency
+  switches on for a crate the core also uses is declared in the workspace
+  manifest (`ffi` on the Arrow crates, `std` on `log`), and every build in the
+  job sees the same `--target` and environment.
 - A bump moves seven files together, and `preflight` reads three of them:
   `Cargo.toml` and `Cargo.lock`, `python/pyproject.toml`, `node/package.json`
   and `node/package-lock.json`, and the two generated documentation manifests

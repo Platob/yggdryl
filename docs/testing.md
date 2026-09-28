@@ -135,7 +135,7 @@ later, from the tree `main` held by then, so 0.1.9's wheel is not built from
 the tree its crate and its npm package are: one number came to name two
 libraries, which is the whole reason the rules below exist. A release that was
 going to publish and did not now files an issue naming what each registry
-holds, and the `consistency` job refuses a branch push that would publish a
+holds, and `preflight` refuses a branch push that would publish a
 version some registry already carries - the tag is what pins a tree, so a
 half-published version is finished from the commit it was built at.
 

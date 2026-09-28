@@ -17,10 +17,15 @@ license = "Apache-2.0"
 repository = "https://github.com/platob/yggdryl"
 
 [workspace.dependencies]
-arrow-array = "59.2.0"
+# `ffi` on the Arrow crates and `std` on `log` are what the Python extension's
+# own dependencies (`arrow-pyarrow`, `pyo3-log`) switch on anyway, and they add
+# no crate to any graph. Declared here, they give the core one feature set under
+# every member, so a release job compiles it once for the wheels and the Node.js
+# module beside them; a feature only one binding enabled gave each its own core.
+arrow-array = { version = "59.2.0", features = ["ffi"] }
 arrow-buffer = "59.2.0"
 arrow-cast = "59.2.0"
-arrow-data = "59.2.0"
+arrow-data = { version = "59.2.0", features = ["ffi"] }
 arrow-ipc = "59.2.0"
 arrow-ord = "59.2.0"
 arrow-pyarrow = "59.2.0"
@@ -31,7 +36,7 @@ base64 = "0.23"
 half = "2.7"
 # The logging facade. Nothing is emitted unless the host installs a logger,
 # so a library build pays one atomic load per record site and nothing else.
-log = "0.4"
+log = { version = "0.4", features = ["std"] }
 napi = { version = "3.12.1", default-features = false, features = ["napi8"] }
 napi-build = "2.4.1"
 napi-derive = "3.6.3"
