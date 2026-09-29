@@ -59,7 +59,7 @@ folder of one page.
 | page | owns |
 | --- | --- |
 | [UUID](uuid.md) | The 128-bit identifier, its spellings, and its `arrow.uuid` storage |
-| [Version](version.md) | Three numeric components in four bytes, numerically ordered, not lexicographic |
+| [Version](version.md) | A sixteen-bit major and minor and an optional text patch, naturally ordered, not lexicographic |
 | [Media types](mediatype.md) | `mimetype` and `mediatype`: what a record's bytes are, and what they were declared under |
 | [Variant](variant.md) | The Apache Parquet Variant encoding: one metadata dictionary and one value payload, the pair Parquet, Avro, Arrow and Iceberg all state for a `variant` column |
 | [Value stream](value-stream.md) | Any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries |

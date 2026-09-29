@@ -627,6 +627,26 @@ mod records {
     }
 
     #[test]
+    fn excel_costs() {
+        // A workbook is a ZIP package, and the record doors read it as the
+        // core's record doors read every archive: one streamed copy into a
+        // buffer of the medium's own, which the two questions about the
+        // handle's location (`bound_location`, `parent`) decide cannot be
+        // reopened in place. Every dimension is then read off that copy -
+        // the schema and the rows once each, the row count a second pass
+        // over the same copy, never a per-row call - and the column count
+        // asks the handle's size once more to learn nothing new.
+        surfaces(
+            "excel",
+            "file:///lake/part.xlsx",
+            "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 size=1 bound_location=3 media_type=2 is_container=2 parent=1",
+            "pstream_bytes=1 bound_location=3 media_type=2 is_container=2 parent=1",
+        );
+    }
+
+    #[test]
     fn xmla_costs() {
         // A rowset document is held whole, as every structured text document
         // is: XML has no frame to read a prefix of. So the schema, the row

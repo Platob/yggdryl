@@ -2029,7 +2029,7 @@ impl<'env> JsEncoder<'env> {
             inner
         )));
         native_wrapper!(JsVersion, "Version", 7, |inner: &yggdryl::Version| {
-            Scalar::from(*inner)
+            Scalar::from(inner.clone())
         });
         Ok(None)
     }
@@ -2310,7 +2310,12 @@ pub(crate) fn value_to_transport(
             [
                 ("major", JsonValue::Number(JsonNumber::from(value.major()))),
                 ("minor", JsonValue::Number(JsonNumber::from(value.minor()))),
-                ("patch", JsonValue::Number(JsonNumber::from(value.patch()))),
+                (
+                    "patch",
+                    value
+                        .patch()
+                        .map_or(JsonValue::Null, |patch| JsonValue::String(patch.to_owned())),
+                ),
             ],
         )),
         // A location crosses as the canonical text it validated to, and a

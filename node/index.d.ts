@@ -897,6 +897,114 @@ export declare class Catalog {
 export type JsCatalog = Catalog
 
 /**
+ * One cell: its reference, what kind of content it states, the number
+ * format its style declares, its value, and the formula or error it carries.
+ */
+export declare class Cell {
+  /** A cell from its parts, as `toJSON` spells them. */
+  static fromParts(reference: CellRefInput, kind: string, format: string, value: JsScalar, formula?: string | undefined | null, error?: string | undefined | null): Cell
+  /** Where the cell is. */
+  get reference(): CellRef
+  /** The zero-based row. */
+  get row(): number
+  /** The zero-based column. */
+  get column(): number
+  /**
+   * The `t` attribute the cell states: `n`, `s`, `str`, `inlineStr`,
+   * `b`, `d` or `e`.
+   */
+  get kind(): string
+  /**
+   * The number format the cell's style classifies as: `general`,
+   * `date`, `time`, `datetime`, `datetime_fraction` or `duration`.
+   */
+  get format(): string
+  /** The value the cell holds, as the core reads it. */
+  get value(): JsScalar
+  /** The formula the cell carries, when it states one. */
+  get formula(): string | null
+  /** The error the cell carries, such as `#DIV/0!`, when it is one. */
+  get error(): string | null
+  /** Whether the cell holds no value. */
+  isNull(): boolean
+  /** The cell's displayed text. */
+  text(): string
+  /** This cell carrying `formula`. */
+  withFormula(formula: string): Cell
+  /** This cell as the error `error`. */
+  withError(error: string): Cell
+  /** This cell moved to `reference`. */
+  at(reference: CellRefInput): Cell
+  equals(other: Cell): boolean
+  clone(): Cell
+  toString(): string
+}
+export type JsCell = Cell
+
+/** A rectangle of cells, spelled `A1:C3`, `A:C`, `3:5` or `A3:F`. */
+export declare class CellRange {
+  /**
+   * Read a range: `A1:C3` text, an open `A:C`, `3:5` or `A3:F`, a pair
+   * of cell references in any order, or another `CellRange`.
+   */
+  constructor(value: CellRangeInput)
+  /** The whole grid. */
+  static all(): CellRange
+  /** The top-left cell. */
+  get start(): CellRef
+  /** The bottom-right cell. */
+  get end(): CellRef
+  /** How many rows the range spans. */
+  get rowSize(): number
+  /** How many columns the range spans. */
+  get columnSize(): number
+  /** Whether the range runs to the last row of the grid. */
+  isRowOpen(): boolean
+  /** Whether the range runs to the last column of the grid. */
+  isColumnOpen(): boolean
+  /** Whether `cell` lies inside the range. */
+  contains(cell: CellRefInput): boolean
+  /** Whether the zero-based `row` lies inside the range. */
+  containsRow(row: number): boolean
+  /** Whether the zero-based `column` lies inside the range. */
+  containsColumn(column: number): boolean
+  equals(other: CellRange): boolean
+  compare(other: CellRange): number
+  clone(): CellRange
+  toString(): string
+  toJSON(): string
+}
+export type JsCellRange = CellRange
+
+/** One cell's position: a zero-based row and column, spelled `A1`. */
+export declare class CellRef {
+  /**
+   * Read a reference: `A1` text with or without `$` anchors, a
+   * `[row, column]` pair of zero-based integers, or another `CellRef`.
+   */
+  constructor(value: CellRefInput)
+  /** The zero-based row. */
+  get row(): number
+  /** The zero-based column. */
+  get column(): number
+  /** Whether the reference lies inside the 1,048,576 by 16,384 grid. */
+  isInGrid(): boolean
+  /** The letters of the zero-based `column`: `0` is `A`, `26` is `AA`. */
+  static columnName(column: number): string
+  /**
+   * The zero-based column the `letters` spell, `null` for anything that
+   * is not letters or lies past `XFD`.
+   */
+  static columnIndex(letters: string): number | null
+  equals(other: CellRef): boolean
+  compare(other: CellRef): number
+  clone(): CellRef
+  toString(): string
+  toJSON(): string
+}
+export type JsCellRef = CellRef
+
+/**
  * Many columns under one field, held apart: a chunked array, or a table.
  *
  * Every chunk is a column of exactly this field. A row is read out of the
@@ -1383,6 +1491,22 @@ export declare class EventIterator {
   next(): IteratorResult<MarketData>
 }
 export type JsEventIterator = EventIterator
+
+/**
+ * One row of a sheet: its zero-based index and the cells it holds, in
+ * column order.
+ */
+export declare class ExcelRow {
+  /** The zero-based row index. */
+  get index(): number
+  /** The cells of the row, in column order. */
+  cells(): Array<Cell>
+  /** The cell at the zero-based `column`, when the row holds one. */
+  cell(column: number): Cell | null
+  /** How many cells the row holds. */
+  get size(): number
+}
+export type JsRow = ExcelRow
 
 /**
  * An undated execution: the element, market and operation facts of one
@@ -6333,6 +6457,33 @@ export declare class RecordOptions {
   get timezone(): JsTimezone | null
   /** Set or clear the timezone for autotyped timestamps. */
   set timezone(value: TimezoneInput | undefined | null)
+  /**
+   * The worksheet a workbook read or write addresses, `null` for the
+   * first worksheet - or for another encoding.
+   */
+  get sheet(): string | null
+  /** Address the worksheet `sheet`, or the first worksheet for `null`. */
+  set sheet(sheet: string | undefined | null)
+  /**
+   * Whether a workbook's first row names its columns, `null` for another
+   * encoding.
+   */
+  get header(): boolean | null
+  /** State whether the first row names the columns. */
+  set header(header: boolean)
+  /**
+   * The cells a workbook read or write addresses, `null` for the whole
+   * sheet - or for another encoding.
+   */
+  get range(): CellRange | null
+  /** Address the cells of `range`, or the whole sheet for `null`. */
+  set range(range: CellRangeInput | undefined | null)
+  /** These options addressing the sheet `sheet`. */
+  withSheet(sheet?: string | undefined | null): RecordOptions
+  /** These options with or without a header row. */
+  withHeader(header: boolean): RecordOptions
+  /** These options addressing the cells of `range`. */
+  withRange(range?: CellRangeInput | undefined | null): RecordOptions
   /** The Avro block codec name, or `null` for another encoding. */
   get blockCodec(): string | null
   /** Validate and set the Avro block codec name. */
@@ -7197,6 +7348,81 @@ export declare class Session {
   toString(): string
 }
 export type JsSession = Session
+
+/**
+ * One worksheet: every cell it states, by reference, with the rows read and
+ * written through `Serie`.
+ *
+ * A sheet handed out by a `Workbook` is a live view: what is set on it is
+ * what the workbook writes. A sheet built on its own is put in a workbook
+ * with `insertSheet`, after which the same object views it there.
+ */
+export declare class Sheet {
+  /** An empty sheet named `name`, `Sheet1` by default. */
+  constructor(name?: string | undefined | null, options?: SheetOptions | undefined | null)
+  /** The sheet's name, its tab's when a workbook holds it. */
+  get name(): string
+  /**
+   * Rename the sheet; a workbook renames its tab and refuses a name
+   * another sheet has.
+   */
+  set name(name: string)
+  /** `visible`, `hidden` or `veryHidden`. */
+  get state(): string
+  set state(state: string)
+  /** The date system serials are read and written in: `1900` or `1904`. */
+  get dateSystem(): string
+  /** How many rows hold a cell. */
+  get size(): number
+  /** Whether the sheet states no cell. */
+  isEmpty(): boolean
+  /** The rectangle holding every stated cell, `null` for an empty sheet. */
+  get dimension(): CellRange | null
+  /** The cell at `reference`, when the sheet states one. */
+  cell(reference: CellRefInput): Cell | null
+  /** The value at `reference`, null where the sheet states no cell. */
+  scalar(reference: CellRefInput): JsScalar
+  /** Whether the sheet states a cell at `reference`. */
+  has(reference: CellRefInput): boolean
+  /** Put `cell` where its reference says, answering the cell it replaced. */
+  insertCell(cell: Cell): Cell | null
+  /** Take the cell at `reference` out, answering it. */
+  removeCell(reference: CellRefInput): Cell | null
+  /** The rows holding at least one cell, in order. */
+  rows(): Array<ExcelRow>
+  /** The row at the zero-based `index`, when it holds a cell. */
+  row(index: number): ExcelRow | null
+  /** Every stated cell, row by row. */
+  cells(): Array<Cell>
+  /** The stated cells inside `range`, row by row. */
+  cellsIn(range: CellRangeInput): Array<Cell>
+  /** The stated cells of the zero-based `column`, top down. */
+  column(column: number): Array<Cell>
+  /**
+   * The cells inside `range`, as a sheet of their own keeping their
+   * references.
+   */
+  slice(range: CellRangeInput): Sheet
+  /**
+   * Open `count` empty rows at the zero-based row `at`, moving the rows
+   * from there down.
+   */
+  insertRows(at: number, count: number): void
+  /** Drop the rows from `start` up to `stop`, moving the rows below up. */
+  removeRows(start: number, stop: number): void
+  /**
+   * The sheet's rows as one record `Serie`: the first row naming the
+   * columns unless `header` is false, each column typed by its first
+   * value, or by `field` when one is declared.
+   */
+  intoSerie(field?: JsField | string | undefined | null, options?: IntoSerieOptions | undefined | null): JsSerie
+  /** Whether the cells equal another sheet's, name and state included. */
+  equals(other: Sheet): boolean
+  /** A sheet of its own holding a copy of the cells. */
+  clone(): Sheet
+  toString(): string
+}
+export type JsSheet = Sheet
 
 /** One committed version of a table's contents. */
 export declare class Snapshot {
@@ -9216,23 +9442,30 @@ export type JsUrn = Urn
 
 /** An immutable native version with major, minor, and patch components. */
 export declare class Version {
-  /** Major and minor fit unsigned bytes; patch fits an unsigned 16-bit value. */
-  constructor(major: number, minor?: number | undefined | null, patch?: number | undefined | null)
-  /** Parse the native numeric version grammar. */
+  /**
+   * Major and minor are whole numbers in 0..65535. A patch is text as
+   * written or a non-negative whole number, held as its digits; zero or
+   * empty text states none.
+   */
+  constructor(major: number, minor?: number | undefined | null, patch?: number | string | undefined | null)
+  /**
+   * Parse the native version grammar: a strict major and minor, then the
+   * patch as the tail states it.
+   */
   static fromStr(text: string): Version
-  /** The unsigned 8-bit major component. */
+  /** The sixteen-bit major component. */
   get major(): number
-  /** The unsigned 8-bit minor component. */
+  /** The sixteen-bit minor component, zero when omitted. */
   get minor(): number
-  /** The unsigned 16-bit patch component. */
-  get patch(): number
+  /** The patch as text - a number as its digits - or null when none. */
+  get patch(): string | null
   /** Compare the complete native values. */
   equals(other: Version): boolean
   /** Compare native values in canonical order. */
   compare(other: Version): number
   /** Deterministic hash bits from the native value. */
   stableHash(): bigint
-  /** Copy the native four-byte value. */
+  /** Copy the native value. */
   clone(): Version
   /** Render the canonical native text. */
   toString(): string
@@ -9240,6 +9473,80 @@ export declare class Version {
   toJSON(): string
 }
 export type JsVersion = Version
+
+/**
+ * An Office Open XML workbook: its sheets in tab order, each parsed on first
+ * access, written back as one package.
+ */
+export declare class Workbook {
+  /** An empty workbook with no sheet. */
+  constructor()
+  /**
+   * Open the package `value` holds: an `IOBase` handle, a location, or
+   * the package's bytes. The archive is indexed and the workbook
+   * documents read; no sheet is parsed until it is asked for. A handle
+   * holding nothing opens as an empty workbook.
+   */
+  static open(value: WorkbookInput): Workbook
+  /** Open the package `bytes` hold. */
+  static fromBytes(bytes: Buffer): Workbook
+  /** The date system serials are read and written in: `1900` or `1904`. */
+  get dateSystem(): string
+  set dateSystem(value: string)
+  /** Every sheet's name, in tab order. */
+  get sheetNames(): Array<string>
+  /**
+   * `worksheet`, `chartsheet` or `dialogsheet` for the sheet `name`,
+   * `null` when no sheet has it.
+   */
+  sheetKind(name: string): string | null
+  /** How many sheets the workbook holds. */
+  get size(): number
+  /** Whether the workbook holds no sheet. */
+  isEmpty(): boolean
+  /** Whether a sheet has the name, compared without case. */
+  has(name: string): boolean
+  /** The worksheets, in tab order, as live views. */
+  sheets(): Array<Sheet>
+  /** The worksheet `name`, parsed on first access, as a live view. */
+  sheet(name: string): Sheet
+  /** The worksheet `name` as a live view, `null` when no sheet has it. */
+  getSheet(name: string): Sheet | null
+  /**
+   * The sheet at the zero-based `index` in tab order, `null` past the
+   * last.
+   */
+  sheetAt(index: number): Sheet | null
+  /**
+   * Add an empty worksheet named `name` after the last tab, as a live
+   * view; a name a sheet already has is refused.
+   */
+  addSheet(name: string): Sheet
+  /**
+   * Put `sheet` in the workbook: in place of the sheet of the same name,
+   * answering it, or after the last tab. The object then views the
+   * sheet in this workbook.
+   */
+  insertSheet(sheet: Sheet): Sheet | null
+  /**
+   * Take the sheet `name` out, answering it as a sheet of its own, or
+   * `null` when no sheet has it.
+   */
+  removeSheet(name: string): Sheet | null
+  /** Rename the sheet `name` to `newName`, keeping its place. */
+  renameSheet(name: string, newName: string): void
+  /**
+   * The package as bytes: every sheet written, and every other part of
+   * an opened package kept as it was.
+   */
+  intoBytes(): Buffer
+  /** Write the package into `target`: an `IOBase` handle or a location. */
+  writeInto(target: LocationInput): void
+  /** Calls the package's handle has answered so far, in `IOBase` calls. */
+  get handleReads(): number
+  toString(): string
+}
+export type JsWorkbook = Workbook
 
 /** A resumable XXH3 state answering 128 bits. */
 export declare class Xxh128 {
@@ -9479,6 +9786,15 @@ export interface CandleReading {
   close: string
 }
 
+/** A cell's parts beside its value. */
+export interface CellParts {
+  reference: string
+  kind: string
+  format: string
+  formula?: string
+  error?: string
+}
+
 /** A byte-order mark: the charset it declares, and how long the mark is. */
 export interface CharsetMark {
   /** The canonical charset name the mark declares. */
@@ -9504,6 +9820,15 @@ export interface CodecLimitsInput {
 
 /** Parse a format alias and return its stable native spelling. */
 export declare function codecNormalizeFormat(format: string): string
+
+/** The grid's bounds and the crate's defaults, for the loader. */
+export interface ExcelLimits {
+  maxRows: number
+  maxColumns: number
+  maxCellText: number
+  maxSheetName: number
+  defaultSheetName: string
+}
 
 /** Return whether an identifier has to be quoted to survive the grammar. */
 export declare function expressionNeedsQuoting(name: string): boolean
@@ -10255,6 +10580,16 @@ export interface IcebergOptionsInput {
   dataMimeType?: MimeTypeInput
 }
 
+/** The settings `intoSerie` takes. */
+export interface IntoSerieOptions {
+  /** Whether the first row names the columns; true by default. */
+  header?: boolean
+  /** Whether a cast may null a value it cannot convert; true by default. */
+  safe?: boolean
+  /** `value` or `bits`; `value` by default. */
+  representation?: string
+}
+
 /**
  * One member of the core's market data kind enum - FIX's `MsgCat` code set:
  * its stored name, the code a `marketdatakind` column stores, and what it
@@ -10312,6 +10647,14 @@ export interface ScanPlanCounts {
   manifestsSkipped: number
   /** Rows the planned files hold, as the manifests counted them. */
   recordCount: number
+}
+
+/** The settings a sheet is built with. */
+export interface SheetOptions {
+  /** `1900` or `1904`; `1900` by default. */
+  dateSystem?: string
+  /** `visible`, `hidden` or `veryHidden`; `visible` by default. */
+  state?: string
 }
 
 /**

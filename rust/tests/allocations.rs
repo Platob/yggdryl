@@ -272,38 +272,46 @@ impl fmt::Write for StackText {
 }
 
 #[test]
-fn version_parse_compare_and_render_allocate_nothing() {
-    assert_eq!(std::mem::size_of::<Version>(), 4);
+fn version_allocates_only_a_patch_past_the_inline_capacity() {
     free("parsing an inline version", || {
         black_box("5.0.10".parse::<Version>().expect("a static version"));
     });
-    for text in ["5.0sp250", "005.000Sp00250", "5.0SP256", "255.255sP65535"] {
+    for text in [
+        "5.0sp250",
+        "005.000Sp00250",
+        "5.0SP256",
+        "65535.65535sP65535",
+    ] {
         free("parsing a compact FIX version", || {
             black_box(text.parse::<Version>().expect("a static FIX version"));
         });
     }
     for (text, patch) in [
-        ("1.2-rc1", 63_727),
-        ("1.2SP2_EP240", 10_898),
-        ("1.2.65536", 54_529),
-        ("1.2界", 17_090),
+        ("1.2-rc1", "-rc1"),
+        ("1.2SP2_EP240", "SP2_EP240"),
+        ("1.2.65536", "65536"),
+        ("1.2.00065536", "65536"),
+        ("1.2界", "界"),
     ] {
-        free("parsing a version with a folded suffix", || {
+        let expected = Version::new(1, 2, Some(patch));
+        free("parsing a version with a qualified patch", || {
             assert_eq!(
                 black_box(text)
                     .parse::<Version>()
-                    .expect("a folded version"),
-                Version::new(1, 2, patch)
+                    .expect("a qualified version"),
+                expected
             );
         });
     }
-    for tail_bytes in [16, 240, 241, 4096] {
-        let text = format!("1.2-{}", "x".repeat(tail_bytes - 1));
+    // The patch is one `SmolStr`: held inline up to 23 bytes, and one shared
+    // allocation past them, which a clone shares rather than copies.
+    for (patch_bytes, each) in [(16, 0), (23, 0), (24, 1), (240, 1), (4096, 1)] {
+        let text = format!("1.2-{}", "x".repeat(patch_bytes - 1));
         let expected = text.parse::<Version>().expect("a generated qualifier");
-        assert_eq!(text.len() - "1.2".len(), tail_bytes);
-        assert_ne!(expected.patch(), 0);
-        free(
-            &format!("parsing a {tail_bytes}-byte version suffix"),
+        assert_eq!(expected.patch().map(str::len), Some(patch_bytes));
+        costs(
+            &format!("parsing a {patch_bytes}-byte version patch"),
+            each,
             || {
                 assert_eq!(
                     black_box(text.as_str())
@@ -313,12 +321,23 @@ fn version_parse_compare_and_render_allocate_nothing() {
                 );
             },
         );
+        free(
+            &format!("cloning a {patch_bytes}-byte version patch"),
+            || {
+                black_box(expected.clone());
+            },
+        );
     }
 
     let left = "5.0.2".parse::<Version>().expect("a static version");
     let right = "5.0.10".parse::<Version>().expect("a static version");
     free("comparing inline versions", || {
         black_box(left.cmp(&right));
+    });
+    let qualified = "1.2-rc2".parse::<Version>().expect("a qualified version");
+    let later = "1.2-rc10".parse::<Version>().expect("a qualified version");
+    free("comparing qualified versions", || {
+        black_box(qualified.cmp(&later));
     });
 
     let mut rendered = StackText::default();
@@ -5416,4 +5435,183 @@ fn tokenizing_csv_records_costs_a_constant_and_nothing_a_record() {
             "{cells} cells: the count's constant moved"
         );
     }
+}
+
+/// The trades table every Excel allocation case lays out: an integer, a
+/// nullable text and a float, the three storages a cell takes.
+fn excel_field() -> Field {
+    DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::Float64.required_field("price"),
+        ])
+        .expect("a valid root"),
+    )
+    .required_field("row")
+}
+
+/// `count` trades rows under [`excel_field`].
+fn excel_rows(count: usize) -> Serie {
+    Serie::from_scalars(
+        excel_field(),
+        (0..count).map(|index| {
+            Scalar::from_sequence([
+                Scalar::from(index as i64),
+                Scalar::from(format!("SYM{index:04}")),
+                Scalar::from(index as f64 * 0.25),
+            ])
+        }),
+    )
+    .expect("rows under the field")
+}
+
+/// A reference and a range are parsed per cell of a part, and a cell is
+/// looked up per row of a read, so none of them may allocate: a reference
+/// is two integers, a range two references, and a lookup a walk of the
+/// sheet's maps that hands back a borrow. The one thing a cell read builds
+/// is the text of a number, which has no bytes until it is rendered.
+#[test]
+fn excel_cell_reads_allocate_nothing() {
+    use yggdryl::excel::{CellRange, CellRef, Sheet};
+
+    let sheet = Sheet::from_serie("Sheet1", &excel_rows(64), true).expect("a sheet");
+    let number: CellRef = "C3".parse().expect("a reference");
+    let text: CellRef = "B3".parse().expect("a reference");
+    let range: CellRange = "A1:C64".parse().expect("a range");
+    free("a cell reference parse", || {
+        let _ = black_box("$C$3".parse::<CellRef>());
+    });
+    free("a cell range parse", || {
+        let _ = black_box("A1:C64".parse::<CellRange>());
+    });
+    free("a range test", || {
+        let _ = black_box(range.contains(number));
+    });
+    free("a cell lookup", || {
+        let _ = black_box(sheet.cell(number));
+    });
+    free("a number cell's value", || {
+        let _ = black_box(sheet.scalar(number));
+    });
+    free("a text cell's value", || {
+        let _ = black_box(sheet.scalar(text));
+    });
+    free("a row lookup", || {
+        let _ = black_box(sheet.row(2).map(yggdryl::excel::Row::len));
+    });
+    free("the cells of a range", || {
+        let _ = black_box(sheet.cells_in(range).count());
+    });
+    costs("the text of a number cell", 1, || {
+        let _ = black_box(sheet.cell(number).map(yggdryl::excel::Cell::text));
+    });
+}
+
+/// What a sheet costs per row, at two corpus sizes so a per-cell cost would
+/// show as a slope: laying rows out into cells is the row's own map of
+/// cells, reading them back is the run each row becomes and the record it
+/// is laid out under, and rendering the part builds nothing per row - the
+/// numbers are written from their digits and the text is interned as it is.
+#[test]
+fn excel_sheet_costs_per_row_and_nothing_per_cell() {
+    use yggdryl::excel::{Sheet, Workbook};
+
+    let field = excel_field();
+    let cost = |count: usize| {
+        let rows = excel_rows(count);
+        let (laid_out, sheet) =
+            counted(|| Sheet::from_serie("Sheet1", &rows, true).expect("a sheet"));
+        let (read_back, serie) = counted(|| {
+            sheet
+                .clone()
+                .into_serie(Some(&field), true, Default::default())
+                .expect("the rows lay out")
+        });
+        assert_eq!(serie.len(), count);
+        let mut workbook = Workbook::new();
+        workbook.insert_sheet(sheet).expect("inserted");
+        let (rendered, bytes) = counted(|| workbook.into_bytes().expect("the package"));
+        let (opened, reopened) =
+            counted(|| Workbook::from_bytes(bytes).expect("the package opens"));
+        let (parsed, rows) = counted(|| reopened.sheet("Sheet1").expect("the sheet").len());
+        assert_eq!(rows, count + 1);
+        (laid_out, read_back, rendered, opened, parsed)
+    };
+    let (small, large) = (cost(64), cost(640));
+    let more = 640 - 64;
+    // Under two per row: the row's cell map, and the doublings of the maps.
+    assert!(
+        large.0 - small.0 < more * 2,
+        "laying out 576 more rows cost {} allocations, against {} for 64 rows",
+        large.0 - small.0,
+        small.0
+    );
+    // Under four per row: the cells gathered, the run, the record's row.
+    assert!(
+        large.1 - small.1 < more * 4,
+        "reading back 576 more rows cost {} allocations",
+        large.1 - small.1
+    );
+    // Rendering the package costs its parts, not its rows: the part is
+    // written into one buffer and every cell from what it already holds.
+    assert!(
+        large.2 < small.2 + 64,
+        "rendering 576 more rows cost {} allocations more",
+        large.2 - small.2
+    );
+    // Opening reads the package documents and no sheet.
+    assert_eq!(small.3, large.3, "opening a workbook cost a row");
+    // Under three per row: the row's cells as read, and its map once held.
+    assert!(
+        large.4 - small.4 < more * 3,
+        "parsing 576 more rows cost {} allocations",
+        large.4 - small.4
+    );
+}
+
+/// The record doors: a write renders every row into the part it streams
+/// and allocates nothing per row, and a read costs each row its cells and
+/// the run it becomes - never a value copied, a reference built or an
+/// attribute read into a string of its own.
+#[test]
+fn excel_record_doors_cost_per_row_and_nothing_per_cell() {
+    use yggdryl::IOMedia;
+    use yggdryl::media::IORecordOptions;
+
+    let field = excel_field();
+    let cost = |count: usize| {
+        let batch = excel_rows(count).into_arrow_batch().expect("a batch");
+        let mut handle = Buffer::new().with_media_type(MimeType::XLSX.into());
+        let options = handle
+            .record_options()
+            .expect("Excel options")
+            .with_field(field.clone());
+        let (written, ()) = counted(|| {
+            handle
+                .overwrite_arrow_batch(batch.clone(), &options)
+                .expect("the rows write")
+        });
+        let (read, rows) = counted(|| {
+            handle
+                .read_arrow_reader(&options)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum::<usize>()
+        });
+        assert_eq!(rows, count);
+        (written, read)
+    };
+    let (small, large) = (cost(64), cost(640));
+    let more = 640 - 64;
+    assert!(
+        large.0 < small.0 + 64,
+        "writing 576 more rows cost {} allocations more",
+        large.0 - small.0
+    );
+    assert!(
+        large.1 - small.1 < more * 3,
+        "reading 576 more rows cost {} allocations",
+        large.1 - small.1
+    );
 }

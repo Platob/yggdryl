@@ -438,6 +438,28 @@ impl ZipArchive {
         self.read_entry(&entry)
     }
 
+    /// Open a decoded stream over one member, from its first byte.
+    ///
+    /// `None` is a member the archive does not hold. The reader owns its
+    /// archive, so it outlives the call that opened it and crosses threads:
+    /// what a record medium reading a package member by member needs.
+    ///
+    /// # Errors
+    ///
+    /// Returns the read or format failure the index parse hit, or the
+    /// refusal of an encrypted member or a compression method this build
+    /// cannot decode.
+    pub(crate) fn member_reader(
+        self: &Arc<Self>,
+        path: &str,
+    ) -> Result<Option<Box<dyn Read + Send>>> {
+        let name = name::resolve("", path)?;
+        let Some(entry) = self.entry(&name)? else {
+            return Ok(None);
+        };
+        self.entry_reader(&entry, 0).map(Some)
+    }
+
     /// Write one member under the archive's default coding.
     ///
     /// # Errors

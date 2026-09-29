@@ -5,6 +5,8 @@ mod bench_profile;
 mod avro;
 #[path = "media/csv.rs"]
 mod csv;
+#[path = "media/excel.rs"]
+mod excel;
 #[cfg(feature = "iceberg")]
 #[path = "media/iceberg.rs"]
 mod iceberg;
@@ -40,6 +42,7 @@ criterion_group!(
     avro::projection::projection_benchmarks,
     avro::resolution::resolution_benchmarks,
     csv::csv_benchmarks,
+    excel::excel_benchmarks,
     io_benchmarks,
     iceberg_benchmarks,
     xmla::xmla_benchmarks,

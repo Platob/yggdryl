@@ -39,6 +39,11 @@ encoding!(
     "A delimiter-separated values document - `text/csv`, or \
      `text/tab-separated-values` under a tab - its dialect on the record options."
 );
+encoding!(
+    PyExcel,
+    "Excel",
+    "An Office Open XML workbook, one worksheet read and written as records."
+);
 
 /// Plain-text rows under one retained flat configuration.
 ///
@@ -85,6 +90,7 @@ pub(crate) enum Encoding {
     Text,
     Xmla,
     Csv,
+    Excel,
 }
 
 impl Encoding {
@@ -97,6 +103,7 @@ impl Encoding {
             yggdryl::media::Media::Text(_) => Self::Text,
             yggdryl::media::Media::Xmla(_) => Self::Xmla,
             yggdryl::media::Media::Csv(_) => Self::Csv,
+            yggdryl::media::Media::Excel(_) => Self::Excel,
         }
     }
 }
@@ -119,6 +126,7 @@ pub(crate) fn describe(
         Encoding::Avro | Encoding::Text => Py::new(py, media.add_subclass(PyAvro))?.into_any(),
         Encoding::Xmla => Py::new(py, media.add_subclass(PyXmla))?.into_any(),
         Encoding::Csv => Py::new(py, media.add_subclass(PyCsv))?.into_any(),
+        Encoding::Excel => Py::new(py, media.add_subclass(PyExcel))?.into_any(),
     })
 }
 
@@ -138,6 +146,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyAvro>()?;
     module.add_class::<PyXmla>()?;
     module.add_class::<PyCsv>()?;
+    module.add_class::<PyExcel>()?;
     module.add_class::<PyText>()?;
     Ok(())
 }

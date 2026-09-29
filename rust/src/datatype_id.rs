@@ -151,7 +151,8 @@ pub enum DataTypeId {
     FixedCp1252String = 0x61,
     /// Windows-1252 under a declared maximum.
     SizedCp1252String = 0x62,
-    /// A canonical, numerically ordered software or protocol version.
+    /// A canonical software or protocol version - a sixteen-bit major and
+    /// minor and an optional text patch - ordered by its numbers, not its text.
     Version = 0x63,
     /// A validated, canonical location.
     Url = 0x64,

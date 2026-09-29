@@ -561,11 +561,16 @@ with tempfile.TemporaryDirectory() as directory:
 and its declared roots, stamping the dialect on everything it produced;
 `add_cfb_file` folds one into a held registry, `add_cfb_files` folds every
 file a glob pattern selects under a folder, and `merge_with` folds a whole
-other registry, dialect defaulting to each file's own stem. Each answers the
-same `dict` `commit` does - `sources`, `added`, `merged` and `dropped` - and a
-fold keeps every declaration the dictionary already holds, passing over what a
-source states otherwise into `dropped` rather than refusing the whole source;
-only a source that leaves nothing to keep is refused whole.
+other registry, dialect defaulting to each file's own stem. Each answers a
+`dict` - `sources`, `added`, `merged`, `restated` and `dropped` - and a fold
+keeps every declaration the dictionary already holds: a field whose source
+stated another precision of the stored datatype (a CBlock's `float` against
+`decimal128`, `string` against `ccy`) folds under it and is counted in
+`restated`, and a contradiction is passed over into `dropped` rather than
+refusing the whole source; only a source that leaves nothing to keep is
+refused whole. What the reader cannot keep of a file is a `logging` warning
+under `yggdryl.fix.cfb` naming the line, the column, the element and what the
+reader did instead.
 
 ```python
 import pathlib
@@ -590,6 +595,7 @@ with tempfile.TemporaryDirectory() as directory:
     registry = FixRegistry()
     report = registry.add_cfb_files(folder, "*.cfb")
     assert report["sources"] == 2
+    assert report["restated"] == 0, "both files type tag 4 alike"
     assert report["dropped"] == []
     # Ascending URL order, each file stamped with its stem.
     assert registry.field(4).fix.branches == ["alpha", "beta"]

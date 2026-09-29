@@ -1,4 +1,5 @@
-//! Process-level checks for categorized CRUD, reference integrity, and help.
+//! `cli/src/fix.rs`: categorized CRUD, reference integrity, help, and ingest -
+//! with what `cli/src/warnings.rs` prints of what the reader could not keep.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -403,16 +404,17 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     let workspace = Workspace::new();
     create_member(&workspace, "DeskValue", "int32", "5001", "alpha");
     // The same tag under another name is a second field beside the holder:
-    // each answers its own name, the holder carries the newcomer's name as an
-    // alias, and the bare tag keeps answering the holder - every command
-    // reloads the store, which writes the holder first and reads it back so.
+    // each answers its own name, neither learns the other's as an alias, and
+    // the bare tag keeps answering the holder - every command reloads the
+    // store, which writes the holder first and reads it back so.
     create_member(&workspace, "OtherName", "int64", "5001", "beta");
     let other = workspace.read("fields", "OtherName");
     assert_eq!(other.dtype(), &DataType::Int64);
     assert_eq!(other.as_fix().branches().collect::<Vec<_>>(), ["beta"]);
     let holder = workspace.read("fields", "DeskValue");
     assert_eq!(holder.dtype(), &DataType::Int32);
-    assert!(holder.as_fix().names().any(|alias| alias == "OtherName"));
+    assert!(!holder.as_fix().names().any(|alias| alias == "OtherName"));
+    assert!(!other.as_fix().names().any(|alias| alias == "DeskValue"));
     let by_tag = workspace.read("fields", "5001");
     assert_eq!(by_tag.as_fix().tag().unwrap(), Some(5001));
     assert_eq!(by_tag, holder);
@@ -458,15 +460,15 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
             .has_branch("beta")
     );
 
-    // Deleting one of the two leaves the other alone on the tag. Its name may
-    // still answer as the survivor's alias - the fold gave the holder that
-    // name - so absence is asserted on the listing, not on a name lookup.
+    // Deleting one of the two leaves the other alone on the tag, and the
+    // deleted name answers nothing: no survivor carries it.
     workspace.success(&["fields", "delete", "DeskValue"]);
     let rows = output_text(&workspace.success(&["fields", "list", "5001"]));
     assert!(
         !rows.contains("DeskValue") && rows.contains("OtherName"),
         "{rows}"
     );
+    workspace.failure(&["fields", "read", "DeskValue"]);
     assert_eq!(workspace.read("fields", "5001").name(), "OtherName");
     workspace.success(&["fields", "delete", "5001"]);
     workspace.failure(&["fields", "read", "5001"]);
@@ -720,28 +722,33 @@ impl Workspace {
 #[test]
 fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() {
     let workspace = Workspace::new();
+    // Three dialects over one wire tag: a flag, a number and text. The
+    // first file in URL order is held, the text says less than it and folds
+    // under it, and the number contradicts it and is named with its file.
     let folder = workspace.cblocks(&[
         ("bloomberg_fix44_dropcopy.cfb", &rejection("integer")),
-        ("axessiq_fix44.cfb", &rejection("string")),
+        ("axessiq_fix44.cfb", &rejection("boolean")),
         ("tradeweb_fix44.cfb", &rejection("string")),
         ("notes.txt", "not a dictionary"),
     ]);
     let pattern = folder.join("*.cfb");
     let output = workspace.success(&["ingest", pattern.to_str().expect("test path")]);
     let text = output_text(&output);
-    // One fold of every file: the disagreeing declaration is named with its
-    // file and its dialect, and the rest arrived in one commit.
+    // One fold of every file: the contradicting declaration is named with its
+    // file and its dialect, the restated one is counted, and the rest arrived
+    // in one commit.
     assert!(text.contains("3 file(s)"), "{text}");
+    assert!(text.contains("(1 restated)"), "{text}");
     assert!(text.contains("1 passed over"), "{text}");
-    assert!(
-        text.contains("bloomberg_fix44_dropcopy.cfb [bloomberg_fix44_dropcopy]"),
-        "{text}"
-    );
-    assert!(text.contains("masscancelrejectreason (532)"), "{text}");
+    let named = text
+        .lines()
+        .find(|line| line.contains("bloomberg_fix44_dropcopy.cfb [bloomberg_fix44_dropcopy]"))
+        .unwrap_or_else(|| panic!("the passed-over declaration named: {text}"));
+    assert!(named.contains("masscancelrejectreason (532)"), "{named}");
     assert!(text.contains("committed: "), "{text}");
     let stored = workspace.loaded();
     let held = stored.field_by_tag(532).expect("tag 532 stored");
-    assert_eq!(held.dtype(), &DataType::utf8());
+    assert_eq!(held.dtype(), &DataType::Boolean);
     assert_eq!(
         held.as_fix().branches().collect::<Vec<_>>(),
         ["axessiq_fix44", "tradeweb_fix44"]
@@ -774,6 +781,63 @@ fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() 
         ),
         "{annotated}"
     );
+}
+
+#[test]
+fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept() {
+    let workspace = Workspace::new();
+    let folder = workspace.cblocks(&[("a_venue.cfb", &rejection("widget"))]);
+    let file = folder.join("a_venue.cfb");
+    let file = file.to_str().expect("test path");
+
+    // A type word nothing reads: the tag is kept as text, and the sentence
+    // says what is wrong, where, and what the reader did instead, under the
+    // dialect it was read for.
+    let text = output_text(&workspace.success(&["ingest", file, "--dialect", "venue"]));
+    assert!(text.contains("1 warning(s) while reading"), "{text}");
+    let warned = text
+        .lines()
+        .find(|line| line.contains("\"widget\""))
+        .unwrap_or_else(|| panic!("the unread type word named: {text}"));
+    for said in ["[venue] ", "line 5, column ", "typed string"] {
+        assert!(warned.contains(said), "{said}: {warned}");
+    }
+    let held = workspace.loaded();
+    let held = held.field_by_tag(532).expect("tag 532 kept");
+    assert_eq!(held.dtype(), &DataType::utf8());
+
+    // Under --annotate the same sentence is one workflow warning.
+    let annotated =
+        output_text(&workspace.success(&["ingest", file, "--dialect", "venue", "--annotate"]));
+    assert!(
+        !annotated.contains("warning(s) while reading"),
+        "{annotated}"
+    );
+    assert!(
+        annotated.lines().any(|line| {
+            line.starts_with("::warning title=fix reader::")
+                && line.contains(" [venue] ")
+                && line.contains("typed string")
+        }),
+        "{annotated}"
+    );
+
+    // A file refused whole still shows what the files before it were read as.
+    let truncated = rejection("string").replace("</vocabulary>", "");
+    workspace.cblocks(&[("b_venue.cfb", &truncated)]);
+    let refused = output_text(&workspace.failure(&[
+        "ingest",
+        folder.join("*.cfb").to_str().expect("test path"),
+        "--dialect",
+        "venue",
+    ]));
+    let warned = refused
+        .find("typed string")
+        .unwrap_or_else(|| panic!("the kept tag named: {refused}"));
+    let refusal = refused
+        .find("b_venue.cfb")
+        .unwrap_or_else(|| panic!("the refused file named: {refused}"));
+    assert!(warned < refusal, "{refused}");
 }
 
 #[test]

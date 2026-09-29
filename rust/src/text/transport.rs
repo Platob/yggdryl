@@ -14,8 +14,7 @@ use std::io::{BufRead, BufReader, Chain, Read};
 
 use smol_str::SmolStr;
 
-use crate::holder::{Buffer, Holder};
-use crate::{Charset, Codec, Cursor, Error, IOBase, MediaType, Result, charset};
+use crate::{Charset, Codec, Cursor, Error, IOBase, Result, charset};
 
 /// The decoded transport over a handle the reader owns, for a read that
 /// outlives the call: a located handle streams from its location, any
@@ -53,47 +52,6 @@ pub(crate) fn borrowed_decoded(
     let raw: Box<dyn Read + '_> =
         Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
     Ok(NonemptyDecodedReader::new(raw, codings, charset))
-}
-
-/// Return an owned view for a reader that must outlive this borrow.
-///
-/// A located handle is reopened at its location, which holds the *stored*
-/// bytes. A handle that applies a coding presents them decoded and its media
-/// type names no coding, so the reopened handle is stamped with that coding
-/// put back ([`IOBase::applied_codec`]) for the stream to peel - the shape
-/// `Holder::from_url` builds for every coded name, the record media over a
-/// decoded view over the location. An unlocated handle is copied as it
-/// presents itself, decoded.
-pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
-    let stored_media_type = || -> Result<MediaType> {
-        let mut media_type = handle.media_type().clone();
-        // Raw DEFLATE has no media type spelling, and `Coded` never applies
-        // it; the zlib framing is what the one table spells it as.
-        if let Some(coding) = crate::iobase::coding_mime(handle.applied_codec()) {
-            media_type.push_encoding(coding)?;
-        }
-        Ok(media_type)
-    };
-    if let Some(bound) = handle.bound_location() {
-        let mut file = crate::fs::FsFile::new(bound.clone());
-        file.set_media_type(stored_media_type()?);
-        return Ok(Holder::FsFile(file));
-    }
-    if let Some(parent) = handle.parent() {
-        if let Some(name) = handle.uri().and_then(crate::Uri::file_name) {
-            let mut child = parent.child_by_path(name)?;
-            // A member of an archive is addressed in the URL's fragment, so
-            // the child of the path's file name is another member; only a
-            // handle at the same location is this resource reopened.
-            if child.url() == handle.url() {
-                child.set_media_type(stored_media_type()?);
-                return Ok(child);
-            }
-        }
-    }
-    let mut buffer = Buffer::new();
-    handle.copy_into(&mut buffer)?;
-    Ok(Holder::buffer(buffer))
 }
 
 /// Buffer one transport at the fetch window every decoded read pulls through.

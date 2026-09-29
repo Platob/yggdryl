@@ -85,6 +85,8 @@ pub enum Media {
     Xmla(crate::xmla::Xmla<Holder>),
     /// A CSV or TSV document.
     Csv(crate::csv::Csv<Holder>),
+    /// An Office Open XML workbook.
+    Excel(crate::excel::Excel<Holder>),
 }
 
 impl Media {
@@ -137,10 +139,13 @@ impl Media {
                 crate::csv::Csv::new(handle).with_options(crate::csv::CsvOptions::tsv()),
             ));
         }
+        if base == &MimeType::XLSX {
+            return Ok(Self::Excel(crate::excel::Excel::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
              (application/vnd.apache.arrow.stream{}, application/avro, text/plain, \
-             application/xmla+xml, text/csv, text/tab-separated-values), got {base}",
+             application/xmla+xml, text/csv, text/tab-separated-values, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -180,6 +185,11 @@ impl Media {
         Self::Csv(crate::csv::Csv::new(handle))
     }
 
+    /// Hold an Office Open XML workbook over a handle.
+    pub fn excel(handle: Holder) -> Self {
+        Self::Excel(crate::excel::Excel::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -191,6 +201,7 @@ impl Media {
             Self::Text(text) => Self::Text(text.with_field(field)),
             Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
             Self::Csv(csv) => Self::Csv(csv.with_field(field)),
+            Self::Excel(excel) => Self::Excel(excel.with_field(field)),
         }
     }
 
@@ -208,6 +219,7 @@ impl Media {
             Self::Text(inner) => inner.handle(),
             Self::Xmla(inner) => inner.handle(),
             Self::Csv(inner) => inner.handle(),
+            Self::Excel(inner) => inner.handle(),
         }
     }
 
@@ -226,6 +238,7 @@ impl Media {
             Self::Text(inner) => inner.into_handle(),
             Self::Xmla(inner) => inner.into_handle(),
             Self::Csv(inner) => inner.into_handle(),
+            Self::Excel(inner) => inner.into_handle(),
         }
     }
 
@@ -239,6 +252,7 @@ impl Media {
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
+            Self::Excel(excel) => excel,
         }
     }
 
@@ -252,6 +266,7 @@ impl Media {
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
+            Self::Excel(excel) => excel,
         }
     }
 
@@ -270,6 +285,7 @@ impl Media {
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
+            Self::Excel(excel) => excel,
         }
     }
 
@@ -283,6 +299,7 @@ impl Media {
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
+            Self::Excel(excel) => excel,
         }
     }
 }
@@ -546,5 +563,11 @@ impl From<crate::xmla::Xmla<Holder>> for Media {
 impl From<crate::csv::Csv<Holder>> for Media {
     fn from(value: crate::csv::Csv<Holder>) -> Self {
         Self::Csv(value)
+    }
+}
+
+impl From<crate::excel::Excel<Holder>> for Media {
+    fn from(value: crate::excel::Excel<Holder>) -> Self {
+        Self::Excel(value)
     }
 }

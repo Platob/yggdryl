@@ -33,6 +33,7 @@ mod chunked_serie;
 mod coding;
 mod datatype;
 mod enums;
+mod excel;
 mod expression;
 mod field;
 mod fix;
@@ -84,7 +85,7 @@ pub(crate) fn cast_options(
         ))
 }
 
-fn compare(ordering: Ordering, operation: CompareOp) -> bool {
+pub(crate) fn compare(ordering: Ordering, operation: CompareOp) -> bool {
     match operation {
         CompareOp::Lt => ordering.is_lt(),
         CompareOp::Le => ordering.is_le(),
@@ -630,6 +631,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<avro::PyAvroContainer>()?;
     module.add_class::<avro::PyAvroBlock>()?;
     module.add_class::<avro::PyAvroBlockIterator>()?;
+    excel::register(module)?;
     text::line::register(module)?;
     register_expression(module)?;
     module.add_class::<PyDataTypeIterator>()?;

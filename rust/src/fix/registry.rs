@@ -11,6 +11,7 @@
 //! held it. The registry is built rarely and resolved constantly, so that
 //! `O(n)` insertion trade is deliberate.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
@@ -250,6 +251,59 @@ fn absent(what: impl fmt::Display) -> Error {
 
 /// The refusal a merge raises when the incoming datatype is not the stored
 /// one: merging metadata never changes a field's declared datatype.
+/// Whether two declarations of one field's datatype say one thing at two
+/// precisions, so a fold keeps the stored one and folds the source's field
+/// under it rather than passing the field over.
+///
+/// Every FIX datatype derives from String - the wire is text - so a source
+/// declaring a field as unbounded text has said less than the dictionary,
+/// not something else; a CBlock's `string` and `char` are exactly that, and
+/// they meet a stored `ccy`, `mic`, `side`, `boolean`, `datetime64` and
+/// `binary` as a coarser statement of each. The numeric families are one
+/// statement too: the specification derives `Qty`, `Price` and `Amt` from
+/// `float` and states no width anywhere, and a CBlock's `integer` and
+/// `float` name a family rather than a width, so an int32 beside an int64, a
+/// float64 beside a decimal128 and an integer beside either are two
+/// precisions of one number. An enum leaf stores the int32 code of its
+/// member, so an integer restates it; the byte layouts are one byte string;
+/// a date and a datetime are one instant, a FIX date being that day's
+/// midnight in whichever zone the dictionary states, and the time-of-day
+/// widths one time. Everything else - a boolean against an integer, a time
+/// against a timestamp, two codes, two bounded strings of different widths -
+/// is a contradiction and stays passed over.
+fn datatypes_agree(stored: &crate::DataType, incoming: &crate::DataType) -> bool {
+    use crate::DataTypeKind as Kind;
+    if stored == incoming {
+        return true;
+    }
+    let unbounded_text = |dtype: &crate::DataType| {
+        dtype
+            .string_parameters()
+            .is_some_and(|leaf| leaf.bound().is_none())
+    };
+    if unbounded_text(stored) || unbounded_text(incoming) {
+        return true;
+    }
+    match (stored.kind(), incoming.kind()) {
+        (
+            Kind::Integer | Kind::Floating | Kind::Decimal,
+            Kind::Integer | Kind::Floating | Kind::Decimal,
+        )
+        | (Kind::Enum, Kind::Integer)
+        | (Kind::Integer, Kind::Enum)
+        | (Kind::Bytes, Kind::Bytes) => true,
+        (Kind::Temporal, Kind::Temporal) => {
+            let instant = |family: Option<&str>| matches!(family, Some("date" | "datetime"));
+            let (held, declared) = (
+                stored.id().temporal_family(),
+                incoming.id().temporal_family(),
+            );
+            held == declared || (instant(held) && instant(declared))
+        }
+        _ => false,
+    }
+}
+
 fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
     Error::InvalidRecord {
         path: incoming.name().into(),
@@ -280,6 +334,33 @@ pub(super) enum References {
     Defer,
 }
 
+/// Whose name a fold of one field into another keeps.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Naming {
+    /// The stored field's, which is every identity fold.
+    Stored,
+    /// The incoming field's: the stored field was named by nothing but its
+    /// decimal tag and learns what the source calls it.
+    Incoming,
+}
+
+/// Whether a field is named by nothing but its own decimal tag.
+///
+/// A source that knows a tag exists but not what anyone calls it - a CBlock
+/// declaring a `vocabulary-tag` with no `alt`, or two tags under one `alt`,
+/// which names neither - names the field after the tag, and that is a
+/// placeholder rather than a name: the field is unnamed, the way a code named
+/// after its own wire value is, and a fold is where a real name takes its
+/// place.
+pub(super) fn is_unnamed(field: &Field) -> bool {
+    field
+        .as_fix()
+        .tag()
+        .ok()
+        .flatten()
+        .is_some_and(|tag| field.name().parse::<i32>() == Ok(tag))
+}
+
 /// Where one incoming scalar lands under [`FixRegistry::add_field`]'s rules.
 #[derive(Clone, Copy)]
 enum Route {
@@ -287,6 +368,9 @@ enum Route {
     Own,
     /// The identity the field at this position holds: rule 3.
     Identity(usize),
+    /// The tag the field at this position holds under no name of its own:
+    /// rule 3, the holder taking the arrival's name.
+    Unnamed(usize),
     /// A tag another field holds under another name: rule 5, beside it.
     Beside,
     /// A name the field at this position answers to: rule 4.
@@ -299,7 +383,9 @@ impl Route {
     /// The stored field the incoming one would fold into.
     const fn target(self) -> Option<usize> {
         match self {
-            Self::Identity(position) | Self::Named(position) => Some(position),
+            Self::Identity(position) | Self::Unnamed(position) | Self::Named(position) => {
+                Some(position)
+            }
             Self::Own | Self::Beside | Self::New => None,
         }
     }
@@ -310,10 +396,14 @@ impl Route {
 /// The answer of [`FixRegistry::merge_with`] and every door over it:
 /// [`FixRegistry::add_cfb_file`], [`FixRegistry::add_cfb_files`] and
 /// [`FixRegistry::add_json_file`]. The counts are the scalars'; the
-/// definitions fold beside them under their own rules. `dropped` is what a
-/// source said that the dictionary already says otherwise: the fold keeps
-/// the dictionary's declaration, passes the source's over, and names it
-/// here rather than refusing the whole source for it.
+/// definitions fold beside them under their own rules. `restated` counts
+/// the merged fields whose source declared the datatype at another
+/// precision than the dictionary holds - a CBlock's `float` against a
+/// stored `decimal128`, its `string` against a stored `ccy` - each folded
+/// under the stored declaration. `dropped` is what a source said that the
+/// dictionary already says otherwise: the fold keeps the dictionary's
+/// declaration, passes the source's over, and names it here rather than
+/// refusing the whole source for it.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FixMerge {
     /// The sources folded: one for a dictionary or a file, the files a
@@ -323,6 +413,9 @@ pub struct FixMerge {
     pub added: usize,
     /// The scalar fields folded into ones already held.
     pub merged: usize,
+    /// Among the merged, the fields whose source declared another precision
+    /// of the stored datatype and folded under the stored one.
+    pub restated: usize,
     /// The declarations passed over, in the order the fold met them.
     pub dropped: Vec<FixDrop>,
 }
@@ -339,6 +432,7 @@ impl FixMerge {
         self.sources += other.sources;
         self.added += other.added;
         self.merged += other.merged;
+        self.restated += other.restated;
         self.dropped.extend(other.dropped);
     }
 
@@ -357,13 +451,14 @@ impl FixMerge {
 /// One declaration a fold passed over, because the dictionary already
 /// declares the same thing otherwise.
 ///
-/// A scalar whose datatype disagrees with the field its identity or name
-/// reaches, a member a definition already holds in another shape, a
-/// definition whose own identity - its counter, component or message code -
-/// disagrees with the one held under its name, and a member reading a field
-/// the fold passed over. The dictionary's declaration is what stays: merging
-/// never changes a declared datatype, and a source is never the reason a
-/// dictionary forgets what it said.
+/// A scalar whose datatype contradicts the field its identity or name
+/// reaches - a datatype declared at another precision of the stored one is
+/// no contradiction, and folds under it - a member a definition already
+/// holds in another shape, a definition whose own identity - its counter,
+/// component or message code - disagrees with the one held under its name,
+/// and a member reading a field the fold passed over. The dictionary's
+/// declaration is what stays: merging never changes a declared datatype, and
+/// a source is never the reason a dictionary forgets what it said.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FixDrop {
     /// Where the declaration was read, where the fold read a file: its URL.
@@ -379,7 +474,7 @@ pub struct FixDrop {
 
 impl FixDrop {
     pub(super) fn new(incoming: Field, reason: &Error) -> Self {
-        log::warn!("fix merge passed over {}: {reason}", incoming.name());
+        log::debug!("fix merge passed over {}: {reason}", incoming.name());
         Self {
             source: None,
             incoming,
@@ -494,6 +589,12 @@ pub struct FixRegistry {
     /// Every field's `FIX:idmap`, read once on the first settle and
     /// forgotten with the memo.
     idmap_sources: OnceLock<Vec<(i32, super::FixIdSource)>>,
+    /// The fields a fold renamed since the catalog last resolved - a field
+    /// named by nothing but its tag that learnt what a source calls it - by
+    /// the identity they held, so the members reading them under it are
+    /// rewritten to the identity they hold now when the catalog resolves.
+    /// Empty whenever the catalog is resolved.
+    pub(super) renamed: HashMap<FixId, Option<(i32, SmolStr)>>,
 }
 
 /// The names [`FixMsg`](super::FixMsg) feeds its typed facts under when it
@@ -551,6 +652,7 @@ impl FixRegistry {
             names: Index::default(),
             aliases: Index::default(),
             positions_by_id: Vec::new(),
+            renamed: HashMap::new(),
             identities: Vec::new(),
             facts: Vec::new(),
             by_metadata: FixMap::default(),
@@ -884,9 +986,9 @@ impl FixRegistry {
     /// spelling.
     ///
     /// A field arriving on a tag another field holds under another name is
-    /// a field of its own and is added beside the holder, which gains the
-    /// arrival's name as an alias: a bare wire tag keeps answering the
-    /// holder, and the arrival is reached by its name or its identity.
+    /// a field of its own and is added beside the holder: a bare wire tag
+    /// keeps answering the holder, and the arrival is reached by its name or
+    /// its identity. Neither learns the other's name.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
         // A nested field is a component or a group, by its shape, and lands
         // among the named definitions.
@@ -921,11 +1023,6 @@ impl FixRegistry {
                 .replace_field(position, field, tag, references)
                 .map(Some),
             None => {
-                // A tag another field already holds is not this field's to
-                // answer; the holder learns the arrival's name instead.
-                if let Some(holder) = self.tags.get(&tag).copied() {
-                    self.lend_alias(holder, field.name(), references)?;
-                }
                 let position = self.fields.len();
                 self.fields.push(field);
                 self.index(position);
@@ -935,59 +1032,6 @@ impl FixRegistry {
                 Ok(None)
             }
         }
-    }
-
-    /// Gives the field at `holder` one more spelling, the name of a field
-    /// arriving on the tag it holds.
-    ///
-    /// Idempotent under the fold, and a spelling the holder already claims
-    /// canonically is not lent to it twice.
-    fn lend_alias(&mut self, holder: usize, name: &str, references: References) -> Result<()> {
-        let stored = &self.fields[holder];
-        if folds_equal(stored.name(), name)
-            || stored
-                .as_fix()
-                .names()
-                .any(|alias| folds_equal(alias, name))
-        {
-            return Ok(());
-        }
-        // One alias reaches one field, and `check_free` is what holds every
-        // other acquisition to that. This is the one write that does not go
-        // through it, so it states the rule itself: a spelling another field
-        // already answers for is that field's and stays there. Noted rather
-        // than refused, exactly as a contended tag is above - the arrival is
-        // what the caller asked for, and the lent spelling is the courtesy
-        // beside it. Taking it would repoint the one entry the index holds,
-        // leaving the first holder unreachable under its own alias and
-        // unable to be updated, and would delete that entry outright when
-        // the borrower departed.
-        if let Some(other) = self.alias_position_by_name(name) {
-            if other != holder {
-                log::debug!(
-                    "alias {name:?} of {:?} stays with {:?}",
-                    self.fields[holder].name(),
-                    self.fields[other].name()
-                );
-                return Ok(());
-            }
-        }
-        let stored = &self.fields[holder];
-        let mut lent = stored.clone();
-        let aliases: Vec<String> = lent
-            .as_fix()
-            .names()
-            .map(str::to_owned)
-            .chain(std::iter::once(name.to_owned()))
-            .collect();
-        lent.as_fix_mut().set_names(&aliases)?;
-        self.replace_field(
-            holder,
-            lent,
-            self.identities[holder].map_or(0, |(tag, _)| tag),
-            references,
-        )?;
-        Ok(())
     }
 
     /// Merges a definition into the field with the same canonical identity.
@@ -1005,12 +1049,28 @@ impl FixRegistry {
     }
 
     fn update_resolved(&mut self, field: Field, references: References) -> Result<()> {
-        self.validate_definition(crate::FixCategory::Fields, &field)?;
-        let (tag, id) = canonical_identity(&field)?;
+        let (_, id) = canonical_identity(&field)?;
         let Some(position) = self.position_of_identity(&field)? else {
             return Err(absent(FixKey::Id(id)));
         };
+        self.update_at(position, field, references, Naming::Stored)
+    }
+
+    /// Folds `field` into the field at `position`, which holds its tag.
+    ///
+    /// The merged field is named as `naming` says: by the stored field, which
+    /// is every identity fold, or by the incoming one, which is how a field
+    /// named by nothing but its decimal tag learns what a source calls it.
+    fn update_at(
+        &mut self,
+        position: usize,
+        field: Field,
+        references: References,
+        naming: Naming,
+    ) -> Result<()> {
+        self.validate_definition(crate::FixCategory::Fields, &field)?;
         let stored = &self.fields[position];
+        let (tag, _) = canonical_identity(stored)?;
         if stored.dtype() != field.dtype() {
             return Err(datatype_disagreement(stored, tag, &field));
         }
@@ -1023,11 +1083,37 @@ impl FixRegistry {
         // by design. The generic keys fold through the metadata merge every
         // protocol shares, and the `FIX:` keys through the rule each one has.
         let mut merged = field.clone();
-        merged.set_name(stored.name());
+        if naming == Naming::Stored {
+            merged.set_name(stored.name());
+        }
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
+        merged.as_fix_mut().set_tag(tag)?;
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
+        if naming == Naming::Incoming {
+            // The name the field takes is nobody's alias, its own included -
+            // a stored field spelled by its normalization alone aliased what
+            // it is now called - and the display the digits carried was a
+            // spelling another tag owns, so it goes unless the arrival states
+            // one.
+            let aliases: Vec<String> = merged
+                .as_fix()
+                .names()
+                .filter(|alias| !folds_equal(alias, merged.name()))
+                .map(str::to_owned)
+                .collect();
+            merged.as_fix_mut().set_names(&aliases)?;
+            if field.display().is_none() {
+                merged.remove_metadata("display");
+            }
+        }
         let alternate = merged.as_fix().tags()?;
+        let (tag, id) = canonical_identity(&merged)?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
+        let (_, held) = canonical_identity(&self.fields[position])?;
+        if held != id {
+            self.renamed
+                .insert(held, Some((tag, SmolStr::new(merged.name()))));
+        }
         // Last before the write, so a refusal above leaves every set as it
         // was: the fold keeps the stored field's set name, and what the
         // incoming field's set declares is in that set by the time the field
@@ -1141,8 +1227,13 @@ impl FixRegistry {
         tag: i32,
         references: References,
     ) -> Result<Field> {
+        // A field that takes another name - one named by nothing but its tag
+        // learning what a source calls it - is read by the catalog's members
+        // under the identity it holds now, which the resolution the refresh
+        // runs rewrites them to.
+        let renamed = self.fields[position].name() != merged.name();
         let refresh = references == References::Refresh
-            && metadata_only_change(&self.fields[position], &merged);
+            && (renamed || metadata_only_change(&self.fields[position], &merged));
         if refresh {
             self.validate_catalog()?;
         }
@@ -1178,7 +1269,13 @@ impl FixRegistry {
     /// 3. An identity the dictionary holds - the tag and the folded name
     ///    together - merges exactly as [`Self::update`] merges: the datatype
     ///    must equal the stored one, and the incoming metadata wins a shared
-    ///    key.
+    ///    key. A field named by nothing but its own decimal tag is unnamed,
+    ///    the way a code named after its wire value is, so it folds the same
+    ///    way: one arriving on a held tag merges into the holder whatever the
+    ///    holder is called, and a holder so named takes the name of a field
+    ///    arriving on its tag - where no field answers that name already -
+    ///    and every member reading it under the digits reads it under the
+    ///    name.
     /// 4. Otherwise a name that folds to a stored field's canonical name or
     ///    to one of its aliases merges *into* that field: the same field
     ///    spelled with another tag. Folding is the crate's one fold, the one
@@ -1193,8 +1290,8 @@ impl FixRegistry {
     ///    generic metadata and the `FIX:` keys fold with the precedence of
     ///    rule 3. A datatype that disagrees is refused as rule 3 refuses it.
     /// 5. Otherwise it is inserted - beside the holder of its tag where one
-    ///    holds it under another name, which then gains the arrival's name
-    ///    as an alias while the bare tag keeps answering the holder.
+    ///    holds it under another name, the bare tag answering the holder and
+    ///    the arrival reached by its own name, neither learning the other's.
     ///
     /// Staged like [`Self::insert`]: a refusal leaves the dictionary exactly
     /// as it was.
@@ -1318,15 +1415,27 @@ impl FixRegistry {
     /// source is not a statement that the first one's names were wrong, and
     /// the caller's order is the precedence here as it is everywhere else.
     ///
+    /// **What the other dictionary says at another precision is folded under
+    /// the declaration held.** Every FIX datatype derives from String and the
+    /// numeric families state no width, so a source typing tag 44 `float64`,
+    /// `utf8` or `int32` where the dictionary holds `decimal128(38, 18)` has
+    /// said less than the dictionary rather than something else: merging
+    /// never changes a declared datatype, the field folds under the stored
+    /// one - membership, aliases and code set included - and is counted in
+    /// [`FixMerge::restated`]. An unbounded text declaration restates any
+    /// datatype, the integer, floating and decimal families restate each
+    /// other, an integer restates an enum leaf, the byte layouts one another,
+    /// a date a datetime whatever the zone, and one time width another.
+    ///
     /// **What the other dictionary says otherwise is passed over, and named;
-    /// the rest of it still folds.** Counterparties disagree about one tag -
-    /// one file types tag 532 `int32`, the next `utf8` - and merging never
-    /// changes a declared datatype, so the declaration already held stays and
-    /// the other is a [`FixDrop`] in the answer: a scalar whose datatype
-    /// disagrees with the field its identity or name reaches, a member a
-    /// held definition already declares in another shape, a definition whose
-    /// counter, component or message code disagrees with the one held under
-    /// its name, and a member reading a field passed over. Two references
+    /// the rest of it still folds.** Counterparties contradict each other
+    /// about one tag - one file types tag 43 `boolean`, the next `int32` -
+    /// so the declaration already held stays and the other is a [`FixDrop`]
+    /// in the answer: a scalar whose datatype contradicts the field its
+    /// identity or name reaches, a member a held definition already declares
+    /// in another shape, a definition whose counter, component or message
+    /// code disagrees with the one held under its name, and a member reading
+    /// a field passed over. Two references
     /// under one member name to two groups or two components are one member
     /// read two ways: the members the incoming target declares fold into the
     /// held target under these same rules, so a group one dialect split for
@@ -1363,12 +1472,21 @@ impl FixRegistry {
     /// let instrument = held.field_by_name("Instrument")?;
     /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
     ///
-    /// // A third dictionary types tag 44 otherwise: the field held stays,
-    /// // the declaration is named, and everything else still folds.
+    /// // A third dictionary types tag 44 at another precision - as the text
+    /// // every FIX datatype derives from: the field held stays, and the
+    /// // declaration folds under it, counted as restated.
     /// let mut price = DataType::Float64.nullable_field("Price");
     /// price.as_fix_mut().set_tag(44)?;
     /// held.add_field(price.clone())?;
     /// price.set_dtype(DataType::utf8())?;
+    /// let merge = held.merge_with(&FixRegistry::from_fields([price.clone()])?)?;
+    /// assert_eq!((merge.merged, merge.restated), (3, 1));
+    /// assert!(merge.is_clean());
+    /// assert_eq!(held.field_by_tag(44)?.dtype(), &DataType::Float64);
+    ///
+    /// // A fourth contradicts it - a price is no flag - so the declaration
+    /// // is named and everything else still folds.
+    /// price.set_dtype(DataType::Boolean)?;
     /// let mut side = DataType::utf8().nullable_field("Side");
     /// side.as_fix_mut().set_tag(54)?;
     /// let merge = held.merge_with(&FixRegistry::from_fields([price, side])?)?;
@@ -1456,14 +1574,40 @@ impl FixRegistry {
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
         // one fold twice.
-        for field in other.scalars() {
-            let route = self.route(field)?;
-            let refusal = match route
+        for declared in other.scalars() {
+            let route = self.route(declared)?;
+            // The field as it folds: the source's declaration, restated under
+            // the datatype the dictionary holds where the two say one thing
+            // at two precisions - merging never changes a declared datatype,
+            // and a source that said less than the dictionary has not said
+            // otherwise.
+            let mut field = declared.clone();
+            let disagreement = match route
                 .target()
                 .map(|position| &self.fields[position])
                 .filter(|stored| stored.dtype() != field.dtype())
             {
-                Some(stored) => datatype_disagreement(stored, canonical_identity(stored)?.0, field),
+                Some(stored) if datatypes_agree(stored.dtype(), field.dtype()) => {
+                    log::debug!(
+                        "fix merge restated {} as {} rather than {}",
+                        field.name(),
+                        stored.dtype(),
+                        field.dtype()
+                    );
+                    field.set_dtype(stored.dtype().clone())?;
+                    merge.restated += 1;
+                    None
+                }
+                Some(stored) => Some(datatype_disagreement(
+                    stored,
+                    canonical_identity(stored)?.0,
+                    &field,
+                )),
+                None => None,
+            };
+            let target = route.target();
+            let refusal = match disagreement {
+                Some(refusal) => refusal,
                 None => match self.fold_routed(route, field.clone()) {
                     Ok(Some(true)) => {
                         merge.added += 1;
@@ -1471,10 +1615,15 @@ impl FixRegistry {
                     }
                     Ok(Some(false)) => {
                         merge.merged += 1;
-                        if let Route::Named(position) = route {
-                            let (tag, _) = canonical_identity(&self.fields[position])?;
+                        if let Some(position) = target {
+                            let (tag, id) = canonical_identity(&self.fields[position])?;
                             let name = SmolStr::new(self.fields[position].name());
-                            remap.insert(canonical_id(field)?, Some((tag, name)));
+                            // The source's members read the field under the
+                            // identity that holds it now.
+                            let arrived = canonical_id(&field)?;
+                            if arrived != id {
+                                remap.insert(arrived, Some((tag, name)));
+                            }
                         }
                         continue;
                     }
@@ -1486,11 +1635,15 @@ impl FixRegistry {
                     Err(error) => return Err(error),
                 },
             };
-            merge.dropped.push(FixDrop::new(field.clone(), &refusal));
+            // Named as the source stated it, the datatype it declared included.
+            merge.dropped.push(FixDrop::new(declared.clone(), &refusal));
             if !matches!(route, Route::Identity(_)) {
-                remap.insert(canonical_id(field)?, None);
+                remap.insert(canonical_id(declared)?, None);
             }
         }
+        // The dictionary's own documents read a field that took a source's
+        // name - one named by nothing but its tag until now - under that name.
+        documents.rename_references(&std::mem::take(&mut self.renamed))?;
         self.merge_catalog(documents, other, &remap, &mut merge.dropped)?;
         log::debug!(
             "added {} and merged {} fix fields, passing over {}",
@@ -1526,8 +1679,8 @@ impl FixRegistry {
     /// and the membership refusal when the supplied name is empty or carries
     /// a comma.
     pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<FixMerge> {
-        let dialect = dialect.or_else(|| super::cfb::stem_dialect(handle));
-        let (parsed, _) = Self::from_cfb_file(handle, dialect)?;
+        let stem = super::cfb::stem_dialect(handle);
+        let (parsed, _) = Self::from_cfb_file(handle, dialect.or(stem.as_deref()))?;
         Ok(self.merge_with(&parsed)?.located(handle))
     }
 
@@ -1601,16 +1754,16 @@ impl FixRegistry {
         let reads = files.iter().map(|file| {
             let handle = file.as_io();
             let named = dialect
-                .or_else(|| super::cfb::stem_dialect(handle))
-                .map(str::to_owned);
-            (handle.read_all_bytes(), named)
+                .map(str::to_owned)
+                .or_else(|| super::cfb::stem_dialect(handle).map(Cow::into_owned));
+            (handle.read_all_bytes(), named, handle.url().cloned())
         });
         let parsed = crate::parallel::ordered(
             reads,
             threads,
             1,
-            |(bytes, named): (Result<Vec<u8>>, Option<String>)| {
-                bytes.and_then(|bytes| super::cfb::parse(&bytes, named.as_deref()))
+            |(bytes, named, source): (Result<Vec<u8>>, Option<String>, Option<crate::Url>)| {
+                bytes.and_then(|bytes| super::cfb::parse(&bytes, named.as_deref(), source.as_ref()))
             },
         )
         .with_lane_depth(1);
@@ -1717,11 +1870,29 @@ impl FixRegistry {
         if let Some(position) = self.position_of_identity(field)? {
             return Ok(Route::Identity(position));
         }
-        // A held tag under another name is a field of its own; a held name
-        // under another tag is the same field spelled with another number.
-        if self.tags.contains_key(&tag) {
+        if let Some(holder) = self.tags.get(&tag).copied() {
+            // A field named by nothing but its own decimal tag carries no
+            // name: it is what a source that never says what a tag is called
+            // produces. Such a field on a held tag is the holder's, whatever
+            // the holder is called, and a holder named that way takes the
+            // name of a field arriving on its tag where the name is free - so
+            // a dictionary holds one field per tag rather than a numbered
+            // twin beside a named one, reached by the members of neither.
+            if is_unnamed(field) {
+                return Ok(Route::Identity(holder));
+            }
+            if is_unnamed(&self.fields[holder])
+                && self
+                    .position_by_name(field.name())
+                    .is_none_or(|named| named == holder)
+            {
+                return Ok(Route::Unnamed(holder));
+            }
+            // A held tag under another name is a field of its own.
             return Ok(Route::Beside);
         }
+        // A held name under another tag is the same field spelled with
+        // another number.
         Ok(self
             .position_by_name(field.name())
             .map_or(Route::New, Route::Named))
@@ -1732,8 +1903,12 @@ impl FixRegistry {
     fn fold_routed(&mut self, route: Route, field: Field) -> Result<Option<bool>> {
         match route {
             Route::Own => Ok(None),
-            Route::Identity(_) => {
-                self.update_resolved(field, References::Defer)?;
+            Route::Identity(position) => {
+                self.update_at(position, field, References::Defer, Naming::Stored)?;
+                Ok(Some(false))
+            }
+            Route::Unnamed(position) => {
+                self.update_at(position, field, References::Defer, Naming::Incoming)?;
                 Ok(Some(false))
             }
             Route::Named(position) => {
@@ -2317,6 +2492,7 @@ impl Clone for FixRegistry {
             forex: super::forex::FxMemo::new(),
             lifted_names: OnceLock::new(),
             idmap_sources: OnceLock::new(),
+            renamed: self.renamed.clone(),
         }
     }
 }

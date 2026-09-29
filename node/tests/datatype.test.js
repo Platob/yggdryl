@@ -507,7 +507,7 @@ test('the uuid is sixteen bytes spelled as one identifier', () => {
   void text
 })
 
-test('version keeps a native numeric value under its string Arrow representation', () => {
+test('version keeps a native value under its string Arrow representation', () => {
   const version = new DataType('version')
 
   assert.equal(version.id, 'version')

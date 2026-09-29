@@ -145,3 +145,52 @@ pub(super) fn no_children(url: Option<&Url>, name: &str) -> Error {
         },
     ))
 }
+
+/// An owned handle on the resource `handle` addresses, for a reader that
+/// must outlive the borrow it was given.
+///
+/// A record door is handed a borrowed handle and answers a stream or mounts
+/// a package over it, both of which need a handle of their own. A resource
+/// with a location is reopened there - through the filesystem it is bound
+/// to, else as the child of its parent at the same URL - so nothing is read
+/// to reopen it; a handle with no location, an in-memory buffer, is copied
+/// once into a buffer of its own, which is the one call this costs.
+///
+/// # Errors
+///
+/// Returns the parent's resolution failure, or the copy's read failure.
+pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
+    // A located handle is reopened where its *stored* bytes are. A handle
+    // that applies a coding presents them decoded and its media type names
+    // no coding, so the reopened one is stamped with that coding put back
+    // for a decoded stream to peel - the shape `Holder::from_url` builds for
+    // every coded name. Raw DEFLATE has no media type spelling and `Coded`
+    // never applies it; the zlib framing is what the one table spells.
+    let stored_media_type = || -> Result<crate::MediaType> {
+        let mut media_type = handle.media_type().clone();
+        if let Some(coding) = crate::iobase::coding_mime(handle.applied_codec()) {
+            media_type.push_encoding(coding)?;
+        }
+        Ok(media_type)
+    };
+    if let Some(bound) = handle.bound_location() {
+        let mut file = crate::fs::FsFile::new(bound.clone());
+        file.set_media_type(stored_media_type()?);
+        return Ok(Holder::FsFile(file));
+    }
+    if let Some(parent) = handle.parent() {
+        if let Some(name) = handle.uri().and_then(crate::Uri::file_name) {
+            let mut child = parent.child_by_path(name)?;
+            // A member of an archive is addressed in the URL's fragment, so
+            // the child of the path's file name is another member; only a
+            // handle at the same location is this resource reopened.
+            if child.url() == handle.url() {
+                child.set_media_type(stored_media_type()?);
+                return Ok(child);
+            }
+        }
+    }
+    let mut buffer = crate::holder::Buffer::new();
+    handle.copy_into(&mut buffer)?;
+    Ok(Holder::buffer(buffer))
+}

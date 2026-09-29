@@ -26,8 +26,8 @@ use super::line::LineSource;
 use super::options::TextOptions;
 use super::reader::Lines;
 use super::transport::{
-    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, owned_handle,
-    transports, update_suffix,
+    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, transports,
+    update_suffix,
 };
 use super::{TextBytes, TextLine};
 
@@ -46,7 +46,7 @@ pub(crate) fn read_arrow_reader(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_arrow_reader_at(owned_handle(handle)?, source, mtime, options)
+    read_owned_arrow_reader_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
@@ -145,7 +145,7 @@ pub fn read_text_lines(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_text_lines_at(owned_handle(handle)?, source, mtime, options)
+    read_owned_text_lines_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
 }
 
 /// The same decode over a handle the iterator owns.

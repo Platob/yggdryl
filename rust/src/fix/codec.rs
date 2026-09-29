@@ -1591,7 +1591,7 @@ impl FixCodec {
             // A row with no payload at all carries no message.
             return Ok(FixMessages::none());
         }
-        self.parse_page_with(page, extras)
+        self.parse_page_with(page, extras.clone())
             .or_else(|_| self.empty_with(extras).map(FixMessages::one))
     }
 
@@ -1683,7 +1683,7 @@ impl FixCodec {
             ..extras
         };
         FixMessages::from_result(
-            self.parse_page_with(line.body_bytes(), extras)
+            self.parse_page_with(line.body_bytes(), extras.clone())
                 .or_else(|_| self.empty_with(extras).map(FixMessages::one)),
         )
     }
@@ -2583,8 +2583,8 @@ impl FixCodec {
         // The version is the row's own, else what the line implies. A row
         // states one where the transport knew it and the frame did not, which
         // is what a bridge log carries in its `beginstring` capture.
-        let stated_version = extras.version;
-        let version = stated_version.or_else(|| self.infer_version(pairs));
+        let stated_version = extras.version.clone();
+        let version = stated_version.clone().or_else(|| self.infer_version(pairs));
         let mut builder = Builder::new(
             &self.registry,
             message,
@@ -2599,7 +2599,7 @@ impl FixCodec {
         // nothing tries to read `<null>` as a price and file the failure.
         builder.push_pairs(pairs, |_, value| self.is_absent(value));
         for row in nested {
-            self.push_nested(&mut builder, row, stated_version);
+            self.push_nested(&mut builder, row, stated_version.clone());
         }
         for fill in extras.fills {
             if fill.tag != 52 {

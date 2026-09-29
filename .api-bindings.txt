@@ -45,7 +45,7 @@
     FIX directions: directions: list[FixDirection] (TypedDict code: str, patterns: list[str]), the FIX:directions rules of tag 385's field in the dictionary's order, [] when absent; assignable from any iterable of mappings, an empty one removes the property, a code outside the field's set, a code named twice under any spelling or a pattern the regex crate refuses is ValueError leaving the field unchanged
   MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DIRECTORY, DOC, DOCX, FILE, FIX, FIXML, FIXUL, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, PUFFIN, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, ULLINK, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_local_path, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_directory, is_encoding, is_filesystem, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, top_level
   PythonMetadata: __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __le__, __lt__, __ne__, __reduce__, __repr__, __str__, class_name, from_type, import_path, is_importable, is_keyword_constructed, kind, module, properties, qualname, stable_hash
-  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, comment, commit_row_size, compression, escape, field, filter, for_media_type, header, infer_row_size, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, null_values, partition_pairs, plan, quote, remove_field, require_field, row_offset, safe, select, separator, stable_hash, sync_marker, timezone, trim, write_batch_row_size
+  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, comment, commit_row_size, compression, escape, field, filter, for_media_type, header, infer_row_size, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, null_values, partition_pairs, plan, quote, range, remove_field, require_field, row_offset, safe, select, separator, sheet, stable_hash, sync_marker, timezone, trim, write_batch_row_size; separator, quote, escape, comment, null_values, trim and infer_row_size are the CSV sections, sheet and range the Excel sections, and header both - None on every other encoding and a ValueError to set there
     sections: field, filter, select, merge_by and plan setters take any value Scalar.from_ reads - a native value, text, a list of projections or conditions, a dict of aliases, None - and the core reads it with from_scalar
     csv dialect: separator, quote, escape, comment (str | None: a one-character str or one byte in, the core judging the role - `$.separator: expected an ASCII byte ...`; None clears quote, escape and comment), header, trim (bool | None), null_values (list[str] | None; the setter an Iterable[str], a bare str a TypeError), infer_row_size (int | None, zero refused) - the properties of a text/csv or text/tab-separated-values options value, each reader None for another encoding and each setter a ValueError there at its own path (`$.separator: expected CSV options to set a separator, got application/vnd.apache.arrow.stream options`); every record read and write takes them by name (read_records(separator=';')), and __reduce__ carries them
   TextOptions: apply_arrow_batch, apply_arrow_reader, autotype, batch_row_size, capture_names, commit_row_size, field, filter, framing, leading_fragment, level, limit_arrow_reader, linesep, lstrip, max_byte_size, max_record_byte_size, max_row_size, merge_by, mime_type, name, parse_mtime, partition_pairs, plan, remove_field, rename_columns, require_field, row_offset, rowheader, rstrip, safe, select, source_field, stable_hash, start_rownum, timezone, write_batch_row_size
@@ -76,7 +76,7 @@
     into_uuid() -> Scalar: the lossless RFC 9562 UUIDv7 projection, with the Unix millisecond first, the microsecond within it in rand_a's high ten, then the digest stored whole - its top two bits above the variant and its low sixty-two in rand_b; it takes no arguments and hashes nothing; every digest bit survives, so two values project to one identifier only where their microsecond and all 64 digest bits agree; neither unit nor algorithm survives, and sub-microsecond time cannot be recovered; returned as a uuid-typed Scalar because the binding has no Uuid wrapper class - as_py() answers the hyphenated str; a digest that is not 64 bits wide, a microsecond restatement overflow, or an instant a UUIDv7 cannot hold, is ValueError
     into_sequenced_uuid(sequence: int, seed: int) -> Scalar: the event-oriented UUIDv7 projection, with Unix milliseconds first, sequence.min(4095) in the ordered twelve-bit lane, and the low 62 bits of XXH3 over the digest and whole u64 sequence with the u64 seed; returned as a uuid-typed Scalar; an integer outside u64 is OverflowError, while a non-64-bit digest, clock-restatement failure or invalid UUIDv7 timestamp is ValueError
   TxHasher: algorithm, apply_arrow_batch, column_txhashes, digest, digest_scalar, dtype, from_state, row_txhashes, unit, unix_of, width
-  Version: Version(major: int, minor: int = 0, patch: int = 0); from_str(value: str) -> Version; readonly major/minor/patch: int; stable_hash() -> int; numeric comparison, hash, copy, deepcopy, pickle (major, minor, patch); widths u8/u8/u16, exactly four native bytes
+  Version: Version(major: int, minor: int = 0, patch: int | str | None = None); from_str(value: str) -> Version; readonly major/minor: int, patch: str | None; stable_hash() -> int; native comparison, hash, copy, deepcopy, pickle (major, minor, patch); major and minor u16, an int patch its decimal digits, a str patch as written
 
   expression: COMPARISONS, FUNCTIONS, VERBS, Bound, Bounds, BoundSelector, Expression, Filter, Plan, Records, Selector, Term, UserFunction, needs_quoting, unregister_user_function, user_defined_filter, user_defined_function, user_function_signature, user_functions
     user functions: @user_defined_function(namespace="py", name=None, parameters=None, returns=None, vectorized=False) and @user_defined_filter register a callable as namespace.name from its type hints and defaults; the wrapper stays callable and answers term(*args), where(*args), signature (the struct Field), unregister(); Term.call takes the qualified name
@@ -105,8 +105,8 @@
     S3Path / S3File / S3Folder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
-  media: Avro, Csv, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
-  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro, Csv and Xmla under it - Csv what IOBase('x.csv'), IOBase('x.tsv') and IOBase('x.csv.gz') construct, text/csv or text/tab-separated-values with its dialect on the record options, also re-exported as yggdryl.Csv; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
+  media: Avro, Csv, DEFAULT_RECORD_BATCH_ROW_SIZE, Excel, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro, excel and iceberg are modules of their own at the root
+  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro, Csv, Xmla and Excel under it - Csv what IOBase('x.csv'), IOBase('x.tsv') and IOBase('x.csv.gz') construct, text/csv or text/tab-separated-values with its dialect on the record options, also re-exported as yggdryl.Csv; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
   text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml, yaml and xml are modules of their own at the root
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
@@ -127,8 +127,8 @@
     ULBRIDGE_ROWHEADER: str, the row header a ULBridge log writes in front of every line, as a rowheader for a text read - the crate's own text rather than a second copy of it; its clock is mtime, consumed into each line's currunix - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; msgsessionid, msgctxid, msgseqnum and msgpluginid are named for the fields they fill, and msgthreadid and loglevel name none and are the capture's own columns
   fix.FixRegistry
     classmethods: from_env() -> FixRegistry, the process default (an installed registry, then YGGDRYL_FIX_REGISTRY, then ~/.config/fix, then a new registry), resolved once; install_env(registry: FixRegistry) -> None, before anything resolves it, else ValueError; from_fields(fields: Iterable[FieldLike]) -> FixRegistry; from_handle(location: IOBase | Url | str | PathLike[str]) -> FixRegistry; from_cfb_file(location: IOBase | Url | str | PathLike[str], dialect: str | None = None) -> tuple[FixRegistry, list[Field]], the dialect stamped as FIX:branches on every field and definition the file produces; from_json(document: str) -> FixRegistry
-    mutations: add_field(field: FieldLike) -> bool; add_fields(fields: Iterable[FieldLike]) -> tuple[int, int]; merge_with(other: FixRegistry) -> dict[str, Any]; add_cfb_file(location: IOBase | Url | str | PathLike[str], dialect: str | None = None) -> dict[str, Any], the dialect or the location's stem; add_cfb_files(location: IOBase | Url | str | PathLike[str], pattern: str, dialect: str | None = None) -> dict[str, Any], every matched file folding in ascending URL order into one staged dictionary over the core glob walk, private entries never matched; add_json_file(location: IOBase | Url | str | PathLike[str]) -> dict[str, Any]; insert(field: FieldLike) -> Field | None; update(field: FieldLike) -> None; remove(key: int | str) -> Field | None; remove_by_id(id: int) -> Field | None
-    fold report: merge_with, add_cfb_file, add_cfb_files and add_json_file each answer {"sources": int, "added": int, "merged": int, "dropped": list[dict[str, Any]]}, one entry per declaration passed over - {"source": str | None, "incoming": Field, "reason": str} - the dictionary's own declaration kept and what a source declares otherwise named there while the rest of it still folds; where two files disagree the first in URL order is held
+    mutations: add_field(field: FieldLike) -> bool; add_fields(fields: Iterable[FieldLike]) -> tuple[int, int]; merge_with(other: FixRegistry) -> dict[str, Any]; add_cfb_file(location: IOBase | Url | str | PathLike[str], dialect: str | None = None) -> dict[str, Any], the dialect or the location's stem where it reads as a name - opening with a letter, carrying no comma, percent escapes decoded; add_cfb_files(location: IOBase | Url | str | PathLike[str], pattern: str, dialect: str | None = None) -> dict[str, Any], every matched file folding in ascending URL order into one staged dictionary over the core glob walk, private entries never matched; add_json_file(location: IOBase | Url | str | PathLike[str]) -> dict[str, Any]; insert(field: FieldLike) -> Field | None; update(field: FieldLike) -> None; remove(key: int | str) -> Field | None; remove_by_id(id: int) -> Field | None
+    fold report: merge_with, add_cfb_file, add_cfb_files and add_json_file each answer {"sources": int, "added": int, "merged": int, "restated": int, "dropped": list[dict[str, Any]]}, restated counting the merged fields a source declared at another precision of the stored datatype (a float against decimal128, utf8 against ccy), folded under the stored one; one dropped entry per declaration passed over - {"source": str | None, "incoming": Field, "reason": str} - the dictionary's own declaration kept and what a source contradicts it with named there while the rest of it still folds; where two files contradict each other the first in URL order is held
     one namespace: insert files a definition by the shape it has - a Struct is a component, a Serie of Structs or a Map a group, a message a component carrying FIX:msgtype - and there is no category argument and no definition door of its own: insert/update/remove and the field_by_* pairs reach scalar fields, components and groups alike, a definition answering the tag door under the identity the catalog derived for it
     fields: get_field(key: int | str) -> Field | None; field(key: int | str) -> Field; get_field_by_id(id: int) -> Field | None; field_by_id(id: int) -> Field; get_field_by_tag(tag: int) -> Field | None; field_by_tag(tag: int) -> Field; get_field_by_counter(tag: int) -> Field | None; field_by_counter(tag: int) -> Field, the repeating group one counter tag opens (two groups on one counter name nothing); get_field_by_name(name: str) -> Field | None; field_by_name(name: str) -> Field, a scalar before a component before a group; get_field_by_path(path: str | FieldPath) -> Field | None; field_by_path(path: str | FieldPath) -> Field
     messages: register_msgtype(spelling: str, name: str | None = None, description: str | None = None) -> MsgType; get_msgtype(spelling: str) -> MsgType | None; msgtype(spelling: str) -> MsgType, an exact wire code, then a folded canonical name, then an alias of tag 35's code set
@@ -262,6 +262,34 @@
   avro.Block
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
+  excel
+    exports: DEFAULT_SHEET_NAME, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS, MAX_SHEET_NAME, Cell, CellRange, CellRef, Excel, Row, Sheet, Workbook; Row is the native ExcelRow, and the five constants the grid's bounds
+  excel.CellRef
+    constructor: CellRef(value: CellRef | str | tuple[int, int]) - an A1 text (`$B$2` included), a zero-based (row, column) pair, or another reference
+    statics: column_name, column_index
+    instance: row, column, is_in_grid
+    protocol: frozen; equality, order and hash over the row and column; str is the A1 text; pickle, copy
+  excel.CellRange
+    constructor: CellRange(value: CellRange | str | tuple[CellRefInput, CellRefInput]) - `A1:C10`, `A:C`, `3:5`, `A3:F`, or two references in any order
+    statics: all
+    instance: start, end, row_size, column_size, is_row_open, is_column_open, contains, contains_row, contains_column, __contains__, __iter__ (every cell, row by row)
+    protocol: frozen; equality, order, hash, str, pickle, copy
+  excel.Cell
+    constructor: Cell(reference: CellRefInput, value: object, *, date_system: DateSystem = "1900") - the value read through Scalar.from_, a date or an instant becoming a serial under its number format
+    instance: reference, row, column, kind, format, value, as_py, formula, error, is_null, text, with_formula, with_error, at
+    protocol: frozen; equality and hash over every part; pickle, copy
+  excel.Row
+    instance: index, cells, cell, __len__, __iter__
+  excel.Sheet
+    constructor: Sheet(name: str = "Sheet1", *, date_system: DateSystem = "1900", state: SheetState = "visible")
+    statics: from_serie(name, value, *, header=True) - a Serie, a pyarrow table or batch, a pandas or polars frame
+    instance: name (writable), state (writable), date_system, __len__ (the rows holding a cell), is_empty, dimension, cell, scalar, set_cell, insert_cell, remove_cell, __getitem__ (a reference answers the cell or None, a range a sliced Sheet), __setitem__, __delitem__, __contains__, rows, row, cells, cells_in, column, slice, insert_rows, remove_rows, write_serie(anchor, value, *, header=True), extend_from_serie, into_serie(field=None, *, header=True, safe=True, representation="value")
+    protocol: mutable, unhashable; equality over the name, the date system, the state and the cells; a Sheet handed out by a Workbook is a live view of the sheet inside it; pickle and copy detach one
+  excel.Workbook
+    constructor: Workbook()
+    statics: open(value: IOBase | Url | str | os.PathLike | bytes) - a located handle reopened at its location, an in-memory one copied; from_bytes(data)
+    instance: date_system (writable), sheet_names, sheet_kind, __len__, is_empty, __contains__ (a name, compared without case), __iter__ (live Sheet views in tab order), sheet, get_sheet, sheet_at, __getitem__ (a name or a tab index), add_sheet, insert_sheet, remove_sheet, rename_sheet, __delitem__, into_bytes, write_into(target), handle_reads
+    protocol: mutable, unhashable; every sheet parsed on first access and held; a missing sheet is a KeyError
   iceberg.IcebergOptions
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
@@ -424,7 +452,9 @@
     instance: combined, consumed, field, intoIpc, intoTable
   RecordOptions
     statics: forMediaType, forMimeType, from
-    instance: batchRowSize, blockCodec, clone, comment, commitRowSize, compare, compression, equals, escape, field, filter, header, inferRowSize, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, nullValues, partitionPairs, plan, quote, rowOffset, safe, select, separator, stableHash, syncMarker, timezone, toString, trim, withBatchRowSize, withBlockCodec, withComment, withCommitRowSize, withCompression, withEscape, withField, withFilter, withHeader, withInferRowSize, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withNullValues, withPlan, withQuote, withRowOffset, withSafe, withSelect, withSeparator, withSyncMarker, withTrim
+    instance: batchRowSize, blockCodec, clone, comment, commitRowSize, compare, compression, equals, escape, field, filter, header, header and range read and write the Excel sections - null on every other encoding and an error to set there, inferRowSize, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, nullValues, partitionPairs, plan, quote, range, rowOffset, safe, select, separator, sheet, stableHash, syncMarker, timezone, toString, trim, withBatchRowSize, withBlockCodec, withComment, withCommitRowSize, withCompression, withEscape, withField, withFilter, withHeader, withInferRowSize, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withNullValues, withPlan, withQuote, withRange, withRowOffset, withSafe, withSelect, withSeparator, withSheet, withSyncMarker, withSyncMarker
+    excel sections: sheet, withTrim
+    csv and excel sections: separator, quote, escape, comment, nullValues, trim and inferRowSize read and write the CSV sections, sheet and range the Excel sections, header both - null on every other encoding and an error to set there; range takes a CellRange, its text or a pair of references
     sections: field, filter, select, mergeBy and plan are read/write properties, the setters taking a Selector | Term | string | Array<Term | string> (filter: Filter | Term | string; plan: Plan | Selector | Filter | Field | string); partitionPairs() answers the equalities the filter pins
     csv dialect: separator, quote, escape, comment (string | null: one character in, handed to the core as its byte and judged there - `$.separator: expected an ASCII byte ...` - the binding refusing text that reaches no byte as `expected one ASCII character for <property>`; null clears quote, escape and comment), header, trim (boolean | null), nullValues (string[] | null), inferRowSize (number | null, a non-negative whole number) - the properties of a text/csv or text/tab-separated-values options value, each null for another encoding and each setter or with* throwing there at its own path (`$.separator: expected CSV options to set a separator, got ... options`); every record read and write takes them by name (readRecords({ separator: ';' }), or beside an options value: readRecords(options, { separator: ';' }))
   TextOptions
@@ -452,9 +482,9 @@
   Side
     frozen object: FIX's Side(54), every member's stored name to the int32 code a `side` column stores, UNKNOWN 0 then the seventeen sides in wire order (Side.BUY === 1; SELLUND 17), built once at load from the native table; SideName the key type; a `side` value crosses as its member's name, and fields.side(name, options?) -> SideField
   Version
-    constructor: Version(major: number, minor?: number | null, patch?: number | null); numeric widths u8/u8/u16
+    constructor: Version(major: number, minor?: number | null, patch?: number | string | null); major and minor u16, a number patch its decimal digits, a string patch as written
     statics: fromStr(text: string) -> Version
-    readonly: major: number, minor: number, patch: number
+    readonly: major: number, minor: number, patch: string | null
     instance: equals(other: Version) -> boolean; compare(other: Version) -> number; stableHash() -> bigint; clone() -> Version; toString()/toJSON() -> string
     typed field: fields.version(name, options?) -> VersionField; native JavaScript value Version, native Arrow value canonical version text
   Scalar
@@ -543,6 +573,32 @@
   avro
     statics: Schema, blocks, dumps, dumpsSingle, loads, loadsSingle
     decode limits: maxDepth, maxInputBytes, maxNodes; blocks is a fused lazy iterator
+  CellRef
+    constructor: CellRef(value: CellRefInput) - an A1 text (`$B$2` included), a zero-based [row, column] pair, or another reference
+    statics: columnName, columnIndex
+    instance: row, column, isInGrid, equals, compare, clone, toString, toJSON
+  CellRange
+    constructor: CellRange(value: CellRangeInput) - `A1:C10`, `A:C`, `3:5`, `A3:F`, or two references in any order
+    statics: all
+    instance: start, end, rowSize, columnSize, isRowOpen, isColumnOpen, contains, containsRow, containsColumn, equals, compare, clone, toString, toJSON, Symbol.iterator (every cell, row by row)
+  Cell
+    constructor: Cell(reference: CellRefInput, value: unknown, options?: { dateSystem }) - the value read through Scalar.from, a Date becoming a serial under its number format
+    statics: fromParts
+    instance: reference, row, column, kind, format, value, formula, error, isNull, text, withFormula, withError, at, equals, clone, toString, toJSON
+  ExcelRow
+    instance: index, cells, cell, size
+  Sheet
+    constructor: Sheet(name?: string, options?: { dateSystem, state })
+    statics: fromSerie(name, value, options?: { header }) - a Serie, or an Arrow JS table or record batch
+    instance: name (writable), state (writable), dateSystem, size (the rows holding a cell), isEmpty, dimension, cell, scalar, has, setCell, insertCell, removeCell, rows, row, cells, cellsIn, column, slice, insertRows, removeRows, writeSerie(anchor, value, options?: { header }), extendFromSerie, intoSerie(field?, options?: { header, safe, representation }), equals, clone, toString, Symbol.iterator (the rows)
+    roles: a Sheet handed out by a Workbook is a live view of the sheet inside it; clone detaches one
+  Workbook
+    constructor: Workbook()
+    statics: open(value: WorkbookInput) - an IOBase, a Url, a path or bytes; a located handle reopened at its location, an in-memory one copied; fromBytes(bytes)
+    instance: dateSystem (writable), sheetNames, sheetKind, size, isEmpty, has (a name, compared without case), sheets, sheet, getSheet, sheetAt, addSheet, insertSheet, removeSheet, renameSheet, intoBytes, writeInto, handleReads, toString, Symbol.iterator (live Sheet views in tab order)
+  excel
+    statics: Workbook, Sheet, Row, Cell, CellRef, CellRange
+    constants: MAX_ROWS, MAX_COLUMNS, MAX_CELL_TEXT, MAX_SHEET_NAME, DEFAULT_SHEET_NAME - the grid's bounds and the sheet a new workbook opens with
   fix
     constants: ULBRIDGE_ROWHEADER: string, the row header a ULBridge log writes in front of every line, as a rowheader for a text read - the crate's own text rather than a second copy of it; its clock is mtime, consumed into each line's currunix - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; msgsessionid, msgctxid, msgseqnum and msgpluginid are named for the fields they fill, and msgthreadid and loglevel name none and are the capture's own columns
     values: FixRegistry, FixMsg, FixCodec, MsgType, FixMessages

@@ -462,6 +462,53 @@ impl JsRecordOptions {
         self.inner.set_timezone(timezone).map_err(napi_error)
     }
 
+    /// The worksheet a workbook read or write addresses, `null` for the
+    /// first worksheet - or for another encoding.
+    #[napi(getter)]
+    pub fn sheet(&self) -> Option<String> {
+        self.inner.excel_sheet().map(ToOwned::to_owned)
+    }
+
+    /// Address the worksheet `sheet`, or the first worksheet for `null`.
+    #[napi(setter)]
+    pub fn set_sheet(&mut self, sheet: Option<String>) -> Result<()> {
+        self.inner
+            .set_excel_sheet(sheet.as_deref())
+            .map_err(napi_error)
+    }
+
+    /// The cells a workbook read or write addresses, `null` for the whole
+    /// sheet - or for another encoding.
+    #[napi(getter)]
+    pub fn range(&self) -> Option<crate::excel::JsCellRange> {
+        self.inner
+            .excel_range()
+            .map(|inner| crate::excel::JsCellRange { inner })
+    }
+
+    /// Address the cells of `range`, or the whole sheet for `null`.
+    #[napi(setter)]
+    pub fn set_range(&mut self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<()> {
+        let range = range.map(crate::excel::cell_range_from).transpose()?;
+        self.inner.set_excel_range(range).map_err(napi_error)
+    }
+
+    /// These options addressing the sheet `sheet`.
+    #[napi]
+    pub fn with_sheet(&self, sheet: Option<String>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_sheet(sheet)?;
+        Ok(options)
+    }
+
+    /// These options addressing the cells of `range`.
+    #[napi]
+    pub fn with_range(&self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_range(range)?;
+        Ok(options)
+    }
+
     /// The Avro block codec name, or `null` for another encoding.
     #[napi(getter)]
     pub fn block_codec(&self) -> Option<String> {
@@ -603,17 +650,18 @@ impl JsRecordOptions {
         self.inner.set_csv_comment(comment).map_err(napi_error)
     }
 
-    /// Whether the CSV's first record names the columns; `null` for another
-    /// encoding.
+    /// Whether the first record names the columns - a CSV's first record, a
+    /// workbook's first row; `null` for another encoding.
     #[napi(getter)]
     pub fn header(&self) -> Option<bool> {
-        self.inner.csv_header()
+        self.inner.header()
     }
 
-    /// Set whether the CSV's first record names the columns.
+    /// Set whether the first record names the columns: a CSV's first record,
+    /// a workbook's first row.
     #[napi(setter)]
     pub fn set_header(&mut self, header: bool) -> Result<()> {
-        self.inner.set_csv_header(header).map_err(napi_error)
+        self.inner.set_header(header).map_err(napi_error)
     }
 
     /// The CSV spellings of an absent value - an unquoted cell spelling one
@@ -742,7 +790,8 @@ impl JsRecordOptions {
         Ok(options)
     }
 
-    /// Return these options with or without a CSV header record.
+    /// Return these options with or without a header record: a CSV's first
+    /// record, a workbook's first row.
     #[napi]
     pub fn with_header(&self, header: bool) -> Result<Self> {
         let mut options = self.clone();

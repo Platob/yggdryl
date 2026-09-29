@@ -502,9 +502,16 @@ function vocabulary() {
   }
 }
 
-/** Native numeric version intake, including each physical width boundary. */
+/**
+ * Native version intake: the sixteen-bit major and minor at and past their
+ * bound, a service pack, and a patch tail kept as written. A patch absent
+ * is null.
+ */
 function versions() {
-  return ['5', '5.0', '5.0.2', '5.0.300', '255.255.65535', '256.0', '5.256', '5.0.65536', '5.0SP2', '5.0.2.1']
+  return [
+    '5', '5.0', '5.0.2', '5.0.300', '256.0', '65535.65535.65535', '65536.0', '5.65536',
+    '5.0SP2', '5.0.2.1', '1.0-rc1',
+  ]
     .map((input) => {
       const head = { input, call: `Version.fromStr(${literal(input)})` }
       try {

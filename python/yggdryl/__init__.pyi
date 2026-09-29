@@ -4,6 +4,7 @@ from . import (
     codes as codes,
     coding as coding,
     enums as enums,
+    excel as excel,
     expression as expression,
     fix as fix,
     floating as floating,
@@ -67,6 +68,7 @@ from .holder import (
 from .media import (
     Avro as Avro,
     Csv as Csv,
+    Excel as Excel,
     Ipc as Ipc,
     Media as Media,
     Parquet as Parquet,

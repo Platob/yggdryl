@@ -191,7 +191,7 @@ fn record_options_accessors_reach_every_dialect_setting() {
     assert_eq!(options.csv_quote(), Some(Some(b'"')));
     assert_eq!(options.csv_escape(), Some(None));
     assert_eq!(options.csv_comment(), Some(None));
-    assert_eq!(options.csv_header(), Some(true));
+    assert_eq!(options.header(), Some(true));
     assert_eq!(options.csv_null_values().map(<[_]>::len), Some(1));
     assert_eq!(options.csv_trim(), Some(false));
     assert_eq!(options.csv_infer_row_size(), Some(1024));
@@ -200,7 +200,7 @@ fn record_options_accessors_reach_every_dialect_setting() {
     options.set_csv_quote(Some(b'\'')).unwrap();
     options.set_csv_escape(Some(b'\\')).unwrap();
     options.set_csv_comment(Some(b'#')).unwrap();
-    options.set_csv_header(false).unwrap();
+    options.set_header(false).unwrap();
     options.set_csv_null_values(["NA", ""]).unwrap();
     options.set_csv_trim(true).unwrap();
     options.set_csv_infer_row_size(16).unwrap();
@@ -208,7 +208,7 @@ fn record_options_accessors_reach_every_dialect_setting() {
     assert_eq!(options.csv_quote(), Some(Some(b'\'')));
     assert_eq!(options.csv_escape(), Some(Some(b'\\')));
     assert_eq!(options.csv_comment(), Some(Some(b'#')));
-    assert_eq!(options.csv_header(), Some(false));
+    assert_eq!(options.header(), Some(false));
     assert_eq!(
         options
             .csv_null_values()
@@ -232,7 +232,7 @@ fn record_options_of_another_encoding_answer_none_and_refuse_a_setting() {
     assert_eq!(ipc.csv_quote(), None);
     assert_eq!(ipc.csv_escape(), None);
     assert_eq!(ipc.csv_comment(), None);
-    assert_eq!(ipc.csv_header(), None);
+    assert_eq!(ipc.header(), None);
     assert_eq!(ipc.csv_null_values(), None);
     assert_eq!(ipc.csv_trim(), None);
     assert_eq!(ipc.csv_infer_row_size(), None);
@@ -241,7 +241,6 @@ fn record_options_of_another_encoding_answer_none_and_refuse_a_setting() {
         ("$.quote", ipc.set_csv_quote(None)),
         ("$.escape", ipc.set_csv_escape(Some(b'\\'))),
         ("$.comment", ipc.set_csv_comment(Some(b'#'))),
-        ("$.header", ipc.set_csv_header(false)),
         ("$.null_values", ipc.set_csv_null_values(["NA"])),
         ("$.trim", ipc.set_csv_trim(true)),
         ("$.infer_row_size", ipc.set_csv_infer_row_size(2)),
@@ -257,7 +256,6 @@ fn record_options_of_another_encoding_answer_none_and_refuse_a_setting() {
                     "$.quote" => "a quote",
                     "$.escape" => "an escape",
                     "$.comment" => "a comment byte",
-                    "$.header" => "a header",
                     "$.null_values" => "null spellings",
                     "$.trim" => "trimming",
                     _ => "a sample size",
@@ -265,6 +263,13 @@ fn record_options_of_another_encoding_answer_none_and_refuse_a_setting() {
             )
         );
     }
+    // The header is one knob a CSV and a workbook share, refused by both names.
+    let (at, reason) = refusal(ipc.set_header(false).unwrap_err());
+    assert_eq!(at, "$.header");
+    assert_eq!(
+        reason,
+        "expected CSV or Excel options to set a header, got application/vnd.apache.arrow.stream options"
+    );
     // And the other way round: a CSV value refuses another encoding's knob.
     let mut csv = RecordOptions::for_mime_type(&MimeType::CSV).unwrap();
     let (path, reason) = refusal(csv.set_avro_block_codec("null").unwrap_err());

@@ -1938,10 +1938,10 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         }
         Scalar::Side(side) => Ok(classes::side(py)?.call1((side.code(),))?.unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
-        Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
-            .into_pyobject(py)?
-            .into_any()
-            .unbind()),
+        Scalar::Version(value) => {
+            let inner = value.clone();
+            crate::version::PyVersion { inner }.into_py_any(py)
+        }
         // A location crosses as the canonical text it validated to, exactly as
         // the other parsed text families do; a zone, a MIME type and a media
         // type each render their own canonical spelling the same way.
@@ -2782,7 +2782,7 @@ fn scalar_subclass_to_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Scalar>
 /// Convert a native Yggdryl wrapper into its canonical scalar shape.
 fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, crate::version::PyVersion>>() {
-        return Some(Scalar::Version(value.inner));
+        return Some(Scalar::Version(value.inner.clone()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());

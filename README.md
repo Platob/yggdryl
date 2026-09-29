@@ -69,9 +69,10 @@ rust/                    The core crate
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
                          options, inference, magic, merge, partitions
-  src/{ipc,parquet,avro,csv,iceberg,xmla}/
+  src/{ipc,parquet,avro,csv,iceberg,xmla,excel}/
                          One folder per record medium; xmla/ also holds the
-                         XML for Analysis provider and its HTTP server
+                         XML for Analysis provider and its HTTP server, and
+                         excel/ the workbook, sheet and cell model
   src/text/              The plain-text medium and what the structured
                          codecs share
   src/{json,toml,yaml,xml}/

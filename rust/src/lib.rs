@@ -53,6 +53,7 @@ mod diff;
 pub mod duration;
 mod enumeration;
 pub mod enums;
+pub mod excel;
 pub mod expression;
 mod field;
 pub mod figi;

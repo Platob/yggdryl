@@ -23,6 +23,7 @@ from . import (
     codes,
     coding,
     enums,
+    excel,
     expression,
     fix,
     floating,
@@ -80,7 +81,7 @@ from .expression import (
     Term,
 )
 from .holder import IOBase, IOCursor
-from .media import Avro, Csv, Ipc, Media, Parquet, RecordOptions, Text, Xmla
+from .media import Avro, Csv, Excel, Ipc, Media, Parquet, RecordOptions, Text, Xmla
 from .mediatype import MediaType
 from .mimetype import MimeType
 from .text import TextEntries, TextEntry, TextLine, TextLines, TextOptions
@@ -401,6 +402,7 @@ __all__ = [
     "Version",
     "VersionField",
     "Xmla",
+    "Excel",
     "__version__",
     "ascii",
     "ascii_view",
@@ -434,6 +436,7 @@ __all__ = [
     "duration32",
     "duration64",
     "enums",
+    "excel",
     "expression",
     "field",
     "figi",
