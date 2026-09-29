@@ -18,7 +18,7 @@
     </script>
   </head>
   <body>
-    <a class="skip" href="#chart">Skip to the chart</a>
+    <a id="skip" class="skip" href="#chart">Skip to the chart</a>
     <header class="bar">
       <div class="brand">
         <img class="brand-mark" src="favicon.svg" alt="" width="22" height="22" />
@@ -71,12 +71,14 @@
             id="chart"
             class="chart"
             tabindex="0"
-            role="img"
+            role="application"
+            aria-roledescription="candle chart"
             aria-label="Bid and ask candles"
             aria-describedby="chart-help"
           ></canvas>
           <div id="tooltip" class="tooltip" hidden></div>
         </div>
+        <p id="readout" class="sr-only" aria-live="polite"></p>
         <p id="chart-help" class="help">
           Hover or use the arrow keys to read a bucket; click or press Enter to select it. The summary and the audit below
           follow the selection, and the download carries the whole range.

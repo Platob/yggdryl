@@ -6,9 +6,11 @@
 //! and beside it the display that reads those routes: the eight files of
 //! `node/book/`, embedded in the binary so the page a browser opens and the
 //! page the npm package ships are one source. Nothing here decides what a
-//! request means: the command parses its arguments, folds each `--capture`
+//! request means: the command parses its arguments, folds every `--capture`
 //! into the first table, binds the server, routes the [`BookService`] and
-//! the assets at its path, and prints the endpoint. Behind a reverse proxy,
+//! the assets at its path, and prints the endpoint - the folder `<path>/`
+//! the page and its routes stand in, so the page's relative files resolve
+//! where they are served. Behind a reverse proxy,
 //! `--public-url`, `--trusted-proxy`, `--forwarded-header`, `--path-prefix`
 //! and `--read-timeout` are the server's own options of those names.
 
@@ -19,7 +21,7 @@ use std::time::Duration;
 use clap::{Args, Subcommand};
 use yggdryl::graph::{BookEvent, BookIterator, BookService, BookServiceOptions, MarketData};
 use yggdryl::holder::Holder;
-use yggdryl::http::{ForwardedHeader, Method, Response, Server, ServerOptions, Status};
+use yggdryl::http::{ForwardedHeader, Method, Request, Response, Server, ServerOptions, Status};
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, Result, Timezone, Url};
 
@@ -31,6 +33,17 @@ struct Asset {
     name: &'static str,
     bytes: &'static [u8],
     content_type: &'static str,
+}
+
+impl Asset {
+    /// The asset as the server answers it: its bytes under its type,
+    /// `Cache-Control: no-cache`.
+    fn response(&self) -> Result<Response> {
+        Ok(Response::new(Status::OK)
+            .with_header("content-type", self.content_type)?
+            .with_header("cache-control", "no-cache")?
+            .with_body(self.bytes))
+    }
 }
 
 /// One asset read out of `node/book/` at build time, so the display the
@@ -46,7 +59,7 @@ macro_rules! asset {
 }
 
 /// The display, in the order `node/book.js` lists its files; `index.html`
-/// is also what the path itself answers.
+/// is the page, which the root path also answers.
 const ASSETS: [Asset; 8] = [
     asset!("index.html", "text/html; charset=utf-8"),
     asset!("theme.css", "text/css; charset=utf-8"),
@@ -65,11 +78,40 @@ pub enum Command {
     Serve(Serve),
 }
 
+/// The example of a capture landing in a folder with nothing in it yet,
+/// which only a build with the `iceberg` feature runs - it makes the folder
+/// a table - so a build without it states none: every example `--help`
+/// states runs in the build that states it.
+#[cfg(feature = "iceberg")]
+macro_rules! capture_example {
+    () => {
+        "  yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich\n"
+    };
+}
+#[cfg(not(feature = "iceberg"))]
+macro_rules! capture_example {
+    () => {
+        ""
+    };
+}
+
+/// What `market serve --help` states after the arguments: the examples,
+/// then how a table, a capture and the endpoint are read.
+const AFTER_HELP: &str = concat!(
+    "Examples:\n",
+    "  yggdryl market serve books=/data/books\n",
+    capture_example!(),
+    "  yggdryl market serve /data/books --bind 0.0.0.0:8080 --path /book\n",
+    "  yggdryl market serve books=/data/books --public-url https://data.example.com/book --trusted-proxy 10.0.0.0/8 --path-prefix /book\n",
+    "\n",
+    "A table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request. Two tables of one name are refused.\n",
+    "--capture folds a FIX bridge log into the first table before serving: its lines are read under --rowheader and --timezone, walked as the chains they belong to, folded into books on the --snapshot-millis grid and appended as BOOK rows, every capture read before any lands. An empty or absent folder becomes an Iceberg table first (the `iceberg` feature); a leaf takes the rows under its own encoding.\n",
+    "The first line printed is the endpoint on the socket, the folder `<path>/` the display stands in, so a script that started the process knows where to connect: the page is its `index.html` - `<path>` itself sends a browser there, and the root path answers it too - and the routes stand under its `api/`."
+);
+
 /// The display's socket, what it serves, and what lands before it does.
 #[derive(Args)]
-#[command(
-    after_help = "Examples:\n  yggdryl market serve books=/data/books\n  yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich\n  yggdryl market serve /data/books --bind 0.0.0.0:8080 --path /book\n  yggdryl market serve books=s3://bucket/books --public-url https://data.example.com/book --trusted-proxy 10.0.0.0/8 --path-prefix /book\n\nA table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request.\n--capture folds a FIX bridge log into the first table before serving: its lines are read under --rowheader and --timezone, walked as the chains they belong to, folded into books on the --snapshot-millis grid and appended as BOOK rows. An empty or absent folder becomes an Iceberg table first (the `iceberg` feature); a leaf takes the rows under its own encoding.\nThe first line printed is the endpoint on the socket, so a script that started the process knows where to connect; the display answers there and the routes under `<path>/api`."
-)]
+#[command(after_help = AFTER_HELP)]
 pub struct Serve {
     /// The tables to serve: `name=location`, or a location named after itself.
     #[arg(value_name = "TABLE")]
@@ -79,7 +121,9 @@ pub struct Serve {
     #[arg(long, default_value = "127.0.0.1:8080")]
     bind: String,
 
-    /// The path the display answers at; the routes stand under `<path>/api`.
+    /// The path the display answers under: its page is `<path>/index.html`,
+    /// which `<path>` itself sends a browser to, and the routes stand under
+    /// `<path>/api`.
     #[arg(long, default_value = "/")]
     path: String,
 
@@ -160,10 +204,11 @@ pub struct Serve {
 ///
 /// # Errors
 ///
-/// Returns a refused argument - a capture with no table to land in, a zone
-/// this build has no rules for, a row header that does not compile, a
-/// dictionary or a table location that does not resolve - the socket's
-/// refusal, or what folding a capture into its table refuses.
+/// Returns a refused argument - two tables of one name, a capture with no
+/// table to land in, a path the server cannot route, a zone this build has
+/// no rules for, a row header that does not compile, a dictionary, a table
+/// or a capture location that does not resolve - the socket's refusal, or
+/// what reading a capture or landing it in its table refuses.
 pub fn run(command: &Command) -> Result<ExitCode> {
     match command {
         Command::Serve(serve) => serve.run(),
@@ -172,20 +217,18 @@ pub fn run(command: &Command) -> Result<ExitCode> {
 
 impl Serve {
     fn run(&self) -> Result<ExitCode> {
-        // Every argument is read before a port is taken, and the port before
-        // a capture lands: a refused argument costs no bind, and a refused
-        // bind no ingest that a second run would repeat.
-        let tables: Vec<(String, &str)> = self
-            .tables
-            .iter()
-            .map(|spelled| location::split(spelled))
-            .collect();
+        // Every argument is read before a port is taken, and the port, the
+        // endpoint and every capture before one lands: a refused argument
+        // costs no bind, and a refused bind, endpoint or capture no ingest
+        // that a second run would repeat.
+        let tables = self.tables()?;
         if !self.capture.is_empty() && tables.is_empty() {
             return Err(refused(
                 "$.capture",
                 "a capture needs a table to land in: expected a TABLE beside --capture, got none",
             ));
         }
+        let base = route_base(&self.path)?;
         let timezone = self.timezone()?;
         let mut reading = TextOptions::new()
             .try_with_rowheader(&self.rowheader)?
@@ -198,24 +241,35 @@ impl Serve {
         } else {
             Some(self.codec(&reading)?)
         };
+        let captures = self
+            .capture
+            .iter()
+            .map(|log| location::file(log))
+            .collect::<Result<Vec<_>>>()?;
         let mut holders = tables
             .iter()
             .map(|(_, location)| resource(location))
             .collect::<Result<Vec<_>>>()?;
         let server = Server::bind_with(&self.bind, self.server_options()?)?;
-        let public_endpoint = server.public_url_of(&self.path)?;
+        // The folder the page and its routes stand in, where the page's
+        // relative files resolve: the endpoint.
+        let folder = format!("{base}/");
+        let endpoint = server.url_of(&folder)?;
+        let public_endpoint = server.public_url_of(&folder)?;
 
-        // The captures land in the first table before it is served.
+        // Every capture is read before any lands, and they land in the first
+        // table in one append, before it is served.
         let mut created = false;
         let mut landed = Vec::with_capacity(self.capture.len());
         if let Some(codec) = &codec {
-            let (name, location) = &tables[0];
-            created = prepared(location)?;
-            let table = &mut holders[0];
-            for log in &self.capture {
-                let books = ingest(table, log, codec, &reading, self.snapshot_millis)?;
-                landed.push((log.as_str(), books, name.as_str()));
+            let mut books = Vec::new();
+            for (log, capture) in self.capture.iter().zip(&captures) {
+                let before = books.len();
+                books.extend(fold(capture, codec, &reading, self.snapshot_millis)?);
+                landed.push((log.as_str(), books.len() - before));
             }
+            created = prepared(tables[0].1)?;
+            land(&mut holders[0], books)?;
         }
 
         let mut service =
@@ -224,8 +278,8 @@ impl Serve {
             service = service.with_table(name, holder);
         }
         let service = Arc::new(service);
-        let endpoint = Arc::clone(&service).route(&server, &self.path)?;
-        respond_assets(&server, &self.path)?;
+        Arc::clone(&service).route(&server, &folder)?;
+        respond_assets(&server, &base)?;
         // The endpoint first and on its own line, so whatever started the
         // process reads where to connect before anything else is printed.
         println!("{endpoint}");
@@ -247,14 +301,37 @@ impl Serve {
                 }
             ));
         }
-        for (log, books, name) in landed {
-            style::note(&format!("capture {log}: {books} books into {name}"));
+        for (log, books) in landed {
+            style::note(&format!(
+                "capture {log}: {books} books into {}",
+                tables[0].0
+            ));
         }
         // The server answers on its own threads until the process is
         // stopped; this one only has to outlive it.
         loop {
             std::thread::park();
         }
+    }
+
+    /// The tables as spelled: `name=location`, or a location named after its
+    /// last segment ([`location::split`]). Two of one name are refused, since
+    /// a route's `table` names one and a capture lands in the first.
+    fn tables(&self) -> Result<Vec<(String, &str)>> {
+        let mut tables: Vec<(String, &str)> = Vec::with_capacity(self.tables.len());
+        for (index, spelled) in self.tables.iter().enumerate() {
+            let (name, location) = location::split(spelled);
+            if let Some((_, first)) = tables.iter().find(|(named, _)| *named == name) {
+                return Err(refused(
+                    &format!("$.tables[{index}]"),
+                    &format!(
+                        "expected one table per name, got {name:?} over both {first:?} and {location:?}"
+                    ),
+                ));
+            }
+            tables.push((name, location));
+        }
+        Ok(tables)
     }
 
     /// The zone the captures' clock is written in: one this build has rules
@@ -332,27 +409,39 @@ fn resource(location: &str) -> Result<Holder> {
     Ok(held)
 }
 
-/// One capture folded into `table`: its lines read under `reading`, walked
-/// as the chains they belong to, folded into books on the `snapshot_millis`
-/// grid and appended as `BOOK` rows; how many books landed.
+/// `--path` spelled as a route is, by the server's one path grammar - the
+/// one a path prefix shares, which [`ServerOptions::with_path_prefix`]
+/// reads without a server: one leading slash and no trailing one, and empty
+/// for the root. A query, a fragment or a control byte is refused by byte.
+fn route_base(path: &str) -> Result<String> {
+    Ok(ServerOptions::default()
+        .with_path_prefix(path)?
+        .path_prefix()
+        .unwrap_or_default()
+        .to_owned())
+}
+
+/// One capture read under `reading`, walked as the chains it belongs to and
+/// folded into books on the `snapshot_millis` grid.
 ///
-/// The walk needs the whole capture and the count is what the note says, so
-/// the books are held once, bounded by the capture's own size, before they
-/// are written.
-fn ingest(
-    table: &mut Holder,
-    log: &str,
+/// The walk needs the whole capture and the note counts its books, so they
+/// are held, bounded by the captures' own sizes, until every capture has
+/// been read and they land ([`land`]).
+fn fold(
+    capture: &Holder,
     codec: &FixCodec,
     reading: &TextOptions,
     snapshot_millis: u64,
-) -> Result<usize> {
-    let capture = location::file(log)?;
+) -> Result<Vec<BookEvent>> {
     let walked = codec
-        .lifecycle(codec.parse_text_lines(read_text_lines(&capture, reading)?))
+        .lifecycle(codec.parse_text_lines(read_text_lines(capture, reading)?))
         .collect::<Result<Vec<_>>>()?;
-    let books = BookIterator::new(codec.market_data(walked), snapshot_millis)?
-        .collect::<Result<Vec<BookEvent>>>()?;
-    let landed = books.len();
+    BookIterator::new(codec.market_data(walked), snapshot_millis)?.collect()
+}
+
+/// `books` appended to `table` as `BOOK` rows, in one append through the
+/// table's own record options - one commit on an Iceberg table.
+fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
     let rows = MarketData::arrow_reader(
         books
             .into_iter()
@@ -362,7 +451,7 @@ fn ingest(
     )?;
     let options = table.record_options()?;
     table.append_arrow_reader(rows, &options)?;
-    Ok(landed)
+    Ok(())
 }
 
 /// A folder that holds nothing yet made the Iceberg table the captures
@@ -407,33 +496,49 @@ fn prepared(_: &str) -> Result<bool> {
     Ok(false)
 }
 
-/// The display's files answered under `path`: the path itself and
-/// `index.html` as the page, every other asset under its own name.
-fn respond_assets(server: &Server, path: &str) -> Result<()> {
-    let base = path.trim_end_matches('/');
+/// The display's files answered under `base` ([`route_base`]), each under
+/// its own name, `index.html` the page.
+///
+/// A page's relative `theme.css`, `app.js` and `api/` resolve against the
+/// folder its URL ends in, and the server sends a path spelled with a
+/// trailing slash to the bare one, so under a path the page stands at
+/// `<path>/index.html` and the bare `<path>` sends a browser there
+/// ([`into_folder`]). The root is its own folder, and answers the page.
+fn respond_assets(server: &Server, base: &str) -> Result<()> {
     for asset in &ASSETS {
-        let response = Response::new(Status::OK)
-            .with_header("content-type", asset.content_type)?
-            .with_header("cache-control", "no-cache")?
-            .with_body(asset.bytes);
-        if asset.name == "index.html" {
-            server.respond(Some(Method::Get), &format!("{base}/"), response);
-        }
-        let response = Response::new(Status::OK)
-            .with_header("content-type", asset.content_type)?
-            .with_header("cache-control", "no-cache")?
-            .with_body(asset.bytes);
         server.respond(
             Some(Method::Get),
             &format!("{base}/{}", asset.name),
-            response,
+            asset.response()?,
         );
+        if base.is_empty() && asset.name == "index.html" {
+            server.respond(Some(Method::Get), "/", asset.response()?);
+        }
+    }
+    if !base.is_empty() {
+        server.route(Some(Method::Get), base, into_folder);
     }
     Ok(())
 }
 
+/// The bare path sent into its folder's page by a `308` whose `Location` is
+/// relative - the path's last segment as the request spelled it, then
+/// `/index.html` and the query - so it is right under any prefix a proxy
+/// adds, as the server's own trailing-slash redirect is.
+fn into_folder(request: &Request) -> Result<Response> {
+    let url = request.url();
+    let path = url.path_text(false)?;
+    let last = path.rsplit('/').next().unwrap_or_default();
+    let query = url
+        .query(false)?
+        .map_or_else(String::new, |query| format!("?{query}"));
+    Response::new(Status::PERMANENT_REDIRECT)
+        .with_header("location", &format!("{last}/index.html{query}"))?
+        .with_header("cache-control", "no-cache")
+}
+
 /// An argument refused by name.
-fn refused(path: &'static str, reason: &str) -> Error {
+fn refused(path: &str, reason: &str) -> Error {
     Error::InvalidRecord {
         path: path.into(),
         reason: reason.into(),

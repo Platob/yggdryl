@@ -845,3 +845,296 @@ fn media_open_binds_the_csv_implementation_by_name() {
     holder.open().expect("opened");
     assert!(holder.opened());
 }
+
+// Writing onto a stored document.
+
+/// A batch of the named columns, in order.
+fn columns(named: Vec<(&str, arrow_array::ArrayRef)>) -> BatchReader {
+    let batch = RecordBatch::try_from_iter(named).expect("a batch");
+    yggdryl::arrow::batch_reader(batch.schema(), [batch])
+}
+
+fn ints(values: &[i64]) -> arrow_array::ArrayRef {
+    Arc::new(Int64Array::from(values.to_vec()))
+}
+
+fn strings(values: &[&str]) -> arrow_array::ArrayRef {
+    Arc::new(StringArray::from(values.to_vec()))
+}
+
+/// The options a merge on `id` writes with.
+fn keyed_on_id(options: &RecordOptions) -> RecordOptions {
+    let mut keyed = options.clone();
+    keyed.set_merge_by(Selector::from_columns(["id"]));
+    keyed
+}
+
+#[test]
+fn an_append_renders_the_rows_under_the_header_and_never_casts_them_onto_the_sample() {
+    // The sample reads `x` as integers and `when` as dates, but a CSV
+    // stores text: the rows appended are written as the caller's values,
+    // exactly as an overwrite would write them.
+    let mut media = Csv::new(stored("x,when\n1,2026-01-05\n"));
+    let options = media.record_options().expect("the options");
+    media
+        .append_arrow_reader(
+            columns(vec![
+                (
+                    "x",
+                    Arc::new(arrow_array::Float64Array::from(vec![3.5, 7.25])),
+                ),
+                ("when", strings(&["next tuesday", "2026-01-06T10:00:00"])),
+            ]),
+            &options,
+        )
+        .expect("appended");
+    assert_eq!(
+        text(&media),
+        "x,when\n1,2026-01-05\n3.5,next tuesday\n7.25,2026-01-06T10:00:00\n"
+    );
+
+    // The header's order wins, and a header column the rows do not carry
+    // is written empty.
+    let mut media = Csv::new(stored("when,x,note\n2026-01-05,1,a\n"));
+    media
+        .append_arrow_reader(columns(vec![("x", strings(&["abc"]))]), &options)
+        .expect("appended");
+    assert_eq!(text(&media), "when,x,note\n2026-01-05,1,a\n,abc,\n");
+
+    // A column the header does not name is refused, naming it and the
+    // header, and nothing is written.
+    let before = text(&media);
+    let url = media.url().expect("an identity").to_string();
+    let (path, reason) = refusal(
+        media
+            .append_arrow_reader(
+                columns(vec![("x", ints(&[3])), ("venue", strings(&["XNAS"]))]),
+                &options,
+            )
+            .unwrap_err(),
+    );
+    assert_eq!(path, "$.header");
+    assert_eq!(
+        reason,
+        format!(
+            "expected a column the header of {url} names, one of [\"when\", \"x\", \"note\"], \
+             got \"venue\""
+        )
+    );
+    assert_eq!(text(&media), before);
+}
+
+#[test]
+fn an_overwrite_keeps_the_header_and_writes_the_rows_as_they_are() {
+    let mut media = Csv::new(stored("a\n1\n2\n"));
+    let options = media.record_options().expect("the options");
+    media
+        .overwrite_arrow_reader(columns(vec![("a", strings(&["x", "y"]))]), &options)
+        .expect("replaced");
+    assert_eq!(text(&media), "a\nx\ny\n");
+}
+
+#[test]
+fn a_merge_reads_the_stored_cells_under_the_incoming_columns_and_refuses_one_it_cannot_read() {
+    // Past a sample of three records the stored `v` holds text. A merge
+    // rewrites the whole document, so a stored cell its column cannot read
+    // is refused rather than nulled and written back lost.
+    let document = "id,v\n1,1\n2,2\n3,3\n4,4\n5,5\n99,hello\n";
+    let mut media = Csv::new(stored(document))
+        .with_options(CsvOptions::new().with_infer_row_size(3).expect("a sample"));
+    let url = media.url().expect("an identity").to_string();
+    let keyed = keyed_on_id(&media.record_options().expect("the options"));
+    let (path, reason) = refusal(
+        media
+            .merge_arrow_reader(
+                columns(vec![("id", ints(&[1])), ("v", ints(&[100]))]),
+                &keyed,
+            )
+            .unwrap_err(),
+    );
+    assert_eq!(path, "$[5].v");
+    assert!(reason.contains("\"hello\""), "{reason}");
+    assert!(reason.ends_with(&format!("in row 7 of {url}")), "{reason}");
+    assert_eq!(text(&media), document, "nothing is written");
+
+    // Under a text column every stored cell reads, and the merge keeps it.
+    media
+        .merge_arrow_reader(
+            columns(vec![("id", ints(&[1, 6])), ("v", strings(&["100", "six"]))]),
+            &keyed,
+        )
+        .expect("merged");
+    assert_eq!(
+        text(&media),
+        "id,v\n1,100\n2,2\n3,3\n4,4\n5,5\n99,hello\n6,six\n"
+    );
+
+    // A header column the rows do not carry keeps its stored cells in the
+    // rows the merge leaves alone; a matched row is the row merged in, and
+    // a row it adds is empty there.
+    let mut media = Csv::new(stored("id,note\n1,replaced\n3,kept\n"));
+    media
+        .merge_arrow_reader(columns(vec![("id", ints(&[1, 2]))]), &keyed)
+        .expect("merged");
+    assert_eq!(text(&media), "id,note\n1,\n3,kept\n2,\n");
+}
+
+#[test]
+fn a_merge_and_an_append_leave_the_stored_cells_past_the_sample_as_they_were() {
+    // Past the default sample of 1024 records the stored `v` holds text.
+    let mut document = String::from("id,v\n");
+    for index in 0..1100 {
+        document.push_str(&format!("{index},{index}\n"));
+    }
+    document.push_str("5000,hello\n");
+    let mut media = Csv::new(stored(&document));
+    let options = media.record_options().expect("the options");
+    media
+        .append_arrow_reader(
+            columns(vec![("id", ints(&[6000])), ("v", ints(&[7]))]),
+            &options,
+        )
+        .expect("appended");
+    assert!(text(&media).ends_with("1099,1099\n5000,hello\n6000,7\n"));
+    media
+        .merge_arrow_reader(
+            columns(vec![("id", ints(&[0])), ("v", strings(&["zero"]))]),
+            &keyed_on_id(&options),
+        )
+        .expect("merged");
+    let merged = text(&media);
+    assert!(
+        merged.starts_with("id,v\n0,zero\n1,1\n"),
+        "{}",
+        &merged[..40]
+    );
+    assert!(merged.ends_with("1099,1099\n5000,hello\n6000,7\n"));
+}
+
+#[test]
+fn without_a_header_a_write_onto_a_document_is_positional() {
+    // A headerless document names no column, so the rows written onto it
+    // are its columns in their own order.
+    let mut media = Csv::new(buffer("t.csv")).with_options(CsvOptions::new().with_header(false));
+    let options = media.record_options().expect("the options");
+    let two = |a: &[i64], b: &[&str]| columns(vec![("a", ints(a)), ("b", strings(b))]);
+    media
+        .overwrite_arrow_reader(two(&[1, 2], &["x", "y"]), &options)
+        .expect("written");
+    assert_eq!(text(&media), "1,x\n2,y\n");
+    media
+        .overwrite_arrow_reader(two(&[3], &["z"]), &options)
+        .expect("replaced");
+    assert_eq!(text(&media), "3,z\n");
+    media
+        .append_arrow_reader(two(&[4], &["w"]), &options)
+        .expect("appended");
+    assert_eq!(text(&media), "3,z\n4,w\n");
+    let mut keyed = options.clone();
+    keyed.set_merge_by(Selector::from_columns(["a"]));
+    media
+        .merge_arrow_reader(two(&[4, 5], &["v", "u"]), &keyed)
+        .expect("merged");
+    assert_eq!(text(&media), "3,z\n4,v\n5,u\n");
+
+    // A record of another width is refused, naming both counts.
+    let url = media.url().expect("an identity").to_string();
+    let (path, reason) = refusal(
+        media
+            .append_arrow_reader(columns(vec![("a", ints(&[6]))]), &options)
+            .unwrap_err(),
+    );
+    assert_eq!(path, "$");
+    assert_eq!(
+        reason,
+        format!(
+            "expected records of 1 cell, one per column written, got 2 cells in the first record of {url}"
+        )
+    );
+    assert_eq!(text(&media), "3,z\n4,v\n5,u\n");
+}
+
+#[test]
+fn an_open_handle_answers_its_cached_schema_only_for_the_options_it_was_read_under() {
+    let mut media = Csv::new(stored("a;b\n1;2\n"));
+    media.open().expect("opened");
+    let comma = media.record_options().expect("the options");
+    let names = |field: Field| -> Vec<String> {
+        field
+            .fields()
+            .iter()
+            .map(|child| child.name().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        names(media.read_arrow_field(&comma).expect("the field")),
+        ["a;b"]
+    );
+    let semicolon =
+        RecordOptions::Csv(CsvOptions::new().with_separator(b';').expect("a separator"));
+    assert_eq!(
+        names(media.read_arrow_field(&semicolon).expect("the field")),
+        ["a", "b"]
+    );
+    let headless = RecordOptions::Csv(
+        CsvOptions::new()
+            .with_separator(b';')
+            .expect("a separator")
+            .with_header(false),
+    );
+    assert_eq!(
+        names(media.read_arrow_field(&headless).expect("the field")),
+        ["column_1", "column_2"]
+    );
+    assert_eq!(
+        names(media.read_arrow_field(&comma).expect("the field")),
+        ["a;b"]
+    );
+    assert_eq!(media.column_size().expect("the columns"), 1);
+}
+
+#[test]
+fn media_open_as_binds_the_dialect_the_type_names() {
+    let tabbed = || {
+        Holder::buffer(
+            Buffer::from_bytes(b"a\tb\n1\t2\n".to_vec())
+                .with_media_type(MediaType::from_file_name("data.txt")),
+        )
+    };
+    let media = Media::open_as(tabbed(), &MimeType::TSV).expect("a media");
+    let options = media.record_options().expect("the options");
+    assert_eq!(options.csv_separator(), Some(b'\t'));
+    assert_eq!(options.mime_type(), MimeType::TSV);
+    assert_eq!(
+        media
+            .read_arrow_field(&options)
+            .expect("the field")
+            .field_len(),
+        2
+    );
+
+    // Named `.tsv` but bound as CSV, the comma is the dialect asked for.
+    let named = Holder::buffer(buffer("data.tsv"));
+    let media = Media::open_as(named, &MimeType::CSV).expect("a media");
+    let options = media.record_options().expect("the options");
+    assert_eq!(options.csv_separator(), Some(b','));
+}
+
+#[test]
+fn a_resumed_append_completes_onto_the_header_too() {
+    let mut handle = stored("x,y\n1,a\n");
+    let mut options = handle.record_options().expect("the options");
+    options.set_commit_row_size(Some(1));
+    let mut session = yggdryl::ArrowWriteSession::append(&options).expect("a session");
+    session
+        .push(
+            &mut handle,
+            columns(vec![
+                ("y", strings(&["c", "d"])),
+                ("x", strings(&["abc", "3.5"])),
+            ]),
+        )
+        .expect("pushed");
+    session.finish(&mut handle).expect("finished");
+    assert_eq!(text(&handle), "x,y\n1,a\nabc,c\n3.5,d\n");
+}

@@ -719,6 +719,10 @@ let endpoint = Arc::clone(&service).route(&server, "/")?;
 let answer = Request::get(&format!("{endpoint}api/tickers?table=books"))?.send()?;
 assert_eq!(answer.status(), Status::OK);
 assert!(answer.text()?.contains("\"ticker\":\"ACME\""));
+// The zones `tz` reads - UTC, then every zone this build has rules for - to offer a caller.
+let zones = Request::get(&format!("{endpoint}api/timezones"))?.send()?.scalar()?;
+let zones = zones.sequence_rows().expect("a list");
+assert_eq!(zones[0].as_str(), Some("UTC"));
 let refused = Request::get(&format!("{endpoint}api/candles?table=books&ticker=NONE&from=2026-01-05T10:00:00Z&to=2026-01-05T11:00:00Z"))?.send()?;
 assert_eq!(refused.status(), Status::NOT_FOUND);
 let error = refused.scalar()?;

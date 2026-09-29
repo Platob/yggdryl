@@ -319,10 +319,13 @@ impl JsBookIterator {
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
         // The core stage takes a typed error, not a native one, so a
-        // JavaScript failure crosses it as one sentinel `Err` - peeked, never
-        // taken, so `failed` still holds the original for `next` to throw as
-        // itself once the stage surfaces the sentinel in its place. Yielded
-        // exactly once: `Chain` stops calling a side once it answers `None`.
+        // JavaScript failure - which the loader throws on into the pull -
+        // crosses it as one sentinel `Err`, and the stage ends there as it
+        // would on a refusal of its own. `failed` is peeked, never taken, so
+        // it still holds the failure for `next` to throw once the stage
+        // surfaces the sentinel in its place; the loader throws the
+        // JavaScript original instead. Yielded exactly once: `Chain` stops
+        // calling a side once it answers `None`.
         let source: BookSource = {
             let sentinel_failed = failed.clone();
             let mut yielded = false;
@@ -354,8 +357,9 @@ impl JsBookIterator {
             // A core refusal (a bad item) or the sentinel standing in for a
             // JavaScript failure both land here; `self.failed` still holds a
             // genuine failure - never taken by the source, only peeked - so
-            // it is thrown as itself rather than as the typed error it
-            // crossed the stage wrapped in.
+            // it is thrown rather than the typed error it crossed the stage
+            // wrapped in, and the loader throws the JavaScript original in
+            // its place.
             Some(Err(error)) => Err(self.failed.take().unwrap_or_else(|| napi_error(error))),
             None => match self.failed.take() {
                 Some(error) => Err(error),

@@ -250,3 +250,31 @@ test('BookIterator: a JavaScript failure is thrown as itself', () => {
   })
   assert.throws(() => new graph.BookIterator(5), /items must be an iterable/)
 })
+
+test('BookIterator: a JavaScript failure ends the walk where it happened', () => {
+  // An order resting until `CLOCK + 10` expires there once the source ends
+  // ...
+  const resting = new graph.OrderEvent(CLOCK, {
+    crosscode: 'O-1',
+    side: 'BUY',
+    price: '101',
+    quantity: 10,
+    ticker: 'IBM',
+    exprunix: CLOCK + 10n,
+  })
+  assert.deepEqual(
+    [...new graph.BookIterator([resting])].map((book) => book.currunix),
+    [CLOCK, CLOCK + 10n],
+  )
+  // ... but a source that failed did not end: as Python's walk and the
+  // core's, the failure crosses the walk as its own error, so nothing past
+  // it - the expiry included - is read as if the stream had.
+  function* items() {
+    yield resting
+    throw new RangeError('the source gave up')
+  }
+  const walk = new graph.BookIterator(items())
+  assert.equal(walk.next().value.currunix, CLOCK)
+  assert.throws(() => walk.next(), { name: 'RangeError', message: 'the source gave up' })
+  assert.deepEqual(walk.next(), { value: undefined, done: true })
+})

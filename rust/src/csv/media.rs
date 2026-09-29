@@ -17,10 +17,10 @@ use smol_str::SmolStr;
 use crate::arrow::{BatchReader, arrow_schema_from_field};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::text::transport::{
-    BoundReader, NonemptyDecodedReader, NonemptySendDecodedReader, encoded_terminator, ends_with,
-    fetched, owned_handle, update_suffix,
+    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, owned_handle,
+    update_suffix,
 };
-use crate::{Charset, Codec, Cursor, Error, Field, IOBase, IOMedia, Result};
+use crate::{Charset, Codec, Error, Field, IOBase, IOMedia, Result};
 
 use super::options::CsvOptions;
 use super::reader;
@@ -33,44 +33,14 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
     }
 }
 
-/// The decoded transport over `handle`, owned, for a reader that outlives
-/// the borrow: one stream, the codings peeled, the declared charset laid
-/// over it where it is not UTF-8 or US-ASCII.
-fn owned_transport(handle: &(impl IOBase + ?Sized)) -> Result<Box<dyn Read + Send + 'static>> {
-    let owned = owned_handle(handle)?;
-    // One ask of the handle answers both: the codings the transport peels
-    // and the charset it decodes under.
-    let media_type = owned.media_type();
-    let codings = media_type.encodings().to_vec();
-    let charset = Charset::from_media_type(media_type);
-    Ok(match owned.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
-        None => Box::new(NonemptySendDecodedReader::new(
-            Box::new(Cursor::new(owned)),
-            codings,
-            charset,
-        )),
-    })
-}
-
-/// The same transport borrowed, for a read that ends inside the call: a
-/// count, or the header and the sample a schema is read off.
-fn borrowed_transport(handle: &(impl IOBase + ?Sized)) -> Result<NonemptyDecodedReader<'_>> {
-    let media_type = handle.media_type();
-    let codings = media_type.encodings().to_vec();
-    let charset = Charset::from_media_type(media_type);
-    let raw: Box<dyn Read + '_> =
-        Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
-    Ok(NonemptyDecodedReader::new(raw, codings, charset))
-}
-
 /// The field the document `handle` holds states for itself - its header
 /// and the datatypes its sample infers - or `None` where it holds no record
 /// at all.
 ///
-/// This is what a write asks before it completes its rows onto what is
-/// stored, and what the row count and the column count are answered from
-/// without decoding a row past the sample.
+/// This is a reading, and what the column count and a folder's schema are
+/// answered from without decoding a row past the sample; a write completes
+/// its rows onto [`write_target`] instead, since a CSV stores text and a
+/// sample's datatypes are no contract the rows written may be cast onto.
 ///
 /// # Errors
 ///
@@ -80,7 +50,7 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(
     options: &CsvOptions,
 ) -> Result<Option<Field>> {
     let url = handle.url().cloned();
-    let bytes = borrowed_transport(handle)?;
+    let bytes = borrowed_decoded(handle)?;
     Ok(reader::open(bytes, options, None, url)?.map(|opened| opened.field))
 }
 
@@ -101,14 +71,99 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &CsvOptions) -> Resul
     stated_field(handle, options)?.ok_or_else(|| invalid("an empty document declares no schema"))
 }
 
+/// The field a write completes its rows `incoming` onto the document
+/// `handle` holds, or `None` where it holds no record and the rows are the
+/// shape they arrive in.
+///
+/// A CSV stores text, so the datatypes its sample infers are a reading and
+/// never a contract to cast the rows written onto: the stored shape is the
+/// header. The target is the header's names in the header's order, each
+/// typed as the incoming column of that name - so the rows render exactly as
+/// an overwrite renders them, and a merge reads the stored cells under the
+/// same columns - and a header column the rows do not carry is nullable text,
+/// written empty. Without a header the document names nothing and its
+/// columns are positions, so the rows are the target as they arrive.
+///
+/// # Errors
+///
+/// Returns a read or decoding failure, a header naming a column twice, an
+/// incoming column the header does not name - naming it and the header's
+/// columns - and, without a header, a stored record of another width than
+/// the columns written, naming both counts.
+pub(crate) fn write_target<H: IOBase + ?Sized>(
+    handle: &H,
+    options: &CsvOptions,
+    incoming: &Field,
+) -> Result<Option<Field>> {
+    // Per the laziness contract, a resource that holds nothing is not read.
+    if handle.is_empty() {
+        return Ok(None);
+    }
+    let url = handle.url().cloned();
+    let Some(names) = reader::stated_columns(borrowed_decoded(handle)?, options, url.as_ref())?
+    else {
+        return Ok(None);
+    };
+    let location = reader::location_of(url.as_ref());
+    if !options.header() {
+        if names.len() != incoming.field_len() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got(
+                    format_args!(
+                        "records of {} {}, one per column written",
+                        incoming.field_len(),
+                        if incoming.field_len() == 1 {
+                            "cell"
+                        } else {
+                            "cells"
+                        }
+                    ),
+                    format_args!("{} cells in the first record of {location}", names.len()),
+                ),
+            });
+        }
+        return Ok(Some(incoming.clone()));
+    }
+    if let Some(unnamed) = incoming
+        .fields()
+        .iter()
+        .find(|child| !names.iter().any(|name| name == child.name()))
+    {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$.header"),
+            reason: crate::text::expected_got(
+                format_args!("a column the header of {location} names, one of {names:?}"),
+                format_args!("{:?}", unnamed.name()),
+            ),
+        });
+    }
+    let columns = names.iter().map(|name| {
+        incoming
+            .fields()
+            .iter()
+            .find(|child| child.name() == name.as_str())
+            .cloned()
+            .unwrap_or_else(|| crate::DataType::utf8().nullable_field(name.clone()))
+    });
+    Ok(Some(
+        crate::DataType::from(crate::StructType::from_fields(columns)?)
+            .required_field(incoming.name()),
+    ))
+}
+
 /// Count the records of the document `handle` holds, the header left out,
 /// reading no cell.
 ///
 /// # Errors
 ///
-/// Returns a read or decoding failure.
+/// Returns a read or decoding failure, and a stream ending inside a quoted
+/// cell.
 pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &CsvOptions) -> Result<u64> {
-    reader::count(borrowed_transport(handle)?, options)
+    // The location is asked for only to name a refusal, so a count that
+    // succeeds asks the handle nothing but its bytes.
+    reader::count(borrowed_decoded(handle)?, options)
+        .map_err(|error| reader::located(error, &reader::location_of(handle.url())))
 }
 
 /// Read the records of the document `handle` holds as streamed batches.
@@ -130,7 +185,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ) -> crate::arrow::Result<BatchReader> {
     let declared = field.cloned().or_else(|| options.field());
     let url = handle.url().cloned();
-    let bytes = owned_transport(handle)?;
+    let bytes = owned_decoded(owned_handle(handle)?);
     match reader::open(bytes, options, declared.as_ref(), url)? {
         Some(opened) => {
             // The record surface applies a total row limit after projection
@@ -245,7 +300,9 @@ pub(crate) fn append_arrow_reader<H: IOBase + ?Sized>(
 ///
 /// Rows flow through the ordinary [`IOMedia`] methods, and the wrapper
 /// retains the [`CsvOptions`] that [`IOMedia::record_options`] answers with.
-/// [`IOBase::open`] caches the document's schema until [`IOBase::close`].
+/// [`IOBase::open`] caches the document's schema until [`IOBase::close`],
+/// answered only for options that read the document as the ones it was read
+/// under did: another separator or sample reads it afresh.
 ///
 /// ```
 /// use yggdryl::csv::Csv;
@@ -279,7 +336,9 @@ pub struct Csv<H: IOBase> {
     handle: H,
     options: CsvOptions,
     opened: bool,
-    cached_schema: OnceLock<Field>,
+    /// The schema read while open, beside the options it was read under;
+    /// boxed, since it is filled once per open and the options are large.
+    cached_schema: OnceLock<Box<(CsvOptions, Field)>>,
 }
 
 impl<H: IOBase> Csv<H> {
@@ -352,6 +411,25 @@ impl<H: IOBase> Csv<H> {
     fn invalidate(&mut self) {
         self.cached_schema = OnceLock::new();
     }
+
+    /// The schema cached while open, where it was read under options that
+    /// read the document as `options` do.
+    fn cached(&self, options: &CsvOptions) -> Option<&Field> {
+        if !self.opened {
+            return None;
+        }
+        let (read, field) = self.cached_schema.get()?.as_ref();
+        read.reads_as(options).then_some(field)
+    }
+
+    /// Keep `field`, read under `options`, while open.
+    fn cache(&self, options: &CsvOptions, field: &Field) {
+        if self.opened {
+            let _ = self
+                .cached_schema
+                .set(Box::new((options.clone(), field.clone())));
+        }
+    }
 }
 
 impl<H: IOBase> IOMedia for Csv<H> {
@@ -371,19 +449,15 @@ impl<H: IOBase> IOMedia for Csv<H> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if self.opened {
-            if let Some(cached) = self.cached_schema.get() {
-                return Ok(cached.field_len());
-            }
+        if let Some(cached) = self.cached(&self.options) {
+            return Ok(cached.field_len());
         }
         // One read of the header and the sample answers both an empty
         // document (no columns) and a held one; while open, what it read is
         // what the field and the width are answered from until close.
         match stated_field(&self.handle, &self.options)? {
             Some(field) => {
-                if self.opened {
-                    let _ = self.cached_schema.set(field.clone());
-                }
+                self.cache(&self.options, &field);
                 Ok(field.field_len())
             }
             None => Ok(0),
@@ -399,13 +473,11 @@ impl<H: IOBase> IOMedia for Csv<H> {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        let stored = match self.cached_schema.get().filter(|_| self.opened) {
+        let stored = match self.cached(options) {
             Some(cached) => cached.clone().with_name(options.name()),
             None => {
                 let field = read_field(&self.handle, options)?;
-                if self.opened {
-                    let _ = self.cached_schema.set(field.clone());
-                }
+                self.cache(options, &field);
                 field
             }
         };

@@ -241,7 +241,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ```bash
 cargo test -p yggdryl-cli --test fix
-cargo test -p yggdryl-cli --test market      # `yggdryl market serve`: the refusals; `-- --ignored` hosts the live display
+cargo test -p yggdryl-cli --test market      # `yggdryl market serve`: the refusals and every example its help states; `-- --ignored` hosts the live display under `--path /book` and at the root
 cargo test -p yggdryl-cli --features iceberg --test market -- --ignored   # a ULBridge capture folded into an Iceberg table, then served
 cargo clippy -p yggdryl-cli --all-targets -- -D warnings
 cargo run -p yggdryl-cli -- fix groups create --help

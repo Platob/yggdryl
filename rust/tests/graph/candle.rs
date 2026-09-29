@@ -527,6 +527,98 @@ fn a_fall_back_folds_the_repeated_hour_into_one_rising_bucket() {
 }
 
 #[test]
+fn a_sub_millisecond_interval_finds_its_bucket_in_a_fall_back_without_stepping_through_it() {
+    // Europe/Zurich, 2026-10-25: `01:10Z` reads `02:10 CET`, the second
+    // pass of the hour the fall-back repeats. Its bucket is the one holding
+    // the latest reading the first pass made, the interval before `03:00`,
+    // which it keeps until the wall clock first reads `03:00` at `02:00Z` -
+    // found by searching the edges, never by stepping an interval at a time
+    // through the fifty minutes of repeated readings, which at a nanosecond
+    // is 3e12 steps.
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let answers = [1, 1_000, 1_000_000, SECOND].map(|interval| {
+            let options = CandleOptions::new(interval)
+                .unwrap()
+                .with_timezone(zurich());
+            let candles = empty_candles(&[FALL_DAY + 70 * MINUTE], options);
+            (interval, candles[0].start, candles[0].end)
+        });
+        sent.send(answers).unwrap();
+    });
+    let answers = received
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the bucket of a repeated reading is found in a bounded search");
+    for (interval, start, end) in answers {
+        assert_eq!(
+            (start, end),
+            (FALL_DAY + HOUR - interval, FALL_DAY + 2 * HOUR),
+            "{interval}ns"
+        );
+    }
+}
+
+#[test]
+fn a_refused_book_follows_the_candles_of_the_bucket_it_completed() {
+    // The third book's bucket ends past `i64` nanoseconds: the bucket the
+    // stream moved past is emitted, then the refusal, then nothing.
+    let stream = vec![
+        Ok(BookEvent::new(10 * SECOND, "ACME")),
+        Ok(BookEvent::new(20 * SECOND, "ACME")),
+        Ok(BookEvent::new(i64::MAX, "ACME")),
+    ];
+    let mut walk = CandleIterator::new(stream.into_iter(), CandleOptions::new(MINUTE).unwrap());
+    let first = walk.next().unwrap().unwrap();
+    assert_eq!((first.start, first.end, first.books), (0, MINUTE, 2));
+    let error = walk.next().unwrap().unwrap_err().to_string();
+    assert!(
+        error.starts_with("invalid record value at $.book.currunix:"),
+        "{error}"
+    );
+    assert!(walk.next().is_none(), "the walk fuses");
+
+    // The second book's executions sum past decimal: the same order.
+    let huge: Decimal = "60000000000000000000".parse().unwrap();
+    let executed = |code: &str| {
+        let mut order = yggdryl::graph::OrderEvent::at(70 * SECOND);
+        order.set_crosscode(code.to_owned());
+        order.set_ticker(Some(SmolStr::new("ACME")));
+        order.set_side(yggdryl::Side::Buy);
+        order.set_price(Some(Decimal::from_int(100)));
+        order.set_quantity(Some(huge));
+        order.set_state(yggdryl::State::read("Filled").unwrap());
+        let mut execution = MarketData::from(ExecutionEvent::from(&order));
+        execution.finalize();
+        execution
+    };
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        executed("E1"),
+        executed("E2"),
+    ];
+    let folded = || {
+        CandleIterator::new(
+            books(operations.clone()).into_iter().map(Ok),
+            CandleOptions::new(MINUTE).unwrap(),
+        )
+    };
+    let mut walk = folded();
+    let first = walk.next().unwrap().unwrap();
+    assert_eq!((first.start, first.books), (0, 1));
+    let error = walk.next().unwrap().unwrap_err().to_string();
+    assert!(
+        error.starts_with("invalid record value at $.candle.volume:"),
+        "{error}"
+    );
+    assert!(walk.next().is_none(), "the walk fuses");
+    // A reader over the walk lays the completed bucket out before it fails.
+    let mut batches = Candle::arrow_reader(folded(), None).unwrap();
+    assert_eq!(batches.next().unwrap().unwrap().num_rows(), 1);
+    assert!(batches.next().unwrap().is_err());
+    assert!(batches.next().is_none());
+}
+
+#[test]
 fn the_field_declares_every_cell() {
     let field = Candle::field().unwrap();
     assert_eq!(field.name(), "candle");

@@ -11,6 +11,9 @@ use yggdryl::{Decimal, Side, State, Timezone};
 /// Nanoseconds in one second.
 const SECOND: i64 = 1_000_000_000;
 
+/// `2026-10-25T00:00:00Z`, the day Europe/Zurich falls back at `01:00Z`.
+const FALL_DAY: i64 = 1_792_886_400 * SECOND;
+
 /// One resting quote of `side` at `price`, at `unix`.
 fn entry(unix: i64, side: &str, price: i64) -> MarketData {
     let name = if side == "Buy" { "B" } else { "A" };
@@ -104,6 +107,32 @@ pub fn benchmarks(criterion: &mut Criterion) {
             || books.clone(),
             |books| {
                 CandleIterator::new(books.into_iter().map(Ok), seconds.clone())
+                    .map(|candle| candle.expect("a sorted stream"))
+                    .collect::<Vec<_>>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // Millisecond buckets through both passes of the hour a fall-back
+    // repeats: the second pass's first book searches its bucket out of an
+    // hour of repeated readings, which costs a logarithm of them.
+    let fall_back: Vec<BookEvent> = (0..count)
+        .map(|index| {
+            let step = 2 * 3_600 * SECOND / i64::try_from(count).expect("a bench corpus");
+            BookEvent::new(
+                FALL_DAY + i64::try_from(index).expect("a bench corpus") * step,
+                "BENCH",
+            )
+        })
+        .collect();
+    let milliseconds = CandleOptions::from_spelling("1ms")
+        .expect("a shipped spelling")
+        .with_timezone(Timezone::from_str("Europe/Zurich").expect("a shipped zone"));
+    group.bench_function(format!("fold_fall_back_1ms_{count}"), |bencher| {
+        bencher.iter_batched(
+            || fall_back.clone(),
+            |books| {
+                CandleIterator::new(books.into_iter().map(Ok), milliseconds.clone())
                     .map(|candle| candle.expect("a sorted stream"))
                     .collect::<Vec<_>>()
             },

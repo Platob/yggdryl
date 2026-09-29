@@ -136,6 +136,27 @@ test('every CSV setting is set, copied and read back', () => {
   assert.equal(plain.withQuote('"').equals(plain), true)
 })
 
+test('a CSV role byte is cleared by null alone: undefined is an argument not given', () => {
+  const options = RecordOptions.from('trades.csv').withEscape('\\').withComment('#')
+  const unset = {}
+  for (const name of ['Quote', 'Escape', 'Comment']) {
+    const property = name.toLowerCase()
+    for (const call of [() => options[`with${name}`](), () => options[`with${name}`](unset[property])]) {
+      assert.throws(call, /none of these types `String`, `null`/, name)
+    }
+    assert.throws(() => {
+      options[property] = undefined
+    }, /none of these types `String`, `null`/)
+  }
+  // Nothing was cleared, and `null` still is the one spelling that clears.
+  assert.equal(options.quote, '"')
+  assert.equal(options.escape, '\\')
+  assert.equal(options.comment, '#')
+  assert.equal(options.withQuote(null).quote, null)
+  assert.equal(options.withEscape(null).escape, null)
+  assert.equal(options.withComment(null).comment, null)
+})
+
 test('a CSV role byte is one ASCII character no other role holds, refused by name', () => {
   const options = RecordOptions.from('trades.csv')
 

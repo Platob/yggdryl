@@ -297,6 +297,16 @@ pub(crate) fn prepare_arrow_write_onto(
 
     let batches = options.apply_arrow_reader(batches, existing)?;
     let batches = options.limit_arrow_reader(batches)?;
+    let (delegated, declared) = delegated_options(options);
+    Ok((batches, delegated, declared))
+}
+
+/// The options a shaped write publishes with, and the declared field taken
+/// from them: every incoming-only transform cleared, so the publication hook
+/// neither shapes the rows again nor splits them into cadences of its own.
+fn delegated_options(options: &RecordOptions) -> (RecordOptions, Option<crate::Field>) {
+    use crate::media::IORecordOptions;
+
     let mut delegated = options.clone();
     let declared = delegated.take_field();
     delegated.set_filter(crate::Filter::always_true());
@@ -305,16 +315,18 @@ pub(crate) fn prepare_arrow_write_onto(
     delegated.set_row_offset(None);
     delegated.set_max_byte_size(None);
     delegated.set_commit_row_size(None);
-    Ok((batches, delegated, declared))
+    (delegated, declared)
 }
 
 /// Shape one leaf stream onto a target resolved exactly once for the write.
 ///
 /// A stored field completes the cast before global limits are applied. A
 /// missing leaf takes the shaped reader's field as its target; text remains
-/// schema-less and uses its native append implementation. The returned
-/// options have every incoming-only transform removed and are safe for the
-/// prepared publication hook.
+/// schema-less and uses its native append implementation. A CSV's target is
+/// its header typed by the shaped rows ([`crate::csv::write_target`]), so it
+/// is resolved after the declared field and the expressions have shaped
+/// them. The returned options have every incoming-only transform removed and
+/// are safe for the prepared publication hook.
 fn prepare_leaf_arrow_write(
     handle: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -326,6 +338,22 @@ fn prepare_leaf_arrow_write(
 )> {
     use crate::media::IORecordOptions;
 
+    if let RecordOptions::Csv(csv) = options {
+        let shaped = options.apply_arrow_reader(batches, None)?;
+        let incoming =
+            crate::arrow::field_from_arrow_schema(options.name(), shaped.schema().as_ref())?;
+        let target = crate::csv::write_target(handle, csv, &incoming)?.unwrap_or(incoming);
+        let completed = target.apply_arrow_reader(
+            shaped,
+            true,
+            true,
+            true,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?;
+        let batches = options.limit_arrow_reader(completed)?;
+        let (delegated, _) = delegated_options(options);
+        return Ok((batches, delegated, Some(target)));
+    }
     let stored = if matches!(options, RecordOptions::Text(_)) {
         None
     } else {
@@ -440,14 +468,7 @@ impl ArrowWriteSession {
                     ),
                 })?;
         options.require_write_limits()?;
-        let mut delegated = options.clone();
-        let declared = delegated.take_field();
-        delegated.set_filter(crate::Filter::always_true());
-        delegated.set_select(crate::Selector::all());
-        delegated.set_max_row_size(None);
-        delegated.set_row_offset(None);
-        delegated.set_max_byte_size(None);
-        delegated.set_commit_row_size(None);
+        let (delegated, declared) = delegated_options(options);
         Ok(Self {
             mode,
             options: options.clone(),
@@ -656,7 +677,13 @@ impl ArrowWriteSession {
         Ok(())
     }
 
-    fn ensure_target(&mut self, handle: &(impl IOBase + ?Sized)) -> Result<()> {
+    fn ensure_target(
+        &mut self,
+        handle: &(impl IOBase + ?Sized),
+        input_schema: &arrow_schema::SchemaRef,
+    ) -> Result<()> {
+        use crate::media::IORecordOptions as _;
+
         if self.target.is_some() {
             return Ok(());
         }
@@ -680,6 +707,19 @@ impl ArrowWriteSession {
             });
         } else if matches!(self.delegated, RecordOptions::Text(_)) {
             self.target = Some(ArrowWriteTarget::TextLeaf);
+        } else if let RecordOptions::Csv(csv) = &self.delegated {
+            // A CSV's stored shape is its header, typed by the rows as the
+            // declared field and the expressions shape them.
+            let empty = arrow_array::RecordBatch::new_empty(std::sync::Arc::clone(input_schema));
+            let shaped = self.options.apply_arrow_batch(empty, None)?;
+            let incoming = crate::arrow::field_from_arrow_schema(
+                self.delegated.name(),
+                shaped.schema().as_ref(),
+            )?;
+            self.target = Some(match crate::csv::write_target(handle, csv, &incoming)? {
+                Some(stored) => ArrowWriteTarget::Leaf { stored },
+                None => ArrowWriteTarget::EmptyLeaf,
+            });
         } else {
             self.target = Some(match stored_field(handle, &self.delegated)? {
                 Some(stored) => ArrowWriteTarget::Leaf { stored },
@@ -698,7 +738,7 @@ impl ArrowWriteSession {
         handle: &(impl IOBase + ?Sized),
         input_schema: arrow_schema::SchemaRef,
     ) -> Result<()> {
-        self.ensure_target(handle)?;
+        self.ensure_target(handle, &input_schema)?;
         if self.shaped_schema.is_some() {
             return Ok(());
         }
@@ -1051,7 +1091,9 @@ pub(crate) fn stored_field(
     }
     // A CSV states its shape by its header and its sample, read under the
     // dialect the options state - a probe under the default separator would
-    // read a `;`-separated header as one column.
+    // read a `;`-separated header as one column. That is a reading, which a
+    // folder's schema is derived from; a write completes onto the header
+    // alone (`crate::csv::write_target`).
     if let RecordOptions::Csv(csv) = options {
         return crate::csv::stated_field(handle, csv);
     }
@@ -1097,7 +1139,15 @@ fn merge_leaf_onto(
     // column for column before a single key is compared.
     let mut rewrite = options.clone();
     rewrite.set_field(target.clone());
-    let stored = leaf_reader(handle, &rewrite)?;
+    let stored = if matches!(options, RecordOptions::Csv(_)) {
+        // A CSV's stored cells are text the merge rewrites whole: one its
+        // column cannot read is refused, never nulled and written back lost.
+        let mut strict = rewrite.clone();
+        strict.set_safe(false);
+        leaf_reader(handle, &strict)?
+    } else {
+        leaf_reader(handle, &rewrite)?
+    };
     let merged = crate::media::merge::merged(stored, incoming, target, merge_by, options.safe())?;
     // The merged contents are the whole new value. The cloned options already
     // had its declared field popped by `prepare_arrow_write`; clear the key as

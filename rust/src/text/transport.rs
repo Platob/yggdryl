@@ -3,10 +3,11 @@
 //!
 //! One stream over a handle, the codings its media type names peeled
 //! innermost-last, then the charset it declares laid over the bytes where
-//! that charset is not UTF-8 or US-ASCII. The plain-text medium and the CSV
-//! medium both read here and duplicate none of it, so the call counts the
-//! two pin are the same counts: one `pstream_bytes` or one owned stream per
-//! read, and one `media_type` ask answering both the codings and the charset.
+//! that charset is not UTF-8 or US-ASCII. [`owned_decoded`] and
+//! [`borrowed_decoded`] compose it once for every text-shaped medium, so the
+//! call counts the media pin are the same counts: one `pstream_bytes` or one
+//! owned stream per read, and one `media_type` ask answering both the
+//! codings and the charset.
 
 use std::borrow::Cow;
 use std::io::{BufRead, BufReader, Chain, Read};
@@ -14,7 +15,45 @@ use std::io::{BufRead, BufReader, Chain, Read};
 use smol_str::SmolStr;
 
 use crate::holder::{Buffer, Holder};
-use crate::{Charset, Codec, Error, IOBase, MediaType, Result, charset};
+use crate::{Charset, Codec, Cursor, Error, IOBase, MediaType, Result, charset};
+
+/// The decoded transport over a handle the reader owns, for a read that
+/// outlives the call: a located handle streams from its location, any
+/// other through a cursor over itself.
+///
+/// One ask of the handle answers both the codings the transport peels and
+/// the charset it decodes under, the one `media_type` read the call-count
+/// pins hold every text-shaped read to.
+pub(crate) fn owned_decoded<H: IOBase + 'static>(handle: H) -> Box<dyn Read + Send + 'static> {
+    let media_type = handle.media_type();
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
+    match handle.bound_location().cloned() {
+        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
+        None => Box::new(NonemptySendDecodedReader::new(
+            Box::new(Cursor::new(handle)),
+            codings,
+            charset,
+        )),
+    }
+}
+
+/// The same transport borrowed, for a read that ends inside the call - a
+/// count, or a header and a sample: one `pstream_bytes` from the start.
+///
+/// # Errors
+///
+/// Returns the handle's refusal to stream.
+pub(crate) fn borrowed_decoded(
+    handle: &(impl IOBase + ?Sized),
+) -> Result<NonemptyDecodedReader<'_>> {
+    let media_type = handle.media_type();
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
+    let raw: Box<dyn Read + '_> =
+        Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
+    Ok(NonemptyDecodedReader::new(raw, codings, charset))
+}
 
 /// Return an owned view for a reader that must outlive this borrow.
 ///

@@ -384,6 +384,20 @@ impl CsvOptions {
         self
     }
 
+    /// Whether `other` reads a document exactly as these options do: the
+    /// same dialect cutting it and the same sample typing it, so a schema
+    /// read under one answers for the other whatever else they say.
+    pub(crate) fn reads_as(&self, other: &Self) -> bool {
+        self.separator == other.separator
+            && self.quote == other.quote
+            && self.escape == other.escape
+            && self.comment == other.comment
+            && self.header == other.header
+            && self.null_values == other.null_values
+            && self.trim == other.trim
+            && self.infer_row_size == other.infer_row_size
+    }
+
     /// Refuse a byte that cannot play `role`: one that is not ASCII, one
     /// that is a line break, and one another role already holds.
     fn require_role(

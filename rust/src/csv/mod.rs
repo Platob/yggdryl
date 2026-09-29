@@ -6,8 +6,11 @@
 //! one batch and a count holds one record. A declared field is the contract
 //! every cell is read under; without one the header names the columns and a
 //! bounded sample of the records types them - boolean, integer, float, date,
-//! instant, else text, every inferred column nullable. Writing renders every
-//! leaf as the text it reads back from and quotes only what has to be.
+//! instant, else text, every inferred column nullable - and a later cell its
+//! column cannot read is refused, naming the sample, never nulled. Every
+//! cell reads through its column's value door. Writing renders every leaf as
+//! the text it reads back from and quotes only what has to be; a write onto
+//! a stored document completes onto its header, never onto its sample.
 //! Compression and charsets are the handle's: `trades.csv.gz` is gzip by
 //! name and `;charset=windows-1252` a declared charset, both read and
 //! written through the same doors every text medium uses.
@@ -57,5 +60,5 @@ mod reader;
 mod writer;
 
 pub use media::{Csv, overwrite_arrow_reader, read_batch_reader, read_field};
-pub(crate) use media::{append_arrow_reader, row_size, stated_field};
+pub(crate) use media::{append_arrow_reader, row_size, stated_field, write_target};
 pub use options::{CsvOptions, DEFAULT_CSV_BATCH_BYTE_SIZE, DEFAULT_CSV_INFER_ROW_SIZE};

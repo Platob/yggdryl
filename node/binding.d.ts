@@ -4490,8 +4490,9 @@ export interface Graph {
   /** Candles from a sorted stream of books, pulling them lazily. */
   readonly CandleIterator: CandleIteratorConstructor
   /**
-   * Every candle of a sorted stream of books, as an array; a zone beside an
-   * interval spelling or a count of nanoseconds is the `CandleOptions` of both.
+   * Every candle of a sorted stream of books, as an array; a zone beside a
+   * `CandleOptions`, an interval spelling or a count of nanoseconds is the
+   * `CandleOptions` of both.
    */
   candles(books: Iterable<BookEvent | MarketData>, options: CandleOptionsInput, timezone?: TimezoneInput): Candle[]
   /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */

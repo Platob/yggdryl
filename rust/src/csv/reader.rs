@@ -41,6 +41,9 @@ struct Dialect {
     escape: Option<u8>,
     comment: Option<u8>,
     trim: bool,
+    /// Whether the first record is the header rather than row `$[0]`,
+    /// which is how a refusal the cut raises names its record.
+    header: bool,
 }
 
 impl Dialect {
@@ -51,6 +54,7 @@ impl Dialect {
             escape: options.escape(),
             comment: options.comment(),
             trim: options.trim(),
+            header: options.header(),
         }
     }
 }
@@ -69,6 +73,8 @@ enum Ending {
 /// records - no byte between two terminators - and comment records are
 /// skipped, a quoted cell may hold the separator and line breaks, a quote in
 /// an unquoted cell is content, and the last record may lack a terminator.
+/// A stream ending inside a quoted cell is refused rather than read as one
+/// cell holding every record after the quote.
 pub(crate) struct Tokenizer<R> {
     source: R,
     window: Vec<u8>,
@@ -81,6 +87,9 @@ pub(crate) struct Tokenizer<R> {
     line: u64,
     /// The physical line the held record began on.
     record_line: u64,
+    /// How many records were cut before the one being cut, the header
+    /// included.
+    cut: u64,
     opened: bool,
     dialect: Dialect,
 }
@@ -98,6 +107,7 @@ impl<R: Read> Tokenizer<R> {
             cells: Vec::new(),
             line: 1,
             record_line: 1,
+            cut: 0,
             opened: false,
             dialect: Dialect::of(options),
         }
@@ -184,7 +194,9 @@ impl<R: Read> Tokenizer<R> {
     ///
     /// # Errors
     ///
-    /// Returns the transport's read failure.
+    /// Returns the transport's read failure, and a stream ending inside a
+    /// quoted cell, whose reason ends at the row the quote opened in so the
+    /// caller names the document after it ([`located`]).
     pub(crate) fn next_record(&mut self) -> Result<bool> {
         loop {
             self.record.clear();
@@ -211,7 +223,10 @@ impl<R: Read> Tokenizer<R> {
             loop {
                 match self.next_cell()? {
                     Ending::Separator => {}
-                    Ending::Terminator | Ending::Eof => return Ok(true),
+                    Ending::Terminator | Ending::Eof => {
+                        self.cut += 1;
+                        return Ok(true);
+                    }
                 }
             }
         }
@@ -237,8 +252,9 @@ impl<R: Read> Tokenizer<R> {
         if let Some(quote) = self.dialect.quote {
             if self.peek()? == Some(quote) {
                 quoted = true;
+                let opened = self.line;
                 self.start += 1;
-                self.quoted_content(quote)?;
+                self.quoted_content(quote, opened)?;
                 // The blanks after a closing quote are the cell's framing,
                 // as the ones before the opening one were.
                 if self.dialect.trim {
@@ -271,11 +287,12 @@ impl<R: Read> Tokenizer<R> {
     ///
     /// A doubled quote spells one quote where no escape is set; with one,
     /// the byte after the escape is content whatever it is. A stream ending
-    /// inside the quotes ends the cell with what it held.
-    fn quoted_content(&mut self, quote: u8) -> Result<()> {
+    /// inside the quotes is refused: one stray quote would otherwise read
+    /// every record after it, however many, as one cell.
+    fn quoted_content(&mut self, quote: u8, opened: u64) -> Result<()> {
         loop {
             if self.fill(1)? == 0 {
-                return Ok(());
+                return Err(self.unterminated(opened));
             }
             let window = &self.window[self.start..self.end];
             let found = match self.dialect.escape {
@@ -295,16 +312,13 @@ impl<R: Read> Tokenizer<R> {
             self.start += at + 1;
             if Some(byte) == self.dialect.escape {
                 // The escaped byte is content; an escape ending the stream
-                // is content too, there being nothing left for it to spell.
-                match self.peek()? {
-                    Some(next) => {
-                        if next == b'\n' {
-                            self.line += 1;
-                        }
-                        self.record.push(next);
-                        self.start += 1;
+                // leaves the quote open, which the next pass refuses.
+                if let Some(next) = self.peek()? {
+                    if next == b'\n' {
+                        self.line += 1;
                     }
-                    None => self.record.push(byte),
+                    self.record.push(next);
+                    self.start += 1;
                 }
                 continue;
             }
@@ -314,6 +328,22 @@ impl<R: Read> Tokenizer<R> {
                 continue;
             }
             return Ok(());
+        }
+    }
+
+    /// The refusal for a stream ending inside the quoted cell opened on line
+    /// `opened`, at the record being cut: the header's, or row `$[n]`.
+    fn unterminated(&self, opened: u64) -> Error {
+        let path = match self.cut.checked_sub(u64::from(self.dialect.header)) {
+            Some(index) => format_smolstr!("$[{index}]"),
+            None => SmolStr::new_static("$.header"),
+        };
+        Error::InvalidRecord {
+            path,
+            reason: format_smolstr!(
+                "expected a closing quote, got the end of the stream inside the cell opened in \
+                 row {opened}"
+            ),
         }
     }
 
@@ -412,20 +442,18 @@ impl OwnedRecord {
 /// How the text of one column's cells becomes a value: resolved once from
 /// the column's datatype, so the per-cell path runs the reading and never
 /// chooses it.
+///
+/// Every reading is the field's own value door - `Field::scalar` over the
+/// text - so a cell reads exactly as the same text does anywhere else in
+/// the crate: signs, blanks, exponents, not-a-number and the infinities
+/// included.
 enum CellReader {
-    /// Plain UTF-8 text, the cell as it stands.
+    /// Plain UTF-8 text, the cell as it stands: what the door answers for
+    /// text, without the value it would build to answer it.
     Text,
-    /// `true` or `false` in any ASCII case.
-    Boolean,
-    /// A signed 64-bit integer.
-    Int64,
-    /// A finite binary64 float.
-    Float64,
-    /// `YYYY-MM-DD`.
-    Date32,
-    /// An ISO 8601 instant read as the column's zone reads one: an offset
-    /// or `Z` is the instant it names, a naive spelling a wall clock in the
-    /// zone.
+    /// An instant under a zone: the door where it reads the text, and
+    /// where it has no reading - a spelling naming no zone - the wall clock
+    /// in the column's zone, the rule a text capture reads an instant by.
     Zoned(DataType),
     /// A nested value spelled as compact JSON.
     Json,
@@ -448,10 +476,6 @@ impl CellReader {
         }
         match field.dtype() {
             DataType::Utf8String => Self::Text,
-            DataType::Boolean => Self::Boolean,
-            DataType::Int64 => Self::Int64,
-            DataType::Float64 => Self::Float64,
-            DataType::Date32 => Self::Date32,
             dtype @ DataType::DateTime64 { timezone, .. } if !timezone.is_naive() => {
                 Self::Zoned(dtype.clone())
             }
@@ -478,19 +502,24 @@ pub(crate) struct Columns {
     width: usize,
     null_values: Vec<SmolStr>,
     safe: bool,
-    url: Option<Url>,
+    /// The records the columns were typed from where no field was declared:
+    /// an inferred datatype is a reading of that sample, never a contract a
+    /// cell past it may be nulled under, so such a cell is refused naming
+    /// the sample.
+    sample: Option<usize>,
+    location: SmolStr,
+}
+
+/// Whether a cell holding `bytes` spells an absent value: unquoted, and
+/// one of the null spellings.
+fn is_null(null_values: &[SmolStr], bytes: &[u8], quoted: bool) -> bool {
+    !quoted
+        && null_values
+            .iter()
+            .any(|spelling| spelling.as_bytes() == bytes)
 }
 
 impl Columns {
-    /// Whether an unquoted cell holding `bytes` spells an absent value.
-    fn is_null(&self, bytes: &[u8], quoted: bool) -> bool {
-        !quoted
-            && self
-                .null_values
-                .iter()
-                .any(|spelling| spelling.as_bytes() == bytes)
-    }
-
     /// One row of the field, in column order, from one record.
     fn row(&self, record: Record<'_>, index: u64) -> Result<Scalar> {
         if record.len() != self.width {
@@ -501,7 +530,7 @@ impl Columns {
                     self.width,
                     record.len(),
                     record.line(),
-                    self.location()
+                    self.location
                 ),
             });
         }
@@ -511,7 +540,7 @@ impl Columns {
                 None => column
                     .field
                     .scalar(Scalar::Null)
-                    .map_err(|error| self.refused(index, record.line(), column, &error))?,
+                    .map_err(|error| self.refused(index, record.line(), column, &error, None))?,
                 Some(at) => {
                     let (bytes, quoted) = record.cell(at);
                     self.cell(column, bytes, quoted, index, record.line())?
@@ -531,11 +560,11 @@ impl Columns {
         index: u64,
         line: u64,
     ) -> Result<Scalar> {
-        if self.is_null(bytes, quoted) {
+        if is_null(&self.null_values, bytes, quoted) {
             return column
                 .field
                 .scalar(Scalar::Null)
-                .map_err(|error| self.refused(index, line, column, &error));
+                .map_err(|error| self.refused(index, line, column, &error, None));
         }
         // The transport decoded a declared charset already; a stray byte in
         // an undeclared one reads as the Windows-1252 character it is, the
@@ -543,15 +572,46 @@ impl Columns {
         let text = Charset::Utf8.transcribe(bytes);
         match read_cell(&column.reader, &column.field, &text) {
             Ok(value) => Ok(value),
+            Err(_) if self.sample.is_some() => Err(self.past_sample(index, line, column, &text)),
             Err(_) if self.safe && column.field.is_nullable() => Ok(Scalar::Null),
-            Err(error) => Err(self.refused(index, line, column, &error)),
+            Err(error) => Err(self.refused(index, line, column, &error, Some(&text))),
+        }
+    }
+
+    /// The refusal for a cell past the sample its inferred column cannot
+    /// read, naming what would have typed the column to hold it.
+    fn past_sample(&self, index: u64, line: u64, column: &Column, text: &str) -> Error {
+        Error::InvalidRecord {
+            path: format_smolstr!("$[{index}].{}", column.field.name()),
+            reason: format_smolstr!(
+                "{}; declare the column or raise infer_row_size to sample it",
+                expected_got(
+                    format_args!(
+                        "{}, the datatype the first {} records (infer_row_size) infer",
+                        column.field.dtype(),
+                        self.sample.unwrap_or_default()
+                    ),
+                    format_args!(
+                        "{:?} in row {line} of {}",
+                        crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT),
+                        self.location
+                    ),
+                )
+            ),
         }
     }
 
     /// The refusal a cell of `column` raised, located by the row it was
-    /// read in: the door's own reason, and the path below the column
-    /// where the door named one.
-    fn refused(&self, index: u64, line: u64, column: &Column, error: &Error) -> Error {
+    /// read in: the door's own reason, the path below the column where the
+    /// door named one, and the cell's text where there was one to read.
+    fn refused(
+        &self,
+        index: u64,
+        line: u64,
+        column: &Column,
+        error: &Error,
+        text: Option<&str>,
+    ) -> Error {
         let reason = match error {
             Error::InvalidRecord { path, reason } => {
                 let own = path
@@ -565,67 +625,40 @@ impl Columns {
             }
             other => format_smolstr!("{}", crate::text::elide_display(other)),
         };
+        let reason = match text {
+            Some(text) => format_smolstr!(
+                "{reason}, reading {:?} in row {line} of {}",
+                crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT),
+                self.location
+            ),
+            None => format_smolstr!("{reason} in row {line} of {}", self.location),
+        };
         Error::InvalidRecord {
             path: format_smolstr!("$[{index}].{}", column.field.name()),
-            reason: format_smolstr!("{reason} in row {line} of {}", self.location()),
+            reason,
         }
-    }
-
-    fn location(&self) -> SmolStr {
-        self.url.as_ref().map_or_else(
-            || SmolStr::new_static("<anonymous>"),
-            |url| format_smolstr!("{url}"),
-        )
     }
 }
 
 /// Read `text` the way `reader` says the column reads.
 fn read_cell(reader: &CellReader, field: &Field, text: &str) -> Result<Scalar> {
-    let invalid = |expected: &str| Error::InvalidRecord {
-        path: format_smolstr!("$.{}", field.name()),
-        reason: expected_got(
-            expected,
-            format_args!(
-                "{:?}",
-                crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
-            ),
-        ),
-    };
     match reader {
         CellReader::Text => Ok(Scalar::from(text)),
-        CellReader::Boolean => read_boolean(text).ok_or_else(|| invalid("true or false")),
-        CellReader::Int64 => text
-            .parse::<i64>()
-            .map(Scalar::from)
-            .map_err(|_| invalid("a 64-bit integer")),
-        CellReader::Float64 => text
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(Scalar::from)
-            .ok_or_else(|| invalid("a finite float")),
-        CellReader::Date32 => Scalar::from_temporal_text(&DataType::Date32, text),
-        CellReader::Zoned(dtype) => {
-            crate::text::arrow::parse_capture(text, dtype, None).map_err(|reason| {
-                Error::InvalidRecord {
-                    path: format_smolstr!("$.{}", field.name()),
-                    reason,
-                }
-            })
-        }
+        CellReader::Zoned(dtype) => crate::text::typed::with_field(Scalar::from(text), field)
+            .or_else(|refusal| {
+                crate::text::arrow::parse_capture(text, dtype, None).map_err(|_| refusal)
+            }),
         CellReader::Json => crate::from_json_scalar_with_field(text, field),
         CellReader::Value => crate::text::typed::with_field(Scalar::from(text), field),
     }
 }
 
-fn read_boolean(text: &str) -> Option<Scalar> {
-    if text.eq_ignore_ascii_case("true") {
-        return Some(Scalar::from(true));
-    }
-    if text.eq_ignore_ascii_case("false") {
-        return Some(Scalar::from(false));
-    }
-    None
+/// Whether the quoted empty cell `""` reads as an absent value under
+/// `field`: the empty text entering a column that is not text is null, so
+/// under such a column it is the spelling a null takes where it is the
+/// only cell of its record - which, spelled empty, would be a blank line.
+pub(crate) fn reads_empty_as_null(field: &Field) -> bool {
+    read_cell(&CellReader::of(field), field, "").is_ok_and(|value| value.is_null())
 }
 
 /// The datatype ladder a column climbs while its cells keep fitting: the
@@ -639,8 +672,8 @@ const LADDER: [DataType; 4] = [
 ];
 
 /// Which rungs of the ladder a column's sampled cells still fit, and
-/// whether any cell was there to fit one: a column of nothing but absent
-/// cells fits every rung and is text.
+/// whether any cell was read as a value by one: a column of nothing but
+/// absent cells fits every rung and is text.
 struct Candidates {
     fits: [bool; 5],
     seen: bool,
@@ -654,20 +687,26 @@ impl Candidates {
         }
     }
 
-    /// Narrow the rungs to the ones `text` fits.
+    /// Narrow the rungs to the ones `text` fits: the ones the value door
+    /// reads it under, so a column is typed by the reading its cells then
+    /// take. A text every rung reads as absent - the empty text entering a
+    /// column that is not text - fits them all and proves none.
     fn narrow(&mut self, text: &str, zoned: &DataType) {
-        self.seen = true;
+        let value = Scalar::from(text);
         for (rung, fits) in self.fits.iter_mut().enumerate() {
             if !*fits {
                 continue;
             }
-            *fits = match rung {
-                0 => read_boolean(text).is_some(),
-                1 => text.parse::<i64>().is_ok(),
-                2 => text.parse::<f64>().is_ok_and(f64::is_finite),
-                3 => Scalar::from_temporal_text(&DataType::Date32, text).is_ok(),
-                _ => crate::text::arrow::parse_capture(text, zoned, None).is_ok(),
+            let read = match LADDER.get(rung) {
+                Some(dtype) => dtype.scalar(value.clone()),
+                None => zoned.scalar(value.clone()).or_else(|refusal| {
+                    crate::text::arrow::parse_capture(text, zoned, None).map_err(|_| refusal)
+                }),
             };
+            match read {
+                Ok(read) => self.seen |= !read.is_null(),
+                Err(_) => *fits = false,
+            }
         }
     }
 
@@ -750,7 +789,7 @@ impl<R: Read> Iterator for Rows<R> {
                     self.done = true;
                     return None;
                 }
-                Err(error) => Err(error),
+                Err(error) => Err(located(error, &self.columns.location)),
             },
         };
         if row.is_err() {
@@ -785,20 +824,21 @@ pub(crate) struct Opened<R> {
 ///
 /// # Errors
 ///
-/// Returns the transport's read failure, a header naming a column twice, and
-/// a required declared column the header does not state.
+/// Returns the transport's read failure, a stream ending inside a quoted
+/// cell, a header naming a column twice, and a required declared column the
+/// header does not state.
 pub(crate) fn open<R: Read>(
     bytes: R,
     options: &CsvOptions,
     declared: Option<&Field>,
     url: Option<Url>,
 ) -> Result<Option<Opened<R>>> {
-    let location = url.as_ref().map_or_else(
-        || SmolStr::new_static("<anonymous>"),
-        |url| format_smolstr!("{url}"),
-    );
+    let location = location_of(url.as_ref());
     let mut tokenizer = Tokenizer::new(bytes, options);
-    if !tokenizer.next_record()? {
+    if !tokenizer
+        .next_record()
+        .map_err(|error| located(error, &location))?
+    {
         return Ok(None);
     }
     let mut sampled = VecDeque::new();
@@ -842,20 +882,13 @@ pub(crate) fn open<R: Read>(
         None => {
             let zoned = zoned_datatype()?;
             let mut candidates: Vec<Candidates> = (0..width).map(|_| Candidates::new()).collect();
-            let nulls = Columns {
-                columns: Vec::new(),
-                width,
-                null_values: null_values.clone(),
-                safe: options.safe(),
-                url: None,
-            };
             let mut narrow = |record: Record<'_>| {
                 if record.len() != width {
                     return;
                 }
                 for (index, candidate) in candidates.iter_mut().enumerate() {
                     let (bytes, quoted) = record.cell(index);
-                    if nulls.is_null(bytes, quoted) {
+                    if is_null(&null_values, bytes, quoted) {
                         continue;
                     }
                     candidate.narrow(&Charset::Utf8.transcribe(bytes), &zoned);
@@ -864,7 +897,11 @@ pub(crate) fn open<R: Read>(
             for held in &sampled {
                 narrow(held.as_record());
             }
-            while sampled.len() < options.infer_row_size() && tokenizer.next_record()? {
+            while sampled.len() < options.infer_row_size()
+                && tokenizer
+                    .next_record()
+                    .map_err(|error| located(error, &location))?
+            {
                 narrow(tokenizer.record());
                 sampled.push_back(tokenizer.record().into_owned());
             }
@@ -901,7 +938,8 @@ pub(crate) fn open<R: Read>(
                 width,
                 null_values,
                 safe: options.safe(),
-                url,
+                sample: declared.is_none().then_some(options.infer_row_size()),
+                location,
             },
             index: 0,
             done: false,
@@ -909,11 +947,38 @@ pub(crate) fn open<R: Read>(
     }))
 }
 
+/// The columns a document states before any row: the names its header
+/// gives, or - with no header - `column_<i>` for each cell of its first
+/// record. `None` is a document holding no record at all.
+///
+/// # Errors
+///
+/// Returns the transport's read failure, a first record ending inside a
+/// quoted cell, and a header naming a column twice.
+pub(crate) fn stated_columns<R: Read>(
+    bytes: R,
+    options: &CsvOptions,
+    url: Option<&Url>,
+) -> Result<Option<Vec<SmolStr>>> {
+    let location = location_of(url);
+    let mut tokenizer = Tokenizer::new(bytes, options);
+    if !tokenizer
+        .next_record()
+        .map_err(|error| located(error, &location))?
+    {
+        return Ok(None);
+    }
+    let record = tokenizer.record();
+    let names = header_names(options.header().then_some(record), record.len(), &location)?;
+    Ok(Some(names))
+}
+
 /// Count the records of `bytes`, the header left out, reading no cell.
 ///
 /// # Errors
 ///
-/// Returns the transport's read failure.
+/// Returns the transport's read failure, and a stream ending inside a quoted
+/// cell, unlocated: the caller names the document ([`located`]).
 pub(crate) fn count<R: Read>(bytes: R, options: &CsvOptions) -> Result<u64> {
     let mut tokenizer = Tokenizer::new(bytes, options);
     let mut records = 0_u64;
@@ -927,4 +992,25 @@ pub(crate) fn count<R: Read>(bytes: R, options: &CsvOptions) -> Result<u64> {
         records = records.saturating_sub(1);
     }
     Ok(records)
+}
+
+/// Name the document a refusal of the cut was raised in: its reason ends
+/// at the row, and the location follows it. Any other failure is the
+/// transport's own and passes as it is.
+pub(crate) fn located(error: Error, location: &str) -> Error {
+    match error {
+        Error::InvalidRecord { path, reason } => Error::InvalidRecord {
+            path,
+            reason: format_smolstr!("{reason} of {location}"),
+        },
+        other => other,
+    }
+}
+
+/// The location a refusal names: the document's URL, or `<anonymous>`.
+pub(crate) fn location_of(url: Option<&Url>) -> SmolStr {
+    url.map_or_else(
+        || SmolStr::new_static("<anonymous>"),
+        |url| format_smolstr!("{url}"),
+    )
 }

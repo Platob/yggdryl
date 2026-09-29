@@ -1,9 +1,12 @@
 //! `rust/src/graph/serve.rs`: the book service - its readings without HTTP,
 //! and every route it answers on the crate's HTTP server: the shapes, the
 //! candles' values and their zone alignment, the exclusive `to`, the book at
-//! an instant, the audit's roles and sides, the `limit` truncation, the CSV
-//! downloads in each coding read back through the CSV medium, every `400`
-//! and `404`, and the headers every answer carries.
+//! an instant, the audit's roles and sides, the `limit` truncation over a
+//! store in any order, the CSV downloads in each coding read back through
+//! the CSV medium, every `400` and `404`, the headers every answer carries,
+//! the same answers over every medium a table can be and over an empty or
+//! absent one, the zones `tz` reads, and no credential a location holds in
+//! any answer.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -120,9 +123,98 @@ fn bare_books_holder() -> Holder {
     holder
 }
 
+/// The fixture's books appended, as a capture lands them, to an empty
+/// buffer named `books.<suffix>` - written by that suffix's medium.
+fn captured_holder(suffix: &str) -> Holder {
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(
+            Url::from_str(&format!("file:///books.{suffix}"))
+                .unwrap()
+                .media_type(),
+        ),
+    );
+    capture(&mut holder);
+    holder
+}
+
+/// The fixture's books appended to `holder` through its own record
+/// options, as `yggdryl market serve --capture` lands them.
+fn capture(holder: &mut Holder) {
+    let books = BookIterator::new(operations().into_iter(), 0)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let options = holder.record_options().unwrap();
+    holder
+        .append_arrow_reader(
+            MarketData::arrow_reader(books, None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+}
+
 /// A service over the fixture as the table `books`.
 fn service(options: BookServiceOptions) -> Arc<BookService> {
     Arc::new(BookService::new(options).with_table("books", books_holder()))
+}
+
+/// A service over `holder` as the table `books`, routed at `/` on a fresh
+/// loopback server.
+fn running_over(holder: Holder) -> (Server, Url, Arc<BookService>) {
+    let service = Arc::new(BookService::new(BookServiceOptions::new()).with_table("books", holder));
+    let server = Server::bind("127.0.0.1:0").unwrap();
+    let endpoint = Arc::clone(&service).route(&server, "/").unwrap();
+    (server, endpoint, service)
+}
+
+/// Every route over `holder` answers what it answers over the fixture's
+/// Arrow leaf: the same JSON, the same audit once its coding is undone.
+fn answers_as_the_arrow_leaf(holder: Holder) {
+    let (_arrow_server, arrow, _) = running("/", BookServiceOptions::new());
+    let (_server, endpoint, _) = running_over(holder);
+    let at = [
+        ("table", "books"),
+        ("ticker", "ACME"),
+        ("at", "2026-01-05T10:01:40Z"),
+    ];
+    let mut bids = range().to_vec();
+    bids.push(("side", "bid"));
+    let asked: [(&str, &[(&str, &str)]); 9] = [
+        ("tables", &[]),
+        ("tickers", &[("table", "books")]),
+        ("candles", &range()),
+        ("book", &at),
+        ("events", &range()),
+        ("events", &bids),
+        ("audit.csv", &range()),
+        ("audit.csv.gz", &range()),
+        ("audit.csv.zst", &range()),
+    ];
+    for (leaf, query) in asked {
+        let (held, expected) = (get(&endpoint, leaf, query), get(&arrow, leaf, query));
+        assert_eq!(
+            held.status(),
+            Status::OK,
+            "{leaf}: {}",
+            held.text().unwrap()
+        );
+        if leaf == "tables" {
+            // Each lists its own location.
+            continue;
+        }
+        let body = |response: &Response| {
+            let bytes = response.bytes().unwrap().to_vec();
+            match leaf.rsplit_once('.').map(|(_, suffix)| suffix) {
+                Some("gz") => Codec::from_mime_type(&MimeType::GZIP).load(&bytes).unwrap(),
+                Some("zst") => Codec::from_mime_type(&MimeType::ZSTD).load(&bytes).unwrap(),
+                _ => bytes,
+            }
+        };
+        assert_eq!(
+            String::from_utf8(body(&held)).unwrap(),
+            String::from_utf8(body(&expected)).unwrap(),
+            "{leaf}"
+        );
+    }
 }
 
 /// The service routed at `prefix` on a fresh loopback server; the endpoint
@@ -452,6 +544,304 @@ fn the_readings_answer_without_http() {
             .to_string()
             .starts_with("invalid record value at $.to:")
     );
+}
+
+#[test]
+fn a_csv_leaf_a_capture_landed_in_answers_every_route() {
+    // Nothing in the CSV states the nested columns' types: the service reads
+    // it under the `marketdata` row, which the location declares none of.
+    answers_as_the_arrow_leaf(captured_holder("csv"));
+}
+
+#[test]
+fn an_avro_leaf_holding_the_row_as_iceberg_states_it_answers_every_route() {
+    // Avro spells no `uint64`, so the rows land under the row as Iceberg
+    // states it - the codes as `decimal(20, 0)` - and read back under the
+    // `marketdata` row the service declares.
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(Url::from_str("file:///books.avro").unwrap().media_type()),
+    );
+    let books = BookIterator::new(operations().into_iter(), 0)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let options = holder.record_options().unwrap().with_field(
+        MarketData::field()
+            .unwrap()
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap(),
+    );
+    holder
+        .overwrite_arrow_reader(
+            MarketData::arrow_reader(books, None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+    answers_as_the_arrow_leaf(holder);
+}
+
+#[cfg(feature = "parquet")]
+#[test]
+fn a_parquet_leaf_a_capture_landed_in_answers_every_route() {
+    answers_as_the_arrow_leaf(captured_holder("parquet"));
+}
+
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::LocalFolder;
+
+    let path = std::env::temp_dir().join(format!(
+        "yggdryl-graph-serve-iceberg-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&path);
+    Table::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        MarketData::field()
+            .unwrap()
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let mut holder = Holder::folder(&path).unwrap();
+    capture(&mut holder);
+    answers_as_the_arrow_leaf(holder);
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+#[test]
+fn an_empty_or_absent_table_answers_the_empty_reading() {
+    let absent =
+        std::env::temp_dir().join(format!("yggdryl-graph-serve-absent-{}", std::process::id()));
+    let empty = |suffix: &str| {
+        Holder::Buffer(
+            Buffer::new().with_media_type(
+                Url::from_str(&format!("file:///books.{suffix}"))
+                    .unwrap()
+                    .media_type(),
+            ),
+        )
+    };
+    let service = Arc::new(
+        BookService::new(BookServiceOptions::new())
+            .with_table("arrows", empty("arrows"))
+            .with_table("csv", empty("csv"))
+            .with_table("absent", Holder::file(absent.join("books.arrows")).unwrap())
+            .with_table("absentcsv", Holder::file(absent.join("books.csv")).unwrap()),
+    );
+    let server = Server::bind("127.0.0.1:0").unwrap();
+    let endpoint = Arc::clone(&service).route(&server, "/").unwrap();
+    for table in ["arrows", "csv", "absent", "absentcsv"] {
+        let tickers = ok_json(&get(&endpoint, "tickers", &[("table", table)]));
+        assert!(items(&tickers).is_empty(), "{table}: {tickers:?}");
+        let mut asked = range().to_vec();
+        asked[0] = ("table", table);
+        for leaf in ["candles", "events", "audit.csv"] {
+            assert_eq!(
+                refused(&get(&endpoint, leaf, &asked), Status::NOT_FOUND),
+                format!("expected a ticker at \"{table}/ACME\", got nothing"),
+                "{table} {leaf}"
+            );
+        }
+        assert!(
+            refused(
+                &get(
+                    &endpoint,
+                    "book",
+                    &[
+                        ("table", table),
+                        ("ticker", "ACME"),
+                        ("at", "2026-01-05T10:01:40Z")
+                    ]
+                ),
+                Status::NOT_FOUND
+            )
+            .starts_with("expected a book at"),
+            "{table}"
+        );
+    }
+}
+
+#[test]
+fn no_answer_carries_a_credential_a_location_holds() {
+    // A port nothing listens on: every read of the table fails in its
+    // transport, and the failure names the location it was reading.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let location =
+        format!("http://alice:s3cr3t@127.0.0.1:{port}/books.arrows?sv=2020-01-01&sig=SECRETSIG");
+    let remote = Holder::from_url(
+        &Url::from_str(&location).unwrap(),
+        std::iter::empty::<(&str, &str)>(),
+    )
+    .unwrap();
+    let service =
+        Arc::new(BookService::new(BookServiceOptions::new()).with_table("remote", remote));
+    let server = Server::bind("127.0.0.1:0").unwrap();
+    let endpoint = Arc::clone(&service).route(&server, "/").unwrap();
+    let secrets = ["alice", "s3cr3t", "SECRETSIG", "sv=2020-01-01"];
+
+    // The location is stated without its user information and its query.
+    let answer = get(&endpoint, "tables", &[]);
+    let tables = items(&ok_json(&answer));
+    assert_eq!(
+        text(&tables[0], "url"),
+        format!("http://127.0.0.1:{port}/books.arrows")
+    );
+    let body = answer.text().unwrap();
+    assert!(
+        !secrets.iter().any(|secret| body.contains(secret)),
+        "{body}"
+    );
+
+    // A read that fails answers 500, naming the location the same way.
+    for (leaf, query) in [
+        ("tickers", vec![("table", "remote")]),
+        ("candles", {
+            let mut asked = range().to_vec();
+            asked[0] = ("table", "remote");
+            asked
+        }),
+    ] {
+        let answer = get(&endpoint, leaf, &query);
+        let error = refused(&answer, Status::INTERNAL_SERVER_ERROR);
+        assert!(
+            error.contains(&format!("http://127.0.0.1:{port}/books.arrows")),
+            "{leaf}: {error}"
+        );
+        let body = answer.text().unwrap();
+        assert!(
+            !secrets.iter().any(|secret| body.contains(secret)),
+            "{leaf}: {body}"
+        );
+    }
+
+    // The reading without HTTP is the server's own, and keeps the whole error.
+    let error = service.tickers("remote").unwrap_err().to_string();
+    assert!(error.contains("alice:s3cr3t@"), "{error}");
+}
+
+#[test]
+fn tickers_state_the_span_of_a_book_at_either_end_of_the_instants() {
+    // `2262-04-11T23:47:16.5Z`: the second after it is past `i64`
+    // nanoseconds, so the span closes at the last instant there is.
+    let late = 9_223_372_036_500_000_000_i64;
+    // `1677-09-21T00:12:43.645224192Z`: its whole second opens before the
+    // first instant there is, so the span opens there.
+    let early = i64::MIN + 500_000_000;
+    let operations = vec![
+        quote(early, "EARLY", "E1", Side::Buy, "1", 1),
+        quote(late, "LATE", "L1", Side::Buy, "1", 1),
+    ];
+    let books = BookIterator::new(operations.into_iter(), 0)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(Url::from_str("file:///books.arrows").unwrap().media_type()),
+    );
+    let options = holder.record_options().unwrap();
+    holder
+        .overwrite_arrow_reader(
+            MarketData::arrow_reader(books, None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+    let (_server, endpoint, _) = running_over(holder);
+    let tickers = items(&ok_json(&get(&endpoint, "tickers", &[("table", "books")])));
+    assert_eq!(tickers.len(), 2);
+    assert_eq!(text(&tickers[0], "ticker"), "EARLY");
+    assert_eq!(text(&tickers[0], "from"), "1677-09-21T00:12:43.145224192Z");
+    assert_eq!(text(&tickers[0], "to"), "1677-09-21T00:12:44.000000000Z");
+    assert_eq!(text(&tickers[1], "ticker"), "LATE");
+    assert_eq!(text(&tickers[1], "from"), "2262-04-11T23:47:16.000000000Z");
+    assert_eq!(text(&tickers[1], "to"), "2262-04-11T23:47:16.854775807Z");
+}
+
+#[test]
+fn timezones_list_every_zone_the_tz_parameter_reads() {
+    let (_server, endpoint, _) = running("/", BookServiceOptions::new());
+    let zones: Vec<String> = items(&ok_json(&get(&endpoint, "timezones", &[])))
+        .iter()
+        .map(|zone| zone.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(zones[0], "UTC");
+    assert!(
+        zones[1..].windows(2).all(|pair| pair[0] < pair[1]),
+        "sorted, each once: {zones:?}"
+    );
+    assert!(!zones[1..].iter().any(|zone| zone == "UTC"));
+    assert!(zones.iter().any(|zone| zone == "Europe/Zurich"));
+    assert_eq!(
+        zones.len(),
+        1 + Timezone::registered().filter(|zone| !zone.is_utc()).count()
+    );
+    for zone in &zones {
+        let query = format!(
+            "table=books&ticker=ACME&from=2026-01-05T10:00:00Z&to=2026-01-05T11:00:00Z&tz={}",
+            zone.replace('+', "%2B")
+        );
+        let read = BookQuery::from_parameters(&Parameters::from_query(&query, true).unwrap())
+            .unwrap_or_else(|error| panic!("{zone}: {error}"));
+        assert_eq!(read.timezone.as_str(), zone);
+    }
+}
+
+#[test]
+fn events_answer_the_earliest_rows_of_a_store_holding_them_out_of_order() {
+    // The fixture's books stored latest first: every bound answers the rows
+    // the books stored in order answer, the earliest book's first.
+    let mut stored = BookIterator::new(operations().into_iter(), 0)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    stored.reverse();
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(Url::from_str("file:///books.arrows").unwrap().media_type()),
+    );
+    let options = holder.record_options().unwrap();
+    holder
+        .overwrite_arrow_reader(
+            MarketData::arrow_reader(
+                stored.into_iter().map(|book| Ok(MarketData::from(book))),
+                None,
+                None,
+            )
+            .unwrap(),
+            &options,
+        )
+        .unwrap();
+    let (_sorted_server, sorted, _) = running("/", BookServiceOptions::new());
+    let (_server, endpoint, _) = running_over(holder);
+    let all = items(member(&ok_json(&get(&sorted, "events", &range())), "rows"));
+    for limit in 1..=all.len() + 1 {
+        let limit = limit.to_string();
+        for side in [None, Some("bid"), Some("ask")] {
+            let mut asked = range().to_vec();
+            asked.push(("limit", &limit));
+            if let Some(side) = side {
+                asked.push(("side", side));
+            }
+            assert_eq!(
+                ok_json(&get(&endpoint, "events", &asked)),
+                ok_json(&get(&sorted, "events", &asked)),
+                "limit {limit}, side {side:?}"
+            );
+        }
+    }
+    let first = ok_json(&get(
+        &endpoint,
+        "events",
+        &[&range()[..], &[("limit", "1")]].concat(),
+    ));
+    assert_eq!(member(&first, "truncated"), &Scalar::from(true));
+    let rows = items(member(&first, "rows"));
+    assert_eq!(text(&rows[0], "bookunix"), "2026-01-05T10:00:05.000000000Z");
 }
 
 #[test]

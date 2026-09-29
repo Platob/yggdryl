@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::IOMedia as _;
 use yggdryl::csv::{CsvOptions, overwrite_arrow_reader, read_batch_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::text::LineSep;
@@ -415,4 +416,242 @@ fn a_write_that_fails_mid_stream_leaves_the_handle_untouched() {
         .to_string();
     assert!(message.contains("the feed dropped"), "{message}");
     assert_eq!(held.read_all_bytes().expect("the bytes"), before);
+}
+
+/// Write `rows` under `field` through `options` into a fresh handle,
+/// answering the refusal where there is one and the handle it left.
+fn try_written(
+    field: &Field,
+    rows: Vec<Scalar>,
+    options: &CsvOptions,
+) -> (Buffer, Result<(), Error>) {
+    let batch = Serie::from_scalars(field.clone(), rows)
+        .expect("rows under the field")
+        .into_arrow_batch()
+        .expect("a batch");
+    let mut held = buffer("one.csv");
+    let result = overwrite_arrow_reader(
+        &mut held,
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        options,
+    );
+    (held, result)
+}
+
+fn one(value: Scalar) -> Scalar {
+    Scalar::from_sequence([value])
+}
+
+#[test]
+fn a_one_column_record_is_never_a_blank_line() {
+    // A blank line is the separator between records, never one, so a
+    // one-column record whose cell spells nothing is written as `""`: the
+    // empty text, which a column that is not text reads as the null it was.
+    let int = DataType::from_str("struct<a: int64>")
+        .expect("a root")
+        .required_field("row");
+    let default = CsvOptions::new();
+    let values = vec![
+        one(Scalar::from(1_i64)),
+        one(Scalar::Null),
+        one(Scalar::from(3_i64)),
+    ];
+    let held = written("one.csv", &int, values.clone(), &default);
+    assert_eq!(text(&held), "a\n1\n\"\"\n3\n");
+    let rows: Vec<Scalar> = rows_under(&held, &int, &default)
+        .into_iter()
+        .map(Scalar::from_sequence)
+        .collect();
+    assert_eq!(rows, values);
+    assert_eq!(
+        yggdryl::csv::read_field(&held, &default).expect("the field"),
+        DataType::from_str("struct<a: int64>")
+            .expect("a root")
+            .required_field("row"),
+        "the empty text proves no datatype, so the column still infers"
+    );
+    assert_eq!(
+        yggdryl::csv::Csv::new(held).row_size().expect("the rows"),
+        3
+    );
+
+    // A text column: the empty text is `""`, and a null has no spelling a
+    // reader tells from it under the default, so it is refused by name.
+    let utf8 = DataType::from_str("struct<a: utf8>")
+        .expect("a root")
+        .required_field("row");
+    let held = written(
+        "one.csv",
+        &utf8,
+        vec![one(Scalar::from("x")), one(Scalar::from(""))],
+        &default,
+    );
+    assert_eq!(text(&held), "a\nx\n\"\"\n");
+    assert_eq!(
+        rows_under(&held, &utf8, &default),
+        [vec![Scalar::from("x")], vec![Scalar::from("")]]
+    );
+    let (held, result) = try_written(
+        &utf8,
+        vec![one(Scalar::from("x")), one(Scalar::Null)],
+        &default,
+    );
+    let (path, reason) = refusal(result.unwrap_err());
+    assert_eq!(path, "$[1].a");
+    assert_eq!(
+        reason,
+        "expected a null spelling in null_values that is not empty, to write a null as the only \
+         cell of a record, got [\"\"]: an empty record is a blank line, which is no record, and \
+         `\"\"` does not read as a null under utf8"
+    );
+    assert_eq!(held.size(), 0, "nothing reached the handle");
+
+    // Under a spelling that is not empty, the null and the empty text both
+    // round trip in a text column and in any other.
+    let na = CsvOptions::new()
+        .with_null_values(["NA"])
+        .expect("a spelling");
+    let values = vec![
+        one(Scalar::from("x")),
+        one(Scalar::Null),
+        one(Scalar::from("")),
+    ];
+    let held = written("one.csv", &utf8, values.clone(), &na);
+    assert_eq!(text(&held), "a\nx\nNA\n\"\"\n");
+    let rows: Vec<Scalar> = rows_under(&held, &utf8, &na)
+        .into_iter()
+        .map(Scalar::from_sequence)
+        .collect();
+    assert_eq!(rows, values);
+    let held = written(
+        "one.csv",
+        &int,
+        vec![one(Scalar::from(1_i64)), one(Scalar::Null)],
+        &na,
+    );
+    assert_eq!(text(&held), "a\n1\nNA\n");
+    assert_eq!(
+        rows_under(&held, &int, &na),
+        [vec![Scalar::from(1_i64)], vec![Scalar::Null]]
+    );
+}
+
+#[test]
+fn a_null_spelling_a_record_cannot_hold_as_it_stands_is_refused_by_name() {
+    // A null is written verbatim, since a quoted cell is never absent: a
+    // spelling holding the separator, the quote or a line break, or one
+    // opening the record with the comment byte, would read back as
+    // something else, so it is refused where a null is written.
+    let field = DataType::from_str("struct<a: utf8, b: utf8>")
+        .expect("a root")
+        .required_field("row");
+    let rows = vec![
+        Scalar::from_sequence([Scalar::from("x"), Scalar::Null]),
+        Scalar::from_sequence([Scalar::Null, Scalar::from("y")]),
+    ];
+    for (options, at, spelling, holds) in [
+        (
+            CsvOptions::new().with_null_values(["N,A"]).unwrap(),
+            "$[0].b",
+            "\"N,A\"",
+            "which holds the separator ','",
+        ),
+        (
+            CsvOptions::new().with_null_values(["\"NA\""]).unwrap(),
+            "$[0].b",
+            "\"\\\"NA\\\"\"",
+            "which holds the quote '\"'",
+        ),
+        (
+            CsvOptions::new().with_null_values(["N\nA"]).unwrap(),
+            "$[0].b",
+            "\"N\\nA\"",
+            "which holds a line break",
+        ),
+        (
+            CsvOptions::new()
+                .with_comment(Some(b'#'))
+                .unwrap()
+                .with_null_values(["#N/A"])
+                .unwrap(),
+            "$[1].a",
+            "\"#N/A\"",
+            "which opens the record with the comment byte '#'",
+        ),
+    ] {
+        let (held, result) = try_written(&field, rows.clone(), &options);
+        let (path, reason) = refusal(result.unwrap_err());
+        assert_eq!(path, "$.null_values", "{spelling}");
+        assert_eq!(
+            reason,
+            format!(
+                "expected a null spelling a record holds as it stands - no separator, quote or \
+                 line break, and no comment byte opening the record - to write the null at {at}, \
+                 got {spelling}, {holds}"
+            )
+        );
+        assert_eq!(held.size(), 0, "nothing reached the handle");
+    }
+    // The comment byte past the first cell opens nothing, so it is written.
+    let options = CsvOptions::new()
+        .with_comment(Some(b'#'))
+        .unwrap()
+        .with_null_values(["#N/A"])
+        .unwrap();
+    let held = written("two.csv", &field, rows[..1].to_vec(), &options);
+    assert_eq!(text(&held), "a,b\nx,#N/A\n");
+    assert_eq!(
+        rows_under(&held, &field, &options),
+        [vec![Scalar::from("x"), Scalar::Null]]
+    );
+}
+
+#[test]
+fn a_cell_the_writer_cannot_spell_is_refused_naming_the_column_and_the_row() {
+    let field = DataType::from_str("struct<k: utf8, mi: map<int64, int64>>")
+        .expect("a root")
+        .required_field("row");
+    let entries =
+        Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from(2_i64))]).expect("a map");
+    let (held, result) = try_written(
+        &field,
+        vec![
+            Scalar::from_sequence([Scalar::from("a"), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from("b"), entries]),
+        ],
+        &CsvOptions::new(),
+    );
+    let (path, reason) = refusal(result.unwrap_err());
+    assert_eq!(path, "$[1].mi");
+    assert!(
+        reason.contains("JSON object keys must be strings"),
+        "{reason}"
+    );
+    assert_eq!(held.size(), 0, "nothing reached the handle");
+}
+
+#[test]
+fn not_a_number_and_the_infinities_read_back_as_written() {
+    let field = DataType::from_str("struct<x: float64 not null, y: float32, z: float64>")
+        .expect("a root")
+        .required_field("row");
+    let rows = vec![
+        Scalar::from_sequence([
+            Scalar::from(f64::NAN),
+            Scalar::from(f32::NAN),
+            Scalar::from(1.5_f64),
+        ]),
+        Scalar::from_sequence([
+            Scalar::from(f64::INFINITY),
+            Scalar::from(f32::NEG_INFINITY),
+            Scalar::from(f64::NEG_INFINITY),
+        ]),
+    ];
+    let held = written("floats.csv", &field, rows.clone(), &CsvOptions::new());
+    assert_eq!(text(&held), "x,y,z\nNaN,NaN,1.5\ninf,-inf,-inf\n");
+    let read: Vec<Scalar> = rows_under(&held, &field, &CsvOptions::new())
+        .into_iter()
+        .map(Scalar::from_sequence)
+        .collect();
+    assert_eq!(read, rows);
 }

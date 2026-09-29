@@ -586,28 +586,60 @@ impl CandleOptions {
             .ok_or_else(|| range(local))
     }
 
-    /// The bucket `unix` falls in: the local edges around its wall clock,
-    /// moved on past a fall-back's repeated readings until the edges hold
-    /// the instant.
+    /// The bucket `unix` falls in: the greatest bucket index whose start is
+    /// at or before the instant, its end the next index's start.
+    ///
+    /// The starts never fall as the index rises, so the search opens at the
+    /// index of the instant's own wall clock, which is the answer everywhere
+    /// but in a fall-back's repeated readings, whose bucket is the one the
+    /// first pass reached. It gallops away from there by doubling steps
+    /// until the instant lies between two starts, then bisects: `O(log n)`
+    /// edge solves for a gap of `n` intervals, whatever the interval and the
+    /// zone.
     fn bucket(&self, unix: i64) -> Result<Bucket> {
-        let mut index = self.local(unix)?.div_euclid(self.interval);
-        loop {
-            let local_start = index
+        let start = |index: i64| -> Result<(i64, i64)> {
+            let local = index
                 .checked_mul(self.interval)
                 .ok_or_else(|| range(unix))?;
-            let local_end = local_start
-                .checked_add(self.interval)
-                .ok_or_else(|| range(unix))?;
-            let start = self.edge(local_start)?;
-            let end = self.edge(local_end)?;
-            if start > unix {
-                index -= 1;
-            } else if end <= unix {
-                index += 1;
+            Ok((index, self.edge(local)?))
+        };
+        let guess = start(self.local(unix)?.div_euclid(self.interval))?;
+        // `low` starts at or before the instant, `high` after it.
+        let (mut low, mut high) = if guess.1 <= unix {
+            let mut low = guess;
+            let mut step = 1_i64;
+            loop {
+                let probe = start(guess.0.checked_add(step).ok_or_else(|| range(unix))?)?;
+                if probe.1 > unix {
+                    break (low, probe);
+                }
+                low = probe;
+                step = step.checked_mul(2).ok_or_else(|| range(unix))?;
+            }
+        } else {
+            let mut high = guess;
+            let mut step = 1_i64;
+            loop {
+                let probe = start(guess.0.checked_sub(step).ok_or_else(|| range(unix))?)?;
+                if probe.1 <= unix {
+                    break (probe, high);
+                }
+                high = probe;
+                step = step.checked_mul(2).ok_or_else(|| range(unix))?;
+            }
+        };
+        while high.0 - low.0 > 1 {
+            let middle = start(low.0 + (high.0 - low.0) / 2)?;
+            if middle.1 <= unix {
+                low = middle;
             } else {
-                return Ok(Bucket { start, end });
+                high = middle;
             }
         }
+        Ok(Bucket {
+            start: low.1,
+            end: high.1,
+        })
     }
 }
 
@@ -717,8 +749,10 @@ impl Fold {
 /// refused at `$.book.currunix`. The candles of a bucket are emitted, in
 /// cross-code order, when the stream moves past the bucket and at its end;
 /// an empty bucket yields no candle. An error - the source's, a regression,
-/// an instant the zone cannot read - ends the walk: the bucket that was open
-/// is dropped rather than emitted incomplete, and the iterator fuses.
+/// an instant the zone cannot read, a volume past `decimal` - ends the walk
+/// after the candles of every bucket the stream moved past: the bucket that
+/// was open is dropped rather than emitted incomplete, the error is the last
+/// item, and the iterator fuses.
 ///
 /// ```
 /// use yggdryl::graph::{BookIterator, CandleIterator, CandleOptions, Element, Event, Market, MarketData, QuoteEvent};
@@ -765,6 +799,8 @@ pub struct CandleIterator<I> {
     bucket: Option<Bucket>,
     open: BTreeMap<SmolStr, Fold>,
     pending: VecDeque<Candle>,
+    /// The refusal that ended the walk, answered once `pending` is drained.
+    failed: Option<Error>,
     last_unix: Option<i64>,
     done: bool,
 }
@@ -782,6 +818,7 @@ where
             bucket: None,
             open: BTreeMap::new(),
             pending: VecDeque::new(),
+            failed: None,
             last_unix: None,
             done: false,
         }
@@ -841,6 +878,9 @@ where
             if let Some(candle) = self.pending.pop_front() {
                 return Some(Ok(candle));
             }
+            if let Some(error) = self.failed.take() {
+                return Some(Err(error));
+            }
             if self.done {
                 return None;
             }
@@ -849,12 +889,15 @@ where
                 self.flush();
                 continue;
             };
+            // A book past the open bucket emits it before its own bucket
+            // and fold are read, so the candles it completed are answered
+            // before a refusal of either.
             let folded = next.and_then(|book| self.fold(&book));
             if let Err(error) = folded {
                 self.done = true;
                 self.open.clear();
                 self.bucket = None;
-                return Some(Err(error));
+                self.failed = Some(error);
             }
         }
     }

@@ -339,6 +339,41 @@ test('a JavaScript failure is thrown as itself, and an item is a book or refused
   assert.throws(() => graph.CandleIterator([], '1m'), /cannot be invoked without 'new'/)
 })
 
+test('a JavaScript failure follows the completed buckets, and the open one is dropped', () => {
+  // As Python's walk and the core's: the failure crosses the walk as its
+  // own error, so the bucket it cut short is dropped rather than closed as
+  // though the stream had ended there.
+  function* items() {
+    yield new graph.BookEvent(10n * SECOND, 'ACME')
+    yield new graph.BookEvent(70n * SECOND, 'ACME')
+    throw new RangeError('the source gave up')
+  }
+  const walk = new graph.CandleIterator(items(), '1m')
+  assert.deepEqual(edges([walk.next().value]), [[0n, MINUTE, 1]])
+  assert.throws(() => walk.next(), { name: 'RangeError', message: 'the source gave up' })
+  assert.deepEqual(walk.next(), { value: undefined, done: true }, 'the open bucket is dropped, not emitted')
+  // A consumer streaming the candles sees the completed bucket alone.
+  const seen = []
+  assert.throws(
+    () => {
+      for (const candle of new graph.CandleIterator(items(), '1m')) seen.push(candle)
+    },
+    { name: 'RangeError', message: 'the source gave up' },
+  )
+  assert.deepEqual(edges(seen), [[0n, MINUTE, 1]])
+  // An item the loader refuses is such a failure too, thrown as itself.
+  const refused = []
+  assert.throws(
+    () => {
+      for (const candle of new graph.CandleIterator([new graph.BookEvent(10n * SECOND, 'ACME'), 1], '1m')) {
+        refused.push(candle)
+      }
+    },
+    { name: 'TypeError', message: 'expected MarketData or a market leaf, got number' },
+  )
+  assert.deepEqual(refused, [])
+})
+
 test('Candle.field declares every cell', () => {
   const field = graph.Candle.field()
   assert.equal(field.name, 'candle')
@@ -435,4 +470,17 @@ test('graph.candles takes a zone beside the interval, as Python does', () => {
   // Without a zone the buckets are UTC's, and `undefined`/`null` is no zone.
   assert.equal(graph.candles(held, '1d')[0].start, OFFSET_DAY - 10n * HOUR)
   assert.equal(graph.candles(held, '1d', null)[0].start, OFFSET_DAY - 10n * HOUR)
+
+  // A `CandleOptions` beside a zone is those buckets in that zone, and
+  // without one keeps its own - as Python's `candles(books, options,
+  // timezone)` and `CandleOptions(options, timezone)` read them.
+  const daily = new graph.CandleOptions('1d')
+  assert.deepEqual(edges(graph.candles(held, daily, 'Europe/Zurich')), edges(zoned))
+  assert.deepEqual(edges(graph.candles(held, daily, new Timezone('Europe/Zurich'))), edges(zoned))
+  assert.deepEqual(edges(graph.candles(held, new graph.CandleOptions('1d', 'Europe/Zurich'), null)), edges(zoned))
+  assert.ok(new graph.CandleOptions(daily).equals(daily))
+  assert.ok(new graph.CandleOptions(daily, 'Europe/Zurich').equals(new graph.CandleOptions('1d', 'Europe/Zurich')))
+  const zurich = new graph.CandleOptions('1d', 'Europe/Zurich')
+  assert.ok(new graph.CandleOptions(zurich).equals(zurich))
+  assert.ok(new graph.CandleOptions(zurich, 'UTC').equals(daily))
 })

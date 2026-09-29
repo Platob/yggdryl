@@ -4,14 +4,20 @@
 // zone, interval - and the bucket chosen on the chart; every selector change
 // refetches the candles (debounced), a selection fetches the last book of the
 // bucket and its events on both sides, and the download control points at the
-// whole range. The URL hash carries the selection, so a view is a link.
+// whole range. `from`, `to` and the chosen bucket are held as instants
+// (nanoseconds, `bigint`) and sent as UTC text, so a zone change moves the
+// wall clocks the inputs show and never the range asked. The URL hash carries
+// the selection, so a view is a link, and a link pasted into the page is
+// followed. Each kind of read - tables, tickers, candles, a bucket - has one
+// request in flight: a newer one aborts it, and an answer that is no longer
+// the latest is dropped.
 //
 // `start(document)` runs when the module loads in a browser; under Node the
 // module only exports its pure pieces (`readHash`, `writeHash`,
-// `timezoneChoices`, `spanToRange`, `apiBase`).
+// `timezoneChoices`, `apiBase`, `debounce`).
 
-import { ApiError, fetchBook, fetchCandles, fetchEvents, fetchTables, fetchTickers } from './api.js'
-import { downloadLink, renderEvents, renderSummary, formatInstant } from './audit.js'
+import { ApiError, fetchBook, fetchCandles, fetchEvents, fetchTables, fetchTickers, fetchTimezones } from './api.js'
+import { downloadLink, formatInstant, instantNanos, instantText, renderEvents, renderSummary } from './audit.js'
 import { drawCandles } from './chart.js'
 import { applyTheme, readTheme, themeLabel, toggleTheme } from './theme.js'
 
@@ -26,6 +32,9 @@ export const HASH_KEYS = Object.freeze(['table', 'ticker', 'from', 'to', 'tz', '
 
 /** The debounce of a selector change before the candles are refetched, in milliseconds. */
 export const REFRESH_DELAY = 150
+
+/** How a `datetime-local` input spells an instant: the wall clock in the zone, to the second. */
+const WALL_CLOCK = Object.freeze({ fraction: 0, separator: 'T' })
 
 /** The selection a URL hash spells, only the keys it names. */
 export function readHash(hash = '') {
@@ -49,24 +58,15 @@ export function writeHash(state = {}) {
   return text.length === 0 ? '' : `#${text}`
 }
 
-/** The zones a select offers: the browser's, then UTC, then every other supported one in order. */
-export function timezoneChoices(supported = [], browserZone = 'UTC') {
-  const first = [browserZone, 'UTC'].filter((zone, index, all) => zone && all.indexOf(zone) === index)
-  const rest = [...supported].filter((zone) => !first.includes(zone)).sort()
-  return [...first, ...rest]
-}
-
 /**
- * A ticker's span, two ISO-8601 UTC instants, as the `from` and `to` a
- * `datetime-local` input states in `zone`: `from` at its second and `to` one
- * second past its own, so the exclusive end still covers the last book.
+ * The zones the Timezone select offers: exactly the zones the service reads
+ * (`api/timezones`), the browser's first where it is one of them, then UTC,
+ * then the rest by name.
  */
-export function spanToRange(from, to, zone = 'UTC') {
-  const start = Date.parse(from)
-  const end = Date.parse(to)
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return { from: '', to: '' }
-  const local = (millis) => formatInstant(millis, zone, { fraction: 0, separator: 'T' })
-  return { from: local(Math.floor(start / 1000) * 1000), to: local(Math.floor(end / 1000) * 1000 + 1000) }
+export function timezoneChoices(served = [], browserZone = 'UTC') {
+  const first = [browserZone, 'UTC'].filter((zone, index, all) => served.includes(zone) && all.indexOf(zone) === index)
+  const rest = served.filter((zone) => !first.includes(zone)).sort()
+  return [...first, ...rest]
 }
 
 /** The API base of a page: its URL up to the folder the page is served from, with no query or hash. */
@@ -114,11 +114,34 @@ function describe(error) {
   return error?.message ?? String(error)
 }
 
+/**
+ * One kind of read at a time: `begin()` aborts the read before and answers
+ * the controller of the new one, `cancel()` aborts it, `current(control)`
+ * says whether `control` is still the latest - an answer that is not is
+ * dropped, whenever it lands.
+ */
+function lane() {
+  let latest = null
+  return {
+    begin() {
+      latest?.abort()
+      latest = new AbortController()
+      return latest
+    },
+    cancel() {
+      latest?.abort()
+      latest = null
+    },
+    current: (control) => latest === control && !control.signal.aborted,
+  }
+}
+
 /** Wire the page. Exported so a host page can start it on a document of its own. */
 export function start(document) {
   const window = document.defaultView
   const byId = (id) => document.getElementById(id)
   const elements = {
+    skip: byId('skip'),
     table: byId('table'),
     ticker: byId('ticker'),
     from: byId('from'),
@@ -128,6 +151,7 @@ export function start(document) {
     theme: byId('theme'),
     chart: byId('chart'),
     tooltip: byId('tooltip'),
+    readout: byId('readout'),
     status: byId('status'),
     title: byId('chart-title'),
     summary: byId('summary'),
@@ -136,21 +160,31 @@ export function start(document) {
     downloads: byId('downloads'),
   }
 
+  // The fetch of the window the page is started in.
+  const fetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : undefined
+
+  let browserZone = 'UTC'
+  try {
+    browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    browserZone = 'UTC'
+  }
+
   const state = {
     base: apiBase(document.baseURI),
+    zones: [],
     table: '',
     ticker: '',
-    from: '',
-    to: '',
+    from: null,
+    to: null,
     tz: 'UTC',
     interval: '1m',
     at: null,
     candles: [],
     tickers: [],
   }
+  const reads = { tables: lane(), tickers: lane(), candles: lane(), bucket: lane() }
   let chart = null
-  let pending = null
-  let selecting = null
 
   const status = (text, kind = '') => {
     elements.status.textContent = text
@@ -158,16 +192,26 @@ export function start(document) {
     elements.status.hidden = text === ''
   }
 
-  const query = () => ({ table: state.table, ticker: state.ticker, from: state.from, to: state.to, tz: state.tz })
+  const wallClock = (instant) => formatInstant(instant, state.tz, WALL_CLOCK)
+
+  const query = () => ({ table: state.table, ticker: state.ticker, from: instantText(state.from), to: instantText(state.to), tz: state.tz })
+
+  const currentHash = () => writeHash({ ...query(), interval: state.interval, at: instantText(state.at) })
 
   const syncHash = () => {
-    const hash = writeHash({ ...query(), interval: state.interval, at: state.at ?? undefined })
+    const hash = currentHash()
     if (window.location.hash !== hash) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+  }
+
+  // The inputs show the range's instants as wall clocks in the zone; a zone change shows them again.
+  const showRange = () => {
+    elements.from.value = wallClock(state.from)
+    elements.to.value = wallClock(state.to)
   }
 
   const downloads = () => {
     elements.downloads.replaceChildren()
-    const ready = state.table && state.ticker && state.from && state.to
+    const ready = state.table && state.ticker && state.from !== null && state.to !== null
     for (const suffix of ['.csv', '.csv.gz', '.csv.zst']) {
       const link = downloadLink(state.base, query(), suffix)
       const anchor = document.createElement('a')
@@ -176,7 +220,8 @@ export function start(document) {
       anchor.type = link.type
       if (ready) {
         anchor.href = link.href
-        anchor.download = link.filename
+        // The route's Content-Disposition names the file.
+        anchor.setAttribute('download', '')
       } else {
         anchor.setAttribute('aria-disabled', 'true')
         anchor.tabIndex = -1
@@ -190,6 +235,7 @@ export function start(document) {
       zone: state.tz,
       selected: state.at,
       tooltip: elements.tooltip,
+      readout: elements.readout,
       emptyText: state.ticker ? 'No candles in this range' : 'No ticker selected',
       onSelect: (candle) => select(candle),
     })
@@ -201,38 +247,46 @@ export function start(document) {
     elements.title.textContent = state.ticker ? `${state.ticker} · ${state.interval} · ${state.tz}` : 'Bid and ask'
   }
 
-  const clearSelection = () => {
-    state.at = null
+  // The empty panels, which the selection's absence renders; `clearSelection` also drops the selection and its read.
+  const showNoSelection = () => {
     renderSummary(elements.summary, null)
     renderEvents(elements.bid, null, 'bid', { zone: state.tz })
     renderEvents(elements.ask, null, 'ask', { zone: state.tz })
   }
 
+  const clearSelection = () => {
+    reads.bucket.cancel()
+    state.at = null
+    showNoSelection()
+  }
+
   const select = async (candle) => {
-    if (!candle) return
-    state.at = candle.start
+    const start = instantNanos(candle?.start)
+    const end = instantNanos(candle?.end)
+    if (start === null || end === null) return
+    state.at = start
     syncHash()
     draw()
-    selecting?.abort()
-    const control = new AbortController()
-    selecting = control
-    const options = { signal: control.signal }
+    const control = reads.bucket.begin()
+    const options = { fetch, signal: control.signal }
     const base = { table: state.table, ticker: state.ticker, tz: state.tz }
+    const span = { ...base, from: instantText(start), to: instantText(end) }
     try {
       const [book, bid, ask] = await Promise.all([
-        fetchBook(state.base, { ...base, at: candle.end }, options).catch((error) => {
+        // The bucket is [start, end): its last book stands strictly before its end, and the route answers at or before `at`.
+        fetchBook(state.base, { ...base, at: instantText(end - 1n) }, options).catch((error) => {
           if (error instanceof ApiError && error.status === 404) return null
           throw error
         }),
-        fetchEvents(state.base, { ...base, from: candle.start, to: candle.end, side: 'bid', limit: EVENT_LIMIT }, options),
-        fetchEvents(state.base, { ...base, from: candle.start, to: candle.end, side: 'ask', limit: EVENT_LIMIT }, options),
+        fetchEvents(state.base, { ...span, side: 'bid', limit: EVENT_LIMIT }, options),
+        fetchEvents(state.base, { ...span, side: 'ask', limit: EVENT_LIMIT }, options),
       ])
-      if (control.signal.aborted) return
-      renderSummary(elements.summary, book, { zone: state.tz, emptyText: 'No book stands at or before the end of this bucket.' })
+      if (!reads.bucket.current(control)) return
+      renderSummary(elements.summary, book, { zone: state.tz, emptyText: 'No book stands before the end of this bucket.' })
       renderEvents(elements.bid, bid.rows ?? [], 'bid', { zone: state.tz, truncated: bid.truncated === true })
       renderEvents(elements.ask, ask.rows ?? [], 'ask', { zone: state.tz, truncated: ask.truncated === true })
     } catch (error) {
-      if (error?.name === 'AbortError') return
+      if (!reads.bucket.current(control)) return
       status(`The bucket could not be read - ${describe(error)}`, 'error')
     }
   }
@@ -240,52 +294,62 @@ export function start(document) {
   const refresh = async () => {
     syncHash()
     downloads()
-    pending?.abort()
-    if (!state.table || !state.ticker || !state.from || !state.to) {
+    reads.bucket.cancel()
+    const control = reads.candles.begin()
+    if (!state.table || !state.ticker || state.from === null || state.to === null) {
       state.candles = []
       draw()
       clearSelection()
       status(state.table ? 'Choose a ticker and a range' : 'No table is served', 'empty')
       return
     }
-    const control = new AbortController()
-    pending = control
     status('Loading candles…', 'loading')
     elements.chart.classList.add('is-loading')
     try {
-      const answer = await fetchCandles(state.base, { ...query(), interval: state.interval }, { signal: control.signal })
-      if (control.signal.aborted) return
+      const answer = await fetchCandles(state.base, { ...query(), interval: state.interval }, { fetch, signal: control.signal })
+      if (!reads.candles.current(control)) return
       state.candles = Array.isArray(answer?.candles) ? answer.candles : []
-      const chosen = state.candles.find((candle) => candle.start === state.at) ?? null
+      // What the keyboard last read was a bucket of the view before.
+      elements.readout.textContent = ''
+      const chosen = state.at === null ? null : (state.candles.find((candle) => instantNanos(candle.start) === state.at) ?? null)
       if (chosen === null) clearSelection()
       draw()
-      status(state.candles.length === 0 ? `No books for ${state.ticker} between ${state.from} and ${state.to} (${state.tz})` : '', 'empty')
+      status(state.candles.length === 0 ? `No books for ${state.ticker} between ${wallClock(state.from)} and ${wallClock(state.to)} (${state.tz})` : '', 'empty')
       if (chosen !== null) await select(chosen)
     } catch (error) {
-      if (error?.name === 'AbortError') return
+      if (!reads.candles.current(control)) return
       state.candles = []
       draw()
       clearSelection()
       status(`Candles could not be read - ${describe(error)}`, 'error')
     } finally {
-      if (pending === control) elements.chart.classList.remove('is-loading')
+      if (reads.candles.current(control)) elements.chart.classList.remove('is-loading')
     }
   }
-  const scheduled = debounce(refresh, REFRESH_DELAY, window.setTimeout.bind(window), window.clearTimeout.bind(window))
+  // A selector change drops the candles read in flight at once - its answer is of a view that is gone - and reads again once the changes settle.
+  const refreshSoon = debounce(refresh, REFRESH_DELAY, window.setTimeout.bind(window), window.clearTimeout.bind(window))
+  const scheduled = () => {
+    reads.candles.cancel()
+    refreshSoon()
+  }
 
   const loadTickers = async () => {
+    const control = reads.tickers.begin()
     state.tickers = []
     fill(elements.ticker, [], '')
     if (!state.table) return refresh()
+    let tickers
     try {
-      const tickers = await fetchTickers(state.base, state.table)
-      state.tickers = Array.isArray(tickers) ? tickers : []
+      tickers = await fetchTickers(state.base, state.table, { fetch, signal: control.signal })
     } catch (error) {
+      if (!reads.tickers.current(control)) return
       status(`Tickers could not be read - ${describe(error)}`, 'error')
       state.candles = []
       draw()
       return
     }
+    if (!reads.tickers.current(control)) return
+    state.tickers = Array.isArray(tickers) ? tickers : []
     state.ticker = fill(
       elements.ticker,
       state.tickers.map((entry) => ({
@@ -295,30 +359,70 @@ export function start(document) {
       })),
       state.ticker,
     )
-    const chosen = state.tickers.find((entry) => entry.ticker === state.ticker)
-    if (chosen && (!state.from || !state.to)) {
-      const range = spanToRange(chosen.from, chosen.to, state.tz)
-      state.from = elements.from.value = range.from
-      state.to = elements.to.value = range.to
-    }
+    if (state.from === null || state.to === null) spanOf(state.ticker)
     return refresh()
   }
 
+  // The range of a ticker: its span as the service states it, `from` its first book's second and `to` the second after its last.
+  const spanOf = (ticker) => {
+    const chosen = state.tickers.find((entry) => entry.ticker === ticker)
+    if (!chosen) return
+    state.from = instantNanos(chosen.from)
+    state.to = instantNanos(chosen.to)
+    showRange()
+  }
+
   const loadTables = async () => {
-    let tables = []
+    const control = reads.tables.begin()
+    status('Loading tables…', 'loading')
+    let tables
     try {
-      tables = await fetchTables(state.base)
+      tables = await fetchTables(state.base, { fetch, signal: control.signal })
     } catch (error) {
+      if (!reads.tables.current(control)) return
       status(`Tables could not be read - ${describe(error)}`, 'error')
       draw()
       return
     }
+    if (!reads.tables.current(control)) return
     state.table = fill(
       elements.table,
       (Array.isArray(tables) ? tables : []).map((entry) => ({ value: entry.name, label: entry.name, title: entry.url })),
       state.table,
     )
     return loadTickers()
+  }
+
+  /**
+   * Take the view a hash names: the interval, the zone - one the service
+   * reads, else the browser's where it is one, else UTC - the table, the
+   * ticker, and the range and the bucket as instants, a wall clock in a
+   * hand-written link read in the link's zone.
+   */
+  const applyHash = (hash) => {
+    state.interval = fill(elements.interval, INTERVALS.map((value) => ({ value, label: value })), INTERVALS.includes(hash.interval) ? hash.interval : '1m')
+    const fallback = state.zones.includes(browserZone) ? browserZone : 'UTC'
+    const zones = timezoneChoices(state.zones, browserZone)
+    state.tz = fill(elements.tz, zones.map((value) => ({ value, label: value })), state.zones.includes(hash.tz) ? hash.tz : fallback)
+    const zone = hash.tz ?? state.tz
+    state.table = hash.table ?? ''
+    state.ticker = hash.ticker ?? ''
+    state.from = instantNanos(hash.from, zone)
+    state.to = instantNanos(hash.to, zone)
+    state.at = instantNanos(hash.at, zone)
+    showRange()
+  }
+
+  // The zones the service reads; where it cannot say, UTC and the zone the view asks for.
+  const loadZones = async (wanted) => {
+    let zones
+    try {
+      zones = await fetchTimezones(state.base, { fetch })
+    } catch {
+      zones = null
+    }
+    const served = Array.isArray(zones) ? zones.filter((zone) => typeof zone === 'string' && zone !== '') : []
+    state.zones = served.length > 0 ? served : [...new Set(['UTC', wanted])]
   }
 
   // The theme: stamped now, cycled by the button, redrawn when the system changes.
@@ -342,63 +446,59 @@ export function start(document) {
     // No media queries: the theme is whatever was stamped.
   }
 
-  // The header selectors.
-  const hash = readHash(window.location.hash)
-  state.interval = INTERVALS.includes(hash.interval) ? hash.interval : '1m'
-  fill(elements.interval, INTERVALS.map((value) => ({ value, label: value })), state.interval)
-  let supported = []
-  try {
-    supported = Intl.supportedValuesOf('timeZone')
-  } catch {
-    supported = []
-  }
-  let browserZone = 'UTC'
-  try {
-    browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  } catch {
-    browserZone = 'UTC'
-  }
-  const zones = timezoneChoices(supported, browserZone)
-  state.tz = fill(elements.tz, zones.map((value) => ({ value, label: value })), hash.tz ?? browserZone)
-  state.table = hash.table ?? ''
-  state.ticker = hash.ticker ?? ''
-  state.from = elements.from.value = hash.from ?? ''
-  state.to = elements.to.value = hash.to ?? ''
-  state.at = hash.at ?? null
+  // The skip link moves the focus to the chart and leaves the hash - the view - alone.
+  elements.skip.addEventListener('click', (event) => {
+    event.preventDefault()
+    elements.chart.focus()
+  })
 
+  // The header selectors.
   elements.table.addEventListener('change', () => {
     state.table = elements.table.value
     state.ticker = ''
-    state.from = state.to = ''
-    state.at = null
+    state.from = state.to = null
+    reads.candles.cancel()
+    clearSelection()
     loadTickers()
   })
   elements.ticker.addEventListener('change', () => {
     state.ticker = elements.ticker.value
-    state.at = null
-    const chosen = state.tickers.find((entry) => entry.ticker === state.ticker)
-    if (chosen) {
-      const range = spanToRange(chosen.from, chosen.to, state.tz)
-      state.from = elements.from.value = range.from
-      state.to = elements.to.value = range.to
-    }
+    clearSelection()
+    spanOf(state.ticker)
     scheduled()
   })
   for (const key of ['from', 'to']) {
     elements[key].addEventListener('change', () => {
-      state[key] = elements[key].value
-      state.at = null
+      // A wall clock in the zone, to the minute or the second as the input states it.
+      state[key] = instantNanos(elements[key].value, state.tz)
+      clearSelection()
       scheduled()
     })
   }
   elements.tz.addEventListener('change', () => {
     state.tz = elements.tz.value
+    showRange()
     scheduled()
   })
   elements.interval.addEventListener('change', () => {
     state.interval = elements.interval.value
-    state.at = null
+    clearSelection()
     scheduled()
+  })
+
+  // A view link pasted into the page is followed; a fragment naming no view (`#chart`) is not one.
+  window.addEventListener('hashchange', () => {
+    const hash = readHash(window.location.hash)
+    if (Object.keys(hash).length === 0) {
+      syncHash()
+      return
+    }
+    if (window.location.hash === currentHash()) return
+    reads.candles.cancel()
+    reads.bucket.cancel()
+    applyHash(hash)
+    showNoSelection()
+    loadTables()
   })
 
   // The chart follows its box.
@@ -410,11 +510,18 @@ export function start(document) {
     window.addEventListener('resize', () => draw())
   }
 
-  clearSelection()
+  // The empty panels, leaving the linked bucket in the state for the candles to find.
+  const linked = readHash(window.location.hash)
+  showNoSelection()
   downloads()
   draw()
-  status('Loading tables…', 'loading')
-  loadTables()
+  status('Loading…', 'loading')
+  loadZones(linked.tz ?? browserZone).then(() => {
+    applyHash(linked)
+    downloads()
+    draw()
+    return loadTables()
+  })
 }
 
 if (globalThis.document?.getElementById?.('chart')) start(globalThis.document)

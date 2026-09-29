@@ -196,6 +196,11 @@ Hold five facts:
   is exclusive. An `events` row's `currhashcode`/`crosshashcode` are JSON
   integers up to 2^64: `JSON.parse` rounds them past 2^53, the CSV audit
   does not.
+- A route's `tz` reads only the zones this build has rules for, and a zone
+  it lacks is `400` at `$.tz`: offer the list `GET <prefix>/api/timezones`
+  answers (`UTC` first) rather than the runtime's own zone list. A table's
+  `url` and every refusal are stated without the location's user
+  information and query, so a credential in a location reaches no client.
 - `yggdryl market serve --capture` appends the capture's books to the first
   table every time it runs: prepare the table once, then serve it without the
   capture. The Iceberg table it makes of an absent folder needs the `iceberg`

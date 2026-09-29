@@ -7,9 +7,7 @@
 //! cell: the walk is the core's, the row the core's field, the JSON the
 //! core's codec under that field.
 
-use napi::bindgen_prelude::{
-    BigInt, ClassInstance, Either, Either3, Either4, Env, Function, Result,
-};
+use napi::bindgen_prelude::{BigInt, ClassInstance, Either, Either4, Env, Function, Result};
 use napi_derive::napi;
 use yggdryl::graph::{
     BookEvent as CoreBookEvent, Candle as CoreCandle, CandleIterator as CoreCandleIterator,
@@ -249,48 +247,41 @@ impl JsCandleOptions {
     }
 }
 
-/// The options `interval` spells, aligned to UTC, through the core's own
-/// two doors: a count and a unit, or a `bigint` or whole `number` of
-/// nanoseconds read as an instant is.
-fn options_of(interval: Either3<String, BigInt, f64>) -> Result<CoreCandleOptions> {
-    let options = match interval {
-        Either3::A(spelling) => CoreCandleOptions::from_spelling(&spelling),
-        Either3::B(count) => CoreCandleOptions::new(instant_of(Either::A(count), "interval")?),
-        Either3::C(count) => CoreCandleOptions::new(instant_of(Either::B(count), "interval")?),
-    };
-    options.map_err(napi_error)
-}
-
 /// A `CandleOptions`, or what one is built from: an interval spelling, or a
 /// count of nanoseconds, aligned to UTC.
 pub(crate) type CandleOptionsInput<'a> =
     Either4<ClassInstance<'a, JsCandleOptions>, String, BigInt, f64>;
 
-/// The core options `value` names.
+/// The core options `value` names: the options themselves, or those an
+/// interval spells, aligned to UTC, through the core's own two doors - a
+/// count and a unit, or a `bigint` or whole `number` of nanoseconds read as
+/// an instant is.
 pub(crate) fn candle_options_from_input(
     value: CandleOptionsInput<'_>,
 ) -> Result<CoreCandleOptions> {
-    match value {
-        Either4::A(options) => Ok(options.inner.clone()),
-        Either4::B(spelling) => options_of(Either3::A(spelling)),
-        Either4::C(count) => options_of(Either3::B(count)),
-        Either4::D(count) => options_of(Either3::C(count)),
-    }
+    let options = match value {
+        Either4::A(options) => return Ok(options.inner.clone()),
+        Either4::B(spelling) => CoreCandleOptions::from_spelling(&spelling),
+        Either4::C(count) => CoreCandleOptions::new(instant_of(Either::A(count), "interval")?),
+        Either4::D(count) => CoreCandleOptions::new(instant_of(Either::B(count), "interval")?),
+    };
+    options.map_err(napi_error)
 }
 
 #[napi]
 impl JsCandleOptions {
-    /// Buckets of `interval` - a spelling such as `'1m'`, or a `bigint` or
-    /// whole `number` of nanoseconds - aligned to `timezone`'s wall clock,
-    /// UTC when none is named.
+    /// Buckets of `interval` - another `CandleOptions`, a spelling such as
+    /// `'1m'`, or a `bigint` or whole `number` of nanoseconds - aligned to
+    /// `timezone`'s wall clock where one is named, and otherwise to the
+    /// given options' own zone, or UTC.
     #[napi(constructor)]
     // NAPI reads the parameter type syntactically for the declaration, so the
     // union is spelled here rather than through an alias.
     pub fn new(
-        interval: Either3<String, BigInt, f64>,
+        interval: Either4<ClassInstance<'_, JsCandleOptions>, String, BigInt, f64>,
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
-        let options = options_of(interval)?;
+        let options = candle_options_from_input(interval)?;
         Ok(Self::from_core(match timezone {
             Some(timezone) => options.with_timezone(timezone_from_input(timezone)?),
             None => options,
@@ -381,10 +372,13 @@ impl JsCandleIterator {
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
         // The core walk takes a typed error, not a native one, so a
-        // JavaScript failure crosses it as one sentinel `Err` - peeked, never
-        // taken, so `failed` still holds the original for `next` to throw as
-        // itself once the walk surfaces the sentinel in its place. Yielded
-        // exactly once: `Chain` stops calling a side once it answers `None`.
+        // JavaScript failure - which the loader throws on into the pull -
+        // crosses it as one sentinel `Err`, and the walk drops the bucket it
+        // cut short as it would on a refusal of its own. `failed` is peeked,
+        // never taken, so it still holds the failure for `next` to throw
+        // once the walk surfaces the sentinel in its place; the loader
+        // throws the JavaScript original instead. Yielded exactly once:
+        // `Chain` stops calling a side once it answers `None`.
         let source: CandleSource = {
             let sentinel_failed = failed.clone();
             let mut yielded = false;
@@ -424,7 +418,8 @@ impl JsCandleIterator {
             // A core refusal (an unsorted book) or the sentinel standing in
             // for a JavaScript failure both land here; `self.failed` still
             // holds a genuine failure - never taken by the source, only
-            // peeked - so it is thrown as itself.
+            // peeked - so it is thrown rather than the sentinel, and the
+            // loader throws the JavaScript original in its place.
             Some(Err(error)) => Err(self.failed.take().unwrap_or_else(|| napi_error(error))),
             None => match self.failed.take() {
                 Some(error) => Err(error),

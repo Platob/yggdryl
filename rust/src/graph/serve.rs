@@ -6,9 +6,12 @@
 //! A table is any record location a [`Holder`] reads books from: an Iceberg
 //! folder, an Arrow, Parquet or CSV leaf, a partitioned folder. Every reading
 //! is one filtered read of it - `marketdatakind = 'BOOK'`, the ticker, the
-//! instants - pushed into the location's own record options, so a store that
-//! prunes on them prunes, and the `BOOK` rows come back as
-//! [`BookEvent`]s through [`MarketData::from_arrow_reader`]. Each reading is
+//! instants - pushed into the location's own record options, under the
+//! `marketdata` row where the location declares none, so a store that prunes
+//! on them prunes, a medium that states no nested type reads its cells as
+//! that row types them, an empty or absent store is the empty reading, and
+//! the `BOOK` rows come back as [`BookEvent`]s through
+//! [`MarketData::from_arrow_reader`]. Each reading is
 //! also answered without HTTP ([`BookService::tickers`],
 //! [`BookService::candles`], [`BookService::book`],
 //! [`BookService::events`]), so a test, a binding and the CLI reach the same
@@ -31,7 +34,7 @@
 //! # }
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::sync::Arc;
 
 use arrow_array::{RecordBatch, RecordBatchReader};
@@ -40,14 +43,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS, MARKETDATAKIND};
 use super::{
-    BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, EventColumn, Market,
-    MarketColumn, MarketData, Ohlc,
+    BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, EventColumn, ExecutionEvent,
+    Market, MarketColumn, MarketData, Ohlc,
 };
 use crate::arrow::BatchReader;
 use crate::expression::{Filter, Plan, Projection, Selector, Term};
 use crate::holder::{Buffer, Holder};
 use crate::http::{Method, Request, Response, Server, Status};
-use crate::media::IORecordOptions;
+use crate::media::{IORecordOptions, RecordOptions};
 use crate::text::expected_got;
 use crate::{
     ArrowCastOptions, DataType, Decimal, Error, Field, IOBase, IOMedia, MarketDataKind, MimeType,
@@ -93,8 +96,9 @@ type Reading = fn(&BookService, &Parameters<'_>) -> Result<Response>;
 
 /// The routes under `{prefix}/api`, each the leaf it answers at and the
 /// reading that answers it.
-const ROUTES: [(&str, Reading); 8] = [
+const ROUTES: [(&str, Reading); 9] = [
     ("tables", BookService::answer_tables),
+    ("timezones", BookService::answer_timezones),
     ("tickers", BookService::answer_tickers),
     ("candles", BookService::answer_candles),
     ("book", BookService::answer_book),
@@ -314,16 +318,23 @@ impl BookQuery {
 
     /// The rows of this ticker whose instant lies in `[from, to)`.
     fn filter(&self) -> Result<Filter> {
+        self.window(None)
+    }
+
+    /// The rows of this ticker whose instant lies in `[from, to)` and, where
+    /// `last` states one, at or before `last`.
+    fn window(&self, last: Option<i64>) -> Result<Filter> {
         let currunix = || Term::column(EventColumn::CurrUnix.name());
-        Ok(Filter::all(
-            [
-                category(),
-                of_ticker(&self.ticker),
-                currunix().ge(literal_instant(self.from)?),
-                currunix().lt(literal_instant(self.to)?),
-            ]
-            .map(Filter::from),
-        ))
+        let mut terms = vec![
+            category(),
+            of_ticker(&self.ticker),
+            currunix().ge(literal_instant(self.from)?),
+            currunix().lt(literal_instant(self.to)?),
+        ];
+        if let Some(last) = last {
+            terms.push(currunix().le(literal_instant(last)?));
+        }
+        Ok(Filter::all(terms.into_iter().map(Filter::from)))
     }
 }
 
@@ -332,11 +343,13 @@ impl BookQuery {
 /// Routes under `{prefix}/api`, all `GET`, every answer stating
 /// `Content-Type` and `Cache-Control: no-store`; a refusal is JSON
 /// `{"error": "<text>"}` - `400` for a parameter, `404` for a table, a
-/// ticker or a book there is none of, `500` otherwise:
+/// ticker or a book there is none of, `500` otherwise, its whole error
+/// written to standard error, the server's own log:
 ///
 /// | Route | Parameters | Answer |
 /// | --- | --- | --- |
-/// | `tables` | | `[{"name","url"}]` |
+/// | `tables` | | `[{"name","url"}]`, each location without its user information and its query |
+/// | `timezones` | | `["UTC", ..]`: `UTC`, then every zone this build has rules for ([`Timezone::registered`]), by name - the zones `tz` reads |
 /// | `tickers` | `table` | `[{"ticker","crosscode","from","to","books"}]`, ordered by ticker, `from` the first book's second and `to` the second after the last, so `[from, to)` holds every book |
 /// | `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books,executions,volume}` with each reading `{open,high,low,close}` or null |
 /// | `book` | `table`, `ticker`, `at`, `tz` | the last book at or before `at`: `{currunix,ticker,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,alive,deltas,executions,bidlimits,asklimits}`, the counts of its entries and each side's `[{price,quantity,uuids,tradable}]` |
@@ -344,7 +357,10 @@ impl BookQuery {
 /// | `audit.csv`, `audit.csv.gz`, `audit.csv.zst` | `table`, `ticker`, `from`, `to`, `tz`, `side` | the same rows unbounded, written by the CSV medium under the suffix's coding, `Content-Disposition: attachment` |
 ///
 /// Instants in an answer are ISO-8601 text in `tz`, decimals text, UUIDs
-/// their canonical text. An audit row is [`Self::events_field`]: the book's
+/// their canonical text. No answer carries what authenticates a location -
+/// the user information before its host, the query after its path, where a
+/// password or a signature travels - which every table's listing and every
+/// refusal's text are stated without. An audit row is [`Self::events_field`]: the book's
 /// instant, the row's role (`alive`, `delta`, `execution`) and every flat
 /// column of [`MarketData::field`]. The readings behind the routes are
 /// public, so what a route answers is exactly what [`Self::tickers`],
@@ -498,8 +514,10 @@ impl BookService {
     /// The tickers `table` holds books of, ordered by ticker: a sequence of
     /// `{ticker, crosscode, from, to, books}` structs, `from` the whole
     /// second the first book stands in and `to` the whole second after the
-    /// last - both `datetime64(ns, UTC)` - and `books` how many. A book
-    /// stating no ticker is not listed, since no query can name it.
+    /// last - both `datetime64(ns, UTC)`, the first or the last instant
+    /// `i64` nanoseconds hold where that second lies past them - and `books`
+    /// how many. A book stating no ticker is not listed, since no query can
+    /// name it; an empty or absent table lists none.
     ///
     /// One projected scan: `select ticker, crosscode, currunix where
     /// marketdatakind = 'BOOK'`.
@@ -518,11 +536,24 @@ impl BookService {
                     ("crosscode", Scalar::from(span.crosscode)),
                     (
                         "from",
-                        zoned(span.from.div_euclid(NANOS) * NANOS, Timezone::UTC)?,
+                        zoned(
+                            span.from
+                                .div_euclid(NANOS)
+                                .checked_mul(NANOS)
+                                .unwrap_or(i64::MIN),
+                            Timezone::UTC,
+                        )?,
                     ),
                     (
                         "to",
-                        zoned((span.to.div_euclid(NANOS) + 1) * NANOS, Timezone::UTC)?,
+                        zoned(
+                            span.to
+                                .div_euclid(NANOS)
+                                .checked_add(1)
+                                .and_then(|second| second.checked_mul(NANOS))
+                                .unwrap_or(i64::MAX),
+                            Timezone::UTC,
+                        )?,
                     ),
                     ("books", Scalar::from(span.books)),
                 ]))
@@ -570,14 +601,13 @@ impl BookService {
             .map(Filter::from),
         );
         let mut latest: Option<BookEvent> = None;
-        for item in MarketData::from_arrow_reader(Self::read(table, &filter)?)? {
-            if let MarketData::BookEvent(book) = item? {
-                if latest
-                    .as_ref()
-                    .is_none_or(|held| held.get_currunix() <= book.get_currunix())
-                {
-                    latest = Some(*book);
-                }
+        for book in Self::stream(table, &filter)? {
+            let book = book?;
+            if latest
+                .as_ref()
+                .is_none_or(|held| held.get_currunix() <= book.get_currunix())
+            {
+                latest = Some(book);
             }
         }
         Ok(latest)
@@ -589,13 +619,20 @@ impl BookService {
     /// its executions (`execution`), each kept where it stands on
     /// `query.side` - an execution on its own side - as batches of
     /// [`Self::events_field`]. Unbounded: the CSV audit is this reader
-    /// written whole.
+    /// written whole. The books of the range are held, sorted, while the
+    /// reader lays their rows out a batch at a time.
     ///
     /// # Errors
     ///
     /// As [`Self::candles`].
     pub fn events(&self, query: &BookQuery) -> Result<BatchReader> {
-        audit_reader(self.stamped(query)?)
+        query.span_checked()?;
+        let table = self.table(&query.table)?;
+        let books = Self::books(table, &query.filter()?)?;
+        if books.is_empty() {
+            Self::ticker_known(table, &query.ticker)?;
+        }
+        audit_reader(books, query.side, usize::MAX)
     }
 
     /// The table `name` names.
@@ -606,24 +643,71 @@ impl BookService {
             .ok_or_else(|| Error::absent("table", name))
     }
 
+    /// The table's own record options, the `marketdata` row declared where
+    /// the location declares none: a medium whose cells state no nested
+    /// type, such as a CSV leaf, reads them as the row types them, and an
+    /// empty or absent store reads as the empty stream of that row rather
+    /// than of no column.
+    fn read_options(table: &BookTable) -> Result<RecordOptions> {
+        let options = table.holder.record_options()?;
+        if options.declared().is_some() {
+            return Ok(options);
+        }
+        Ok(options.with_field(MarketData::field()?))
+    }
+
     /// The rows of `table` `filter` keeps, read through the table's own
     /// record options so a store that prunes on the filter prunes.
     fn read(table: &BookTable, filter: &Filter) -> Result<BatchReader> {
-        let options = table.holder.record_options()?.with_filter(filter)?;
+        let options = Self::read_options(table)?.with_filter(filter)?;
         table.holder.read_arrow_reader(&options)
     }
 
+    /// The books of `table` `filter` keeps, in stored order, one at a time;
+    /// a row of another leaf is skipped.
+    fn stream(
+        table: &BookTable,
+        filter: &Filter,
+    ) -> Result<impl Iterator<Item = Result<BookEvent>>> {
+        Ok(
+            MarketData::from_arrow_reader(Self::read(table, filter)?)?.filter_map(
+                |item| match item {
+                    Ok(MarketData::BookEvent(book)) => Some(Ok(*book)),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+            ),
+        )
+    }
+
     /// The books of `table` `filter` keeps, sorted by their instant, ties in
-    /// stored order; a row of another leaf is skipped.
+    /// stored order.
     fn books(table: &BookTable, filter: &Filter) -> Result<Vec<BookEvent>> {
-        let mut books = Vec::new();
-        for item in MarketData::from_arrow_reader(Self::read(table, filter)?)? {
-            if let MarketData::BookEvent(book) = item? {
-                books.push(*book);
-            }
-        }
+        let mut books = Self::stream(table, filter)?.collect::<Result<Vec<_>>>()?;
         books.sort_by_key(Event::get_currunix);
         Ok(books)
+    }
+
+    /// The rows `filter` keeps of `table`, projected onto `columns` of the
+    /// `marketdata` row - one projected read, which a store keeping its
+    /// columns apart answers without reading the rest - as record columns
+    /// of the struct `book` of them.
+    fn projected(table: &BookTable, filter: &Filter, columns: Vec<Field>) -> Result<SerieReader> {
+        let select = Selector::new(
+            columns
+                .iter()
+                .map(|column| Projection::column(column.name())),
+        );
+        let options = Self::read_options(table)?
+            .with_filter(filter)?
+            .with_select(select)?;
+        let root = DataType::Struct(StructType::from_fields(columns)?).required_field("book");
+        let reader = table.holder.read_arrow_reader(&options)?;
+        Ok(SerieReader::from_arrow_reader(
+            Some(&root),
+            reader,
+            ArrowCastOptions::new(),
+        )?)
     }
 
     /// The span of each ticker's books in `table`, by ticker.
@@ -631,31 +715,18 @@ impl BookService {
         let ticker = MarketColumn::Ticker.name();
         let crosscode = EventColumn::CrossCode.name();
         let currunix = EventColumn::CurrUnix.name();
-        let root = DataType::Struct(StructType::from_fields([
-            DataType::utf8().nullable_field(ticker),
-            DataType::utf8().nullable_field(crosscode),
-            DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?.nullable_field(currunix),
-        ])?)
-        .required_field("book");
-        let options = table
-            .holder
-            .record_options()?
-            .with_filter(category())?
-            .with_select(Selector::new([
-                Projection::column(ticker),
-                Projection::column(crosscode),
-                Projection::column(currunix),
-            ]))?;
-        let reader = table.holder.read_arrow_reader(&options)?;
-        let shape = || Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: expected_got(
-                "the ticker, crosscode and currunix columns of a marketdata row",
-                "another shape",
-            ),
-        };
+        let reader = Self::projected(
+            table,
+            &Filter::from(category()),
+            vec![
+                DataType::utf8().nullable_field(ticker),
+                DataType::utf8().nullable_field(crosscode),
+                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?.nullable_field(currunix),
+            ],
+        )?;
+        let shape = || unshaped("the ticker, crosscode and currunix columns of a marketdata row");
         let mut spans = BTreeMap::new();
-        for rows in SerieReader::from_arrow_reader(Some(&root), reader, ArrowCastOptions::new())? {
+        for rows in reader {
             let rows = rows?;
             let tickers = rows
                 .child(ticker)
@@ -702,38 +773,110 @@ impl BookService {
         ))
     }
 
-    /// Every audit row of `query`, in book order, stamped with its book's
-    /// instant and its role.
-    fn stamped(&self, query: &BookQuery) -> Result<Vec<Stamped>> {
+    /// How many books `filter` keeps of `table`, and the instant the
+    /// `want`-th earliest of them stands at - `None` when it keeps fewer:
+    /// one projected scan of `currunix`, holding at most `want` instants.
+    fn cut(table: &BookTable, filter: &Filter, want: usize) -> Result<(usize, Option<i64>)> {
+        let currunix = EventColumn::CurrUnix.name();
+        let reader = Self::projected(
+            table,
+            filter,
+            vec![
+                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?.nullable_field(currunix),
+            ],
+        )?;
+        let mut earliest = BinaryHeap::new();
+        let mut total = 0_usize;
+        for rows in reader {
+            let rows = rows?;
+            let instants = rows
+                .child(currunix)
+                .and_then(Serie::as_datetime_nanosecond)
+                .ok_or_else(|| unshaped("the currunix column of a marketdata row"))?;
+            for unix in (0..rows.len()).filter_map(|index| instants.value(index)) {
+                total += 1;
+                earliest.push(unix);
+                if earliest.len() > want {
+                    earliest.pop();
+                }
+            }
+        }
+        let cut = if earliest.len() < want {
+            None
+        } else {
+            earliest.peek().copied()
+        };
+        Ok((total, cut))
+    }
+
+    /// The earliest books of `query` whose audit rows reach past `limit`, in
+    /// instant order, ties in stored order, and whether the range states
+    /// more than `limit` rows.
+    ///
+    /// The row bound is pushed into the read. A projected scan of the
+    /// range's instants ([`Self::cut`]) finds the instant by which its
+    /// earliest `limit + 1` books stand, and only the books up to it are
+    /// read and built - that count doubled, and the read made again, while
+    /// the books read state no more than `limit` rows on `query.side` and
+    /// the range holds more. Of the books read, only the earliest are held
+    /// ([`Self::select`]), so a request holds at most `limit + 1` books and
+    /// `limit + 1` instants whatever its range.
+    fn earliest(&self, query: &BookQuery, limit: usize) -> Result<(Vec<BookEvent>, bool)> {
         query.span_checked()?;
         let table = self.table(&query.table)?;
-        let books = Self::books(table, &query.filter()?)?;
-        if books.is_empty() {
-            Self::ticker_known(table, &query.ticker)?;
+        let mut want = limit.saturating_add(1);
+        loop {
+            let (total, cut) = Self::cut(table, &query.filter()?, want)?;
+            if total == 0 {
+                Self::ticker_known(table, &query.ticker)?;
+                return Ok((Vec::new(), false));
+            }
+            let (books, rows, read) = Self::select(table, &query.window(cut)?, query.side, limit)?;
+            if rows > limit || cut.is_none() || read >= total {
+                return Ok((books, rows > limit));
+            }
+            want = want.saturating_mul(2);
         }
-        let kept = |entry: &MarketData| keeps(query.side, entry.get_side());
-        let mut rows = Vec::new();
-        for book in &books {
-            let unix = book.get_currunix();
-            let stamped = |role: &'static str, entry: MarketData| Stamped { unix, role, entry };
-            rows.extend(
-                book.alive()
-                    .filter(|entry| kept(entry))
-                    .map(|entry| stamped(ROLE_ALIVE, entry.clone())),
-            );
-            rows.extend(
-                book.deltas()
-                    .filter(|entry| kept(entry))
-                    .map(|entry| stamped(ROLE_DELTA, entry.clone())),
-            );
-            rows.extend(
-                book.executions()
-                    .iter()
-                    .filter(|execution| keeps(query.side, execution.get_side()))
-                    .map(|execution| stamped(ROLE_EXECUTION, MarketData::from(execution.clone()))),
-            );
+    }
+
+    /// The earliest books `filter` keeps whose audit rows on `side` reach
+    /// past `limit`, in instant order, ties in stored order; how many rows
+    /// they state; and how many books were read.
+    ///
+    /// The books stream from the read in stored order and only the earliest
+    /// are held: a book stating no row on `side` is passed over, a book
+    /// standing after every held one is passed over once the held ones
+    /// state more than `limit` rows, and a book taken in drops the latest
+    /// held ones the rest no longer need - so at most `limit + 1` are held,
+    /// a store kept in no instant order included.
+    fn select(
+        table: &BookTable,
+        filter: &Filter,
+        side: Option<Side>,
+        limit: usize,
+    ) -> Result<(Vec<BookEvent>, usize, usize)> {
+        let mut held: BTreeMap<(i64, usize), (BookEvent, usize)> = BTreeMap::new();
+        let (mut rows, mut read) = (0_usize, 0_usize);
+        for (ordinal, book) in Self::stream(table, filter)?.enumerate() {
+            let book = book?;
+            read += 1;
+            let stated = audit_rows(&book, side).count();
+            let key = (book.get_currunix(), ordinal);
+            let past = rows > limit && held.last_key_value().is_some_and(|(last, _)| key > *last);
+            if stated == 0 || past {
+                continue;
+            }
+            held.insert(key, (book, stated));
+            rows += stated;
+            while let Some(last) = held.last_entry() {
+                if rows - last.get().1 <= limit {
+                    break;
+                }
+                rows -= last.remove().1;
+            }
         }
-        Ok(rows)
+        let books = held.into_values().map(|(book, _)| book).collect();
+        Ok((books, rows, read))
     }
 
     // --------------------------------------------------------------------
@@ -752,26 +895,73 @@ impl BookService {
             });
         match answered {
             Ok(response) => response,
-            Err((status, error)) => refusal(status, &error),
+            Err((status, error)) => {
+                if status == Status::INTERNAL_SERVER_ERROR {
+                    eprintln!("{} {}: {error}", request.method(), request.url());
+                }
+                self.refusal(status, &error)
+            }
         }
     }
 
-    /// `/api/tables`: `[{"name","url"}]`, `url` null for a location that
-    /// has none.
+    /// `{"error": "<text>"}` under `status`, the text [`Self::redacted`].
+    fn refusal(&self, status: Status, error: &Error) -> Response {
+        let text = self.redacted(&error.to_string());
+        let body = object([("error", Scalar::from(text.as_str()))]);
+        Response::new(status)
+            .with_json(&body)
+            .and_then(no_store)
+            .unwrap_or_else(|_| Response::new(status).with_text(&text))
+    }
+
+    /// `text` with what authenticates each table's location taken out
+    /// wherever it is spelled: the user information before the host, `@`
+    /// included, and the query after the path, `?` included - where a
+    /// password, a token or a signature travels. What a client reads of a
+    /// location or a refusal passes through here.
+    fn redacted(&self, text: &str) -> String {
+        let mut text = text.to_owned();
+        for url in self.tables.iter().filter_map(|table| table.holder.url()) {
+            let authority = url.authority();
+            let user = authority
+                .as_str()
+                .strip_suffix(authority.host_port())
+                .unwrap_or_default();
+            if !user.is_empty() {
+                text = text.replace(user, "");
+            }
+            if let Ok(Some(query)) = url.query(false) {
+                text = text.replace(&format!("?{query}"), "");
+            }
+        }
+        text
+    }
+
+    /// `/api/tables`: `[{"name","url"}]`, each location
+    /// [`Self::redacted`], `url` null for a location that has none.
     fn answer_tables(&self, _: &Parameters<'_>) -> Result<Response> {
         let tables = self.tables.iter().map(|table| {
             object([
                 ("name", Scalar::from(table.name.as_str())),
                 (
                     "url",
-                    table
-                        .holder
-                        .url()
-                        .map_or(Scalar::Null, |url| Scalar::from(url.to_string())),
+                    table.holder.url().map_or(Scalar::Null, |url| {
+                        Scalar::from(self.redacted(&url.to_string()))
+                    }),
                 ),
             ])
         });
         json(&Scalar::from_sequence(tables))
+    }
+
+    /// `/api/timezones`: `UTC`, then every zone this build has rules for,
+    /// by name - every place zone the `tz` parameter reads, which reads
+    /// their aliases and fixed offsets besides.
+    fn answer_timezones(&self, _: &Parameters<'_>) -> Result<Response> {
+        let zones = std::iter::once(Timezone::UTC)
+            .chain(Timezone::registered().filter(|zone| !zone.is_utc()))
+            .map(|zone| Scalar::from(zone.as_str()));
+        json(&Scalar::from_sequence(zones))
     }
 
     /// `/api/tickers?table=`: [`Self::tickers`].
@@ -815,14 +1005,14 @@ impl BookService {
         json(&book_json(&book, zone)?)
     }
 
-    /// `/api/events`: [`Self::events`]'s rows as JSON, at most `limit`.
+    /// `/api/events`: [`Self::events`]'s rows as JSON, at most `limit`, read
+    /// holding only the books they come from ([`Self::earliest`]).
     fn answer_events(&self, parameters: &Parameters<'_>) -> Result<Response> {
         let query = BookQuery::from_parameters(parameters)?;
-        let limit = limit(parameters, self.options.max_event_rows)?;
-        let mut stamped = self.stamped(&query)?;
-        let truncated = u64::try_from(stamped.len()).is_ok_and(|rows| rows > limit);
-        stamped.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
-        let reader = audit_reader(stamped)?;
+        let limit =
+            usize::try_from(limit(parameters, self.options.max_event_rows)?).unwrap_or(usize::MAX);
+        let (books, truncated) = self.earliest(&query, limit)?;
+        let reader = audit_reader(books, query.side, limit)?;
         let names: Vec<SmolStr> = reader
             .schema()
             .fields()
@@ -878,7 +1068,7 @@ impl BookService {
         let mut buffer = Buffer::new().with_media_type(media_type.clone());
         let options = buffer.record_options()?;
         buffer.overwrite_arrow_reader(reader, &options)?;
-        let body = buffer.read_all_bytes()?;
+        let body = buffer.into_bytes();
         let csv = MimeType::CSV;
         let content_type = media_type.encodings().last().unwrap_or(&csv).as_str();
         let filename = format!(
@@ -904,24 +1094,71 @@ struct Span {
     books: u64,
 }
 
-/// One audit row before it is written: the book's instant, the role and the
-/// entry.
-struct Stamped {
-    unix: i64,
-    role: &'static str,
-    entry: MarketData,
+/// One audit row of a book, borrowed: an entry it holds, or an execution.
+enum Audited<'book> {
+    Entry(&'book MarketData),
+    Execution(&'book ExecutionEvent),
 }
 
-/// The audit rows `stamped` lay out: the entries written through
-/// [`MarketData::arrow_reader`], their nested columns dropped by one
-/// selector, and the stamps prepended batch by batch.
-fn audit_reader(stamped: Vec<Stamped>) -> Result<BatchReader> {
-    let mut stamps = Vec::with_capacity(stamped.len());
-    let mut entries = Vec::with_capacity(stamped.len());
-    for row in stamped {
-        stamps.push((row.unix, row.role));
-        entries.push(row.entry);
+impl Audited<'_> {
+    /// The row's entry as the value [`MarketData::arrow_reader`] writes.
+    fn owned(self) -> MarketData {
+        match self {
+            Self::Entry(entry) => entry.clone(),
+            Self::Execution(execution) => MarketData::from(execution.clone()),
+        }
     }
+}
+
+/// The audit rows of `book` kept to `side`, in audit order, each its role
+/// and its entry: the alive entries (`alive`), the deltas (`delta`), the
+/// executions (`execution`) - an entry kept where it stands on the side, an
+/// execution on its own.
+fn audit_rows(
+    book: &BookEvent,
+    side: Option<Side>,
+) -> impl Iterator<Item = (&'static str, Audited<'_>)> {
+    let alive = book
+        .alive()
+        .filter(move |entry| keeps(side, entry.get_side()))
+        .map(|entry| (ROLE_ALIVE, Audited::Entry(entry)));
+    let deltas = book
+        .deltas()
+        .filter(move |entry| keeps(side, entry.get_side()))
+        .map(|entry| (ROLE_DELTA, Audited::Entry(entry)));
+    let executions = book
+        .executions()
+        .iter()
+        .filter(move |execution| keeps(side, execution.get_side()))
+        .map(|execution| (ROLE_EXECUTION, Audited::Execution(execution)));
+    alive.chain(deltas).chain(executions)
+}
+
+/// The first `limit` audit rows of `books` on `side`, laid out a batch at a
+/// time: the entries written through [`MarketData::arrow_reader`], their
+/// nested columns dropped by one selector, and each row's book instant and
+/// role prepended batch by batch. The books are held; an entry is cloned
+/// only as the batch holding it is written.
+fn audit_reader(books: Vec<BookEvent>, side: Option<Side>, limit: usize) -> Result<BatchReader> {
+    let books: Arc<[BookEvent]> = Arc::from(books);
+    let entries = {
+        let books = Arc::clone(&books);
+        (0..books.len())
+            .flat_map(move |index| {
+                audit_rows(&books[index], side)
+                    .map(|(_, entry)| entry.owned())
+                    .collect::<Vec<_>>()
+            })
+            .take(limit)
+    };
+    let stamps = (0..books.len())
+        .flat_map(move |index| {
+            let unix = books[index].get_currunix();
+            audit_rows(&books[index], side)
+                .map(|(role, _)| (unix, role))
+                .collect::<Vec<_>>()
+        })
+        .take(limit);
     let flat = Plan::new()
         .select(Selector::all_except(NESTED))?
         .apply_arrow_reader(MarketData::arrow_reader(entries, None, None)?)?;
@@ -930,7 +1167,7 @@ fn audit_reader(stamped: Vec<Stamped>) -> Result<BatchReader> {
     let fields = field.fields();
     Ok(Box::new(EventRows {
         flat,
-        stamps: stamps.into_iter(),
+        stamps: Box::new(stamps),
         schema,
         bookunix: Arc::new(fields[0].clone()),
         role: Arc::new(fields[1].clone()),
@@ -942,7 +1179,7 @@ fn audit_reader(stamped: Vec<Stamped>) -> Result<BatchReader> {
 /// and roles laid out in front of it.
 struct EventRows {
     flat: BatchReader,
-    stamps: std::vec::IntoIter<(i64, &'static str)>,
+    stamps: Box<dyn Iterator<Item = (i64, &'static str)> + Send>,
     schema: SchemaRef,
     bookunix: Arc<Field>,
     role: Arc<Field>,
@@ -1015,6 +1252,15 @@ impl RecordBatchReader for EventRows {
 // ------------------------------------------------------------------------
 // The filters
 // ------------------------------------------------------------------------
+
+/// A projected read answering columns other than the ones it asked for:
+/// what no store answers, since the read casts onto the columns it names.
+fn unshaped(expected: &'static str) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: expected_got(expected, "another shape"),
+    }
+}
 
 /// `marketdatakind = 'BOOK'`.
 ///
@@ -1173,16 +1419,6 @@ fn json(value: &Scalar) -> Result<Response> {
 /// `response` stating `Cache-Control: no-store`.
 fn no_store(response: Response) -> Result<Response> {
     response.with_header(NO_STORE.0, NO_STORE.1)
-}
-
-/// `{"error": "<text>"}` under `status`.
-fn refusal(status: Status, error: &Error) -> Response {
-    let text = error.to_string();
-    let body = object([("error", Scalar::from(text.as_str()))]);
-    Response::new(status)
-        .with_json(&body)
-        .and_then(no_store)
-        .unwrap_or_else(|_| Response::new(status).with_text(&text))
 }
 
 /// A struct of `entries`, whose names are this module's own and distinct.

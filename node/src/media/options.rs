@@ -5,7 +5,7 @@
 //! media type, which is what [`crate::iobase::JsIOBase::record_options`] reads off
 //! the handle.
 
-use napi::bindgen_prelude::{Buffer, Result};
+use napi::bindgen_prelude::{Buffer, Either, Null, Result};
 use napi_derive::napi;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
@@ -75,6 +75,16 @@ fn byte_of(text: &str, name: &str) -> Result<u8> {
             "expected one ASCII character for {name}, got {text:?}"
         ))
     })
+}
+
+/// The byte an optional CSV role is set to, or `None` where `null` clears
+/// it. `undefined` is an argument not given, never a `null`: the `Either`
+/// refuses it before it reaches here, so nothing is cleared by omission.
+fn optional_byte_of(value: Either<String, Null>, name: &str) -> Result<Option<u8>> {
+    match value {
+        Either::A(text) => byte_of(&text, name).map(Some),
+        Either::B(Null) => Ok(None),
+    }
 }
 
 #[napi]
@@ -554,13 +564,11 @@ impl JsRecordOptions {
     }
 
     /// Set the CSV quote byte, or clear it with `null` so nothing is quoted
-    /// on write and a quote reads as content.
+    /// on write and a quote reads as content; `undefined`, an argument not
+    /// given, clears nothing and is refused.
     #[napi(setter)]
-    pub fn set_quote(&mut self, quote: Option<String>) -> Result<()> {
-        let quote = quote
-            .as_deref()
-            .map(|text| byte_of(text, "quote"))
-            .transpose()?;
+    pub fn set_quote(&mut self, quote: Either<String, Null>) -> Result<()> {
+        let quote = optional_byte_of(quote, "quote")?;
         self.inner.set_csv_quote(quote).map_err(napi_error)
     }
 
@@ -572,13 +580,11 @@ impl JsRecordOptions {
         self.inner.csv_escape().flatten().map(byte_text)
     }
 
-    /// Set the CSV escape byte, or clear it with `null`.
+    /// Set the CSV escape byte, or clear it with `null`; `undefined` clears
+    /// nothing and is refused.
     #[napi(setter)]
-    pub fn set_escape(&mut self, escape: Option<String>) -> Result<()> {
-        let escape = escape
-            .as_deref()
-            .map(|text| byte_of(text, "escape"))
-            .transpose()?;
+    pub fn set_escape(&mut self, escape: Either<String, Null>) -> Result<()> {
+        let escape = optional_byte_of(escape, "escape")?;
         self.inner.set_csv_escape(escape).map_err(napi_error)
     }
 
@@ -589,13 +595,11 @@ impl JsRecordOptions {
         self.inner.csv_comment().flatten().map(byte_text)
     }
 
-    /// Set the CSV comment byte, or clear it with `null`.
+    /// Set the CSV comment byte, or clear it with `null`; `undefined` clears
+    /// nothing and is refused.
     #[napi(setter)]
-    pub fn set_comment(&mut self, comment: Option<String>) -> Result<()> {
-        let comment = comment
-            .as_deref()
-            .map(|text| byte_of(text, "comment"))
-            .transpose()?;
+    pub fn set_comment(&mut self, comment: Either<String, Null>) -> Result<()> {
+        let comment = optional_byte_of(comment, "comment")?;
         self.inner.set_csv_comment(comment).map_err(napi_error)
     }
 
@@ -716,7 +720,7 @@ impl JsRecordOptions {
 
     /// Return these options with another CSV quote byte, or `null` for none.
     #[napi]
-    pub fn with_quote(&self, quote: Option<String>) -> Result<Self> {
+    pub fn with_quote(&self, quote: Either<String, Null>) -> Result<Self> {
         let mut options = self.clone();
         options.set_quote(quote)?;
         Ok(options)
@@ -724,7 +728,7 @@ impl JsRecordOptions {
 
     /// Return these options with another CSV escape byte, or `null` for none.
     #[napi]
-    pub fn with_escape(&self, escape: Option<String>) -> Result<Self> {
+    pub fn with_escape(&self, escape: Either<String, Null>) -> Result<Self> {
         let mut options = self.clone();
         options.set_escape(escape)?;
         Ok(options)
@@ -732,7 +736,7 @@ impl JsRecordOptions {
 
     /// Return these options with another CSV comment byte, or `null` for none.
     #[napi]
-    pub fn with_comment(&self, comment: Option<String>) -> Result<Self> {
+    pub fn with_comment(&self, comment: Either<String, Null>) -> Result<Self> {
         let mut options = self.clone();
         options.set_comment(comment)?;
         Ok(options)

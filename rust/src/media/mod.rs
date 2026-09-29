@@ -125,8 +125,17 @@ impl Media {
         if base == &MimeType::XMLA {
             return Ok(Self::Xmla(crate::xmla::Xmla::new(handle)));
         }
-        if base == &MimeType::CSV || base == &MimeType::TSV {
-            return Ok(Self::Csv(crate::csv::Csv::new(handle)));
+        // The type asked for names the dialect, whatever the handle's own
+        // name would pick.
+        if base == &MimeType::CSV {
+            return Ok(Self::Csv(
+                crate::csv::Csv::new(handle).with_options(crate::csv::CsvOptions::new()),
+            ));
+        }
+        if base == &MimeType::TSV {
+            return Ok(Self::Csv(
+                crate::csv::Csv::new(handle).with_options(crate::csv::CsvOptions::tsv()),
+            ));
         }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \

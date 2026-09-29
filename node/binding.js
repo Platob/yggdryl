@@ -4404,6 +4404,24 @@ function pullOf(iterable, read, what, failed) {
     }
   }
 }
+// A walk whose core takes its source's failure as its own error - the book
+// and candle walks, which end where it happened rather than closing what it
+// cut short as though the stream had ended there - is handed the failure:
+// the pull keeps it in `failed`, as itself, and throws it on into the
+// native stage, which carries it through the core as a sentinel `Err`, as
+// Python's walks do; the walk's `next` throws the kept original in place
+// of the error that sentinel surfaces as.
+function carriedPullOf(iterable, read, what, failed) {
+  const pull = pullOf(iterable, read, what)
+  return () => {
+    try {
+      return pull()
+    } catch (error) {
+      failed.error = error
+      throw error
+    }
+  }
+}
 function asMessage(value) {
   if (!(value instanceof NativeFixMsg)) {
     throw new TypeError('every item of a message stream must be a FixMsg')
@@ -4742,9 +4760,11 @@ NativeMarketData.applyView = function applyView(view, reader, lifts, crosscode) 
 // `BookIterator` and `EventIterator` are built only through their hidden
 // factories, which take a pull function rather than a JavaScript iterable
 // directly - the same reason `FixCodec`'s streams do.
-// A failure behind the caller's iterable is kept, as itself, for the walk
-// to throw in place of its end, as `FixCodec`'s streams do; an unsorted
-// event walk reads its whole source when it opens, so it throws there.
+// A failure behind the caller's iterable is thrown as itself. The book walk
+// carries it through its core, which ends there; the event walk keeps it
+// for the walk to throw in place of its end, as `FixCodec`'s streams do,
+// and an unsorted event walk reads its whole source when it opens, so it
+// throws there.
 const nativeBookIterator = NativeBookIterator._bookIteratorNative
 const BookIterator = publicClass(
   NativeBookIterator,
@@ -4753,7 +4773,7 @@ const BookIterator = publicClass(
     const failed = {}
     const walk = nativeBookIterator.call(
       NativeBookIterator,
-      pullOf(items, asMarketItem, 'items', failed),
+      carriedPullOf(items, asMarketItem, 'items', failed),
       snapshotMillis,
     )
     walk[FAILED] = failed
@@ -4784,13 +4804,15 @@ const EventIterator = publicClass(
 // is and narrowed to the book it holds by the core, whose own refusal names
 // any other kind - and the options as a `CandleOptions`, an interval
 // spelling or a count of nanoseconds, which the native door reads through
-// the core's own two.
+// the core's own two. A failure behind the iterable crosses the core as its
+// own error, so the completed buckets come first and the open one is
+// dropped, never closed as a candle.
 const nativeCandleIterator = NativeCandleIterator._candleIteratorNative
 const CandleIterator = publicClass(NativeCandleIterator, 'CandleIterator', (books, options) => {
   const failed = {}
   const walk = nativeCandleIterator.call(
     NativeCandleIterator,
-    pullOf(books, asMarketItem, 'books', failed),
+    carriedPullOf(books, asMarketItem, 'books', failed),
     options,
   )
   walk[FAILED] = failed
@@ -4815,7 +4837,9 @@ Candle.fromScalar = function fromScalar(value) {
 // Every walk over a native `Result<Option<T>>` answers `T | null`, not the
 // `{value, done}` shape `for...of` needs - the same reason `FixMessages`
 // wraps its own `next`, with the same failure kept for its end - and each
-// walk is its own iterator.
+// walk is its own iterator. A failure the book and candle walks carried
+// through their core surfaces as the native error standing in for it, and
+// the kept original is thrown in its place.
 for (const [prototype, name] of [
   [NativeBookIterator.prototype, 'books'],
   [NativeEventIterator.prototype, 'events'],
@@ -4824,9 +4848,15 @@ for (const [prototype, name] of [
 ]) {
   const nativeNext = prototype.next
   prototype.next = function next() {
-    const value = nativeNext.call(this)
-    if (value !== null) return { value, done: false }
     const failed = this[FAILED]
+    let value
+    try {
+      value = nativeNext.call(this)
+    } catch (error) {
+      if (failed === undefined || failed.error === undefined) throw error
+      value = null
+    }
+    if (value !== null) return { value, done: false }
     if (failed !== undefined && failed.error !== undefined) {
       const { error } = failed
       failed.error = undefined
@@ -4867,8 +4897,9 @@ const graph = Object.freeze({
   CandleIterator,
   // Every candle of a sorted stream of books, held: the walk drained once.
   candles(books, options, timezone) {
-    // A zone beside a spelling or a count is the `CandleOptions` of both, as
-    // Python's `candles(books, interval, timezone=None)` reads it.
+    // A zone beside the options, a spelling or a count is the
+    // `CandleOptions` of both, as Python's `candles(books, interval,
+    // timezone=None)` reads it.
     if (timezone !== undefined && timezone !== null) {
       options = new NativeCandleOptions(options, timezone)
     }

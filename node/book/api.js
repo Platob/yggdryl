@@ -102,6 +102,11 @@ export function fetchTables(base, options) {
   return fetchJson(apiUrl(base, 'api/tables'), options)
 }
 
+/** `GET api/timezones`: `["UTC", ...]`, the zones the service reads - UTC, then every zone it has rules for, by name. */
+export function fetchTimezones(base, options) {
+  return fetchJson(apiUrl(base, 'api/timezones'), options)
+}
+
 /** `GET api/tickers?table=`: `[{ ticker, crosscode, from, to, books }]`, by ticker. */
 export function fetchTickers(base, table, options) {
   return fetchJson(apiUrl(base, 'api/tickers', { table }), options)

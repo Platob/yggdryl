@@ -786,11 +786,12 @@ export type JsCandleIterator = CandleIterator
  */
 export declare class CandleOptions {
   /**
-   * Buckets of `interval` - a spelling such as `'1m'`, or a `bigint` or
-   * whole `number` of nanoseconds - aligned to `timezone`'s wall clock,
-   * UTC when none is named.
+   * Buckets of `interval` - another `CandleOptions`, a spelling such as
+   * `'1m'`, or a `bigint` or whole `number` of nanoseconds - aligned to
+   * `timezone`'s wall clock where one is named, and otherwise to the
+   * given options' own zone, or UTC.
    */
-  constructor(interval: string | bigint | number, timezone?: TimezoneInput | undefined | null)
+  constructor(interval: CandleOptions | string | bigint | number, timezone?: TimezoneInput | undefined | null)
   /** The bucket width in nanoseconds of the zone's wall clock. */
   get interval(): bigint
   /** The zone the buckets align to. */
@@ -6373,24 +6374,31 @@ export declare class RecordOptions {
   get quote(): string | null
   /**
    * Set the CSV quote byte, or clear it with `null` so nothing is quoted
-   * on write and a quote reads as content.
+   * on write and a quote reads as content; `undefined`, an argument not
+   * given, clears nothing and is refused.
    */
-  set quote(quote: string | undefined | null)
+  set quote(quote: string | null)
   /**
    * The CSV escape byte as a one-character string; `null` where a quote
    * inside a quoted cell is doubled instead (RFC 4180), or for another
    * encoding.
    */
   get escape(): string | null
-  /** Set the CSV escape byte, or clear it with `null`. */
-  set escape(escape: string | undefined | null)
+  /**
+   * Set the CSV escape byte, or clear it with `null`; `undefined` clears
+   * nothing and is refused.
+   */
+  set escape(escape: string | null)
   /**
    * The CSV comment byte - a record opening with it is skipped - as a
    * one-character string; `null` where none is, or for another encoding.
    */
   get comment(): string | null
-  /** Set the CSV comment byte, or clear it with `null`. */
-  set comment(comment: string | undefined | null)
+  /**
+   * Set the CSV comment byte, or clear it with `null`; `undefined` clears
+   * nothing and is refused.
+   */
+  set comment(comment: string | null)
   /**
    * Whether the CSV's first record names the columns; `null` for another
    * encoding.
@@ -6435,11 +6443,11 @@ export declare class RecordOptions {
   /** Return these options with another CSV byte between two cells. */
   withSeparator(separator: string): RecordOptions
   /** Return these options with another CSV quote byte, or `null` for none. */
-  withQuote(quote?: string | undefined | null): RecordOptions
+  withQuote(quote: string | null): RecordOptions
   /** Return these options with another CSV escape byte, or `null` for none. */
-  withEscape(escape?: string | undefined | null): RecordOptions
+  withEscape(escape: string | null): RecordOptions
   /** Return these options with another CSV comment byte, or `null` for none. */
-  withComment(comment?: string | undefined | null): RecordOptions
+  withComment(comment: string | null): RecordOptions
   /** Return these options with or without a CSV header record. */
   withHeader(header: boolean): RecordOptions
   /** Return these options with other CSV spellings of an absent value. */

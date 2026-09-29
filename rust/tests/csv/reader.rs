@@ -262,15 +262,61 @@ fn crlf_and_lf_both_end_a_record_and_a_lone_cr_ends_nothing() {
 }
 
 #[test]
-fn the_last_record_may_lack_a_terminator_and_a_quoted_one_may_end_the_stream() {
+fn the_last_record_may_lack_a_terminator_and_a_closed_quote_may_end_the_stream() {
     assert_eq!(
         text(&rows(&document(b"a,b\n1,2"), &CsvOptions::new())),
         [some(&["1", "2"])]
     );
     assert_eq!(
-        text(&rows(&document(b"a\n\"open"), &CsvOptions::new())),
-        [some(&["open"])]
+        text(&rows(&document(b"a\n\"closed\""), &CsvOptions::new())),
+        [some(&["closed"])]
     );
+}
+
+#[test]
+fn a_stream_ending_inside_a_quote_is_refused_naming_the_record_it_opened_in() {
+    // One stray quote would otherwise swallow every record after it into
+    // one cell: the refusal names the record the quote opened in, wherever
+    // the stream is read from.
+    let held = document(b"a,b\n1,2\n3,\"open\n4,5\n6,7\n");
+    let url = held.url().expect("a buffer identity").to_string();
+    let message = try_rows(&held, &CsvOptions::new()).unwrap_err();
+    assert!(message.contains("$[1]"), "{message}");
+    assert!(
+        message.contains(&format!(
+            "expected a closing quote, got the end of the stream inside the cell opened in row 3 of {url}"
+        )),
+        "{message}"
+    );
+    let media = yggdryl::csv::Csv::new(held.clone());
+    let (path, reason) = refusal(media.row_size().expect_err("the count refuses it too"));
+    assert_eq!(path, "$[1]");
+    assert!(
+        reason.ends_with(&format!(
+            "opened in row 3 of {}",
+            media.url().expect("a buffer identity")
+        )),
+        "{reason}"
+    );
+    // A sample that reaches it refuses the schema; one that stops short
+    // of it answers the schema and the rows refuse it.
+    assert!(read_field(&held, &CsvOptions::new()).is_err());
+    assert!(read_field(&held, &CsvOptions::new().with_infer_row_size(1).unwrap()).is_ok());
+
+    // Opened in the header, it is the header's.
+    let (path, reason) =
+        refusal(read_field(&document(b"a,\"b\n1,2\n"), &CsvOptions::new()).unwrap_err());
+    assert_eq!(path, "$.header");
+    assert!(reason.contains("opened in row 1"), "{reason}");
+
+    // Without a header, the first record is row `$[0]`.
+    let message = try_rows(
+        &document(b"1,2\n\"3,4\n"),
+        &CsvOptions::new().with_header(false),
+    )
+    .unwrap_err();
+    assert!(message.contains("$[1]"), "{message}");
+    assert!(message.contains("opened in row 2"), "{message}");
 }
 
 #[test]
@@ -566,10 +612,9 @@ fn the_inference_ladder_types_each_column_by_the_first_rung_every_cell_fits() {
 
 #[test]
 fn the_sampled_rows_come_first_and_the_rest_streams_under_the_inferred_field() {
-    let held = document(b"i\n1\n2\n3\n4\nx\n");
+    let held = document(b"i\n1\n2\n3\n4\n");
     let options = CsvOptions::new().with_infer_row_size(2).unwrap();
     assert_inferred(&held, &options, "struct<i: int64>");
-    // Under `safe`, the row past the sample that does not fit is null.
     assert_eq!(
         rows(&held, &options),
         [
@@ -577,17 +622,43 @@ fn the_sampled_rows_come_first_and_the_rest_streams_under_the_inferred_field() {
             vec![Scalar::from(2_i64)],
             vec![Scalar::from(3_i64)],
             vec![Scalar::from(4_i64)],
-            vec![Scalar::Null],
         ]
     );
-    let message = try_rows(&held, &options.clone().with_safe(false)).unwrap_err();
-    assert!(message.contains("$[4].i"), "{message}");
+}
+
+#[test]
+fn an_inferred_column_refuses_a_cell_past_the_sample_naming_the_record_the_column_and_the_sample() {
+    // An inferred datatype is a reading of the sample, never a contract a
+    // cell past it may be nulled under: the cell that does not fit is
+    // refused, naming what would widen the sample.
+    let held = document(b"i,s\n1,a\n2,b\n3,c\n4,d\nx,e\n");
+    let options = CsvOptions::new().with_infer_row_size(2).unwrap();
+    assert_inferred(&held, &options, "struct<i: int64, s: utf8>");
+    let url = held.url().expect("a buffer identity").to_string();
+    for options in [options.clone(), options.clone().with_safe(false)] {
+        let message = try_rows(&held, &options).unwrap_err();
+        assert!(message.contains("$[4].i"), "{message}");
+        assert!(
+            message.contains(&format!(
+                "expected int64, the datatype the first 2 records (infer_row_size) infer, \
+                 got \"x\" in row 6 of {url}; declare the column or raise infer_row_size to sample it"
+            )),
+            "{message}"
+        );
+    }
     // A wider sample sees the text and types the column as such.
-    assert_inferred(
-        &held,
-        &CsvOptions::new().with_infer_row_size(5).unwrap(),
-        "struct<i: utf8>",
+    let wider = CsvOptions::new().with_infer_row_size(5).unwrap();
+    assert_inferred(&held, &wider, "struct<i: utf8, s: utf8>");
+    assert_eq!(rows(&held, &wider).len(), 5);
+
+    // A declared nullable column keeps the cast semantics: under `safe` a
+    // cell it cannot read is null, and strict refuses it.
+    let field = declared("struct<i: int64, s: utf8>");
+    assert_eq!(
+        rows(&held, &CsvOptions::new().with_field(field.clone()))[4],
+        [Scalar::Null, Scalar::from("e")]
     );
+    assert!(try_rows(&held, &CsvOptions::new().with_field(field).with_safe(false)).is_err());
 }
 
 #[test]
@@ -629,5 +700,121 @@ fn trim_leaves_a_blank_that_is_the_separator_alone() {
                 .with_trim(true)
         )),
         [vec![Some("1".to_owned()), None, Some("3".to_owned())]]
+    );
+}
+
+/// One cell `text`, quoted so the tokenizer hands it over as it stands,
+/// read under a nullable `v` of `dtype`, strictly.
+fn read_one(dtype: &DataType, text: &str) -> Result<Scalar, String> {
+    let root = DataType::from(
+        StructType::from_fields([dtype.clone().nullable_field("v")]).expect("a struct"),
+    )
+    .required_field("row");
+    let held = document(format!("v\n\"{}\"\n", text.replace('"', "\"\"")).as_bytes());
+    let mut read = try_rows(&held, &CsvOptions::new().with_field(root).with_safe(false))?;
+    Ok(read.remove(0).remove(0))
+}
+
+/// The spellings a cell may hold that the readers could disagree on:
+/// signs, blanks, exponents, not-a-number and the infinities, dates and
+/// instants with and without a zone.
+const SPELLINGS: [&str; 30] = [
+    "true",
+    "TRUE",
+    " true",
+    "false ",
+    "1",
+    "0",
+    "yes",
+    "5",
+    " 5",
+    "5 ",
+    "+5",
+    "-5",
+    "05",
+    "1e3",
+    "1.5",
+    "-1.5E-3",
+    "NaN",
+    "nan",
+    "inf",
+    "-inf",
+    "+inf",
+    "Infinity",
+    "9223372036854775808",
+    "2026-01-05",
+    " 2026-01-05",
+    "2026-01-05T10:00:00Z",
+    "2026-01-05T10:00:00+02:00",
+    "2026-01-05T10:00:00",
+    "2026-01-05 10:00:00",
+    "abc",
+];
+
+#[test]
+fn every_cell_reads_as_the_value_door_reads_its_text() {
+    // One text-to-typed door: a cell of every datatype the reader reads
+    // natively answers exactly what `Field::scalar` answers for its text.
+    for spelling in [
+        "boolean", "int64", "int32", "float64", "float32", "date32", "utf8",
+    ] {
+        let dtype = DataType::from_str(spelling).expect("a datatype");
+        let field = dtype.clone().nullable_field("v");
+        for text in SPELLINGS {
+            let door = field.scalar(Scalar::from(text));
+            let read = read_one(&dtype, text);
+            match (&door, &read) {
+                (Ok(door), Ok(read)) => assert_eq!(door, read, "{spelling} {text:?}"),
+                (Err(_), Err(_)) => {}
+                _ => panic!("{spelling} {text:?}: the door answers {door:?}, the cell {read:?}"),
+            }
+        }
+    }
+    // An instant under a zone reads wherever the door does, as the door
+    // does; where the door has no reading - a spelling naming no zone - the
+    // cell is the wall clock in the column's zone, the rule a text capture
+    // reads by.
+    for (spelling, offset) in [
+        ("timestamp(ns, UTC)", "Z"),
+        ("timestamp(ms, Europe/Zurich)", "+01:00"),
+    ] {
+        let dtype = DataType::from_str(spelling).expect("a datatype");
+        let field = dtype.clone().nullable_field("v");
+        for text in SPELLINGS {
+            let door = field.scalar(Scalar::from(text));
+            let read = read_one(&dtype, text);
+            match (&door, &read) {
+                (Ok(door), Ok(read)) => assert_eq!(door, read, "{spelling} {text:?}"),
+                (Ok(door), Err(error)) => {
+                    panic!("{spelling} {text:?}: the door answers {door:?}, the cell {error}")
+                }
+                (Err(_), Ok(read)) => {
+                    let naive = if text.len() == 10 {
+                        format!("{text}T00:00:00")
+                    } else {
+                        text.replace(' ', "T")
+                    };
+                    let zoned = field
+                        .scalar(Scalar::from(format!("{naive}{offset}").as_str()))
+                        .unwrap_or_else(|error| panic!("{spelling} {text:?}: {error}"));
+                    assert_eq!(read, &zoned, "{spelling} {text:?}");
+                }
+                (Err(_), Err(_)) => {}
+            }
+        }
+    }
+}
+
+#[test]
+fn a_float_sample_holding_not_a_number_or_an_infinity_is_still_a_float_column() {
+    let held = document(b"x,y\n1.5,NaN\ninf,2\n-inf,-Infinity\n");
+    assert_inferred(&held, &CsvOptions::new(), "struct<x: float64, y: float64>");
+    let read = rows(&held, &CsvOptions::new());
+    assert_eq!(read[1][0], Scalar::from(f64::INFINITY));
+    assert_eq!(read[2][1], Scalar::from(f64::NEG_INFINITY));
+    assert!(
+        read[0][1].as_f64().is_some_and(f64::is_nan),
+        "{:?}",
+        read[0][1]
     );
 }
