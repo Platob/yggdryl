@@ -97,7 +97,8 @@ class TestRecordOptions:
         assert ipc.range is None
         with pytest.raises(ValueError, match="expected Excel options"):
             ipc.sheet = "Trades"
-        with pytest.raises(ValueError, match="expected Excel options"):
+        # The header is one knob a CSV and a workbook share.
+        with pytest.raises(ValueError, match="expected CSV or Excel options"):
             ipc.header = False
         with pytest.raises(ValueError, match="expected Excel options"):
             ipc.range = "A1:B2"

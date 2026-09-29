@@ -315,8 +315,10 @@ class TestCsvOptions:
             ("trim", True),
             ("infer_row_size", 8),
         ):
+            # The header is one knob a CSV and a workbook share.
+            expected = "CSV or Excel options" if name == "header" else "CSV options"
             with pytest.raises(
-                ValueError, match=rf"\$\.{name}: expected CSV options.*arrow\.stream"
+                ValueError, match=rf"\$\.{name}: expected {expected}.*arrow\.stream"
             ):
                 setattr(options, name, value)
         _, (state,) = options.__reduce__()
