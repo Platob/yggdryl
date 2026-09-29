@@ -133,13 +133,6 @@ macro_rules! event_getters {
                 ::yggdryl::graph::Event::get_creaunix(&self.inner)
             }
 
-            /// The latest execution instant the lifecycle reached, where
-            /// known.
-            #[getter]
-            fn execunix(&self) -> Option<i64> {
-                ::yggdryl::graph::Event::get_execunix(&self.inner)
-            }
-
             /// When this was recorded, where stated.
             #[getter]
             fn recdunix(&self) -> Option<i64> {
@@ -289,6 +282,14 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_miccode(&self.inner).map($crate::graph::code_scalar)
             }
 
+            /// When this last executed: the latest execution instant its
+            /// lifecycle reached, nanoseconds since the Unix epoch, UTC,
+            /// where known - a market fact, never an event's.
+            #[getter]
+            fn execunix(&self) -> Option<i64> {
+                ::yggdryl::graph::Market::get_execunix(&self.inner)
+            }
+
             /// The price last traded at; `None` where none.
             #[getter]
             fn lastpx(&self) -> Option<$crate::scalar::PyScalar> {
@@ -386,6 +387,14 @@ macro_rules! operation_getters {
             #[getter]
             fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_altids(&self.inner))
+            }
+
+            /// The accounts and parties the operation names, party role to
+            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+            /// order.
+            #[getter]
+            fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
+                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_accountids(&self.inner))
             }
         });
     };

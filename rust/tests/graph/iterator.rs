@@ -4,7 +4,9 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
-use yggdryl::graph::{Element, Event, EventIterator, ExecutionEvent, Operation, OrderEvent};
+use yggdryl::graph::{
+    Element, Event, EventIterator, ExecutionEvent, Market, Operation, OrderEvent,
+};
 use yggdryl::{State, Uuid};
 
 use super::element::filled;

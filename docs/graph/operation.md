@@ -1,6 +1,6 @@
 # Operation
 
-`Operation: Market` adds three facts: how long the operation stands, whether it can trade, and the names it goes by.
+`Operation: Market` adds four facts: how long the operation stands, whether it can trade, the names it goes by and the accounts it names.
 
 ## Contract
 
@@ -9,9 +9,10 @@
 | Owner | trait `yggdryl::graph::Operation` (and `FOLLOWED_ALTIDS`), in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `tif`, `tradable` | `get_`/`set_` each: `tif` how long it stands ([`TimeInForce::from_spelling("day")`](../types/codes/timeinforce.md) stores code `0`); `tradable` (`Option<bool>`) whether the instrument can trade where a status says, `None` if the market said nothing either way |
 | `altids` | the [alternate identifiers](#alternate-identifiers) |
+| `accountids` | the [account identifiers](#account-identifiers) |
 | Category | an operation states none of its own: its leaf's [`marketdatakind`](market-data.md#marketdata) - `ORDR`, `QUOT`, `EXEC` - is its category |
 | `is_followed_altid(key)` | provided: whether an operation that follows another carries the identifier under `key` - [`FOLLOWED_ALTIDS`](#following-and-merging) unless the holder's own dictionary says otherwise (a FIX message reads its registry's `FIX:idmap` follow flags) |
-| `digest_operation` | provided (`Self: Element`): continues [`digest_market`](market.md#contract) with the time in force, whether it trades, and the alternate identifiers (key order) |
+| `digest_operation` | provided (`Self: Element`): continues [`digest_market`](market.md#contract) with the time in force, whether it trades, and the alternate and account identifiers (key order) |
 | `merging_operation` | where `Self: Element`, no clocks: `self` leads |
 | Provided on events | where `Self: Event`: `digest_operation_event`, `following_operation`, `merging_operation_event` ([below](#following-and-merging)) |
 
@@ -27,14 +28,27 @@
 | A view | a [FIX message](../fix/message.md#the-identifier-maps) writes through, refusing unknown keys; a plain holder always answers `Ok` |
 | In a walk | a name a live element goes by is how an element arriving under no live identity finds its chain, on its own side ([walk](event.md#lifecycle-walk)); a book resolves `MDENTRYID`/`MDENTRYREFID` the [same way](book.md#entries) |
 
+## Account identifiers
+
+`accountids` is an [`IdMap`](../fix/message.md#the-identifier-maps) too: the accounts and parties the operation names, one identifier per party role - `CUSTOMERACCOUNT`, `EXECUTINGTRADER`, `CLIENTID` - under upper-cased ASCII keys, key-ordered, each value trimmed.
+
+| Verb | Rule |
+| --- | --- |
+| `set_accountids(IdMap)` | replaces the map whole; `IdMap::new()` unsays it |
+| `insert_accountid(key, value)` | fills only an absent role (folded to upper case); `false` for a held one, and a null-like value adds nothing |
+| `remove_accountid(key)` | removes one role; returns whether one was held |
+| A view | a [FIX message](../fix/message.md#accounts-and-regulatory-trade-identifiers)'s accounts are its parties, each `PartyID` under its role's name: they are read-only there - a change is refused by name, a no-op answers `Ok` - and a plain holder always answers `Ok` |
+| Column | `accountids`: a sorted `map<utf8, utf8>`, nullable - null or empty states none ([Market data](market-data.md#columns)) |
+
 ## Following and merging
 
 | Reading | Rule |
 | --- | --- |
-| `following_operation` | [`following_market`](market.md#following-and-merging), then time in force/tradability if unstated, and only the order's own alternate identifiers - `FOLLOWED_ALTIDS`: `ORDERID`, `SECONDARYORDERID`, `PARENTORDERID`, `PARENTCLORDID`, `OMSDEALERPARENTORDERID`, `EXCHANGECLIENTORDERID`, `TRANSVERSALKEY`, or what a holder's own dictionary flags instead - never an execution's/quote's |
-| The side | this operation's where it states one, the chain's where it states `UNKNOWN` - in following and in restating - and with it the chain's side-prefixed [cross code](market.md#sides-and-cross-codes) |
-| Restating | a market operation event's [`restating`](event.md#restating) also takes the time in force, tradability and followed alternate identifiers |
-| `merging_operation_event` | [`merging_market_event`](market.md#following-and-merging), then the time in force (the better), tradability (the reference's if stated), the alternate identifiers (union, reference-led) |
+| `following_operation` | [`following_market`](market.md#following-and-merging), then time in force/tradability if unstated, the accounts, and only the order's own alternate identifiers - `FOLLOWED_ALTIDS`: `ORDERID`, `SECONDARYORDERID`, `PARENTORDERID`, `PARENTCLORDID`, `OMSDEALERPARENTORDERID`, `EXCHANGECLIENTORDERID`, `TRANSVERSALKEY`, or what a holder's own dictionary flags instead - never an execution's/quote's |
+| The side | this operation's where it states one, the chain's where it states `UNKNOWN` - in following and in restating - and with it the chain's [cross code](market.md#sides-and-cross-codes), under that side for an order, a quote or an execution |
+| Accounts | a role this statement names none for is the chain's, every role - the accounts an operation is booked to stay with its chain, unlike the alternate identifiers, which carry only by `FOLLOWED_ALTIDS`; a FIX message states its own parties and takes none |
+| Restating | a market operation event's [`restating`](event.md#restating) also takes the time in force, tradability, followed alternate identifiers and the accounts |
+| `merging_operation_event` | [`merging_market_event`](market.md#following-and-merging), then the time in force (the better), tradability (the reference's if stated), the alternate identifiers and the accounts (each a union, reference-led) |
 | Result | each answers nothing where the fold changes nothing, and finalizes where it did |
 
 ## Example
@@ -53,11 +67,13 @@ A replacement order, following the one it replaces.
     placed.set_side(Side::Buy);
     placed.insert_altid("clordid", "C-1")?;
     placed.insert_altid("ORDERID", "O-1001")?;
+    placed.insert_accountid("clientid", "ACC-1")?;
     placed.set_tif(TimeInForce::from_spelling("day"));
     placed.set_tradable(Some(true));
     placed.finalize();
     // Keys fold to upper case, and an insert fills an absent key only.
     assert_eq!(placed.get_altids().get("CLORDID"), Some("C-1"));
+    assert_eq!(placed.get_accountids().get("CLIENTID"), Some("ACC-1"));
     assert!(!placed.insert_altid("orderid", "O-9999")?);
     assert!(!placed.insert_altid("SECONDARYORDERID", "n/a")?, "a null-like value adds nothing");
     assert_eq!(placed.get_tif().map(TimeInForce::as_str), Some("0"));
@@ -72,6 +88,7 @@ A replacement order, following the one it replaces.
     assert_eq!(replaced.get_tradable(), Some(true));
     assert_eq!(replaced.get_altids().get("ORDERID"), Some("O-1001"));
     assert_eq!(replaced.get_altids().get("CLORDID"), Some("C-2"));
+    assert_eq!(replaced.get_accountids().get("CLIENTID"), Some("ACC-1"), "the chain's account");
     // Stating no side, it stands on the chain's, under the chain's code.
     assert_eq!((replaced.get_side(), replaced.get_crosscode()), (Side::Buy, "BUY:O-1001"));
     assert!(FOLLOWED_ALTIDS.contains(&"ORDERID") && !FOLLOWED_ALTIDS.contains(&"CLORDID"));
@@ -88,17 +105,20 @@ A replacement order, following the one it replaces.
         crosscode="O-1001",
         side="BUY",
         altids={"CLORDID": "C-1", "orderid": "O-1001"},
+        accountids={"clientid": "ACC-1"},
         tif="0",
         tradable=True,
     )
     # Keys fold to upper case.
     assert placed.altids == {"CLORDID": "C-1", "ORDERID": "O-1001"}
+    assert placed.accountids == {"CLIENTID": "ACC-1"}
 
     # The replacement states its own client id and nothing else.
     replaced = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", altids={"CLORDID": "C-2"}).with_previous(placed)
     assert replaced is not None
     assert (replaced.tif, replaced.tradable) == ("0", True)
     assert replaced.altids == {"CLORDID": "C-2", "ORDERID": "O-1001"}
+    assert replaced.accountids == {"CLIENTID": "ACC-1"}, "the chain's account"
     # Stating no side, it stands on the chain's, under the chain's code.
     assert (replaced.side, replaced.crosscode) == (Side.BUY, "BUY:O-1001")
     assert "ORDERID" in graph.FOLLOWED_ALTIDS and "CLORDID" not in graph.FOLLOWED_ALTIDS
@@ -115,11 +135,13 @@ A replacement order, following the one it replaces.
       crosscode: 'O-1001',
       side: 'BUY',
       altids: { CLORDID: 'C-1', orderid: 'O-1001' },
+      accountids: { clientid: 'ACC-1' },
       tif: '0',
       tradable: true,
     })
     // Keys fold to upper case.
     assert.deepEqual(placed.altids, { CLORDID: 'C-1', ORDERID: 'O-1001' })
+    assert.deepEqual(placed.accountids, { CLIENTID: 'ACC-1' })
 
     // The replacement states its own client id and nothing else.
     const replaced = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', altids: { CLORDID: 'C-2' } })
@@ -127,6 +149,7 @@ A replacement order, following the one it replaces.
     assert.equal(replaced.tif, '0')
     assert.equal(replaced.tradable, true)
     assert.deepEqual(replaced.altids, { CLORDID: 'C-2', ORDERID: 'O-1001' })
+    assert.deepEqual(replaced.accountids, { CLIENTID: 'ACC-1' })
     // Stating no side, it stands on the chain's, under the chain's code.
     assert.equal(replaced.side, 'BUY')
     assert.equal(replaced.crosscode, 'BUY:O-1001')
@@ -136,5 +159,5 @@ A replacement order, following the one it replaces.
 ## Edges
 
 - `tradable` is what a status said: `None` states nothing, and a [book level](book.md#limits) reads an entry stating nothing as one that trades.
-- A key or value that is empty, not ASCII, or too wide - a key past 32 bytes once upper-cased, a value past 64 once trimmed - is refused by `IdMap`, located on the key: `insert_altid` answers the error, and a binding refuses the fact by name.
+- A key or value that is empty, not ASCII, or too wide - a key past 32 bytes once upper-cased, a value past 64 once trimmed - is refused by `IdMap`, located on the key: `insert_altid` and `insert_accountid` answer the error, and a binding refuses the fact by name.
 - A following operation never carries an execution's or a quote's own identifiers (`EXECID`, `QUOTEID`): each names that statement alone.

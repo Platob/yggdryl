@@ -25,8 +25,8 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 
 use super::element::{
-    Staged, fold_event_instants, follow_timed, merge_element, merge_event_element, merge_timed,
-    moved, restate_event, right_is_reference, stated,
+    Staged, earliest, fold_event_instants, follow_timed, latest, merge_element,
+    merge_event_element, merge_timed, moved, restate_event, right_is_reference, stated,
 };
 use super::{Element, Event};
 use crate::CodeValue;
@@ -105,8 +105,16 @@ pub trait Market {
     fn set_unit(&mut self, unit: Unit);
     /// The side the element takes, [`Side::Unknown`] where it states none.
     fn get_side(&self) -> Side;
-    /// Sets [`Self::get_side`].
+    /// Sets [`Self::get_side`]; a sided element's cross code is stored under
+    /// the side taken ([`Self::sided_crosscode`]).
     fn set_side(&mut self, side: Side);
+    /// Whether the element's cross code is stored under its side: whether
+    /// its kind is an order, a quote or an execution
+    /// ([`MarketDataKind::is_sided`](crate::MarketDataKind::is_sided)).
+    /// Every other element - a trade, a book, a snapshot control, a message
+    /// of any other category - keeps its cross code as given, whatever side
+    /// it states.
+    fn is_sided(&self) -> bool;
     /// The security identifiers the element names, one code per key.
     fn get_securityids(&self) -> &SecurityIds;
     /// Replaces the stated security identifiers.
@@ -145,6 +153,16 @@ pub trait Market {
     fn get_miccode(&self) -> Option<&Mic>;
     /// Sets [`Self::get_miccode`].
     fn set_miccode(&mut self, code: Option<Mic>);
+    /// When the element last executed: the latest execution clock its
+    /// lifecycle reached, nanoseconds since the Unix epoch, UTC, where it
+    /// knows. A market fact rather than an event's: an event that is a
+    /// market element and whose state reports an execution with no clock of
+    /// its own dates it from its own instant, following carries the later
+    /// of its own and its predecessor's, and two statements of one event
+    /// keep the earliest either knows.
+    fn get_execunix(&self) -> Option<i64>;
+    /// Sets [`Self::get_execunix`]; `None` states it does not know.
+    fn set_execunix(&mut self, unix: Option<i64>);
     /// The last executed price: what the element's last execution traded
     /// at, never the price it states.
     fn get_lastpx(&self) -> Option<Decimal>;
@@ -229,17 +247,21 @@ pub trait Market {
     /// Sets [`Self::get_askccy`].
     fn set_askccy(&mut self, ccy: Option<Ccy>);
 
-    /// The cross code `code` is stored as for this element: `"{SIDE}:{code}"`
-    /// under the stored name of the side it takes - `BUY:ORD-1` - so the two
-    /// sides of one identifier are two chains, and `code` itself for an
-    /// element taking [`Side::Unknown`]. Idempotent: a code already carrying
-    /// this side's prefix is answered as it is, and one carrying another
-    /// side's has that prefix replaced. The one place the prefix is spelled;
-    /// every market holder stores its cross code through it, so setting the
-    /// side after the code converges on the same answer.
+    /// The cross code `code` is stored as for this element. A sided element
+    /// ([`Self::is_sided`]: an order, a quote or an execution) stores it as
+    /// `"{SIDE}:{code}"` under the stored name of the side it takes -
+    /// `BUY:ORD-1` - so the two sides of one identifier are two chains, and
+    /// as `code` itself where it takes [`Side::Unknown`]. Idempotent: a code
+    /// already carrying this side's prefix is answered as it is, and one
+    /// carrying another side's has that prefix replaced. Any other element -
+    /// a trade, a book, a snapshot control, a message of another category -
+    /// is not strictly sided and answers `code` as given. The one place
+    /// the prefix is decided; every market holder stores its cross code
+    /// through it, so setting the side after the code converges on the same
+    /// answer.
     ///
     /// ```
-    /// use yggdryl::graph::{Element, Market, OrderEvent};
+    /// use yggdryl::graph::{BookEvent, Element, Market, OrderEvent};
     /// use yggdryl::Side;
     ///
     /// let mut order = OrderEvent::at(1);
@@ -250,9 +272,18 @@ pub trait Market {
     /// assert_eq!(order.get_crosscode(), "BUY:ORD-1");
     /// order.set_side(Side::Sell);
     /// assert_eq!(order.get_crosscode(), "SELL:ORD-1");
+    ///
+    /// // A book is not sided: its code stays as given whatever side it states.
+    /// let mut book = BookEvent::new(1, "AAPL");
+    /// book.set_side(Side::Buy);
+    /// assert_eq!((book.get_crosscode(), book.sided_crosscode("AAPL")), ("AAPL", "AAPL".into()));
     /// ```
     fn sided_crosscode<'code>(&self, code: &'code str) -> Cow<'code, str> {
-        sided_crosscode(self.get_side(), code)
+        if self.is_sided() {
+            sided_crosscode(self.get_side(), code)
+        } else {
+            Cow::Borrowed(code)
+        }
     }
 
     /// States the rate to one target currency, filling a target the element
@@ -389,7 +420,10 @@ pub trait Market {
         {
             return None;
         }
-        let changed = follow_timed(&mut self, previous);
+        // Dated before following names the predecessor, which marks a
+        // lifecycle output whose state may be inherited.
+        let mut changed = fill_execution(&mut self);
+        changed |= follow_timed(&mut self, previous);
         if !(follow_market(&mut self, previous) || changed) {
             return None;
         }
@@ -421,7 +455,8 @@ pub trait Market {
     }
 }
 
-/// [`Market::sided_crosscode`] for `side`: the owner of the side prefix.
+/// [`Market::sided_crosscode`] for a sided element taking `side`: the one
+/// speller of the side prefix.
 pub(crate) fn sided_crosscode(side: Side, code: &str) -> Cow<'_, str> {
     if side == Side::Unknown || code.is_empty() {
         return Cow::Borrowed(code);
@@ -486,6 +521,32 @@ pub trait Operation: Market {
     /// Returns an error when the holder is a view of a store that refuses
     /// the key.
     fn remove_altid(&mut self, key: &str) -> Result<bool>;
+    /// The accounts and parties the operation names, party role to
+    /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER`, `CLIENTID` - one
+    /// identifier per role. A FIX message's are its parties.
+    fn get_accountids(&self) -> &IdMap;
+    /// Replaces [`Self::get_accountids`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the holder is a view of a store that refuses
+    /// the map - a FIX message, whose accounts are its parties.
+    fn set_accountids(&mut self, ids: IdMap) -> Result<()>;
+    /// States one account, filling only an absent role; whether it was
+    /// added.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the holder is a view of a store that refuses
+    /// it, or the key or value breaks [`IdMap`]'s rules.
+    fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool>;
+    /// Removes one account; whether one was held.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the holder is a view of a store that refuses
+    /// it.
+    fn remove_accountid(&mut self, key: &str) -> Result<bool>;
     /// Whether an operation that follows another carries the alternate
     /// identifier under `key`: [`FOLLOWED_ALTIDS`] unless the holder's own
     /// dictionary says otherwise.
@@ -544,7 +605,8 @@ pub trait Operation: Market {
         {
             return None;
         }
-        let mut changed = follow_timed(&mut self, previous);
+        let mut changed = fill_execution(&mut self);
+        changed |= follow_timed(&mut self, previous);
         changed |= follow_market(&mut self, previous);
         if !(follow_operation(&mut self, previous) || changed) {
             return None;
@@ -582,6 +644,7 @@ pub trait Operation: Market {
 pub(crate) fn restating_market<E: Event + Market>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
+    fold_execution(&mut this, live);
     this.fold_lifecycle(live);
     restate_market(&mut this, live);
     this.finalize();
@@ -593,6 +656,7 @@ pub(crate) fn restating_market<E: Event + Market>(mut this: E, live: &E) -> E {
 pub(crate) fn restating_operation<E: Event + Operation>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
+    fold_execution(&mut this, live);
     this.fold_lifecycle(live);
     restate_market(&mut this, live);
     restate_operation(&mut this, live);
@@ -626,7 +690,35 @@ fn merge_market_event<E: Event + Market>(
 ) -> bool {
     let changed = merge_event_element(this, other, other_is_reference);
     let timed = merge_timed(this, other, other_is_reference);
-    merge_market(this, other, other_is_reference) || timed || changed
+    let executed = fold_execution(this, other);
+    merge_market(this, other, other_is_reference) || executed || timed || changed
+}
+
+/// The execution instant a market event states or, while it is still an
+/// unstamped lifecycle input whose state itself reports an execution, its
+/// own instant. A predecessor marks a lifecycle output: its state may have
+/// been inherited, so replaying that output must not reinterpret the folded
+/// state as this event's own execution report.
+fn execution_unix<E: Event + Market + ?Sized>(event: &E) -> Option<i64> {
+    event.get_execunix().or_else(|| {
+        (event.get_prevuuid().is_none() && event.is_execution()).then_some(event.get_currunix())
+    })
+}
+
+/// Fills an execution event's unstated execution instant from its own
+/// instant; whether it moved.
+pub(crate) fn fill_execution<E: Event + Market + ?Sized>(event: &mut E) -> bool {
+    let unix = execution_unix(event);
+    moved(event.get_execunix(), unix, |unix| event.set_execunix(unix))
+}
+
+/// Folds the execution instants of two statements of the same market event:
+/// the earliest either knows, an unstamped execution observation dating
+/// itself from its own instant first; whether it moved. It never folds
+/// between successive events in one lifecycle, which follow instead.
+fn fold_execution<E: Event + Market + ?Sized>(this: &mut E, other: &E) -> bool {
+    let unix = earliest(execution_unix(this), execution_unix(other));
+    moved(this.get_execunix(), unix, |unix| this.set_execunix(unix))
 }
 
 fn merge_operation_event<E: Event + Operation>(
@@ -718,13 +810,22 @@ pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) 
         staged.feed("altids", key.as_bytes());
         staged.feed("altids", value.as_bytes());
     }
+    for (key, value) in this.get_accountids().iter() {
+        staged.feed("accountids", key.as_bytes());
+        staged.feed("accountids", value.as_bytes());
+    }
 }
 
 /// The market facts an event takes from the statement it follows: the
 /// price and the quantity that statement settled on as the step before this
 /// one, and what the chain is about where this statement says nothing.
 pub(crate) fn follow_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
-    let mut changed = false;
+    // The latest execution the chain has reached, so a delayed report
+    // cannot regress it.
+    let execunix = latest(this.get_execunix(), previous.get_execunix());
+    let mut changed = moved(this.get_execunix(), execunix, |unix| {
+        this.set_execunix(unix)
+    });
     if this.get_prevpx().is_none() {
         let px = previous.get_price();
         changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
@@ -837,7 +938,11 @@ fn yield_unknown_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
 /// selected statement states, and each code the better of the two. `later`
 /// says whether `other` is the leading statement.
 pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
-    let mut changed = false;
+    // Two statements of one element keep the earliest execution either knows.
+    let execunix = earliest(this.get_execunix(), other.get_execunix());
+    let mut changed = moved(this.get_execunix(), execunix, |unix| {
+        this.set_execunix(unix)
+    });
     if later {
         changed |= moved(this.get_price(), other.get_price(), |px| this.set_price(px));
         changed |= moved(this.get_quantity(), other.get_quantity(), |qty| {
@@ -1015,6 +1120,13 @@ fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
             changed |= this.insert_altid(key, value).unwrap_or(false);
         }
     }
+    // The accounts an operation is booked to stay with its chain: a role
+    // this statement names none for is the chain's.
+    for (key, value) in previous.get_accountids().iter() {
+        if !this.get_accountids().contains_key(key) {
+            changed |= this.insert_accountid(key, value).unwrap_or(false);
+        }
+    }
     changed
 }
 
@@ -1043,6 +1155,17 @@ pub(crate) fn merge_operation<E: Operation + ?Sized>(this: &mut E, other: &E, la
         };
         merged.merge(supplement);
         if &merged != this.get_altids() && this.set_altids(merged).is_ok() {
+            changed = true;
+        }
+    }
+    if !other.get_accountids().is_empty() {
+        let (mut merged, supplement) = if later {
+            (other.get_accountids().clone(), this.get_accountids())
+        } else {
+            (this.get_accountids().clone(), other.get_accountids())
+        };
+        merged.merge(supplement);
+        if &merged != this.get_accountids() && this.set_accountids(merged).is_ok() {
             changed = true;
         }
     }

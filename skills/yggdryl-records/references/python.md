@@ -322,7 +322,7 @@ assert Workbook.open(path).sheet_names == ["Trades", "Copy"]
 
 ## Read a log file as typed rows
 
-A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the sixteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).
+A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the fifteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).
 
 ```python
 import pathlib

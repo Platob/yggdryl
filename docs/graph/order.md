@@ -7,10 +7,10 @@
 | Key | Rule |
 | --- | --- |
 | Types | `OperationElement<K>` and `OperationEvent<K>` in `graph::operation`, `K` one of the sealed `OrderKind`, `QuoteKind`, `ExecutionKind`; the kind is `K::KIND`, a [`MarketKind`](market-data.md#marketdata) filed under its [`marketdatakind`](../types/enum/marketdatakind.md) - `ORDR`, `QUOT`, `EXEC` - and `is_execution()` reads the kind, never the state |
-| Construction | `Order::new()` states nothing, `OrderEvent::at(unix)` only an instant; `at` and `into_element` move between the two, `into_element` dropping the clocks and the book control |
+| Construction | `Order::new()` states nothing, `OrderEvent::at(unix)` only an instant; `at` and `into_element` move between the two, `into_element` dropping the event clocks and the book control and keeping `execunix`, a [market fact](market.md#contract) |
 | From another event | `OperationEvent::<K>::from(&event)` copies every fact the event states, its identities included, with no book control and no finalize |
 | `finalize` | digests the leaf's `marketdatakind` code, so one entry as an order and as a quote are two operations; an element takes UUIDv8 over its code, an event also digests its [book scope](#book-control) and takes its [event identity](event.md#identity) |
-| From FIX | one message is one leaf: an order message is an `OrderEvent`; an execution report that reports a fill is split at the parse into its order's report - `ORDR`, its own state - and the [execution](execution.md#contract) it reports ([FIX](../fix/message.md#market-data)) |
+| From FIX | one message is one leaf: an order message is an `OrderEvent`; an execution report that reports a fill is split at the parse into its order's report - `ORDR`, its own state - and the [execution](execution.md#contract) it reports; an order batch - a list, a mass order, a cross, a mass cancel report (`ORDB`) - is split at the parse into one order message per entry ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
 | Following and merging | as [`Operation`](operation.md#following-and-merging) states; an element's `with_previous` takes the predecessor's cross code, market and operation facts with no timed link |
 | Bindings | Python `graph.Order(**facts)`, `graph.OrderEvent(currunix, book=..., **facts)`; JavaScript `new graph.Order(facts)`, `new graph.OrderEvent(currunix, facts)` with `book` among the facts; `kind` the `MarketKind` spelling, `marketdatakind` the member (Python) or its name (JavaScript) |
 

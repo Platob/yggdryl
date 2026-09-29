@@ -33,10 +33,12 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the sixteen say more than the column
+//! sentence, and join on it. Seven of the fifteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
-//! module's to know and no other medium's - and those nine spell their own
-//! wording beside the tag.
+//! module's to know and no other medium's - and those seven spell their own
+//! wording beside the tag. When the message executed is a market fact
+//! rather than an event's, so `execunix` takes the [`MarketColumn`]'s
+//! datatype and display the same way, and spells its FIX wording beside it.
 //!
 //! # Why 65000, and why each is a tag and a name
 //!
@@ -97,7 +99,7 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
-use crate::graph::EventColumn;
+use crate::graph::{EventColumn, MarketColumn};
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -389,7 +391,7 @@ pub(super) const ULLINKINSTRUMENTID_SOURCE: &str = "ULLINKINSTRUMENTID";
 /// where the message states no other class; row-stated when written.
 pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_024, "forexcode");
 
-/// The graph event column one crate tag is, for the sixteen that are one.
+/// The graph event column one crate tag is, for the fifteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -399,6 +401,17 @@ pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_024, "forexcode");
 pub fn event_column_of(tag: i32) -> Option<EventColumn> {
     CRATED.iter().find_map(|held| match held.holds {
         Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+        _ => None,
+    })
+}
+
+/// The graph market column one crate tag is, for the one that is one:
+/// `execunix`, read and written through [`MarketColumn::fact`] and
+/// [`MarketColumn::record`] as the event columns are through theirs.
+#[must_use]
+pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
+    CRATED.iter().find_map(|held| match held.holds {
+        Holds::Market(column) if held.tag_name.0 == tag => Some(column),
         _ => None,
     })
 }
@@ -509,10 +522,13 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the sixteen [`EventColumn`]s, which owns all three: a text
+    /// One of the fifteen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
+    /// A [`MarketColumn`], which owns the datatype and the display: the
+    /// wording is the definition's own, since a market column states none.
+    Market(MarketColumn),
     /// A fact no graph event states - what a bridge's row header said and
     /// the session event it joins to, where the line was read from, the
     /// normalized identifiers and the strike - which therefore spells its
@@ -561,6 +577,24 @@ impl Crated {
             tag_name,
             holds: Holds::Event(column),
             fix_wording: None,
+            names: &[],
+            instrument: None,
+            idmap: None,
+            codeset: None,
+        }
+    }
+
+    /// One graph market column under the crate's own tag, which must say
+    /// what it holds: a market column carries no wording of its own.
+    const fn market(
+        tag_name: (i32, &'static str),
+        column: MarketColumn,
+        description: &'static str,
+    ) -> Self {
+        Self {
+            tag_name,
+            holds: Holds::Market(column),
+            fix_wording: Some(description),
             names: &[],
             instrument: None,
             idmap: None,
@@ -634,6 +668,7 @@ impl Crated {
         let (tag, name) = self.tag_name;
         let (dtype, display, description) = match self.holds {
             Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
+            Holds::Market(column) => (column.datatype(), column.display(), ""),
             Holds::Own {
                 datatype,
                 display,
@@ -677,7 +712,9 @@ impl Crated {
 /// and a column is a column this crate adds nothing to but the tag.
 const CRATED: [Crated; 41] = [
     Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
-    Crated::event(EXECUNIX_TAG_NAME, EventColumn::ExecUnix).saying(
+    Crated::market(
+        EXECUNIX_TAG_NAME,
+        MarketColumn::ExecUnix,
         "When the message's execution happened: ExecutionTimestamp, an \
          execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
          trade's TransactTime, the first one stated; an execution report \

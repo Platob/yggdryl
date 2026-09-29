@@ -222,7 +222,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,secondaryclordid",
-    "FIX:msgcat": "ORDR",
+    "FIX:msgcat": "ORDB",
     "FIX:msgtype": "q",
     "FIX:tag": "495019",
     "description": "MsgType = q (lowercase Q)",

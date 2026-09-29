@@ -13,7 +13,7 @@ use crate::idmap::IdMap;
 use crate::{Side, State, Uuid};
 
 mod sealed {
-    use super::super::{Element, Event, MarketData, Operation};
+    use super::super::{Element, Event, Market, MarketData, Operation};
     use crate::idmap::IdMap;
     use crate::{Side, State};
 
@@ -49,7 +49,7 @@ mod sealed {
         fn walked_set_creaunix(&mut self, unix: Option<i64>);
         /// [`Event::get_exprunix`].
         fn walked_exprunix(&self) -> Option<i64>;
-        /// [`Event::set_execunix`].
+        /// [`Market::set_execunix`](super::super::Market::set_execunix).
         fn walked_set_execunix(&mut self, unix: Option<i64>);
         /// [`Event::set_recdunix`].
         fn walked_set_recdunix(&mut self, unix: Option<i64>);
@@ -67,13 +67,17 @@ mod sealed {
         fn walked_altids(&self) -> Option<&IdMap>;
         /// [`Event::restating`].
         fn walked_restating(self, live: &Self) -> Self;
-        /// [`super::super::element::fill_execution`].
+        /// [`super::super::market::fill_execution`].
         fn walked_fill_execution(&mut self);
         /// Whether the walk chains this element at all.
         fn is_walked(&self) -> bool;
         /// [`Market::get_side`](super::super::Market::get_side);
         /// `Side::Unknown` for an element the walk does not chain.
         fn walked_side(&self) -> Side;
+        /// [`Market::is_sided`](super::super::Market::is_sided): whether
+        /// the element's cross code carries its side, so its base code is
+        /// what an element stating no side joins it by.
+        fn walked_sided(&self) -> bool;
         /// Whether the element may join another chain by a name or a base
         /// code it shares with it: every chained element but an execution,
         /// [`Event::is_execution`], which is a chain of its own and follows
@@ -130,13 +134,16 @@ mod sealed {
             self.restating(live)
         }
         fn walked_fill_execution(&mut self) {
-            let _ = super::super::element::fill_execution(self);
+            let _ = super::super::market::fill_execution(self);
         }
         fn is_walked(&self) -> bool {
             true
         }
         fn walked_side(&self) -> Side {
             self.get_side()
+        }
+        fn walked_sided(&self) -> bool {
+            self.is_sided()
         }
         fn walked_joins(&self) -> bool {
             !self.is_execution()
@@ -246,7 +253,7 @@ mod sealed {
         }
         fn walked_fill_execution(&mut self) {
             if let Some(operation) = self.as_event_operation_mut() {
-                let _ = super::super::element::fill_execution(operation);
+                let _ = super::super::market::fill_execution(operation);
             }
         }
         fn is_walked(&self) -> bool {
@@ -255,6 +262,9 @@ mod sealed {
         fn walked_side(&self) -> Side {
             self.as_event_operation()
                 .map_or(Side::Unknown, |operation| operation.get_side())
+        }
+        fn walked_sided(&self) -> bool {
+            self.is_walked() && self.is_sided()
         }
         fn walked_joins(&self) -> bool {
             self.as_event_operation()
@@ -603,7 +613,9 @@ where
             }
             let code = element.get_crosscode();
             let base = unsided_crosscode(code);
-            if base.len() != code.len() {
+            // Only a sided element's prefix is one the holder gave it: an
+            // unsided code that reads `BUY:...` is its own name.
+            if base.len() != code.len() && element.walked_sided() {
                 // Looked up borrowed first: a chain settled again under its
                 // base allocates nothing.
                 match self.bases.get_mut(base) {
@@ -651,7 +663,7 @@ where
         }
         let code = live.element.get_crosscode();
         let base = unsided_crosscode(code);
-        if base.len() != code.len() {
+        if base.len() != code.len() && live.element.walked_sided() {
             if let Some(held) = self.bases.get_mut(base) {
                 held.retain(|held| *held != identity);
                 if held.is_empty() {

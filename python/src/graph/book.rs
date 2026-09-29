@@ -293,12 +293,16 @@ impl PyBookIterator {
         slf
     }
 
-    fn __next__(&self) -> PyResult<Option<PyBookEvent>> {
-        let next = self
-            .inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .next();
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyBookEvent>> {
+        // The GIL is released while the core pulls: a parse worker that
+        // warns takes it to reach Python's `logging`, and the worker this
+        // pull waits on must not wait on this thread.
+        let next = py.detach(|| {
+            self.inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .next()
+        });
         match next {
             Some(Ok(book)) => Ok(Some(PyBookEvent::from_core(book))),
             // A core refusal (a bad item) or the sentinel standing in for a

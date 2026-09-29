@@ -33,7 +33,7 @@ const order = new graph.OrderEvent(T, {
 })
 // A dated identity is a UUIDv7: its millisecond leads.
 assert.ok(order.curruuid.startsWith('018bcfe5-6800-7'))
-// A sided element stores its cross code under its side: one chain per side.
+// An order, a quote or an execution stores its cross code under its side: one chain per side.
 assert.equal(order.crosscode, 'BUY:O-1001')
 assert.notEqual(order.crossuuid, order.curruuid, 'the cross code names a chain')
 // Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
@@ -124,7 +124,8 @@ assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `altids`), yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
-Chains are keyed by side, and every walked element leaves stating `creaunix`.
+An order's, a quote's or an execution's chain is keyed by side, and every
+walked element leaves stating `creaunix`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -177,7 +178,8 @@ assert.deepEqual([expired.currunix, expired.state], [T + 70n * MS, 'EXPIRED'])
 ## Build a composite trade
 
 `graph.TradeEvent.fromParts` is the one door: a root event and its sided
-executions, canonicalized so input order never changes the trade.
+executions, canonicalized so input order never changes the trade. The trade
+itself is not sided: it keeps the root's cross code, a sided root's base code.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -234,9 +236,9 @@ const { BatchReader, MarketDataKind, graph } = require('yggdryl')
 const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
 const values = [new graph.Order(), order, new graph.BookEvent(1_700_000_001_000_000_000n, 'AAPL')]
 
-// 53 columns: marketdatakind, 16 event, 27 market, 3 operation, bookscope, 5 nested.
+// 54 columns: marketdatakind, 15 event, 28 market, 4 operation, bookscope, 5 nested.
 const field = graph.MarketData.field()
-assert.equal(field.fieldLen, 53)
+assert.equal(field.fieldLen, 54)
 assert.equal(field.fieldAt(0).name, 'marketdatakind')
 const table = graph.MarketData.arrowReader(values, 1_000).intoTable()
 // The column stores each member's code.
@@ -310,8 +312,9 @@ assert.equal([...new graph.BookIterator(stream, 500)].length, 3)
 // No ticker: the book is the category, `XXXX` or `XXXXXX` for what is unstated.
 const [book] = new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL', miccode: 'XNAS' })])
 assert.deepEqual([book.crosscode, book.ticker], ['XNAS:XXXXXX', null])
-// Out of order is refused.
-assert.throws(() => [...new graph.BookIterator([...stream].reverse())], /sorted operation timestamp/)
+// Out of order is no error: the operation dated before its book is left out,
+// with a warning on standard error.
+assert.equal([...new graph.BookIterator([...stream].reverse())].length, 1)
 ```
 
 ## Read a book
@@ -445,8 +448,9 @@ assert.equal(last.executions().length, 1)
 - Decimals are exact text: pass and compare `'189.5'` (canonical, no trailing
   zero), never a `Number` - `{ price: 189.5 }` is refused at `$.price` (`got f64`).
   `fxrates` takes and answers `{ EUR: '1.1' }`.
-- `crosscode` answers the stored code: `'BUY:O-1001'` for a buy, the bare code
-  for `'UNKNOWN'`. `side` is never `null`; an Arrow column stores the code
+- `crosscode` answers the stored code: `'BUY:O-1001'` for a buy order, quote or
+  execution, the bare code for `'UNKNOWN'` and for a trade, a book or a snapshot
+  control whatever side it states. `side` is never `null`; an Arrow column stores the code
   (`Side.BUY`, `MarketDataKind.ORDR`), a getter answers the name.
 - `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
   order: an unsorted array is not refused, it yields broken chains (a step
@@ -462,4 +466,7 @@ assert.equal(last.executions().length, 1)
 - `withOperations`, `withPrevious`, `mergeWith` answer a new value; the one
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
-  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`).
+  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`). What
+  `BookIterator` finds wrong in the data - an operation dated before its book,
+  an order or a quote stating neither side - it leaves out, with a warning on
+  standard error, and no error.

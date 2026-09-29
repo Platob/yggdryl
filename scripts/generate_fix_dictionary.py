@@ -66,20 +66,29 @@ DEFAULT_OUT = ROOT / "config" / "fix"
 
 # One classification for every current FIX message type. The source formats
 # do not retain a business-area property, so coverage is held against their
-# exact wire-code set below rather than inferred from a generated name.
+# exact wire-code set below rather than inferred from a generated name. A
+# type stating many orders, quotes or trades at once - a list, a mass order,
+# a cross, a mass quote, a bid list, a match report - files under its batch
+# category (`ORDB`, `QUOB`, `TRDB`), which a parse splits into one message
+# of the single category per entry; `EXEB` files no standard type. An
+# assignment report and a contrary intention report maintain positions, and
+# a market definition is market structure, as the standard files them.
 MSGCAT_BY_TYPE = {
     code: category
     for category, codes in (
         ("SESS", "0 1 2 3 4 5 A j n BC BD BE BF CB BW BX BY EL EM EN EO EP"),
-        ("ORDR", "D E F G H 9 q r s t u AB AC AF CA BZ DJ DK K L M N DS DT"),
-        ("QUOT", "6 7 R S Z a b i AG AH AI AJ CW k l m"),
-        ("EXEC", "8 BN Q BO"),
-        ("TRAD", "AD AE AQ AR DC DD DW DX AW"),
-        ("BOOK", "V W X Y DO DP DR EQ BT BU BV"),
+        ("ORDR", "D F G H 9 AB AC"),
+        ("ORDB", "E K L M N q r AF CA BZ DJ DK s t u DS DT"),
+        ("QUOT", "6 7 R S Z a AG AH AI AJ CW"),
+        ("QUOB", "i b k l m"),
+        ("EXEC", "8 BN Q"),
+        ("TRAD", "AD AE AQ AR DW DX"),
+        ("TRDB", "DC DD"),
+        ("BOOK", "V W X Y DO DP DR EQ"),
         ("SECU", "c d e f v w x y z AA BK BP BR CN CO EG ER"),
-        ("MKST", "g h BI BJ BS ES"),
+        ("MKST", "g h BI BJ BS ES BT BU BV"),
         ("ALLO", "J P AS AT BM DU DV"),
-        ("POSN", "AL AM AN AO AP BL DL DM DN"),
+        ("POSN", "AL AM AN AO AP BL DL DM DN AW BO"),
         ("SETL", "T AV BQ EC ED EE EF"),
         ("COLL", "AX AY AZ BA BB BG DQ CH CI CJ"),
         ("PRTY", "CF CG CK CX CY DH DI CU CV CZ DA DB"),
@@ -665,8 +674,9 @@ def fold_legacy_codes(
 # carry theirs in the crate dump. ``follow`` marks an alternate identifier
 # an operation that follows another carries forward, and ``role`` the
 # PartyRole(452) of the Parties occurrence whose PartyID(448) states the key.
-# The accounts and users a message names are no identifier: its parties stay
-# in its metadata.
+# A message's parties are its accountids and its regulatory trade identifiers
+# alternate identifiers, both read by the crate natively rather than stated
+# on a field.
 
 
 def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = None) -> dict[str, Any]:

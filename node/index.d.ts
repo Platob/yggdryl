@@ -338,11 +338,6 @@ export declare class BookEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -391,6 +386,12 @@ export declare class BookEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -1442,6 +1443,12 @@ export declare class Execution {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -1512,6 +1519,12 @@ export declare class Execution {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -1616,11 +1629,6 @@ export declare class ExecutionEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -1669,6 +1677,12 @@ export declare class ExecutionEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -1739,6 +1753,12 @@ export declare class ExecutionEvent {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -2736,18 +2756,18 @@ export type JsFixFieldIterator = FixFieldIterator
  * stream of lines parsed, records parsed, messages filled or stamped, a
  * batch read back - so a message stream has one shape at this boundary
  * whatever made it. Nothing is collected: the core iterator is the stream,
- * and a JavaScript iterable behind it is pulled one item at a time. A line
- * the reader refuses throws where it is met and the stream goes on past it;
- * a failure in the iterable behind the stream throws and ends it. The loader
- * supplies `Symbol.iterator` over `next`.
+ * and a JavaScript iterable behind it is pulled one item at a time. What a
+ * line or a message states that cannot stand is passed over with a warning
+ * on standard error, never thrown; a failure in the iterable behind the
+ * stream throws and ends it. The loader supplies `Symbol.iterator` over
+ * `next`.
  */
 export declare class FixMessages {
   /**
    * Advance the stream: the next message, or `null` at its end.
    *
-   * A line the reader refused throws here and the stream continues on
-   * the next call; a failure behind the stream throws once, in place of
-   * the end.
+   * A line the reader passed over is no item; a failure behind the stream
+   * throws once, in place of the end.
    */
   next(): IteratorResult<FixMsg>
 }
@@ -2982,6 +3002,12 @@ export declare class FixMsg {
    * `TRADEID` and the rest the message states.
    */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the message names - each `Parties`
+   * occurrence's `PartyID` under its `PartyRole`'s name, such as
+   * `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - key to value, in key order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The price stated, as decimal text, or `null` where none is. Never a
    * last executed price, which `lastpx` answers.
@@ -4489,6 +4515,12 @@ export declare class MarketData {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -4984,6 +5016,12 @@ export declare class Order {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -5054,6 +5092,12 @@ export declare class Order {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -5158,11 +5202,6 @@ export declare class OrderEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -5211,6 +5250,12 @@ export declare class OrderEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -5281,6 +5326,12 @@ export declare class OrderEvent {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -5823,6 +5874,12 @@ export declare class Quote {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -5893,6 +5950,12 @@ export declare class Quote {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -5997,11 +6060,6 @@ export declare class QuoteEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -6050,6 +6108,12 @@ export declare class QuoteEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -6120,6 +6184,12 @@ export declare class QuoteEvent {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -7269,11 +7339,6 @@ export declare class SnapshotEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -7322,6 +7387,12 @@ export declare class SnapshotEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -8521,11 +8592,6 @@ export declare class TradeEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /**
-   * The latest execution instant the lifecycle reached, where
-   * known.
-   */
-  get execunix(): bigint | null
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
@@ -8574,6 +8640,12 @@ export declare class TradeEvent {
   get cficode(): string | null
   /** The market, as an ISO 10383 MIC; `null` where none. */
   get miccode(): string | null
+  /**
+   * When this last executed: the latest execution instant its
+   * lifecycle reached, nanoseconds since the Unix epoch, UTC,
+   * where known - a market fact, never an event's.
+   */
+  get execunix(): bigint | null
   /** The price last traded at; `null` where none. */
   get lastpx(): string | null
   /** The quantity last traded; `null` where none. */
@@ -8644,6 +8716,12 @@ export declare class TradeEvent {
   get tradable(): boolean | null
   /** The names the operation goes by, in key order. */
   get altids(): Record<string, string>
+  /**
+   * The accounts and parties the operation names, party role to
+   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+   * order.
+   */
+  get accountids(): Record<string, string>
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.

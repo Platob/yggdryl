@@ -1463,7 +1463,7 @@ let committedRegistry
     // The retired spellings are gone rather than aliased.
     for (const gone of [
       'identifiers', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
-      'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'accountids', 'userids', 'marketoperationid',
+      'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'userids', 'marketoperationid',
       'bid', 'ask',
     ]) {
       assert.equal(gone in event, false, gone)
@@ -1717,7 +1717,8 @@ let committedRegistry
         'PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|',
       ))
       .next().value
-    assert.equal('accountids' in message, false)
+    // A bridge's dealer account is no party: the accounts stay empty.
+    assert.deepEqual(message.accountids, {})
     assert.equal('userids' in message, false)
     assert.deepEqual(message.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1', ULTRADERCLORDID: 'U1' })
   })
@@ -2888,7 +2889,7 @@ let committedRegistry
     return held
   }
 
-  test('parseLines pulls one line at a time and continues past a refused one', () => {
+  test('parseLines pulls one line at a time and passes over a line that is no row', () => {
     const codec = reading(seed(), { threads: 1 })
     let pulled = 0
     function* lines() {
@@ -2907,11 +2908,10 @@ let committedRegistry
     // The second frame comes out of the same line, without the next pull.
     assert.equal(messages.next().value.byTag(11).asJs(), 'B')
     assert.equal(pulled, 1)
-    // An empty line is not a row at all: thrown where it is met, and the
-    // stream goes on to say it is done.
-    assert.throws(() => messages.next(), /captured row/)
-    assert.equal(pulled, 2)
+    // An empty line is not a row at all: passed over where it is met, with a
+    // warning, and the stream goes on to say it is done.
     assert.equal(messages.next().done, true)
+    assert.equal(pulled, 2)
     assert.equal(messages.next().done, true)
   })
 
@@ -3334,7 +3334,7 @@ let committedRegistry
     assert.equal(books.getChild('deltas').get(0).length, 0)
   })
 
-  test('a trade side without Side splits off no execution, so no book reads it', () => {
+  test('a trade side without Side splits off an execution of side UNKNOWN', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const line = Buffer.from(
       '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
@@ -3342,11 +3342,16 @@ let committedRegistry
       '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
     )
     // A12: a trade states its fills as the executions its parse splits off,
-    // and a side naming no Side(54) is none of them.
+    // and a side naming no Side(54) is still a fill: of side UNKNOWN, said as
+    // a warning. The trade itself answers no leaf, and its book keeps the
+    // fill among its executions, on neither side.
     const messages = [...codec.parseLine(line)]
-    assert.deepEqual(messages.map((message) => [message.msgcat, message.side]), [['TRAD', 'UNKNOWN']])
-    assert.throws(() => messages[0].marketData(), /a trade states its fills as the executions its parse splits off/)
-    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 0)
+    assert.deepEqual(
+      messages.map((message) => [message.msgcat, message.side]),
+      [['TRAD', 'UNKNOWN'], ['EXEC', 'UNKNOWN']],
+    )
+    assert.deepEqual(messages[0].marketData(), [])
+    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 1)
   })
 
   // One book snapshot, one incremental update a second later, and session
@@ -3537,8 +3542,9 @@ let committedRegistry
     assert.deepEqual(messages[0].altids, { CLORDID: 'C-001', EXECID: 'E-09', ORDERID: 'O-01' })
     assert.deepEqual(Object.keys(messages[0].altids), ['CLORDID', 'EXECID', 'ORDERID'])
     assert.deepEqual(messages[1].altids, {})
-    // A1: the alternate identifiers are the one identifier map.
-    assert.equal('accountids' in messages[0], false)
+    // A1: the alternate identifiers are the one identifier map of names;
+    // the accounts are the parties a message names, none here.
+    assert.deepEqual(messages[0].accountids, {})
     assert.equal('userids' in messages[0], false)
 
     // No column of its own: the row states the source fields, and a row
@@ -4168,8 +4174,9 @@ let committedRegistry
     const messages = captured(codec)
     // Every line that carries a message is one message, the JSON documents
     // among them, and the parse splits one execution off each of the 56
-    // reports that report a fill (A12; `rust/tests/fix/ulbridge.rs`).
-    assert.equal(messages.length, 94 + 56)
+    // reports that report a fill and one of side UNKNOWN off the trade
+    // capture (A12; `rust/tests/fix/ulbridge.rs`).
+    assert.equal(messages.length, 94 + 57)
 
     // What a bridge's row header states reaches the capture, and what its own
     // namespaces state reaches the metadata.
@@ -4210,17 +4217,18 @@ let committedRegistry
     // ten rows stating no FIX type state no sending time either, so each is
     // dated by its line - seven deliveries at their own instants, none a
     // twin, where the one instant every line shared made them two, one of
-    // them a twin.
+    // them a twin. It is 38 since the trade capture's side stating no
+    // Side(54) splits off an execution of side UNKNOWN.
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 37)
+    assert.equal(retained.length, 38)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 38)
+    assert.equal(walked.length, 39)
     // A walk remembering nothing answers the three as well, each an identity
     // it had already answered, and nothing else.
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
-    assert.equal(every.length, 41)
+    assert.equal(every.length, 42)
     const seen = new Set()
     const once = every.filter((message) => !seen.has(message.curruuid) && seen.add(message.curruuid))
     assert.deepEqual(once.map((message) => message.curruuid), walked.map((message) => message.curruuid))
@@ -4247,8 +4255,9 @@ let committedRegistry
     // stating its predecessor.
     assert.equal(walked.filter((message) => message.prevuuid !== null).length, 6)
     // seqnum > 0 now marks a place after another event of the same instant:
-    // split executions beside their reports, and same-instant chain steps.
-    assert.equal(walked.filter((message) => message.seqnum > 0).length, 11)
+    // split executions beside their reports - and beside the trade - and
+    // same-instant chain steps.
+    assert.equal(walked.filter((message) => message.seqnum > 0).length, 12)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
     // one output; only the four twins the window yields once take their own
@@ -4356,33 +4365,35 @@ let committedRegistry
     for (const line of IOBase.fromBytes(fs.readFileSync(CAPTURE)).readTextLines(options)) {
       for (const message of codec.parseTextLine(line)) messages.push(message)
     }
-    // A12: 56 executions split off the fills.
-    assert.equal(messages.length, 94 + 56)
+    // A12: 56 executions split off the fills, and one of side UNKNOWN off
+    // the trade capture.
+    assert.equal(messages.length, 94 + 57)
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 38)
+    assert.equal(walked.length, 39)
 
-    // Seventeen deliveries reach a book - eight fills, the eight reports they
-    // were split off, now their orders' reports, and three orders, less a
-    // fill and a report the window yields once - and nothing is refused: the
-    // trade capture is no book input, since a trade's fills are the
-    // executions its parse splits off (A12).
+    // Eighteen deliveries reach a book - eight fills, the eight reports they
+    // were split off, now their orders' reports, three orders, less a fill
+    // and a report the window yields once, and the trade capture's fill -
+    // and nothing is refused: the trade itself is no book input, since a
+    // trade's fills are the executions its parse splits off (A12).
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 17)
+    assert.equal(operations.length, 18)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 7, order_event: 10 })
+    assert.deepEqual(census, { execution_event: 8, order_event: 10 })
     // The two a walk remembering nothing answers beside them each repeat an
     // identity already there.
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
-    assert.equal(every.length, 19)
+    assert.equal(every.length, 20)
     const seen = new Set()
     const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
     assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
-    // Every operation folds into a book: seven, the last holding nothing,
-    // its unpriced order having rested and left at one instant.
+    // Every operation folds into a book: eight - one the trade's - the last
+    // holding nothing, its unpriced order having rested and left at one
+    // instant.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 7)
+    assert.equal(books.length, 8)
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
     assert.deepEqual([last.limits('BUY'), last.limits('SELL'), last.alive()], [[], [], []])

@@ -385,12 +385,16 @@ impl PyMarketDataRowIterator {
         slf
     }
 
-    fn __next__(&self) -> PyResult<Option<PyMarketData>> {
-        let next = self
-            .inner
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .next();
+    fn __next__(&self, py: Python<'_>) -> PyResult<Option<PyMarketData>> {
+        // The GIL is released while the core pulls: a parse worker that
+        // warns takes it to reach Python's `logging`, and the worker this
+        // pull waits on must not wait on this thread.
+        let next = py.detach(|| {
+            self.inner
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .next()
+        });
         match next {
             Some(held) => held
                 .map(|data| Some(PyMarketData::from_core(data)))

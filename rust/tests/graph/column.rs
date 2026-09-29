@@ -1,4 +1,4 @@
-//! `rust/src/graph/column.rs`: the sixteen columns every event schema opens
+//! `rust/src/graph/column.rs`: the fifteen columns every event schema opens
 //! with, each stating back exactly the fact it read.
 
 use yggdryl::graph::{Element, Event, EventColumn, OrderEvent};
@@ -8,7 +8,6 @@ use yggdryl::{Scalar, State, Uuid};
 fn every_column_states_back_what_it_read() {
     let mut event = OrderEvent::at(1_700_000_000_000_000_000);
     event.set_creaunix(Some(1_600_000_000_000_000_000));
-    event.set_execunix(Some(1_650_000_000_000_000_000));
     event.set_recdunix(Some(1_675_000_000_000_000_000));
     event.set_exprunix(Some(1_800_000_000_000_000_000));
     event.set_prevunix(Some(1_650_000_000_000_000_000));
@@ -34,7 +33,6 @@ fn every_column_states_back_what_it_read() {
     }
     assert_eq!(again.get_currunix(), event.get_currunix());
     assert_eq!(again.get_creaunix(), event.get_creaunix());
-    assert_eq!(again.get_execunix(), event.get_execunix());
     assert_eq!(again.get_recdunix(), event.get_recdunix());
     assert_eq!(again.get_exprunix(), event.get_exprunix());
     assert_eq!(again.get_prevunix(), event.get_prevunix());
@@ -55,17 +53,14 @@ fn a_null_clears_and_nothing_stated_is_none() {
     let mut event = OrderEvent::at(7);
     event.set_seqnum(3);
     event.set_crosscode("X".to_owned());
-    event.set_execunix(Some(4));
     event.set_recdunix(Some(5));
     EventColumn::SeqNum.record(&mut event, &Scalar::Null);
     EventColumn::CrossCode.record(&mut event, &Scalar::Null);
     EventColumn::State.record(&mut event, &Scalar::Null);
-    EventColumn::ExecUnix.record(&mut event, &Scalar::Null);
     EventColumn::RecdUnix.record(&mut event, &Scalar::Null);
     assert_eq!(event.get_seqnum(), 0);
     assert_eq!(event.get_crosscode(), "");
     assert_eq!(event.get_state(), &State::unknown());
-    assert_eq!(event.get_execunix(), None);
     assert_eq!(event.get_recdunix(), None);
     assert_eq!(EventColumn::SeqNum.fact(&event), None);
     assert_eq!(EventColumn::CrossCode.fact(&event), None);
@@ -78,13 +73,12 @@ fn a_null_clears_and_nothing_stated_is_none() {
         .iter()
         .map(|column| column.name())
         .collect();
-    assert_eq!(EventColumn::ALL.len(), 16);
+    assert_eq!(EventColumn::ALL.len(), 15);
     assert_eq!(
         names,
         [
             "currunix",
             "creaunix",
-            "execunix",
             "recdunix",
             "exprunix",
             "prevunix",
@@ -108,6 +102,9 @@ fn a_null_clears_and_nothing_stated_is_none() {
     // on the operation and the names it goes by are its alternate
     // identifiers, an operation column.
     assert_eq!(EventColumn::of_name("identifiers"), None);
+    // When an element last executed is a market fact, a market column: a
+    // text line or any other event that is no market element states none.
+    assert_eq!(EventColumn::of_name("execunix"), None);
 }
 
 #[test]

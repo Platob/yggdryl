@@ -22,7 +22,6 @@ from yggdryl.media import Parquet
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
-    "execunix",
     "recdunix",
     "exprunix",
     "prevunix",

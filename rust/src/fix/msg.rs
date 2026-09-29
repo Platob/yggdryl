@@ -62,6 +62,112 @@ const PARTIES: &str = "parties";
 const PARTYROLE: &str = "partyrole";
 const PARTYID: &str = "partyid";
 
+/// `NoSides(552)`: a trade's or a cross's sides, each stating its own
+/// parties and regulatory trade identifiers - an execution a trade's parse
+/// split off holds its one side here.
+const SIDES: i32 = 552;
+/// `PartyRole(452)`, whose code set names every role an account is keyed by.
+const PARTY_ROLE: i32 = 452;
+/// The groups naming a message's parties - `NoPartyIDs(453)` and
+/// `NoRootPartyIDs(1116)` - each with the tags of its occurrence's
+/// identifier and role.
+const PARTY_GROUPS: [(i32, i32, i32); 2] = [(453, 448, PARTY_ROLE), (1116, 1117, 1119)];
+/// The groups naming a message's regulatory trade identifiers -
+/// `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)`
+/// - each with the tags of its occurrence's identifier and type.
+const REGULATORY_GROUPS: [(i32, i32, i32); 2] = [(1907, 1903, 1906), (1971, 1972, 1975)];
+
+/// The members of one occurrence a rebuild reads, by position.
+type Occurrence<const N: usize> = [Option<SmolStr>; N];
+
+/// Every occurrence of the typed group `value`, each read at the member
+/// `positions` of its item as the text it spells: a member the item does
+/// not declare, or an occurrence leaves null or empty, is `None`.
+fn read_occurrences<const N: usize>(
+    value: &Scalar,
+    positions: [Option<usize>; N],
+    into: &mut SmallVec<[Occurrence<N>; 8]>,
+) {
+    let Some(rows) = value.as_serie() else {
+        return;
+    };
+    for occurrence in rows.iter() {
+        if let Some(held) = occurrence.as_sequence() {
+            into.push(positions.map(|at| at.and_then(|at| held.get(at)).and_then(scalar_text)));
+        }
+    }
+}
+
+/// The `accountids` key a party of one `PartyRole(452)` code goes under: the
+/// role's name, as the dictionary's code set spells it - `ExecutingTrader`
+/// keys `EXECUTINGTRADER` - else `PARTYROLE{code}` for a role the set names
+/// none for or a name longer than a key holds, and `PARTY` for a party
+/// stating no role.
+fn account_key<'registry>(
+    roles: Option<super::FixCodeSet<'registry>>,
+    role: Option<&str>,
+) -> Cow<'registry, str> {
+    let Some(role) = role else {
+        return Cow::Borrowed("PARTY");
+    };
+    // The map folds a key as it stores it, so the name is lent as spelled.
+    match roles.and_then(|roles| roles.code_name(role)) {
+        Some(name) if name.len() <= ACCOUNT_KEY_WIDTH && name.is_ascii() => Cow::Borrowed(name),
+        _ => Cow::Owned(format!("PARTYROLE{role}")),
+    }
+}
+
+/// The most bytes an [`IdMap`] key holds.
+const ACCOUNT_KEY_WIDTH: usize = 32;
+
+/// The `altids` key a regulatory trade identifier of one
+/// `RegulatoryTradeIDType(1906)` goes under: `REGTRADEID` for the current
+/// one or where no type is stated, the previous, block, related and
+/// cleared-block ones prefixed, a trading venue's transaction identifier
+/// `TVTIC` and a report's tracking number `REPORTTRACKINGNUMBER`.
+fn regulatory_key(kind: Option<&str>) -> Cow<'static, str> {
+    Cow::Borrowed(match kind.unwrap_or("0") {
+        "0" => "REGTRADEID",
+        "1" => "PREVREGTRADEID",
+        "2" => "BLOCKREGTRADEID",
+        "3" => "RELATEDREGTRADEID",
+        "4" => "CLEAREDREGTRADEID",
+        "5" => "TVTIC",
+        "6" => "REPORTTRACKINGNUMBER",
+        other => return Cow::Owned(format!("REGTRADEID{other}")),
+    })
+}
+
+/// States `value` under `key` in `map`: the first value a key is stated with
+/// fills it, and a later different one - or one the map cannot hold -
+/// states nothing and is kept as an anomaly of `field`.
+fn admit_identifier(
+    map: &mut IdMap,
+    key: &str,
+    value: &str,
+    field: &str,
+    dropped: &mut Vec<super::FixAnomaly>,
+) {
+    if crate::code::is_null_like(value) {
+        return;
+    }
+    match map.get(key) {
+        Some(held) if held != value => dropped.push(super::FixAnomaly::new(
+            field,
+            format!("states {key}:{value} where {key}:{held} is already stated"),
+        )),
+        Some(_) => {}
+        None => {
+            if let Err(error) = map.insert(key, value) {
+                dropped.push(super::FixAnomaly::new(
+                    field,
+                    format!("states {key}:{value}, which no identifier map holds: {error}"),
+                ));
+            }
+        }
+    }
+}
+
 /// The bridge key an execution clock is read from where no FIX field
 /// states one.
 const EVENT_TIMESTAMP: &str = "eventtimestamp";
@@ -229,12 +335,11 @@ pub struct FixMsg {
     /// The event the message is: what the three graph traits answer.
     ///
     /// Boxed, because the event is forty facts and a message is moved
-    /// through every stream by value.
+    /// through every stream by value. Its stamped kind is the message's
+    /// `msgcat` - the business category the message's type files under, the
+    /// dictionary's `FIX:msgcat`, or the one the row it was read from stated
+    /// - which decides whether its cross code carries its side.
     event: Box<OperationEventFacts>,
-    /// The business category the message's type files under - the
-    /// dictionary's `FIX:msgcat` - or the one the row it was read from
-    /// stated.
-    msgcat: MarketDataKind,
     /// The option strike price the message identifies - `StrikePrice(202)`
     /// as the decimal leaf - or the one the row it was read from stated.
     strikepx: Option<Decimal>,
@@ -840,7 +945,9 @@ impl FixMsg {
             // answers.
             row_stated &= !ROW_STATED_MSGCAT;
         }
-        let msgcat = msgcat.unwrap_or_else(|| derived_msgcat(&registry, header.msgtype()));
+        event.set_marketdatakind(
+            msgcat.unwrap_or_else(|| derived_msgcat(&registry, header.msgtype())),
+        );
         if strikepx.is_none() {
             // A value that is no decimal states none, and derivation
             // answers.
@@ -862,7 +969,6 @@ impl FixMsg {
         let mut message = Self {
             registry,
             event,
-            msgcat,
             strikepx,
             header,
             capture,
@@ -1077,11 +1183,12 @@ impl FixMsg {
             // derivation.
             match msgcat_of(value) {
                 Some(msgcat) => {
-                    self.msgcat = msgcat;
+                    self.event.set_marketdatakind(msgcat);
                     self.row_stated |= ROW_STATED_MSGCAT;
                 }
                 None => {
-                    self.msgcat = derived_msgcat(&self.registry, self.header.msgtype());
+                    self.event
+                        .set_marketdatakind(derived_msgcat(&self.registry, self.header.msgtype()));
                     self.row_stated &= !ROW_STATED_MSGCAT;
                 }
             }
@@ -1146,7 +1253,7 @@ impl FixMsg {
             .ok();
         }
         if tag == super::MSGCAT_TAG_NAME.0 {
-            return Some(Scalar::MarketDataKind(self.msgcat));
+            return Some(Scalar::MarketDataKind(self.msgcat()));
         }
         if tag == super::STRIKEPX_TAG_NAME.0 {
             return self.strikepx.map(Scalar::from);
@@ -1289,7 +1396,7 @@ impl FixMsg {
     /// walk (the lifecycle's own key adds the side and an execution's cross
     /// code) and inside it (each walks a chain of its own).
     pub(super) fn is_same_session_event(&self, other: &Self) -> bool {
-        self.msgcat == other.msgcat
+        self.msgcat() == other.msgcat()
             && self
                 .session_event_identifier()
                 .is_some_and(|identity| other.session_event_identifier() == Some(identity))
@@ -1502,7 +1609,8 @@ impl FixMsg {
         }
         let row_stated = self.row_stated;
         if row_stated & ROW_STATED_MSGCAT == 0 {
-            self.msgcat = derived_msgcat(&self.registry, self.header.msgtype());
+            self.event
+                .set_marketdatakind(derived_msgcat(&self.registry, self.header.msgtype()));
         }
         if row_stated & ROW_STATED_STRIKE == 0 {
             self.strikepx = self.stated_strikepx();
@@ -1513,7 +1621,21 @@ impl FixMsg {
                 .filter(|held| !held.is_empty())
         };
         let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
-        let number = |tag: i32| by_tag(tag).as_ref().and_then(Decimal::from_scalar);
+        // A value stated but unreadable is the fact's default, beside a
+        // warning naming the field; an absent one is the default silently.
+        let number = |tag: i32| {
+            by_tag(tag).and_then(|held| {
+                let read = Decimal::from_scalar(&held);
+                if read.is_none() {
+                    self.unread(
+                        "FIX price or quantity defaulted to none: the stated value is no exact decimal",
+                        tag,
+                        &held,
+                    );
+                }
+                read
+            })
+        };
         let word = |tag: i32| text(by_tag(tag));
 
         // The numbers, each from its own lifted slot.
@@ -1529,20 +1651,69 @@ impl FixMsg {
             self.lifted.leavesqty(),
         );
         // The side, the currency and the unit the quantity is counted in.
-        let side = word(54).and_then(|held| Side::read(&held).ok());
+        let side = word(54).and_then(|held| {
+            Side::read(&held)
+                .inspect_err(|_| {
+                    self.unread(
+                        "FIX side defaulted to UNKNOWN: the stated side does not read",
+                        54,
+                        &held,
+                    );
+                })
+                .ok()
+        });
         let ccy = |tag: i32| {
             word(tag)
-                .and_then(|held| Ccy::new(&held).ok())
+                .and_then(|held| {
+                    Ccy::new(&held)
+                        .inspect_err(|_| {
+                            self.unread(
+                                "FIX currency defaulted to none: the stated currency is no ISO 4217 code",
+                                tag,
+                                &held,
+                            );
+                        })
+                        .ok()
+                })
                 .filter(|held| held.as_str() != Ccy::none().as_str())
         };
         let currency = ccy(15).or_else(|| ccy(120));
-        let unit = word(996).and_then(|held| Unit::new(&held).ok());
-        let tif = word(identity::TIMEINFORCE_TAG);
+        let unit = word(996).and_then(|held| {
+            Unit::new(&held)
+                .inspect_err(|_| {
+                    self.unread(
+                        "FIX unit defaulted to none: the stated unit of measure does not read",
+                        996,
+                        &held,
+                    );
+                })
+                .ok()
+        });
+        let tif = word(identity::TIMEINFORCE_TAG).and_then(|held| {
+            let read = TimeInForce::from_spelling(&held);
+            if read.is_none() {
+                self.unread(
+                    "FIX time in force defaulted to none: the stated one does not read",
+                    identity::TIMEINFORCE_TAG,
+                    &held,
+                );
+            }
+            read
+        });
         // The instrument: what it is classified as, what it is called, and
         // its identifiers under the sources that name them.
         // The detailed classification the chain reaches, or none: a coarse
         // stated code is not a classification the market keeps.
         let cficode = self.classification().and_then(|held| Cfi::new(&held).ok());
+        if cficode.is_none() {
+            if let Some(held) = word(461).filter(|held| Cfi::new(held).is_err()) {
+                self.unread(
+                    "FIX classification defaulted to none: the stated CFI code does not read",
+                    461,
+                    &held,
+                );
+            }
+        }
         debug_assert!(
             cficode
                 .as_ref()
@@ -1603,13 +1774,24 @@ impl FixMsg {
         // The market it last traded on, was routed to, the one the
         // instrument key names, else the one it is listed on - each an ISO
         // 10383 MIC or the Reuters mnemonic FIX 4.2 spelled it in, a code
-        // neither reading resolves naming none.
-        let market = |held: &str| Mic::from_market(held);
-        let miccode = word(30)
-            .and_then(|held| market(&held))
-            .or_else(|| word(100).and_then(|held| market(&held)))
-            .or_else(|| named.as_ref().and_then(|named| market(&named.mic)))
-            .or_else(|| word(207).and_then(|held| market(&held)))
+        // neither reading resolves naming none and passed over for the next.
+        let market = |tag: i32| {
+            word(tag).and_then(|held| {
+                let read = Mic::from_market(&held);
+                if read.is_none() {
+                    self.unread(
+                        "FIX market passed over: the stated market names no MIC",
+                        tag,
+                        &held,
+                    );
+                }
+                read
+            })
+        };
+        let miccode = market(30)
+            .or_else(|| market(100))
+            .or_else(|| named.as_ref().and_then(|named| Mic::from_market(&named.mic)))
+            .or_else(|| market(207))
             // A currency pair trades on no one market: ISO 10383's none,
             // which a merge takes a real market over.
             .or_else(|| pair.is_some().then(Mic::none));
@@ -1659,7 +1841,7 @@ impl FixMsg {
         fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
         // A sided quote states its side's bid or offer: its price, quantity
         // and FX parts are that side's where it states none of its own.
-        let quoted = (self.msgcat == MarketDataKind::Quotation)
+        let quoted = (self.msgcat() == MarketDataKind::Quotation)
             .then(|| side.filter(|side| side.is_bid() || side.is_ask()))
             .flatten();
         let (price, quantity, spotrate, forwardpoints) = match quoted {
@@ -1705,7 +1887,7 @@ impl FixMsg {
         event.set_side(side.unwrap_or(Side::Unknown));
         event.set_currency(currency.unwrap_or_else(Ccy::none));
         event.set_unit(unit.unwrap_or_else(Unit::none));
-        event.set_tif(tif.and_then(|held| TimeInForce::from_spelling(&held)));
+        event.set_tif(tif);
         event.set_ticker(symbolticker);
         event.set_cficode(cficode);
         let _ = event.set_securityids(securityids);
@@ -1727,6 +1909,23 @@ impl FixMsg {
             let execunix = self.execution_or_placed(execunix);
             self.event.set_execunix(execunix);
         }
+    }
+
+    /// Warns that `stated`, the value `tag` states, does not read as the
+    /// market fact it fills: `what` names the fact and the default it took.
+    /// The field is the key, so a stream warns once per field rather than
+    /// once per message.
+    fn unread(&self, what: &'static str, tag: i32, stated: &dyn fmt::Debug) {
+        let field = self.registry.get_field_by_tag(tag).map_or_else(
+            || format_smolstr!("{tag}"),
+            |field| format_smolstr!("{}({tag})", field.name()),
+        );
+        crate::warning::warned!(
+            what,
+            &field,
+            "{stated:?} on a {} message",
+            self.header.msgtype()
+        );
     }
 
     /// When the fields say the message executed. Execution time is not the
@@ -1918,82 +2117,146 @@ impl FixMsg {
         &self,
         group: &str,
         members: [&str; N],
-    ) -> impl Iterator<Item = [Option<SmolStr>; N]> + '_ {
-        let group = self.field.index_of(group).and_then(|at| {
-            let sequence = self.field.fields().get(at)?.dtype().as_serie_type()?;
-            let positions = members.map(|name| sequence.item().index_of(name));
-            let rows = self.value.as_sequence()?.get(at)?.as_serie()?;
-            Some((rows, positions))
+    ) -> SmallVec<[Occurrence<N>; 8]> {
+        let mut held = SmallVec::new();
+        let at = self.field.index_of(group);
+        let group = at.and_then(|at| {
+            let serie = self.field.fields().get(at)?.dtype().as_serie_type()?;
+            let value = self.value.as_sequence()?.get(at)?;
+            Some((members.map(|name| serie.item().index_of(name)), value))
         });
-        group.into_iter().flat_map(|(rows, positions)| {
-            // The row lives inside the closure, so a column-backed group's
-            // owned row is read here rather than borrowed out.
-            rows.iter().filter_map(move |occurrence| {
-                let held = occurrence.as_sequence()?;
-                Some(
-                    positions
-                        .map(|position| position.and_then(|at| held.get(at)).and_then(scalar_text)),
-                )
+        if let Some((positions, value)) = group {
+            read_occurrences(value, positions, &mut held);
+        }
+        held
+    }
+
+    /// The values `tags` state in every occurrence of the group `counter`
+    /// counts, group and members found by tag: a trade side's own
+    /// occurrences first - the more specific statement, which an execution
+    /// a trade split off is about - then the message's.
+    fn tagged_occurrences<const N: usize>(
+        &self,
+        counter: i32,
+        tags: [i32; N],
+    ) -> SmallVec<[Occurrence<N>; 8]> {
+        let registry = &*self.registry;
+        // The child of `item` stating `wanted` - as the group it counts
+        // when `counts`, else as its own tag.
+        let find = |item: &Field, counts: bool, wanted: i32| {
+            item.fields().iter().position(|child| {
+                let (tag, counter) = super::schema::tag_and_counter(registry, child);
+                (if counts { counter } else { tag }) == Some(wanted)
             })
-        })
+        };
+        let positions = |group: &Field| {
+            let serie = group.dtype().as_serie_type()?;
+            Some(tags.map(|member| find(serie.item(), false, member)))
+        };
+        let (fields, values) = (self.field.fields(), self.value.as_sequence());
+        let root = |at: usize| Some((fields.get(at)?, values?.get(at)?));
+        let mut held = SmallVec::new();
+        if let Some((sides, rows)) = self.index_of_group(SIDES).and_then(root) {
+            let inner = sides.dtype().as_serie_type().and_then(|serie| {
+                let at = find(serie.item(), true, counter)?;
+                Some((at, positions(serie.item().fields().get(at)?)?))
+            });
+            if let (Some((inner, members)), Some(rows)) = (inner, rows.as_serie()) {
+                for occurrence in rows.iter() {
+                    if let Some(value) = occurrence.as_sequence().and_then(|side| side.get(inner)) {
+                        read_occurrences(value, members, &mut held);
+                    }
+                }
+            }
+        }
+        if let Some((group, value)) = self.index_of_group(counter).and_then(root) {
+            if let Some(members) = positions(group) {
+                read_occurrences(value, members, &mut held);
+            }
+        }
+        held
     }
 
     /// Rebuilds the alternate identifiers from the fields that state them,
     /// at every settle: each of the registry's
     /// [`idmap_sources`](FixRegistry::idmap_sources) in turn, a field's own
     /// value or the `PartyID(448)` of every `Parties` occurrence under the
-    /// entry's role. The first value a key is stated with fills it; a later
-    /// different one states nothing and is kept as an anomaly.
+    /// entry's role, then every regulatory trade identifier - and the
+    /// accounts, one per `Parties` or `RootParties` role. The first value a
+    /// key is stated with fills it; a later different one states nothing and
+    /// is kept as an anomaly.
     fn rebuild_idmaps(&mut self) {
         let mut altids = IdMap::new();
         let mut dropped = Vec::new();
         let registry = Arc::clone(&self.registry);
         for (tag, source) in registry.idmap_sources() {
-            let map = &mut altids;
-            let mut admit = |value: &str| {
-                if crate::code::is_null_like(value) {
-                    return;
-                }
-                match map.get(source.key()) {
-                    Some(held) if held != value => {
-                        let field = if source.role().is_some() {
-                            PARTIES
-                        } else {
-                            registry.get_field_by_tag(*tag).map_or("", Field::name)
-                        };
-                        dropped.push(super::FixAnomaly::new(
-                            field,
-                            format!(
-                                "states {}:{value} where {}:{held} is already stated",
-                                source.key(),
-                                source.key()
-                            ),
-                        ));
-                    }
-                    Some(_) => {}
-                    None => {
-                        let _ = map.insert(source.key(), value);
-                    }
-                }
+            let field = if source.role().is_some() {
+                PARTIES
+            } else {
+                registry.get_field_by_tag(*tag).map_or("", Field::name)
             };
             match source.role() {
                 None => {
                     if let Some(value) = self.get_by_tag(*tag).as_ref().and_then(scalar_text) {
-                        admit(&value);
+                        admit_identifier(&mut altids, source.key(), &value, field, &mut dropped);
                     }
                 }
                 Some(role) => {
                     for [partyrole, partyid] in self.group_rows(PARTIES, [PARTYROLE, PARTYID]) {
                         if let Some(value) = partyid.filter(|_| partyrole.as_deref() == Some(role))
                         {
-                            admit(&value);
+                            admit_identifier(
+                                &mut altids,
+                                source.key(),
+                                &value,
+                                field,
+                                &mut dropped,
+                            );
                         }
                     }
                 }
             }
         }
+        for (counter, id, kind) in REGULATORY_GROUPS {
+            for [value, kind] in self.tagged_occurrences(counter, [id, kind]) {
+                if let Some(value) = value {
+                    let key = regulatory_key(kind.as_deref());
+                    admit_identifier(
+                        &mut altids,
+                        &key,
+                        &value,
+                        "regulatorytradeids",
+                        &mut dropped,
+                    );
+                }
+            }
+        }
+        let mut accountids = IdMap::new();
+        let roles = registry
+            .get_field_by_tag(PARTY_ROLE)
+            .and_then(|field| registry.codeset_of(field));
+        for (counter, id, role) in PARTY_GROUPS {
+            for [value, role] in self.tagged_occurrences(counter, [id, role]) {
+                // A role named twice - two contra firms - is ordinary: the
+                // first stands, and the metadata keeps every party.
+                let Some(value) = value else {
+                    continue;
+                };
+                let key = account_key(roles, role.as_deref());
+                if crate::code::is_null_like(&value) || accountids.contains_key(&key) {
+                    continue;
+                }
+                if let Err(error) = accountids.insert(&key, &value) {
+                    dropped.push(super::FixAnomaly::new(
+                        PARTIES,
+                        format!("states {key}:{value}, which no identifier map holds: {error}"),
+                    ));
+                }
+            }
+        }
         self.anomalies.extend(dropped);
         let _ = self.event.set_altids(altids);
+        let _ = self.event.set_accountids(accountids);
     }
 
     /// What this message states that no typed column of its leaves reads,
@@ -2295,7 +2558,7 @@ impl FixMsg {
         // message's identity.
         cells.push((
             SmolStr::new_static("msgcat"),
-            Scalar::from(self.msgcat.code()),
+            Scalar::from(self.msgcat().code()),
         ));
         cells.sort_by(|left, right| left.0.cmp(&right.0));
         xxhash::write_named_bytes(
@@ -2332,15 +2595,13 @@ impl FixMsg {
     /// [lifecycle](super::FixCodec::lifecycle) reads off the structured
     /// message before it walks, so a capture whose frames state no sending
     /// clock still orders, expires and folds by when its transactions
-    /// happened rather than by when it was read.
-    ///
-    /// # Errors
-    ///
-    /// Returns the enriching pass's refusal, which a message this crate
-    /// built never raises.
-    pub fn dated_by_transaction(mut self) -> Result<Self> {
+    /// happened rather than by when it was read. The enriching pass never
+    /// refuses the message: a step it cannot write is warned about and the
+    /// message keeps what it stated.
+    #[must_use]
+    pub fn dated_by_transaction(mut self) -> Self {
         if !self.redate_by_transaction() {
-            return Ok(self);
+            return self;
         }
         let registry = Arc::clone(&self.registry);
         super::enrich::redated(&registry, self)
@@ -2395,8 +2656,8 @@ impl FixMsg {
     /// dictionary's `FIX:msgcat` for its `MsgType(35)`, [`MarketDataKind::Unknown`]
     /// where it files none; a row stating one is the row's word.
     #[must_use]
-    pub const fn msgcat(&self) -> MarketDataKind {
-        self.msgcat
+    pub fn msgcat(&self) -> MarketDataKind {
+        self.event.marketdatakind()
     }
 
     /// The option strike price the message identifies: `StrikePrice(202)`
@@ -2712,11 +2973,12 @@ impl FixMsg {
     /// The lenient twin of [`Self::set_many`], for a pass whose answers are
     /// best effort: a value the target refuses - an identifier whose check
     /// digit does not close, a spelling its code set does not read - is
-    /// silence rather than a refusal, and every other value lands as
-    /// `set_many` lands it. Nothing else is lenient: the rebuild's refusal,
-    /// which no single value causes, is still returned and leaves the
-    /// message unchanged. The identity is not settled: the pass that
-    /// writes settles once, after everything it writes.
+    /// dropped with a deduplicated warning naming the key rather than
+    /// refused, and every other value lands as `set_many` lands it. Nothing
+    /// else is lenient: the rebuild's refusal, which no single value causes,
+    /// is still returned and leaves the message unchanged. The identity is
+    /// not settled: the pass that writes settles once, after everything it
+    /// writes.
     ///
     /// # Errors
     ///
@@ -2734,7 +2996,16 @@ impl FixMsg {
             match self.staged(&key, value, &|_, _| Ok(())) {
                 Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
                 Ok(Staged::Row(write)) => stage(&mut writes, write),
-                Err(_) => {}
+                Err(error) => crate::warning::warned!(
+                    "FIX value dropped: the field its key reaches refuses it",
+                    &match key {
+                        FixKey::Tag(tag) => format_smolstr!("{tag}"),
+                        FixKey::Id(id) => format_smolstr!("{id}"),
+                        FixKey::Name(name) => SmolStr::new(name),
+                    },
+                    "{error} on a {} message",
+                    self.header.msgtype()
+                ),
             }
         }
         let landed = typed.len() + writes.len();
@@ -4080,7 +4351,6 @@ impl Clone for FixMsg {
         Self {
             registry: Arc::clone(&self.registry),
             event: self.event.clone(),
-            msgcat: self.msgcat,
             strikepx: self.strikepx,
             header: self.header.clone(),
             capture: self.capture.clone(),
@@ -4123,7 +4393,6 @@ impl PartialEq for FixMsg {
     /// hold the same fields.
     fn eq(&self, other: &Self) -> bool {
         self.event == other.event
-            && self.msgcat == other.msgcat
             && self.strikepx == other.strikepx
             && self.header == other.header
             && self.capture == other.capture
@@ -4233,7 +4502,7 @@ impl Event for FixMsg {
     /// off an order's, a quote's or a trade's report is one; the report it
     /// was split from is its order's or its quote's, and is not.
     fn is_execution(&self) -> bool {
-        self.msgcat == MarketDataKind::Execution && self.reports_execution()
+        self.msgcat() == MarketDataKind::Execution && self.reports_execution()
     }
 
     /// The timed restatement, and then the market's: a message logged at a
@@ -4275,19 +4544,6 @@ impl Event for FixMsg {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.event.set_creaunix(unix);
-    }
-
-    fn get_execunix(&self) -> Option<i64> {
-        self.event.get_execunix()
-    }
-
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        if unix.is_some() {
-            self.row_stated |= ROW_STATED_EXECUTION;
-        } else {
-            self.row_stated &= !ROW_STATED_EXECUTION;
-        }
-        self.event.set_execunix(unix);
     }
 
     fn get_recdunix(&self) -> Option<i64> {
@@ -4383,6 +4639,12 @@ impl Market for FixMsg {
         self.event.set_side(side);
     }
 
+    /// Whether the message's `msgcat` is an order's, a quote's or an
+    /// execution's: only those store their cross code under their side.
+    fn is_sided(&self) -> bool {
+        self.event.is_sided()
+    }
+
     fn get_securityids(&self) -> &SecurityIds {
         self.event.get_securityids()
     }
@@ -4475,6 +4737,19 @@ impl Market for FixMsg {
             self.row_stated &= !ROW_STATED_MIC;
         }
         self.event.set_miccode(miccode);
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.event.get_execunix()
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        if unix.is_some() {
+            self.row_stated |= ROW_STATED_EXECUTION;
+        } else {
+            self.row_stated &= !ROW_STATED_EXECUTION;
+        }
+        self.event.set_execunix(unix);
     }
 
     fn get_lastpx(&self) -> Option<Decimal> {
@@ -4685,6 +4960,34 @@ impl Operation for FixMsg {
         self.event.remove_altid(key)
     }
 
+    fn get_accountids(&self) -> &IdMap {
+        self.event.get_accountids()
+    }
+
+    /// A message's accounts are its parties, rebuilt at every settle: the
+    /// map it already states is kept, and any other is refused, since no one
+    /// field states a role - write the `Parties(453)` occurrence instead.
+    fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
+        if &ids == self.event.get_accountids() {
+            return Ok(());
+        }
+        Err(accounts_are_parties(&ids.to_string()))
+    }
+
+    fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool> {
+        if self.event.get_accountids().contains_key(key) {
+            return Ok(false);
+        }
+        Err(accounts_are_parties(&format!("{key}:{value}")))
+    }
+
+    fn remove_accountid(&mut self, key: &str) -> Result<bool> {
+        if !self.event.get_accountids().contains_key(key) {
+            return Ok(false);
+        }
+        Err(accounts_are_parties(key))
+    }
+
     /// The registry's own answer: an `altids` key whose `FIX:idmap` entry
     /// follows.
     fn is_followed_altid(&self, key: &str) -> bool {
@@ -4692,6 +4995,16 @@ impl Operation for FixMsg {
             source.follows() && source.map() == FixIdMapKind::Alts && source.key() == key
         })
     }
+}
+
+/// The refusal of a direct write to a message's accounts, which are its
+/// parties.
+fn accounts_are_parties(written: &str) -> Error {
+    identity::refused(
+        "accountids",
+        "the accounts a message's Parties(453) state",
+        written,
+    )
 }
 
 impl FixMsg {

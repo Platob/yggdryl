@@ -30,9 +30,9 @@
 //! as its price levels, best first. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`EventColumn`] is the
-//! sixteen columns every generated schema of an event states,
-//! [`MarketColumn`] the twenty-seven of a market and [`OperationColumn`] the
-//! three of an operation - one per fact the traits answer, under one name
+//! fifteen columns every generated schema of an event states,
+//! [`MarketColumn`] the twenty-eight of a market and [`OperationColumn`] the
+//! four of an operation - one per fact the traits answer, under one name
 //! and one datatype each - so a text line's batch, a FIX row and a chained
 //! message join on them without a mapping.
 
@@ -84,12 +84,6 @@ macro_rules! delegate_event {
             }
             fn set_creaunix(&mut self, unix: Option<i64>) {
                 $crate::graph::Event::set_creaunix(&mut self.$($field).+, unix);
-            }
-            fn get_execunix(&self) -> Option<i64> {
-                $crate::graph::Event::get_execunix(&self.$($field).+)
-            }
-            fn set_execunix(&mut self, unix: Option<i64>) {
-                $crate::graph::Event::set_execunix(&mut self.$($field).+, unix);
             }
             fn get_recdunix(&self) -> Option<i64> {
                 $crate::graph::Event::get_recdunix(&self.$($field).+)
@@ -165,6 +159,9 @@ macro_rules! delegate_market {
             fn set_side(&mut self, side: $crate::Side) {
                 $crate::graph::Market::set_side(&mut self.$($field).+, side);
             }
+            fn is_sided(&self) -> bool {
+                $crate::graph::Market::is_sided(&self.$($field).+)
+            }
             fn get_securityids(&self) -> &$crate::securityid::SecurityIds {
                 $crate::graph::Market::get_securityids(&self.$($field).+)
             }
@@ -200,6 +197,12 @@ macro_rules! delegate_market {
             }
             fn set_miccode(&mut self, code: Option<$crate::Mic>) {
                 $crate::graph::Market::set_miccode(&mut self.$($field).+, code);
+            }
+            fn get_execunix(&self) -> Option<i64> {
+                $crate::graph::Market::get_execunix(&self.$($field).+)
+            }
+            fn set_execunix(&mut self, unix: Option<i64>) {
+                $crate::graph::Market::set_execunix(&mut self.$($field).+, unix);
             }
             fn get_lastpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_lastpx(&self.$($field).+)
@@ -341,6 +344,18 @@ macro_rules! delegate_operation {
             }
             fn remove_altid(&mut self, key: &str) -> $crate::Result<bool> {
                 $crate::graph::Operation::remove_altid(&mut self.$($field).+, key)
+            }
+            fn get_accountids(&self) -> &$crate::idmap::IdMap {
+                $crate::graph::Operation::get_accountids(&self.$($field).+)
+            }
+            fn set_accountids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
+                $crate::graph::Operation::set_accountids(&mut self.$($field).+, ids)
+            }
+            fn insert_accountid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
+                $crate::graph::Operation::insert_accountid(&mut self.$($field).+, key, value)
+            }
+            fn remove_accountid(&mut self, key: &str) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_accountid(&mut self.$($field).+, key)
             }
         }
     };

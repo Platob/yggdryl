@@ -418,14 +418,18 @@ assert.equal(chained.numRows, 4)
 assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 ```
 
-## Split fills and two-sided quotes at the parse
+## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
 fill or a side twice: an execution report that fills is its order's report
 (`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
 chained by its `ExecID`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+a `BUY` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+an order list, a mass order, a cross, a mass quote, a match report) adds one
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
+chained by the order the entry names and split again as its category is.
+Each split message names its source in `srcuuids`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -439,7 +443,7 @@ const [report, execution] = codec.parseLine(Buffer.from(fill))
 assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
 assert.ok(execution.srcuuids.includes(report.curruuid))
-// A sided message stores its cross code under its side; the fill is a chain of its own.
+// An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
 assert.deepEqual([report.crosscode, execution.crosscode], ['BUY:O-9', 'BUY:ExecID=E-1'])
 
 const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
@@ -482,8 +486,9 @@ const books = [...new graph.BookIterator(leaves)]
 assert.equal(books.length, 2)
 assert.equal(books[1].bestPrice('BUY'), '101')
 
-// The book door is strict: the same capture out of order is refused.
-assert.throws(() => codec.bookArrowReader(capture).intoTable(), /sorted operation timestamp/)
+// The book door does not sort: the same capture out of order is no error - the
+// snapshot dated before the book it would fold into is left out, with a warning.
+assert.equal(codec.bookArrowReader(capture).intoTable().numRows, 1)
 // The sorted leaves as `marketdata` rows.
 assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
 // The same leaves off the capture's FIX rows.
@@ -582,7 +587,9 @@ fs.rmSync(folder, { recursive: true, force: true })
   `'FILLED'`, `'ORDR'`); an Arrow column stores its code (`Side.BUY`,
   `MarketDataKind.ORDR`).
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);
-  a refused line throws where the iteration reaches it.
+  it throws only for a source failure, where the iteration reaches it. What a
+  line states that cannot be read is defaulted or left out, and the addon
+  writes a warning to standard error as `yggdryl: <message>`, once per kind.
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
   bulk work inside `parseTextArrowReader` / `arrowReader` / `writeArrowReader`
   and cross into Arrow JS once at the end (`intoTable()`).

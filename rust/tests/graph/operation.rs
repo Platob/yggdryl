@@ -447,10 +447,17 @@ fn a_boxed_book_control_is_one_pointer() {
 /// Both moved by sixteen again when the market facts gained the bid and
 /// the ask - one `Option<Box<BidAsk>>`, eight, padded to sixteen: the
 /// undated holder to 768 and the dated one, with the control, to 944.
+/// Both moved by forty-eight when the operation facts gained the accounts
+/// its parties name - one `IdMap`, forty-eight - the undated holder to 816
+/// and the dated one, with the control, to 992; the market facts' kind
+/// stamp took four bytes of padding and moved neither. The undated holder
+/// moved by sixteen when the execution clock left the event for the
+/// market, one `Option<i64>` of sixteen in the market facts every holder
+/// carries, to 832; the dated one held the clock already and stays 992.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (768, 944));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (832, 992));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
 }

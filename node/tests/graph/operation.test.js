@@ -65,10 +65,12 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.tif, '0')
   assert.equal(event.tradable, null)
   assert.deepEqual(event.altids, { ORDERID: 'O-100' })
+  // The accounts an operation names, by role: none stated here.
+  assert.deepEqual(event.accountids, {})
   assert.equal(event.kind, 'order')
   assert.equal(event.marketdatakind, 'ORDR')
   // A1/A7: the retired facts answer nothing.
-  for (const name of ['marketoperationid', 'accountids', 'userids', 'bid', 'ask']) {
+  for (const name of ['marketoperationid', 'userids', 'bid', 'ask']) {
     assert.equal(name in event, false, name)
   }
   assert.equal(event.isExecution, false)

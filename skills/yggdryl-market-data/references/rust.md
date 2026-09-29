@@ -9,7 +9,8 @@ needed. Setters do not finalize - call `finalize()` once the facts are in.
 ## Build an order event from named facts
 
 Set the facts, then `finalize` derives the identity and what the facts imply:
-the national number an ISIN embeds, the side a cross code is stored under.
+the national number an ISIN embeds, the side an order's, a quote's or an
+execution's cross code is stored under.
 
 ```rust
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
@@ -31,7 +32,7 @@ order.finalize();
 // A dated identity is a UUIDv7: its millisecond leads.
 assert_eq!(order.get_curruuid(), order.time_uuid()?);
 assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
-// A sided element stores its cross code under its side: one chain per side.
+// An order, a quote or an execution stores its cross code under its side: one chain per side.
 assert_eq!(order.get_crosscode(), "BUY:O-1001");
 assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
@@ -148,8 +149,9 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 `EventIterator` chains a stream by cross identity (and by a live element's
 `altids`), yields a twin as a restatement rather than a successor, retires a
-chain at a terminal state and emits one `EXPIRED` at a deadline. Chains are
-keyed by side, and every walked element leaves stating `creaunix`.
+chain at a terminal state and emits one `EXPIRED` at a deadline. An order's,
+a quote's or an execution's chain is keyed by side, and every walked element
+leaves stating `creaunix`.
 
 ```rust
 use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
@@ -224,7 +226,8 @@ assert_eq!((expired.get_currunix(), *expired.get_state()), (T + 70 * MS, State::
 ## Build a composite trade
 
 `TradeEvent::from_parts` is the one door: a root event and its sided
-executions, canonicalized so input order never changes the trade.
+executions, canonicalized so input order never changes the trade. The trade
+itself is not sided: it keeps the root's cross code, a sided root's base code.
 
 ```rust
 use yggdryl::graph::{Element, Event, ExecutionEvent, Market, OrderEvent, TradeEvent};
@@ -314,9 +317,9 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 53 columns: marketdatakind, 16 event, 27 market, 3 operation, bookscope, 5 nested.
+// 54 columns: marketdatakind, 15 event, 28 market, 4 operation, bookscope, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 53);
+assert_eq!(field.field_len(), 54);
 assert_eq!(field.fields()[0].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -592,8 +595,10 @@ assert_eq!(last.executions().len(), 1);
 
 - Setters never finalize: a leaf with stale derived facts is refused when
   written to Arrow. Call `finalize()` after the last `set_*`.
-- `get_crosscode` answers the stored code: `BUY:O-1001` for a buy, the bare
-  code for `Side::Unknown`. `sided_crosscode(code)` says what a code is stored
+- `get_crosscode` answers the stored code: `BUY:O-1001` for a buy order,
+  quote or execution, the bare code for `Side::Unknown` and for every element
+  `is_sided` answers `false` for - a trade, a book, a snapshot control -
+  whatever side it states. `sided_crosscode(code)` says what a code is stored
   as; a lifecycle view and a lookup name the stored spelling.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
@@ -601,12 +606,16 @@ assert_eq!(last.executions().len(), 1);
   yielded as it came, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
-  `Result<BookEvent>`.
+  `Result<BookEvent>`. An `Err` item is a source's own failure or a value no
+  book folds; an operation dated before its book, an order or a quote stating
+  neither side and a group the book refuses are left out with a `log`
+  warning.
 - `with_previous`/`merge_with` answer `Option`: `None` means nothing moved (its
   own predecessor, an earlier event, another element), not an error.
 - `insert_securityid` fills an absent key or replaces one that was derived (a
-  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`
-  and `insert_fxrate` fill an absent key only; `set_securityids`,
-  `set_altids` and `set_fxrates` replace the whole set.
+  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`,
+  `insert_accountid` and `insert_fxrate` fill an absent key only;
+  `set_securityids`, `set_altids`, `set_accountids` and `set_fxrates` replace
+  the whole set.
 - The traits are object-safe except the verbs that take or return `Self`
   (`with_previous`, `merge_with`, `is_after` ...): `&dyn Event` reads every fact.

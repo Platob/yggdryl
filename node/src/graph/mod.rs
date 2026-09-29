@@ -131,14 +131,6 @@ macro_rules! event_getters {
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
-            /// The latest execution instant the lifecycle reached, where
-            /// known.
-            #[napi(getter)]
-            pub fn execunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Event::get_execunix(&self.inner)
-                    .map(::napi::bindgen_prelude::BigInt::from)
-            }
-
             /// When this was recorded, where stated.
             #[napi(getter)]
             pub fn recdunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
@@ -255,6 +247,15 @@ macro_rules! market_getters {
             pub fn miccode(&self) -> Option<String> {
                 ::yggdryl::graph::Market::get_miccode(&self.inner)
                     .map(|held| held.as_str().to_owned())
+            }
+
+            /// When this last executed: the latest execution instant its
+            /// lifecycle reached, nanoseconds since the Unix epoch, UTC,
+            /// where known - a market fact, never an event's.
+            #[napi(getter)]
+            pub fn execunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
+                ::yggdryl::graph::Market::get_execunix(&self.inner)
+                    .map(::napi::bindgen_prelude::BigInt::from)
             }
 
             /// The price last traded at; `null` where none.
@@ -410,6 +411,16 @@ macro_rules! operation_getters {
             #[napi(getter, ts_return_type = "Record<string, string>")]
             pub fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_record(::yggdryl::graph::Operation::get_altids(&self.inner))
+            }
+
+            /// The accounts and parties the operation names, party role to
+            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+            /// order.
+            #[napi(getter, ts_return_type = "Record<string, string>")]
+            pub fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
+                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_accountids(
+                    &self.inner,
+                ))
             }
         }
     };

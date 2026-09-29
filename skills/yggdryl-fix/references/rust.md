@@ -459,14 +459,18 @@ let chained: usize = codec.lifecycle_arrow_reader(rows)?.map(|batch| batch.map(|
 assert_eq!(chained, 4);
 ```
 
-## Split fills and two-sided quotes at the parse
+## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
 fill or a side twice: an execution report that fills is its order's report
 (`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
 chained by its `ExecID`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+a `BUY` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+an order list, a mass order, a cross, a mass quote, a match report) adds one
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
+chained by the order the entry names and split again as its category is.
+Each split message names its source in `srcuuids`.
 
 ```rust
 use std::sync::Arc;
@@ -483,7 +487,7 @@ let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl
 assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
 assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
-// A sided message stores its cross code under its side; the fill is a chain of its own.
+// An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
 assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("BUY:O-9", "BUY:ExecID=E-1"));
 
 let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
@@ -531,8 +535,9 @@ let books = BookIterator::new(leaves.into_iter(), 0)?.collect::<yggdryl::Result<
 assert_eq!(books.len(), 2);
 assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
 
-// The book door is strict: the same capture out of order is refused.
-assert!(codec.book_arrow_reader(capture.clone(), 0)?.any(|batch| batch.is_err()));
+// The book door does not sort: the same capture out of order is no error - the
+// snapshot dated before the book it would fold into is left out, with a warning.
+assert!(codec.book_arrow_reader(capture.clone(), 0)?.all(|batch| batch.is_ok()));
 // The sorted leaves as `marketdata` rows.
 let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
@@ -642,8 +647,10 @@ std::fs::remove_dir_all(&path)?;
 ## Gotchas in Rust
 
 - `FixCodec::new` takes `Arc<FixRegistry>`; clone the `Arc`, never the registry.
-- Every stream door yields `Result` items: `collect::<yggdryl::Result<Vec<_>>>()`
-  stops at the first refused line; iterate and match to skip one and go on.
+- Every stream door yields `Result` items, and only a source failure is an
+  `Err`: what a line states that cannot be read is defaulted or left out with
+  a `log` warning, so `collect::<yggdryl::Result<Vec<_>>>()` stops at a failing
+  source alone. Install a `log` backend (`env_logger`, say) to see the warnings.
 - The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:

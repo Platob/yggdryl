@@ -9,11 +9,11 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Trait | Page | Answers |
 | --- | --- | --- |
 | `Element` | [Element](element.md) | identity, cross element/code, digest, sources; order, finalization, following, merging |
-| `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks, UUIDv7 identity; lifecycle walk `EventIterator` |
-| `Market` | [Market](market.md) | twenty-seven facts: price, quantity, currency/unit, side, security ids and the ISIN, classification/market, trade and FX numbers, bid and ask, FX rates, ticker, metadata; the side-prefixed cross code and the book key |
-| `Operation: Market` | [Operation](operation.md) | three more: time in force, tradability, alternate identifiers |
+| `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks (creation, recording, expiration, predecessor, snapshot), UUIDv7 identity; lifecycle walk `EventIterator` |
+| `Market` | [Market](market.md) | twenty-eight facts: price, quantity, currency/unit, side, security ids and the ISIN, classification/market, the last execution clock, trade and FX numbers, bid and ask, FX rates, ticker, metadata; `is_sided` - true for an order, a quote or an execution, whose cross code is stored under its side - and the book key |
+| `Operation: Market` | [Operation](operation.md) | four more: time in force, tradability, alternate identifiers, account identifiers |
 
-- **Names.** Accessors `get_`, mutators `set_`, never bare; security identifiers, alternate identifiers and FX rates use fallible or filling `insert_`/`remove_`/`derive_` verbs instead: a view holder may refuse, a plain holder always answers `Ok` ([detail](market.md#security-identifiers)).
+- **Names.** Accessors `get_`, mutators `set_`, never bare; security identifiers, alternate and account identifiers and FX rates use fallible or filling `insert_`/`remove_`/`derive_` verbs instead: a view holder may refuse, a plain holder always answers `Ok` ([detail](market.md#security-identifiers)).
 - **Links.** Elements name a predecessor, source or cross element by identity, never reference; a caller resolves it via whatever holds the graph.
 - **Objects.** Object-safe except `is_after`, `is_before`, `with_previous`, `merge_with`, `following`, `restating`, `merging`, `fold_lifecycle`, the fills, and the market/operation digests and merges: `dyn Event`/`dyn Operation` walks read every fact through one reference.
 
@@ -38,9 +38,9 @@ Rust-only traits; the leaves plus `MarketData`, `BookRef`, `BookIterator`, `Even
 - immutable: every verb - `with_previous`, `merge_with`, `restating`, `with_book`, `with_operations` - answers a new value;
 - Python reads a decimal, code or identity as [`Scalar`](../types/scalar.md) (`.as_py()`), `isincode` as `str`, `fxrates` as a `dict` of decimal `Scalar`s, and an enum fact - `state`, `side`, `marketdatakind` - as its `IntEnum` member (`yggdryl.State`, `Side`, `MarketDataKind`); JavaScript reads decimals and codes as text, `fxrates` as an object of decimal text, an enum fact as its member's name (`'BUY'`, `'ORDR'`), an instant as `bigint`;
 - a side is never absent: `Side.UNKNOWN`/`'UNKNOWN'` where none is stated;
-- `insert_`/`remove_`/`derive_`, `insert_fxrate`, `sided_crosscode` and `book_crosscode` are Rust-only: a binding states identifiers and rates when building a leaf, and reads the stored `crosscode`.
+- `insert_`/`remove_`/`derive_`, `insert_fxrate`, `is_sided`, `sided_crosscode` and `book_crosscode` are Rust-only: a binding states identifiers and rates when building a leaf, and reads the stored `crosscode`.
 
-A FIX message implements all four traits, and the [text line](../media/index.md#plain-text) it is read from is an `Event`. [`FixMsg::market_data`](../fix/message.md#market-data) reads one message as its one leaf - the fills and the sides of a two-sided quote were split into messages of their own at the parse - and [`FixCodec::market_data`, `market_arrow_reader` and `book_arrow_reader`](../fix/arrow.md#fix-market-books) read a capture into sorted market data, its rows and its books: Python `FixCodec.market_data(messages)`, `market_arrow_reader(messages)`, `book_arrow_reader(messages, snapshot_millis=0)`; JavaScript `codec.marketData(messages)`, `marketArrowReader(messages)`, `bookArrowReader(messages, snapshotMillis)`.
+A FIX message implements all four traits, and the [text line](../media/index.md#plain-text) it is read from is an `Event`. [`FixMsg::market_data`](../fix/message.md#market-data) reads one message as its one leaf - the fills, the sides of a two-sided quote and the entries of a batch were split into messages of their own at the parse - and [`FixCodec::market_data`, `market_arrow_reader` and `book_arrow_reader`](../fix/arrow.md#fix-market-books) read a capture into sorted market data, its rows and its books: Python `FixCodec.market_data(messages)`, `market_arrow_reader(messages)`, `book_arrow_reader(messages, snapshot_millis=0)`; JavaScript `codec.marketData(messages)`, `marketArrowReader(messages)`, `bookArrowReader(messages, snapshotMillis)`.
 
 ## Example
 

@@ -18,9 +18,15 @@ enum_leaf! {
     /// reader tells the leaves apart by one column every FIX engine already
     /// speaks.
     ///
-    /// The code is the set's own value, `UNKN` at zero and `TRAD` at
-    /// twenty-one, and what a column stores; the four-letter code is the
-    /// stored name.
+    /// Four batch categories follow the standard's: `ORDB`, `QUOB`, `EXEB`
+    /// and `TRDB` file a message that states many orders, quotes,
+    /// executions or trades at once - a list, a mass order, a cross, a mass
+    /// quote, a match report - which a parse splits into one message of the
+    /// single category per entry ([`Self::is_batch`]).
+    ///
+    /// The code is the set's own value, `UNKN` at zero, `TRAD` at twenty-one
+    /// and the batches after it, and what a column stores; the four-letter
+    /// code is the stored name.
     ///
     /// ```
     /// use yggdryl::MarketDataKind;
@@ -30,6 +36,8 @@ enum_leaf! {
     /// assert_eq!(MarketDataKind::Trade.code(), 21);
     /// assert_eq!(MarketDataKind::from_code(3), Some(MarketDataKind::Book));
     /// assert_eq!(MarketDataKind::Execution.as_str(), "EXEC");
+    /// assert_eq!(MarketDataKind::from_spelling("order_batch"), Some(MarketDataKind::OrderBatch));
+    /// assert_eq!(MarketDataKind::OrderBatch.as_str(), "ORDB");
     /// // A stored code is an integer, never text.
     /// assert_eq!(MarketDataKind::from_spelling("10"), None);
     /// ```
@@ -58,6 +66,10 @@ enum_leaf! {
         Settlement = 19 as "SETL": "Settlement instructions and obligations.",
         Stream = 20 as "STRM": "Stream assignment.",
         Trade = 21 as "TRAD": "Trade capture and matching.",
+        OrderBatch = 22 as "ORDB": "Order batches: lists, mass order handling and crosses, one order per entry.",
+        QuoteBatch = 23 as "QUOB": "Quote batches: mass quotes and bid lists, one quote per entry.",
+        ExecutionBatch = 24 as "EXEB": "Execution batches: several executions reported at once, one per entry.",
+        TradeBatch = 25 as "TRDB": "Trade batches: match reports stating several trades, one per entry.",
     }
 }
 
@@ -107,6 +119,74 @@ impl MarketDataKind {
             Self::Settlement => "settlement",
             Self::Stream => "stream",
             Self::Trade => "trade",
+            Self::OrderBatch => "orderbatch",
+            Self::QuoteBatch => "quotebatch",
+            Self::ExecutionBatch => "executionbatch",
+            Self::TradeBatch => "tradebatch",
+        }
+    }
+
+    /// Whether an element of this kind is sided: an order, a quote or an
+    /// execution, which takes one side of the market, so its cross code is
+    /// stored under that side - `BUY:ORD-1` - and the two sides of one
+    /// identifier are two chains. The one owner of that rule: every other
+    /// kind - a trade, a book, a batch, a category the standard files no
+    /// operation under - keeps its cross code as given whatever side it
+    /// states ([`Market::sided_crosscode`](crate::graph::Market::sided_crosscode)).
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    ///
+    /// assert!(MarketDataKind::Order.is_sided());
+    /// assert!(MarketDataKind::Quotation.is_sided());
+    /// assert!(MarketDataKind::Execution.is_sided());
+    /// assert!(!MarketDataKind::Trade.is_sided());
+    /// assert!(!MarketDataKind::Book.is_sided());
+    /// assert!(!MarketDataKind::OrderBatch.is_sided());
+    /// assert!(!MarketDataKind::Unknown.is_sided());
+    /// ```
+    #[must_use]
+    pub const fn is_sided(self) -> bool {
+        matches!(self, Self::Order | Self::Quotation | Self::Execution)
+    }
+
+    /// Whether this kind files a batch: a message stating many orders,
+    /// quotes, executions or trades at once, which a parse splits into one
+    /// message of [`Self::item`] per entry.
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    ///
+    /// assert!(MarketDataKind::QuoteBatch.is_batch());
+    /// assert!(!MarketDataKind::Quotation.is_batch());
+    /// ```
+    #[must_use]
+    pub const fn is_batch(self) -> bool {
+        matches!(
+            self,
+            Self::OrderBatch | Self::QuoteBatch | Self::ExecutionBatch | Self::TradeBatch
+        )
+    }
+
+    /// The kind one entry of a batch of this kind is - an order batch's
+    /// `ORDR`, a quote batch's `QUOT`, an execution batch's `EXEC`, a trade
+    /// batch's `TRAD` - and this kind itself for any other.
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    ///
+    /// assert_eq!(MarketDataKind::OrderBatch.item(), MarketDataKind::Order);
+    /// assert_eq!(MarketDataKind::TradeBatch.item(), MarketDataKind::Trade);
+    /// assert_eq!(MarketDataKind::Book.item(), MarketDataKind::Book);
+    /// ```
+    #[must_use]
+    pub const fn item(self) -> Self {
+        match self {
+            Self::OrderBatch => Self::Order,
+            Self::QuoteBatch => Self::Quotation,
+            Self::ExecutionBatch => Self::Execution,
+            Self::TradeBatch => Self::Trade,
+            other => other,
         }
     }
 }

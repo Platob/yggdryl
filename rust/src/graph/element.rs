@@ -543,7 +543,7 @@ fn coupled(unix: i64, hashcode: u64) -> Result<TxHash> {
 }
 
 /// The earlier of two optional instants, or whichever is stated.
-fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(super) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.min(right)),
         (left, right) => left.or(right),
@@ -574,48 +574,18 @@ pub(crate) fn right_is_reference(
     }
 }
 
-/// The execution instant an event states or, while it is still an unstamped
-/// lifecycle input whose state itself reports an execution, its own instant.
-/// A predecessor marks a lifecycle output: its state may have been inherited,
-/// so replaying that output must not reinterpret the folded state as this
-/// event's own execution report.
-fn execution_unix<E: Event + ?Sized>(event: &E) -> Option<i64> {
-    event.get_execunix().or_else(|| {
-        (event.get_prevuuid().is_none() && event.is_execution()).then_some(event.get_currunix())
+/// Folds the per-event instant of two statements of the same event: the
+/// earliest recording either statement knows; whether it moved. It never
+/// folds between successive events in one lifecycle.
+pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
+    let recdunix = earliest(this.get_recdunix(), other.get_recdunix());
+    moved(this.get_recdunix(), recdunix, |unix| {
+        this.set_recdunix(unix)
     })
 }
 
-/// Fills an execution event's unstated execution instant from its own instant;
-/// whether it moved.
-pub(super) fn fill_execution<E: Event + ?Sized>(event: &mut E) -> bool {
-    let Some(unix) = execution_unix(event) else {
-        return false;
-    };
-    if event.get_execunix() == Some(unix) {
-        return false;
-    }
-    event.set_execunix(Some(unix));
-    true
-}
-
-/// Folds the per-event instants of two statements of the same event: the
-/// earliest execution and recording either statement knows; whether any
-/// moved. An unstamped execution observation first dates itself from its own
-/// event instant. These never fold between successive events in one lifecycle.
-pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
-    let execunix = earliest(execution_unix(this), execution_unix(other));
-    let mut changed = moved(this.get_execunix(), execunix, |unix| {
-        this.set_execunix(unix)
-    });
-    let recdunix = earliest(this.get_recdunix(), other.get_recdunix());
-    changed |= moved(this.get_recdunix(), recdunix, |unix| {
-        this.set_recdunix(unix)
-    });
-    changed
-}
-
 /// The later of two optional instants, or whichever is stated.
-fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(super) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.max(right)),
         (left, right) => left.or(right),
@@ -625,16 +595,11 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// The timed facts an event takes from following `previous`: the
 /// predecessor's identity and instant, the higher of its own place and one
 /// past the predecessor's where that happened at this event's instant or
-/// later, and what any element takes from following - the cross code, the names it went by - with the
-/// lifecycle carried forward. An unstamped execution input dates itself, then
-/// the later of that precise clock and the predecessor's remains the latest
-/// execution the lifecycle has reached; whether any fact moved.
+/// later, and what any element takes from following - the cross code, the
+/// names it went by - with the lifecycle carried forward; whether any fact
+/// moved.
 pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
-    let execunix = latest(execution_unix(this), previous.get_execunix());
-    let mut changed = moved(this.get_execunix(), execunix, |unix| {
-        this.set_execunix(unix)
-    });
-    changed |= moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
+    let mut changed = moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
         this.set_prevuuid(uuid)
     });
     changed |= moved(this.get_prevunix(), Some(previous.get_currunix()), |unix| {
@@ -663,7 +628,7 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 }
 
 /// The timed facts an event takes from another statement of itself: the
-/// earliest execution and recording instants, the reference statement's
+/// earliest recording instant, the reference statement's
 /// instant and code, the higher place, the lifecycle folded,
 /// and the reference's predecessor and snapshot where stated, otherwise the
 /// other statement's; whether any moved.
@@ -965,10 +930,9 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// starts at a new instant places every event in it as the whole stream
 /// did. A place is where an event stands, never what it says: no content
 /// code feeds it.
-/// Six more instants and one more identity are optional, because an event
-/// states them only where it knows them: when it was created, the latest
-/// execution its lifecycle has reached, when it was recorded and when it
-/// expires, each an instant in the same count; the
+/// Five more instants and one more identity are optional, because an event
+/// states them only where it knows them: when it was created, when it was
+/// recorded and when it expires, each an instant in the same count; the
 /// event it follows - `prevuuid` and `prevunix`, the predecessor's identity
 /// and instant; and `snapunix`, the grid instant this event was read as the
 /// snapshot of, where a walk over a grid took one of it.
@@ -989,9 +953,10 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// way: the earliest creation, the latest expiration and the furthest state.
 /// Following then keeps a newer explicit
 /// expiration, including one that shortens the lifetime. Recording belongs
-/// to one observation and never follows; execution is the lifecycle's latest
-/// execution clock, so an unstated non-execution carries its predecessor's,
-/// while two observations of the same event keep their earliest clocks.
+/// to one observation and never follows, while two observations of the same
+/// event keep the earliest. When a market event last executed is a market
+/// fact, [`Market::get_execunix`](super::Market::get_execunix), and its
+/// readings fold it.
 /// The order an event states through [`Element::is_after`] is its instant:
 /// later is after.
 ///
@@ -1010,7 +975,6 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///     state: State,
 ///     seqnum: u64,
 ///     creaunix: Option<i64>,
-///     execunix: Option<i64>,
 ///     recdunix: Option<i64>,
 ///     exprunix: Option<i64>,
 ///     prevunix: Option<i64>,
@@ -1031,7 +995,6 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///             state: State::New,
 ///             seqnum: 0,
 ///             creaunix: None,
-///             execunix: None,
 ///             recdunix: None,
 ///             exprunix: None,
 ///             prevunix: None,
@@ -1122,12 +1085,6 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///     }
 ///     fn set_creaunix(&mut self, unix: Option<i64>) {
 ///         self.creaunix = unix;
-///     }
-///     fn get_execunix(&self) -> Option<i64> {
-///         self.execunix
-///     }
-///     fn set_execunix(&mut self, unix: Option<i64>) {
-///         self.execunix = unix;
 ///     }
 ///     fn get_recdunix(&self) -> Option<i64> {
 ///         self.recdunix
@@ -1236,15 +1193,6 @@ pub trait Event: Element {
     /// know.
     fn set_creaunix(&mut self, unix: Option<i64>);
 
-    /// The latest execution instant this lifecycle has reached as of this
-    /// event, in the same count as [`Self::get_currunix`], where it knows. An
-    /// execution state with no stated instant is filled from this event's own
-    /// instant; a later non-execution event carries the predecessor's clock.
-    fn get_execunix(&self) -> Option<i64>;
-
-    /// Records when this event executed; `None` states it does not know.
-    fn set_execunix(&mut self, unix: Option<i64>);
-
     /// When this event was recorded, in the same count as
     /// [`Self::get_currunix`], where it knows.
     fn get_recdunix(&self) -> Option<i64>;
@@ -1299,11 +1247,8 @@ pub trait Event: Element {
     /// code is forced onto this event where its own differs, with the cross
     /// hash code and the cross element brought in step, because two events
     /// of one chain share it. What the event itself says - its instant, recording clock,
-    /// sources and snapshot - is its own and moves nowhere. An execution state
-    /// with no precise clock takes its own instant; following then keeps the
-    /// later of this event's clock and the predecessor's latest execution, so
-    /// a delayed report cannot regress the lifecycle. An event that moved is
-    /// finalized, so it never carries the identity of what it was.
+    /// sources and snapshot - is its own and moves nowhere. An event that
+    /// moved is finalized, so it never carries the identity of what it was.
     ///
     /// Provided, so an implementor's [`Element::with_previous`] has a
     /// default to delegate to; an event that means something else by
@@ -1330,8 +1275,8 @@ pub trait Event: Element {
     /// `live` holds in its chain - the predecessor, the position, the
     /// snapshot - the chain's cross code, the names `live` knows, and the
     /// lifecycle folded, so the two statements finalize to
-    /// one identity and the chain grows by nothing. Their execution and
-    /// recording instants fold to the earliest either statement knows. Its
+    /// one identity and the chain grows by nothing. Their recording instants
+    /// fold to the earliest either statement knows. Its
     /// sources stay its own: provenance travels along no chain. What the
     /// event states of its own - its instant, its content - is its own.
     ///
@@ -1363,8 +1308,8 @@ pub trait Event: Element {
     /// to the later event instant, and an exact tie keeps this one. The
     /// place is the higher of the two; the
     /// lifecycle folds as [`Self::following`] folds it - earliest creation,
-    /// latest expiration, furthest state; the execution and recording clocks
-    /// are the earliest either statement of this event knows; and the
+    /// latest expiration, furthest state; the recording clock is the
+    /// earliest either statement of this event knows; and the
     /// predecessor and snapshot instant are the reference's where it states
     /// them, else the other's. A merged statement therefore ranks by the
     /// earliest recording it knows against a third, so which of three leads

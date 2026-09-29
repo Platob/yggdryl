@@ -64,9 +64,10 @@ const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 /// against each other; every other reader of this capture - the integration
 /// suite, the pages, the two bindings' suites - reads it the same way.
 ///
-/// It is the 94 messages the capture carries plus the 56 executions its
-/// parse splits off the reports that report a fill, one each (A12).
-const MESSAGES: usize = 94 + 56;
+/// It is the 94 messages the capture carries plus the 57 executions its
+/// parse splits off: one per report that reports a fill, and one of side
+/// `UNKNOWN` off the trade capture's side, which states no `Side(54)` (A12).
+const MESSAGES: usize = 94 + 57;
 
 /// How many three-entry snapshots one market-book measurement consumes.
 const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);

@@ -5,8 +5,8 @@ stored as an ``int32``.
 four-letter MsgCat code, and the code a ``marketdatakind`` column stores -
 built once at import from the native table, so nothing here lists a member.
 A member is an ``int``: ``ORDR`` is ``10``, ``QUOT`` ``14``, ``EXEC`` ``8``,
-``TRAD`` ``21`` and ``BOOK`` ``3``, and a column of them reads back as the
-members they name.
+``TRAD`` ``21``, ``BOOK`` ``3`` and the batches ``ORDB`` ``22`` to ``TRDB``
+``25``, and a column of them reads back as the members they name.
 """
 
 from __future__ import annotations

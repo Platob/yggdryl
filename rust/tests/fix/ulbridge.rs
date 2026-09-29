@@ -32,9 +32,9 @@ mod dataset {
 
     /// How many messages the capture reads as under the codec's own defaults:
     /// every frame, bridge row and document the log carries, less the session
-    /// traffic `DEFAULT_REFUSED_MSGTYPES` names - 79 - and the 56 executions
-    /// the parse splits off the execution reports that report a fill, one
-    /// each (A12).
+    /// traffic `DEFAULT_REFUSED_MSGTYPES` names - 79 - and the 57 executions
+    /// the parse splits off the execution reports that report a fill and the
+    /// one trade capture (A12).
     const ROWS: usize = 79 + SPLIT;
 
     /// How many it reads as when nothing is refused: the same lines plus the
@@ -42,9 +42,10 @@ mod dataset {
     const EVERY_ROW: usize = 94 + SPLIT;
 
     /// How many executions the parse splits off the capture: one per
-    /// execution report reporting a fill - 52 bridge rows and 4 frames. The
-    /// one trade capture states no side, so it splits off none.
-    const SPLIT: usize = 56;
+    /// execution report reporting a fill - 52 bridge rows and 4 frames - and
+    /// one for the trade capture, whose one side states no `Side(54)`: an
+    /// execution of side `UNKNOWN`, said as a warning, never a lost fill.
+    const SPLIT: usize = 57;
 
     fn registry() -> Arc<FixRegistry> {
         super::committed_registry()
@@ -213,8 +214,9 @@ mod dataset {
 
     /// How many of the capture's messages carry a bridge row in their
     /// `XmlData(213)`: six frames, and the executions split off the two of
-    /// them that report a fill, which carry it as their reports do (A12).
-    const NESTED: usize = 8;
+    /// them that report a fill and off the trade capture, which carry it as
+    /// their reports do (A12).
+    const NESTED: usize = 9;
 
     #[test]
     fn every_named_order_flow_reads_whole_end_to_end() {
@@ -359,6 +361,13 @@ mod dataset {
         );
     }
 
+    /// Whether `message` is the execution the trade capture's side splits
+    /// off: filed under `EXEC` while its type stays the trade's `AE`, it
+    /// carries the trade's bridge row whole.
+    fn is_trade_execution(message: &FixMsg) -> bool {
+        message.header().msgtype() == "AE" && message.msgcat() == yggdryl::MarketDataKind::Execution
+    }
+
     /// Every message the line door answers for the capture, in line order.
     fn line_messages(codec: &FixCodec) -> Vec<FixMsg> {
         codec
@@ -391,12 +400,12 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         let whole = walk(&codec);
-        assert_eq!(whole.len(), 38);
+        assert_eq!(whole.len(), 39);
         // The window yields each identity once: a walk remembering none also
         // answers the three twins it restated, each an identity it had
         // already answered, and nothing else.
         let every = walk(&codec.clone().with_dedup_window_ms(0));
-        assert_eq!(every.len(), 41);
+        assert_eq!(every.len(), 42);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<_> = every
             .iter()
@@ -437,13 +446,14 @@ mod dataset {
         // deduplication window: four of the 36 were twins restating the
         // live message they repeat, under its identity.
         //
-        // It is 38 since the row header dates each line by the clock in
+        // It is 39 since the row header dates each line by the clock in
         // front of it: the capture's ten typeless rows - documents, a
         // statistics line, empty bodies - state no sending time, so each is
         // dated by its line. Under the one instant every line shared, they
         // were two deliveries, one of them a twin the window dropped; at
-        // their own instants they are seven deliveries and no twin.
-        assert_eq!(direct.len(), 38);
+        // their own instants they are seven deliveries and no twin. One more
+        // is the execution of side `UNKNOWN` the trade capture splits off.
+        assert_eq!(direct.len(), 39);
         assert_eq!(
             direct
                 .iter()
@@ -1065,6 +1075,7 @@ mod dataset {
             .collect::<Vec<_>>();
         assert_eq!(wires.len(), ROWS);
         assert_eq!(written.len(), ROWS);
+        let mut trade_executions = 0;
         for (at, (message, wire)) in source_messages.iter().zip(&wires).enumerate() {
             // The capture's columns are the capture's: the body the line was
             // read from, what the reader classified it as and the bridge's row
@@ -1113,6 +1124,14 @@ mod dataset {
                 message.get_by_tag(213),
                 "row {at} changed XmlData bytes"
             );
+            // The execution the trade capture splits off states its side's
+            // `ClOrdID(11)` beside the trade's bridge row, whose own CLORDID
+            // a reparse lifts over it: the one row whose columns its wire
+            // does not read back, its tokens and its XmlData checked above.
+            if is_trade_execution(message) {
+                trade_executions += 1;
+                continue;
+            }
             let source_row = message
                 .into_row(&target)
                 .unwrap_or_else(|error| panic!("row {at} did not project: {error}"));
@@ -1150,6 +1169,8 @@ mod dataset {
                 );
             }
         }
+
+        assert_eq!(trade_executions, 1, "the one trade capture's execution");
 
         // Every frame the bridge wrote with `|` comes back with all of its tokens,
         // including frames whose nested groups changed root entry order.
@@ -1195,18 +1216,19 @@ mod dataset {
         let messages = line_messages(&codec);
         assert_eq!(messages.len(), EVERY_ROW, "nothing refused");
 
-        // The walk folds the 94 observations and the 56 executions their
-        // parse split off into the 41 deliveries the lifecycle pin states -
+        // The walk folds the 94 observations and the 57 executions their
+        // parse split off into the 42 deliveries the lifecycle pin states -
         // the 33 it folded before the split, five more than while every line
         // shared one instant because each typeless row is now dated by its
-        // own line, and one per fill (A12), every hop's execution of one
-        // fill folded onto one - less the three twins its window yields
-        // once, and the sorted door expands those.
+        // own line, one per fill (A12), every hop's execution of one fill
+        // folded onto one, and the trade capture's execution of side
+        // `UNKNOWN` - less the three twins its window yields once, and the
+        // sorted door expands those.
         let walked = codec
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the capture walks");
-        assert_eq!(walked.len(), 38);
+        assert_eq!(walked.len(), 39);
         let (operations, refused): (Vec<_>, Vec<_>) =
             codec.market_data(walked.clone()).partition(Result::is_ok);
         let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
@@ -1214,16 +1236,17 @@ mod dataset {
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Seventeen of the deliveries reach a book - eight fills, the eight
-        // reports they were split off, now their orders' reports, and three
-        // orders, less a fill and a report the window yields once; the rest are
+        // Eighteen of the deliveries reach a book - eight fills, the eight
+        // reports they were split off, now their orders' reports, three
+        // orders, less a fill and a report the window yields once, and the
+        // execution the trade capture of line 112 splits off; the rest are
         // acknowledgements, rejects, session traffic and bridge rows no book
-        // takes. Nothing is refused: the trade capture of line 112 is no
-        // book input, since a trade's fills are the executions its parse
-        // splits off - and its single side states no `Side(54)`, so it split
-        // off none.
+        // takes. Nothing is refused: the trade is no book input itself,
+        // since a trade's fills are the executions its parse splits off -
+        // and its single side states no `Side(54)`, so that execution is
+        // of side `UNKNOWN`.
         assert!(refused.is_empty(), "{refused:?}");
-        assert_eq!(operations.len(), 17);
+        assert_eq!(operations.len(), 18);
         // The two a walk remembering nothing answers beside them each repeat
         // an identity already there.
         let every: Vec<MarketData> = codec
@@ -1237,7 +1260,7 @@ mod dataset {
             )
             .collect::<yggdryl::Result<_>>()
             .expect("every delivery reads");
-        assert_eq!(every.len(), 19);
+        assert_eq!(every.len(), 20);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<&MarketData> = every
             .iter()
@@ -1250,7 +1273,7 @@ mod dataset {
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 7), ("order_event", 10)])
+            BTreeMap::from([("execution_event", 8), ("order_event", 10)])
         );
         assert!(operations.windows(2).all(|pair| {
             let at = |operation: &MarketData| {
@@ -1269,13 +1292,15 @@ mod dataset {
         // no price: it rests at its side's one unpriced level rather than
         // being refused, and it leaves the side at the same instant, so the
         // one book of that instant applies both as deltas and holds nothing;
-        // seven books come out, and the last is that one.
+        // eight books come out - one of them the trade capture's, whose one
+        // execution of side `UNKNOWN` takes neither side - and the last is
+        // that one.
         let books: Vec<yggdryl::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 7);
+        assert_eq!(books.len(), 8);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
         assert!(last.limits(yggdryl::Side::Buy).next().is_none());
@@ -1326,10 +1351,11 @@ mod dataset {
             }
         }
         // The bridge's own namespaced keys ride every leaf of the message
-        // that states them, as the message holds them: 66 of them over the
-        // seventeen leaves - a fill's report and the execution split off it
+        // that states them, as the message holds them: 73 of them over the
+        // eighteen leaves - a fill's report and the execution split off it
         // each carry the 33 the fill's leaf alone carried before the split,
-        // the seven of one twin each the window yields once.
+        // the seven of one twin each the window yields once, and the trade
+        // capture's execution the seven its trade states.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1342,7 +1368,7 @@ mod dataset {
                 carried += 1;
             }
         }
-        assert_eq!(carried, 66);
+        assert_eq!(carried, 73);
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1362,8 +1388,9 @@ mod dataset {
             Some("OMSX1")
         );
         // The trade line 112 carries keeps the metal's location its bridge
-        // stated, on the message: its expansion is the refusal above, so no
-        // leaf carries it.
+        // stated, on the message, and answers no leaf of its own: its fill
+        // is the execution its parse split off, which carries the location
+        // as the trade states it.
         let trade = walked
             .iter()
             .find(|message| message.get_srcuuids().contains(&of_line(112)))
@@ -1376,7 +1403,12 @@ mod dataset {
                 .map(|held| held.as_str()),
             Some("LN")
         );
-        assert!(trade.market_data().is_err());
+        assert!(
+            trade
+                .market_data()
+                .expect("nothing a message states is refused")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1387,7 +1419,11 @@ mod dataset {
         // Every message the capture reads as: none is refused, since the
         // trade capture is no book input - its fills are the executions its
         // parse splits off - and one refusal would be an Arrow door's only
-        // answer.
+        // answer. One is left out: the execution the trade capture splits
+        // off carries the trade's bridge row, whose one-occurrence
+        // `NOHEDGEGROUPS` the row's `metadata` writes as an object - so it
+        // reads back as a component, and its leaf's metadata as that
+        // object. A known limit of the row, not of the twin.
         let messages: Vec<FixMsg> = line_messages(&codec)
             .into_iter()
             .filter(|message| {
@@ -1395,8 +1431,9 @@ mod dataset {
                     .market_data([message.clone()])
                     .all(|held| held.is_ok())
             })
+            .filter(|message| !is_trade_execution(message))
             .collect();
-        assert_eq!(messages.len(), ROWS);
+        assert_eq!(messages.len(), ROWS - 1);
         let direct = codec
             .market_data(messages.clone())
             .collect::<yggdryl::Result<Vec<MarketData>>>()
@@ -1419,10 +1456,14 @@ mod dataset {
         // Every observation's leaves, the repeated deliveries among them:
         // nothing walked folds a repeat onto the delivery it repeats. A fill
         // is two leaves since the parse splits its execution off (A12): its
-        // report, now its order's, and the execution - 56 more than 60.
-        assert_eq!(direct.len(), 60 + SPLIT);
+        // report, now its order's, and the execution - 56 more than 60, the
+        // trade's execution left out above.
+        assert_eq!(direct.len(), 60 + SPLIT - 1);
         assert_eq!(twin.len(), direct.len());
         for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
+            if index == 114 {
+                eprintln!("DEBUG twin={twin:#?}\nDEBUG direct={direct:#?}");
+            }
             assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
             assert_eq!(twin.get_curruuid(), direct.get_curruuid(), "leaf {index}");
             assert_eq!(

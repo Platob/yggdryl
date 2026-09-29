@@ -94,8 +94,9 @@ mod table {
         }
     }
 
-    /// The eight columns FIX says more about than the graph does keep their
-    /// own wording; the other eight take the column's.
+    /// The seven event columns FIX says more about than the graph does keep
+    /// their own wording; the other eight take the column's. `execunix` is
+    /// a market column, which states no wording, so it always says its own.
     ///
     /// Which is which is a judgement, so it is pinned rather than argued: a
     /// description that drifts back into restating the column is caught here
@@ -120,12 +121,25 @@ mod table {
                 "creaunix",
                 "crosscode",
                 "currhashcode",
-                "execunix",
                 "exprunix",
                 "recdunix",
                 "srcuuids",
                 "state",
             ]
+        );
+        let execunix = held
+            .iter()
+            .find(|field| field.name() == "execunix")
+            .expect("a definition");
+        assert_eq!(
+            execunix.display(),
+            Some(yggdryl::graph::MarketColumn::ExecUnix.display())
+        );
+        assert!(
+            execunix
+                .description()
+                .is_some_and(|text| text.contains("ExecutionTimestamp")),
+            "names the FIX fields it is read off"
         );
     }
 }

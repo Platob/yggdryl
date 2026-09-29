@@ -425,14 +425,18 @@ chained = codec.lifecycle_arrow_reader(rows).read_all()
 assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist())) == 2
 ```
 
-## Split fills and two-sided quotes at the parse
+## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
 fill or a side twice: an execution report that fills is its order's report
 (`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
 chained by its `ExecID`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+a `BUY` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+an order list, a mass order, a cross, a mass quote, a match report) adds one
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
+chained by the order the entry names and split again as its category is.
+Each split message names its source in `srcuuids`.
 
 ```python
 from decimal import Decimal
@@ -448,7 +452,7 @@ report, execution = codec.parse_line(fill)
 assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
-# A sided message stores its cross code under its side; the fill is a chain of its own.
+# An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("BUY:O-9", "BUY:ExecID=E-1")
 
 quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|"
@@ -475,8 +479,6 @@ FIX rows already in Arrow.
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from yggdryl import MarketDataKind, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry, fix_schema
 
@@ -498,9 +500,9 @@ assert len(books) == 2
 best = books[1].best_price(Side.BUY)
 assert best is not None and best.as_py() == Decimal(101)
 
-# The book door is strict: the same capture out of order is refused.
-with pytest.raises(ValueError):
-    codec.book_arrow_reader(capture).read_all()
+# The book door does not sort: the same capture out of order is no error - the
+# snapshot dated before the book it would fold into is left out, with a warning.
+assert codec.book_arrow_reader(capture).read_all().num_rows == 1
 # The sorted leaves as `marketdata` rows.
 assert codec.market_arrow_reader(capture).read_all().num_rows == 4
 # The same leaves off the capture's FIX rows.
@@ -610,8 +612,11 @@ with tempfile.TemporaryDirectory() as directory:
 ## Gotchas in Python
 
 - Lines are `bytes`: `parse_lines(["8=..."])` raises `TypeError`; encode first.
-- `FixMessages` streams raise at `next()`: a refused line raises `ValueError`
-  where it is met and the stream goes on past it.
+- `FixMessages` streams raise at `next()` only for a source failure - a
+  `TypeError` for an item that is not bytes, or what the iterable behind it
+  raised - and that ends the stream. What a line states that cannot be read
+  is defaulted or left out with a `logging` warning under
+  `yggdryl.<module path>` (`yggdryl.fix.messages`), logged once per kind.
 - A registry is mutable and unhashable; while a codec, message or iterator
   shares it, mutation is refused. Build the dictionary, then the codecs.
 - A hashed `FixMsg` is frozen: `set` after `hash(message)` is a `TypeError`;

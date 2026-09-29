@@ -54,9 +54,10 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
     let error = TradeEvent::from_parts(&root, Vec::new()).unwrap_err();
     assert!(error.to_string().contains("$.executions"), "{error}");
 
+    // A side nobody stated is still a fill: any side stands.
     let unknown = execution(10, "E-1", Some("IBM"), "Unknown", 100, 0, None, None, None);
-    let error = TradeEvent::from_parts(&root, vec![unknown]).unwrap_err();
-    assert!(error.to_string().contains("executions[0].side"), "{error}");
+    let trade = TradeEvent::from_parts(&root, vec![unknown]).expect("an unsided fill");
+    assert_eq!(trade.executions()[0].get_side(), Side::Unknown);
 
     let late = execution(11, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None);
     let error = TradeEvent::from_parts(&root, vec![late]).unwrap_err();

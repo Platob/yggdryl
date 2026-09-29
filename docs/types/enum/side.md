@@ -338,7 +338,7 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 - A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHORT`.
 - A stored code is an integer, never text: `"10"` is no spelling, because `1`-`9` are wire codes and a number read as text would answer the wrong member for one of the two vocabularies; `10` is `CROSSSHX`.
 - The default value is `UNKNOWN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
-- A market element taking a side stores its cross code prefixed with the side's stored name, `BUY:ORD-1`, so the two sides of one identifier are two chains; `UNKNOWN` prefixes nothing ([Market](../../graph/market.md#sides-and-cross-codes)).
+- An order, a quote or an execution taking a side stores its cross code prefixed with the side's stored name, `BUY:ORD-1`, so the two sides of one identifier are two chains; `UNKNOWN` prefixes nothing, and no other element - a trade, a book, a snapshot control - is prefixed whatever side it states ([Market](../../graph/market.md#sides-and-cross-codes)).
 - In an expression a text constant meets a `side` column as the member it spells and an integer as the code it stores: `side = 'BUY'`, `side in ('1', 'SellShort')`, `cast('2' as side) = side` and `side < 3` all compare members.
 - A Hive partition over a `side` column is named by the member, `side=BUY`.
 - JSON, TOML, YAML and XML write a side as its stored name, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.

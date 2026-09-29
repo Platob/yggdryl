@@ -7,12 +7,12 @@
 | Key | Rule |
 | --- | --- |
 | Types | `Execution = OperationElement<ExecutionKind>`, `ExecutionEvent = OperationEvent<ExecutionKind>`: the [operation leaf contract](order.md#contract), filed under `EXEC` |
-| `is_execution` | always true, whatever the state; the [walk](event.md#lifecycle-walk) fills an absent `execunix` with the event's instant, and following keeps the later execution clock |
+| `is_execution` | always true, whatever the state; the [walk](event.md#lifecycle-walk) fills an absent [`execunix`](market.md#contract) with the event's instant, and following keeps the later execution clock |
 | A chain of its own | the walk joins an execution to no chain by a name or a base code: it follows only under its own cross code |
 | What traded | `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`; never `price` or `quantity`, which are what an element states ([Market](market.md#contract)) |
 | From FIX | an execution report, an order's or a quote's report and each side of a trade that report a fill split off an execution message at the parse: `EXEC`, state `FILLED`, an identity of its own, chained by the fill - `ExecID`, else `TradeID` - on its side (`BUY:ExecID=E-1`), its source's identity among its sources; the report keeps its own state (`PARTIALLY_FILLED`) and is its order's report (`ORDR`, `QUOT` where it names a `QuoteID`); an `ExecutionEvent` read off a FIX message reads `FILLED` unless a book message deleted it ([FIX](../fix/message.md#market-data)) |
 | Following an order | a leaf's own `with_previous` follows its own kind only; through [`MarketData`](market-data.md#marketdata) an execution follows the order it fills and keeps its kind |
-| In a trade | a [`TradeEvent`](trade.md) is made of executions, each on a bid or ask side at the trade's instant |
+| In a trade | a [`TradeEvent`](trade.md) is made of executions at the trade's instant, each on the side it states - `UNKNOWN` included, a fill nobody said the side of |
 | In a book | a [book](book.md#books) lists an execution at its instant and never changes resting depth by it |
 
 ## Example

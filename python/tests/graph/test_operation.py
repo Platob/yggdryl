@@ -79,9 +79,11 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.tif == "0"
     assert event.tradable is None
     assert event.altids == {"ORDERID": "O-100"}
+    # The accounts an operation names, by role: none stated here.
+    assert event.accountids == {}
     assert event.kind == "order"
     assert event.marketdatakind is MarketDataKind.ORDR
-    for retired in ("marketoperationid", "accountids", "userids", "bid", "ask"):
+    for retired in ("marketoperationid", "userids", "bid", "ask"):
         assert not hasattr(event, retired), retired
     assert not event.is_execution
     assert event.book is None and event.action is None
