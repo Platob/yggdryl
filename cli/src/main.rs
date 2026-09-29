@@ -3,7 +3,8 @@
 //! One binary over the core's namespaces, each a subcommand that owns its own
 //! verbs and its own state. There are two: [`fix`], the FIX dictionary tool,
 //! and [`xmla`], the XML for Analysis provider. The top level parses,
-//! dispatches, and prints a refusal; every verb lives in the namespace it
+//! dispatches, and prints a refusal and whatever the core warned about that
+//! no command printed ([`warnings`]); every verb lives in the namespace it
 //! belongs to.
 //!
 //! | namespace | what it is |
@@ -37,6 +38,7 @@ mod registry;
 mod schema;
 mod shell;
 mod style;
+mod warnings;
 mod xmla;
 
 use std::path::PathBuf;
@@ -81,19 +83,17 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    warnings::install();
     let cli = Cli::parse();
+    let annotate = std::env::var_os("GITHUB_ACTIONS").is_some()
+        || matches!(cli.command, Command::Fix { annotate: true, .. });
     let outcome = match &cli.command {
-        Command::Fix {
-            root,
-            annotate,
-            command,
-        } => fix::run(
-            root,
-            *annotate || std::env::var_os("GITHUB_ACTIONS").is_some(),
-            command.as_deref(),
-        ),
+        Command::Fix { root, command, .. } => fix::run(root, annotate, command.as_deref()),
         Command::Xmla { command } => xmla::run(command),
     };
+    // What the core warned about and no command printed yet - a refusal
+    // included, so it still shows what was read before it.
+    warnings::report(annotate);
     match outcome {
         Ok(code) => code,
         Err(error) => {

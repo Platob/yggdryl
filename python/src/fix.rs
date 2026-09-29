@@ -47,14 +47,15 @@ use crate::uri::core_url_from_value;
 use crate::{Failed, Pulled, python_failure, value_error};
 
 /// A fold's report as the ordinary mapping `commit`'s is: `sources`,
-/// `added` and `merged` counted, and `dropped` one mapping per declaration
-/// passed over - its `source` URL or `None`, the `incoming` `Field`, and the
-/// `reason` naming what the dictionary keeps.
+/// `added`, `merged` and `restated` counted, and `dropped` one mapping per
+/// declaration passed over - its `source` URL or `None`, the `incoming`
+/// `Field`, and the `reason` naming what the dictionary keeps.
 fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDict>> {
     let answer = PyDict::new(python);
     answer.set_item("sources", merge.sources)?;
     answer.set_item("added", merge.added)?;
     answer.set_item("merged", merge.merged)?;
+    answer.set_item("restated", merge.restated)?;
     let dropped = PyList::empty(python);
     for drop in merge.dropped {
         let entry = PyDict::new(python);
@@ -433,10 +434,12 @@ impl PyFixRegistry {
     /// alias under another tag merges into that field - aliases, alternate
     /// tags and membership become the union, and the incoming tag joins the
     /// alternates unless another field answers it - the same tag under
-    /// another name is added beside the holder, which gains the name as an
-    /// alias, a nested field is redirected to `add_definition` under the
-    /// category its shape names, and one of this crate's own tags is skipped
-    /// as already held.
+    /// another name is added beside the holder, neither learning the other's
+    /// name, a field named by nothing but its own decimal tag merges into the
+    /// holder of that tag, and a holder so named takes the name of a field
+    /// arriving on its tag, a nested field is redirected to `add_definition`
+    /// under the category its shape names, and one of this crate's own tags
+    /// is skipped as already held.
     ///
     /// One mutation: a refusal - no `FIX:tag`, a datatype disagreeing with
     /// the stored field - leaves the dictionary exactly as it was.
@@ -471,16 +474,20 @@ impl PyFixRegistry {
     /// `add_fields` folds one, its membership unioned onto the field it
     /// merges into, and every definition folds beside them.
     ///
-    /// What the other dictionary declares otherwise than this one does - a
-    /// tag typed two ways, a member a held definition declares in another
-    /// shape, a group on another counter under a held name - is passed over
-    /// rather than raised: the declaration held stays, and the rest folds.
-    /// The answer is the same ordinary mapping `commit`'s is: `sources`,
-    /// `added` and `merged` count, over the fields, and `dropped` lists what
-    /// was passed over, each a mapping of its `source` (the file's URL, or
-    /// `None`), the `incoming` declaration as a `Field`, and the `reason`
-    /// naming what the dictionary keeps. One mutation: a refusal that leaves
-    /// nothing to keep leaves the dictionary exactly as it was.
+    /// A datatype the other dictionary declares at another precision of the
+    /// stored one - a `CBlock`'s `float` against `decimal128`, `utf8` against
+    /// `ccy` - folds under the stored declaration and is counted in
+    /// `restated`. Only a contradiction - a tag typed two ways, such as
+    /// `boolean` against `int32`, a member a held definition declares in
+    /// another shape, a group on another counter under a held name - is
+    /// passed over rather than raised: the declaration held stays, and the
+    /// rest folds. The answer is the same ordinary mapping `commit`'s is:
+    /// `sources`, `added`, `merged` and `restated` count, over the fields,
+    /// and `dropped` lists what was passed over, each a mapping of its
+    /// `source` (the file's URL, or `None`), the `incoming` declaration as a
+    /// `Field`, and the `reason` naming what the dictionary keeps. One
+    /// mutation: a refusal that leaves nothing to keep leaves the dictionary
+    /// exactly as it was.
     fn merge_with<'py>(
         &mut self,
         python: Python<'py>,
@@ -502,12 +509,16 @@ impl PyFixRegistry {
     /// whatever it merges into.
     ///
     /// `dialect` names the dictionary, and the location's own stem stands in
-    /// when the caller does not; a name that is empty or carries a comma is
-    /// a `ValueError`.
+    /// when the caller does not, where it reads as a name - opening with a
+    /// letter, carrying no comma, percent escapes decoded; a supplied name
+    /// that is empty or carries a comma is a `ValueError`.
     ///
-    /// Answers `merge_with`'s mapping, each drop naming the file. One
-    /// mutation: a file that will not parse leaves the dictionary exactly as
-    /// it was.
+    /// Answers `merge_with`'s mapping, each drop naming the file: a datatype
+    /// declared at another precision of the stored one - a `CBlock`'s `float`
+    /// against `decimal128`, `string` against `ccy` - folds under the stored
+    /// declaration and is counted in `restated`, and only a contradiction is
+    /// passed over. One mutation: a file that will not parse leaves the
+    /// dictionary exactly as it was.
     #[pyo3(signature = (location, dialect=None))]
     fn add_cfb_file<'py>(
         &mut self,
@@ -530,9 +541,12 @@ impl PyFixRegistry {
     ///
     /// The files parse side by side and fold in ascending URL order whatever
     /// order the listing arrived in, into one staged dictionary resolved
-    /// once, so where two files disagree about one tag the first-sorting
-    /// file's declaration is held, the later one is passed over, and every
-    /// spelling of one pattern answers the same dictionary.
+    /// once, so where two files contradict each other about one tag the
+    /// first-sorting file's declaration is held, the later one is passed
+    /// over, and every spelling of one pattern answers the same dictionary;
+    /// a file declaring another precision of the held datatype - `float`
+    /// against `decimal128`, `string` against `ccy` - folds under it and is
+    /// counted in `restated`.
     ///
     /// `dialect` is resolved per file: a name supplied here stamps every
     /// matched file with it, and `None` lets each file's own stem stand in,
@@ -976,8 +990,8 @@ impl PyFixRegistry {
     /// Filed by its shape: a Struct is a component, a Serie of Structs or a
     /// Map a group, anything else a scalar field. A scalar arriving on a tag
     /// another field holds under another name is a field of its own, added
-    /// beside the holder, which gains the arrival's name as an alias; a
-    /// component or a group replaces the definition its folded name reaches.
+    /// beside the holder, neither learning the other's name; a component or
+    /// a group replaces the definition its folded name reaches.
     fn insert(&mut self, field: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let field = core_field_from_value(field)?;
         Ok(self

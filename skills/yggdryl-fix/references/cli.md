@@ -118,27 +118,41 @@ yggdryl fix --root config/fix diff ../desk/config/fix --annotate
 (`'cblocks/*.cfb'`, `'cblocks/**/*.cfb'`) to have the core walk it, or let the
 shell expand one; either way every matched file parses side by side and folds
 into one staged dictionary in ascending URL order. Without `--dialect` each
-file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); where two
-files disagree about one tag, the first-sorting file's declaration is held and
-the later one is passed over and named with its file. A path matching
-nothing, or naming a folder, is refused.
+file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`, `Morgan
+Stanley.cfb` stamps `morgan stanley`; a stem opening with no ASCII letter or
+carrying a comma stamps nothing). Where two files type one tag two ways, the
+first-sorting file's declaration is held: the later one folds under it,
+counted as restated, where it states another precision of the held datatype
+(a CBlock's `float` against a `decimal128`, its `string` against a `ccy`), and
+is passed over and named with its file where it contradicts it (a `boolean`
+against an `int32`). A path matching nothing, or naming a folder, is refused.
 
-A run that folds prints, in order: what the fold did, what was passed over
-(only when something was), then what the commit wrote (only when the store
-changed; a commit writes only the documents whose bytes moved):
+A run that folds prints, in order: what the fold did (`(N restated)` only when
+some merged field was), what the reader warned about while reading and what
+the fold passed over (each only when something was), then what the commit wrote
+(only when the store changed; a commit writes only the documents whose bytes
+moved):
 
 ```text
-✓ 2 file(s): 5 added, 3 merged, 1 passed over 340ms
+✓ 2 file(s): 5 added, 3 merged (1 restated), 1 passed over 340ms
+! 1 warning(s) while reading: what a file states that the reader could not keep as stated
+· venue.cfb [venue] invalid cfb expression at byte 204: line 4, column 65: expected one of the CBlock types (string, char, integer, float, boolean, utc-date, utc-timestamp, utc-time-only) or a datatype name, got "widget" in "<vocabulary-tag name=\"9850\" alt=\"StartTime\" type=\"widget\">"; the tag is typed string, which every FIX datatype is on the wire
 ! 1 declaration(s) passed over: the dictionary already declares them otherwise
-· venue.cfb [venue] invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+· venue.cfb [venue] invalid record value at masscancelrejectreason: expected the datatype boolean stored for masscancelrejectreason (532), got int32
 ✓ committed: 8 written, 0 unchanged, 0 removed
 ```
 
-Under `--annotate` (or `GITHUB_ACTIONS`) each drop prints as a workflow
-warning instead of the `·` line, `%`, `\r` and `\n` escaped:
+A reader's warning names what is wrong and where - the byte, its
+line and column, what was expected and what the file said, the element
+quoted - then, after the semicolon, what the reader did instead, under the
+dialect the file was read for; the rest of the file still folds. Under `--annotate` (or
+`GITHUB_ACTIONS`) each prints as a workflow warning instead of the `·` line -
+`fix reader` for the reader's, `fix passed over` for the fold's - `%`, `\r`
+and `\n` escaped:
 
 ```text
-::warning title=fix passed over::file:///desk/cblocks/venue.cfb: invalid record value at masscancelrejectreason: expected the datatype utf8 stored for masscancelrejectreason (532), got int32
+::warning title=fix reader::venue.cfb [venue] invalid cfb expression at byte 204: line 4, column 65: expected one of the CBlock types (string, char, integer, float, boolean, utc-date, utc-timestamp, utc-time-only) or a datatype name, got "widget" in "<vocabulary-tag name=\"9850\" alt=\"StartTime\" type=\"widget\">"; the tag is typed string, which every FIX datatype is on the wire
+::warning title=fix passed over::file:///desk/cblocks/venue.cfb: invalid record value at masscancelrejectreason: expected the datatype boolean stored for masscancelrejectreason (532), got int32
 ```
 
 `sync` names its source `dictionary(s)` rather than `file(s)`, and takes no
@@ -152,7 +166,10 @@ with.
 - `create` refuses an existing name or identity even when identical; `update`
   refuses absence.
 - A second field on a held tag under another name is a new definition beside
-  the holder; the bare tag keeps answering the first holder.
+  the holder; the bare tag keeps answering the first holder, and neither
+  learns the other's name. A field named by nothing but its tag is unnamed:
+  another file's field on that tag folds into it, and the first to name the
+  tag names it.
 - The stored tree is generated: prefer these commands (or `FixRegistry.commit`)
   over hand edits, and run `check` before committing a change.
 - Output is a table for people; for tools use `read --json`, `codesets read

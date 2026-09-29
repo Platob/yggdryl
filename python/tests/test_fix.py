@@ -2250,20 +2250,55 @@ def test_a_glob_of_cblocks_passes_over_a_tag_typed_two_ways(tmp_path: pathlib.Pa
     folder = tmp_path / "cblocks"
     folder.mkdir()
     (folder / "bloomberg_fix44_dropcopy.cfb").write_text(_rejection("integer"))
-    (folder / "axessiq_fix44.cfb").write_text(_rejection("string"))
+    (folder / "axessiq_fix44.cfb").write_text(_rejection("boolean"))
+    (folder / "tradeweb_fix44.cfb").write_text(_rejection("string"))
     dictionary = FixRegistry()
     report = dictionary.add_cfb_files(folder, "*.cfb")
 
-    # Every file folds; the first in URL order is held, the other is named.
-    assert report["sources"] == 2
+    # Every file folds; the first in URL order is held. An integer contradicts
+    # a flag and is named; text is every FIX datatype on the wire, so it
+    # restates the flag and folds under it.
+    assert report["sources"] == 3
+    assert report["restated"] == 1
     [dropped] = report["dropped"]
     assert dropped["source"].endswith("bloomberg_fix44_dropcopy.cfb")
     assert dropped["incoming"].fix.tag == 532
     assert dropped["incoming"].fix.branches == ["bloomberg_fix44_dropcopy"]
-    assert "utf8" in dropped["reason"] and "int32" in dropped["reason"]
+    assert "boolean" in dropped["reason"] and "int32" in dropped["reason"]
     held = dictionary.field_by_tag(532)
-    assert held.fix.branches == ["axessiq_fix44"]
+    assert held.dtype == DataType("boolean")
+    assert held.fix.branches == ["axessiq_fix44", "tradeweb_fix44"]
     assert dictionary.get_msgtype("r") is not None
+
+
+def test_a_cblock_at_another_precision_folds_under_the_stored_datatype(
+    tmp_path: pathlib.Path,
+) -> None:
+    # A stem with a space crosses as a percent escape and names the dialect
+    # decoded.
+    path = tmp_path / "Morgan Stanley.cfb"
+    path.write_text(
+        """<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+  <vocabulary>
+    <vocabulary-tag name="44" alt="Price" type="float" />
+  </vocabulary>
+</cplugin-configuration>""",
+        encoding="utf-8",
+    )
+    dictionary = FixRegistry.from_fields([_field("Price", "decimal128(38, 18)", 44)])
+    report = dictionary.add_cfb_file(path)
+
+    # A CBlock's `float` names a family rather than a width: the stored
+    # decimal is the finer statement of one number, so the tag merges under
+    # it and is counted as restated rather than passed over.
+    assert report["restated"] == 1
+    assert report["added"] == 0
+    assert report["merged"] == 3, "the price and the two seeded clocks"
+    assert report["dropped"] == []
+    held = dictionary.field_by_tag(44)
+    assert held.dtype == DataType("decimal128(38, 18)")
+    assert held.fix.branches == ["morgan stanley"]
 
 
 def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) -> None:
@@ -2316,25 +2351,58 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
 def test_a_cblock_warns_about_the_declaration_it_dropped(
     tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    broken = tmp_path / "bloomberg.cfb"
-    broken.write_text(
-        CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="decimal"'),
-        encoding="utf-8",
-    )
+    def warned(path: pathlib.Path) -> list[str]:
+        caplog.clear()
+        FixRegistry.from_cfb_file(path, "bloomberg")
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.name.startswith("yggdryl") and record.levelno == logging.WARNING
+        ]
+
     caplog.set_level(logging.WARNING)
     refresh_logging()
-    FixRegistry.from_cfb_file(broken, "bloomberg")
-    warnings = [
-        record.getMessage()
-        for record in caplog.records
-        if record.name.startswith("yggdryl") and record.levelno == logging.WARNING
-    ]
-    assert warnings, "the native reader reported nothing"
-    assert "invalid cfb expression at byte" in warnings[0]
 
-    # The tag went; every other declaration the file made stands.
+    # A tag named by no decimal is no tag: the warning says what was wrong,
+    # where the file says it, which dialect's file it is and what the reader
+    # did about it.
+    broken = tmp_path / "bloomberg.cfb"
+    broken.write_text(
+        CBLOCK.replace('name="55" alt="Symbol"', 'name="Symbol" alt="Symbol"'),
+        encoding="utf-8",
+    )
+    warnings = warned(broken)
+    assert warnings, "the native reader reported nothing"
+    [dropped] = [warning for warning in warnings if "the declaration is dropped" in warning]
+    assert "bloomberg.cfb [bloomberg] " in dropped
+    assert "invalid cfb expression at byte" in dropped
+    assert "line " in dropped
+    assert 'expected a decimal tag, got "Symbol"' in dropped
+    assert dropped.endswith("; the declaration is dropped")
+
+    # The declaration went; every other declaration the file made stands,
+    # and the message's constraint on tag 55 still says the tag is on the
+    # wire, so it declares the tag as text named by its digits - which the
+    # warning over the constraint says too.
+    [declared] = [warning for warning in warnings if "named by its digits" in warning]
+    assert "tag 55" in declared
     stripped, _ = FixRegistry.from_cfb_file(broken)
-    assert _declared(stripped) == ["excludeddealers"]
+    assert _declared(stripped) == ["55", "excludeddealers"]
+    assert stripped.field_by_tag(55).name == "55"
+
+    # A type word nothing reads keeps the tag, typed as the text it is on
+    # the wire, and says so.
+    unknown = tmp_path / "widget.cfb"
+    unknown.write_text(
+        CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="widget"'),
+        encoding="utf-8",
+    )
+    [typed] = warned(unknown)
+    assert "bloomberg.cfb [bloomberg] " in typed
+    assert '"widget"' in typed and "typed string" in typed
+    kept, _ = FixRegistry.from_cfb_file(unknown)
+    assert _declared(kept) == ["excludeddealers", "symbol"]
+    assert kept.field_by_tag(55).dtype == DataType("utf8")
 
     # A document that stops with an element open is refused, in one sentence
     # the dialect does not change: what the reader stopped on is the file's.

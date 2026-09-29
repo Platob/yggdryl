@@ -610,7 +610,13 @@ mod internal {
         assert_eq!(dictionary.dialects(), ["cme", "globex"]);
 
         // A declaration the dictionary already makes otherwise is passed over
-        // and named; the rest of the source folds, its membership with it.
+        // and named; one it makes at another precision folds under the held
+        // one; the rest of the source folds, its membership with it. Text is
+        // the coarsest statement of any field, so the contradiction is a flag
+        // stated as a count.
+        let mut flag = tagged("PossDupFlag", 43);
+        flag.set_dtype(DataType::Boolean).unwrap();
+        dictionary.insert(flag).unwrap();
         let before = dictionary.clone();
         let mut disagreeing = FixRegistry::from_fields([tagged("symbol", 55)]).unwrap();
         disagreeing
@@ -620,13 +626,25 @@ mod internal {
                 widened
             })
             .unwrap();
+        disagreeing
+            .insert({
+                let mut counted = tagged("possdupflag", 43);
+                counted.set_dtype(DataType::Int32).unwrap();
+                counted
+            })
+            .unwrap();
         disagreeing.insert(member("BlpSym", "blp", 5_070)).unwrap();
         let merge = dictionary.merge_with(&disagreeing).unwrap();
-        assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
-        assert_eq!(merge.dropped[0].incoming.dtype(), &DataType::large_utf8());
+        assert_eq!(merge.restated, 1);
         assert_eq!(
-            dictionary.field_by_tag(55).unwrap(),
-            before.field_by_tag(55).unwrap()
+            dictionary.field_by_tag(55).unwrap().dtype(),
+            &DataType::utf8()
+        );
+        assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
+        assert_eq!(merge.dropped[0].incoming.dtype(), &DataType::Int32);
+        assert_eq!(
+            dictionary.field_by_tag(43).unwrap(),
+            before.field_by_tag(43).unwrap()
         );
         assert!(
             dictionary
@@ -1086,16 +1104,13 @@ mod internal {
         let registry = FixRegistry::from_fields([spec.clone(), venue.clone()]).unwrap();
         assert_eq!(registry.len(), 2 + seeded_fields());
 
-        // Each identity answers its own field. The holder of the tag gained the
-        // arrival's name as an alias, so it is its stored self plus that.
+        // Each identity answers its own field exactly as it was stated:
+        // neither learns the other's name.
         let spec_id = id_of(5055, "Symbol");
         let venue_id = id_of(5055, "VenueSymbol");
         let held = registry.field_by_id(spec_id).unwrap();
-        assert_eq!(held.name(), "Symbol");
-        assert_eq!(
-            held.as_fix().names().collect::<Vec<_>>(),
-            ["Ticker", "VenueSymbol"]
-        );
+        assert_eq!(held, &spec);
+        assert_eq!(held.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
         assert_eq!(held.as_fix().tags().unwrap(), [9055]);
         assert_eq!(held.as_fix().branches().count(), 0);
         assert_eq!(registry.field_by_id(venue_id).unwrap(), &venue);
@@ -1105,7 +1120,7 @@ mod internal {
         );
 
         // A bare wire tag answers the first holder; the newcomer is reached by
-        // its name, which is canonical before it is the holder's alias.
+        // its name.
         assert_eq!(registry.get_field_by_tag(5055), Some(held));
         assert_eq!(registry.get_field_by_tag(9055), Some(held));
         assert_eq!(registry.get_field("Symbol"), Some(held));
@@ -1117,22 +1132,10 @@ mod internal {
         assert!(registry.get_field_by_name("absent").is_none());
         assert!(registry.get_field_by_id(id_of(6000, "Absent")).is_none());
 
-        // The order of arrival is what decides the first holder, and the alias
-        // is lent the other way.
+        // The order of arrival is what decides the first holder, and neither
+        // learns a name the other way round either.
         let reversed = FixRegistry::from_fields([venue.clone(), spec.clone()]).unwrap();
-        assert_eq!(
-            reversed.get_field_by_tag(5055).map(Field::name),
-            Some("VenueSymbol")
-        );
-        assert_eq!(
-            reversed
-                .field_by_tag(5055)
-                .unwrap()
-                .as_fix()
-                .names()
-                .collect::<Vec<_>>(),
-            ["Symbol"]
-        );
+        assert_eq!(reversed.field_by_tag(5055).unwrap(), &venue);
         assert_eq!(reversed.field_by_id(spec_id).unwrap(), &spec);
         assert_eq!(registry.len(), reversed.len());
 
@@ -1216,9 +1219,9 @@ mod internal {
         );
 
         // Row 2: the same tag under another name is a new field, registered
-        // beside the holder, which gains the arrival's name as an alias. The
-        // bare tag keeps answering the first holder; the newcomer is reached by
-        // its name or its identity, and its membership is its own.
+        // beside the holder, and neither learns the other's name. The bare tag
+        // keeps answering the first holder; the newcomer is reached by its
+        // name or its identity, and its membership is its own.
         assert_eq!(
             fold(&mut registry, member("VenueSymbol", "xnas", 55)),
             (1, seeded_merges),
@@ -1229,12 +1232,13 @@ mod internal {
         assert_eq!(symbol.name(), "Symbol", "{verb}: the bare tag");
         assert_eq!(
             symbol.as_fix().names().collect::<Vec<_>>(),
-            ["Sym", "Ticker", "VenueSymbol"],
+            ["Sym", "Ticker"],
             "{verb}"
         );
         assert!(!symbol.as_fix().has_branch("xnas"), "{verb}");
         let newcomer = registry.field_by_id(id_of(55, "VenueSymbol")).unwrap();
         assert_eq!(newcomer.name(), "VenueSymbol", "{verb}");
+        assert!(newcomer.as_fix().names().next().is_none(), "{verb}");
         assert_eq!(
             newcomer.as_fix().branches().collect::<Vec<_>>(),
             ["xnas"],
@@ -1272,7 +1276,7 @@ mod internal {
         assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65, 9055], "{verb}");
         assert_eq!(
             symbol.as_fix().names().collect::<Vec<_>>(),
-            ["Sym", "Ticker", "VenueSymbol", "BlpSym"],
+            ["Sym", "Ticker", "BlpSym"],
             "{verb}"
         );
         assert_eq!(
@@ -1603,23 +1607,26 @@ mod internal {
         }
 
         // The one thing this namespace admits twice: a held tag under another
-        // name is a field of its own, inserted beside the holder, which gains
-        // the arrival's name as an alias while the bare tag keeps answering it.
+        // name is a field of its own, inserted beside the holder, the bare tag
+        // answering the holder and neither learning the other's name.
         let mut beside = registry.clone();
         assert_eq!(
             beside.insert(full("SymbolSfx", 55, &[], &[])).unwrap(),
             None
         );
         assert_eq!(beside.len(), 2 + seeded_fields());
-        assert_eq!(beside.field_by_tag(55).unwrap().name(), "Symbol");
         assert_eq!(
+            beside.field_by_tag(55).unwrap(),
+            registry.field_by_tag(55).unwrap()
+        );
+        assert!(
             beside
-                .field_by_tag(55)
+                .field_by_name("SymbolSfx")
                 .unwrap()
                 .as_fix()
                 .names()
-                .collect::<Vec<_>>(),
-            ["Ticker", "SymbolSfx"]
+                .next()
+                .is_none()
         );
         assert_eq!(
             beside.field_by_id(id_of(55, "SymbolSfx")).unwrap().name(),
@@ -1859,26 +1866,41 @@ mod internal {
 
         // The identity is the whole probe: the same tag under another name is
         // another field, added beside the specification's rather than folded
-        // into it, and the holder learns the arrival's name.
+        // into it, and neither learns the other's name - two fields on one
+        // tag are two fields, not two spellings of one.
+        let text = registry.field_by_tag(58).unwrap().clone();
         let (added, merged) = registry
             .add_fields([member("VenueText", "cme", 58)])
             .unwrap();
         assert_eq!((added, merged), (1, 0));
-        assert_eq!(registry.len(), 4 + seeded_fields());
-        assert_eq!(registry.field_by_tag(58).unwrap().name(), "Text");
-        assert_eq!(
-            registry
-                .field_by_tag(58)
-                .unwrap()
-                .as_fix()
-                .names()
-                .collect::<Vec<_>>(),
-            ["VenueText"]
-        );
-        assert_eq!(
-            registry.field_by_id(id_of(58, "VenueText")).unwrap(),
-            &member("VenueText", "cme", 58)
-        );
+        let beside = |registry: &FixRegistry| {
+            assert_eq!(registry.len(), 4 + seeded_fields());
+            // The bare tag answers the first holder, exactly as it was held.
+            assert_eq!(registry.field_by_tag(58).unwrap(), &text);
+            assert!(text.as_fix().names().next().is_none());
+            // The arrival exactly as it was stated: no `FIX:names` either.
+            assert_eq!(
+                registry.field_by_id(id_of(58, "VenueText")).unwrap(),
+                &member("VenueText", "cme", 58)
+            );
+            assert_eq!(
+                registry.field_by_name("venuetext").unwrap().name(),
+                "VenueText"
+            );
+        };
+        beside(&registry);
+
+        // Both survive the snapshot and the store.
+        let snapshot = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
+        assert_eq!(snapshot, registry);
+        beside(&snapshot);
+        let root = scratch("two-on-one-tag-unaliased");
+        let mut folder = LocalFolder::new(&root).unwrap();
+        registry.commit(&mut folder).unwrap();
+        let stored = FixRegistry::from_handle(&folder).unwrap();
+        assert_eq!(stored, registry);
+        beside(&stored);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

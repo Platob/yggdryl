@@ -634,6 +634,19 @@ impl Documents {
             .and_then(|key| self.raw.get_key_value(key))
     }
 
+    /// Rewrites every member reading a field the fold renamed, so a document
+    /// held before the rename reads the field under the identity it holds
+    /// now.
+    ///
+    /// A rename moves no member: the map answers a held identity for every
+    /// key it holds, so nothing here is passed over.
+    pub(super) fn rename_references(
+        &mut self,
+        renamed: &HashMap<FixId, Option<(i32, SmolStr)>>,
+    ) -> Result<()> {
+        rename_raw_references(&mut self.raw, renamed)
+    }
+
     fn put(&mut self, key: DefinitionKey, document: Field) {
         let held = self.keys.entry(Catalog::key(key.0, &key.1)).or_default();
         if !held.contains(&key) {
@@ -1845,6 +1858,8 @@ impl FixRegistry {
 
     /// Resolves the documents a fold wrote into this catalog, and proves it.
     pub(super) fn settle(&mut self, documents: Documents) -> Result<()> {
+        // The documents were rewritten for every rename as the fold made it.
+        self.renamed.clear();
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()
     }
@@ -2056,6 +2071,34 @@ fn derived_tag(name: &str, taken: impl Fn(i32) -> bool) -> Result<i32> {
     })
 }
 
+/// Rewrites every member of `raw` reading a field a fold renamed, so a
+/// document written before the rename reads the field under the identity it
+/// holds now.
+///
+/// A rename moves no member: the map answers a held identity for every key
+/// it holds, so nothing here is passed over.
+pub(super) fn rename_raw_references(
+    raw: &mut BTreeMap<DefinitionKey, Field>,
+    renamed: &HashMap<FixId, Option<(i32, SmolStr)>>,
+) -> Result<()> {
+    if renamed.is_empty() {
+        return Ok(());
+    }
+    let mut drops = Vec::new();
+    let keys: Vec<DefinitionKey> = raw.keys().cloned().collect();
+    for key in keys {
+        let Some(document) = raw.remove(&key) else {
+            continue;
+        };
+        let rewritten = members_read(document, &mut drops, &mut |owner, member| {
+            remapped(owner, member, renamed)
+        })?;
+        raw.insert(key, rewritten);
+    }
+    debug_assert!(drops.is_empty(), "a rename passes no member over");
+    Ok(())
+}
+
 /// A member reading a field the scalar fold did not keep under the identity
 /// it names: rewritten to the identity that holds it now, or the refusal it
 /// is passed over with.
@@ -2074,6 +2117,12 @@ fn remapped(
     match remap.get(&id) {
         None => Ok(None),
         Some(Some((held, named))) => {
+            // A member named after the field it read - a constraint takes
+            // its field's name, and an unnamed field's is its digits - is
+            // named after it still.
+            if folds_equal(member.name(), name) {
+                member.set_name(named.as_str());
+            }
             member.as_fix_mut().set_field_ref(named)?;
             member.as_fix_mut().set_tag(*held)?;
             Ok(None)

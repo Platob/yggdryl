@@ -603,13 +603,13 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         );
         assert_eq!(registry, before);
         // Another name on the held tag is a field of its own beside the
-        // holder, which lends nothing but learns the name; the bare tag
-        // keeps answering the holder.
+        // holder, and neither learns the other's name; the bare tag keeps
+        // answering the holder, exactly as it was stated.
         registry
             .insert(tagged("other", 1865, DataType::Int32))
             .unwrap();
         assert_eq!(super::scalars(&registry), 3 + super::seeded_fields());
-        assert_eq!(registry.field(1865).unwrap().name(), "quoteackstatus");
+        assert_eq!(registry.field(1865).unwrap(), &current);
         assert_eq!(registry.field("other").unwrap().name(), "other");
         assert_eq!(
             registry
@@ -620,11 +620,12 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         );
         assert!(
             registry
-                .field(1865)
+                .field("other")
                 .unwrap()
                 .as_fix()
                 .names()
-                .any(|alias| alias == "other")
+                .next()
+                .is_none()
         );
         assert_eq!(
             FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
@@ -1041,8 +1042,9 @@ fn enum_codes_belong_to_each_field() {
 #[test]
 fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     // A dictionary's own name over a tag the standard holds is a second
-    // field: it shares the holder's shard, the holder keeps the bare tag and
-    // the alias it learnt, and both survive every order a store reads.
+    // field: it shares the holder's shard, the holder keeps the bare tag,
+    // neither learns the other's name, and both survive every order a store
+    // reads.
     let mut registry = catalog();
     let mut venue = tagged("VenuePartyID", 448, DataType::utf8());
     venue.as_fix_mut().set_branches(["venue"]).unwrap();
@@ -1066,15 +1068,18 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
                 .as_fix()
                 .has_branch("venue")
         );
-        assert_eq!(
-            registry
-                .field(448)
-                .unwrap()
-                .as_fix()
-                .names()
-                .collect::<Vec<_>>(),
-            ["VenuePartyID"]
-        );
+        for id in [holder, newcomer] {
+            assert!(
+                registry
+                    .field(id)
+                    .unwrap()
+                    .as_fix()
+                    .names()
+                    .next()
+                    .is_none(),
+                "{id}"
+            );
+        }
         assert!(
             registry
                 .field(448)
@@ -1119,8 +1124,8 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     check(&loaded);
     // The array order is the arrival order, and the holder of a shared tag
     // is decided by arrival: a document that lists the two the other way
-    // round describes the other field as the holder, with the alias lent
-    // the other way - a different dictionary, loaded as written.
+    // round describes the other field as the holder - a different
+    // dictionary, loaded as written, in which neither learns a name either.
     let document = yggdryl::from_json_scalar(&json).unwrap();
     let reversed = Scalar::from_struct(document.as_struct().unwrap().iter().map(|(key, value)| {
         (
@@ -1132,15 +1137,18 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     let reordered = FixRegistry::from_json(&yggdryl::into_json_scalar(&reversed).unwrap()).unwrap();
     assert_ne!(reordered, registry);
     assert_eq!(reordered.field(448).unwrap().name(), "VenuePartyID");
-    assert_eq!(
-        reordered
-            .field(448)
-            .unwrap()
-            .as_fix()
-            .names()
-            .collect::<Vec<_>>(),
-        ["PartyID"]
-    );
+    for id in [holder, newcomer] {
+        assert!(
+            reordered
+                .field(id)
+                .unwrap()
+                .as_fix()
+                .names()
+                .next()
+                .is_none(),
+            "{id}"
+        );
+    }
     assert_eq!(reordered.len(), registry.len());
     assert_eq!(
         FixRegistry::from_json(&reordered.into_json().unwrap()).unwrap(),
