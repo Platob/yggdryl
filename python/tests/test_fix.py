@@ -2398,7 +2398,7 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
         encoding="utf-8",
     )
     [typed] = warned(unknown)
-    assert "bloomberg.cfb [bloomberg] " in typed
+    assert "widget.cfb [bloomberg] " in typed
     assert '"widget"' in typed and "typed string" in typed
     kept, _ = FixRegistry.from_cfb_file(unknown)
     assert _declared(kept) == ["excludeddealers", "symbol"]
