@@ -451,6 +451,10 @@ impl Holder {
         if !codec.is_identity() && *media_type.base() == crate::MimeType::PARQUET {
             return self;
         }
+        // A workbook is a ZIP package, deflated inside: the same rule.
+        if !codec.is_identity() && *media_type.base() == crate::MimeType::XLSX {
+            return self;
+        }
 
         let coded = match codec {
             crate::Codec::Identity => self,
@@ -472,6 +476,7 @@ impl Holder {
             || *base == crate::MimeType::AVRO
             || *base == crate::MimeType::PLAIN_TEXT
             || *base == crate::MimeType::XMLA
+            || *base == crate::MimeType::XLSX
             || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
         if !supported {
             return self;
@@ -498,6 +503,9 @@ impl Holder {
         }
         if *base == crate::MimeType::XMLA {
             return Self::Media(Box::new(crate::media::Media::xmla(self)));
+        }
+        if *base == crate::MimeType::XLSX {
+            return Self::Media(Box::new(crate::media::Media::excel(self)));
         }
         debug_assert_eq!(*base, crate::MimeType::AVRO);
         Self::Media(Box::new(crate::media::Media::avro(self)))

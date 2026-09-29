@@ -286,6 +286,40 @@ encoded = avro.dumps([{"symbol": "AAPL", "qty": 100}], writer)
 assert avro.loads(encoded, reader_schema=reader).rows == [{"note": "none", "quantity": 100}]
 ```
 
+## Excel: one worksheet as records, the workbook as cells
+
+A `.xlsx` handle is a record medium over one worksheet - `sheet`, `header` and `range` pick which cells - and `yggdryl.excel.Workbook` is the same package cell by cell.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl import IOBase
+from yggdryl.excel import Sheet, Workbook
+
+path = pathlib.Path(tempfile.mkdtemp()) / "trades.xlsx"
+table = pa.table({"id": pa.array([1, 2], pa.int64()), "symbol": ["AAPL", None]})
+
+# One worksheet as records, under the declared field.
+handle = IOBase(path)
+handle.overwrite_arrow_table(table, sheet="Trades")
+assert handle.read_arrow_reader(field=table.schema, sheet="Trades").read_all() == table
+# Inferred, a number column is the float64 the file stores.
+assert handle.read_arrow_reader(sheet="Trades").read_all().column("id").to_pylist() == [1.0, 2.0]
+
+# The workbook: any cell by its A1 reference, a sheet as a Serie and back.
+workbook = Workbook.open(path)
+sheet = workbook["Trades"]
+assert sheet["B2"].as_py() == "AAPL"
+sheet["B3"] = "MSFT"
+assert sheet.into_serie(table.schema).into_arrow_table().num_rows == 2
+workbook.insert_sheet(Sheet.from_serie("Copy", table))
+workbook.write_into(path)
+assert Workbook.open(path).sheet_names == ["Trades", "Copy"]
+```
+
 ## Read a log file as typed rows
 
 A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the sixteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).

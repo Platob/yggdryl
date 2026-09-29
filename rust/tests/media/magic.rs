@@ -4,9 +4,22 @@
 //! answer what the bytes are, codings peeled in application order. Every door
 //! here is public, so the whole file reaches the crate through `yggdryl::`.
 
-use yggdryl::media::MAGIC_PROBE_LEN;
-use yggdryl::{MediaType, MimeType};
+use yggdryl::media::{IORecordOptions, MAGIC_PROBE_LEN};
+use yggdryl::{DataType, IOBase, IOMedia, MediaType, MimeType, Scalar, StructType, Url};
 use yggdryl::{gzip, zstd};
+
+/// The bytes of a one-sheet `.xlsx` package the crate writes.
+fn workbook_bytes() -> Vec<u8> {
+    let field =
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("id")]).unwrap())
+            .required_field("row");
+    let mut handle = yggdryl::holder::Buffer::new().with_media_type(MimeType::XLSX.into());
+    let options = handle.record_options().unwrap().with_field(field);
+    handle
+        .overwrite_records([Scalar::from_sequence([Scalar::from(1_i64)])], &options)
+        .unwrap();
+    handle.read_all_bytes().unwrap()
+}
 
 #[test]
 fn container_signatures_are_identified() {
@@ -32,6 +45,35 @@ fn container_signatures_are_identified() {
         Some(MimeType::SQLITE3)
     );
     assert_eq!(MimeType::from_magic_bytes(b"%PDF-1.7"), Some(MimeType::PDF));
+}
+
+#[test]
+fn a_workbook_is_named_by_its_suffix_and_not_by_its_bytes() {
+    let bytes = workbook_bytes();
+    assert_eq!(bytes[..4], *b"PK\x03\x04");
+
+    // measured: the signature table carries no ZIP entry, so a package's
+    // `PK` header names nothing - neither ZIP nor the workbook inside it.
+    assert_eq!(MimeType::from_magic_bytes(&bytes), None);
+    assert_eq!(MimeType::from_bytes(&bytes), None);
+    assert_eq!(MediaType::from_magic_bytes(&bytes), None);
+
+    // The name is what says workbook, and a named handle keeps it.
+    assert_eq!(
+        Url::from_str("file:///t.xlsx").unwrap().media_type().base(),
+        &MimeType::XLSX
+    );
+    assert_eq!(
+        Url::from_str("file:///t.xls").unwrap().media_type().base(),
+        &MimeType::XLS
+    );
+
+    // The legacy BIFF workbook is the one spreadsheet its bytes name: the
+    // OLE compound-file header.
+    assert_eq!(
+        MimeType::from_magic_bytes(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00]),
+        Some(MimeType::XLS)
+    );
 }
 
 #[test]

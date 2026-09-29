@@ -13,6 +13,7 @@ A handle's name picks the encoding, the compression and the charset; the read an
 | [TOML](#toml) | `application/toml`, `.toml` | default |
 | [XML](#xml) | `application/xml`, `.xml` | default |
 | [XML for Analysis](#xml-for-analysis) | `application/xmla+xml`, `.xmla`; the provider serves catalogs over HTTP | default; the provider's route `http` feature |
+| [Excel](#excel) | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `.xlsx` | default |
 | [Iceberg](#iceberg) | a table folder | `iceberg` feature |
 | [HTTP messages](#http-messages) | `message/http`, `.http` | `http` feature |
 | [Compression](#compression) | `.gz`, `.zz`, `.zst` suffix | default |
@@ -1606,7 +1607,7 @@ yggdryl xmla serve market=C:\data\market --trace C:\data\trace
 
 The `yggdryl` a wheel ships is built with the CLI crate's `iceberg` feature, which `scripts/stage_cli.py` passes, so it reads an Iceberg folder; `cargo build -p yggdryl-cli` alone builds the schema-only core, which lists such a folder as a table and refuses its rows by name.
 
-### Excel
+### Excel as a client
 
 Excel reaches the provider through MSOLAP and through Power Query's ADOMD.NET, and three doors open on a folder catalog `yggdryl xmla serve` puts on a socket. Each was driven from Excel (Microsoft 365, 16.0.20430) against `market=C:\data\market` - Iceberg tables of ten thousand, a hundred thousand and a million trades, a table of every datatype, a `reference` schema - with the exchanges kept under `rust/tests/xmla/fixtures/excel/<door>/` as they went over the wire and replayed through `Service::handle` by `rust/tests/xmla/service.rs`, each answer checked against the captured one by what a client reads: the kind of answer, the columns, the number of rows, the fault code.
 
@@ -1885,7 +1886,7 @@ assert_eq!(response.rows().map(Serie::len), Some(2));
 std::fs::remove_dir_all(&lake)?;
 ```
 
-Excel then opens the [doors above](#excel) on it: Power Query with the server `http://<host>:8080/xmla` - `https://data.example.com/olap/xmla` [behind a proxy](#behind-a-reverse-proxy) - the database `silver` and the statement `select * from silver.record_keeping.orders limit 100`; an `.odc` with `Initial Catalog=silver` and that statement as its command text; the Data Connection Wizard listing `bronze`, `silver` and `gold` as the three cubes. A statement names its table as `catalog.schema.table`, or as `schema.table` under the `Catalog` the connection set - Excel's database - and `record_keeping.orders` with no catalog set is refused by name when several catalogs are served, since each has a `record_keeping`.
+Excel then opens the [doors above](#excel-as-a-client) on it: Power Query with the server `http://<host>:8080/xmla` - `https://data.example.com/olap/xmla` [behind a proxy](#behind-a-reverse-proxy) - the database `silver` and the statement `select * from silver.record_keeping.orders limit 100`; an `.odc` with `Initial Catalog=silver` and that statement as its command text; the Data Connection Wizard listing `bronze`, `silver` and `gold` as the three cubes. A statement names its table as `catalog.schema.table`, or as `schema.table` under the `Catalog` the connection set - Excel's database - and `record_keeping.orders` with no catalog set is refused by name when several catalogs are served, since each has a `record_keeping`.
 
 What the provider reads, and does not. It opens a table at its highest-numbered `*.metadata.json` and never reads the SQLite pointer, so it agrees with PyIceberg exactly as long as the folder holds one line of history and the pointer names its last document. A table PyIceberg drops stays in the cube until its folder is removed: `drop_table` deletes the row and leaves every file, so the table is still listed and read; `purge_table` deletes the files but leaves the table folder holding an empty `data/` and an empty `metadata/`, which `DBSCHEMA_TABLES` still lists as a table and a `select` of it answers with a fault (`expected a record encoding this build implements ..., got inode/directory`) - so after either call, remove `<warehouse>/<namespace>/<table>/` as well; a table re-created at the same location starts its numbering below the old documents, so the old table is what is served until those are removed; `write.metadata.path` or `write.data.path` pointing outside the table folder is not detected; a nested namespace `a.b` is a folder named `a.b`, a schema name with a dot, and `catalog.a.b.table` is four parts, refused. And writing goes one way: PyIceberg commits land in the folder and are served at the next request, while `--writable` over a PyIceberg-managed table would fork the pointer, so the provider stays read-only over such a lake.
 
@@ -1920,6 +1921,154 @@ End to end, on the same machine: `yggdryl xmla serve market=C:\data\market` buil
 | `trades_1m` | 1,000,000 | 0.07 s | 19.7 s | 0.06 s |
 
 The provider writes the million rows in 0.82 s; the rest is the client reading them as XML text, which is what the protocol carries. Regenerated by hand: serve the folder as above and time `AdomdCommand.ExecuteReader` draining every row, and `pyarrow.dataset.dataset("<table>/data", format="parquet", partitioning="hive").to_table()` for the baseline.
+
+## Excel
+
+An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. The whole workbook is the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
+
+Three facts about the file decide what a read answers. A number cell is a `float64`, because the file stores every number as a double: `1` reads as `1.0`, and a declared `int64` column reads it back as the integer it was written as. A cell's number format is its datatype - a serial under a date format is a `date32`, under a clock a `time32(ms)`, under a date and a clock a `datetime64(ms)`, under `[h]:mm:ss` a `duration64(ms)` - in the workbook's date system, 1900 or 1904. Text is escaped as ECMA-376 spells it: a control character, a carriage return and a literal `_x0041_` are written `_xHHHH_` and read back as themselves, which Excel does and openpyxl leaves unread.
+
+[`ExcelOptions`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.ExcelOptions.html) adds three settings to the shared ones: `sheet`, the worksheet addressed (the first worksheet by default; a sheet the workbook lacks reads as the empty stream and a write adds it beside the others), `header`, whether the range's first row names the columns (by their letters otherwise), and `range`, the cells addressed (`A3:F`, `B:D`, `2:10`). A write into an opened package keeps every other part as it was, the sheets it does not touch included. A `.xlsx.gz` name is refused: the package is deflated inside, as Parquet is.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::excel::{CellRef, Sheet, Workbook};
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, Serie, StructType};
+
+    let field = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+        DataType::Date32.required_field("traded"),
+    ])?)
+    .required_field("row");
+    let rows = Serie::from_scalars(field.clone(), [
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL"), Scalar::date32(19_723)]),
+        Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null, Scalar::date32(19_724)]),
+    ])?;
+
+    // The record path: one worksheet, written and read like every medium.
+    let mut handle = Buffer::new().with_media_type(MimeType::XLSX.into());
+    let options = handle.record_options()?.with_field(field.clone());
+    handle.overwrite_arrow_batch(rows.clone().into_arrow_batch()?, &options)?;
+    let read = handle.read_arrow_reader(&options)?.map(|batch| batch.unwrap().num_rows()).sum::<usize>();
+    assert_eq!(read, 2);
+    // Inferred, the id column is the float64 the file holds.
+    let inferred = handle.read_arrow_field(&handle.record_options()?)?;
+    assert_eq!(inferred.fields()[0].dtype(), &DataType::Float64);
+    assert_eq!(inferred.fields()[2].dtype(), &DataType::Date32);
+
+    // The random-access path: any cell of any sheet, and a sheet as a Serie.
+    let mut workbook = Workbook::from_bytes(handle.read_all_bytes()?)?;
+    let sheet = workbook.sheet_mut("Sheet1")?;
+    assert_eq!(sheet.scalar("B2".parse()?), Scalar::from("AAPL"));
+    assert_eq!(sheet.scalar(CellRef::new(2, 1)), Scalar::Null);
+    sheet.set_cell("D1".parse()?, "note")?;
+    sheet.set_cell("D2".parse()?, 2.5)?;
+    let back = sheet.clone().into_serie(Some(&field), true, Default::default())?;
+    assert_eq!(back.len(), 2);
+
+    let mut notes = Sheet::new("Notes")?;
+    notes.write_serie("A1".parse()?, &rows, true)?;
+    workbook.insert_sheet(notes)?;
+    let reopened = Workbook::from_bytes(workbook.into_bytes()?)?;
+    assert_eq!(reopened.sheet_names(), ["Sheet1", "Notes"]);
+    assert_eq!(reopened.sheet("Sheet1")?.scalar("D2".parse()?), Scalar::from(2.5));
+    ```
+
+=== "Python"
+
+    ```python
+    import datetime
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.excel import Sheet, Workbook
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = pathlib.Path(folder) / "trades.xlsx"
+        table = pa.table({
+            "id": pa.array([1, 2], pa.int64()),
+            "symbol": ["AAPL", None],
+            "traded": [datetime.date(2024, 1, 1), datetime.date(2024, 1, 2)],
+        })
+
+        # The record path: one worksheet, written and read like every medium.
+        handle = IOBase(path)
+        handle.overwrite_arrow_table(table)
+        assert handle.read_arrow_reader(field=table.schema).read_all() == table
+        inferred = handle.read_arrow_reader().read_all()
+        assert inferred.column("id").to_pylist() == [1.0, 2.0]
+        handle.overwrite_arrow_table(pa.table({"note": ["a"]}), sheet="Notes")
+
+        # The random-access path: any cell of any sheet, and a sheet as a Serie.
+        workbook = Workbook.open(path)
+        assert workbook.sheet_names == ["Sheet1", "Notes"]
+        sheet = workbook["Sheet1"]
+        assert sheet["B2"].as_py() == "AAPL"
+        assert sheet["B3"] is None
+        assert sheet["C2"].format == "date"
+        sheet["D1"] = "note"
+        sheet["D2"] = 2.5
+        assert sheet.into_serie(table.schema).into_arrow_table() == table
+        workbook.insert_sheet(Sheet.from_serie("Copy", table))
+        workbook.write_into(path)
+        assert Workbook.open(path)["Sheet1"]["D2"].as_py() == 2.5
+        assert IOBase(path).read_arrow_reader(sheet="Copy").read_all().num_rows == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { DataType, IOBase, Serie, Sheet, Workbook } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-excel-'))
+    const file = path.join(root, 'trades.xlsx')
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+    })
+
+    // The record path: one worksheet, written and read like every medium.
+    const handle = new IOBase(file)
+    handle.overwriteArrowTable(table)
+    const field = Serie.fromArrowBatch(table).field
+    assert.deepEqual([...handle.readArrowReader(handle.recordOptions().withField(field)).intoTable().getChild('id')], [1n, 2n])
+    assert.deepEqual([...handle.readArrowReader().intoTable().getChild('id')], [1, 2])
+    handle.overwriteArrowTable(new arrow.Table({ note: arrow.vectorFromArray(['a'], new arrow.Utf8()) }), handle.recordOptions().withSheet('Notes'))
+
+    // The random-access path: any cell of any sheet, and a sheet as a Serie.
+    const workbook = Workbook.open(file)
+    assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
+    const sheet = workbook.sheet('Sheet1')
+    assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
+    assert.equal(sheet.cell('B3'), null)
+    sheet.setCell('D1', 'note')
+    sheet.setCell('D2', new DataType('date32').scalar('2024-01-02'))
+    assert.equal(sheet.cell('D2').format, 'date')
+    assert.equal(sheet.intoSerie(field).asJs().length, 2)
+    workbook.insertSheet(Sheet.fromSerie('Copy', table))
+    workbook.writeInto(file)
+    assert.equal(Workbook.open(file).sheet('Sheet1').cell('D1').value.asJs(), 'note')
+    assert.equal(new IOBase(file).readArrowReader(handle.recordOptions().withSheet('Copy')).intoTable().numRows, 2)
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+What a read costs, in calls to the handle: the package index is the archive's own two reads (its size and the tail holding the directory) and each part read once - the sheet streamed, the shared strings and the styles held for the workbook's life. An inferred read passes the part twice, once to learn the field and once to stream the rows under it; a declared read passes it once. A write of an opened package reads it twice, once for the field the rows are shaped onto and once to carry the other parts across, and renders the sheet as the rows arrive with no row held past its batch. `rust/tests/iobase_calls.rs` pins the record doors' counts and `rust/tests/excel/workbook.rs` the workbook's, and `rust/tests/allocations.rs` pins that a cell read, a reference parse and a range test allocate nothing.
+
+### Excel performance
+
+The benchmark is `cargo bench -p yggdryl --bench media -- excel`, timing the record write and read of ten thousand rows of five columns, the inferred read, one cell through `Workbook`, and a sheet into and from a `Serie`; `python/benchmarks/media/excel.py` times the same file against openpyxl. Neither table is stated here until a release run measures them on a named machine.
 
 ## Iceberg
 

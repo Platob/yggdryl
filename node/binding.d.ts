@@ -1,6 +1,11 @@
 export {
   Arn,
   BatchReader,
+  CellRange,
+  CellRef,
+  ExcelRow,
+  Sheet,
+  Workbook,
   Bound,
   BoundSelector,
   ByteIterator,
@@ -74,7 +79,13 @@ import type {
   BoundSelector,
   ByteIterator,
   BytesParametersInput,
+  Cell as NativeCell,
+  CellRange,
+  CellRef,
   ChunkedSerie as NativeChunkedSerie,
+  ExcelRow,
+  Sheet,
+  Workbook,
   DataType,
   Digest,
   Field,
@@ -617,6 +628,52 @@ export interface JSValueHint<K extends DataTypeId = DataTypeId, V = unknown> {
 }
 
 declare module './index' {
+  namespace Sheet {
+    /**
+     * A sheet named `name` laid out from the rows of `value` - a `Serie`, or an
+     * Apache Arrow JS table or record batch - a header row of the column
+     * names first unless `header` is false.
+     */
+    function fromSerie(
+      name: string,
+      value: Serie | ArrowRecordBatch | ArrowTable,
+      options?: { header?: boolean } | null,
+    ): Sheet
+  }
+
+  interface Sheet extends Iterable<ExcelRow> {
+    /** Put a JavaScript value at `reference`, answering the cell it replaced. */
+    setCell(reference: CellRefInput, value: unknown): Cell | null
+    /**
+     * Lay the rows of `value` out with their top-left cell at `anchor`, a
+     * header row of the column names first unless `header` is false.
+     */
+    writeSerie(
+      anchor: CellRefInput,
+      value: Serie | ArrowRecordBatch | ArrowTable,
+      options?: { header?: boolean } | null,
+    ): void
+    /** Lay the rows of `value` out under the last stated row. */
+    extendFromSerie(value: Serie | ArrowRecordBatch | ArrowTable): void
+    /** The rows holding a cell, in order. */
+    [Symbol.iterator](): IterableIterator<ExcelRow>
+  }
+
+  interface CellRange extends Iterable<CellRef> {
+    /** Every cell of the range, row by row. */
+    [Symbol.iterator](): IterableIterator<CellRef>
+  }
+
+  interface Workbook extends Iterable<Sheet> {
+    /** The worksheets, in tab order, as live views. */
+    [Symbol.iterator](): IterableIterator<Sheet>
+  }
+
+  interface Cell {
+    /** The cell's parts and its value's JSON form. */
+    toJSON(): CellDocument
+  }
+
   namespace PartitionSpec {
     /** Parse either the v1 field array or v2 object through the native core. */
     function fromJSON(value: unknown): PartitionSpec
@@ -2574,6 +2631,60 @@ export interface Avro {
 /** Apache Avro operations backed entirely by the Rust core. */
 export declare const avro: Avro
 
+/** A cell reference: a `CellRef`, its `A1` text, or a `[row, column]` pair. */
+export type CellRefInput = CellRef | string | [number, number]
+/** A cell range: a `CellRange`, its `A1:C3` text, or a pair of references. */
+export type CellRangeInput = CellRange | string | [CellRefInput, CellRefInput]
+/** `1900` or `1904`: which day a workbook counts its serial dates from. */
+export type DateSystem = '1900' | '1904'
+/** `visible`, `hidden` or `veryHidden`. */
+export type SheetState = 'visible' | 'hidden' | 'veryHidden'
+
+/** A cell as `toJSON` spells it. */
+export interface CellDocument {
+  reference: string
+  kind: string
+  format: string
+  formula: string | null
+  error: string | null
+  value: unknown
+}
+
+/** One cell: its reference, kind, number format, value, formula and error. */
+export type Cell = NativeCell
+/** The public constructor reads a JavaScript value through Scalar. */
+export declare const Cell: Omit<typeof NativeCell, 'prototype'> & {
+  readonly prototype: Cell
+  new (
+    reference: CellRefInput,
+    value: unknown,
+    options?: { dateSystem?: DateSystem } | null,
+  ): Cell
+}
+
+/** The workbook, its sheets and cells, and the grid's bounds. */
+export interface Excel {
+  readonly Workbook: typeof Workbook
+  readonly Sheet: typeof Sheet
+  readonly Row: typeof ExcelRow
+  readonly Cell: typeof Cell
+  readonly CellRef: typeof CellRef
+  readonly CellRange: typeof CellRange
+  /** 1,048,576 rows. */
+  readonly MAX_ROWS: number
+  /** 16,384 columns, `A` to `XFD`. */
+  readonly MAX_COLUMNS: number
+  /** 32,767 characters in one cell. */
+  readonly MAX_CELL_TEXT: number
+  /** 31 characters in a sheet name. */
+  readonly MAX_SHEET_NAME: number
+  /** `Sheet1`. */
+  readonly DEFAULT_SHEET_NAME: string
+}
+
+/** Office Open XML workbooks, over the core's own reader and writer. */
+export declare const excel: Excel
+
 export interface CodecOptions {
   /** Explicit format; generic APIs otherwise infer a path suffix or content. */
   format?: SingleCodecFormat
@@ -3485,6 +3596,12 @@ declare module './index' {
 
   /** A native handle, any identifier naming a location, or location text. */
   type LocationInput = IOBase | Url | Uri | Urn | Arn | string
+  /** A cell reference: a `CellRef`, its `A1` text, or a `[row, column]` pair. */
+  type CellRefInput = CellRef | string | [number, number]
+  /** A cell range: a `CellRange`, its `A1:C3` text, or a pair of references. */
+  type CellRangeInput = CellRange | string | [CellRefInput, CellRefInput]
+  /** A workbook's source: the package bytes, or any location input. */
+  type WorkbookInput = Buffer | LocationInput
   /** A caller-supplied Arrow-compatible file system as a plain object. */
   type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */

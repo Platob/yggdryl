@@ -460,7 +460,7 @@ pub(crate) fn serie_from_value(
 ///
 /// A columnar object is [`columnar`]'s; any other value is
 /// [`serie_from_value`]'s.
-fn serie_from_py(
+pub(crate) fn serie_from_py(
     value: &Bound<'_, PyAny>,
     field: Option<&Bound<'_, PyAny>>,
     options: ArrowCastOptions,

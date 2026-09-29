@@ -45,7 +45,7 @@
     FIX directions: directions: list[FixDirection] (TypedDict code: str, patterns: list[str]), the FIX:directions rules of tag 385's field in the dictionary's order, [] when absent; assignable from any iterable of mappings, an empty one removes the property, a code outside the field's set, a code named twice under any spelling or a pattern the regex crate refuses is ValueError leaving the field unchanged
   MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DIRECTORY, DOC, DOCX, FILE, FIX, FIXML, FIXUL, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, PUFFIN, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, ULLINK, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_local_path, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_directory, is_encoding, is_filesystem, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, top_level
   PythonMetadata: __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __le__, __lt__, __ne__, __reduce__, __repr__, __str__, class_name, from_type, import_path, is_importable, is_keyword_constructed, kind, module, properties, qualname, stable_hash
-  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, field, filter, for_media_type, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, partition_pairs, plan, remove_field, require_field, row_offset, safe, select, stable_hash, sync_marker, timezone, write_batch_row_size
+  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, field, filter, for_media_type, header, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, partition_pairs, plan, range, remove_field, require_field, row_offset, safe, select, sheet, stable_hash, sync_marker, timezone, write_batch_row_size; sheet, header and range are the Excel sections, None on every other encoding and a ValueError to set there
     sections: field, filter, select, merge_by and plan setters take any value Scalar.from_ reads - a native value, text, a list of projections or conditions, a dict of aliases, None - and the core reads it with from_scalar
   TextOptions: apply_arrow_batch, apply_arrow_reader, autotype, batch_row_size, capture_names, commit_row_size, field, filter, framing, leading_fragment, level, limit_arrow_reader, linesep, lstrip, max_byte_size, max_record_byte_size, max_row_size, merge_by, mime_type, name, parse_mtime, partition_pairs, plan, remove_field, rename_columns, require_field, row_offset, rowheader, rstrip, safe, select, source_field, stable_hash, start_rownum, timezone, write_batch_row_size
   Timezone: NAIVE, UTC, abbreviation_at, aliases, from_offset, from_value, into_local, into_utc, is_fixed, is_known, is_naive, is_saving_at, is_utc, key, observes_saving, offset_at, registered, stable_hash, standard_offset, utcoffset
@@ -104,8 +104,8 @@
     S3Path / S3File / S3Folder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
-  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
-  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro and Xmla under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
+  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Excel, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro, excel and iceberg are modules of their own at the root
+  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro, Xmla and Excel under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
   text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml, yaml and xml are modules of their own at the root
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
@@ -245,6 +245,34 @@
   avro.Block
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
+  excel
+    exports: DEFAULT_SHEET_NAME, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS, MAX_SHEET_NAME, Cell, CellRange, CellRef, Excel, Row, Sheet, Workbook; Row is the native ExcelRow, and the five constants the grid's bounds
+  excel.CellRef
+    constructor: CellRef(value: CellRef | str | tuple[int, int]) - an A1 text (`$B$2` included), a zero-based (row, column) pair, or another reference
+    statics: column_name, column_index
+    instance: row, column, is_in_grid
+    protocol: frozen; equality, order and hash over the row and column; str is the A1 text; pickle, copy
+  excel.CellRange
+    constructor: CellRange(value: CellRange | str | tuple[CellRefInput, CellRefInput]) - `A1:C10`, `A:C`, `3:5`, `A3:F`, or two references in any order
+    statics: all
+    instance: start, end, row_size, column_size, is_row_open, is_column_open, contains, contains_row, contains_column, __contains__, __iter__ (every cell, row by row)
+    protocol: frozen; equality, order, hash, str, pickle, copy
+  excel.Cell
+    constructor: Cell(reference: CellRefInput, value: object, *, date_system: DateSystem = "1900") - the value read through Scalar.from_, a date or an instant becoming a serial under its number format
+    instance: reference, row, column, kind, format, value, as_py, formula, error, is_null, text, with_formula, with_error, at
+    protocol: frozen; equality and hash over every part; pickle, copy
+  excel.Row
+    instance: index, cells, cell, __len__, __iter__
+  excel.Sheet
+    constructor: Sheet(name: str = "Sheet1", *, date_system: DateSystem = "1900", state: SheetState = "visible")
+    statics: from_serie(name, value, *, header=True) - a Serie, a pyarrow table or batch, a pandas or polars frame
+    instance: name (writable), state (writable), date_system, __len__ (the rows holding a cell), is_empty, dimension, cell, scalar, set_cell, insert_cell, remove_cell, __getitem__ (a reference answers the cell or None, a range a sliced Sheet), __setitem__, __delitem__, __contains__, rows, row, cells, cells_in, column, slice, insert_rows, remove_rows, write_serie(anchor, value, *, header=True), extend_from_serie, into_serie(field=None, *, header=True, safe=True, representation="value")
+    protocol: mutable, unhashable; equality over the name, the date system, the state and the cells; a Sheet handed out by a Workbook is a live view of the sheet inside it; pickle and copy detach one
+  excel.Workbook
+    constructor: Workbook()
+    statics: open(value: IOBase | Url | str | os.PathLike | bytes) - a located handle reopened at its location, an in-memory one copied; from_bytes(data)
+    instance: date_system (writable), sheet_names, sheet_kind, __len__, is_empty, __contains__ (a name, compared without case), __iter__ (live Sheet views in tab order), sheet, get_sheet, sheet_at, __getitem__ (a name or a tab index), add_sheet, insert_sheet, remove_sheet, rename_sheet, __delitem__, into_bytes, write_into(target), handle_reads
+    protocol: mutable, unhashable; every sheet parsed on first access and held; a missing sheet is a KeyError
   iceberg.IcebergOptions
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
@@ -407,7 +435,8 @@
     instance: combined, consumed, field, intoIpc, intoTable
   RecordOptions
     statics: forMediaType, forMimeType, from
-    instance: batchRowSize, blockCodec, clone, commitRowSize, compare, compression, equals, field, filter, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, partitionPairs, plan, rowOffset, safe, select, stableHash, syncMarker, timezone, toString, withBatchRowSize, withBlockCodec, withCommitRowSize, withCompression, withField, withFilter, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withPlan, withRowOffset, withSafe, withSelect, withSyncMarker
+    instance: batchRowSize, blockCodec, clone, commitRowSize, compare, compression, equals, field, filter, header, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, partitionPairs, plan, range, rowOffset, safe, select, sheet, stableHash, syncMarker, timezone, toString, withBatchRowSize, withBlockCodec, withCommitRowSize, withCompression, withField, withFilter, withHeader, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withPlan, withRange, withRowOffset, withSafe, withSelect, withSheet, withSyncMarker
+    excel sections: sheet, header and range read and write the Excel sections - null on every other encoding and an error to set there; range takes a CellRange, its text or a pair of references
     sections: field, filter, select, mergeBy and plan are read/write properties, the setters taking a Selector | Term | string | Array<Term | string> (filter: Filter | Term | string; plan: Plan | Selector | Filter | Field | string); partitionPairs() answers the equalities the filter pins
   TextOptions
     instance: autotype, batchRowSize, captureNames, clone, commitRowSize, compare, equals, field, filter, framing, leadingFragment, level, linesep, lstrip, maxByteSize, maxRecordByteSize, maxRowSize, mergeBy, mimeType, name, parseMtime, partitionPairs, plan, renameColumns, rowOffset, rowheader, rstrip, safe, select, sourceField, stableHash, startRownum, timezone, toString, withBatchRowSize, withCommitRowSize, withField, withFilter, withLevel, withMaxByteSize, withMaxRowSize, withMergeBy, withName, withPlan, withRowOffset, withSafe, withSelect
@@ -525,6 +554,32 @@
   avro
     statics: Schema, blocks, dumps, dumpsSingle, loads, loadsSingle
     decode limits: maxDepth, maxInputBytes, maxNodes; blocks is a fused lazy iterator
+  CellRef
+    constructor: CellRef(value: CellRefInput) - an A1 text (`$B$2` included), a zero-based [row, column] pair, or another reference
+    statics: columnName, columnIndex
+    instance: row, column, isInGrid, equals, compare, clone, toString, toJSON
+  CellRange
+    constructor: CellRange(value: CellRangeInput) - `A1:C10`, `A:C`, `3:5`, `A3:F`, or two references in any order
+    statics: all
+    instance: start, end, rowSize, columnSize, isRowOpen, isColumnOpen, contains, containsRow, containsColumn, equals, compare, clone, toString, toJSON, Symbol.iterator (every cell, row by row)
+  Cell
+    constructor: Cell(reference: CellRefInput, value: unknown, options?: { dateSystem }) - the value read through Scalar.from, a Date becoming a serial under its number format
+    statics: fromParts
+    instance: reference, row, column, kind, format, value, formula, error, isNull, text, withFormula, withError, at, equals, clone, toString, toJSON
+  ExcelRow
+    instance: index, cells, cell, size
+  Sheet
+    constructor: Sheet(name?: string, options?: { dateSystem, state })
+    statics: fromSerie(name, value, options?: { header }) - a Serie, or an Arrow JS table or record batch
+    instance: name (writable), state (writable), dateSystem, size (the rows holding a cell), isEmpty, dimension, cell, scalar, has, setCell, insertCell, removeCell, rows, row, cells, cellsIn, column, slice, insertRows, removeRows, writeSerie(anchor, value, options?: { header }), extendFromSerie, intoSerie(field?, options?: { header, safe, representation }), equals, clone, toString, Symbol.iterator (the rows)
+    roles: a Sheet handed out by a Workbook is a live view of the sheet inside it; clone detaches one
+  Workbook
+    constructor: Workbook()
+    statics: open(value: WorkbookInput) - an IOBase, a Url, a path or bytes; a located handle reopened at its location, an in-memory one copied; fromBytes(bytes)
+    instance: dateSystem (writable), sheetNames, sheetKind, size, isEmpty, has (a name, compared without case), sheets, sheet, getSheet, sheetAt, addSheet, insertSheet, removeSheet, renameSheet, intoBytes, writeInto, handleReads, toString, Symbol.iterator (live Sheet views in tab order)
+  excel
+    statics: Workbook, Sheet, Row, Cell, CellRef, CellRange
+    constants: MAX_ROWS, MAX_COLUMNS, MAX_CELL_TEXT, MAX_SHEET_NAME, DEFAULT_SHEET_NAME - the grid's bounds and the sheet a new workbook opens with
   fix
     constants: ULBRIDGE_ROWHEADER: string, the row header a ULBridge log writes in front of every line, as a rowheader for a text read - the crate's own text rather than a second copy of it; its clock is mtime, consumed into each line's currunix - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; msgsessionid, msgctxid, msgseqnum and msgpluginid are named for the fields they fill, and msgthreadid and loglevel name none and are the capture's own columns
     values: FixRegistry, FixMsg, FixCodec, MsgType, FixMessages

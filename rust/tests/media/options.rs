@@ -13,6 +13,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
+use yggdryl::excel::ExcelOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
@@ -230,6 +231,24 @@ fn record_options_have_complete_value_traits_and_stable_hashes() {
     assert_eq!(options.stable_hash(), equal.stable_hash());
     assert_ne!(options, changed);
     assert_ne!(options.stable_hash(), changed.stable_hash());
+
+    // The workbook's own settings are part of its value and of its hash.
+    let excel = ExcelOptions::new().with_sheet("Trades");
+    let options = RecordOptions::from(excel.clone());
+    let equal = RecordOptions::Excel(ExcelOptions::new().with_sheet("Trades"));
+    assert_traits(&excel);
+    assert_eq!(options, equal);
+    assert_eq!(options.stable_hash(), equal.stable_hash());
+    for changed in [
+        excel.clone().with_sheet("Quotes"),
+        excel.clone().with_header(false),
+        excel.clone().with_range("A3:F".parse().unwrap()),
+        excel.clone().with_batch_row_size(3),
+    ] {
+        let changed = RecordOptions::from(changed);
+        assert_ne!(options, changed, "{changed:?}");
+        assert_ne!(options.stable_hash(), changed.stable_hash(), "{changed:?}");
+    }
 }
 
 #[test]
@@ -533,6 +552,28 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
     let csv = yggdryl::MediaType::new(yggdryl::MimeType::CSV);
     let message = RecordOptions::for_media_type(&csv).unwrap_err().to_string();
     assert!(!message.contains("document is one value"), "{message}");
+    assert!(
+        message.contains("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "{message}"
+    );
+
+    // A workbook is a record encoding, never a refused document; the legacy
+    // BIFF workbook is not one.
+    assert!(matches!(
+        RecordOptions::for_mime_type(&yggdryl::MimeType::XLSX),
+        Ok(RecordOptions::Excel(_))
+    ));
+    let message = RecordOptions::for_mime_type(&yggdryl::MimeType::XLS)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.starts_with("invalid record value at $: "),
+        "{message}"
+    );
+    assert!(
+        message.contains("got application/vnd.ms-excel"),
+        "{message}"
+    );
 }
 
 #[test]
@@ -558,6 +599,26 @@ fn the_enum_mirrors_the_limits_of_the_encoding_it_holds() {
     };
     assert_eq!(inner.max_row_size, Some(7));
     assert_eq!(inner.max_byte_size, Some(1024));
+
+    let media_type = Url::from_str("file:///t.xlsx").unwrap().media_type();
+    let options = RecordOptions::for_media_type(&media_type)
+        .unwrap()
+        .with_max_row_size(7)
+        .with_max_byte_size(1024);
+    assert_eq!(options.mime_type(), yggdryl::MimeType::XLSX);
+    assert_eq!(options.max_row_size(), Some(7));
+    assert_eq!(options.max_byte_size(), Some(1024));
+    let RecordOptions::Excel(inner) = options else {
+        panic!("an xlsx handle names the workbook encoding");
+    };
+    assert_eq!(inner.max_row_size, Some(7));
+    assert_eq!(inner.max_byte_size, Some(1024));
+    // Everything else is the workbook's default: the first sheet, a header
+    // row, the whole grid.
+    assert_eq!(inner.sheet, None);
+    assert!(inner.header);
+    assert_eq!(inner.range, None);
+    assert_eq!(inner.cells(), yggdryl::excel::CellRange::all());
 }
 
 #[test]
@@ -599,6 +660,7 @@ fn every_concrete_options_type_carries_the_same_commit_cadence() {
     assert_cadence(IpcOptions::new());
     assert_cadence(yggdryl::avro::AvroOptions::new());
     assert_cadence(yggdryl::text::TextOptions::new());
+    assert_cadence(ExcelOptions::new());
     #[cfg(feature = "parquet")]
     assert_cadence(yggdryl::parquet::ParquetOptions::new());
 
@@ -663,6 +725,130 @@ fn avro_only_setters_reject_another_inferred_encoding() {
         assert!(message.contains("Avro"), "{message}");
         assert!(message.contains("arrow.stream"), "{message}");
     }
+}
+
+#[test]
+fn excel_only_options_are_owned_by_the_generic_core_variant() {
+    let media_type = Url::from_str("file:///t.xlsx").unwrap().media_type();
+    let mut options = RecordOptions::for_media_type(&media_type).unwrap();
+
+    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(options.excel_header(), Some(true));
+    assert_eq!(options.excel_range(), None);
+
+    options.set_excel_sheet(Some("Trades")).unwrap();
+    options.set_excel_header(false).unwrap();
+    let range: yggdryl::excel::CellRange = "B2:D9".parse().unwrap();
+    options.set_excel_range(Some(range)).unwrap();
+    assert_eq!(options.excel_sheet(), Some("Trades"));
+    assert_eq!(options.excel_header(), Some(false));
+    assert_eq!(options.excel_range(), Some(range));
+    let RecordOptions::Excel(inner) = &options else {
+        panic!("an xlsx handle names the workbook encoding");
+    };
+    assert_eq!(inner.sheet.as_deref(), Some("Trades"));
+    assert!(!inner.header);
+    assert_eq!(inner.cells(), range);
+
+    // A name Excel refuses is refused by the setter, which leaves the sheet
+    // it had.
+    for (name, reason) in [
+        ("", "expected a sheet name, got the empty text"),
+        (
+            "a sheet name longer than thirty-one",
+            "expected a sheet name of at most 31 characters, got 35 in",
+        ),
+        (
+            "Q1:Q2",
+            "expected a sheet name without any of \\ / ? * [ ] :, got ':' in \"Q1:Q2\"",
+        ),
+        (
+            "'quoted'",
+            "expected a sheet name that neither opens nor closes with an apostrophe",
+        ),
+        (
+            "history",
+            "expected a sheet name other than the reserved `History`",
+        ),
+    ] {
+        let error = options.set_excel_sheet(Some(name)).unwrap_err();
+        assert!(
+            matches!(error, yggdryl::Error::InvalidRecord { .. }),
+            "{error:?}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.starts_with("invalid record value at $.sheet: "),
+            "{message}"
+        );
+        assert!(message.contains(reason), "{name:?}: {message}");
+        assert_eq!(options.excel_sheet(), Some("Trades"), "{name:?}");
+    }
+
+    // `None` clears back to the defaults: the first sheet, the whole grid.
+    options.set_excel_sheet(None).unwrap();
+    options.set_excel_range(None).unwrap();
+    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(options.excel_range(), None);
+}
+
+#[test]
+fn excel_only_setters_reject_another_inferred_encoding() {
+    let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
+    let mut options = RecordOptions::for_media_type(&media_type).unwrap();
+
+    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(options.excel_header(), None);
+    assert_eq!(options.excel_range(), None);
+    for (error, path, setting) in [
+        (
+            options.set_excel_sheet(Some("Trades")).unwrap_err(),
+            "$.sheet",
+            "a worksheet",
+        ),
+        (
+            options.set_excel_header(false).unwrap_err(),
+            "$.header",
+            "a header row",
+        ),
+        (
+            options
+                .set_excel_range(Some("A1:B2".parse().unwrap()))
+                .unwrap_err(),
+            "$.range",
+            "a cell range",
+        ),
+    ] {
+        assert!(
+            matches!(error, yggdryl::Error::InvalidRecord { .. }),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid record value at {path}: expected Excel options to set {setting}, \
+                 got application/vnd.apache.arrow.stream options"
+            )
+        );
+    }
+    assert_eq!(options, RecordOptions::for_media_type(&media_type).unwrap());
+
+    // The other encodings' setters refuse workbook options the same way.
+    let workbook = Url::from_str("file:///t.xlsx").unwrap().media_type();
+    let mut options = RecordOptions::for_media_type(&workbook).unwrap();
+    assert_eq!(options.avro_block_codec(), None);
+    assert_eq!(options.timezone(), None);
+    let message = options
+        .set_avro_block_codec("null")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("expected Avro options"), "{message}");
+    assert!(
+        message.contains(
+            "got application/vnd.openxmlformats-officedocument.spreadsheetml.sheet options"
+        ),
+        "{message}"
+    );
 }
 
 #[cfg(feature = "parquet")]
@@ -836,6 +1022,10 @@ fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
     let mut ipc = RecordOptions::Ipc(IpcOptions::new());
     set_file_threads(&mut ipc, 3);
     assert_eq!(file_threads(&ipc), None);
+    // A workbook reads its sheet on one thread.
+    let mut excel = RecordOptions::Excel(ExcelOptions::new());
+    set_file_threads(&mut excel, 3);
+    assert_eq!(file_threads(&excel), None);
 }
 
 /// The stored `value` column of a write, and a batch of text to complete onto

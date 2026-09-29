@@ -10,6 +10,7 @@ answers the same `IOMedia` calls; this table is what differs.
 | Arrow IPC file | `application/vnd.apache.arrow.file`, `.arrow`, `.feather`, `.ipc` | default | as the stream | as the stream |
 | Parquet | `application/vnd.apache.parquet`, `.parquet` | `parquet` feature | 65,536-row batches (or `batch_row_size`), row groups and columns decoded on every thread, batches in file order | row groups encoded in parallel, byte-identical to a one-thread write; a union column is refused by name |
 | Avro container | `application/avro`, `.avro` | default (`snappy` blocks need `parquet`) | blocks decoded in parallel, batches in file order; the container carries its writer schema | blocks of about 1 MB, encoded and compressed in parallel |
+| Excel workbook | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `.xlsx` | default | one worksheet: the first row of the range names the columns, every cell below is a value - a number a `float64`, a styled serial a `date32`, `time32(ms)`, `datetime64(ms)` or `duration64(ms)` in the workbook's date system - the part streamed row by row; a sheet the workbook lacks reads as the empty stream | one worksheet rendered as the batches arrive, a header row of the column names first; every other part of an opened package is kept, and a `.xlsx.gz` name is refused |
 | Plain text | `text/plain`, `.txt`, `.log` | default | one row per line (or per framed chain): 16 event columns, `body`, then one column per `rowheader` capture | writes each row's non-null, non-empty `body` as one line |
 | Iceberg table | a folder with `metadata/` and `data/` | `iceberg` feature (implies `parquet`) | a scan planned from the snapshot's manifests, files decoded side by side | `append`/`overwrite`/`merge` commits of Parquet data files |
 | Partitioned folder | a folder of `column=value/` leaves | the leaves' encodings | every leaf, partition columns restored from the path | rows routed to their leaf; the leaf stores only non-partition columns |
@@ -29,6 +30,9 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 | Parquet | `key_value_metadata` | none | footer key/value pairs |
 | Avro | `block_codec` | `deflate` | `null`, `deflate`, `snappy`, `zstandard` |
 | Avro | `sync_marker` | random per write | 16 bytes, for byte-reproducible files |
+| Excel | `sheet` | the first worksheet | a sheet name; missing on read is the empty stream, on write the sheet is added beside the others |
+| Excel | `header` | on | whether the range's first row names the columns; off, the columns are named by their letters |
+| Excel | `range` | the sheet's used range | `A1:C10`, `A:C`, `3:5`, `A3:F` |
 | Plain text | `TextOptions`: `rowheader`, `autotype` (on), `framing`, `lstrip`/`rstrip`, `linesep`, `start_rownum`, `parse_mtime` (on), `leading_fragment`, `max_record_byte_size`, `rename_columns`, `timezone` | 35,840 rows or 64 MiB per batch | named regex captures become columns |
 | every encoding | `level` | 6 | outer `.gz`/`.zz`/`.zst` level |
 | Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `compact_after_commits`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
@@ -40,6 +44,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 | Arrow IPC | skipped columns are never decoded | rows filtered after decode | stops pulling; the boundary batch is sliced |
 | Parquet | unprojected column chunks are never fetched (footer-first read above 1 MB; chunks under 1 MB apart share a request) | row groups whose footer statistics rule it out are skipped, then rows filtered; float min/max never prune (NaN), null counts do | decodes lazily, one file at a time, on one thread |
 | Avro | skipped fields jumped by their length prefixes | rows filtered after decode | stays on one thread |
+| Excel | applied after the cells become rows | applied after the cells become rows | stops pulling rows; the row count is a pass over the part with no value read |
 | Plain text | applied after the lines become rows | applied after the lines become rows; a `where` may name a capture | stops pulling lines |
 | Partitioned folder | per leaf | each filter equality (`partition_pairs()`) prunes leaves by path before listing below them; ranges and `in` lists prune nothing by path | across leaves |
 | Iceberg | projection per data file | manifest-list summaries, then partition tuples and column bounds, then rows; the whole expression language prunes | across files |
@@ -51,6 +56,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 - Merge: keys by Arrow row format (null matches null, last arrival wins); holds only the stored side in memory. Iceberg merge keys are the identity partition columns plus `merge_by`; a table with neither is refused; merge on format v3 is refused.
 - Parquet reads copy the bytes they keep into reader-owned memory, so rewriting the file while a reader lives is safe.
 - Iceberg: promotions are `int32 -> int64`, `float32 -> float64`, same-scale decimal widening; field IDs are preserved and never reused; append and metadata-only commits rebase on conflict, overwrite/merge/compact restore state and report the conflict.
+- Excel: the grid is 1,048,576 rows by 16,384 columns and a cell holds at most 32,767 characters; text is escaped as ECMA-376 spells it (`_xHHHH_`), which Excel reads back and openpyxl leaves as written; an inferred required column is one every row states.
 - Plain text: a blank physical line separates records and never is one; bytes are decoded once in the handle's declared charset, otherwise as UTF-8 with Windows-1252 fallback per invalid byte.
 
 Pages: https://platob.github.io/yggdryl/media/ (per format) and https://platob.github.io/yggdryl/holder/#records (the shared surface).

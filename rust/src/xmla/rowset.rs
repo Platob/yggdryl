@@ -312,11 +312,7 @@ pub fn encode_name(name: &str) -> SmolStr {
         };
         let escape = !allowed || (character == '_' && characters.peek() == Some(&'x'));
         if escape {
-            let mut units = [0_u16; 2];
-            for unit in character.encode_utf16(&mut units) {
-                use std::fmt::Write as _;
-                let _ = write!(encoded, "_x{unit:04X}_");
-            }
+            crate::xml::write_x_escape(&mut encoded, character);
         } else {
             encoded.push(character);
         }
@@ -342,46 +338,7 @@ pub fn decode_name(encoded: &str) -> SmolStr {
     if encoded == EMPTY_NAME {
         return SmolStr::new_static("");
     }
-    let mut decoded = String::with_capacity(encoded.len());
-    let mut pending: Option<u16> = None;
-    let mut rest = encoded;
-    while !rest.is_empty() {
-        if let Some(after) = rest.strip_prefix("_x") {
-            if after.len() >= 5 && after.as_bytes()[4] == b'_' {
-                if let Ok(unit) = u16::from_str_radix(&after[..4], 16) {
-                    rest = &after[5..];
-                    if let Some(high) = pending.take() {
-                        if (0xDC00..=0xDFFF).contains(&unit) {
-                            let code = 0x10000
-                                + ((u32::from(high) - 0xD800) << 10)
-                                + (u32::from(unit) - 0xDC00);
-                            decoded.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
-                            continue;
-                        }
-                        // A high half no low half follows spells no character,
-                        // whatever comes next.
-                        decoded.push('\u{FFFD}');
-                    }
-                    if (0xD800..=0xDBFF).contains(&unit) {
-                        pending = Some(unit);
-                    } else {
-                        decoded.push(char::from_u32(u32::from(unit)).unwrap_or('\u{FFFD}'));
-                    }
-                    continue;
-                }
-            }
-        }
-        let character = rest.chars().next().unwrap_or('\u{FFFD}');
-        if pending.take().is_some() {
-            decoded.push('\u{FFFD}');
-        }
-        decoded.push(character);
-        rest = &rest[character.len_utf8()..];
-    }
-    if pending.is_some() {
-        decoded.push('\u{FFFD}');
-    }
-    SmolStr::new(decoded)
+    SmolStr::new(crate::xml::decode_x_escapes(encoded))
 }
 
 /// One column of a rowset: the element name it is spelled under, how its

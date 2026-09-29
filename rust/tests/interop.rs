@@ -4,6 +4,8 @@
 mod avro;
 #[path = "interop/charset.rs"]
 mod charset;
+#[path = "interop/excel.rs"]
+mod excel;
 #[cfg(feature = "iceberg")]
 #[path = "interop/iceberg.rs"]
 mod iceberg;

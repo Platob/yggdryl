@@ -4,13 +4,14 @@
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
+use yggdryl::excel::Workbook;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::Media;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::TextOptions;
-use yggdryl::{DataType, Field, MediaType, MimeType, StructType, Url};
+use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
@@ -72,6 +73,10 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("catalog.xmla")).unwrap(),
         Media::Xmla(_)
     ));
+    assert!(matches!(
+        Media::open(handle("trades.xlsx")).unwrap(),
+        Media::Excel(_)
+    ));
 }
 
 #[test]
@@ -93,6 +98,11 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
         RecordOptions::Text(_)
     ));
 
+    let excel = Media::excel(Holder::buffer(Buffer::new())).with_field(schema());
+    let options = excel.record_options().unwrap();
+    assert!(matches!(options, RecordOptions::Excel(_)));
+    assert_eq!(options.field(), Some(schema()));
+
     #[cfg(feature = "parquet")]
     {
         let parquet = Media::parquet(Holder::buffer(Buffer::new())).with_field(schema());
@@ -107,11 +117,29 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
 fn an_unimplemented_encoding_is_named_rather_than_guessed() {
     let message = Media::open(handle("trades.csv")).unwrap_err().to_string();
     assert!(message.contains("text/csv"), "{message}");
+    // The refusal lists the workbook among what this build implements.
+    assert!(
+        message.contains("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "{message}"
+    );
+
+    // A legacy BIFF workbook is not the Office Open XML one: `.xls` is named
+    // and refused rather than read as a package.
+    let message = Media::open(handle("trades.xls")).unwrap_err().to_string();
+    assert!(
+        message.contains("got application/vnd.ms-excel"),
+        "{message}"
+    );
 }
 
 #[test]
 fn every_variant_round_trips_batches_through_the_same_calls() {
-    let mut names = vec!["trades.arrows", "trades.arrows.gz", "trades.xmla"];
+    let mut names = vec![
+        "trades.arrows",
+        "trades.arrows.gz",
+        "trades.xmla",
+        "trades.xlsx",
+    ];
     if cfg!(feature = "parquet") {
         names.push("trades.parquet");
     }
@@ -139,7 +167,7 @@ fn every_variant_round_trips_batches_through_the_same_calls() {
 
 #[test]
 fn generic_media_preserves_commit_cadence_through_variant_redirection() {
-    let mut names = vec!["committed.arrows", "committed.avro"];
+    let mut names = vec!["committed.arrows", "committed.avro", "committed.xlsx"];
     if cfg!(feature = "parquet") {
         names.push("committed.parquet");
     }
@@ -153,6 +181,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
             Media::Xmla(xmla) => xmla.options_mut().set_commit_row_size(Some(1)),
+            Media::Excel(excel) => excel.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();
@@ -173,6 +202,21 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             schema(),
             "{name}"
         );
+
+        if name.ends_with(".xlsx") {
+            // Two commits of one row: the first overwrites and writes the
+            // header, the second appends its row under the first.
+            let workbook = Workbook::from_bytes(media.read_all_bytes().unwrap()).unwrap();
+            assert_eq!(workbook.sheet_names(), vec!["Sheet1"]);
+            let sheet = workbook.sheet("Sheet1").unwrap();
+            assert_eq!(sheet.dimension(), Some("A1:B3".parse().unwrap()));
+            assert_eq!(sheet.scalar("A1".parse().unwrap()), Scalar::from("id"));
+            assert_eq!(sheet.scalar("B1".parse().unwrap()), Scalar::from("symbol"));
+            assert_eq!(sheet.scalar("A2".parse().unwrap()), Scalar::from(1.0));
+            assert_eq!(sheet.scalar("B2".parse().unwrap()), Scalar::from("AAPL"));
+            assert_eq!(sheet.scalar("A3".parse().unwrap()), Scalar::from(2.0));
+            assert_eq!(sheet.scalar("B3".parse().unwrap()), Scalar::Null);
+        }
     }
 }
 
@@ -191,6 +235,20 @@ fn media_mirrors_the_bytes_of_its_handle() {
     );
     assert_eq!(media.size(), media.read_all_bytes().unwrap().len() as u64);
     assert_eq!(media.media_type().base(), &MimeType::ARROW_STREAM);
+}
+
+#[test]
+fn a_workbook_media_mirrors_the_package_bytes_of_its_handle() {
+    let mut media = Media::open(handle("trades.xlsx"))
+        .unwrap()
+        .with_field(schema());
+    let options = media.record_options().unwrap();
+    media.overwrite_arrow_reader(reader(), &options).unwrap();
+
+    // An Office Open XML workbook is a ZIP package: a local file header first.
+    assert_eq!(media.read_range_bytes(0, 4).unwrap(), *b"PK\x03\x04");
+    assert_eq!(media.size(), media.read_all_bytes().unwrap().len() as u64);
+    assert_eq!(media.media_type().base(), &MimeType::XLSX);
 }
 
 #[test]
