@@ -462,9 +462,9 @@ const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, 
   crosscode: code, ticker: 'AAPL', side, price, quantity, state: 'NEW',
 })
 const stream = [
-  quote(T, 'B1', 'BUY', '189.48', 300),
+  quote(T, 'B1', 'BUYS', '189.48', 300),
   quote(T, 'A1', 'SELL', '189.52', 100),
-  quote(T + 20n * SECOND, 'B2', 'BUY', '189.50', 200),
+  quote(T + 20n * SECOND, 'B2', 'BUYS', '189.50', 200),
   quote(T + 70n * SECOND, 'A2', 'SELL', '189.51', 50),
 ]
 // Three books: the two quotes at T share one instant.

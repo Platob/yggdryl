@@ -518,9 +518,9 @@ def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.Q
     return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
 
 stream = [
-    quote(T, "B1", "BUY", "189.48", 300),
+    quote(T, "B1", "BUYS", "189.48", 300),
     quote(T, "A1", "SELL", "189.52", 100),
-    quote(T + 20 * SECOND, "B2", "BUY", "189.50", 200),
+    quote(T + 20 * SECOND, "B2", "BUYS", "189.50", 200),
     quote(T + 70 * SECOND, "A2", "SELL", "189.51", 50),
 ]
 # Three books: the two quotes at T share one instant.

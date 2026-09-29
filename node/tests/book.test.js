@@ -609,14 +609,14 @@ test('formatDecimal drops the trailing zeros a decimal carries and leaves other 
 test('sortRows orders decimals by value and text by name, absent cells last either way', async () => {
   const { sortRows, compareCells } = await load('audit.js')
   const rows = [
-    { price: '10', side: 'BUY' },
+    { price: '10', side: 'BUYS' },
     { price: null, side: 'SELL' },
-    { price: '9.5', side: 'BUY' },
+    { price: '9.5', side: 'BUYS' },
     { price: '100', side: null },
   ]
   assert.deepEqual(sortRows(rows, 'price').map((row) => row.price), ['9.5', '10', '100', null])
   assert.deepEqual(sortRows(rows, 'price', 'desc').map((row) => row.price), ['100', '10', '9.5', null])
-  assert.deepEqual(sortRows(rows, 'side').map((row) => row.side), ['BUY', 'BUY', 'SELL', null])
+  assert.deepEqual(sortRows(rows, 'side').map((row) => row.side), ['BUYS', 'BUYS', 'SELL', null])
   // Stable: the two BUY rows keep their order both ways.
   assert.deepEqual(sortRows(rows, 'side').map((row) => row.price), ['10', '9.5', null, '100'])
   assert.deepEqual(sortRows(rows, 'side', 'desc').map((row) => row.price), ['null', '10', '9.5', '100'].map((price) => (price === 'null' ? null : price)))
@@ -805,7 +805,7 @@ test('sorting an audit column keeps the focus on its heading', async () => {
   const document = fakeDocument()
   const node = new FakeElement(document, 'div')
   document.body.append(node)
-  const rows = [{ price: '10', side: 'BUY' }, { price: '9.5', side: 'BUY' }]
+  const rows = [{ price: '10', side: 'BUYS' }, { price: '9.5', side: 'BUYS' }]
   renderEvents(node, rows, 'bid')
   const heading = (column) => node.findAll((element) => element.tag === 'button' && element.dataset.column === column)[0]
   const before = heading('price')
@@ -1150,7 +1150,7 @@ const SERVICE = Object.freeze({
   ],
   'api/candles': (request) => ({ table: request.params.table, ticker: request.params.ticker, candles: serviceCandles(request.params.tz) }),
   'api/book': (request) => ({ currunix: request.params.at, ticker: request.params.ticker, crosscode: request.params.ticker, bestbid: '72.25', bestask: '72.35', alive: 2, deltas: 1, executions: 0, bidlimits: [], asklimits: [] }),
-  'api/events': (request) => ({ rows: [{ currunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUY' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
+  'api/events': (request) => ({ rows: [{ currunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUYS' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
 })
 
 /**

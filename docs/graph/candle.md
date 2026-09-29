@@ -155,13 +155,13 @@ Four books of one minute: one quote a side, restated at each book, and three fil
         )
 
     operations = [
-        quote(10 * SECOND, "B", "BUY", "100", 5),
+        quote(10 * SECOND, "B", "BUYS", "100", 5),
         quote(10 * SECOND, "A", "SELL", "103", 7),
-        quote(20 * SECOND, "B", "BUY", "102", 5),
-        fill(20 * SECOND, "E1", "BUY", 4),
+        quote(20 * SECOND, "B", "BUYS", "102", 5),
+        fill(20 * SECOND, "E1", "BUYS", 4),
         quote(30 * SECOND, "A", "SELL", "102.5", 7),
-        quote(30 * SECOND, "B", "BUY", "99", 5),
-        quote(40 * SECOND, "B", "BUY", "101", 8),
+        quote(30 * SECOND, "B", "BUYS", "99", 5),
+        quote(40 * SECOND, "B", "BUYS", "101", 8),
         quote(40 * SECOND, "A", "SELL", "103.5", 9),
         fill(40 * SECOND, "E2", "SELL", 6),
         fill(40 * SECOND, "E3", "SELL", None),
@@ -200,13 +200,13 @@ Four books of one minute: one quote a side, restated at each book, and three fil
       crosscode: code, ticker: 'ACME', side, price: '100', quantity, state: 'FILLED',
     })
     const operations = [
-      quote(10n * SECOND, 'B', 'BUY', '100', 5),
+      quote(10n * SECOND, 'B', 'BUYS', '100', 5),
       quote(10n * SECOND, 'A', 'SELL', '103', 7),
-      quote(20n * SECOND, 'B', 'BUY', '102', 5),
-      fill(20n * SECOND, 'E1', 'BUY', 4),
+      quote(20n * SECOND, 'B', 'BUYS', '102', 5),
+      fill(20n * SECOND, 'E1', 'BUYS', 4),
       quote(30n * SECOND, 'A', 'SELL', '102.5', 7),
-      quote(30n * SECOND, 'B', 'BUY', '99', 5),
-      quote(40n * SECOND, 'B', 'BUY', '101', 8),
+      quote(30n * SECOND, 'B', 'BUYS', '99', 5),
+      quote(40n * SECOND, 'B', 'BUYS', '101', 8),
       quote(40n * SECOND, 'A', 'SELL', '103.5', 9),
       fill(40n * SECOND, 'E2', 'SELL', 6),
       fill(40n * SECOND, 'E3', 'SELL', undefined),

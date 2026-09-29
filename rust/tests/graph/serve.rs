@@ -350,7 +350,9 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     assert!(!field.is_nullable());
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
     assert_eq!(&names[..3], ["bookunix", "role", "marketdatakind"]);
-    assert_eq!(names.len(), 2 + 1 + 16 + 27 + 3 + 1);
+    // The stamp, the kind, the fifteen event, twenty-eight market and four
+    // operation columns, then `bookscope`.
+    assert_eq!(names.len(), 2 + 1 + 15 + 28 + 4 + 1);
     assert!(
         !names
             .iter()
@@ -1217,7 +1219,7 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
         .collect();
     assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
-    assert_eq!(names.len(), 50);
+    assert_eq!(names.len(), 51);
     // A UUID is its canonical text.
     assert_eq!(text(&rows[0], "curruuid").len(), 36);
 
@@ -1225,7 +1227,7 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
     bids.push(("side", "bid"));
     let bids = items(member(&ok_json(&get(&endpoint, "events", &bids)), "rows"));
     assert!(!bids.is_empty());
-    assert!(bids.iter().all(|row| text(row, "side") == "BUY"));
+    assert!(bids.iter().all(|row| text(row, "side") == "BUYS"));
     assert!(bids.iter().all(|row| text(row, "role") != "execution"));
 
     let mut asks = range().to_vec();
@@ -1355,7 +1357,7 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
         assert_eq!(&names[..3], ["bookunix", "role", "marketdatakind"]);
-        assert_eq!(names.len(), 50);
+        assert_eq!(names.len(), 51);
     }
 
     let mut bids = range().to_vec();
