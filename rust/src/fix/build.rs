@@ -441,7 +441,7 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 /// message stated that field itself, because a stated value is never
 /// overridden. None of them touches the entries: the entries are what arrived
 /// on the line, and these arrived on the row.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 pub(super) struct RowExtras<'row> {
     /// The version the row is read at, where it stated one.
     pub(super) version: Option<Version>,
@@ -539,7 +539,7 @@ impl RowStamp {
     /// What the row stated, over the fills [`Self::fills`] answered.
     pub(super) fn extras<'row>(&'row self, fills: &'row [Fill<'row>]) -> RowExtras<'row> {
         RowExtras {
-            version: self.version,
+            version: self.version.clone(),
             fills,
             direction: self.direction.as_deref(),
             direction_pin: None,
@@ -674,7 +674,7 @@ pub(super) fn folded_key(key: &[u8]) -> SmolStr {
 /// FIX 4.4, which is the version the standard header is ordered by here and
 /// the one a bare capture that names none is most likely to be.
 pub(super) fn default_version() -> Version {
-    "4.4".parse().unwrap_or(Version::MIN)
+    Version::new(4, 4, None)
 }
 
 /// Builds a message's field and value from pairs, with the entries beside it.
@@ -947,7 +947,7 @@ impl<'registry> Builder<'registry> {
         version: Option<Version>,
     ) {
         self.outer = Some(self.slots.len());
-        self.framed = (self.message, self.version);
+        self.framed = (self.message, self.version.clone());
         if message.is_some() {
             self.message = message;
         }
@@ -959,7 +959,7 @@ impl<'registry> Builder<'registry> {
     /// Closes the nested reading.
     pub(super) fn end_nested(&mut self) {
         self.outer = None;
-        (self.message, self.version) = self.framed;
+        (self.message, self.version) = (self.framed.0, self.framed.1.clone());
     }
 
     /// Whether the line itself already built a child of this name, which a

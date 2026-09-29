@@ -75,7 +75,7 @@
     into_uuid() -> Scalar: the lossless RFC 9562 UUIDv7 projection, with the Unix millisecond first, the microsecond within it in rand_a's high ten, then the digest stored whole - its top two bits above the variant and its low sixty-two in rand_b; it takes no arguments and hashes nothing; every digest bit survives, so two values project to one identifier only where their microsecond and all 64 digest bits agree; neither unit nor algorithm survives, and sub-microsecond time cannot be recovered; returned as a uuid-typed Scalar because the binding has no Uuid wrapper class - as_py() answers the hyphenated str; a digest that is not 64 bits wide, a microsecond restatement overflow, or an instant a UUIDv7 cannot hold, is ValueError
     into_sequenced_uuid(sequence: int, seed: int) -> Scalar: the event-oriented UUIDv7 projection, with Unix milliseconds first, sequence.min(4095) in the ordered twelve-bit lane, and the low 62 bits of XXH3 over the digest and whole u64 sequence with the u64 seed; returned as a uuid-typed Scalar; an integer outside u64 is OverflowError, while a non-64-bit digest, clock-restatement failure or invalid UUIDv7 timestamp is ValueError
   TxHasher: algorithm, apply_arrow_batch, column_txhashes, digest, digest_scalar, dtype, from_state, row_txhashes, unit, unix_of, width
-  Version: Version(major: int, minor: int = 0, patch: int = 0); from_str(value: str) -> Version; readonly major/minor/patch: int; stable_hash() -> int; numeric comparison, hash, copy, deepcopy, pickle (major, minor, patch); widths u8/u8/u16, exactly four native bytes
+  Version: Version(major: int, minor: int = 0, patch: int | str | None = None); from_str(value: str) -> Version; readonly major/minor: int, patch: str | None; stable_hash() -> int; native comparison, hash, copy, deepcopy, pickle (major, minor, patch); major and minor u16, an int patch its decimal digits, a str patch as written
 
   expression: COMPARISONS, FUNCTIONS, VERBS, Bound, Bounds, BoundSelector, Expression, Filter, Plan, Records, Selector, Term, UserFunction, needs_quoting, unregister_user_function, user_defined_filter, user_defined_function, user_function_signature, user_functions
     user functions: @user_defined_function(namespace="py", name=None, parameters=None, returns=None, vectorized=False) and @user_defined_filter register a callable as namespace.name from its type hints and defaults; the wrapper stays callable and answers term(*args), where(*args), signature (the struct Field), unregister(); Term.call takes the qualified name
@@ -434,9 +434,9 @@
   Side
     frozen object: FIX's Side(54), every member's stored name to the int32 code a `side` column stores, UNKNOWN 0 then the seventeen sides in wire order (Side.BUY === 1; SELLUND 17), built once at load from the native table; SideName the key type; a `side` value crosses as its member's name, and fields.side(name, options?) -> SideField
   Version
-    constructor: Version(major: number, minor?: number | null, patch?: number | null); numeric widths u8/u8/u16
+    constructor: Version(major: number, minor?: number | null, patch?: number | string | null); major and minor u16, a number patch its decimal digits, a string patch as written
     statics: fromStr(text: string) -> Version
-    readonly: major: number, minor: number, patch: number
+    readonly: major: number, minor: number, patch: string | null
     instance: equals(other: Version) -> boolean; compare(other: Version) -> number; stableHash() -> bigint; clone() -> Version; toString()/toJSON() -> string
     typed field: fields.version(name, options?) -> VersionField; native JavaScript value Version, native Arrow value canonical version text
   Scalar

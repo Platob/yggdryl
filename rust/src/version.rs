@@ -1,17 +1,17 @@
 //! Ordered software/protocol versions as one generic scalar value.
 //!
-//! A version is a four-byte numeric value: an eight-bit major, an eight-bit
-//! minor, and a sixteen-bit patch. Missing minor and patch components are zero;
-//! canonical text omits trailing zero components. A compact FIX `SP` suffix
-//! supplies the numeric patch, case-insensitively: `5.0sp250` becomes `5.0.250`.
-//! Qualifiers are not stored: a patch tail that states no number is folded into
-//! the sixteen bits by the crate's stable XXH3 instead of refusing the version,
-//! so parsing fails only on the major, the minor, or empty text. Parsing and numeric comparison allocate nothing, and cloning
-//! copies the four-byte value. This is neither an ASCII-width
-//! datatype nor a static coded vocabulary. Arrow stores the canonical text as
-//! Utf8; its extension name preserves the datatype on a field round trip.
-//! Arrow's own string ordering is consequently lexicographic—[`Version::cmp`]
-//! is the ordering contract.
+//! A version is a sixteen-bit major, a sixteen-bit minor, and an optional
+//! patch held as text. A missing minor is zero and a missing patch is none;
+//! canonical text omits a zero minor no patch follows. A patch stating a
+//! number is held as its digits, so `5.0.0` is `5` and `5.0.007` is `5.0.7`,
+//! and a compact FIX `SP` suffix states one case-insensitively: `5.0sp250`
+//! becomes `5.0.250`. Any other tail is the patch as written - a qualifier, a
+//! fourth component - so parsing fails only on the major, the minor, or empty
+//! text. Parsing a patch of up to 23 bytes, comparing and rendering allocate
+//! nothing. This is neither an ASCII-width datatype nor a static coded
+//! vocabulary. Arrow stores the canonical text as Utf8; its extension name
+//! preserves the datatype on a field round trip. Arrow's own string ordering
+//! is consequently lexicographic—[`Version::cmp`] is the ordering contract.
 
 pub use value::Version;
 
@@ -92,121 +92,128 @@ define_field_types!(VersionType, Version);
 /// Canonical parsing, rendering, and ordering for [`Version`].
 mod value {
     use std::cmp::Ordering;
-    use std::fmt;
+    use std::fmt::{self, Write as _};
     use std::str::FromStr;
 
-    use serde::de::Error as _;
+    use serde::de::Visitor;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use smol_str::SmolStr;
 
     use crate::{DataType, Error, Result, Scalar, Value};
 
-    /// Three numeric version components in four bytes.
+    /// A sixteen-bit major and minor, and an optional patch held as text.
     ///
-    /// Major and minor are unsigned bytes; patch is an unsigned 16-bit number.
-    /// The numeric tuple owns equality and ordering. Text omits trailing zero
-    /// components, so `5`, `5.0`, and `5.0.0` are the same value.
-    /// A case-insensitive FIX `SP` suffix supplies the patch: `5.0sp250` is
-    /// `5.0.250`, with no separately stored qualifier.
+    /// The major and minor are numbers; the patch is what the version states
+    /// after them. A patch stating a number is held as that number's digits,
+    /// so `5`, `5.0` and `5.0.0` are one value and `5.0.007` is `5.0.7`. A
+    /// case-insensitive FIX `SP` suffix states the patch number too: `5.0sp250`
+    /// is `5.0.250`, with no separately stored qualifier.
     ///
     /// ```
     /// use yggdryl::Version;
     /// let version = "5.0sp250".parse::<Version>()?;
-    /// assert_eq!(version, Version::new(5, 0, 250));
+    /// assert_eq!(version, Version::new(5, 0, Some("250")));
     /// assert_eq!(version.to_string(), "5.0.250");
+    /// assert_eq!((version.major(), version.minor(), version.patch()), (5, 0, Some("250")));
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
     ///
     /// # The patch is best effort
     ///
-    /// Major and minor are strict: a version whose first two components are not
-    /// decimal numbers under 256 is refused, and so is empty text. The patch is
-    /// not. A tail stating no number - a qualifier, a fourth component, an
-    /// extension pack - folds into the patch's sixteen bits through the crate's
-    /// stable XXH3 rather than refusing the version, so anything that names a
-    /// major parses.
-    ///
-    /// A folded patch is an identity, not a quantity: it orders arbitrarily
-    /// against a stated one, two unlike tails can fold together, and the
-    /// canonical text states the fold rather than the tail it came from. What it
-    /// buys is that the same tail always reads as the same version.
+    /// The numbers are strict: text that does not open with a decimal major
+    /// under 65536 is refused, empty text included, and so is a minor whose
+    /// digits pass 65535. The patch is not. A tail stating no number - a
+    /// qualifier, a fourth component, an extension pack - is the patch as
+    /// written rather than a refusal, so anything that names a major parses and
+    /// nothing it states is lost.
     ///
     /// ```
     /// use yggdryl::Version;
     /// let qualified = "1.0-rc1".parse::<Version>()?;
     /// assert_eq!((qualified.major(), qualified.minor()), (1, 0));
-    /// assert_eq!(qualified, "1.0-rc1".parse::<Version>()?);
-    /// assert_ne!(qualified, "1.0-rc2".parse::<Version>()?);
+    /// assert_eq!(qualified.patch(), Some("-rc1"));
+    /// assert_eq!(qualified.to_string(), "1.0-rc1");
+    /// assert!(qualified < "1.0-rc2".parse::<Version>()?);
     /// assert!("".parse::<Version>().is_err());
-    /// assert!("256.0".parse::<Version>().is_err());
+    /// assert!("65536.0".parse::<Version>().is_err());
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    #[repr(C)]
+    ///
+    /// # Order
+    ///
+    /// The major, then the minor, then the patch: no patch first, then two
+    /// patches in natural order - a run of digits compares as the number it
+    /// spells and every other byte as itself - so `5.0.2 < 5.0.10` and
+    /// `1.0-rc2 < 1.0-rc10`. Patches that order equal that way, `rc01` and
+    /// `rc1`, fall back to their bytes, which keeps the order total and in
+    /// agreement with equality.
+    #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
     pub struct Version {
-        major: u8,
-        minor: u8,
-        patch: u16,
+        major: u16,
+        minor: u16,
+        /// Never empty; a number is held as its digits without leading zeros,
+        /// and zero as no patch, so equal versions hold equal bytes.
+        patch: Option<SmolStr>,
     }
 
     impl Version {
-        /// The maximum number of numeric components.
-        pub const MAX_PARTS: usize = 3;
+        /// The lower bound of the version order: `0`, no minor, no patch.
+        pub const MIN: Self = Self {
+            major: 0,
+            minor: 0,
+            patch: None,
+        };
 
-        /// The lower bound of the numeric version value space.
-        pub const MIN: Self = Self::new(0, 0, 0);
-
-        /// The upper bound of the numeric version value space.
-        pub const MAX: Self = Self::new(u8::MAX, u8::MAX, u16::MAX);
-
-        /// Constructs a version from its exact-width numeric components.
+        /// Constructs a version from its components.
+        ///
+        /// The patch is canonicalized as the parser canonicalizes one: a number
+        /// is held as its digits without leading zeros, and zero or empty text
+        /// states no patch. It is taken as written otherwise - an `sp` prefix
+        /// is the grammar's, so `Some("sp2")` is the patch `sp2`.
         ///
         /// ```
         /// use yggdryl::Version;
-        /// let version = Version::new(5, 2, 300);
+        /// let version = Version::new(5, 2, Some("0300"));
         /// assert_eq!(version.to_string(), "5.2.300");
-        /// assert_eq!((version.major(), version.minor(), version.patch()), (5, 2, 300));
+        /// assert_eq!((version.major(), version.minor(), version.patch()), (5, 2, Some("300")));
+        /// assert_eq!(Version::new(5, 0, Some("0")), Version::new(5, 0, None));
         /// ```
-        pub const fn new(major: u8, minor: u8, patch: u16) -> Self {
+        pub fn new(major: u16, minor: u16, patch: Option<&str>) -> Self {
             Self {
                 major,
                 minor,
-                patch,
+                patch: patch.and_then(canonical_patch),
             }
         }
 
         /// The major component.
-        pub const fn major(self) -> u8 {
+        pub const fn major(&self) -> u16 {
             self.major
         }
 
         /// The minor component, zero when omitted in text.
-        pub const fn minor(self) -> u8 {
+        pub const fn minor(&self) -> u16 {
             self.minor
         }
 
-        /// The patch component, zero when omitted in text.
-        pub const fn patch(self) -> u16 {
-            self.patch
+        /// The patch, `None` when the version states none or states zero.
+        pub fn patch(&self) -> Option<&str> {
+            self.patch.as_deref()
         }
 
         /// Number of UTF-8 bytes in the canonical rendering.
         pub(crate) fn rendered_len(&self) -> usize {
-            decimal_digits(u16::from(self.major))
-                + if self.minor != 0 || self.patch != 0 {
-                    1 + decimal_digits(u16::from(self.minor))
+            decimal_digits(self.major)
+                + if self.minor != 0 || self.patch.is_some() {
+                    1 + decimal_digits(self.minor)
                 } else {
                     0
                 }
-                + if self.patch != 0 {
-                    1 + decimal_digits(self.patch)
-                } else {
-                    0
-                }
+                + self
+                    .patch()
+                    .map_or(0, |patch| usize::from(is_dotted(patch)) + patch.len())
         }
     }
-
-    const _: () = assert!(std::mem::size_of::<Version>() == 4);
 
     const fn decimal_digits(value: u16) -> usize {
         match value {
@@ -221,21 +228,20 @@ mod value {
     impl FromStr for Version {
         type Err = Error;
 
-        #[allow(clippy::cast_possible_truncation)] // Each component is bounded before its narrowing cast.
         fn from_str(text: &str) -> Result<Self> {
             let bytes = text.as_bytes();
-            let (major, mut position) = component(bytes, 0, u32::from(u8::MAX), "major")?;
-            let mut minor = 0_u32;
+            let (major, mut position) = component(bytes, 0, &MAJOR)?;
+            let mut minor = 0;
             if bytes.get(position) == Some(&b'.') && digit_at(bytes, position + 1) {
-                let (value, after) = component(bytes, position + 1, u32::from(u8::MAX), "minor")?;
+                let (value, after) = component(bytes, position + 1, &MINOR)?;
                 minor = value;
                 position = after;
             }
-            Ok(Self::new(
-                major as u8,
-                minor as u8,
-                patch_of(&text[position..]),
-            ))
+            Ok(Self {
+                major,
+                minor,
+                patch: patch_of(&text[position..]),
+            })
         }
     }
 
@@ -244,83 +250,131 @@ mod value {
         matches!(bytes.get(position), Some(b'0'..=b'9'))
     }
 
-    /// One strict decimal component, bounded before it narrows.
+    /// What a strict component is refused with: no digit, or too many.
+    struct Component {
+        missing: &'static str,
+        overflow: &'static str,
+    }
+
+    const MAJOR: Component = Component {
+        missing: "expected a decimal major version",
+        overflow: "expected a major version in 0..=65535",
+    };
+
+    const MINOR: Component = Component {
+        missing: "expected a decimal minor version",
+        overflow: "expected a minor version in 0..=65535",
+    };
+
+    /// One strict decimal component, refused at the byte that overflows it.
     ///
     /// Major and minor stay strict because they are what a version is ordered by
     /// first: a byte that is not a digit there is a refusal, not a fallback.
-    fn component(
-        bytes: &[u8],
-        start: usize,
-        maximum: u32,
-        what: &'static str,
-    ) -> Result<(u32, usize)> {
+    fn component(bytes: &[u8], start: usize, what: &Component) -> Result<(u16, usize)> {
         let mut position = start;
-        let mut value = 0_u32;
+        let mut value = 0_u16;
         while let Some(byte @ b'0'..=b'9') = bytes.get(position).copied() {
-            value = value * 10 + u32::from(byte - b'0');
-            if value > maximum {
-                return Err(parse_error(
-                    position,
-                    if what == "major" {
-                        "expected a major version in 0..=255"
-                    } else {
-                        "expected a minor version in 0..=255"
-                    },
-                ));
-            }
+            value = value
+                .checked_mul(10)
+                .and_then(|value| value.checked_add(u16::from(byte - b'0')))
+                .ok_or_else(|| parse_error(position, what.overflow))?;
             position += 1;
         }
         if position == start {
-            return Err(parse_error(
-                start,
-                if what == "major" {
-                    "expected a decimal major version"
-                } else {
-                    "expected a decimal minor version"
-                },
-            ));
+            return Err(parse_error(start, what.missing));
         }
         Ok((value, position))
     }
 
-    /// The patch a tail states, or the stable hash of a tail that states no number.
+    /// The patch a tail states.
     ///
-    /// The tail is whatever follows the major and minor. `.250` and a
-    /// case-insensitive FIX `sp250` both state the number 250. Anything else -
-    /// a qualifier, a fourth component, an extension pack, trailing bytes - is
-    /// hashed into the patch rather than refused, so a version always parses.
-    fn patch_of(tail: &str) -> u16 {
-        if tail.is_empty() {
-            return 0;
-        }
-        let digits = match tail.as_bytes() {
-            [b'.', rest @ ..] => rest,
-            [b'S' | b's', b'P' | b'p', rest @ ..] => rest,
-            _ => return hashed_patch(tail),
-        };
-        if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
-            return hashed_patch(tail);
-        }
-        let mut value = 0_u32;
-        for byte in digits {
-            value = value * 10 + u32::from(byte - b'0');
-            if value > u32::from(u16::MAX) {
-                return hashed_patch(tail);
+    /// The tail is whatever follows the major and minor. A compact FIX service
+    /// pack - `sp` in any case and nothing but digits after it, straight after
+    /// the last number read - states the number it carries, so `5SP2` is
+    /// `5.0.2` as `5.0SP2` is. Otherwise one leading `.`
+    /// separates the patch, and what follows it is the patch as written: a
+    /// qualifier, a fourth component and trailing bytes are all read rather
+    /// than refused.
+    fn patch_of(tail: &str) -> Option<SmolStr> {
+        let patch = match tail.as_bytes() {
+            [b'S' | b's', b'P' | b'p', digits @ ..]
+                if !digits.is_empty() && digits.iter().all(u8::is_ascii_digit) =>
+            {
+                &tail[2..]
             }
-        }
-        value as u16
+            [b'.', ..] => &tail[1..],
+            _ => tail,
+        };
+        canonical_patch(patch)
     }
 
-    /// A tail no number can be read from, folded into the patch's sixteen bits.
+    /// A patch in the one spelling equal versions share.
     ///
-    /// The fold lands in `1..=65535` so a tail that says something never renders
-    /// as a version that says nothing. Sixteen bits cannot separate every tail
-    /// there is: two unlike tails can fold together, and a fold can equal a patch
-    /// some other version states as a number.
-    fn hashed_patch(tail: &str) -> u16 {
-        let hash = crate::xxhash::xxh3(tail.as_bytes());
-        let folded = (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) as u16;
-        1 + (folded % u16::MAX)
+    /// A number is its digits without leading zeros, and zero - like empty
+    /// text - states no patch; any other text is held as written.
+    fn canonical_patch(patch: &str) -> Option<SmolStr> {
+        if patch.bytes().all(|byte| byte.is_ascii_digit()) {
+            let digits = patch.trim_start_matches('0');
+            return (!digits.is_empty()).then(|| SmolStr::new(digits));
+        }
+        Some(SmolStr::new(patch))
+    }
+
+    /// Whether the canonical text writes a `.` before `patch`.
+    ///
+    /// A patch opening with a letter, a digit or a dot needs one: without it a
+    /// digit would read as the minor, a dot as the separator, and `sp` with
+    /// digits as a service pack. Any other opening byte - `-rc1`, `+meta`,
+    /// `_EP2`, `界` - separates the patch on its own.
+    fn is_dotted(patch: &str) -> bool {
+        patch
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'.')
+    }
+
+    /// Natural order over two patches, total and agreeing with equality.
+    ///
+    /// A run of digits compares as the number it spells, leading zeros aside,
+    /// and every other byte as itself; a patch that ends first orders first.
+    /// Patches equal under that reading compare by their bytes.
+    fn natural(left: &str, right: &str) -> Ordering {
+        let (mut mine, mut theirs) = (left.as_bytes(), right.as_bytes());
+        loop {
+            match (mine.first(), theirs.first()) {
+                (Some(a), Some(b)) if a.is_ascii_digit() && b.is_ascii_digit() => {
+                    let (my_run, my_rest) = digit_run(mine);
+                    let (their_run, their_rest) = digit_run(theirs);
+                    let ordering = my_run
+                        .len()
+                        .cmp(&their_run.len())
+                        .then_with(|| my_run.cmp(their_run));
+                    if ordering.is_ne() {
+                        return ordering;
+                    }
+                    (mine, theirs) = (my_rest, their_rest);
+                }
+                (Some(a), Some(b)) if a != b => return a.cmp(b),
+                (Some(_), Some(_)) => (mine, theirs) = (&mine[1..], &theirs[1..]),
+                (a, b) => {
+                    return a.is_some().cmp(&b.is_some()).then_with(|| left.cmp(right));
+                }
+            }
+        }
+    }
+
+    /// The digits a run opens with, leading zeros dropped, and what follows it.
+    fn digit_run(bytes: &[u8]) -> (&[u8], &[u8]) {
+        let end = bytes
+            .iter()
+            .position(|byte| !byte.is_ascii_digit())
+            .unwrap_or(bytes.len());
+        let (run, rest) = bytes.split_at(end);
+        let first = run
+            .iter()
+            .position(|byte| *byte != b'0')
+            .unwrap_or(run.len());
+        (&run[first..], rest)
     }
 
     fn parse_error(position: usize, reason: &'static str) -> Error {
@@ -334,11 +388,14 @@ mod value {
     impl fmt::Display for Version {
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(formatter, "{}", self.major)?;
-            if self.minor != 0 || self.patch != 0 {
+            if self.minor != 0 || self.patch.is_some() {
                 write!(formatter, ".{}", self.minor)?;
             }
-            if self.patch != 0 {
-                write!(formatter, ".{}", self.patch)?;
+            if let Some(patch) = self.patch() {
+                if is_dotted(patch) {
+                    formatter.write_char('.')?;
+                }
+                formatter.write_str(patch)?;
             }
             Ok(())
         }
@@ -352,7 +409,12 @@ mod value {
 
     impl Ord for Version {
         fn cmp(&self, other: &Self) -> Ordering {
-            (self.major, self.minor, self.patch).cmp(&(other.major, other.minor, other.patch))
+            (self.major, self.minor)
+                .cmp(&(other.major, other.minor))
+                .then_with(|| match (self.patch(), other.patch()) {
+                    (Some(mine), Some(theirs)) => natural(mine, theirs),
+                    (mine, theirs) => mine.cmp(&theirs),
+                })
         }
     }
 
@@ -370,8 +432,27 @@ mod value {
         where
             D: Deserializer<'de>,
         {
-            let text = <&str>::deserialize(deserializer)?;
-            text.parse().map_err(D::Error::custom)
+            // A visitor rather than a borrowed `&str`: a patch may hold text a
+            // format escapes, which a deserializer can only hand over unescaped
+            // in a buffer of its own.
+            struct VersionVisitor;
+
+            impl Visitor<'_> for VersionVisitor {
+                type Value = Version;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    formatter.write_str("a version string")
+                }
+
+                fn visit_str<E>(self, text: &str) -> std::result::Result<Version, E>
+                where
+                    E: serde::de::Error,
+                {
+                    text.parse().map_err(E::custom)
+                }
+            }
+
+            deserializer.deserialize_str(VersionVisitor)
         }
     }
 

@@ -136,7 +136,7 @@ The same number rule holds: `large_binary(16)` is refused.
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
 | `side`, `marketdatakind`, `state` | - | kind `enum`: each stored as the `int32` code of its member under `yggdryl.side`, `yggdryl.marketdatakind`, `yggdryl.state`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
-| `version` | - | `major.minor.patch`, numerically ordered |
+| `version` | - | a sixteen-bit `major` and `minor` then an optional text patch (`5.0SP2` is `5.0.2`, `1.0-rc1` keeps `-rc1`), naturally ordered |
 | `mimetype` | `mime` | one `type/subtype` |
 | `mediatype` | `content_type` | MIME type + charset + content codings |
 | `url`, `urn` | - | locations and names (see `yggdryl-uri`) |

@@ -4641,14 +4641,12 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str  (the canonical spelling into the caller's slot; allocates nothing)
 
 ### yggdryl::version  [rust/src/version.rs]
-pub struct Version
-  pub const MAX_PARTS: usize = 3;
-  pub const MIN: Self
-  pub const MAX: Self
-  pub const fn new(major: u8, minor: u8, patch: u16) -> Self
-  pub const fn major(self) -> u8
-  pub const fn minor(self) -> u8
-  pub const fn patch(self) -> u16
+pub struct Version  (a u16 major, a u16 minor and an optional SmolStr patch; Clone, not Copy - a patch past 23 bytes is one shared allocation; Eq/Hash over the canonical parts, Ord = major, minor, then no patch before any patch and patches in natural order with a byte tie-break)
+  pub const MIN: Self  (0, no minor, no patch; the Default and the canonical default)
+  pub fn new(major: u16, minor: u16, patch: Option<&str>) -> Self  (the patch canonicalized as the parser does: a number without leading zeros, zero or empty as None, other text as written)
+  pub const fn major(&self) -> u16
+  pub const fn minor(&self) -> u16
+  pub fn patch(&self) -> Option<&str>
   pub struct VersionType
   pub type VersionField = FieldOf<VersionType>;
 

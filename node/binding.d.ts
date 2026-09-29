@@ -1318,7 +1318,7 @@ export type DenseUnionField<V = UnionValue, I = V> = FieldOf<
 export type VariantField = FieldOf<'variant', unknown>
 /** One 128-bit identifier; values read back as the hyphenated spelling. */
 export type UuidField = FieldOf<'uuid', string>
-/** One canonical, numerically ordered version. */
+/** One canonical, naturally ordered version. */
 export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */

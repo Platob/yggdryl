@@ -390,7 +390,10 @@ fn text_or_binary_to_js<'env>(
             _ => return Err(napi_error("invalid native uuid record value")),
         },
         D::Version => match value {
-            Scalar::Version(value) => JsVersion { inner: *value }.into_unknown(env)?,
+            Scalar::Version(value) => JsVersion {
+                inner: value.clone(),
+            }
+            .into_unknown(env)?,
             _ => return Err(napi_error("invalid native version record value")),
         },
         // A location crosses as the canonical text it validated to, exactly as

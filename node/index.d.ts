@@ -8980,23 +8980,30 @@ export type JsUrn = Urn
 
 /** An immutable native version with major, minor, and patch components. */
 export declare class Version {
-  /** Major and minor fit unsigned bytes; patch fits an unsigned 16-bit value. */
-  constructor(major: number, minor?: number | undefined | null, patch?: number | undefined | null)
-  /** Parse the native numeric version grammar. */
+  /**
+   * Major and minor are whole numbers in 0..65535. A patch is text as
+   * written or a non-negative whole number, held as its digits; zero or
+   * empty text states none.
+   */
+  constructor(major: number, minor?: number | undefined | null, patch?: number | string | undefined | null)
+  /**
+   * Parse the native version grammar: a strict major and minor, then the
+   * patch as the tail states it.
+   */
   static fromStr(text: string): Version
-  /** The unsigned 8-bit major component. */
+  /** The sixteen-bit major component. */
   get major(): number
-  /** The unsigned 8-bit minor component. */
+  /** The sixteen-bit minor component, zero when omitted. */
   get minor(): number
-  /** The unsigned 16-bit patch component. */
-  get patch(): number
+  /** The patch as text - a number as its digits - or null when none. */
+  get patch(): string | null
   /** Compare the complete native values. */
   equals(other: Version): boolean
   /** Compare native values in canonical order. */
   compare(other: Version): number
   /** Deterministic hash bits from the native value. */
   stableHash(): bigint
-  /** Copy the native four-byte value. */
+  /** Copy the native value. */
   clone(): Version
   /** Render the canonical native text. */
   toString(): string

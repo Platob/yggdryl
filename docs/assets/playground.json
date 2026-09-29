@@ -2164,7 +2164,7 @@
       "parts": [
         5,
         0,
-        0
+        null
       ],
       "hash": "5293283145388066301"
     },
@@ -2176,7 +2176,7 @@
       "parts": [
         5,
         0,
-        0
+        null
       ],
       "hash": "5293283145388066301"
     },
@@ -2188,7 +2188,7 @@
       "parts": [
         5,
         0,
-        2
+        "2"
       ],
       "hash": "1799267368092689080"
     },
@@ -2200,45 +2200,45 @@
       "parts": [
         5,
         0,
-        300
+        "300"
       ],
       "hash": "17166353374590288316"
     },
     {
-      "input": "255.255.65535",
-      "call": "Version.fromStr('255.255.65535')",
-      "ok": true,
-      "text": "255.255.65535",
-      "parts": [
-        255,
-        255,
-        65535
-      ],
-      "hash": "2616025351693928135"
-    },
-    {
       "input": "256.0",
       "call": "Version.fromStr('256.0')",
-      "ok": false,
-      "error": "invalid version expression at byte 2: expected a major version in 0..=255"
-    },
-    {
-      "input": "5.256",
-      "call": "Version.fromStr('5.256')",
-      "ok": false,
-      "error": "invalid version expression at byte 4: expected a minor version in 0..=255"
-    },
-    {
-      "input": "5.0.65536",
-      "call": "Version.fromStr('5.0.65536')",
       "ok": true,
-      "text": "5.0.54529",
+      "text": "256",
       "parts": [
-        5,
+        256,
         0,
-        54529
+        null
       ],
-      "hash": "5430642065938442482"
+      "hash": "2572752848806597146"
+    },
+    {
+      "input": "65535.65535.65535",
+      "call": "Version.fromStr('65535.65535.65535')",
+      "ok": true,
+      "text": "65535.65535.65535",
+      "parts": [
+        65535,
+        65535,
+        "65535"
+      ],
+      "hash": "17500945517530419583"
+    },
+    {
+      "input": "65536.0",
+      "call": "Version.fromStr('65536.0')",
+      "ok": false,
+      "error": "invalid version expression at byte 4: expected a major version in 0..=65535"
+    },
+    {
+      "input": "5.65536",
+      "call": "Version.fromStr('5.65536')",
+      "ok": false,
+      "error": "invalid version expression at byte 6: expected a minor version in 0..=65535"
     },
     {
       "input": "5.0SP2",
@@ -2248,7 +2248,7 @@
       "parts": [
         5,
         0,
-        2
+        "2"
       ],
       "hash": "1799267368092689080"
     },
@@ -2256,13 +2256,25 @@
       "input": "5.0.2.1",
       "call": "Version.fromStr('5.0.2.1')",
       "ok": true,
-      "text": "5.0.38495",
+      "text": "5.0.2.1",
       "parts": [
         5,
         0,
-        38495
+        "2.1"
       ],
-      "hash": "4563064764448018704"
+      "hash": "6857587159611896846"
+    },
+    {
+      "input": "1.0-rc1",
+      "call": "Version.fromStr('1.0-rc1')",
+      "ok": true,
+      "text": "1.0-rc1",
+      "parts": [
+        1,
+        0,
+        "-rc1"
+      ],
+      "hash": "9405205924929039775"
     }
   ]
 }

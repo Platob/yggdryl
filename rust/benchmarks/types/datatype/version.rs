@@ -23,14 +23,14 @@ pub(crate) fn version_benchmarks(criterion: &mut Criterion) {
     });
     let qualified = "1.2-rc1";
     assert_eq!(
-        qualified.parse::<Version>().expect("a folded qualifier"),
-        Version::new(1, 2, 63_727)
+        qualified.parse::<Version>().expect("a qualified patch"),
+        Version::new(1, 2, Some("-rc1"))
     );
     group.bench_function("parse_qualified", |bencher| {
         bencher.iter(|| {
             black_box(qualified)
                 .parse::<Version>()
-                .expect("a folded qualifier")
+                .expect("a qualified patch")
         });
     });
 
@@ -41,19 +41,23 @@ pub(crate) fn version_benchmarks(criterion: &mut Criterion) {
         .parse::<Version>()
         .expect("the static version is valid");
     group.bench_function("compare", |bencher| {
-        bencher.iter(|| black_box(left).cmp(black_box(&right)));
+        bencher.iter(|| black_box(&left).cmp(black_box(&right)));
     });
-    group.bench_function("parse_maximum", |bencher| {
+    group.bench_function("parse_wide", |bencher| {
         bencher.iter(|| {
-            black_box("255.255.65535")
+            black_box("65535.65535.65535")
                 .parse::<Version>()
-                .expect("fixed width maximum")
+                .expect("the widest numeric components")
         });
     });
     group.bench_function("native_parts", |bencher| {
         bencher.iter(|| {
-            let version = black_box(Version::new(255, 255, 65535));
-            black_box((version.major(), version.minor(), version.patch()))
+            let version = black_box(Version::new(65535, 65535, Some("65535")));
+            black_box((
+                version.major(),
+                version.minor(),
+                version.patch().map(str::len),
+            ))
         });
     });
     group.finish();
