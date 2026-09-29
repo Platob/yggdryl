@@ -64,7 +64,7 @@ No answer carries what authenticates a location: a table's `url` and the text of
 | `tickers` | `table` | `[{"ticker","crosscode","from","to","books"}]` ordered by ticker, `from` the whole second the first book stands in and `to` the whole second after the last, both UTC, so `[from, to)` holds every book and a display passes them straight back as a range - the first or the last instant `i64` nanoseconds hold where that second lies past them, `1677-09-21T00:12:43.145224192Z` and `2262-04-11T23:47:16.854775807Z`; a book stating no ticker is not listed, since no query can name it, and an empty or absent table lists none. One projected scan, `select ticker, crosscode, currunix where marketdatakind = 'BOOK'` |
 | `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, `interval` the effective spelling, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books,executions,volume}` with each reading `{open,high,low,close}` or null - [`Candle`](candle.md) cell for cell, the books folded by [`CandleIterator`](candle.md#the-fold) under `interval` aligned to `tz`. A known ticker with no book in range answers `"candles": []`; an unknown one is `404` |
 | `book` | `table`, `ticker`, `at`, `tz` | the last book at or before `at`: `{currunix,ticker,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,alive,deltas,executions,bidlimits,asklimits}` - `imbalance` over the first level, `alive`, `deltas` and `executions` the counts of its entries (the entries are `events`), each side `[{price,quantity,uuids,tradable}]` best first ([`Limit`](book.md#limits)); none there yet is `404` (`expected a book at "books/ACME at or before <instant>", got nothing`) |
-| `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`: for every book of the ticker in `[from, to)`, in instant order, one row per alive entry (role `alive`), per delta applied since the book before (`delta`) and per execution at its instant (`execution`), each an object keyed by the fifty names of `BookService::events_field()` - `bookunix`, `role`, then `marketdatakind` and every flat column of the [`marketdata` row](market-data.md#columns), the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` left out - at most `limit` rows, `truncated` saying whether more were kept back. The bound is pushed into the read: one projected scan of the range's `currunix` finds the instant by which its earliest `limit + 1` books stand, and only the books up to it are read and built - that count doubled while they state no more than `limit` rows on `side` and the range holds more - so a request holds at most `limit + 1` books and instants whatever its range, a table stored in no instant order included |
+| `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`: for every book of the ticker in `[from, to)`, in instant order, one row per alive entry (role `alive`), per delta applied since the book before (`delta`) and per execution at its instant (`execution`), each an object keyed by the fifty-one names of `BookService::events_field()` - `bookunix`, `role`, then `marketdatakind` and every flat column of the [`marketdata` row](market-data.md#columns), the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` left out - at most `limit` rows, `truncated` saying whether more were kept back. The bound is pushed into the read: one projected scan of the range's `currunix` finds the instant by which its earliest `limit + 1` books stand, and only the books up to it are read and built - that count doubled while they state no more than `limit` rows on `side` and the range holds more - so a request holds at most `limit + 1` books and instants whatever its range, a table stored in no instant order included |
 | `audit.csv`, `audit.csv.gz`, `audit.csv.zst` | `table`, `ticker`, `from`, `to`, `tz`, `side` | the same rows unbounded, as [the download](#the-audit-download) |
 
 | Parameter | Rule |
@@ -80,7 +80,7 @@ Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - nine 
 
 ## The audit download
 
-`audit.csv`, `audit.csv.gz` and `audit.csv.zst` answer the rows `events` answers, unbounded, written by the [CSV medium](../media/index.md#csv) into a buffer whose media type is the suffix's - `text/csv` under the coding the name carries - and served under that coding's own `Content-Type`, `text/csv`, `application/gzip` or `application/zstd`, with `Content-Disposition: attachment; filename="audit-<ticker>-<from>-<to>.<suffix>"`, the two instants to the second in UTC, `20260813T220000Z`, and the ticker kept to `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, any other character `_`. The header line names the fifty columns, `bookunix,role,marketdatakind,currunix,...`, and the file reads back through any handle named with the same suffix.
+`audit.csv`, `audit.csv.gz` and `audit.csv.zst` answer the rows `events` answers, unbounded, written by the [CSV medium](../media/index.md#csv) into a buffer whose media type is the suffix's - `text/csv` under the coding the name carries - and served under that coding's own `Content-Type`, `text/csv`, `application/gzip` or `application/zstd`, with `Content-Disposition: attachment; filename="audit-<ticker>-<from>-<to>.<suffix>"`, the two instants to the second in UTC, `20260813T220000Z`, and the ticker kept to `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, any other character `_`. The header line names the fifty-one columns, `bookunix,role,marketdatakind,currunix,...`, and the file reads back through any handle named with the same suffix.
 
 ## The components
 
@@ -250,7 +250,7 @@ What the package ships beside its binding, and the argument vector `serve()` spa
 
 ## The ULBridge capture, served
 
-One command serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`: an absent folder becomes an Iceberg table, the capture's seven books land in it, and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
+One command serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`: an absent folder becomes an Iceberg table, the capture's eight books land in it, and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
 
 ```bash
 yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich --bind 127.0.0.1:0
@@ -259,7 +259,7 @@ yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --ti
 ```text
 http://127.0.0.1:37081/
 · table books over file:///tmp/books, created
-· capture rust/tests/fix/ulbridge.log: 7 books into books
+· capture rust/tests/fix/ulbridge.log: 8 books into books
 ```
 
 The table it serves, and the tickers the table holds, each with the range that holds its books:
@@ -278,7 +278,8 @@ curl 'http://127.0.0.1:37081/api/tickers?table=books'
  {"books":1,"crosscode":"2454","from":"2026-08-14T21:59:46.000000000Z","ticker":"2454","to":"2026-08-14T21:59:47.000000000Z"},
  {"books":2,"crosscode":"ABBN.S","from":"2026-08-14T12:46:39.000000000Z","ticker":"ABBN.S","to":"2026-08-14T12:46:40.000000000Z"},
  {"books":1,"crosscode":"EXAMPLECO.S","from":"2026-08-14T12:46:58.000000000Z","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59.000000000Z"},
- {"books":2,"crosscode":"HOLN","from":"2026-08-14T12:46:39.000000000Z","ticker":"HOLN","to":"2026-08-14T12:46:41.000000000Z"}]
+ {"books":2,"crosscode":"HOLN","from":"2026-08-14T12:46:39.000000000Z","ticker":"HOLN","to":"2026-08-14T12:46:41.000000000Z"},
+ {"books":1,"crosscode":"XAU/USD","from":"2026-08-14T14:52:55.000000000Z","ticker":"XAU/USD","to":"2026-08-14T14:52:56.000000000Z"}]
 ```
 
 Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, one execution of `300`:
@@ -303,7 +304,7 @@ curl 'http://127.0.0.1:37081/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
 
 ```json
 {"alive":1,"asklimits":[],"askqty":null,"bestask":null,"bestbid":"72.3",
- "bidlimits":[{"price":"72.3","quantity":"50","tradable":true,"uuids":["01a0004f-6b94-7000-943d-d0f4ec1621dd"]}],
+ "bidlimits":[{"price":"72.3","quantity":"50","tradable":true,"uuids":["01a0004f-6b94-7000-bc8d-e2a462f4367e"]}],
  "bidqty":"50","crosscode":"HOLN","currunix":"2026-08-14T14:46:40.020000000+02:00[Europe/Zurich]","deltas":1,"executions":0,
  "imbalance":"1","iscrossed":false,"islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
@@ -320,12 +321,12 @@ gunzip -c audit.csv.gz | wc -l
 HTTP/1.1 200 OK
 cache-control: no-store
 content-disposition: attachment; filename="audit-HOLN-20260813T220000Z-20260814T220000Z.csv.gz"
-content-length: 1931
+content-length: 1928
 content-type: application/gzip
-date: Tue, 29 Sep 2026 08:41:14 GMT
-server: yggdryl/0.1.17
+date: Tue, 29 Sep 2026 20:50:04 GMT
+server: yggdryl/0.1.18
 
-bookunix,role,marketdatakind,currunix,creaunix,execunix,recdunix,exprunix,prevunix,snapunix,curruuid,crossuuid,crosscode
+bookunix,role,marketdatakind,currunix,creaunix,recdunix,exprunix,prevunix,snapunix,curruuid,crossuuid,crosscode,currhash
 2026-08-14T12:46:39.743000000Z,delta,ORDR,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46
 2026-08-14T12:46:39.743000000Z,execution,EXEC,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T1
 5
@@ -352,12 +353,12 @@ curl -s -D - -o /dev/null http://127.0.0.1:37081/ | head -5
 ```text
 HTTP/1.1 200 OK
 cache-control: no-cache
-content-length: 4751
+content-length: 4881
 content-type: text/html; charset=utf-8
-date: Tue, 29 Sep 2026 08:41:14 GMT
+date: Tue, 29 Sep 2026 20:50:04 GMT
 ```
 
-`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of seven rows - that the same command serves again without the capture, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
+`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of eight rows - that the same command serves again without the capture, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
 
 ## Edges
 
