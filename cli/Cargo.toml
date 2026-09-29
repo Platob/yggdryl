@@ -2,7 +2,7 @@
 #
 # `yggdryl fix` is everything a desk does to a FIX dictionary, from a shell,
 # `yggdryl xmla serve` puts folders of record media on the wire as XML for
-# Analysis catalogs, and `yggdryl serve` puts a table of market data on the
+# Analysis catalogs, and `yggdryl market serve` puts a table of market data on the
 # wire as the book display - bid and ask candles, books and audits - with a FIX
 # bridge capture folded in first. Its own member rather than a binary inside the
 # core, so a library consumer carries none of what a terminal needs - argument
@@ -15,7 +15,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The yggdryl command line: manage a FIX dictionary, serve XML for Analysis catalogs and serve the book display of a market-data table from a terminal."
+description = "The yggdryl command line: manage a FIX dictionary, serve XML for Analysis catalogs and serve the book display of a market-data table (`yggdryl market serve`) from a terminal."
 
 [[bin]]
 name = "yggdryl"
@@ -26,7 +26,7 @@ doc = false
 
 [dependencies]
 # The default core plus `http`: a tool that reads a dictionary wants the same
-# core a consumer has, and `yggdryl xmla serve` and `yggdryl serve` answer on the
+# core a consumer has, and `yggdryl xmla serve` and `yggdryl market serve` answer on the
 # core's HTTP server.
 yggdryl = { path = "../rust", features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
@@ -39,8 +39,8 @@ crossterm = { version = "0.29", default-features = false, features = ["events", 
 shlex = "2.0"
 
 [features]
-# `yggdryl xmla serve` and `yggdryl serve` over an Iceberg folder need the core's
-# table reader, and `yggdryl serve --capture` makes an empty folder a table with
+# `yggdryl xmla serve` and `yggdryl market serve` over an Iceberg folder need the
+# core's table reader, and `yggdryl market serve --capture` makes an empty folder a table with
 # it; without it an Iceberg table is listed and refused on read, by name. The
 # staged binary (`scripts/stage_cli.py`) enables it; the default build stays the
 # schema-only core.

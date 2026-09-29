@@ -769,7 +769,7 @@ fn a_leaf_no_record_medium_reads_under_a_schema_is_no_table() {
     write_rows(&root, "eu/fills.arrows");
     write_bytes(&root, "eu/README.md", b"# eu\n");
     write_bytes(&root, "eu/LICENSE", b"MIT\n");
-    write_bytes(&root, "eu/quotes.csv", b"symbol,price\nAAPL,1\n");
+    write_bytes(&root, "eu/cols.orc", b"x");
     write_bytes(&root, "eu/config.json", b"{}");
     let catalog = over("market", &root);
     assert_eq!(
@@ -777,7 +777,7 @@ fn a_leaf_no_record_medium_reads_under_a_schema_is_no_table() {
         ["market.eu.fills"],
         "a schema's leaves are tables only where a record medium reads them"
     );
-    for name in ["README", "LICENSE", "quotes", "config"] {
+    for name in ["README", "LICENSE", "cols", "config"] {
         assert!(
             catalog.table(Some("eu"), name).expect_err(name).is_absent(),
             "{name} is no table"
@@ -836,11 +836,11 @@ fn every_record_encoding_this_build_implements_makes_a_leaf_a_table() {
     write_bytes(&root, "journal.txt", b"one\n");
     write_bytes(&root, "memo.text", b"one\n");
     write_bytes(&root, "audit.log", b"one\n");
+    write_bytes(&root, "quotes.csv", b"symbol,price\nAAPL,1\n");
+    write_bytes(&root, "ticks.tsv", b"symbol\tprice\nAAPL\t1\n");
     for other in [
         "doc.json",
         "rows.jsonl",
-        "quotes.csv",
-        "quotes.tsv",
         "conf.yaml",
         "conf.toml",
         "page.xml",
@@ -854,9 +854,10 @@ fn every_record_encoding_this_build_implements_makes_a_leaf_a_table() {
     assert_eq!(
         names(&catalog),
         [
-            "audit", "avro", "feather", "file", "ipc", "journal", "memo", "stream"
+            "audit", "avro", "feather", "file", "ipc", "journal", "memo", "quotes", "stream",
+            "ticks"
         ],
-        "IPC in both framings, Avro and plain text are record encodings; JSON, CSV, YAML, TOML, XML, ORC, HTML and Markdown are not"
+        "IPC in both framings, Avro, plain text, CSV and TSV are record encodings; JSON, YAML, TOML, XML, ORC, HTML and Markdown are not"
     );
     for (name, description, encoding) in [
         (
@@ -871,6 +872,8 @@ fn every_record_encoding_this_build_implements_makes_a_leaf_a_table() {
         ),
         ("avro", "application/avro", MimeType::AVRO),
         ("audit", "text/plain", MimeType::PLAIN_TEXT),
+        ("quotes", "text/csv", MimeType::CSV),
+        ("ticks", "text/tab-separated-values", MimeType::TSV),
     ] {
         let table = catalog.table(None, name).expect(name);
         assert_eq!(table.description(), description, "{name}");

@@ -607,7 +607,7 @@ test('the app reads and writes its hash, orders the zones, spans a ticker and fi
 })
 
 test('serveArguments spells the command line: tables, bind, path, one --capture per log, then the rest', () => {
-  assert.deepEqual(book.serveArguments(), ['serve', '--bind', '127.0.0.1:0', '--path', '/'])
+  assert.deepEqual(book.serveArguments(), ['market', 'serve', '--bind', '127.0.0.1:0', '--path', '/'])
   assert.deepEqual(
     book.serveArguments({
       tables: ['books=/data/books', { name: 'ref', location: 's3://bucket/ref' }, { location: '/data/other' }],
@@ -616,9 +616,9 @@ test('serveArguments spells the command line: tables, bind, path, one --capture 
       capture: ['a.log', 'b.log'],
       args: ['--snapshot-millis', 250],
     }),
-    ['serve', 'books=/data/books', 'ref=s3://bucket/ref', '/data/other', '--bind', '0.0.0.0:8080', '--path', '/book', '--capture', 'a.log', '--capture', 'b.log', '--snapshot-millis', '250'],
+    ['market', 'serve', 'books=/data/books', 'ref=s3://bucket/ref', '/data/other', '--bind', '0.0.0.0:8080', '--path', '/book', '--capture', 'a.log', '--capture', 'b.log', '--snapshot-millis', '250'],
   )
-  assert.deepEqual(book.serveArguments({ tables: 'books=/data/books', capture: 'a.log' }), ['serve', 'books=/data/books', '--bind', '127.0.0.1:0', '--path', '/', '--capture', 'a.log'])
+  assert.deepEqual(book.serveArguments({ tables: 'books=/data/books', capture: 'a.log' }), ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:0', '--path', '/', '--capture', 'a.log'])
   assert.throws(() => book.serveArguments({ tables: [42] }), /a table is 'name=location', a location, or \{ name, location \}, got 42/)
   assert.throws(() => book.serveArguments({ tables: [{ name: 'x' }] }), TypeError)
   assert.throws(() => book.serveArguments({ tables: [''] }), TypeError)
@@ -650,13 +650,13 @@ test('serve resolves on the endpoint line, and rejects with stderr or a line tha
     assert.deepEqual(await started.close(), status, 'closing twice answers the same status')
 
     const refusing = script('refusing', 'echo "a capture needs a table to land in" >&2\nexit 2')
-    await assert.rejects(book.serve({ bin: refusing, capture: ['x.log'] }), /yggdryl serve exited with 2 before printing its endpoint: a capture needs a table to land in/)
+    await assert.rejects(book.serve({ bin: refusing, capture: ['x.log'] }), /yggdryl market serve exited with 2 before printing its endpoint: a capture needs a table to land in/)
 
     const babbling = script('babbling', 'echo "hello"\nexec sleep 30')
-    await assert.rejects(book.serve({ bin: babbling, tables: ['b=/tmp/b'] }), /expected the endpoint on the first line of yggdryl serve, got "hello"/)
+    await assert.rejects(book.serve({ bin: babbling, tables: ['b=/tmp/b'] }), /expected the endpoint on the first line of yggdryl market serve, got "hello"/)
 
     const silent = script('silent', 'exit 0')
-    await assert.rejects(book.serve({ bin: silent }), /yggdryl serve exited with 0 before printing its endpoint$/)
+    await assert.rejects(book.serve({ bin: silent }), /yggdryl market serve exited with 0 before printing its endpoint$/)
   } finally {
     rmSync(folder, { recursive: true, force: true })
   }

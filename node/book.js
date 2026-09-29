@@ -1,6 +1,6 @@
 'use strict'
 
-// The book display as the package ships it: the assets `yggdryl serve` embeds
+// The book display as the package ships it: the assets `yggdryl market serve` embeds
 // and serves, and a spawner of that command for a Node program that wants the
 // display up beside it.
 //
@@ -17,7 +17,7 @@ const { createInterface } = require('node:readline')
 /** The absolute folder holding the display's files. */
 const assets = join(__dirname, 'book')
 
-/** Every file `yggdryl serve` embeds, in the order the design lists them. */
+/** Every file `yggdryl market serve` embeds, in the order the design lists them. */
 const assetFiles = Object.freeze([
   'index.html',
   'theme.css',
@@ -46,12 +46,13 @@ function listOf(value) {
 }
 
 /**
- * The argument vector of `yggdryl serve` for the options `serve` takes, the
+ * The argument vector of `yggdryl market serve` for the options `serve` takes, the
  * binary left out: the tables first, then `--bind`, `--path`, one `--capture`
  * per log, then `args` verbatim.
  */
 function serveArguments({ tables = [], bind = '127.0.0.1:0', path = '/', capture = [], args = [] } = {}) {
   return [
+    'market',
     'serve',
     ...listOf(tables).map(tableSpec),
     '--bind',
@@ -64,7 +65,7 @@ function serveArguments({ tables = [], bind = '127.0.0.1:0', path = '/', capture
 }
 
 /**
- * Start `yggdryl serve` and resolve `{ endpoint, process, close }` once it has
+ * Start `yggdryl market serve` and resolve `{ endpoint, process, close }` once it has
  * printed its endpoint: `endpoint` the URL the display answers at, `process`
  * the child, `close()` a promise that ends the process and resolves with its
  * exit status. Options: `tables` (`name=location` strings or `{ name,
@@ -112,7 +113,7 @@ function serve(options = {}) {
       try {
         endpoint = new URL(text).toString()
       } catch (cause) {
-        settle(reject, new Error(`expected the endpoint on the first line of yggdryl serve, got ${JSON.stringify(text)}`, { cause }))
+        settle(reject, new Error(`expected the endpoint on the first line of yggdryl market serve, got ${JSON.stringify(text)}`, { cause }))
         close()
         return
       }
@@ -126,7 +127,7 @@ function serve(options = {}) {
     exit.then(({ code, signal }) => {
       const reason = code !== null ? `exited with ${code}` : `ended by ${signal}`
       const detail = stderr.trim()
-      settle(reject, new Error(`yggdryl serve ${reason} before printing its endpoint${detail ? `: ${detail}` : ''}`))
+      settle(reject, new Error(`yggdryl market serve ${reason} before printing its endpoint${detail ? `: ${detail}` : ''}`))
     })
   })
 }

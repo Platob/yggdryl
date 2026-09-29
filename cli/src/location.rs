@@ -3,7 +3,7 @@
 //! Every serving command names what it serves the same way: `name=location`,
 //! or a location alone named after its last segment, the location a folder
 //! path or a URL a [`Holder`] resolves. One reading here, so `yggdryl xmla
-//! serve market=/data/market` and `yggdryl serve books=/data/books` read
+//! serve market=/data/market` and `yggdryl market serve books=/data/books` read
 //! their arguments by the same rule and refuse the same spellings.
 
 use yggdryl::holder::Holder;

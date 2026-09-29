@@ -1,4 +1,4 @@
-//! `yggdryl serve`: the book display from a terminal.
+//! `yggdryl market`: the market-data namespace from a terminal.
 //!
 //! `serve` routes the book service in [`yggdryl::graph`] - the tickers a
 //! table holds, the candles a ticker's books fold into, the book standing at
@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use yggdryl::graph::{BookEvent, BookIterator, BookService, BookServiceOptions, MarketData};
 use yggdryl::holder::Holder;
 use yggdryl::http::{ForwardedHeader, Method, Response, Server, ServerOptions, Status};
@@ -58,10 +58,17 @@ const ASSETS: [Asset; 8] = [
     asset!("favicon.svg", "image/svg+xml"),
 ];
 
+/// What the market namespace was asked to do.
+#[derive(Subcommand)]
+pub enum Command {
+    /// Serve tables of market data as the book display over HTTP, until stopped.
+    Serve(Serve),
+}
+
 /// The display's socket, what it serves, and what lands before it does.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  yggdryl serve books=/data/books\n  yggdryl serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich\n  yggdryl serve /data/books --bind 0.0.0.0:8080 --path /book\n  yggdryl serve books=s3://bucket/books --public-url https://data.example.com/book --trusted-proxy 10.0.0.0/8 --path-prefix /book\n\nA table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request.\n--capture folds a FIX bridge log into the first table before serving: its lines are read under --rowheader and --timezone, walked as the chains they belong to, folded into books on the --snapshot-millis grid and appended as BOOK rows. An empty or absent folder becomes an Iceberg table first (the `iceberg` feature); a leaf takes the rows under its own encoding.\nThe first line printed is the endpoint on the socket, so a script that started the process knows where to connect; the display answers there and the routes under `<path>/api`."
+    after_help = "Examples:\n  yggdryl market serve books=/data/books\n  yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich\n  yggdryl market serve /data/books --bind 0.0.0.0:8080 --path /book\n  yggdryl market serve books=s3://bucket/books --public-url https://data.example.com/book --trusted-proxy 10.0.0.0/8 --path-prefix /book\n\nA table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request.\n--capture folds a FIX bridge log into the first table before serving: its lines are read under --rowheader and --timezone, walked as the chains they belong to, folded into books on the --snapshot-millis grid and appended as BOOK rows. An empty or absent folder becomes an Iceberg table first (the `iceberg` feature); a leaf takes the rows under its own encoding.\nThe first line printed is the endpoint on the socket, so a script that started the process knows where to connect; the display answers there and the routes under `<path>/api`."
 )]
 pub struct Serve {
     /// The tables to serve: `name=location`, or a location named after itself.
@@ -149,7 +156,7 @@ pub struct Serve {
     read_timeout: u64,
 }
 
-/// Run `serve`.
+/// Run one `market` verb.
 ///
 /// # Errors
 ///
@@ -157,8 +164,10 @@ pub struct Serve {
 /// this build has no rules for, a row header that does not compile, a
 /// dictionary or a table location that does not resolve - the socket's
 /// refusal, or what folding a capture into its table refuses.
-pub fn run(serve: &Serve) -> Result<ExitCode> {
-    serve.run()
+pub fn run(command: &Command) -> Result<ExitCode> {
+    match command {
+        Command::Serve(serve) => serve.run(),
+    }
 }
 
 impl Serve {

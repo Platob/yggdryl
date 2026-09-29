@@ -1,4 +1,4 @@
-//! Process-level checks for `yggdryl serve`: what it refuses it refuses
+//! Process-level checks for `yggdryl market serve`: what it refuses it refuses
 //! before binding, and the endpoint it prints answers the display and the
 //! book routes; with the `iceberg` feature, a FIX bridge capture folded into
 //! a table folder - one the command creates - is served as its books.
@@ -160,7 +160,7 @@ fn served_as(endpoint: &str, leaf: &str, content_type: &str) -> Response {
 /// error on stderr - and `named` is in what it says.
 fn refused(args: &[&str], named: &[&str]) {
     let output = command()
-        .arg("serve")
+        .args(["market", "serve"])
         .args(args)
         .output()
         .expect("the process runs");
@@ -279,7 +279,14 @@ fn serve_prints_its_endpoint_first_and_answers_the_display_and_the_api() {
     let root = books_root();
     let mut serve = command();
     serve
-        .args(["serve", "--bind", "127.0.0.1:0", "--path", "/book"])
+        .args([
+            "market",
+            "serve",
+            "--bind",
+            "127.0.0.1:0",
+            "--path",
+            "/book",
+        ])
         .arg(format!("books={}", root.display()));
     let (served, endpoint, notes) = started(serve, 1);
     assert!(
@@ -387,7 +394,7 @@ fn span_of(tickers: &Scalar, ticker: &str) -> (String, String) {
 fn capture_served(root: &std::path::Path) -> Vec<String> {
     let mut serve = command();
     serve
-        .args(["serve", "--bind", "127.0.0.1:0"])
+        .args(["market", "serve", "--bind", "127.0.0.1:0"])
         .args(["--capture", CAPTURE])
         .args(["--registry", REGISTRY])
         .args(["--timezone", "Europe/Zurich"])

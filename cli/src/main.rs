@@ -2,8 +2,8 @@
 //!
 //! One binary over the core's namespaces, each a subcommand that owns its own
 //! verbs and its own state. There are three: [`fix`], the FIX dictionary
-//! tool, [`xmla`], the XML for Analysis provider, and [`serve`], the book
-//! display. The top level parses, dispatches, and prints a refusal; every
+//! tool, [`xmla`], the XML for Analysis provider, and [`market`], the
+//! market-data namespace whose `serve` verb is the book display. The top level parses, dispatches, and prints a refusal; every
 //! verb lives in the namespace it belongs to, and [`location`] is how every
 //! serving command reads where its data is.
 //!
@@ -11,7 +11,7 @@
 //! | --- | --- |
 //! | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively |
 //! | `xmla` | the XML for Analysis provider: serve folders of record media as catalogs over HTTP |
-//! | `serve` | the book display: serve tables of market data as bid and ask candles, books and audits over HTTP, a FIX bridge capture folded in first |
+//! | `market` | market data: `serve` tables of it as the book display - bid and ask candles, books and audits over HTTP - a FIX bridge capture folded in first |
 
 /// Print to standard output, as `print!` does, ending quietly when the reader
 /// has gone - see [`style::write_out`].
@@ -35,10 +35,10 @@ macro_rules! outln {
 mod diff;
 mod fix;
 mod location;
+mod market;
 mod quality;
 mod registry;
 mod schema;
-mod serve;
 mod shell;
 mod style;
 mod xmla;
@@ -83,7 +83,10 @@ enum Command {
         command: xmla::Command,
     },
     /// Serve tables of market data as the book display over HTTP.
-    Serve(serve::Serve),
+    Market {
+        #[command(subcommand)]
+        command: market::Command,
+    },
 }
 
 fn main() -> ExitCode {
@@ -99,7 +102,7 @@ fn main() -> ExitCode {
             command.as_deref(),
         ),
         Command::Xmla { command } => xmla::run(command),
-        Command::Serve(serve) => serve::run(serve),
+        Command::Market { command } => market::run(command),
     };
     match outcome {
         Ok(code) => code,

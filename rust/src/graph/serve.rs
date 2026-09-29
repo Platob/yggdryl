@@ -141,7 +141,7 @@ impl BookServiceOptions {
     }
 
     /// The same options stating the snapshot grid, milliseconds, the books a
-    /// capture is folded on before it lands in a table - what `yggdryl serve
+    /// capture is folded on before it lands in a table - what `yggdryl market serve
     /// --snapshot-millis` states and hands to
     /// [`BookIterator::new`](super::BookIterator::new); zero is no grid. The
     /// service reads books already folded and re-folds nothing.
