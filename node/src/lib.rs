@@ -83,9 +83,10 @@ pub use fix::{
     fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use graph::{
-    BookLimit, BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsEventIterator, JsExecution,
-    JsExecutionEvent, JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent, JsQuote,
-    JsQuoteEvent, JsSnapshotEvent, JsTradeEvent, graph_entry_id_native, graph_entry_ref_id_native,
+    BookLimit, BookRefInput, CandleReading, JsBookEvent, JsBookIterator, JsBookRef, JsCandle,
+    JsCandleIterator, JsCandleOptions, JsEventIterator, JsExecution, JsExecutionEvent,
+    JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent, JsQuote, JsQuoteEvent,
+    JsSnapshotEvent, JsTradeEvent, graph_entry_id_native, graph_entry_ref_id_native,
     graph_followed_altids_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};

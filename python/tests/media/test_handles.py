@@ -9,7 +9,8 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import IOBase
+from yggdryl import Csv, IOBase, Media
+from yggdryl.coding import Gzip
 
 ID_SCHEMA = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 TEXT_ID_SCHEMA = pa.schema([pa.field("id", pa.string(), nullable=False)])
@@ -462,3 +463,20 @@ def test_empty_streams_keep_their_intent(
     getattr(handle, f"{intent}_arrow_reader")(empty, options=options)
 
     assert ids_at(path) == ([] if intent == "overwrite" else sorted(stored))
+
+
+class TestHandleClasses:
+    """`type(handle)` names the record implementation a name composes to."""
+
+    def test_a_csv_or_tsv_name_composes_the_csv_class(self, tmp_path: pathlib.Path) -> None:
+        for name in ("trades.csv", "trades.tsv", "trades.csv.gz"):
+            handle = IOBase(tmp_path / name)
+            assert type(handle) is Csv, name
+            assert isinstance(handle, Media)
+            # Descending leaves the record implementation behind.
+            assert not isinstance(handle.into_handle(), Media), name
+        assert Csv.__doc__ and "text/csv" in Csv.__doc__
+        # The coding sits underneath the encoding, never over it.
+        assert isinstance(IOBase(tmp_path / "trades.csv.gz").into_handle(), Gzip)
+        assert str(IOBase(tmp_path / "trades.csv").record_options().mime_type) == "text/csv"
+        assert IOBase(tmp_path / "trades.tsv").record_options().separator == "\t"

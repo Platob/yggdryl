@@ -1009,21 +1009,7 @@ impl PyScalar {
     /// are field names rather than keys. A duplicate name is a `ValueError`.
     #[staticmethod]
     fn from_struct(entries: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let mut pairs: Vec<(String, Scalar)> = Vec::new();
-        if let Ok(mapping) = entries.cast::<PyDict>() {
-            for (name, value) in mapping.iter() {
-                pairs.push((record_name(&name)?, from_py(&value)?));
-            }
-        } else {
-            for entry in entries.try_iter()? {
-                let entry = entry?;
-                let (name, value): (Bound<'_, PyAny>, Bound<'_, PyAny>) = entry.extract()?;
-                pairs.push((record_name(&name)?, from_py(&value)?));
-            }
-        }
-        Scalar::from_struct(pairs)
-            .map(Self::from_inner)
-            .map_err(value_error)
+        struct_from_entries(entries).map(Self::from_inner)
     }
 
     /// Build the canonical text of one core enum member, validating it.
@@ -1692,6 +1678,40 @@ fn record_name(value: &Bound<'_, PyAny>) -> PyResult<String> {
         .cast::<PyString>()
         .map_err(|_| PyTypeError::new_err("record field names must be str"))?
         .extract()
+}
+
+/// The sorted name-to-value map a struct row canonicalizes, read off a
+/// mapping or an iterable of `(name, value)` pairs: the one door a Python
+/// mapping takes to say its keys are field names rather than map keys. A
+/// name that is not a `str` and a name given twice are refused.
+pub(crate) fn struct_from_entries(entries: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    let mut pairs: Vec<(String, Scalar)> = Vec::new();
+    if let Ok(mapping) = entries.cast::<PyDict>() {
+        for (name, value) in mapping.iter() {
+            pairs.push((record_name(&name)?, from_py(&value)?));
+        }
+    } else {
+        // A `Mapping` that is no `dict` iterates its keys, so its pairs are
+        // read off `items()`; anything else is itself an iterable of pairs.
+        let items = if is_mapping(entries)? {
+            entries.call_method0("items")?
+        } else {
+            entries.clone()
+        };
+        for entry in items.try_iter()? {
+            let entry = entry?;
+            let (name, value): (Bound<'_, PyAny>, Bound<'_, PyAny>) = entry.extract()?;
+            pairs.push((record_name(&name)?, from_py(&value)?));
+        }
+    }
+    Scalar::from_struct(pairs).map_err(value_error)
+}
+
+/// Whether `value` is a `collections.abc.Mapping` - a `dict`, or a class
+/// registered as one - which a struct door reads by name rather than as the
+/// map `from_py` makes of it.
+pub(crate) fn is_mapping(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    value.is_instance(classes::mapping(value.py())?)
 }
 
 pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {

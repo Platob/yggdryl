@@ -33,7 +33,12 @@ encoding!(PyIpc, "Ipc", "An Arrow IPC stream or file.");
 encoding!(PyParquet, "Parquet", "An Apache Parquet file.");
 encoding!(PyAvro, "Avro", "An Apache Avro object container.");
 encoding!(PyXmla, "Xmla", "An XML for Analysis rowset document.");
-encoding!(PyCsv, "Csv", "A comma-separated values document.");
+encoding!(
+    PyCsv,
+    "Csv",
+    "A delimiter-separated values document - `text/csv`, or \
+     `text/tab-separated-values` under a tab - its dialect on the record options."
+);
 
 /// Plain-text rows under one retained flat configuration.
 ///

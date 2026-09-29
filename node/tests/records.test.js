@@ -352,7 +352,7 @@ test('record options are values, and a setting is set or carried forward', () =>
 
   // An encoding this build does not implement is named rather than guessed.
   assert.throws(
-    () => RecordOptions.forMimeType('text/csv'),
+    () => RecordOptions.forMimeType('application/vnd.apache.orc'),
     /expected a record encoding this build implements/,
   )
 })
@@ -1045,4 +1045,173 @@ test('a column mixing number and bigint is one integer column', (t) => {
     () => handle.overwriteRecords([{ id: 1n }, { id: 1.5 }]),
     (error) => error instanceof TypeError && /"id"/.test(error.message) && /1\.5/.test(error.message),
   )
+})
+
+// The CSV medium: rows written as text and read back typed, the dialect
+// carried by `RecordOptions` and reached through every door's property bag.
+function csvRows() {
+  return [
+    { id: 1n, symbol: 'AAPL', price: 189.5, active: true, note: 'a, quoted "cell"' },
+    { id: 2n, symbol: 'MSFT', price: 410, active: false, note: '' },
+    { id: 3n, symbol: 'NVDA', price: null, active: true, note: null },
+  ]
+}
+
+test('CSV rows round trip through records, typed by their own text', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const handle = new IOBase(path.join(root, 'trades.csv'))
+  assert.equal(handle.recordOptions().toString(), 'text/csv')
+  assert.equal(handle.recordOptions().separator, ',')
+  handle.overwriteRecords(csvRows())
+
+  // RFC 4180 on the wire: a header, the separator and the quote inside a
+  // cell quoted with the quote doubled, the empty text as `""` and a null
+  // as nothing at all.
+  assert.equal(
+    handle.readBytes().toString(),
+    'id,symbol,price,active,note\n' +
+      '1,AAPL,189.5,true,"a, quoted ""cell"""\n' +
+      '2,MSFT,410,false,""\n' +
+      '3,NVDA,,true,\n',
+  )
+
+  // Read back with no declared field, each column's datatype inferred from
+  // its text: an integer, text, a float, a boolean; the empty text and the
+  // null come back apart.
+  assert.deepEqual([...handle.readRecords()], csvRows())
+  const field = handle.readArrowField()
+  assert.deepEqual(
+    Array.from(field.dtype, (child) => [child.name, child.dtype.toString()]),
+    [
+      ['id', 'int64'],
+      ['symbol', 'utf8'],
+      ['price', 'float64'],
+      ['active', 'boolean'],
+      ['note', 'utf8'],
+    ],
+  )
+  assert.equal(handle.readArrowReader().intoTable().numRows, 3)
+
+  // Appending keeps the header once, and a declared field types the cells
+  // as it says rather than as they look.
+  handle.appendRecords([{ id: 4n, symbol: 'AMD', price: 1.25, active: false, note: 'x' }])
+  assert.equal(handle.readBytes().toString().split('\n').filter((line) => line.startsWith('id,')).length, 1)
+  const declared = fields.struct(
+    'row',
+    [Field.from('id: int32'), Field.from('active: utf8')],
+    { nullable: false },
+  )
+  const typed = [...handle.readRecords(handle.recordOptions().withField(declared))]
+  assert.deepEqual(typed.map((row) => row.id), [1, 2, 3, 4])
+  assert.deepEqual(typed.map((row) => row.active), ['true', 'false', 'true', 'false'])
+})
+
+test('a CSV dialect reaches every door as a property', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const handle = new IOBase(path.join(root, 'trades.csv'))
+  handle.overwriteRecords(csvRows(), { separator: ';' })
+  assert.ok(handle.readBytes().toString().startsWith('id;symbol;price;active;note\n'))
+
+  // Read under the default dialect, the header is one column; under the
+  // property, the five it names - on the field, the batches and the rows.
+  assert.equal(handle.readArrowField().dtype.length, 1)
+  assert.equal(handle.readArrowField({ separator: ';' }).dtype.length, 5)
+  assert.equal(handle.readArrowReader({ separator: ';' }).intoTable().numCols, 5)
+  assert.deepEqual([...handle.readRecords({ separator: ';' })], csvRows())
+  // Beside given options, on a copy of them.
+  const options = handle.recordOptions().withMaxRowSize(1)
+  assert.deepEqual([...handle.readRecords(options, { separator: ';' })].length, 1)
+  assert.equal(options.separator, ',')
+
+  // The write doors: append, merge, and the Arrow twins.
+  handle.appendRecords([{ id: 4n, symbol: 'AMD', price: 1.25, active: false, note: 'x' }], { separator: ';' })
+  assert.equal([...handle.readRecords({ separator: ';' })].length, 4)
+  handle.mergeRecords([{ id: 4n, symbol: 'AMD.O', price: 1.5, active: true, note: 'y' }], {
+    separator: ';',
+    mergeBy: ['id'],
+  })
+  const merged = [...handle.readRecords({ separator: ';' })]
+  assert.equal(merged.length, 4)
+  assert.equal(merged.find((row) => row.id === 4n).symbol, 'AMD.O')
+  // Nothing was written into the handle's own options.
+  assert.equal(handle.recordOptions().separator, ',')
+  assert.equal(handle.recordOptions().quote, '"')
+
+  // The Arrow twins, on a resource of their own: an overwrite replaces rows
+  // under the stored field, so a dialect change is a new resource's.
+  const bars = new IOBase(path.join(root, 'bars.csv'))
+  bars.overwriteArrowTable(trades(), { separator: '|', quote: null })
+  assert.equal(bars.readBytes().toString(), 'id|symbol|venue\n1|AAPL|XNAS\n2|MSFT|XNAS\n')
+  bars.appendArrowTable(rows([3n], ['NVDA'], ['XNAS']), { separator: '|', quote: null })
+  assert.deepEqual(
+    bars.readArrowReader({ separator: '|', quote: null }).intoTable().getChild('symbol').toArray(),
+    ['AAPL', 'MSFT', 'NVDA'],
+  )
+  assert.equal(bars.readArrowReader({ separator: '|', quote: null }).intoTable().numRows, 3)
+})
+
+test('a TSV name is the tab dialect, and a coded name compresses the text', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const tsv = new IOBase(path.join(root, 'trades.tsv'))
+  assert.equal(tsv.recordOptions().toString(), 'text/tab-separated-values')
+  assert.equal(tsv.recordOptions().separator, '\t')
+  tsv.overwriteRecords(csvRows())
+  assert.ok(tsv.readBytes().toString().startsWith('id\tsymbol\tprice\tactive\tnote\n'))
+  assert.deepEqual([...tsv.readRecords()], csvRows())
+
+  // No call takes a coding argument: the name already carries it, and the
+  // rows come back through the same coding.
+  const compressed = new IOBase(path.join(root, 'trades.csv.gz'))
+  assert.equal(compressed.mediaType.toString(), 'text/csv;encodings=application/gzip')
+  assert.equal(compressed.recordOptions().toString(), 'text/csv')
+  compressed.overwriteRecords(csvRows())
+  assert.equal(compressed.readBytes().subarray(0, 2).toString('hex'), '1f8b')
+  assert.deepEqual([...compressed.readRecords()], csvRows())
+  compressed.appendRecords([{ id: 4n, symbol: 'AMD', price: 1.25, active: false, note: 'x' }])
+  assert.equal([...compressed.readRecords()].length, 4)
+  assert.equal(compressed.readArrowReader().intoTable().numRows, 4)
+})
+
+test('a CSV refuses a ragged record naming the row, and a bad dialect naming the property', () => {
+  const ragged = IOBase.fromBytes(Buffer.from('a,b\n1,2\n3,4,5\n'))
+  ragged.mediaType = 'text/csv'
+  assert.throws(
+    () => ragged.readArrowReader().intoTable(),
+    /\$\[1\]: expected 2 cells, got 3 in row 3 of mem:/,
+  )
+  assert.throws(() => [...ragged.readRecords()], /expected 2 cells, got 3 in row 3/)
+
+  // A cell a required declared column cannot read is refused by its column.
+  const typed = IOBase.fromBytes(Buffer.from('id,symbol\n1,AAPL\nx,MSFT\n'))
+  typed.mediaType = 'text/csv'
+  const required = fields.struct('row', [Field.from('id: int64 not null'), Field.from('symbol: utf8')], {
+    nullable: false,
+  })
+  assert.throws(
+    () => typed.readArrowReader(typed.recordOptions().withField(required)).intoTable(),
+    /\$\[1\]\.id: .*in row 3 of mem:/,
+  )
+  // A nullable one takes it as null under `safe`, and refuses it under `safe: false`.
+  const nullable = fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
+    nullable: false,
+  })
+  assert.deepEqual(
+    [...typed.readRecords(typed.recordOptions().withField(nullable))].map((row) => row.id),
+    [1n, null],
+  )
+  assert.throws(
+    () => [...typed.readRecords(typed.recordOptions().withField(nullable).withSafe(false))],
+    /\$\[1\]\.id/,
+  )
+
+  // A dialect property is validated where it is set, before a byte is read.
+  assert.throws(() => ragged.readArrowReader({ separator: 'ab' }), /expected one ASCII character for separator, got "ab"/)
+  assert.throws(() => ragged.readArrowReader({ separator: '"' }), /\$\.separator: .*which is the quote/)
+  assert.throws(() => ragged.readRecords({ nullValues: ['', ''] }), /\$\.null_values/)
 })

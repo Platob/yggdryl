@@ -4565,6 +4565,9 @@ const NativeMarketData = binding.MarketData
 const NativeMarketDataRowIterator = binding.MarketDataRowIterator
 const NativeBookIterator = binding.BookIterator
 const NativeEventIterator = binding.EventIterator
+const NativeCandle = binding.Candle
+const NativeCandleOptions = binding.CandleOptions
+const NativeCandleIterator = binding.CandleIterator
 
 // Every class a market stream item may be: `MarketData` or one of its nine
 // leaves, the union the native doors read.
@@ -4589,6 +4592,9 @@ const GRAPH_VALUES = [
   NativeMarketDataRowIterator,
   NativeBookIterator,
   NativeEventIterator,
+  NativeCandle,
+  NativeCandleOptions,
+  NativeCandleIterator,
 ]
 
 // A stream item checked before it crosses, named the way the native
@@ -4772,6 +4778,40 @@ const EventIterator = publicClass(
   },
 )
 
+// `CandleIterator` is built the way `BookIterator` is: its hidden factory
+// takes a pull function over the caller's iterable - a `BookEvent`, or a
+// `MarketData` or another leaf, checked here by class as every market item
+// is and narrowed to the book it holds by the core, whose own refusal names
+// any other kind - and the options as a `CandleOptions`, an interval
+// spelling or a count of nanoseconds, which the native door reads through
+// the core's own two.
+const nativeCandleIterator = NativeCandleIterator._candleIteratorNative
+const CandleIterator = publicClass(NativeCandleIterator, 'CandleIterator', (books, options) => {
+  const failed = {}
+  const walk = nativeCandleIterator.call(
+    NativeCandleIterator,
+    pullOf(books, asMarketItem, 'books', failed),
+    options,
+  )
+  walk[FAILED] = failed
+  return walk
+})
+
+// A candle is built by the walk, never by hand: the public class shares the
+// native prototype so `instanceof` holds, and its one door in is
+// `fromScalar` - the named struct `intoScalar` answers, or any plain object
+// spelling those cells - through the one generic `Scalar.from` door, then
+// the core's own reader.
+const nativeCandleFromScalar = NativeCandle._fromScalarNative
+const Candle = publicClass(NativeCandle, 'Candle', () => {
+  throw new TypeError(
+    'Class Candle has no constructor: a candle comes from CandleIterator, Candle.fromScalar or Candle.fromJSON',
+  )
+})
+Candle.fromScalar = function fromScalar(value) {
+  return nativeCandleFromScalar.call(NativeCandle, asScalar(value))
+}
+
 // Every walk over a native `Result<Option<T>>` answers `T | null`, not the
 // `{value, done}` shape `for...of` needs - the same reason `FixMessages`
 // wraps its own `next`, with the same failure kept for its end - and each
@@ -4780,6 +4820,7 @@ for (const [prototype, name] of [
   [NativeBookIterator.prototype, 'books'],
   [NativeEventIterator.prototype, 'events'],
   [NativeMarketDataRowIterator.prototype, 'rows'],
+  [NativeCandleIterator.prototype, 'candles'],
 ]) {
   const nativeNext = prototype.next
   prototype.next = function next() {
@@ -4821,6 +4862,18 @@ const graph = Object.freeze({
   MarketDataRowIterator: NativeMarketDataRowIterator,
   BookIterator,
   EventIterator,
+  Candle,
+  CandleOptions: NativeCandleOptions,
+  CandleIterator,
+  // Every candle of a sorted stream of books, held: the walk drained once.
+  candles(books, options, timezone) {
+    // A zone beside a spelling or a count is the `CandleOptions` of both, as
+    // Python's `candles(books, interval, timezone=None)` reads it.
+    if (timezone !== undefined && timezone !== null) {
+      options = new NativeCandleOptions(options, timezone)
+    }
+    return Array.from(new CandleIterator(books, options))
+  },
   ENTRY_ID: graphEntryId,
   ENTRY_REF_ID: graphEntryRefId,
   FOLLOWED_ALTIDS: graphFollowedAltids,
@@ -4842,6 +4895,9 @@ for (const name of [
   'MarketDataRowIterator',
   'BookIterator',
   'EventIterator',
+  'Candle',
+  'CandleOptions',
+  'CandleIterator',
 ]) {
   delete binding[name]
   delete binding[`Js${name}`]

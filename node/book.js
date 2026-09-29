@@ -82,8 +82,10 @@ function serve(options = {}) {
     let stderr = ''
     let settled = false
     let status = null
+    // `close` rather than `exit`: it fires once the stdio streams have ended,
+    // so the stderr a refusal wrote is whole when the rejection quotes it.
     const exit = new Promise((done) => {
-      child.once('exit', (code, signal) => {
+      child.once('close', (code, signal) => {
         status = { code, signal }
         done(status)
       })

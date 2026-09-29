@@ -20,6 +20,9 @@ use yggdryl::{Codec, DataType, Error, Field, IOBase, IOMedia, MediaType, MimeTyp
 type Row = (i64, Option<String>);
 
 /// The trades table: a required `id` and a nullable `symbol`.
+/// One of the two doors a path opens as a holder through.
+type Opener = fn(&std::path::Path) -> yggdryl::Result<Holder>;
+
 fn trades_field() -> Field {
     DataType::from_str("struct<id: int64 not null, symbol: utf8>")
         .expect("a valid root")
@@ -761,6 +764,57 @@ fn a_local_csv_file_is_written_read_appended_and_reopened() {
         four_rows()
     );
     assert_eq!(media.row_size().expect("the rows"), 4);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_composed_local_handle_reads_its_coded_document_through_the_coding() {
+    // The shape `Holder::from_url` and both bindings build for `trades.csv.gz`:
+    // the CSV medium over a gzip view over the location. A reader that
+    // outlives the borrow reopens the location for a stream of its own, and
+    // the bytes there are the coded ones.
+    let root = temporary("composed");
+    let openers: [(&str, Opener); 2] = [
+        ("local", |path| Holder::local(path)),
+        ("file", |path| Holder::file(path)),
+    ];
+    for (label, open) in openers {
+        let path = root.join(format!("{label}.csv.gz"));
+        let mut holder = open(&path).expect("a location").into_declared_media();
+        assert!(
+            matches!(&holder, Holder::Media(media) if matches!(media.as_ref(), Media::Csv(_))),
+            "{label}"
+        );
+        let options = holder.record_options().expect("the options");
+        assert!(matches!(options, RecordOptions::Csv(_)), "{label}");
+        holder
+            .overwrite_arrow_reader(two_batches(), &options)
+            .expect("written");
+        let stored = std::fs::read(&path).expect("on disk");
+        assert_eq!(&stored[..2], &[0x1F, 0x8B], "{label}");
+        assert_eq!(
+            Codec::Gzip.load(&stored).expect("decodes"),
+            b"id,symbol\n1,AAPL\n2,\n3,MSFT\n4,GOOG\n",
+            "{label}"
+        );
+
+        // Identical calls on the way back; only the name says gzip.
+        let holder = open(&path).expect("a location").into_declared_media();
+        assert_eq!(
+            holder
+                .read_arrow_field(&options)
+                .expect("the field")
+                .dtype(),
+            &DataType::from_str("struct<id: int64, symbol: utf8>").expect("inferred"),
+            "{label}"
+        );
+        assert_eq!(holder.row_size().expect("the rows"), 4, "{label}");
+        assert_eq!(
+            rows_of(holder.read_arrow_reader(&options).expect("a reader")),
+            four_rows(),
+            "{label}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 

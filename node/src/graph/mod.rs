@@ -564,12 +564,14 @@ macro_rules! event_verbs {
 }
 
 mod book;
+mod candle;
 mod iterator;
 pub(crate) mod market_data;
 mod operation;
 mod trade;
 
 pub use book::{BookLimit, JsBookEvent, JsBookIterator, JsSnapshotEvent};
+pub use candle::{CandleReading, JsCandle, JsCandleIterator, JsCandleOptions};
 pub use iterator::JsEventIterator;
 pub use market_data::{JsMarketData, JsMarketDataRowIterator};
 pub use operation::{

@@ -66,6 +66,7 @@ from .holder import (
 )
 from .media import (
     Avro as Avro,
+    Csv as Csv,
     Ipc as Ipc,
     Media as Media,
     Parquet as Parquet,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import enum
 import gc
 import pathlib
@@ -23,6 +24,7 @@ from yggdryl import (
     DataType,
     Field,
     IOBase,
+    MimeType,
     RecordOptions,
     Serie,
     SerieReader,
@@ -284,6 +286,142 @@ class TestRowOffset:
                 pa.table({"id": pa.array([1], pa.int64())}), options=options
             )
         assert twenty.read_arrow_reader().read_all().num_rows == 20
+
+
+class TestCsvOptions:
+    """The CSV dialect lives on `RecordOptions` and reaches the core's own setters."""
+
+    DIALECT = (
+        "separator",
+        "quote",
+        "escape",
+        "comment",
+        "header",
+        "null_values",
+        "trim",
+        "infer_row_size",
+    )
+
+    def test_the_dialect_properties_answer_none_for_another_encoding(self) -> None:
+        options = RecordOptions("trades.arrows")
+        assert tuple(getattr(options, name) for name in self.DIALECT) == (None,) * 8
+        for name, value in (
+            ("separator", ";"),
+            ("quote", None),
+            ("escape", "\\"),
+            ("comment", "#"),
+            ("header", False),
+            ("null_values", ["NA"]),
+            ("trim", True),
+            ("infer_row_size", 8),
+        ):
+            with pytest.raises(
+                ValueError, match=rf"\$\.{name}: expected CSV options.*arrow\.stream"
+            ):
+                setattr(options, name, value)
+        _, (state,) = options.__reduce__()
+        assert not set(self.DIALECT) & state.keys()
+
+    def test_every_dialect_property_sets_and_reads_back(self) -> None:
+        options = RecordOptions("trades.csv")
+        options.separator = b";"
+        options.quote = "'"
+        options.escape = "\\"
+        options.comment = "#"
+        options.header = False
+        options.null_values = ("", "NA")
+        options.trim = True
+        options.infer_row_size = 8
+
+        assert tuple(getattr(options, name) for name in self.DIALECT) == (
+            ";",
+            "'",
+            "\\",
+            "#",
+            False,
+            ["", "NA"],
+            True,
+            8,
+        )
+        # `None` clears the three roles a dialect may leave unfilled.
+        options.quote = None
+        options.escape = None
+        options.comment = None
+        assert (options.quote, options.escape, options.comment) == (None, None, None)
+
+    def test_a_byte_role_is_one_character_and_the_core_judges_it(self) -> None:
+        options = RecordOptions("trades.csv")
+        for shape in (";;", "", "\u20ac"):
+            with pytest.raises(
+                ValueError, match="expected a one-character str or one byte for separator"
+            ):
+                options.separator = shape
+        with pytest.raises(ValueError, match="expected a one-character str or one byte for quote"):
+            options.quote = b";;"
+        with pytest.raises(
+            TypeError, match="separator must be a one-character str or one byte, not int"
+        ):
+            options.separator = 5  # type: ignore[assignment]
+        with pytest.raises(ValueError, match=r"\$\.separator.*got '\"', which is the quote"):
+            options.separator = '"'
+        with pytest.raises(ValueError, match=r"\$\.separator.*an ASCII byte.*got 0xe9"):
+            options.separator = "\u00e9"
+        with pytest.raises(ValueError, match=r"\$\.infer_row_size.*got 0"):
+            options.infer_row_size = 0
+        with pytest.raises(ValueError, match=r'\$\.null_values.*got "" twice'):
+            options.null_values = ["", "NA", ""]
+        with pytest.raises(TypeError, match="null_values must be a list of str"):
+            options.null_values = "NA"  # type: ignore[assignment]
+        # A refused setting leaves the options as they were.
+        assert (options.separator, options.quote, options.infer_row_size, options.null_values) == (
+            ",",
+            '"',
+            1024,
+            [""],
+        )
+
+    def test_pickle_and_copy_carry_the_dialect(self) -> None:
+        options = RecordOptions("trades.csv")
+        options.separator = "|"
+        options.quote = "'"
+        options.escape = "\\"
+        options.comment = "#"
+        options.header = False
+        options.null_values = ["", "NA"]
+        options.trim = True
+        options.infer_row_size = 3
+
+        _, (state,) = options.__reduce__()
+        assert {name: state[name] for name in self.DIALECT} == {
+            "separator": "|",
+            "quote": "'",
+            "escape": "\\",
+            "comment": "#",
+            "header": False,
+            "null_values": ["", "NA"],
+            "trim": True,
+            "infer_row_size": 3,
+        }
+        restored = pickle.loads(pickle.dumps(options))
+        assert restored == options
+        assert (restored.separator, restored.null_values, restored.quote) == ("|", ["", "NA"], "'")
+        copied = copy.copy(options)
+        copied.separator = ","
+        assert options.separator == "|" and copied != options
+        assert copy.deepcopy(options) == options
+
+        # A dialect whose separator is the default quote restores as it was
+        # set, not refused by a default it had already replaced.
+        swapped = RecordOptions("trades.csv")
+        swapped.quote = "|"
+        swapped.separator = '"'
+        assert pickle.loads(pickle.dumps(swapped)) == swapped
+        # A tab separator names the TSV encoding and comes back as one.
+        tabbed = RecordOptions("trades.csv")
+        tabbed.separator = "\t"
+        assert tabbed.mime_type == MimeType.TSV
+        assert pickle.loads(pickle.dumps(tabbed)) == tabbed
+        assert repr(tabbed).startswith("RecordOptions._from_pickle({")
 
 
 class TestExplicitIntent:

@@ -18,7 +18,11 @@ answers each side's ``limits``, ``best_price`` and ``depth``, and its
 ``spread``, ``is_locked`` and ``imbalance``.
 :class:`BookIterator` folds a sorted stream of leaves into books;
 :class:`EventIterator` chains a stream of leaves to the live element each
-follows.
+follows. :class:`CandleIterator` folds a sorted stream of books into
+:class:`Candle` values - one OHLC of the best bid, the best ask, their
+midpoint and the spread per book cross code and bucket, the bucket aligned
+to the zone :class:`CandleOptions` names - and :func:`candles` is that walk
+drained into a list.
 
 The operation leaves are built from named facts keyed by column name - a
 fact given as ``...`` is skipped and ``None`` clears it - each checked by its
@@ -38,6 +42,9 @@ from .._native import (
     BookEvent,
     BookIterator,
     BookRef,
+    Candle,
+    CandleIterator,
+    CandleOptions,
     EventIterator,
     Execution,
     ExecutionEvent,
@@ -49,6 +56,7 @@ from .._native import (
     QuoteEvent,
     SnapshotEvent,
     TradeEvent,
+    candles,
 )
 
 __all__ = [
@@ -58,6 +66,9 @@ __all__ = [
     "BookEvent",
     "BookIterator",
     "BookRef",
+    "Candle",
+    "CandleIterator",
+    "CandleOptions",
     "EventIterator",
     "Execution",
     "ExecutionEvent",
@@ -69,4 +80,5 @@ __all__ = [
     "QuoteEvent",
     "SnapshotEvent",
     "TradeEvent",
+    "candles",
 ]

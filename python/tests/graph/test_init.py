@@ -20,6 +20,9 @@ CLASSES = (
     "MarketData",
     "MarketDataRowIterator",
     "EventIterator",
+    "Candle",
+    "CandleOptions",
+    "CandleIterator",
 )
 
 
@@ -28,8 +31,10 @@ def test_every_native_class_is_re_exported() -> None:
         assert name in graph.__all__
         assert getattr(graph, name).__module__ == "yggdryl._native"
     assert sorted(graph.__all__) == sorted(
-        [*CLASSES, "ENTRY_ID", "ENTRY_REF_ID", "FOLLOWED_ALTIDS"]
+        [*CLASSES, "ENTRY_ID", "ENTRY_REF_ID", "FOLLOWED_ALTIDS", "candles"]
     )
+    # The one convenience is a function over the walk, not a class.
+    assert callable(graph.candles) and graph.candles.__doc__
 
 
 def test_no_retired_name_survives() -> None:

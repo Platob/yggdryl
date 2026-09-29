@@ -80,7 +80,7 @@ from .expression import (
     Term,
 )
 from .holder import IOBase, IOCursor
-from .media import Avro, Ipc, Media, Parquet, RecordOptions, Text, Xmla
+from .media import Avro, Csv, Ipc, Media, Parquet, RecordOptions, Text, Xmla
 from .mediatype import MediaType
 from .mimetype import MimeType
 from .text import TextEntries, TextEntry, TextLine, TextLines, TextOptions
@@ -284,6 +284,7 @@ __all__ = [
     "ChunkedSerie",
     "CountryField",
     "CcyField",
+    "Csv",
     "CusipField",
     "DEFAULT_FETCH_BYTE_SIZE",
     "DEFAULT_RECORD_BATCH_ROW_SIZE",

@@ -4,10 +4,14 @@ import {
   FieldPath,
   Plan,
   Scalar,
+  Timezone,
   enums,
   graph,
   type BookEvent,
   type BookLimit,
+  type Candle,
+  type CandleOptions,
+  type CandleReading,
   type ExecutionEvent,
   type MarketData,
   type MarketItem,
@@ -82,6 +86,38 @@ const locked: boolean = book.isLocked
 const spread: string | null = book.spread
 const imbalance: string | null = book.imbalance(1)
 
+// Candles bucket a sorted stream of books by an interval - a spelling, a
+// `CandleOptions` or a count of nanoseconds - in a zone; each reading is
+// four decimals as text or null, an instant a bigint, a count a number.
+const candleOptions: CandleOptions = new graph.CandleOptions('1m', 'Europe/Zurich')
+const byNanos: CandleOptions = new graph.CandleOptions(60_000_000_000n)
+const byZone: CandleOptions = candleOptions.withTimezone(new Timezone('UTC'))
+const interval: bigint = candleOptions.interval
+const zone: Timezone = candleOptions.timezone
+const spelling: string = candleOptions.spelling
+const candles: Candle[] = graph.candles(books, '1m')
+const walkedCandles: Candle[] = [...new graph.CandleIterator(books, candleOptions)]
+const walkOptions: CandleOptions = new graph.CandleIterator(new graph.BookIterator(items), 60_000_000_000).options
+const heldCandles: Candle[] = graph.candles(walked, '1m')
+const candle: Candle = candles[0]
+const bid: CandleReading | null = candle.bid
+const open: string | undefined = bid?.open
+const start: bigint = candle.start
+const ticker: string | null = candle.ticker
+const bidqty: string | null = candle.bidqty
+const volume: string = candle.volume
+const bookCount: number = candle.books
+const candleField: Field = graph.Candle.field()
+const candleScalar: Scalar = candle.intoScalar()
+const restoredCandle: Candle = graph.Candle.fromScalar(candleScalar)
+const fromObject: Candle = graph.Candle.fromScalar({ crosscode: 'ACME', start: 0n, end: 1n })
+const fromJson: Candle = graph.Candle.fromJSON(candle.toJSON())
+const sameCandle: boolean = candle.equals(restoredCandle)
+// @ts-expect-error the candle walk needs its options
+void new graph.CandleIterator(books)
+// @ts-expect-error the candle walk folds books, not items
+void new graph.CandleIterator(items, '1m')
+
 // A named view is one plan, applied to whatever `BatchReader.from` takes.
 const viewPlan: Plan = graph.MarketData.plan('orders', ["securityids['ISIN'] as isin", new FieldPath('ticker')])
 const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], 'C-1')
@@ -123,4 +159,6 @@ void walked
 void snapshotNs
 void followedAltids
 void [limitPrice, limitQuantity, limitUuids, limitTradable, depth, bestPrice, bestQuantity, locked, spread, imbalance]
+void [byNanos, byZone, interval, zone, spelling, walkedCandles, walkOptions, heldCandles]
+void [open, start, ticker, bidqty, volume, bookCount, candleField, fromObject, fromJson, sameCandle]
 void [viewPlan, lifecyclePlan, view, liftedView, marketViews]
