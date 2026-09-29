@@ -217,12 +217,20 @@ impl<R: Read> Tokenizer<R> {
         }
     }
 
+    /// Whether `byte` is a blank `trim` drops around a cell: a space or a
+    /// tab, unless it is the dialect's own separator, which frames the cell
+    /// rather than padding it - a TSV's empty cell is two tabs with nothing
+    /// between, and trimming the tabs away would fold it into its neighbour.
+    fn is_blank(&self, byte: u8) -> bool {
+        matches!(byte, b' ' | b'\t') && byte != self.dialect.separator
+    }
+
     /// Cut one cell into the record buffer and say how it ended.
     fn next_cell(&mut self) -> Result<Ending> {
         let start = self.record.len();
         let mut quoted = false;
         if self.dialect.trim {
-            while matches!(self.peek()?, Some(b' ' | b'\t')) {
+            while self.peek()?.is_some_and(|byte| self.is_blank(byte)) {
                 self.start += 1;
             }
         }
@@ -234,7 +242,7 @@ impl<R: Read> Tokenizer<R> {
                 // The blanks after a closing quote are the cell's framing,
                 // as the ones before the opening one were.
                 if self.dialect.trim {
-                    while matches!(self.peek()?, Some(b' ' | b'\t')) {
+                    while self.peek()?.is_some_and(|byte| self.is_blank(byte)) {
                         self.start += 1;
                     }
                 }
@@ -244,10 +252,10 @@ impl<R: Read> Tokenizer<R> {
         let mut end = self.record.len();
         let mut cell_start = start;
         if self.dialect.trim && !quoted {
-            while cell_start < end && matches!(self.record[cell_start], b' ' | b'\t') {
+            while cell_start < end && self.is_blank(self.record[cell_start]) {
                 cell_start += 1;
             }
-            while end > cell_start && matches!(self.record[end - 1], b' ' | b'\t') {
+            while end > cell_start && self.is_blank(self.record[end - 1]) {
                 end -= 1;
             }
         }

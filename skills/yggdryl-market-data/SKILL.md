@@ -78,7 +78,7 @@ Hold five facts:
 | FIX to sorted market data / books | `codec.market_data(codec.lifecycle(msgs))`, `codec.book_arrow_reader(msgs, 0)?` | `codec.market_data(...)`, `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.marketData(..)`, `codec.bookArrowReader(msgs, 0)` |
 | fold sorted books into candles | `CandleIterator::new(books, CandleOptions::from_spelling("1m")?.with_timezone(zone))` | `graph.candles(books, "1m", timezone=None)`, `graph.CandleIterator(books, graph.CandleOptions("1m", zone))` | `graph.candles(books, '1m', zone)`, `new graph.CandleIterator(books, new graph.CandleOptions('1m', zone))` |
 | a candle's row, and candles as Arrow | `Candle::field()?`, `Candle::arrow_reader(candles, None)?`, `candle.into_scalar()`, `Candle::from_scalar(&value)?` | `graph.Candle.field()`, `candle.into_scalar()`, `candle.as_py()`, `graph.Candle.from_scalar(value)` | `graph.Candle.field()`, `candle.intoScalar()`, `candle.toJSON()`, `graph.Candle.fromScalar(value)` |
-| serve a table of books as the display | `BookService::new(options).with_table(name, holder)`, `Arc::new(service).route(&server, "/")?`; `yggdryl market serve books=/data/books` | `yggdryl market serve books=/data/books`, the wheel's own command | `book.serve({ tables: 'books=/data/books' })` over the package's `book.js`; `yggdryl market serve` |
+| serve a table of books as the display | `BookService::new(options).with_table(name, holder)`, `Arc::new(service).route(&server, "/")?` (the `http` feature); `yggdryl market serve books=/data/books` | `yggdryl market serve books=/data/books`, the wheel's own command | `book.serve({ tables: 'books=/data/books' })` over the package's `book.js`; `yggdryl market serve` |
 | a served table's readings without HTTP | `service.tickers("books")?`, `service.candles(&query)?`, `service.book(table, ticker, at)?`, `service.events(&query)?` | Rust-only | Rust-only |
 
 ## Rules for fast, correct use
@@ -191,8 +191,11 @@ Hold five facts:
 - The display's routes render instants as RFC 9557 text with a bracketed zone,
   `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, which `Date.parse`
   does not read: hand a candle's `start`/`end` back as the next question's
-  `from`, `to` or `at` rather than re-parsing them. A naive `from`/`to` is a
-  wall clock in `tz`, and `to` is exclusive.
+  `from`, `to` or `at` - percent-encoded, as `URLSearchParams` does - rather
+  than re-parsing them. A naive `from`/`to` is a wall clock in `tz`, and `to`
+  is exclusive. An `events` row's `currhashcode`/`crosshashcode` are JSON
+  integers up to 2^64: `JSON.parse` rounds them past 2^53, the CSV audit
+  does not.
 - `yggdryl market serve --capture` appends the capture's books to the first
   table every time it runs: prepare the table once, then serve it without the
   capture. The Iceberg table it makes of an absent folder needs the `iceberg`
@@ -201,8 +204,8 @@ Hold five facts:
 ## Language references
 
 - Rust: [references/rust.md](references/rust.md) - `yggdryl::graph::*` leaves, traits, candles and the book service, `Decimal`, `Side`, `MarketDataKind`, `Ccy`.
-- Python: [references/python.md](references/python.md) - `from yggdryl import graph`, `Side`, `MarketDataKind`, pyarrow readers.
-- JavaScript: [references/javascript.md](references/javascript.md) - `graph`, `Side`, `MarketDataKind`.
+- Python: [references/python.md](references/python.md) - `from yggdryl import graph`, `Side`, `MarketDataKind`, pyarrow readers, `graph.candles`.
+- JavaScript: [references/javascript.md](references/javascript.md) - `graph`, `Side`, `MarketDataKind`, `graph.candles`, the package's `book.js`.
 
 Read the one for the language you write; recipes appear in the same order in each.
 

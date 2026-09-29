@@ -126,13 +126,13 @@ medium does the work before a byte is decoded.
     a sample of `infer_row_size` records (1,024) types each column - boolean,
     `int64`, `float64`, `date32`, `datetime64(ns, UTC)`, else `utf8` - and
     every inferred column is nullable; declare the `field` to read every
-    cell under a contract. An unquoted empty cell (the first of `null_values`)
-    is null and `""` the empty text, a record with the wrong number of cells
-    is refused by row, a `.tsv` name is the same medium under a tab, and the
-    dialect is a set of option properties - `separator`, `quote`, `escape`,
-    `comment`, `header`, `null_values`, `trim`, `infer_row_size` - never a
-    format argument. Compression and the charset are the handle's
-    (`trades.csv.gz`, `;charset=windows-1252`).
+    cell under a contract. An unquoted cell spelling one of `null_values` (the
+    empty cell, by default) is null and `""` the empty text, a record with the
+    wrong number of cells is refused by row, a `.tsv` name is the same medium
+    under a tab, and the dialect is a set of option properties -
+    `separator`, `quote`, `escape`, `comment`, `header`, `null_values`,
+    `trim`, `infer_row_size` - never a format argument. Compression and the
+    charset are the handle's (`trades.csv.gz`, `;charset=windows-1252`).
 16. **Iceberg commits are snapshots.** `append` and metadata-only commits
     rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
     conflict instead. A merge keys on the identity partition columns plus

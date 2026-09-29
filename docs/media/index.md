@@ -1225,7 +1225,16 @@ RFC 4180 records under the ordinary [record surface](#read-and-write): the heade
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-The dialect, one `RecordOptions` property each - Rust `csv_<setting>`/`set_csv_<setting>` on a `RecordOptions` (refused on another encoding) and `<setting>`/`set_<setting>`/`with_<setting>` on `CsvOptions`; Python and JavaScript the properties `separator`, `quote`, `escape`, `comment`, `header`, `null_values`/`nullValues`, `trim`, `infer_row_size`/`inferRowSize`, `None`/`null` on another encoding, a byte role spelled as a one-character text (Python also one byte), and each reachable by name on any read or write, `read_records(separator=";")`, `readRecords({ separator: ';' })`:
+The dialect is one `RecordOptions` property per setting. It reads `None`/`null` on another encoding's options, and setting it there is refused.
+
+```text
+options.set_csv_separator(b';')?          // Rust RecordOptions: csv_<setting> reads, set_csv_<setting> validates
+CsvOptions::new().with_separator(b';')?   // Rust CsvOptions: <setting>, set_<setting>, with_<setting>; tsv() the tab
+options.separator = ";"                   // Python property; a byte role is one character or one byte
+handle.read_records(separator=";")        // Python: every read and write takes a setting by name, on a copy
+options.withSeparator(';')                // JavaScript property or with<Setting>: nullValues, inferRowSize
+handle.readRecords({ separator: ';' })    // JavaScript: every read and write takes it in the options object
+```
 
 | Setting | Default | Rule |
 | --- | --- | --- |
@@ -1239,16 +1248,16 @@ The dialect, one `RecordOptions` property each - Rust `csv_<setting>`/`set_csv_<
 | `infer_row_size` | 1024 | the records sampled to type each column when no field is declared; `0` is refused at `$.infer_row_size` |
 | `linesep` | `\n` | Rust only, `CsvOptions::with_linesep`: the terminator a write ends each record with; a read accepts `\n` and `\r\n` whatever it says, and a `\r` alone ends nothing |
 
-- A null and the empty text are two cells: `1,` is null under the default `null_values` and `1,""` the empty text, both ways round.
+### CSV edges
+
 - Inference climbs one ladder per column over the sampled non-null cells - `boolean` (`true`/`false` in any case), `int64`, `float64`, `date32` (`YYYY-MM-DD`), `datetime64(ns, UTC)` (ISO 8601 with a `T` or a space, an offset or `Z` optional, a naive spelling read as UTC), else `utf8`; a column whose sample is all null is `utf8`; every inferred column is nullable and the root is named after the options (`row`). The sampled rows are answered first and the rest streams under that field, a later cell that does not fit read by the [cast rule](../types/cast.md#required-columns): null under `safe`, refused at `$[row].<column>` otherwise.
-- A declared field with a header matches columns by name: a column the field does not name is skipped, a nullable column the header does not state is null, a required one is refused at `$.header`. Without a header the field names the columns positionally, and a declared column past the record's width is absent. A cell a required column cannot read is refused at `$[row].<column>` naming the cell and the line; a nullable column takes it as null under `safe`. A `datetime64` column declared with a zone reads a naive spelling as a wall clock in that zone, as a text capture's [`autotype`](#plain-text) does.
+- A declared field with a header matches columns by name: a column the field does not name is skipped, a nullable column the header does not state is null, a required one is refused at `$.header`. Without a header the field names the columns by position, and a declared column past the first record's width is missing as an unstated one is: null where nullable, refused at `$.header` where required. A cell a required column cannot read is refused at `$[row].<column>` naming the cell and the line; a nullable column takes it as null under `safe`. A `datetime64` column declared with a zone reads a naive spelling as a wall clock in that zone, as a text capture's [`autotype`](#plain-text) does.
 - A record with more or fewer cells than the header is refused by row - `$[1]: expected 2 cells, got 3 in row 3 of <url>`, the path the 0-based data row and the reason its physical line - the rows before it answered first, nothing widened.
-- A blank record is a separator rather than a record, a comment record is skipped, the last record may lack its terminator, a UTF-8 byte-order mark at the start is framing, and bytes after a closing quote are content.
+- A blank record is a separator rather than a record, the last record may lack its terminator, a UTF-8 byte-order mark at the start is framing, and bytes after a closing quote are content.
 - Writing renders every leaf as the text it reads back from: text as itself, numbers, booleans, temporals, codes and UUIDs in their canonical spelling, bytes as base64, a nested value as compact JSON, which a declared nested column reads back.
-- The stored shape is the header and the sample, so `append` writes after the tail with the header once and `merge` keys on the header's columns through `merge_by` as every encoding does. A read under another dialect reads another shape: a `;` document under the default dialect is one column.
+- The stored shape is the header and the sample: `append` writes after the tail and `merge` keys on the header's columns through `merge_by`, as every encoding does.
 - An empty document declares no schema - `read_arrow_field` is refused at `$.csv` - and reads as no rows; declared, it is the declared schema and no rows.
 - `row_size` counts the records in one pass and reads no cell; `column_size` is the header's width; both, like `read_arrow_field`, cost one `pstream_bytes` of the handle ([Call counts](../holder/index.md#call-counts)).
-- A bare `.csv` or `.tsv` name composes the medium: Rust `Holder::local(path)?.into_declared_media()` is `Holder::Media` holding `Media::Csv`, Python `IOBase(path)` is a `Csv`, and JavaScript `handle.recordOptions().mimeType` reads `text/csv` or `text/tab-separated-values`; a `.csv.gz` name puts the coding beneath it.
 
 ### CSV performance
 

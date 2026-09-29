@@ -604,3 +604,30 @@ fn the_inferred_field_carries_the_options_name_and_the_declared_one_its_own() {
         field
     );
 }
+
+#[test]
+fn trim_leaves_a_blank_that_is_the_separator_alone() {
+    // A tab is the separator of a TSV and a space of a space-separated
+    // document: trimming the blanks around a cell must not eat the empty
+    // cells between two separators, or a three-cell record reads as two.
+    // An empty cell, trimmed or not, spells the default null.
+    let tsv = named("trades.tsv", b"a\tb\tc\n1\t\t3\n \t2\t \n");
+    assert_eq!(
+        text(&rows(&tsv, &CsvOptions::tsv().with_trim(true))),
+        [
+            vec![Some("1".to_owned()), None, Some("3".to_owned())],
+            vec![None, Some("2".to_owned()), None]
+        ]
+    );
+    let spaced = document(b"a b c\n1  3\n");
+    assert_eq!(
+        text(&rows(
+            &spaced,
+            &CsvOptions::new()
+                .with_separator(b' ')
+                .expect("a space separator")
+                .with_trim(true)
+        )),
+        [vec![Some("1".to_owned()), None, Some("3".to_owned())]]
+    );
+}

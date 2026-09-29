@@ -8,7 +8,7 @@ A candle is one OHLC of one book over one bucket: `Candle` what the books of one
 | --- | --- | --- | --- |
 | `Candle` | the cross code, the ticker, the bucket's `start` and `end` (nanoseconds UTC, `end` exclusive), the four readings `bid`, `ask`, `mid`, `spread`, the touch `bidqty`/`askqty`, the counts `books`/`executions` and the `volume`; `field()`, `into_scalar`, `from_scalar`, `arrow_reader` | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python `graph.Candle`, JavaScript `graph.Candle` - built by the walk or read back, never constructed |
 | `Ohlc` | one reading's `open`, `high`, `low`, `close`; `at(value)` opens one, `fold(value)` moves the close and the high or low | `Clone`, `Copy`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python a `dict` of four decimal `Scalar`s keyed `open`, `high`, `low`, `close`; JavaScript a `{ open, high, low, close }` of decimal text |
-| `CandleOptions` | `new(interval)`, `from_spelling(text)`, `with_timezone(zone)`; `interval()`, `timezone()`, `spelling()` | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python `graph.CandleOptions(interval, timezone=None)`, JavaScript `new graph.CandleOptions(interval, timezone)` - an `int`/`bigint` of nanoseconds or a spelling |
+| `CandleOptions` | `new(interval)`, `from_spelling(text)`, `with_timezone(zone)`; `interval()`, `timezone()`, `spelling()` | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python `graph.CandleOptions(interval, timezone=None)`, JavaScript `new graph.CandleOptions(interval, timezone)` - a spelling, or a count of nanoseconds (`int`; `bigint` or a whole `number`) |
 | `CandleIterator<I>` | the [fold](#the-fold): `new(books, options)`, `options()` | `Iterator<Item = Result<Candle>>`, `FusedIterator` | Python `graph.CandleIterator(books, options)` and `graph.candles(books, interval, timezone=None)`; JavaScript `new graph.CandleIterator(books, options)` and `graph.candles(books, options, timezone)` |
 
 All in `graph::candle`, re-exported as `yggdryl::graph::{Candle, CandleIterator, CandleOptions, Ohlc}`. A candle is a value of its own rather than a datatype: its row is the struct [`Candle::field()`](#arrow-row) declares.
@@ -24,7 +24,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 | Zone | `with_timezone`, default `Timezone::UTC`; the bucket of an instant is found from its wall clock in that zone, `local.div_euclid(interval)`, so under `Asia/Kolkata` (+05:30) the hour holding `10:45Z` (`16:15` local) opens at `16:00`, `10:30Z`, where the UTC hour opens at `10:00Z`. A zone this build has no rules for is held by the options and refused when the walk first buckets an instant |
 | Edges | an edge is the earliest instant whose wall clock reads at or after the local edge, so the edges rise with the instants and a sorted stream never re-enters a bucket it left |
 | Spring forward | `Europe/Zurich`, 2026-03-29, `01:00Z`: the wall clock skips `02:00`-`03:00`. Hourly candles open at the local hours `01`, `03`, `04` - the skipped hour yields no candle - and abut in UTC: `[00:00Z, 01:00Z)`, `[01:00Z, 02:00Z)`, `[02:00Z, 03:00Z)`. The daily candle is `[2026-03-28T23:00Z, 2026-03-29T22:00Z)`, twenty-three hours, both edges local midnight |
-| Fall back | `Europe/Zurich`, 2026-10-25, `01:00Z`: the wall clock reads `02:00`-`03:00` twice. The hourly bucket `02` is one two-hour bucket, `[00:00Z, 02:00Z)`; with `30m` the `02:00` bucket opens once at `00:00Z` and the `02:30` bucket holds `[00:30Z, 02:00Z)` - every instant until the wall clock first reads `03:00` - so no bucket is entered twice, where a plain conversion of each local edge would reopen `02:00` an hour later |
+| Fall back | `Europe/Zurich`, 2026-10-25, `01:00Z`: the wall clock reads `02:00`-`03:00` twice. The hourly bucket `02` is one two-hour bucket, `[00:00Z, 02:00Z)`; with `30m` the `02:00` bucket opens once at `00:00Z` and the `02:30` bucket holds `[00:30Z, 02:00Z)` - every instant until the wall clock first reads `03:00` - so no bucket is entered twice, where a plain conversion of each local edge would reopen `02:00` an hour later. The daily candle is twenty-five hours |
 | Range | an instant the zone cannot read, or a bucket that cannot be held in `i64` nanoseconds, is refused at `$.book.currunix` |
 
 ## The fold
@@ -33,7 +33,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 
 | Key | Rule |
 | --- | --- |
-| Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_currunix`; a regression is refused at `$.book.currunix` (`expected an instant at or after 2000, got 1000`). The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order` |
+| Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_currunix`; a regression is refused at `$.book.currunix` (`expected an instant at or after 2000, got 1000`), a `ValueError` in Python and an `Error` in JavaScript. The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order`, a `TypeError` in Python |
 | Buckets | the candles of a bucket are emitted, in cross-code order, when the stream moves past the bucket and at the stream's end; an empty bucket yields no candle |
 | Failure | a source error, a regression or a range refusal ends the walk: the candles of the buckets already closed were emitted before it, the open bucket is dropped rather than emitted incomplete, and the iterator fuses |
 | `crosscode`, `ticker` | the book's [`get_crosscode`](market.md#sides-and-cross-codes) - the ticker, else the `{miccode}:{cficode}` key - and the first book's `get_ticker`, null where it states none |
@@ -67,7 +67,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 
 ### Minute candles
 
-Four books of one minute: two quotes a side, three fills. The bid read `100`, `102`, `99`, `101` across them, so its candle opens at `100`, tops at `102`, bottoms at `99` and closes at `101`.
+Four books of one minute: one quote a side, restated at each book, and three fills. The bid read `100`, `102`, `99`, `101` across them, so its candle opens at `100`, tops at `102`, bottoms at `99` and closes at `101`.
 
 === "Rust"
 
@@ -459,12 +459,3 @@ A candle laid out as one row under `Candle::field()` and read back as the same v
     // A reading states its four cells or none.
     assert.throws(() => graph.Candle.fromScalar({ ...json, bidhigh: null }), /\$\.candle/)
     ```
-
-## Edges
-
-- A book stating no ticker - one opened for a category key, `XPAR:ESVUFR` - states none on its candle: `ticker` is null and `crosscode` the key.
-- A cancel that empties a side changes no reading the earlier books made: the ask, mid and spread of the bucket keep their open, high, low and close, and only `askqty` reads `None`, because the touch is the last book's.
-- Two cross codes in one bucket are two candles, emitted in cross-code order when the bucket closes - `AAPL` before `IBM` whatever order their books arrived in.
-- An unsorted stream is refused at the first regression, `$.book.currunix`, after the candles of the buckets already closed; the bindings raise it as `ValueError`/`Error` and the walk yields nothing more.
-- A zone this build has no rules for - `Mars/Olympus` - is accepted by `with_timezone` and refused by the walk at its first instant, naming the zone.
-- `from_scalar` refuses a reading stating some of its four cells and not the others, a name the struct does not hold (`vwap`) and a null where a cell is required, each under `$.candle`.

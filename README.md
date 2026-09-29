@@ -71,8 +71,7 @@ rust/                    The core crate
                          options, inference, magic, merge, partitions
   src/{ipc,parquet,avro,csv,iceberg,xmla}/
                          One folder per record medium; xmla/ also holds the
-                         XML for Analysis provider and its HTTP server, and
-                         graph/serve.rs the book display's HTTP service
+                         XML for Analysis provider and its HTTP server
   src/text/              The plain-text medium and what the structured
                          codecs share
   src/{json,toml,yaml,xml}/
@@ -81,7 +80,8 @@ rust/                    The core crate
                          Field metadata, MIME and media types, identifiers
   src/{arrow,expression,graph,fix}/
                          Arrow interop, the expression grammar, the event
-                         graph, FIX
+                         graph - its books, candles and graph/serve.rs, the
+                         book display's HTTP service - FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
   tests/                 One test file per source file, at the mirrored path

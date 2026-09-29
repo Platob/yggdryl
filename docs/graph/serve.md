@@ -27,7 +27,7 @@ yggdryl market serve [TABLE...] [--bind 127.0.0.1:8080] [--path /] [--snapshot-m
 | `TABLE` | none | a table to serve, `name=location` or a location alone named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder; a `://` URL goes through `Holder::from_url`. A path where nothing is yet is taken as a folder - the one a capture makes a table of |
 | `--bind` | `127.0.0.1:8080` | the address to listen on; port `0` takes a free one |
 | `--path` | `/` | the path the display answers at; the routes stand under `<path>/api` |
-| `--snapshot-millis` | `0` | the grid a capture's books are folded on before they land, milliseconds; zero folds one book per event ([grid](book.md#book-fold)) |
+| `--snapshot-millis` | `0` | the [grid](book.md#book-fold) a capture's books are folded on before they land, milliseconds: a positive one adds the whole live book at every tick the capture crosses, zero only the books its instants touch |
 | `--capture` | none, repeatable | a FIX bridge log folded into the *first* table before serving: its lines read under `--rowheader` and `--timezone`, [walked](../fix/lifecycle.md) as the chains they belong to, folded into books through `FixCodec::market_data` and `BookIterator`, and appended as `BOOK` rows through the table's own record options - an Iceberg folder through its table, a leaf under its encoding |
 | `--registry` | `config/fix` | the FIX [dictionary](../fix/store.md) a capture is read with |
 | `--rowheader` | `yggdryl::ULBRIDGE_ROWHEADER` | the row header every capture line opens with, a regex of named captures ([ULBridge](../fix/capture.md)) |
@@ -36,7 +36,7 @@ yggdryl market serve [TABLE...] [--bind 127.0.0.1:8080] [--path /] [--snapshot-m
 | `--trace` | none | a folder every exchange is written under, `NNNN-request.http` as read and `NNNN-response.http` as sent ([trace](../holder/index.md#serving-a-handle)) |
 | `--public-url`, `--trusted-proxy`, `--forwarded-header`, `--path-prefix`, `--read-timeout` | none, none, `X-Forwarded-For` and `X-Forwarded-Proto`, none, `30` | the server's own options of those names [behind a reverse proxy](../holder/index.md#behind-a-reverse-proxy): `with_public_url`, `with_trusted_proxies`, `with_forwarded_headers`, `with_path_prefix`, `with_read_timeout` |
 
-In run order: every argument is read, then the port is taken, then the captures land, then the service and the display are routed and the endpoint is printed - a refused argument costs no bind, and a refused bind no ingest, because a capture appends and running it twice lands its books twice. The first line printed is the endpoint on the socket, alone, so a script that started the process reads where to connect before anything else; then `· public endpoint <url>` under `--public-url`, then one note per table, `· table <name> over <url>`, ending `, created` for a folder the command made a table of, then one per capture, `· capture <log>: <n> books into <name>`. Under the `iceberg` feature an empty or absent first folder becomes an Iceberg table before a capture lands, its schema the `marketdata` row as Iceberg states it (`MarketData::field().into_scheme_compat(&Scheme::ICEBERG)`: the three `uint64` codes widened to `decimal(20, 0)`, every enum a bare `int32`); the `yggdryl` a wheel ships is built with that feature, and `cargo build -p yggdryl-cli` alone lists such a folder and refuses its rows by name. The display is served at `<path>` and `<path>/index.html` under `text/html; charset=utf-8`, the seven other files under their own types, every one `Cache-Control: no-cache`.
+In run order: every argument is read, then the port is taken, then the captures land, then the service and the display are routed and the endpoint is printed - a refused argument costs no bind, and a refused bind no ingest, because a capture appends and running it twice lands its books twice. The first line printed is the endpoint on the socket, alone, so a script that started the process reads where to connect before anything else; then `· public endpoint <url>` under `--public-url`, then one note per table, `· table <name> over <url>`, ending `, created` for a folder the command made a table of, then one per capture, `· capture <log>: <n> books into <name>`. Under the `iceberg` feature an empty or absent first folder becomes an Iceberg table before a capture lands, its schema the `marketdata` row as Iceberg states it (`MarketData::field().into_scheme_compat(&Scheme::ICEBERG)`: the three `uint64` codes widened to `decimal(20, 0)`, every enum a bare `int32`); the `yggdryl` a wheel ships is built with that feature. Without it nothing is made a table: a folder takes the rows as a partitioned folder does, a leaf under its own encoding. The display is served at `<path>` and `<path>/index.html` under `text/html; charset=utf-8`, the seven other files under their own types, every one `Cache-Control: no-cache`.
 
 | Refused before anything is served | At |
 | --- | --- |
@@ -65,13 +65,13 @@ Every route is a `GET` under `{prefix}/api` - `HEAD` is answered off it, `POST` 
 | Parameter | Rule |
 | --- | --- |
 | `table`, `ticker` | required; a table the service does not hold and a ticker the table holds no book of are `404` |
-| `from`, `to`, `at` | ISO 8601 instants with seconds: one stating an offset or `Z` is that instant, a naive one (`2026-08-14T00:00:00`, what a `datetime-local` input spells) a wall clock in `tz`; `to` is exclusive, and `from` not before `to` is refused at `$.to` (`expected an instant after `from` (...), got ...`) |
+| `from`, `to`, `at` | ISO 8601 instants with seconds: one stating an offset or `Z` is that instant - an answer's own RFC 9557 text included, its `+` and brackets percent-encoded as any query value is - and a naive one (`2026-08-14T00:00:00`, what a `datetime-local` input spells) a wall clock in `tz`; `to` is exclusive, and `from` not before `to` is refused at `$.to` (``expected an instant after `from` (...), got ...``) |
 | `tz` | an IANA zone this build has rules for, default `UTC`; the zone naive instants are read in and every instant of the answer is rendered in |
 | `interval` | a [candle spelling](candle.md#buckets), default `1m`, aligned to `tz` |
 | `side` | `bid` or `ask`, any case, keeping the entries and deltas resting on that side and the executions stating it; absent keeps both |
 | `limit` | the most `events` rows, default and cap `max_event_rows` |
 
-Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - nine fraction digits and, for a place zone, the offset with the bracketed name, `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, UTC as `2026-08-14T12:00:00.000000000Z` - and are what a display sends straight back as the `from`, `to` and `at` of its next question. Decimals are text, so nothing is rounded; UUIDs are their canonical text; `books`, `executions`, `alive`, `deltas` and the counts are JSON integers.
+Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - nine fraction digits and, for a place zone, the offset with the bracketed name, `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, UTC as `2026-08-14T12:00:00.000000000Z` - and are what a display sends straight back as the `from`, `to` and `at` of its next question. Decimals are text, so nothing is rounded; UUIDs are their canonical text; the counts - `books`, `executions`, `alive`, `deltas` - and an `events` row's integer columns are JSON integers.
 
 ## The audit download
 
@@ -92,7 +92,18 @@ The display is vanilla ES modules with no framework, no CDN and no build step: e
 | `app.js` | the state: the API base off `document.baseURI` (so `--path /book` serves the routes at `/book/api/`), the tables, the tickers of the chosen table with `from` and `to` set to the ticker's span, the candles on any selector change (debounced), the chart, and on a selected bucket the book at its end and the events of its range on each side; the download points at the whole range. `HASH_KEYS` - `table`, `ticker`, `from`, `to`, `tz`, `interval`, `at` - are read from and written to the URL hash, so a view is shareable; `INTERVALS` offers `30s`, `1m`, `5m`, `15m`, `1h`, `1d` |
 | `favicon.svg` | a two-candle mark |
 
-The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error. `node/book.js`, CommonJS, is the package's door to all of it: `assets` is the absolute `book/` folder, `assetFiles` the eight names above in the order the command embeds them, `serveArguments(options)` the argument vector the command takes for `{ tables, bind = '127.0.0.1:0', path = '/', capture, args }` - a table `'name=location'`, a location or `{ name, location }` - and `serve(options)` spawns `yggdryl market serve` with it (`bin` from `YGGDRYL_BIN`, else `yggdryl` on the path; `env`), resolving `{ endpoint, process, close() }` once the endpoint line is read from stdout and rejecting with the process's stderr when it exits first, with the spawn error when it cannot start, or with the line when it is no URL.
+The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears the hover; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error.
+
+`node/book.js`, CommonJS, is the package's door to all of it:
+
+```text
+book.assets                    // the absolute `book/` folder
+book.assetFiles                // the eight files above, in the order the command embeds them
+book.serveArguments(options)   // the argument vector of { tables, bind = '127.0.0.1:0', path = '/', capture, args }
+book.serve(options)            // spawns `yggdryl market serve` with it -> Promise<{ endpoint, process, close() }>
+```
+
+A table is `'name=location'`, a location or `{ name, location }`. `serve` runs `bin` - `YGGDRYL_BIN`, else `yggdryl` on the path - under `env`, resolves once the endpoint line is read from stdout, and rejects with the process's stderr when it exits first, with the spawn error when it cannot start, or with the line when it is no URL.
 
 ## Examples
 
@@ -201,8 +212,8 @@ What the package ships beside its binding, and the argument vector `serve()` spa
     const fs = require('node:fs')
     const path = require('node:path')
 
-    // `book.js` ships beside the package's binding.
-    const book = require(path.join(path.dirname(require.resolve('yggdryl')), 'book.js'))
+    // The package's `book` entry point, beside its binding.
+    const book = require('yggdryl/book')
 
     assert.equal(path.basename(book.assets), 'book')
     assert.deepEqual([...book.assetFiles], [
@@ -240,10 +251,15 @@ http://127.0.0.1:37081/
 · capture rust/tests/fix/ulbridge.log: 7 books into books
 ```
 
-The tickers the table holds, each with the range that holds its books:
+The table it serves, and the tickers the table holds, each with the range that holds its books:
 
 ```bash
+curl http://127.0.0.1:37081/api/tables
 curl 'http://127.0.0.1:37081/api/tickers?table=books'
+```
+
+```json
+[{"name":"books","url":"file:///tmp/books"}]
 ```
 
 ```json
@@ -281,7 +297,7 @@ curl 'http://127.0.0.1:37081/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
  "imbalance":"1","iscrossed":false,"islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
 
-The audit of the day, gzip-coded, named after the ticker and the range in UTC; the header and one row per entry, delta and execution:
+The audit of the day, gzip-coded and named after the ticker and the range in UTC; the header line and one row per entry, delta and execution, cut to their first 120 characters here:
 
 ```bash
 curl -D - -o audit.csv.gz 'http://127.0.0.1:37081/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
@@ -295,17 +311,20 @@ cache-control: no-store
 content-disposition: attachment; filename="audit-HOLN-20260813T220000Z-20260814T220000Z.csv.gz"
 content-length: 1931
 content-type: application/gzip
+date: Tue, 29 Sep 2026 08:41:14 GMT
+server: yggdryl/0.1.17
 
-bookunix,role,marketdatakind,currunix,creaunix,execunix,recdunix,exprunix,prevunix,snapunix,curruuid,crossuuid,crosscode,curr
-2026-08-14T12:46:39.743000000Z,delta,ORDR,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.
-2026-08-14T12:46:39.743000000Z,execution,EXEC,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:
+bookunix,role,marketdatakind,currunix,creaunix,execunix,recdunix,exprunix,prevunix,snapunix,curruuid,crossuuid,crosscode
+2026-08-14T12:46:39.743000000Z,delta,ORDR,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46
+2026-08-14T12:46:39.743000000Z,execution,EXEC,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T1
 5
 ```
 
-A question the route cannot read is `400` naming the parameter:
+A question the route cannot read is `400` naming the parameter - here a range whose `to` is not after its `from`:
 
 ```bash
-curl -i 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
+curl -s -D - 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich' | head -1
+curl -s 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
 ```
 
 ```text
@@ -313,14 +332,24 @@ HTTP/1.1 400 Bad Request
 {"error":"invalid record value at $.to: expected an instant after `from` (2026-08-13T22:00:00.000000000Z), got 2026-08-13T22:00:00.000000000Z"}
 ```
 
+The display itself answers at the endpoint:
+
+```bash
+curl -s -D - -o /dev/null http://127.0.0.1:37081/ | head -5
+```
+
+```text
+HTTP/1.1 200 OK
+cache-control: no-cache
+content-length: 4751
+content-type: text/html; charset=utf-8
+date: Tue, 29 Sep 2026 08:41:14 GMT
+```
+
 `/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of seven rows - that the same command serves again without the capture, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
 
 ## Edges
 
 - An Iceberg table stores `marketdatakind` as a bare `int32` with no extension identity, so the service's category filter compares the member's code rather than its name and prunes there as it does over an IPC leaf carrying the `yggdryl.marketdatakind` extension.
-- A capture appends: served twice over the same table, the same log lands its books twice. Prepare the table once, then serve it without `--capture`.
-- `from` and `to` without an offset are wall clocks in `tz`, so `from=2026-08-14T00:00:00&tz=Europe/Zurich` is `2026-08-13T22:00:00Z`, which is what the audit's filename spells; the same text under the default `tz` is midnight UTC.
-- A book that states no ticker - one opened for a category key, `XPAR:ESVUFR` - is served by no route: `tickers` does not list it and no `ticker` parameter can name it.
-- `events` is bounded by `limit` and by `max_event_rows`, and says `"truncated": true` when it kept rows back; the CSV audit of the same range is never bounded.
-- `snapshot_millis` reaches the service only as what the command folded a capture on: a table's books are served as they were stored, never re-folded on a grid.
+- An `events` row's `uint64` codes - `currhashcode`, `crosshashcode` - are JSON integers up to 2^64, which JavaScript's `JSON.parse` rounds past 2^53; the CSV audit writes them as their digits.
 - Routing the same prefix on the same server again replaces the service that answered there; a prefix carrying a query, a fragment or a control byte is refused by `route`.

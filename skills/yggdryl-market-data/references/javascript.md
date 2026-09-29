@@ -499,7 +499,7 @@ assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got 
 
 ## Start the display beside a Node program
 
-`book.js` ships in the package beside its binding: `assets` is the folder of
+`require('yggdryl/book')` is the package's door to the display: `assets` is the folder of
 the display's files, `serveArguments(options)` the argument vector `yggdryl
 market serve` takes, and `serve(options)` spawns the command - `bin` from
 `YGGDRYL_BIN`, else `yggdryl` on the path - resolving `{ endpoint, process,
@@ -511,7 +511,7 @@ first table before serving.
 const assert = require('node:assert/strict')
 const path = require('node:path')
 
-const book = require(path.join(path.dirname(require.resolve('yggdryl')), 'book.js'))
+const book = require('yggdryl/book')
 
 assert.equal(book.assetFiles.length, 8)
 assert.equal(book.assetFiles[0], 'index.html')

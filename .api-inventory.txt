@@ -3158,7 +3158,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]>
   pub fn set_parquet_key_value_metadata( &mut self, metadata: Vec<(String, String)>, ) -> Result<()>
   pub fn push_parquet_key_value( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<()>
-  pub const fn csv_separator(&self) -> Option<u8>  (the `Csv(crate::csv::CsvOptions)` variant's dialect, `impl From<CsvOptions> for RecordOptions`; each reader `None` for another encoding, each setter refusing one by name at `$.name` and otherwise `CsvOptions`'s own)
+  pub const fn csv_separator(&self) -> Option<u8>  (the `Csv(crate::csv::CsvOptions)` variant's dialect, `impl From<CsvOptions> for RecordOptions`; each reader `None` for another encoding, each setter refusing another encoding at its own path - `$.separator: expected CSV options to set a separator, got application/vnd.apache.arrow.stream options` - and otherwise refusing what `CsvOptions`'s own setter does)
   pub fn set_csv_separator(&mut self, separator: u8) -> Result<()>
   pub const fn csv_quote(&self) -> Option<Option<u8>>
   pub fn set_csv_quote(&mut self, quote: Option<u8>) -> Result<()>

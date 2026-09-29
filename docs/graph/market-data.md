@@ -365,8 +365,6 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
 | Lifts | a [`FieldPath`](../types/paths.md) appended to the view's projections, turning a nested fact into a column: `securityids['ISIN'] as isin` matches the stored key exactly (upper-case; `'isin'` finds nothing), null if absent; a path naming a column the root lacks, or a name a kept column already has, refuses where the plan binds |
 | Bindings | Python `MarketData.plan(view, lifts=(), *, crosscode=None)`, `MarketData.apply_view(view, source, lifts=(), *, crosscode=None)` (a lift: `FieldPath` text or object), spellings `enums.MARKET_VIEWS`; JavaScript `graph.MarketData.plan(view, lifts, crosscode)`, `graph.MarketData.applyView(view, reader, lifts, crosscode)`, spellings `enums.marketViews` |
 
-The [book display](serve.md) reads a table the same way, one filtered read of its `BOOK` rows per request, and folds them into [candles](candle.md).
-
 === "Rust"
 
     ```rust
@@ -497,6 +495,8 @@ The [book display](serve.md) reads a table the same way, one filtered read of it
     const chain = graph.MarketData.applyView('lifecycle', stream(), undefined, 'BUY:O-1001').intoTable()
     assert.deepEqual([...chain.getChild('crosscode')], ['BUY:O-1001'])
     ```
+
+The [book display](serve.md) applies no view: each of its readings is [one filtered read](serve.md#contract) of a table's `BOOK` rows.
 
 ## Edges
 

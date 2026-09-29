@@ -5,7 +5,7 @@
 // display up beside it.
 //
 // `serve` runs the `yggdryl` binary - `YGGDRYL_BIN`, or the one on the path -
-// with `serve` and the tables, bind, path and captures it is given, and
+// with `market serve` and the tables, bind, path and captures it is given, and
 // resolves once the endpoint the command prints first on its own line has
 // been read; a process that exits first, or cannot start, rejects with what
 // it wrote on stderr. The display's own state lives in `book/app.js`.

@@ -16,6 +16,10 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
+    },
+    "./book": {
+      "require": "./book.js",
+      "default": "./book.js"
     }
   },
   "files": [
