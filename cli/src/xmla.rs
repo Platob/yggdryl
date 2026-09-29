@@ -17,12 +17,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Args, Subcommand};
-use yggdryl::holder::Holder;
 use yggdryl::http::{ForwardedHeader, Server, ServerOptions};
 use yggdryl::xmla::{Catalog, Service, ServiceOptions};
 use yggdryl::{Result, Url};
 
-use crate::style;
+use crate::{location, style};
 
 /// What the provider was asked to do.
 #[derive(Subcommand)]
@@ -132,7 +131,7 @@ impl Serve {
             options = options.with_forwarded_headers(self.forwarded_headers.iter().copied());
         }
         if let Some(trace) = &self.trace {
-            options = options.with_trace(holder(trace)?);
+            options = options.with_trace(location::folder(trace)?);
         }
         if let Some(public_url) = &self.public_url {
             options = options.with_public_url(Url::from_str(public_url)?);
@@ -177,35 +176,9 @@ impl Serve {
     }
 }
 
-/// `name=location`, or a location alone named after its last segment, as a
-/// catalog over the holder the location names.
+/// `name=location`, or a location alone named after its last segment
+/// ([`location::split`]), as a catalog over the folder the location names.
 fn catalog(spelled: &str) -> Result<Catalog> {
-    let (name, location) = match spelled.split_once('=') {
-        Some((name, location)) if !name.is_empty() && !name.contains(['/', '\\', ':']) => {
-            (name.to_owned(), location)
-        }
-        _ => (last_segment(spelled), spelled),
-    };
-    Ok(Catalog::new(name, holder(location)?))
-}
-
-/// The last segment of a path or a URL, which names a bare catalog.
-fn last_segment(location: &str) -> String {
-    location
-        .trim_end_matches(['/', '\\'])
-        .rsplit(['/', '\\'])
-        .next()
-        .filter(|segment| !segment.is_empty())
-        .unwrap_or(location)
-        .to_owned()
-}
-
-/// A folder path, or a URL a holder resolves.
-fn holder(location: &str) -> Result<Holder> {
-    // `C:\data` spells a drive, not a scheme, so a URL is one with a `//`.
-    if location.contains("://") {
-        let url = Url::from_str(location)?;
-        return Holder::from_url(&url, std::iter::empty::<(String, String)>());
-    }
-    Holder::folder(location)
+    let (name, holder) = location::named_folder(spelled)?;
+    Ok(Catalog::new(name, holder))
 }

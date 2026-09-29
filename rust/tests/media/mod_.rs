@@ -72,6 +72,14 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("catalog.xmla")).unwrap(),
         Media::Xmla(_)
     ));
+    assert!(matches!(
+        Media::open(handle("trades.csv")).unwrap(),
+        Media::Csv(_)
+    ));
+    assert!(matches!(
+        Media::open(handle("trades.tsv")).unwrap(),
+        Media::Csv(_)
+    ));
 }
 
 #[test]
@@ -105,13 +113,20 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
 
 #[test]
 fn an_unimplemented_encoding_is_named_rather_than_guessed() {
-    let message = Media::open(handle("trades.csv")).unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
+    let message = Media::open(handle("trades.orc")).unwrap_err().to_string();
+    assert!(message.contains("application/vnd.apache.orc"), "{message}");
 }
 
 #[test]
 fn every_variant_round_trips_batches_through_the_same_calls() {
-    let mut names = vec!["trades.arrows", "trades.arrows.gz", "trades.xmla"];
+    let mut names = vec![
+        "trades.arrows",
+        "trades.arrows.gz",
+        "trades.xmla",
+        "trades.csv",
+        "trades.tsv",
+        "trades.csv.gz",
+    ];
     if cfg!(feature = "parquet") {
         names.push("trades.parquet");
     }
@@ -139,7 +154,7 @@ fn every_variant_round_trips_batches_through_the_same_calls() {
 
 #[test]
 fn generic_media_preserves_commit_cadence_through_variant_redirection() {
-    let mut names = vec!["committed.arrows", "committed.avro"];
+    let mut names = vec!["committed.arrows", "committed.avro", "committed.csv"];
     if cfg!(feature = "parquet") {
         names.push("committed.parquet");
     }
@@ -153,6 +168,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
             Media::Xmla(xmla) => xmla.options_mut().set_commit_row_size(Some(1)),
+            Media::Csv(csv) => csv.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();

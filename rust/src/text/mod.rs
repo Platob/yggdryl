@@ -23,6 +23,7 @@ mod plan;
 pub(crate) mod position;
 pub(crate) mod reader;
 mod sep;
+pub(crate) mod transport;
 pub(crate) mod typed;
 /// Read one natural text value under one field, coerced and validated.
 ///

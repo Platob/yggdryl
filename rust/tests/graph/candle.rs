@@ -1,0 +1,724 @@
+//! `rust/src/graph/candle.rs`: the OHLC a bucket of books folds to, the
+//! options that align buckets to a zone, the walk that emits candles and
+//! the Arrow face a candle has.
+
+use smol_str::SmolStr;
+use yggdryl::graph::{
+    BookEvent, BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent,
+    Market, MarketData, Ohlc, QuoteEvent,
+};
+use yggdryl::{ArrowCastOptions, Decimal, Scalar, Serie, Timezone};
+
+/// Nanoseconds in one second.
+const SECOND: i64 = 1_000_000_000;
+
+/// Nanoseconds in one minute.
+const MINUTE: i64 = 60 * SECOND;
+
+/// Nanoseconds in one hour.
+const HOUR: i64 = 60 * MINUTE;
+
+/// `2026-03-29T00:00:00Z`, the day Europe/Zurich springs forward at
+/// `01:00Z`: its wall clock skips `02:00`-`03:00`.
+const SPRING_DAY: i64 = 1_774_742_400 * SECOND;
+
+/// `2026-10-25T00:00:00Z`, the day Europe/Zurich falls back at `01:00Z`:
+/// its wall clock reads `02:00`-`03:00` twice.
+const FALL_DAY: i64 = 1_792_886_400 * SECOND;
+
+/// `2026-01-05T10:00:00Z`.
+const OFFSET_DAY: i64 = 1_767_607_200 * SECOND;
+
+/// One finalized quote of `ticker` going by `code`.
+fn quote(
+    unix: i64,
+    ticker: &str,
+    code: &str,
+    side: &str,
+    price: &str,
+    quantity: i64,
+) -> MarketData {
+    let mut quote = QuoteEvent::at(unix);
+    quote.set_crosscode(code.to_owned());
+    quote.set_ticker(Some(SmolStr::new(ticker)));
+    quote.set_side(yggdryl::Side::read(side).unwrap());
+    quote.set_price(Some(price.parse().unwrap()));
+    quote.set_quantity(Some(Decimal::from_int(quantity)));
+    quote.set_state(yggdryl::State::New);
+    quote.finalize();
+    MarketData::from(quote)
+}
+
+/// One finalized execution of `ticker` going by `code`, stating `quantity`
+/// where it is given one.
+fn execution(unix: i64, ticker: &str, code: &str, side: &str, quantity: Option<i64>) -> MarketData {
+    let mut order = yggdryl::graph::OrderEvent::at(unix);
+    order.set_crosscode(code.to_owned());
+    order.set_ticker(Some(SmolStr::new(ticker)));
+    order.set_side(yggdryl::Side::read(side).unwrap());
+    order.set_price(Some("100".parse().unwrap()));
+    order.set_quantity(quantity.map(Decimal::from_int));
+    order.set_state(yggdryl::State::read("Filled").unwrap());
+    let mut execution = MarketData::from(ExecutionEvent::from(&order));
+    execution.finalize();
+    execution
+}
+
+/// The books `operations` fold into, in stream order.
+fn books(operations: Vec<MarketData>) -> Vec<BookEvent> {
+    BookIterator::new(operations.into_iter(), 0)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+}
+
+/// The candles `operations` fold into under `options`.
+fn candles(operations: Vec<MarketData>, options: CandleOptions) -> Vec<Candle> {
+    CandleIterator::new(books(operations).into_iter().map(Ok), options)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+}
+
+/// The candles of empty books at `instants` under `options`.
+fn empty_candles(instants: &[i64], options: CandleOptions) -> Vec<Candle> {
+    let books = instants
+        .iter()
+        .map(|unix| Ok(BookEvent::new(*unix, "ACME")))
+        .collect::<Vec<_>>();
+    CandleIterator::new(books.into_iter(), options)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+}
+
+/// The Europe/Zurich zone.
+fn zurich() -> Timezone {
+    Timezone::from_str("Europe/Zurich").unwrap()
+}
+
+/// `text` as the decimal it spells.
+fn decimal(text: &str) -> Decimal {
+    text.parse().unwrap()
+}
+
+/// The reading `open, high, low, close` spell.
+fn ohlc(open: &str, high: &str, low: &str, close: &str) -> Ohlc {
+    Ohlc {
+        open: decimal(open),
+        high: decimal(high),
+        low: decimal(low),
+        close: decimal(close),
+    }
+}
+
+/// The wall-clock hour of the day `zone` reads at `unix`.
+fn local_hour(zone: Timezone, unix: i64) -> i64 {
+    zone.into_local(unix / SECOND).unwrap().rem_euclid(86_400) / 3_600
+}
+
+#[test]
+fn an_interval_must_be_positive() {
+    for interval in [0, -1, i64::MIN] {
+        let error = CandleOptions::new(interval).unwrap_err().to_string();
+        assert!(
+            error.contains("$.interval") && error.contains(&interval.to_string()),
+            "{error}"
+        );
+    }
+    assert_eq!(CandleOptions::new(1).unwrap().interval(), 1);
+    assert!(CandleOptions::new(1).unwrap().timezone().is_utc());
+}
+
+#[test]
+fn every_spelling_reads_and_writes_back() {
+    let cases = [
+        ("30s", 30 * SECOND),
+        ("1m", MINUTE),
+        ("5m", 5 * MINUTE),
+        ("1h", HOUR),
+        ("1d", 24 * HOUR),
+        ("1w", 7 * 24 * HOUR),
+        ("250ms", 250_000_000),
+        ("7us", 7_000),
+        ("3ns", 3),
+    ];
+    for (spelling, interval) in cases {
+        let options = CandleOptions::from_spelling(spelling).unwrap();
+        assert_eq!(options.interval(), interval, "{spelling}");
+        assert_eq!(options.spelling(), spelling);
+        assert!(options.timezone().is_utc());
+    }
+    // The widest unit that divides exactly is the one written.
+    assert_eq!(CandleOptions::new(90 * SECOND).unwrap().spelling(), "90s");
+    assert_eq!(CandleOptions::new(120 * SECOND).unwrap().spelling(), "2m");
+    assert_eq!(
+        CandleOptions::new(1_500_000_000).unwrap().spelling(),
+        "1500ms"
+    );
+    assert_eq!(CandleOptions::new(14 * 24 * HOUR).unwrap().spelling(), "2w");
+    for refused in [
+        "",
+        "m",
+        "0s",
+        "1x",
+        "1.5m",
+        "1 m",
+        " 1m",
+        "-1m",
+        "1M",
+        "1min",
+        "99999999999999999999s",
+        "100000000000w",
+    ] {
+        let error = CandleOptions::from_spelling(refused)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("$.interval") && error.contains(&format!("{refused:?}")),
+            "{refused}: {error}"
+        );
+    }
+}
+
+#[test]
+fn the_zone_is_stated_beside_the_interval() {
+    let options = CandleOptions::from_spelling("1h")
+        .unwrap()
+        .with_timezone(zurich());
+    assert_eq!(options.timezone(), &zurich());
+    assert_eq!(options.spelling(), "1h");
+    assert_eq!(
+        options,
+        CandleOptions::new(HOUR).unwrap().with_timezone(zurich())
+    );
+    assert_ne!(options, CandleOptions::new(HOUR).unwrap());
+}
+
+#[test]
+fn an_unsorted_stream_is_refused_at_the_book_and_the_walk_fuses() {
+    let books = vec![
+        Ok(BookEvent::new(2_000, "ACME")),
+        Ok(BookEvent::new(2_000, "ACME")),
+        Ok(BookEvent::new(1_000, "ACME")),
+        Ok(BookEvent::new(3_000, "ACME")),
+    ];
+    let mut candles = CandleIterator::new(books.into_iter(), CandleOptions::new(MINUTE).unwrap());
+    let error = candles.next().unwrap().unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "invalid record value at $.book.currunix: expected an instant at or after 2000, got 1000"
+    );
+    assert!(candles.next().is_none(), "the walk fuses");
+    assert!(candles.next().is_none());
+}
+
+#[test]
+fn a_source_error_follows_the_completed_buckets_and_fuses() {
+    let books = vec![
+        Ok(BookEvent::new(10 * SECOND, "ACME")),
+        Ok(BookEvent::new(70 * SECOND, "ACME")),
+        Err(yggdryl::Error::InvalidRecord {
+            path: "$.source".into(),
+            reason: "the source failed".into(),
+        }),
+        Ok(BookEvent::new(80 * SECOND, "ACME")),
+    ];
+    let mut candles = CandleIterator::new(books.into_iter(), CandleOptions::new(MINUTE).unwrap());
+    let first = candles.next().unwrap().unwrap();
+    assert_eq!((first.start, first.end, first.books), (0, MINUTE, 1));
+    let error = candles.next().unwrap().unwrap_err().to_string();
+    assert_eq!(error, "invalid record value at $.source: the source failed");
+    assert!(
+        candles.next().is_none(),
+        "the open bucket is dropped, not emitted"
+    );
+}
+
+#[test]
+fn an_empty_stream_yields_no_candle() {
+    let mut candles = CandleIterator::new(std::iter::empty(), CandleOptions::new(MINUTE).unwrap());
+    assert!(candles.next().is_none());
+    assert!(candles.next().is_none());
+    assert_eq!(candles.options().interval(), MINUTE);
+}
+
+#[test]
+fn the_ohlc_of_every_reading_over_one_minute() {
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        quote(10 * SECOND, "ACME", "A", "Sell", "103", 7),
+        quote(20 * SECOND, "ACME", "B", "Buy", "102", 5),
+        execution(20 * SECOND, "ACME", "E1", "Buy", Some(4)),
+        quote(30 * SECOND, "ACME", "A", "Sell", "102.5", 7),
+        quote(30 * SECOND, "ACME", "B", "Buy", "99", 5),
+        quote(40 * SECOND, "ACME", "B", "Buy", "101", 8),
+        quote(40 * SECOND, "ACME", "A", "Sell", "103.5", 9),
+        execution(40 * SECOND, "ACME", "E2", "Sell", Some(6)),
+        execution(40 * SECOND, "ACME", "E3", "Sell", None),
+    ];
+    let folded = books(operations.clone());
+    assert_eq!(folded.len(), 4, "one book per instant");
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    assert_eq!(candles.len(), 1);
+    let candle = &candles[0];
+    assert_eq!(candle.crosscode, "ACME");
+    assert_eq!(candle.ticker.as_deref(), Some("ACME"));
+    assert_eq!((candle.start, candle.end), (0, MINUTE));
+    assert_eq!(candle.bid, Some(ohlc("100", "102", "99", "101")));
+    assert_eq!(candle.ask, Some(ohlc("103", "103.5", "102.5", "103.5")));
+    assert_eq!(candle.mid, Some(ohlc("101.5", "102.5", "100.75", "102.25")));
+    assert_eq!(candle.spread, Some(ohlc("3", "3.5", "1", "2.5")));
+    assert_eq!(candle.bidqty, Some(Decimal::from_int(8)));
+    assert_eq!(candle.askqty, Some(Decimal::from_int(9)));
+    assert_eq!(candle.books, 4);
+    assert_eq!(candle.executions, 3);
+    assert_eq!(candle.volume, Decimal::from_int(10));
+}
+
+#[test]
+fn a_one_sided_book_states_no_mid_or_spread() {
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        quote(20 * SECOND, "ACME", "B", "Buy", "101", 6),
+    ];
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    assert_eq!(candles.len(), 1);
+    let candle = &candles[0];
+    assert_eq!(candle.bid, Some(ohlc("100", "101", "100", "101")));
+    assert_eq!(candle.ask, None);
+    assert_eq!(candle.mid, None);
+    assert_eq!(candle.spread, None);
+    assert_eq!(candle.bidqty, Some(Decimal::from_int(6)));
+    assert_eq!(candle.askqty, None);
+    assert_eq!(
+        (candle.books, candle.executions, candle.volume),
+        (2, 0, Decimal::ZERO)
+    );
+}
+
+#[test]
+fn a_reading_a_later_book_lacks_keeps_the_earlier_ones() {
+    // The ask side empties at the second book: the ask, the mid and the
+    // spread keep what the first book read, the touch quantities are the
+    // last book's.
+    let mut cancel = quote(20 * SECOND, "ACME", "A", "Sell", "102", 0);
+    if let MarketData::QuoteEvent(quote) = &mut cancel {
+        quote.set_state(yggdryl::State::read("Canceled").unwrap());
+    }
+    cancel.finalize();
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        quote(10 * SECOND, "ACME", "A", "Sell", "102", 7),
+        cancel,
+    ];
+    let folded = books(operations.clone());
+    assert_eq!(folded.len(), 2);
+    assert_eq!(folded[1].best_price(yggdryl::Side::Sell), None);
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    let candle = &candles[0];
+    assert_eq!(candle.ask, Some(ohlc("102", "102", "102", "102")));
+    assert_eq!(candle.mid, Some(ohlc("101", "101", "101", "101")));
+    assert_eq!(candle.spread, Some(ohlc("2", "2", "2", "2")));
+    assert_eq!(candle.bid, Some(ohlc("100", "100", "100", "100")));
+    assert_eq!(candle.askqty, None);
+    assert_eq!(candle.bidqty, Some(Decimal::from_int(5)));
+    assert_eq!(candle.books, 2);
+}
+
+#[test]
+fn buckets_close_when_the_stream_moves_past_them() {
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        quote(59 * SECOND, "ACME", "B", "Buy", "101", 5),
+        quote(60 * SECOND, "ACME", "B", "Buy", "102", 5),
+        quote(200 * SECOND, "ACME", "B", "Buy", "103", 5),
+    ];
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.start, candle.end, candle.books))
+            .collect::<Vec<_>>(),
+        [
+            (0, MINUTE, 2),
+            (MINUTE, 2 * MINUTE, 1),
+            (3 * MINUTE, 4 * MINUTE, 1)
+        ],
+        "an empty bucket yields no candle"
+    );
+    assert_eq!(
+        candles[0].bid.map(|bid| bid.close),
+        Some(Decimal::from_int(101))
+    );
+    assert_eq!(
+        candles[1].bid.map(|bid| bid.open),
+        Some(Decimal::from_int(102))
+    );
+}
+
+#[test]
+fn two_cross_codes_interleave_and_emit_in_cross_code_order() {
+    let operations = vec![
+        quote(10 * SECOND, "IBM", "IBM-B", "Buy", "100", 5),
+        quote(20 * SECOND, "AAPL", "AAPL-B", "Buy", "200", 5),
+        quote(30 * SECOND, "IBM", "IBM-B", "Buy", "101", 5),
+        quote(70 * SECOND, "IBM", "IBM-B", "Buy", "102", 5),
+        quote(80 * SECOND, "AAPL", "AAPL-B", "Buy", "201", 5),
+    ];
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.crosscode.as_str(), candle.start, candle.books))
+            .collect::<Vec<_>>(),
+        [
+            ("AAPL", 0, 1),
+            ("IBM", 0, 2),
+            ("AAPL", MINUTE, 1),
+            ("IBM", MINUTE, 1)
+        ]
+    );
+    assert_eq!(candles[1].bid, Some(ohlc("100", "101", "100", "101")));
+    assert_eq!(candles[1].ticker.as_deref(), Some("IBM"));
+}
+
+#[test]
+fn a_book_stating_no_ticker_states_none_on_its_candle() {
+    let candles = empty_candles(&[10 * SECOND], CandleOptions::new(MINUTE).unwrap());
+    assert_eq!(candles.len(), 1);
+    assert_eq!(candles[0].ticker.as_deref(), Some("ACME"));
+    let untickered = vec![Ok(BookEvent::new(10 * SECOND, ""))];
+    let candles = CandleIterator::new(untickered.into_iter(), CandleOptions::new(MINUTE).unwrap())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(candles[0].ticker, None);
+    assert_eq!(candles[0].crosscode, "");
+}
+
+#[test]
+fn buckets_align_to_a_zone_with_a_half_hour_offset() {
+    // Asia/Kolkata is +05:30: `10:45Z` reads `16:15`, whose hour opens at
+    // `16:00` local, `10:30Z`.
+    let kolkata = Timezone::from_str("Asia/Kolkata").unwrap();
+    let options = CandleOptions::from_spelling("1h")
+        .unwrap()
+        .with_timezone(kolkata);
+    let candles = empty_candles(
+        &[OFFSET_DAY + 45 * MINUTE, OFFSET_DAY + 89 * MINUTE],
+        options,
+    );
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.start, candle.end, candle.books))
+            .collect::<Vec<_>>(),
+        [(OFFSET_DAY + 30 * MINUTE, OFFSET_DAY + 90 * MINUTE, 2)]
+    );
+    // The same instants in UTC open on the UTC hour.
+    let utc = empty_candles(
+        &[OFFSET_DAY + 45 * MINUTE, OFFSET_DAY + 89 * MINUTE],
+        CandleOptions::from_spelling("1h").unwrap(),
+    );
+    assert_eq!(
+        utc.iter()
+            .map(|candle| (candle.start, candle.end, candle.books))
+            .collect::<Vec<_>>(),
+        [
+            (OFFSET_DAY, OFFSET_DAY + HOUR, 1),
+            (OFFSET_DAY + HOUR, OFFSET_DAY + 2 * HOUR, 1)
+        ]
+    );
+}
+
+#[test]
+fn hourly_candles_skip_the_hour_a_spring_forward_removes() {
+    // Europe/Zurich, 2026-03-29: `00:30Z` reads `01:30 CET`, `01:30Z`
+    // reads `03:30 CEST` - the wall clock never reads `02:xx`.
+    let options = CandleOptions::from_spelling("1h")
+        .unwrap()
+        .with_timezone(zurich());
+    let candles = empty_candles(
+        &[
+            SPRING_DAY + 30 * MINUTE,
+            SPRING_DAY + 90 * MINUTE,
+            SPRING_DAY + 150 * MINUTE,
+        ],
+        options,
+    );
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.start, candle.end))
+            .collect::<Vec<_>>(),
+        [
+            (SPRING_DAY, SPRING_DAY + HOUR),
+            (SPRING_DAY + HOUR, SPRING_DAY + 2 * HOUR),
+            (SPRING_DAY + 2 * HOUR, SPRING_DAY + 3 * HOUR),
+        ],
+        "the buckets abut in UTC"
+    );
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| local_hour(zurich(), candle.start))
+            .collect::<Vec<_>>(),
+        [1, 3, 4],
+        "no candle opens at the hour the zone skipped"
+    );
+}
+
+#[test]
+fn a_daily_candle_spans_twenty_three_hours_on_a_spring_forward_day() {
+    let options = CandleOptions::from_spelling("1d")
+        .unwrap()
+        .with_timezone(zurich());
+    let candles = empty_candles(&[SPRING_DAY + 30 * MINUTE, SPRING_DAY + 20 * HOUR], options);
+    assert_eq!(candles.len(), 1);
+    let candle = &candles[0];
+    // Local midnight is `23:00Z` the day before; the next is `22:00Z`.
+    assert_eq!(candle.start, SPRING_DAY - HOUR);
+    assert_eq!(candle.end, SPRING_DAY + 22 * HOUR);
+    assert_eq!(candle.end - candle.start, 23 * HOUR);
+    assert_eq!(local_hour(zurich(), candle.start), 0);
+    assert_eq!(local_hour(zurich(), candle.end), 0);
+    assert_eq!(candle.books, 2);
+}
+
+#[test]
+fn a_fall_back_folds_the_repeated_hour_into_one_rising_bucket() {
+    // Europe/Zurich, 2026-10-25: `00:30Z` reads `02:30 CEST` and `01:30Z`
+    // reads `02:30 CET`; both are the local hour `02`, one two-hour bucket.
+    let hourly = CandleOptions::from_spelling("1h")
+        .unwrap()
+        .with_timezone(zurich());
+    let candles = empty_candles(&[FALL_DAY + 30 * MINUTE, FALL_DAY + 90 * MINUTE], hourly);
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.start, candle.end, candle.books))
+            .collect::<Vec<_>>(),
+        [(FALL_DAY, FALL_DAY + 2 * HOUR, 2)]
+    );
+    // Half-hour buckets: `02:00` opens once, at `00:00Z`, and `02:30` holds
+    // every instant from `00:30Z` until the wall clock first reads `03:00`,
+    // at `02:00Z`, so the edges rise and no bucket is re-entered.
+    let halves = CandleOptions::from_spelling("30m")
+        .unwrap()
+        .with_timezone(zurich());
+    let candles = empty_candles(
+        &[
+            FALL_DAY + 15 * MINUTE,
+            FALL_DAY + 45 * MINUTE,
+            FALL_DAY + 75 * MINUTE,
+            FALL_DAY + 125 * MINUTE,
+        ],
+        halves,
+    );
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.start, candle.end, candle.books))
+            .collect::<Vec<_>>(),
+        [
+            (FALL_DAY, FALL_DAY + 30 * MINUTE, 1),
+            (FALL_DAY + 30 * MINUTE, FALL_DAY + 2 * HOUR, 2),
+            (FALL_DAY + 2 * HOUR, FALL_DAY + 150 * MINUTE, 1),
+        ]
+    );
+}
+
+#[test]
+fn the_field_declares_every_cell() {
+    let field = Candle::field().unwrap();
+    assert_eq!(field.name(), "candle");
+    assert!(!field.is_nullable());
+    let declared = field
+        .fields()
+        .iter()
+        .map(|child| {
+            format!(
+                "{}: {}{}",
+                child.name(),
+                child.dtype(),
+                if child.is_nullable() { "" } else { " not null" }
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut expected = vec![
+        "crosscode: utf8 not null".to_owned(),
+        "ticker: utf8".to_owned(),
+        "start: datetime64(ns,\"UTC\") not null".to_owned(),
+        "end: datetime64(ns,\"UTC\") not null".to_owned(),
+    ];
+    for reading in ["bid", "ask", "mid", "spread"] {
+        for cell in ["open", "high", "low", "close"] {
+            expected.push(format!("{reading}{cell}: decimal"));
+        }
+    }
+    expected.extend([
+        "bidqty: decimal".to_owned(),
+        "askqty: decimal".to_owned(),
+        "books: uint64 not null".to_owned(),
+        "executions: uint64 not null".to_owned(),
+        "volume: decimal not null".to_owned(),
+    ]);
+    assert_eq!(declared, expected);
+}
+
+/// A candle stating every cell.
+fn full_candle() -> Candle {
+    Candle {
+        crosscode: "ACME".into(),
+        ticker: Some("ACME".into()),
+        start: MINUTE,
+        end: 2 * MINUTE,
+        bid: Some(ohlc("100", "102", "99", "101")),
+        ask: Some(ohlc("103", "103.5", "102.5", "103.5")),
+        mid: Some(ohlc("101.5", "102.5", "100.75", "102.25")),
+        spread: Some(ohlc("3", "3.5", "1", "2.5")),
+        bidqty: Some(Decimal::from_int(8)),
+        askqty: Some(Decimal::from_int(9)),
+        books: 4,
+        executions: 3,
+        volume: Decimal::from_int(10),
+    }
+}
+
+/// A candle of a book that stated nothing.
+fn empty_candle() -> Candle {
+    Candle {
+        crosscode: "XXXX:XXXXXX".into(),
+        ticker: None,
+        start: 0,
+        end: MINUTE,
+        bid: None,
+        ask: None,
+        mid: None,
+        spread: None,
+        bidqty: None,
+        askqty: None,
+        books: 1,
+        executions: 0,
+        volume: Decimal::ZERO,
+    }
+}
+
+#[test]
+fn the_scalar_round_trips_as_the_named_struct_and_the_canonical_row() {
+    for candle in [full_candle(), empty_candle()] {
+        let named = candle.into_scalar();
+        assert_eq!(named.as_struct().unwrap().len(), 25);
+        assert_eq!(Candle::from_scalar(&named).unwrap(), candle);
+        let row = Candle::field().unwrap().scalar(named).unwrap();
+        assert_eq!(row.sequence_rows().unwrap().len(), 25);
+        assert_eq!(Candle::from_scalar(&row).unwrap(), candle);
+    }
+    // The named struct restates what the door restates: a text price.
+    let named = Scalar::from_struct([
+        ("crosscode", Scalar::from("ACME")),
+        ("start", Scalar::from(0i64)),
+        ("end", Scalar::from(MINUTE)),
+        ("bidopen", Scalar::from("100.5")),
+        ("bidhigh", Scalar::from("100.5")),
+        ("bidlow", Scalar::from("100.5")),
+        ("bidclose", Scalar::from("100.5")),
+        ("books", Scalar::from(1u8)),
+        ("executions", Scalar::from(0u8)),
+        ("volume", Scalar::from(0i64)),
+    ])
+    .unwrap();
+    let read = Candle::from_scalar(&named).unwrap();
+    assert_eq!(read.bid, Some(ohlc("100.5", "100.5", "100.5", "100.5")));
+    assert_eq!(read.ticker, None);
+    assert_eq!(read.ask, None);
+    assert_eq!((read.start, read.end, read.books), (0, MINUTE, 1));
+}
+
+#[test]
+fn a_scalar_of_another_shape_is_refused_under_the_candle() {
+    let refused = |value: Scalar| Candle::from_scalar(&value).unwrap_err().to_string();
+    assert!(refused(Scalar::from(1i64)).contains("$.candle"));
+    assert!(refused(Scalar::Null).contains("$.candle"));
+    // A required cell absent is a null the door refuses.
+    let mut named = full_candle().into_scalar().as_struct().unwrap().clone();
+    named.remove("crosscode");
+    let error = refused(Scalar::from_struct(named.clone()).unwrap());
+    assert!(error.contains("crosscode"), "{error}");
+    // A reading stating some of its four cells is refused by this reading.
+    let mut partial = full_candle().into_scalar().as_struct().unwrap().clone();
+    partial.insert("bidhigh".into(), Scalar::Null);
+    let error = refused(Scalar::from_struct(partial).unwrap());
+    assert!(
+        error.contains("$.candle") && error.contains("four decimals or four nulls"),
+        "{error}"
+    );
+    // A name the struct should not hold.
+    let mut extra = full_candle().into_scalar().as_struct().unwrap().clone();
+    extra.insert("vwap".into(), Scalar::Null);
+    let error = refused(Scalar::from_struct(extra).unwrap());
+    assert!(error.contains("vwap"), "{error}");
+}
+
+#[test]
+fn candles_lay_out_as_batches_and_read_back() {
+    let candles = vec![full_candle(), empty_candle(), full_candle()];
+    let mut batches = Candle::arrow_reader(candles.clone().into_iter().map(Ok), Some(2)).unwrap();
+    let field = Candle::field().unwrap();
+    let schema = field.clone().into_arrow_schema().unwrap();
+    assert_eq!(batches.schema(), schema);
+    let mut read = Vec::new();
+    for batch in &mut batches {
+        let batch = batch.unwrap();
+        let rows =
+            Serie::from_arrow_batch(Some(&field), &batch, ArrowCastOptions::default()).unwrap();
+        for index in 0..rows.len() {
+            read.push(Candle::from_scalar(&rows.scalar(index).unwrap()).unwrap());
+        }
+    }
+    assert_eq!(read, candles);
+    // An empty source is an empty reader under the same schema.
+    let mut batches = Candle::arrow_reader(std::iter::empty(), None).unwrap();
+    assert_eq!(batches.schema(), schema);
+    assert!(batches.next().is_none());
+    // A source error follows the completed prefix and fuses the reader.
+    let source = vec![
+        Ok(full_candle()),
+        Err(yggdryl::Error::InvalidRecord {
+            path: "$.source".into(),
+            reason: "the source failed".into(),
+        }),
+        Ok(empty_candle()),
+    ];
+    let mut batches = Candle::arrow_reader(source, Some(1)).unwrap();
+    assert_eq!(batches.next().unwrap().unwrap().num_rows(), 1);
+    assert!(batches.next().unwrap().is_err());
+    assert!(batches.next().is_none());
+}
+
+#[test]
+fn candles_of_a_walk_round_trip_through_arrow() {
+    let operations = vec![
+        quote(10 * SECOND, "ACME", "B", "Buy", "100", 5),
+        quote(10 * SECOND, "ACME", "A", "Sell", "103", 7),
+        quote(70 * SECOND, "ACME", "B", "Buy", "101", 5),
+    ];
+    let options = CandleOptions::from_spelling("1m").unwrap();
+    let walk = CandleIterator::new(
+        books(operations.clone()).into_iter().map(Ok),
+        options.clone(),
+    );
+    let mut batches = Candle::arrow_reader(walk, None).unwrap();
+    let batch = batches.next().unwrap().unwrap();
+    assert!(batches.next().is_none());
+    assert_eq!(batch.num_rows(), 2);
+    let rows = Serie::from_arrow_batch(
+        Some(&Candle::field().unwrap()),
+        &batch,
+        ArrowCastOptions::default(),
+    )
+    .unwrap();
+    let read = (0..rows.len())
+        .map(|index| Candle::from_scalar(&rows.scalar(index).unwrap()).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(read, candles(operations, options));
+    assert_eq!(read[0].ticker.as_deref(), Some("ACME"));
+}

@@ -23,6 +23,8 @@
     "index.d.ts",
     "binding.js",
     "binding.d.ts",
+    "book.js",
+    "book/",
     "defaults.js",
     "fields.js",
     "*.node",

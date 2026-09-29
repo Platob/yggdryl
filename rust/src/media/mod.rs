@@ -83,6 +83,8 @@ pub enum Media {
     Text(crate::text::Text<Holder>),
     /// An XML for Analysis rowset document.
     Xmla(crate::xmla::Xmla<Holder>),
+    /// A CSV or TSV document.
+    Csv(crate::csv::Csv<Holder>),
 }
 
 impl Media {
@@ -123,10 +125,13 @@ impl Media {
         if base == &MimeType::XMLA {
             return Ok(Self::Xmla(crate::xmla::Xmla::new(handle)));
         }
+        if base == &MimeType::CSV || base == &MimeType::TSV {
+            return Ok(Self::Csv(crate::csv::Csv::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
              (application/vnd.apache.arrow.stream{}, application/avro, text/plain, \
-             application/xmla+xml), got {base}",
+             application/xmla+xml, text/csv, text/tab-separated-values), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -161,6 +166,11 @@ impl Media {
         Self::Xmla(crate::xmla::Xmla::new(handle))
     }
 
+    /// Hold a CSV or TSV document over a handle.
+    pub fn csv(handle: Holder) -> Self {
+        Self::Csv(crate::csv::Csv::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -171,6 +181,7 @@ impl Media {
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
             Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
+            Self::Csv(csv) => Self::Csv(csv.with_field(field)),
         }
     }
 
@@ -187,6 +198,7 @@ impl Media {
             Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
             Self::Xmla(inner) => inner.handle(),
+            Self::Csv(inner) => inner.handle(),
         }
     }
 
@@ -204,6 +216,7 @@ impl Media {
             Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
             Self::Xmla(inner) => inner.into_handle(),
+            Self::Csv(inner) => inner.into_handle(),
         }
     }
 
@@ -216,6 +229,7 @@ impl Media {
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -228,6 +242,7 @@ impl Media {
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -245,6 +260,7 @@ impl Media {
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -257,6 +273,7 @@ impl Media {
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
             Self::Xmla(xmla) => xmla,
+            Self::Csv(csv) => csv,
         }
     }
 }
@@ -514,5 +531,11 @@ impl From<crate::text::Text<Holder>> for Media {
 impl From<crate::xmla::Xmla<Holder>> for Media {
     fn from(value: crate::xmla::Xmla<Holder>) -> Self {
         Self::Xmla(value)
+    }
+}
+
+impl From<crate::csv::Csv<Holder>> for Media {
+    fn from(value: crate::csv::Csv<Holder>) -> Self {
+        Self::Csv(value)
     }
 }

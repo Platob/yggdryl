@@ -33,6 +33,7 @@ encoding!(PyIpc, "Ipc", "An Arrow IPC stream or file.");
 encoding!(PyParquet, "Parquet", "An Apache Parquet file.");
 encoding!(PyAvro, "Avro", "An Apache Avro object container.");
 encoding!(PyXmla, "Xmla", "An XML for Analysis rowset document.");
+encoding!(PyCsv, "Csv", "A comma-separated values document.");
 
 /// Plain-text rows under one retained flat configuration.
 ///
@@ -78,6 +79,7 @@ pub(crate) enum Encoding {
     Avro,
     Text,
     Xmla,
+    Csv,
 }
 
 impl Encoding {
@@ -89,6 +91,7 @@ impl Encoding {
             yggdryl::media::Media::Avro(_) => Self::Avro,
             yggdryl::media::Media::Text(_) => Self::Text,
             yggdryl::media::Media::Xmla(_) => Self::Xmla,
+            yggdryl::media::Media::Csv(_) => Self::Csv,
         }
     }
 }
@@ -110,6 +113,7 @@ pub(crate) fn describe(
         Encoding::Parquet => Py::new(py, media.add_subclass(PyParquet))?.into_any(),
         Encoding::Avro | Encoding::Text => Py::new(py, media.add_subclass(PyAvro))?.into_any(),
         Encoding::Xmla => Py::new(py, media.add_subclass(PyXmla))?.into_any(),
+        Encoding::Csv => Py::new(py, media.add_subclass(PyCsv))?.into_any(),
     })
 }
 
@@ -128,6 +132,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyParquet>()?;
     module.add_class::<PyAvro>()?;
     module.add_class::<PyXmla>()?;
+    module.add_class::<PyCsv>()?;
     module.add_class::<PyText>()?;
     Ok(())
 }

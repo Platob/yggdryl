@@ -1,15 +1,17 @@
 //! `yggdryl` - the command line.
 //!
 //! One binary over the core's namespaces, each a subcommand that owns its own
-//! verbs and its own state. There are two: [`fix`], the FIX dictionary tool,
-//! and [`xmla`], the XML for Analysis provider. The top level parses,
-//! dispatches, and prints a refusal; every verb lives in the namespace it
-//! belongs to.
+//! verbs and its own state. There are three: [`fix`], the FIX dictionary
+//! tool, [`xmla`], the XML for Analysis provider, and [`serve`], the book
+//! display. The top level parses, dispatches, and prints a refusal; every
+//! verb lives in the namespace it belongs to, and [`location`] is how every
+//! serving command reads where its data is.
 //!
 //! | namespace | what it is |
 //! | --- | --- |
 //! | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively |
 //! | `xmla` | the XML for Analysis provider: serve folders of record media as catalogs over HTTP |
+//! | `serve` | the book display: serve tables of market data as bid and ask candles, books and audits over HTTP, a FIX bridge capture folded in first |
 
 /// Print to standard output, as `print!` does, ending quietly when the reader
 /// has gone - see [`style::write_out`].
@@ -32,9 +34,11 @@ macro_rules! outln {
 
 mod diff;
 mod fix;
+mod location;
 mod quality;
 mod registry;
 mod schema;
+mod serve;
 mod shell;
 mod style;
 mod xmla;
@@ -78,6 +82,8 @@ enum Command {
         #[command(subcommand)]
         command: xmla::Command,
     },
+    /// Serve tables of market data as the book display over HTTP.
+    Serve(serve::Serve),
 }
 
 fn main() -> ExitCode {
@@ -93,6 +99,7 @@ fn main() -> ExitCode {
             command.as_deref(),
         ),
         Command::Xmla { command } => xmla::run(command),
+        Command::Serve(serve) => serve::run(serve),
     };
     match outcome {
         Ok(code) => code,

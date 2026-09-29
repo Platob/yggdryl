@@ -530,8 +530,8 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
     );
     assert!(message.contains("read_arrow"), "{message}");
     // Any other media type is refused with the encodings alone.
-    let csv = yggdryl::MediaType::new(yggdryl::MimeType::CSV);
-    let message = RecordOptions::for_media_type(&csv).unwrap_err().to_string();
+    let orc = yggdryl::MediaType::new(yggdryl::MimeType::ORC);
+    let message = RecordOptions::for_media_type(&orc).unwrap_err().to_string();
     assert!(!message.contains("document is one value"), "{message}");
 }
 

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Yggdryl book</title>
+    <meta name="description" content="Bid and ask candles of a market-data table, the last book of a bucket and the audit of its events." />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="theme.css" />
+    <script>
+      // The stored scheme, stamped before the first paint so a dark page does
+      // not flash light; theme.js owns the key and rewrites the stamp.
+      try {
+        var stored = localStorage.getItem('yggdryl-book-theme')
+        if (stored === 'light' || stored === 'dark') document.documentElement.dataset.theme = stored
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#chart">Skip to the chart</a>
+    <header class="bar">
+      <div class="brand">
+        <img class="brand-mark" src="favicon.svg" alt="" width="22" height="22" />
+        <span class="brand-name">Yggdryl</span>
+        <span class="brand-page">Book</span>
+      </div>
+      <div class="selectors" role="group" aria-label="Selection">
+        <label class="field">
+          <span class="field-label">Table</span>
+          <select id="table" name="table" disabled></select>
+        </label>
+        <label class="field">
+          <span class="field-label">Ticker</span>
+          <select id="ticker" name="ticker" disabled></select>
+        </label>
+        <label class="field">
+          <span class="field-label">From</span>
+          <input id="from" name="from" type="datetime-local" step="1" />
+        </label>
+        <label class="field">
+          <span class="field-label">To</span>
+          <input id="to" name="to" type="datetime-local" step="1" />
+        </label>
+        <label class="field">
+          <span class="field-label">Timezone</span>
+          <select id="tz" name="tz"></select>
+        </label>
+        <label class="field field-narrow">
+          <span class="field-label">Interval</span>
+          <select id="interval" name="interval"></select>
+        </label>
+      </div>
+      <button id="theme" class="theme" type="button" aria-label="System theme - press to change">System theme</button>
+    </header>
+
+    <main>
+      <section class="panel chart-panel" aria-labelledby="chart-title">
+        <div class="panel-head">
+          <h1 id="chart-title" class="panel-title">Bid and ask</h1>
+          <ul class="legend" aria-label="Legend">
+            <li><span class="key key-bid" aria-hidden="true"></span>Bid candles, left of the bucket</li>
+            <li><span class="key key-ask" aria-hidden="true"></span>Ask candles, right</li>
+            <li><span class="key key-mid key-line" aria-hidden="true"></span>Mid close</li>
+            <li><span class="key key-spread key-area" aria-hidden="true"></span>Spread, low to high</li>
+          </ul>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite" hidden></p>
+        <div class="chart-box">
+          <canvas
+            id="chart"
+            class="chart"
+            tabindex="0"
+            role="img"
+            aria-label="Bid and ask candles"
+            aria-describedby="chart-help"
+          ></canvas>
+          <div id="tooltip" class="tooltip" hidden></div>
+        </div>
+        <p id="chart-help" class="help">
+          Hover or use the arrow keys to read a bucket; click or press Enter to select it. The summary and the audit below
+          follow the selection, and the download carries the whole range.
+        </p>
+      </section>
+
+      <section class="panel summary-panel" aria-labelledby="summary-title">
+        <div class="panel-head">
+          <h2 id="summary-title" class="panel-title">Point</h2>
+        </div>
+        <div id="summary" class="summary"></div>
+      </section>
+
+      <section class="audit" aria-labelledby="audit-title">
+        <div class="audit-head">
+          <h2 id="audit-title" class="panel-title">Audit</h2>
+          <div class="download-control">
+            <span class="download-label">Download the range</span>
+            <div id="downloads" class="downloads"></div>
+          </div>
+        </div>
+        <div class="sides">
+          <div id="bid-events" class="panel events events-bid"></div>
+          <div id="ask-events" class="panel events events-ask"></div>
+        </div>
+      </section>
+    </main>
+
+    <noscript>
+      <p class="panel noscript">This page reads the book service with JavaScript; the routes under <code>api/</code> answer without it.</p>
+    </noscript>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

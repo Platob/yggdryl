@@ -42,6 +42,7 @@ pub mod code;
 mod compatibility;
 pub mod country;
 pub mod cp1252;
+pub mod csv;
 pub mod cusip;
 mod datatype;
 pub mod date;

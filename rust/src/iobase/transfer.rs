@@ -938,6 +938,7 @@ pub(crate) fn leaf_reader(
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
         RecordOptions::Xmla(xmla) => crate::xmla::read_batch_reader(handle, declared, xmla)?,
+        RecordOptions::Csv(csv) => crate::csv::read_batch_reader(handle, declared, csv)?,
     };
     match declared {
         // A declared root is applied, not merely cast: a `PARTITION:` or
@@ -968,6 +969,7 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
         RecordOptions::Xmla(xmla) => crate::xmla::row_size(handle, xmla),
+        RecordOptions::Csv(csv) => crate::csv::row_size(handle, csv),
     }
 }
 
@@ -992,6 +994,7 @@ pub(crate) fn leaf_field(
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
         RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
+        RecordOptions::Csv(csv) => crate::csv::read_field(handle, csv),
     }
 }
 
@@ -1016,6 +1019,7 @@ pub(crate) fn leaf_writer(
             crate::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
         RecordOptions::Xmla(xmla) => crate::xmla::overwrite_arrow_reader(handle, batches, xmla)?,
+        RecordOptions::Csv(csv) => crate::csv::overwrite_arrow_reader(handle, batches, csv)?,
     }
     Ok(())
 }
@@ -1044,6 +1048,12 @@ pub(crate) fn stored_field(
     // read.
     if matches!(options, RecordOptions::Xmla(_)) {
         return crate::xmla::media::stated_field(handle);
+    }
+    // A CSV states its shape by its header and its sample, read under the
+    // dialect the options state - a probe under the default separator would
+    // read a `;`-separated header as one column.
+    if let RecordOptions::Csv(csv) = options {
+        return crate::csv::stated_field(handle, csv);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
     probe.set_name(smol_str::SmolStr::new(options.name()));
@@ -1109,6 +1119,9 @@ fn append_leaf(
     if let RecordOptions::Text(text) = options {
         return crate::text::arrow::append_arrow_reader(handle, incoming, text);
     }
+    if let RecordOptions::Csv(csv) = options {
+        return crate::csv::append_arrow_reader(handle, incoming, csv);
+    }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)
 }
@@ -1122,6 +1135,12 @@ fn append_leaf_onto(
 ) -> Result<()> {
     use crate::media::IORecordOptions;
 
+    // CSV records append natively too: the cadence was already shaped onto
+    // the stored field, so its rows render after the current tail and what
+    // is there is never re-read.
+    if let RecordOptions::Csv(csv) = options {
+        return crate::csv::append_arrow_reader(handle, incoming, csv);
+    }
     let mut rewrite = options.clone();
     rewrite.set_field(target.clone());
     let current = if handle.is_empty() {

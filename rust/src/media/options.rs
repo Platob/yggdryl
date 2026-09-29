@@ -1195,6 +1195,8 @@ pub enum RecordOptions {
     Text(Box<crate::text::TextOptions>),
     /// XML for Analysis rowset document options.
     Xmla(crate::xmla::XmlaOptions),
+    /// CSV and TSV document options.
+    Csv(crate::csv::CsvOptions),
 }
 
 impl RecordOptions {
@@ -1208,6 +1210,7 @@ impl RecordOptions {
             Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
             Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
             Self::Xmla(options) => crate::hashing::stable_hash_of(&("xmla", options)),
+            Self::Csv(options) => crate::hashing::stable_hash_of(&("csv", options)),
         }
     }
 
@@ -1219,12 +1222,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected text options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Csv(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected text options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
@@ -1239,7 +1244,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Csv(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1260,12 +1265,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Avro options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Avro options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
@@ -1280,7 +1287,7 @@ impl RecordOptions {
     pub fn avro_block_codec(&self) -> Option<&str> {
         match self {
             Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1311,7 +1318,7 @@ impl RecordOptions {
     pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
         match self {
             Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1340,6 +1347,196 @@ impl RecordOptions {
         Ok(())
     }
 
+    fn csv_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::csv::CsvOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Csv(options) => Ok(options),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected CSV options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected CSV options to set {setting}, got {media_type} options"
+                ),
+            }),
+        }
+    }
+
+    /// Borrow the CSV options, or `None` for another encoding.
+    const fn csv(&self) -> Option<&crate::csv::CsvOptions> {
+        match self {
+            Self::Csv(options) => Some(options),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Return the CSV separator byte, or `None` for another encoding.
+    pub const fn csv_separator(&self) -> Option<u8> {
+        match self.csv() {
+            Some(options) => Some(options.separator()),
+            None => None,
+        }
+    }
+
+    /// Set the CSV separator byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_separator`](crate::csv::CsvOptions::set_separator) does.
+    pub fn set_csv_separator(&mut self, separator: u8) -> Result<()> {
+        self.csv_mut("$.separator", "a separator")?
+            .set_separator(separator)
+    }
+
+    /// Return the CSV quote byte - `Some(None)` where the dialect quotes
+    /// nothing - or `None` for another encoding.
+    pub const fn csv_quote(&self) -> Option<Option<u8>> {
+        match self.csv() {
+            Some(options) => Some(options.quote()),
+            None => None,
+        }
+    }
+
+    /// Set or clear the CSV quote byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_quote`](crate::csv::CsvOptions::set_quote) does.
+    pub fn set_csv_quote(&mut self, quote: Option<u8>) -> Result<()> {
+        self.csv_mut("$.quote", "a quote")?.set_quote(quote)
+    }
+
+    /// Return the CSV escape byte, or `None` for another encoding.
+    pub const fn csv_escape(&self) -> Option<Option<u8>> {
+        match self.csv() {
+            Some(options) => Some(options.escape()),
+            None => None,
+        }
+    }
+
+    /// Set or clear the CSV escape byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_escape`](crate::csv::CsvOptions::set_escape) does.
+    pub fn set_csv_escape(&mut self, escape: Option<u8>) -> Result<()> {
+        self.csv_mut("$.escape", "an escape")?.set_escape(escape)
+    }
+
+    /// Return the CSV comment byte, or `None` for another encoding.
+    pub const fn csv_comment(&self) -> Option<Option<u8>> {
+        match self.csv() {
+            Some(options) => Some(options.comment()),
+            None => None,
+        }
+    }
+
+    /// Set or clear the CSV comment byte.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_comment`](crate::csv::CsvOptions::set_comment) does.
+    pub fn set_csv_comment(&mut self, comment: Option<u8>) -> Result<()> {
+        self.csv_mut("$.comment", "a comment byte")?
+            .set_comment(comment)
+    }
+
+    /// Return whether the CSV's first record names the columns, or `None`
+    /// for another encoding.
+    pub const fn csv_header(&self) -> Option<bool> {
+        match self.csv() {
+            Some(options) => Some(options.header()),
+            None => None,
+        }
+    }
+
+    /// Set whether the CSV's first record names the columns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant.
+    pub fn set_csv_header(&mut self, header: bool) -> Result<()> {
+        self.csv_mut("$.header", "a header")?.set_header(header);
+        Ok(())
+    }
+
+    /// Borrow the CSV spellings of an absent value, or `None` for another
+    /// encoding.
+    pub fn csv_null_values(&self) -> Option<&[SmolStr]> {
+        self.csv().map(crate::csv::CsvOptions::null_values)
+    }
+
+    /// Set the CSV spellings of an absent value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_null_values`](crate::csv::CsvOptions::set_null_values) does.
+    pub fn set_csv_null_values<I, S>(&mut self, null_values: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<SmolStr>,
+    {
+        self.csv_mut("$.null_values", "null spellings")?
+            .set_null_values(null_values)
+    }
+
+    /// Return whether the CSV trims the blanks around an unquoted cell, or
+    /// `None` for another encoding.
+    pub const fn csv_trim(&self) -> Option<bool> {
+        match self.csv() {
+            Some(options) => Some(options.trim()),
+            None => None,
+        }
+    }
+
+    /// Set whether the CSV trims the blanks around an unquoted cell.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant.
+    pub fn set_csv_trim(&mut self, trim: bool) -> Result<()> {
+        self.csv_mut("$.trim", "trimming")?.set_trim(trim);
+        Ok(())
+    }
+
+    /// Return the records a CSV samples to infer a column's datatype, or
+    /// `None` for another encoding.
+    pub const fn csv_infer_row_size(&self) -> Option<usize> {
+        match self.csv() {
+            Some(options) => Some(options.infer_row_size()),
+            None => None,
+        }
+    }
+
+    /// Set the records a CSV samples to infer a column's datatype.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-CSV variant, or the error
+    /// [`CsvOptions::set_infer_row_size`](crate::csv::CsvOptions::set_infer_row_size) does.
+    pub fn set_csv_infer_row_size(&mut self, infer_row_size: usize) -> Result<()> {
+        self.csv_mut("$.infer_row_size", "a sample size")?
+            .set_infer_row_size(infer_row_size)
+    }
+
     #[cfg(feature = "parquet")]
     fn parquet_mut(
         &mut self,
@@ -1349,7 +1546,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => {
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => {
                 Err(Error::InvalidRecord {
                     path: SmolStr::new_static(path),
                     reason: smol_str::format_smolstr!(
@@ -1365,7 +1562,7 @@ impl RecordOptions {
     pub fn parquet_compression_name(&self) -> Option<String> {
         match self {
             Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => None,
         }
     }
 
@@ -1392,7 +1589,7 @@ impl RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.threads = Some(threads.max(1)),
             Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => {}
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => {}
         }
     }
 
@@ -1401,7 +1598,7 @@ impl RecordOptions {
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
         match self {
             Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => None,
         }
     }
 
@@ -1422,7 +1619,7 @@ impl RecordOptions {
     pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
         match self {
             Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) => None,
         }
     }
 
@@ -1553,10 +1750,16 @@ impl RecordOptions {
         if base == &MimeType::XMLA {
             return Ok(Self::Xmla(crate::xmla::XmlaOptions::new()));
         }
+        if base == &MimeType::CSV {
+            return Ok(Self::Csv(crate::csv::CsvOptions::new()));
+        }
+        if base == &MimeType::TSV {
+            return Ok(Self::Csv(crate::csv::CsvOptions::tsv()));
+        }
         let encodings = if cfg!(feature = "parquet") {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml, text/csv, text/tab-separated-values)"
         } else {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml; the `parquet` feature is not enabled)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml, text/csv, text/tab-separated-values; the `parquet` feature is not enabled)"
         };
         // A structured text document is one value around its rows, not a
         // stream of batches: it has doors of its own, and the refusal names
@@ -1587,6 +1790,13 @@ impl RecordOptions {
             Self::Avro(_) => MimeType::AVRO,
             Self::Text(_) => MimeType::PLAIN_TEXT,
             Self::Xmla(_) => MimeType::XMLA,
+            Self::Csv(options) => {
+                if options.separator() == b'\t' {
+                    MimeType::TSV
+                } else {
+                    MimeType::CSV
+                }
+            }
         }
     }
 }
@@ -1632,7 +1842,10 @@ pub mod internals {
             #[cfg(feature = "parquet")]
             RecordOptions::Parquet(options) => options.threads,
             RecordOptions::Avro(options) => options.threads.0,
-            RecordOptions::Ipc(_) | RecordOptions::Text(_) | RecordOptions::Xmla(_) => None,
+            RecordOptions::Ipc(_)
+            | RecordOptions::Text(_)
+            | RecordOptions::Xmla(_)
+            | RecordOptions::Csv(_) => None,
         }
     }
 }
