@@ -339,7 +339,7 @@ impl fmt::Display for DateSystem {
 /// One cell's position, zero-based: row 0 column 0 is `A1`.
 ///
 /// The A1 spelling is the file's, so [`FromStr`] reads it - `$` markers
-/// dropped, a sheet qualifier refused - and [`Display`] writes it; a pair
+/// dropped, a sheet qualifier refused - and [`Display`](fmt::Display) writes it; a pair
 /// `(row, column)` converts. Every index is zero-based like every other index
 /// in the crate, and the bounds are the worksheet's, [`MAX_ROWS`] by
 /// [`MAX_COLUMNS`].

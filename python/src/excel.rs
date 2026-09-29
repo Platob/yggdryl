@@ -71,14 +71,14 @@ pub(crate) fn cell_ref_from(value: &Bound<'_, PyAny>) -> PyResult<CellRef> {
     if let Ok(text) = value.extract::<&str>() {
         return text.parse::<CellRef>().map_err(value_error);
     }
-    if let Ok(pair) = value.cast::<PyTuple>() {
-        if pair.len() == 2 {
-            let row = index_from(&pair.get_item(0)?, "row")?;
-            let column = index_from(&pair.get_item(1)?, "column")?;
-            return CellRef::new(row, column)
-                .require_in_grid()
-                .map_err(value_error);
-        }
+    if let Ok(pair) = value.cast::<PyTuple>()
+        && pair.len() == 2
+    {
+        let row = index_from(&pair.get_item(0)?, "row")?;
+        let column = index_from(&pair.get_item(1)?, "column")?;
+        return CellRef::new(row, column)
+            .require_in_grid()
+            .map_err(value_error);
     }
     Err(PyTypeError::new_err(format!(
         "expected a CellRef, an A1 reference or a (row, column) pair, got {}",
@@ -95,12 +95,12 @@ pub(crate) fn cell_range_from(value: &Bound<'_, PyAny>) -> PyResult<CellRange> {
     if let Ok(text) = value.extract::<&str>() {
         return text.parse::<CellRange>().map_err(value_error);
     }
-    if let Ok(pair) = value.cast::<PyTuple>() {
-        if pair.len() == 2 {
-            let first = cell_ref_from(&pair.get_item(0)?)?;
-            let second = cell_ref_from(&pair.get_item(1)?)?;
-            return Ok(CellRange::new(first, second));
-        }
+    if let Ok(pair) = value.cast::<PyTuple>()
+        && pair.len() == 2
+    {
+        let first = cell_ref_from(&pair.get_item(0)?)?;
+        let second = cell_ref_from(&pair.get_item(1)?)?;
+        return Ok(CellRange::new(first, second));
     }
     Err(PyTypeError::new_err(format!(
         "expected a CellRange, an A1:C3 reference or a pair of cell references, got {}",
@@ -141,7 +141,7 @@ fn list_iterator<'py, T: IntoPyObject<'py>>(
     frozen,
     skip_from_py_object
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct PyCellRef {
     pub(crate) inner: CellRef,
 }
@@ -223,19 +223,19 @@ impl PyCellRef {
             .unbind())
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        Ok((
+    fn __reduce__(&self, py: Python<'_>) -> (Py<PyAny>, (String,)) {
+        (
             py.get_type::<Self>().into_any().unbind(),
             (self.inner.to_string(),),
-        ))
+        )
     }
 
     fn __copy__(&self) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 }
 
@@ -246,7 +246,7 @@ impl PyCellRef {
     frozen,
     skip_from_py_object
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct PyCellRange {
     pub(crate) inner: CellRange,
 }
@@ -366,19 +366,19 @@ impl PyCellRange {
             .unbind())
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        Ok((
+    fn __reduce__(&self, py: Python<'_>) -> (Py<PyAny>, (String,)) {
+        (
             py.get_type::<Self>().into_any().unbind(),
             (self.inner.to_string(),),
-        ))
+        )
     }
 
     fn __copy__(&self) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 }
 
@@ -791,7 +791,7 @@ impl PySheet {
                 lock(workbook)?
                     .rename_sheet(held, name)
                     .map_err(excel_error)?;
-                *held = name.to_owned();
+                name.clone_into(held);
                 Ok(())
             }
         }
@@ -1036,6 +1036,7 @@ impl PySheet {
     /// The sheet's rows as one record `Serie`: the first row naming the
     /// columns when `header`, each column typed by its first value, or by
     /// `field` when one is declared.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     #[pyo3(signature = (field = None, *, header = true, safe = true, representation = "value"))]
     fn into_serie(
         &self,
@@ -1109,10 +1110,11 @@ fn holder_from_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Holde
     if let Ok(handle) = value.extract::<PyRef<'_, PyIOBase>>() {
         return owned_holder(&handle);
     }
-    if let Ok(bytes) = value.extract::<Vec<u8>>() {
-        if !value.is_instance_of::<pyo3::types::PyString>() {
-            return Ok(Holder::buffer(Buffer::from_bytes(bytes)));
-        }
+    // A string names a location rather than holding the bytes it spells.
+    if !value.is_instance_of::<pyo3::types::PyString>()
+        && let Ok(bytes) = value.extract::<Vec<u8>>()
+    {
+        return Ok(Holder::buffer(Buffer::from_bytes(bytes)));
     }
     let built = py
         .import("yggdryl._native")?
@@ -1215,7 +1217,10 @@ impl PyWorkbook {
     /// `worksheet`, `chartsheet` or `dialogsheet` for the sheet `name`,
     /// `None` when no sheet has it.
     fn sheet_kind(&self, name: &str) -> PyResult<Option<&'static str>> {
-        Ok(self.lock()?.sheet_kind(name).map(|kind| kind.as_str()))
+        Ok(self
+            .lock()?
+            .sheet_kind(name)
+            .map(yggdryl::excel::SheetKind::as_str))
     }
 
     /// How many sheets the workbook holds.
@@ -1338,6 +1343,7 @@ impl PyWorkbook {
 
     /// The package as bytes: every sheet written, and every other part of
     /// an opened package kept as it was.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     fn into_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         let shared = Arc::clone(&self.inner);
         let bytes = py

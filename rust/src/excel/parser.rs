@@ -401,12 +401,10 @@ impl<R: BufRead> SheetRows<R> {
             }
             // A rich run holds its `t`, read at the `Inline` place.
             (Place::Inline, b"r") => {}
-            (Place::Cell | Place::Row | Place::Rows | Place::Inline, _) => {
-                // `extLst`, `rPr` and anything else stated inside the data
-                // is not a fact this reader keeps.
-                if !empty {
-                    self.skipping = 1;
-                }
+            // `extLst`, `rPr` and anything else stated inside the data is
+            // not a fact this reader keeps; a self-closed one has no subtree.
+            (Place::Cell | Place::Row | Place::Rows | Place::Inline, _) if !empty => {
+                self.skipping = 1;
             }
             _ => {}
         }
