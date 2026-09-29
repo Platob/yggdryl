@@ -17,8 +17,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::BatchReader;
 use crate::graph::Event;
-use crate::holder::Buffer;
-use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::temporal as iso;
 use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
@@ -45,7 +43,7 @@ pub(crate) fn read_arrow_reader(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_arrow_reader_at(owned_handle(handle)?, source, mtime, options)
+    read_owned_arrow_reader_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
@@ -157,7 +155,7 @@ pub fn read_text_lines(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_text_lines_at(owned_handle(handle)?, source, mtime, options)
+    read_owned_text_lines_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
 }
 
 /// The same decode over a handle the iterator owns.
@@ -221,30 +219,6 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
         })?;
     }
     Ok(rows)
-}
-
-/// Return an owned view for a reader that must outlive this borrow.
-fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
-    if let Some(bound) = handle.bound_location() {
-        let mut file = crate::fs::FsFile::new(bound.clone());
-        file.set_media_type(handle.media_type().clone());
-        return Ok(Holder::FsFile(file));
-    }
-    if let Some(parent) = handle.parent() {
-        if let Some(name) = handle.uri().and_then(crate::Uri::file_name) {
-            let mut child = parent.child_by_path(name)?;
-            // A member of an archive is addressed in the URL's fragment, so
-            // the child of the path's file name is another member; only a
-            // handle at the same location is this resource reopened.
-            if child.url() == handle.url() {
-                child.set_media_type(handle.media_type().clone());
-                return Ok(child);
-            }
-        }
-    }
-    let mut buffer = Buffer::new();
-    handle.copy_into(&mut buffer)?;
-    Ok(Holder::buffer(buffer))
 }
 
 /// Buffer one transport at the fetch window every decoded read pulls through.

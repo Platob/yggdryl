@@ -29,6 +29,7 @@ from yggdryl import (
     _native,
 )
 from yggdryl.iceberg import Catalog, PartitionSpec, Table
+from yggdryl.excel import CellRange
 
 
 def assert_unhashable(value: object) -> None:
@@ -112,6 +113,9 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.parquet", "compression", "zstd(3)"),
         ("trades.parquet", "max_row_group_size", 128),
         ("trades.parquet", "key_value_metadata", [("owner", "tests")]),
+        ("trades.xlsx", "sheet", "Trades"),
+        ("trades.xlsx", "header", False),
+        ("trades.xlsx", "range", "A2:D"),
     ],
 )
 def test_every_record_options_setter_rejects_mutation_after_hash(
@@ -128,7 +132,7 @@ def test_every_record_options_setter_rejects_mutation_after_hash(
 
 @pytest.mark.parametrize(
     "media_type",
-    ["trades.arrows", "trades.avro", "trades.parquet", MimeType.PLAIN_TEXT],
+    ["trades.arrows", "trades.avro", "trades.parquet", "trades.xlsx", MimeType.PLAIN_TEXT],
 )
 def test_record_options_value_protocols_preserve_each_variant(
     media_type: str | MimeType,
@@ -158,10 +162,15 @@ def test_record_options_value_protocols_preserve_each_variant(
         options.compression = "zstd(3)"
         options.max_row_group_size = 128
         options.key_value_metadata = [("owner", "tests"), ("owner", "core")]
+    if options.header is not None:
+        options.sheet = "Trades"
+        options.header = False
+        options.range = "A2:D"
 
     represented = eval(
         repr(options),
         {
+            "CellRange": CellRange,
             "DataType": DataType,
             "Field": Field,
             "RecordOptions": RecordOptions,
@@ -185,6 +194,7 @@ def test_record_options_value_protocols_preserve_each_variant(
         eval(
             repr(options),
             {
+                "CellRange": CellRange,
                 "DataType": DataType,
                 "Field": Field,
                 "RecordOptions": RecordOptions,

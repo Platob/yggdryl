@@ -1516,6 +1516,14 @@ impl PyRecordOptions {
                 options.timezone().copied().map(PyTimezone::from_core),
             )?;
         }
+        if let RecordOptions::Excel(options) = &self.inner {
+            state.set_item("sheet", options.sheet.as_deref())?;
+            state.set_item("header", options.header)?;
+            state.set_item(
+                "range",
+                options.range.map(crate::excel::PyCellRange::from_inner),
+            )?;
+        }
         if let Some(block_codec) = self.inner.avro_block_codec() {
             state.set_item("block_codec", block_codec)?;
         }
@@ -1646,6 +1654,18 @@ impl PyRecordOptions {
             text.set_timezone(timezone);
         }
 
+        if let Some(value) = state.get_item("sheet")? {
+            let sheet = (!value.is_none())
+                .then(|| value.extract::<String>())
+                .transpose()?;
+            options.set_sheet(sheet.as_deref())?;
+        }
+        if let Some(value) = state.get_item("header")? {
+            options.set_header(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("range")? {
+            options.set_range((!value.is_none()).then_some(&value))?;
+        }
         if let Some(value) = state.get_item("block_codec")? {
             options.set_block_codec(value.extract()?)?;
         }
@@ -1918,6 +1938,51 @@ impl PyRecordOptions {
         self.require_mutable()?;
         let timezone = value.map(core_timezone_from_value).transpose()?;
         self.inner.set_timezone(timezone).map_err(value_error)
+    }
+
+    /// The worksheet a workbook read or write addresses, `None` for the
+    /// first worksheet - or for another encoding.
+    #[getter]
+    fn sheet(&self) -> Option<&str> {
+        self.inner.excel_sheet()
+    }
+
+    #[setter]
+    fn set_sheet(&mut self, sheet: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_excel_sheet(sheet).map_err(value_error)
+    }
+
+    /// Whether a workbook's first row names its columns, `None` for another
+    /// encoding.
+    #[getter]
+    fn header(&self) -> Option<bool> {
+        self.inner.excel_header()
+    }
+
+    #[setter]
+    fn set_header(&mut self, header: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_excel_header(header).map_err(value_error)
+    }
+
+    /// The cells a workbook read or write addresses, `None` for the whole
+    /// sheet - or for another encoding.
+    #[getter]
+    fn range(&self) -> Option<crate::excel::PyCellRange> {
+        self.inner
+            .excel_range()
+            .map(crate::excel::PyCellRange::from_inner)
+    }
+
+    #[setter]
+    fn set_range(&mut self, range: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let range = range
+            .filter(|value| !value.is_none())
+            .map(crate::excel::cell_range_from)
+            .transpose()?;
+        self.inner.set_excel_range(range).map_err(value_error)
     }
 
     /// The Avro block codec name, or `None` for another encoding.

@@ -938,6 +938,7 @@ pub(crate) fn leaf_reader(
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
         RecordOptions::Xmla(xmla) => crate::xmla::read_batch_reader(handle, declared, xmla)?,
+        RecordOptions::Excel(excel) => crate::excel::read_batch_reader(handle, declared, excel)?,
     };
     match declared {
         // A declared root is applied, not merely cast: a `PARTITION:` or
@@ -968,6 +969,7 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
         RecordOptions::Xmla(xmla) => crate::xmla::row_size(handle, xmla),
+        RecordOptions::Excel(excel) => crate::excel::row_size(handle, excel),
     }
 }
 
@@ -992,6 +994,7 @@ pub(crate) fn leaf_field(
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
         RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
+        RecordOptions::Excel(excel) => crate::excel::read_field(handle, excel),
     }
 }
 
@@ -1016,6 +1019,9 @@ pub(crate) fn leaf_writer(
             crate::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
         RecordOptions::Xmla(xmla) => crate::xmla::overwrite_arrow_reader(handle, batches, xmla)?,
+        RecordOptions::Excel(excel) => {
+            crate::excel::overwrite_arrow_reader(handle, batches, excel)?
+        }
     }
     Ok(())
 }
@@ -1044,6 +1050,11 @@ pub(crate) fn stored_field(
     // read.
     if matches!(options, RecordOptions::Xmla(_)) {
         return crate::xmla::media::stated_field(handle);
+    }
+    // A workbook's sheet may hold no rows, which is a resource with no
+    // shape yet, never one that cannot be read.
+    if let RecordOptions::Excel(excel) = options {
+        return crate::excel::stated_field(handle, excel);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
     probe.set_name(smol_str::SmolStr::new(options.name()));

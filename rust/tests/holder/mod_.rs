@@ -159,6 +159,94 @@ mod vocabulary {
 
         let (handle, _) = named("rows.txt", PLAIN.to_vec());
         assert!(matches!(handle.into_declared_media(), Holder::Text(_)));
+
+        let (handle, _) = named("rows.xlsx", Vec::new());
+        match handle.into_declared_media() {
+            Holder::Media(media) => assert!(
+                matches!(media.as_ref(), yggdryl::media::Media::Excel(_)),
+                "{media:?}"
+            ),
+            other => panic!("expected the workbook medium, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_workbook_name_promotes_to_the_excel_medium_and_answers_records() {
+        use yggdryl::media::{IORecordOptions as _, Media, RecordOptions};
+        use yggdryl::{DataType, IOMedia as _, Scalar, StructType};
+
+        let field = DataType::from(
+            StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::utf8().nullable_field("symbol"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+
+        // Promotion reads nothing and stacks nothing: the workbook medium
+        // stands directly over the bytes the name was given.
+        let (handle, media_type) = named("trades.xlsx", Vec::new());
+        assert_eq!(media_type.base(), &MimeType::XLSX);
+        let mut held = handle.into_media().into_media().into_declared_media();
+        match &held {
+            Holder::Media(media) => match media.as_ref() {
+                Media::Excel(excel) => assert!(matches!(excel.handle(), Holder::Buffer(_))),
+                other => panic!("expected the workbook medium, got {other:?}"),
+            },
+            other => panic!("expected a retained media holder, got {other:?}"),
+        }
+        assert_eq!(held.media_type().base(), &MimeType::XLSX);
+
+        // A handle holding nothing is an empty workbook, not a failure.
+        let options = held.record_options().unwrap();
+        assert!(matches!(options, RecordOptions::Excel(_)));
+        assert_eq!(held.row_size().unwrap(), 0);
+        assert_eq!(held.read_arrow_reader(&options).unwrap().count(), 0);
+
+        let options = options.with_field(field.clone());
+        held.overwrite_records(
+            [
+                Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+                Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
+            ],
+            &options,
+        )
+        .unwrap();
+        // The bytes are the package: a ZIP local file header first.
+        assert_eq!(held.read_range_bytes(0, 4).unwrap(), *b"PK\x03\x04");
+        assert_eq!(held.row_size().unwrap(), 2);
+        assert_eq!(held.column_size().unwrap(), 2);
+
+        let rows: Vec<String> = held
+            .read_arrow(Some(&options))
+            .unwrap()
+            .flat_map(|serie| {
+                let serie = serie.unwrap();
+                (0..serie.len())
+                    .map(|index| serie.scalar(index).unwrap().into_json().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(rows, ["[1,\"AAPL\"]", "[2,null]"]);
+
+        // Undeclared, the sheet states its own field: the header names the
+        // columns, a number cell is float64, and a column a row lacks is
+        // nullable.
+        let inferred = held
+            .read_arrow_field(&held.record_options().unwrap())
+            .unwrap();
+        assert_eq!(
+            inferred,
+            DataType::from(
+                StructType::from_fields([
+                    DataType::Float64.required_field("id"),
+                    DataType::utf8().nullable_field("symbol"),
+                ])
+                .unwrap(),
+            )
+            .required_field(yggdryl::media::DEFAULT_ROOT_NAME)
+        );
     }
 
     #[test]

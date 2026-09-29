@@ -313,6 +313,45 @@ assert.deepEqual(avro.loads(encoded, { readerSchema: reader }).rows, [{ note: 'n
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
+## Excel: one worksheet as records, the workbook as cells
+
+A `.xlsx` handle is a record medium over one worksheet - `sheet`, `header` and `range` pick which cells - and `Workbook` is the same package cell by cell.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const arrow = require('apache-arrow')
+const { IOBase, Serie, Sheet, Workbook } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+const file = path.join(root, 'trades.xlsx')
+const table = new arrow.Table({
+  id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+  symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+})
+
+// One worksheet as records, under the declared field.
+const handle = new IOBase(file)
+handle.overwriteArrowTable(table, { sheet: 'Trades' })
+const field = Serie.fromArrowBatch(table).field
+assert.deepEqual([...handle.readArrowReader({ field, sheet: 'Trades' }).intoTable().getChild('id')], [1n, 2n])
+// Inferred, a number column is the float64 the file stores.
+assert.deepEqual([...handle.readArrowReader({ sheet: 'Trades' }).intoTable().getChild('id')], [1, 2])
+
+// The workbook: any cell by its A1 reference, a sheet as a Serie and back.
+const workbook = Workbook.open(file)
+const sheet = workbook.sheet('Trades')
+assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
+sheet.setCell('B3', 'MSFT')
+assert.equal(sheet.intoSerie(field).asJs().length, 2)
+workbook.insertSheet(Sheet.fromSerie('Copy', table))
+workbook.writeInto(file)
+assert.deepEqual(Workbook.open(file).sheetNames, ['Trades', 'Copy'])
+fs.rmSync(root, { recursive: true, force: true })
+```
+
 ## Read a log file as typed rows
 
 A `.log`/`.txt` handle reads one record per line (or per framed chain with `framing`): the sixteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype` (on by default).

@@ -156,6 +156,70 @@ pub(crate) fn write_leaf_text<W: Write>(
     write_leaf(writer, value, Escape::Content, context)
 }
 
+/// Spell `character` as the `_xHHHH_` escape Office Open XML gives a
+/// character a name or a string cannot carry: one escape per UTF-16 unit,
+/// upper-case hex, so a supplementary character is two.
+pub(crate) fn write_x_escape(target: &mut String, character: char) {
+    use std::fmt::Write as _;
+
+    let mut units = [0_u16; 2];
+    for unit in character.encode_utf16(&mut units) {
+        let _ = write!(target, "_x{unit:04X}_");
+    }
+}
+
+/// Read every `_xHHHH_` escape in `encoded` back into the character it
+/// spells - a surrogate pair joined, a half with no partner U+FFFD - and
+/// leave everything else standing. Text carrying no escape is borrowed.
+pub(crate) fn decode_x_escapes(encoded: &str) -> std::borrow::Cow<'_, str> {
+    if !encoded.contains("_x") {
+        return std::borrow::Cow::Borrowed(encoded);
+    }
+    let mut decoded = String::with_capacity(encoded.len());
+    let mut pending: Option<u16> = None;
+    let mut rest = encoded;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix("_x") {
+            if after.len() >= 5
+                && after.as_bytes()[4] == b'_'
+                && after.as_bytes()[..4].iter().all(u8::is_ascii_hexdigit)
+            {
+                if let Ok(unit) = u16::from_str_radix(&after[..4], 16) {
+                    rest = &after[5..];
+                    if let Some(high) = pending.take() {
+                        if (0xDC00..=0xDFFF).contains(&unit) {
+                            let code = 0x10000
+                                + ((u32::from(high) - 0xD800) << 10)
+                                + (u32::from(unit) - 0xDC00);
+                            decoded.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
+                            continue;
+                        }
+                        // A high half no low half follows spells no character,
+                        // whatever comes next.
+                        decoded.push('\u{FFFD}');
+                    }
+                    if (0xD800..=0xDBFF).contains(&unit) {
+                        pending = Some(unit);
+                    } else {
+                        decoded.push(char::from_u32(u32::from(unit)).unwrap_or('\u{FFFD}'));
+                    }
+                    continue;
+                }
+            }
+        }
+        let character = rest.chars().next().unwrap_or('\u{FFFD}');
+        if pending.take().is_some() {
+            decoded.push('\u{FFFD}');
+        }
+        decoded.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    if pending.is_some() {
+        decoded.push('\u{FFFD}');
+    }
+    std::borrow::Cow::Owned(decoded)
+}
+
 /// Write text as element character data, escaped.
 ///
 /// # Errors

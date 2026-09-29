@@ -382,6 +382,49 @@ assert_eq!(decoded.rows[0].get_key_str("quantity").and_then(Scalar::as_i64), Som
 assert_eq!(decoded.rows[0].get_key_str("note").and_then(Scalar::as_str), Some("none"));
 ```
 
+## Excel: one worksheet as records, the workbook as cells
+
+A `.xlsx` handle is a record medium over one worksheet - `set_excel_sheet`, `set_excel_header` and `set_excel_range` pick which cells - and `yggdryl::excel::Workbook` is the same package cell by cell.
+
+```rust
+use yggdryl::excel::{CellRef, Sheet, Workbook};
+use yggdryl::holder::Buffer;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, Serie, StructType};
+
+let field = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("symbol"),
+])?)
+.required_field("row");
+let rows = Serie::from_scalars(field.clone(), [
+    Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+    Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
+])?;
+
+// One worksheet as records, under the declared field.
+let mut handle = Buffer::new().with_media_type(MimeType::XLSX.into());
+let mut options = handle.record_options()?.with_field(field.clone());
+options.set_excel_sheet(Some("Trades"))?;
+handle.overwrite_arrow_batch(rows.clone().into_arrow_batch()?, &options)?;
+let read: usize = handle.read_arrow_reader(&options)?.map(|batch| batch.unwrap().num_rows()).sum();
+assert_eq!(read, 2);
+// Inferred, a number column is the float64 the file stores.
+let mut inferred = handle.record_options()?;
+inferred.set_excel_sheet(Some("Trades"))?;
+assert_eq!(handle.read_arrow_field(&inferred)?.fields()[0].dtype(), &DataType::Float64);
+
+// The workbook: any cell by its A1 reference, a sheet as a Serie and back.
+let mut workbook = Workbook::from_bytes(handle.read_all_bytes()?)?;
+let sheet = workbook.sheet_mut("Trades")?;
+assert_eq!(sheet.scalar("B2".parse()?), Scalar::from("AAPL"));
+sheet.set_cell(CellRef::new(2, 1), "MSFT")?;
+assert_eq!(sheet.clone().into_serie(Some(&field), true, Default::default())?.len(), 2);
+workbook.insert_sheet(Sheet::from_serie("Copy", &rows, true)?)?;
+let reopened = Workbook::from_bytes(workbook.into_bytes()?)?;
+assert_eq!(reopened.sheet_names(), ["Trades", "Copy"]);
+```
+
 ## Read a log file as typed rows
 
 `into_text_with(TextOptions)` reads one record per line (or per framed chain with `framing`): the sixteen event columns, `body`, then one column per named `rowheader` capture, typed by `autotype`.

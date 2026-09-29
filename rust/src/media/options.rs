@@ -1195,6 +1195,8 @@ pub enum RecordOptions {
     Text(Box<crate::text::TextOptions>),
     /// XML for Analysis rowset document options.
     Xmla(crate::xmla::XmlaOptions),
+    /// Office Open XML workbook options.
+    Excel(crate::excel::ExcelOptions),
 }
 
 impl RecordOptions {
@@ -1208,6 +1210,7 @@ impl RecordOptions {
             Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
             Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
             Self::Xmla(options) => crate::hashing::stable_hash_of(&("xmla", options)),
+            Self::Excel(options) => crate::hashing::stable_hash_of(&("excel", options)),
         }
     }
 
@@ -1219,12 +1222,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected text options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Excel(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected text options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
@@ -1239,7 +1244,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Excel(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1260,12 +1265,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Avro options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Avro options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
@@ -1280,7 +1287,7 @@ impl RecordOptions {
     pub fn avro_block_codec(&self) -> Option<&str> {
         match self {
             Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1311,7 +1318,7 @@ impl RecordOptions {
     pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
         match self {
             Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1349,7 +1356,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => {
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => {
                 Err(Error::InvalidRecord {
                     path: SmolStr::new_static(path),
                     reason: smol_str::format_smolstr!(
@@ -1365,7 +1372,7 @@ impl RecordOptions {
     pub fn parquet_compression_name(&self) -> Option<String> {
         match self {
             Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
         }
     }
 
@@ -1392,7 +1399,7 @@ impl RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => options.threads = Some(threads.max(1)),
             Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) => {}
+            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => {}
         }
     }
 
@@ -1401,7 +1408,7 @@ impl RecordOptions {
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
         match self {
             Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
         }
     }
 
@@ -1422,7 +1429,7 @@ impl RecordOptions {
     pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
         match self {
             Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
         }
     }
 
@@ -1553,10 +1560,13 @@ impl RecordOptions {
         if base == &MimeType::XMLA {
             return Ok(Self::Xmla(crate::xmla::XmlaOptions::new()));
         }
+        if base == &MimeType::XLSX {
+            return Ok(Self::Excel(crate::excel::ExcelOptions::new()));
+        }
         let encodings = if cfg!(feature = "parquet") {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet)"
         } else {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml; the `parquet` feature is not enabled)"
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; the `parquet` feature is not enabled)"
         };
         // A structured text document is one value around its rows, not a
         // stream of batches: it has doors of its own, and the refusal names
@@ -1587,6 +1597,86 @@ impl RecordOptions {
             Self::Avro(_) => MimeType::AVRO,
             Self::Text(_) => MimeType::PLAIN_TEXT,
             Self::Xmla(_) => MimeType::XMLA,
+            Self::Excel(_) => MimeType::XLSX,
+        }
+    }
+
+    /// The worksheet a workbook read or write addresses, or `None` for
+    /// another encoding or when none is named.
+    pub fn excel_sheet(&self) -> Option<&str> {
+        match self {
+            Self::Excel(options) => options.sheet.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Set or clear the worksheet a workbook read or write addresses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-workbook variant, or a name Excel refuses
+    /// ([`validate_sheet_name`](crate::excel::validate_sheet_name)).
+    pub fn set_excel_sheet(&mut self, sheet: Option<&str>) -> Result<()> {
+        let options = self.excel_mut("$.sheet", "a worksheet")?;
+        if let Some(sheet) = sheet {
+            crate::excel::validate_sheet_name(sheet)?;
+        }
+        options.sheet = sheet.map(SmolStr::new);
+        Ok(())
+    }
+
+    /// Whether a workbook's first row names its columns; `None` for another
+    /// encoding.
+    pub fn excel_header(&self) -> Option<bool> {
+        match self {
+            Self::Excel(options) => Some(options.header),
+            _ => None,
+        }
+    }
+
+    /// Set whether a workbook's first row names its columns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-workbook variant.
+    pub fn set_excel_header(&mut self, header: bool) -> Result<()> {
+        self.excel_mut("$.header", "a header row")?.header = header;
+        Ok(())
+    }
+
+    /// The cells a workbook read or write addresses, or `None` for another
+    /// encoding or the whole sheet.
+    pub fn excel_range(&self) -> Option<crate::excel::CellRange> {
+        match self {
+            Self::Excel(options) => options.range,
+            _ => None,
+        }
+    }
+
+    /// Set or clear the cells a workbook read or write addresses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-workbook variant.
+    pub fn set_excel_range(&mut self, range: Option<crate::excel::CellRange>) -> Result<()> {
+        self.excel_mut("$.range", "a cell range")?.range = range;
+        Ok(())
+    }
+
+    fn excel_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::excel::ExcelOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Excel(options) => Ok(options),
+            _ => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected Excel options to set {setting}, got {media_type} options"
+                ),
+            }),
         }
     }
 }
@@ -1632,7 +1722,10 @@ pub mod internals {
             #[cfg(feature = "parquet")]
             RecordOptions::Parquet(options) => options.threads,
             RecordOptions::Avro(options) => options.threads.0,
-            RecordOptions::Ipc(_) | RecordOptions::Text(_) | RecordOptions::Xmla(_) => None,
+            RecordOptions::Ipc(_)
+            | RecordOptions::Text(_)
+            | RecordOptions::Xmla(_)
+            | RecordOptions::Excel(_) => None,
         }
     }
 }

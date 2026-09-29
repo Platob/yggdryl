@@ -34,7 +34,7 @@ from yggdryl.holder import (
     S3Folder,
     S3Path,
 )
-from yggdryl.media import Avro, Ipc, Media, Parquet, Text, Xmla
+from yggdryl.media import Avro, Excel, Ipc, Media, Parquet, Text, Xmla
 
 PLAIN = b"symbol,price\nAAPL,1\n"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
@@ -92,6 +92,7 @@ class TestTheNameComposesTheHandle:
             ("trades.avro", "Avro(LocalPath)"),
             ("trades.xmla", "Xmla(LocalPath)"),
             ("trades.xmla.gz", "Xmla(Gzip(LocalPath))"),
+            ("trades.xlsx", "Excel(LocalPath)"),
             # Parquet compresses internally, so a coded name is left for the
             # writer to refuse rather than composed behind a decoded view.
             ("trades.parquet.gz", "LocalPath"),
@@ -262,7 +263,7 @@ class TestRolesReachEveryHandleACallerGets:
             assert issubclass(role, IOBase)
         for coding in (Gzip, Zlib, Zstd, Identity):
             assert issubclass(coding, Coded)
-        for encoding in (Ipc, Parquet, Avro, Xmla):
+        for encoding in (Ipc, Parquet, Avro, Xmla, Excel):
             assert issubclass(encoding, Media)
 
 

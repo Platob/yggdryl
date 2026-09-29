@@ -2960,6 +2960,195 @@ pub const MAGIC_PROBE_LEN: usize = 64;
   pub fn from_bytes(input: &[u8]) -> Option<Self>
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
 
+### yggdryl::excel  [rust/src/excel/mod.rs]
+pub use cell::{Cell, CellKind, CellRange, CellRef, DateSystem, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS};
+pub use media::{Excel, overwrite_arrow_reader, read_batch_reader, read_field};
+pub use options::ExcelOptions;
+pub use sheet::{MAX_SHEET_NAME, Row, Sheet, SheetState, validate_sheet_name};
+pub use styles::NumberFormat;
+pub use workbook::{SheetKind, Workbook};
+pub const NAMESPACE: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+pub const STRICT_NAMESPACE: &str = "http://purl.oclc.org/ooxml/spreadsheetml/main";
+pub const RELATIONSHIPS_NAMESPACE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+pub const STRICT_RELATIONSHIPS_NAMESPACE: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+pub const DEFAULT_SHEET_NAME: &str = "Sheet1";
+
+### yggdryl::excel::cell  [rust/src/excel/cell.rs]
+pub const MAX_ROWS: u32 = 1_048_576;
+pub const MAX_COLUMNS: u32 = 16_384;
+pub const MAX_CELL_TEXT: usize = 32_767;
+pub enum DateSystem  (`Excel1900`, `Excel1904`; `FromStr` reads `1900`, `1904`, `0`, `1`, `false`, `true`)
+  pub const fn as_str(self) -> &'static str
+  pub fn millis_from_serial(self, serial: f64) -> Result<i64>
+  pub fn serial_from_millis(self, millis: i64) -> Result<f64>
+  pub fn days_from_serial(self, serial: f64) -> Result<i32>
+  pub fn scalar_from_serial(self, serial: f64, format: NumberFormat) -> Result<Scalar>
+  pub fn temporal_from_serial(self, serial: f64, dtype: &DataType) -> Result<Scalar>
+  pub fn serial_of(self, value: &Scalar) -> Result<Option<(f64, NumberFormat)>>
+pub struct CellRef  (zero-based row and column; `FromStr` reads `B2`, `$B$2`; `Display` writes `B2`)
+  pub const fn new(row: u32, column: u32) -> Self
+  pub const fn row(self) -> u32
+  pub const fn column(self) -> u32
+  pub const fn is_in_grid(self) -> bool
+  pub fn require_in_grid(self) -> Result<Self>
+  pub fn column_name(column: u32) -> SmolStr
+  pub fn column_index(letters: &str) -> Option<u32>
+pub struct CellRange  (`FromStr` reads `A1:C10`, `A:C`, `3:5` and `A3:F`)
+  pub fn new(first: CellRef, second: CellRef) -> Self
+  pub const fn all() -> Self
+  pub const fn start(self) -> CellRef
+  pub const fn end(self) -> CellRef
+  pub const fn row_size(self) -> u32
+  pub const fn column_size(self) -> u32
+  pub const fn is_row_open(self) -> bool
+  pub const fn is_column_open(self) -> bool
+  pub const fn contains(self, cell: CellRef) -> bool
+  pub const fn contains_row(self, row: u32) -> bool
+  pub const fn contains_column(self, column: u32) -> bool
+  pub fn cells(self) -> impl Iterator<Item = CellRef>
+pub enum CellKind  (`Number`, `SharedString`, `InlineString`, `FormulaString`, `Boolean`, `Error`, `Date`)
+  pub const fn as_str(self) -> Option<&'static str>
+  pub fn from_attribute(value: &str) -> Result<Self>
+  pub const fn is_text(self) -> bool
+pub struct Cell
+  pub const fn new(reference: CellRef, kind: CellKind, format: NumberFormat, value: Scalar) -> Self
+  pub fn from_scalar(reference: CellRef, value: Scalar, system: DateSystem) -> Result<Self>
+  pub fn with_formula(mut self, formula: impl Into<SmolStr>) -> Self
+  pub fn with_error(mut self, error: impl Into<SmolStr>) -> Self
+  pub const fn at(mut self, reference: CellRef) -> Self
+  pub const fn reference(&self) -> CellRef
+  pub const fn row(&self) -> u32
+  pub const fn column(&self) -> u32
+  pub const fn kind(&self) -> CellKind
+  pub const fn format(&self) -> NumberFormat
+  pub const fn value(&self) -> &Scalar
+  pub fn into_scalar(self) -> Scalar
+  pub fn formula(&self) -> Option<&str>
+  pub fn error(&self) -> Option<&str>
+  pub const fn is_null(&self) -> bool
+  pub fn text(&self) -> Cow<'_, str>
+
+### yggdryl::excel::media  [rust/src/excel/media.rs]
+pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<Field>
+pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &ExcelOptions, ) -> crate::arrow::Result<BatchReader>
+pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &ExcelOptions, ) -> Result<()>
+pub struct Excel<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(mut self, options: ExcelOptions) -> Self
+  pub fn with_field(mut self, field: Field) -> Self
+  pub fn with_sheet(mut self, sheet: impl Into<SmolStr>) -> Self
+  pub const fn options(&self) -> &ExcelOptions
+  pub fn options_mut(&mut self) -> &mut ExcelOptions
+  pub const fn handle(&self) -> &H
+  pub fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+
+### yggdryl::excel::options  [rust/src/excel/options.rs]
+pub struct ExcelOptions  (the shared record sections, then `sheet: Option<SmolStr>`, `header: bool`, `range: Option<CellRange>`)
+  pub fn new() -> Self
+  pub fn with_sheet(mut self, sheet: impl Into<SmolStr>) -> Self
+  pub const fn with_header(mut self, header: bool) -> Self
+  pub const fn with_range(mut self, range: CellRange) -> Self
+  pub fn cells(&self) -> CellRange
+
+### yggdryl::excel::package  [rust/src/excel/package.rs]
+pub const CONTENT_TYPES_PART: &str = "[Content_Types].xml";
+pub const ROOT_RELATIONSHIPS_PART: &str = "_rels/.rels";
+pub const WORKBOOK_PART: &str = "xl/workbook.xml";
+pub const WORKBOOK_RELATIONSHIPS_PART: &str = "xl/_rels/workbook.xml.rels";
+pub const SHARED_STRINGS_PART: &str = "xl/sharedStrings.xml";
+pub const STYLES_PART: &str = "xl/styles.xml";
+pub const RELATIONSHIPS_CONTENT_TYPE: &str = "application/vnd.openxmlformats-package.relationships+xml";
+pub const WORKBOOK_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+pub const WORKSHEET_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
+pub const SHARED_STRINGS_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml";
+pub const STYLES_CONTENT_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
+pub const PACKAGE_RELATIONSHIPS_NAMESPACE: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+pub const CONTENT_TYPES_NAMESPACE: &str = "http://schemas.openxmlformats.org/package/2006/content-types";
+pub const OFFICE_DOCUMENT_RELATIONSHIP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+pub const WORKSHEET_RELATIONSHIP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+pub const SHARED_STRINGS_RELATIONSHIP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
+pub const STYLES_RELATIONSHIP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+pub fn worksheet_part(number: usize) -> SmolStr
+
+### yggdryl::excel::sheet  [rust/src/excel/sheet.rs]
+pub const MAX_SHEET_NAME: usize = 31;
+pub enum SheetState  (`Visible`, `Hidden`, `VeryHidden`)
+  pub const fn as_str(self) -> &'static str
+  pub fn from_attribute(value: Option<&str>) -> Result<Self>
+pub fn validate_sheet_name(name: &str) -> Result<()>
+pub struct Row
+  pub const fn index(&self) -> u32
+  pub fn cells(&self) -> impl Iterator<Item = &Cell> + '_
+  pub fn cell(&self, column: u32) -> Option<&Cell>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+pub struct Sheet
+  pub fn new(name: impl Into<SmolStr>) -> Result<Self>
+  pub const fn with_date_system(mut self, system: DateSystem) -> Self
+  pub const fn with_state(mut self, state: SheetState) -> Self
+  pub fn name(&self) -> &str
+  pub fn set_name(&mut self, name: impl Into<SmolStr>) -> Result<()>
+  pub const fn state(&self) -> SheetState
+  pub const fn set_date_system(&mut self, system: DateSystem)
+  pub const fn set_state(&mut self, state: SheetState)
+  pub const fn date_system(&self) -> DateSystem
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn dimension(&self) -> Option<CellRange>
+  pub fn cell(&self, reference: CellRef) -> Option<&Cell>
+  pub fn cell_mut(&mut self, reference: CellRef) -> Option<&mut Cell>
+  pub fn scalar(&self, reference: CellRef) -> Scalar
+  pub fn set_cell(&mut self, reference: CellRef, value: impl Into<Scalar>) -> Result<Option<Cell>>
+  pub fn insert_cell(&mut self, cell: Cell) -> Result<Option<Cell>>
+  pub fn remove_cell(&mut self, reference: CellRef) -> Option<Cell>
+  pub fn rows(&self) -> impl Iterator<Item = &Row> + '_
+  pub fn row(&self, index: u32) -> Option<&Row>
+  pub fn cells(&self) -> impl Iterator<Item = &Cell> + '_
+  pub fn cells_in(&self, range: CellRange) -> impl Iterator<Item = &Cell> + '_
+  pub fn column(&self, column: u32) -> impl Iterator<Item = &Cell> + '_
+  pub fn slice(&self, range: CellRange) -> Self
+  pub fn insert_rows(&mut self, at: u32, count: u32) -> Result<()>
+  pub fn remove_rows(&mut self, range: Range<u32>)
+  pub fn from_serie(name: impl Into<SmolStr>, serie: &Serie, header: bool) -> Result<Self>
+  pub fn write_serie(&mut self, anchor: CellRef, serie: &Serie, header: bool) -> Result<()>
+  pub fn extend_from_serie(&mut self, serie: &Serie) -> Result<()>
+  pub fn into_serie( self, field: Option<&Field>, header: bool, options: ArrowCastOptions, ) -> Result<Serie>
+
+### yggdryl::excel::styles  [rust/src/excel/styles.rs]
+pub enum NumberFormat  (`General`, `Date`, `DateTime`, `DateTimeFraction`, `Time`, `Duration`; `FromStr` reads `general`, `date`, `datetime`, `datetime_fraction`, `time`, `duration`)
+  pub const ALL: [Self; 6] = [ Self::General, Self::Date, Self::DateTime, Self::DateTimeFraction, Self::Time, Self::Duration, ];
+  pub const fn as_str(self) -> &'static str
+  pub const fn style_index(self) -> u32
+  pub const fn is_temporal(self) -> bool
+  pub const fn builtin(id: u32) -> Option<Self>
+  pub fn from_code(code: &str) -> Self
+  pub const fn code(self) -> Option<&'static str>
+
+### yggdryl::excel::workbook  [rust/src/excel/workbook.rs]
+pub enum SheetKind  (`Worksheet`, `Chartsheet`, `Dialogsheet`)
+  pub const fn as_str(self) -> &'static str
+pub struct Workbook
+  pub fn new() -> Self
+  pub fn open(handle: impl Into<Holder>) -> Result<Self>
+  pub fn from_bytes(bytes: Vec<u8>) -> Result<Self>
+  pub const fn date_system(&self) -> DateSystem
+  pub fn set_date_system(&mut self, system: DateSystem)
+  pub fn sheet_names(&self) -> Vec<&str>
+  pub fn sheet_kind(&self, name: &str) -> Option<SheetKind>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn sheet(&self, name: &str) -> Result<&Sheet>
+  pub fn get_sheet(&self, name: &str) -> Result<Option<&Sheet>>
+  pub fn sheet_at(&self, index: usize) -> Result<Option<&Sheet>>
+  pub fn sheet_mut(&mut self, name: &str) -> Result<&mut Sheet>
+  pub fn rename_sheet(&mut self, name: &str, new_name: impl Into<SmolStr>) -> Result<()>
+  pub fn add_sheet(&mut self, name: impl Into<SmolStr>) -> Result<&mut Sheet>
+  pub fn insert_sheet(&mut self, sheet: Sheet) -> Result<Option<Sheet>>
+  pub fn remove_sheet(&mut self, name: &str) -> Result<Option<Sheet>>
+  pub fn handle_reads(&self) -> u64
+  pub fn into_bytes(&self) -> Result<Vec<u8>>
+
 ### yggdryl::media  [rust/src/media/mod.rs]
 pub enum Media
   pub fn open(handle: Holder) -> Result<Self>
@@ -2970,6 +3159,7 @@ pub enum Media
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
   pub fn xmla(handle: Holder) -> Self
+  pub fn excel(handle: Holder) -> Self
   pub const fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase
@@ -3053,6 +3243,12 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>
   pub fn parquet_compression_name(&self) -> Option<String>
   pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()>
+  pub fn excel_sheet(&self) -> Option<&str>
+  pub fn set_excel_sheet(&mut self, sheet: Option<&str>) -> Result<()>
+  pub fn excel_header(&self) -> Option<bool>
+  pub fn set_excel_header(&mut self, header: bool) -> Result<()>
+  pub fn excel_range(&self) -> Option<crate::excel::CellRange>
+  pub fn set_excel_range(&mut self, range: Option<crate::excel::CellRange>) -> Result<()>
   pub const fn parquet_max_row_group_size(&self) -> Option<usize>
   pub fn set_parquet_max_row_group_size(&mut self, rows: usize) -> Result<()>
   pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]>
@@ -3403,6 +3599,7 @@ pub struct MimeType(MimeTypeWire);
   pub const JAVASCRIPT: Self = Self(MimeTypeWire::JavaScript);
   pub const XML: Self = Self(MimeTypeWire::Xml);
   pub const XMLA: Self = Self(MimeTypeWire::Xmla);  (`application/xmla+xml`, the `.xmla` rowset document)
+  pub const XLSX: Self = Self(MimeTypeWire::Xlsx);  (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, the `.xlsx` workbook)
   pub const PDF: Self = Self(MimeTypeWire::Pdf);
   pub const CBOR: Self = Self(MimeTypeWire::Cbor);
   pub const MESSAGE_PACK: Self = Self(MimeTypeWire::MessagePack);
