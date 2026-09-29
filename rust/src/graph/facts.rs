@@ -12,7 +12,7 @@
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
-//! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `UNKNOWN`
+//! (`XXX`), no unit, a side of `UNKN`, no identifiers, a `UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
 //!
@@ -212,11 +212,6 @@ impl MarketFacts {
         }
     }
 
-    /// The category the holding leaf stamped.
-    pub(crate) fn marketdatakind(&self) -> MarketDataKind {
-        self.kind
-    }
-
     /// Stamps the category of the leaf that holds these facts, storing the
     /// cross code under the side where the new kind is sided.
     pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
@@ -377,8 +372,8 @@ impl Market for MarketFacts {
         self.reprefix();
     }
 
-    fn is_sided(&self) -> bool {
-        self.kind.is_sided()
+    fn marketdatakind(&self) -> MarketDataKind {
+        self.kind
     }
 
     fn get_securityids(&self) -> &SecurityIds {
@@ -661,11 +656,6 @@ impl MarketEventFacts {
 }
 
 impl MarketEventFacts {
-    /// The category the holding leaf stamped.
-    pub(crate) fn marketdatakind(&self) -> MarketDataKind {
-        self.market.marketdatakind()
-    }
-
     /// Stamps the category of the leaf that holds these facts.
     pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
         self.market.set_marketdatakind(kind);
@@ -1053,11 +1043,6 @@ impl OperationEventFacts {
     /// Whether `key`'s identifier is held by derivation alone.
     pub(crate) fn is_derived_securityid(&self, key: &SecType) -> bool {
         self.event.market.is_derived_securityid(key)
-    }
-
-    /// The category the holding leaf stamped.
-    pub(crate) fn marketdatakind(&self) -> MarketDataKind {
-        self.event.marketdatakind()
     }
 
     /// Stamps the category of the leaf that holds these facts.

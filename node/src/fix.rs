@@ -1336,7 +1336,9 @@ impl JsFixMsg {
     /// The graph market data this message expands to: an order, a quote,
     /// an execution or a trade report is one leaf; a book `W` or `X` one per
     /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
-    /// empty `W` - each a `MarketData`.
+    /// empty `W` - each a `MarketData` carrying, in its `metadata`, what the
+    /// message states that no typed column reads and no identifier map of the
+    /// leaf holds, the identifiers among it lifted into the leaf's `altids`.
     #[napi]
     pub fn market_data(&self) -> Result<Vec<JsMarketData>> {
         self.inner
@@ -1594,7 +1596,8 @@ impl JsFixMsg {
 
     /// The accounts and parties the message names - each `Parties`
     /// occurrence's `PartyID` under its `PartyRole`'s name, such as
-    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - key to value, in key order.
+    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
+    /// `ACCOUNT` - key to value, in key order.
     #[napi(getter, ts_return_type = "Record<string, string>")]
     pub fn accountids(&self) -> BTreeMap<String, String> {
         idmap_view(self.inner.get_accountids())
@@ -1621,8 +1624,8 @@ impl JsFixMsg {
         self.inner.get_unit().as_str().to_owned()
     }
 
-    /// The side, as the `side` member's stored name: the one stated, else
-    /// `UNKNOWN` - never `null`.
+    /// The side, as the `side` member's four-letter code: the one stated, else
+    /// `UNKN` - never `null`.
     #[napi(getter)]
     pub fn side(&self) -> String {
         self.inner.get_side().as_str().to_owned()
@@ -2287,7 +2290,9 @@ impl JsFixCodec {
     /// yielded so it yields that identity once - the core's one minute when
     /// unstated, and `null`, zero or a negative window remembering none;
     /// `marketMetadata` is whether a market operation carries its message's
-    /// unmapped fields, on when unstated.
+    /// unmapped fields - its parties, `Account(1)` and regulatory trade
+    /// identifiers stay its `accountids` and `altids` - and lifts the
+    /// identifiers among them into its `altids`, on when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2550,7 +2555,9 @@ impl JsFixCodec {
     }
 
     /// Whether a market operation this codec builds carries, in its
-    /// metadata, what its message states that no typed column reads.
+    /// metadata, what its message states that no typed column reads and no
+    /// identifier map of the leaf holds, and lifts the identifiers among
+    /// them into its `altids`.
     #[napi(getter)]
     pub fn market_metadata(&self) -> bool {
         self.inner.market_metadata()
@@ -2954,11 +2961,14 @@ impl JsFixCodec {
     /// The one walk over events: the messages are collected, sorted by
     /// instant, and each is stated as the one after the live message it
     /// follows - the last message of its chain, under the cross identity its
-    /// cross code derives, still alive - so a chained message carries its
+    /// cross code derives, still alive, and of its own market data kind (an
+    /// order and an execution under one cross code are two chains) - so a
+    /// chained message carries its
     /// predecessor's `prevuuid` and `prevunix`, its place at `seqnum` - its
     /// own unless the predecessor happened at the same instant or later,
     /// where it takes the higher of its own and one past the predecessor's -
-    /// and the chain's `creaunix`, and is settled again around them. A message no live one precedes is
+    /// the chain's `creaunix` and every `metadata` key of the chain it does not
+    /// state, and is settled again around them. A message no live one precedes is
     /// answered as it came. The loader turns the iterable into the pull
     /// function this takes; a failure of the iterable throws and ends the
     /// stream. The walk reads the structured message first: one whose
@@ -3082,8 +3092,10 @@ pub struct FixCodecOptions<'env> {
     #[napi(ts_type = "Scalar | Date | null")]
     pub default_sending_time: Option<Either3<ClassInstance<'env, JsScalar>, JsDate<'env>, Null>>,
     /// Whether a market operation this codec builds carries, in its
-    /// metadata, what its message states that no typed column reads - part
-    /// of the leaf's identity; the core's `true` when unstated.
+    /// metadata, what its message states that no typed column reads and no
+    /// identifier map of the leaf holds, lifting the identifiers among them
+    /// into its `altids` - part of the leaf's identity; the core's `true`
+    /// when unstated.
     pub market_metadata: Option<bool>,
 }
 

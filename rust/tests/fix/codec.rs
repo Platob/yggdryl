@@ -532,7 +532,7 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
         .unwrap();
 
     // The row holds the translated code and the typed number.
-    assert_eq!(message.by_name("side").unwrap().as_str(), Some("BUY"));
+    assert_eq!(message.by_name("side").unwrap().as_str(), Some("BUYS"));
     assert_eq!(message.by_name("orderqty").unwrap(), super::decimal("100"));
     // The side is an ordinary child of the row, so it is one of its
     // entries: the wire spells it back under its own tag as the code the
@@ -552,7 +552,7 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
         Some(id)
     );
     assert_eq!(FixId::of(54, "side").unwrap(), id);
-    assert_eq!(message.get_by_id(id).unwrap().as_str(), Some("BUY"));
+    assert_eq!(message.get_by_id(id).unwrap().as_str(), Some("BUYS"));
 }
 
 #[test]
@@ -673,7 +673,7 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // Names resolve to tags, and each value takes its field's own type: a
     // quantity and a price are numbers, and a side is the packed code.
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
-    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUYS"));
     assert_eq!(message.by_tag(38).unwrap(), super::decimal("1200"));
     assert_eq!(message.by_tag(44).unwrap(), super::decimal("41.25"));
 
@@ -814,7 +814,7 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
         .sole_line(b"sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|")
         .unwrap();
     assert_eq!(framed.by_tag(55).unwrap().as_str(), Some("TTF"));
-    assert_eq!(framed.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert_eq!(framed.by_tag(54).unwrap().as_str(), Some("BUYS"));
     let keys: Vec<&str> = framed.entries().iter().map(|entry| entry.name()).collect();
     assert_eq!(keys, ["symbol", "side"]);
     for line in [
@@ -1220,7 +1220,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
     );
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
     assert_eq!(message.by_tag(37).unwrap().as_str(), Some("9"));
-    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUYS"));
     assert!(message.by_name("#orderid").is_err());
 
     // A key marked twice is judged one mark at a time: `##ORDERID` twins
@@ -1715,7 +1715,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // the root, and the field after the group is the order's own again.
     assert!(message.get_by_tag(448).is_none(), "no flat party id");
     assert!(message.get_by_tag(452).is_none(), "no flat party role");
-    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUYS"));
     // The entries are the row read as a tree: the group heads its two
     // occurrences and each member is a child of the one it arrived in.
     let counter = message

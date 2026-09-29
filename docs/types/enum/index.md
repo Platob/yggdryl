@@ -56,11 +56,11 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
     from yggdryl import MarketDataKind, Side, State, graph
 
     order = graph.OrderEvent(
-        1_700_000_000_000_000_000, crosscode="O-1001", side="BUY", state="NEW"
+        1_700_000_000_000_000_000, crosscode="O-1001", side="BUYS", state="NEW"
     )
 
     # Python answers the member of the enum's `IntEnum`.
-    assert order.side is Side.BUY
+    assert order.side is Side.BUYS
     assert order.state is State.NEW
     assert order.marketdatakind is MarketDataKind.ORDR
     # A member is the code it stores and reads as its name.
@@ -75,12 +75,12 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
 
     const order = new graph.OrderEvent(1_700_000_000_000_000_000n, {
       crosscode: 'O-1001',
-      side: 'BUY',
+      side: 'BUYS',
       state: 'NEW',
     })
 
     // JavaScript answers the member's name; the frozen object maps it to its code.
-    assert.equal(order.side, 'BUY')
+    assert.equal(order.side, 'BUYS')
     assert.equal(order.state, 'NEW')
     assert.equal(order.marketdatakind, 'ORDR')
     assert.equal(Side[order.side], 1)
@@ -91,7 +91,7 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
 ## Edges
 
 - A member of one enum is refused by another's value door, even where its code is one of the other's: a `state`, a `side` and a `marketdatakind` of one code are three values, and their digests differ.
-- The default value of every enum is its code `0` member - `UNKNOWN`, `UNKN` - a stated value rather than an absence; an empty text cell entering an enum column is null ([Cast](../cast.md#empty-text)).
+- The default value of every enum is its code `0` member - `UNKN` for a side and a kind, `UNKNOWN` for a state - a stated value rather than an absence; an empty text cell entering an enum column is null ([Cast](../cast.md#empty-text)).
 - JSON, TOML, YAML and XML write a member as its stored name; the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the enum's own identifier; Iceberg stores it as an `int`.
 - A cast between two enums reads every member again, and refuses a code the target names nothing by: a `state` column's `2001` is no `marketdatakind`.
 

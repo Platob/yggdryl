@@ -304,7 +304,9 @@ assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs
 `side`, `marketdatakind` and `state` are the `enum` family: each member is an
 `int32` code in a column and its stored name in text. A value answers the
 name; `Side` and `MarketDataKind` at the package root are frozen name-to-code
-objects. A side is never absent - `UNKNOWN` (code 0) is unstated.
+objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
+names before the codes (`BUY`, `SSHORT`, ...) are still read and never written. A
+side is never absent - `UNKN` (code 0) is unstated.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -312,8 +314,9 @@ const { DataType, MarketDataKind, Side, fields } = require('yggdryl')
 
 // A side reads its stored name, FIX's wire code or its code.
 const side = fields.side('side', { nullable: false })
-assert.deepEqual([side.scalar('BUY').asJs(), side.scalar('1').asJs(), side.scalar(2).asJs()], ['BUY', 'BUY', 'SELL'])
-assert.deepEqual([Side.UNKNOWN, Side.BUY, Side.SELL], [0, 1, 2])
+assert.deepEqual([side.scalar('BUYS').asJs(), side.scalar('1').asJs(), side.scalar(2).asJs()], ['BUYS', 'BUYS', 'SELL'])
+assert.equal(side.scalar('BUY').asJs(), 'BUYS', 'an earlier stored name is read, never written')
+assert.deepEqual([Side.UNKN, Side.BUYS, Side.SELL], [0, 1, 2])
 assert.ok(Object.isFrozen(Side))
 assert.deepEqual([side.dtype.kind, side.dtype.toString()], ['enum', 'side'])
 

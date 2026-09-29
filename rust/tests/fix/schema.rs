@@ -502,7 +502,7 @@ fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns(
             "one value per column"
         );
         assert_eq!(at(&row, schema, 55).as_str(), Some("AAPL"));
-        assert_eq!(at(&row, schema, 54).as_str(), Some("BUY"));
+        assert_eq!(at(&row, schema, 54).as_str(), Some("BUYS"));
     }
     let wide_row = order.into_row(&wide).unwrap();
     assert_eq!(at(&wide_row, &wide, 11).as_str(), Some("ORDER-1"));

@@ -119,7 +119,11 @@ medium does the work before a byte is decoded.
     column out of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
     own `creaunix` capture states none takes the earliest `currunix` the read
-    has dated a line of its object by so far; a `creaunix` capture stands. A write consumes each row's non-empty `body`.
+    has dated a line of its object by so far; a `creaunix` capture stands. Each
+    line also states, as `prevunix`, the `currunix` the read dated the line
+    before it by - none for an object's first line or after an undated one, a
+    `prevunix` capture standing, each object of a folder or glob starting
+    again - and never a `prevuuid`, so no line identity moves. A write consumes each row's non-empty `body`.
 15. **Iceberg commits are snapshots.** `append` and metadata-only commits
     rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
     conflict instead. A merge keys on the identity partition columns plus

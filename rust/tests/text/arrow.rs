@@ -302,6 +302,49 @@ mod text {
         }
 
         #[test]
+        fn a_read_states_the_instant_it_dated_the_line_before_as_each_lines_predecessor() {
+            // Each line states when the line the read cut before it was
+            // dated: none for the first, none after an undated one - in the
+            // line and in the column it lands in - and no identity moves.
+            let options = TextOptions::new()
+                .try_with_rowheader(r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ")
+                .expect("a header");
+            let lines = decode(
+                b"2026-01-02T10:15:31Z second\n2026-01-02T10:15:30Z first\nundated\n2026-01-02T10:15:32Z third\n",
+                &options,
+            );
+            let instants: Vec<_> = lines.iter().map(|line| line.get_currunix()).collect();
+            let previous: Vec<_> = lines.iter().map(|line| line.get_prevunix()).collect();
+            assert_eq!(previous, [None, Some(instants[0]), Some(instants[1]), None]);
+            assert!(lines.iter().all(|line| line.get_prevuuid().is_none()));
+            let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+            let back = from_arrow_batch(&batch, &options).expect("lines read back");
+            let read_back: Vec<_> = back.iter().map(|line| line.get_prevunix()).collect();
+            assert_eq!(read_back, previous);
+            for line in &lines {
+                let mut bare = line.clone();
+                bare.set_prevunix(None);
+                assert_eq!(bare.get_curruuid(), line.get_curruuid());
+                assert_eq!(bare.get_currhashcode(), line.get_currhashcode());
+            }
+
+            // A capture stating one stands; an undated read states none.
+            let options = TextOptions::new()
+                .try_with_rowheader(
+                    r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) (?<prevunix>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)? ?",
+                )
+                .expect("a header");
+            let lines = decode(
+                b"2026-01-02T10:15:30Z  a\n2026-01-02T10:15:31Z 2026-01-01T00:00:00Z b\n2026-01-02T10:15:32Z  c\n",
+                &options,
+            );
+            assert_eq!(lines[1].get_prevunix(), Some(1_767_225_600_000_000_000));
+            assert_eq!(lines[2].get_prevunix(), Some(lines[1].get_currunix()));
+            let undated = decode(b"a\nb\n", &TextOptions::new());
+            assert!(undated.iter().all(|line| line.get_prevunix().is_none()));
+        }
+
+        #[test]
         fn a_read_states_the_earliest_instant_it_dated_a_line_by_as_each_lines_creation() {
             // One object's lines are one chain, so each states when the chain
             // began as far as the read has seen: the earliest instant it dated

@@ -366,7 +366,7 @@ fn an_unpriced_entry_lands_last_as_one_limit() {
     );
     assert_eq!(
         alive(&book, true).last().unwrap().get_crosscode(),
-        "BUY:B-M"
+        "BUYS:B-M"
     );
     assert_eq!(
         alive(&book, false).last().unwrap().get_crosscode(),
@@ -648,7 +648,7 @@ fn a_delete_from_reaches_an_unpriced_entry_after_every_priced_level() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:P-1", "BUY:P-2"]
+        ["BUYS:P-1", "BUYS:P-2"]
     );
     assert!(book.limits(Side::Buy).all(|limit| limit.price.is_some()));
 }
@@ -704,7 +704,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
         .into_iter()
         .map(|operation| operation.get_crosscode())
         .collect();
-    assert_eq!(identities, ["BUY:B-2", "BUY:B-X"]);
+    assert_eq!(identities, ["BUYS:B-2", "BUYS:B-X"]);
 
     let mut update = BookEvent::new(2, "IBM");
     update.add_operations([replacement]).unwrap();
@@ -714,7 +714,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:B-2", "BUY:B-X"]
+        ["BUYS:B-2", "BUYS:B-X"]
     );
 }
 
@@ -869,7 +869,7 @@ fn a_snapshot_is_the_same_book_with_every_living_order_and_nothing_else() {
             .into_iter()
             .map(|held| held.get_crosscode().to_owned())
             .collect::<Vec<_>>(),
-        ["BUY:O-1"],
+        ["BUYS:O-1"],
         "every living order, and no dead one"
     );
     assert!(
@@ -1297,7 +1297,7 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
             .iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:E-BUY", "SELL:E-SELL"]
+        ["BUYS:E-BUY", "SELL:E-SELL"]
     );
     let mut expected = trade.executions().to_vec();
     expected.sort_by_key(Element::get_curruuid);
@@ -1398,7 +1398,7 @@ fn expiring_one_snapshot_entry_keeps_the_rest_of_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:STANDING"
+        "BUYS:STANDING"
     );
 }
 
@@ -1430,7 +1430,7 @@ fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:INITIAL"
+        "BUYS:INITIAL"
     );
 }
 
@@ -1459,10 +1459,10 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     assert_eq!(alive(&books[1], true).len(), 2);
     let mut live = alive(&books[1], true).into_iter();
     let first = live.next().unwrap();
-    assert_eq!(first.get_crosscode(), "BUY:O-1");
+    assert_eq!(first.get_crosscode(), "BUYS:O-1");
     assert_eq!(first.get_price(), Some(decimal("101")));
     assert_eq!(first.get_quantity(), Some(Decimal::from_int(5)));
-    assert_eq!(live.next().unwrap().get_crosscode(), "BUY:O-OTHER");
+    assert_eq!(live.next().unwrap().get_crosscode(), "BUYS:O-OTHER");
 
     let only = BookIterator::new([snapshot_only].into_iter(), 0)
         .unwrap()
@@ -1611,7 +1611,7 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:PRIMARY"
+        "BUYS:PRIMARY"
     );
 }
 
@@ -1770,7 +1770,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
         .into_iter()
         .map(Element::get_crosscode)
         .collect::<Vec<_>>();
-    assert_eq!(remaining, ["BUY:O-1", "BUY:P-2"]);
+    assert_eq!(remaining, ["BUYS:O-1", "BUYS:P-2"]);
 
     let before = book.clone();
     let invalid = with_book(
@@ -2002,7 +2002,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:B-X"
+        "BUYS:B-X"
     );
 
     let merged = older.merge_with(&latest).unwrap();
@@ -2013,7 +2013,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:B-X"
+        "BUYS:B-X"
     );
     assert!(alive(&merged, false).is_empty());
 }
@@ -2070,7 +2070,7 @@ fn an_unsided_quote_leaves_its_group_and_every_later_book_standing() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:LATER"
+        "BUYS:LATER"
     );
 }
 

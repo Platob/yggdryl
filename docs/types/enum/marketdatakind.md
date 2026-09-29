@@ -297,7 +297,7 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 | Reading | Rule |
 | --- | --- |
-| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its cross code is stored under that side - `BUY:ORD-1` - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - keeps its cross code as given whatever side it states |
+| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its cross code is stored under that side - `BUYS:ORD-1` - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - keeps its cross code as given whatever side it states |
 | `is_batch()` | `ORDB`, `QUOB`, `EXEB` and `TRDB`: a message stating many orders, quotes, executions or trades at once - a list, a mass order, a cross, a mass quote, a match report - which a [FIX parse splits](../../fix/message.md#a-parse-splits-what-a-message-reports) into one message per entry; no standard message type is filed under `EXEB` |
 | `item()` | the kind one entry of a batch is - `ORDB` `ORDR`, `QUOB` `QUOT`, `EXEB` `EXEC`, `TRDB` `TRAD` - and the member itself for any other |
 
@@ -332,6 +332,8 @@ Every [market data](../../graph/market-data.md) leaf is filed under one member, 
 | `TradeEvent` | `TRAD` |
 | `BookEvent`, `SnapshotEvent` | `BOOK` |
 
+The category is also what a lifecycle chains within: the walk keys each live chain by its cross element and its `marketdatakind`, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order ([Market](../../graph/market.md#sides-and-cross-codes)).
+
 No leaf is filed under a batch member: what a FIX message filed under one states reaches the graph as the messages its parse [splits it into](../../fix/message.md#a-parse-splits-what-a-message-reports), each filed under the batch's `item`.
 
 === "Rust"
@@ -352,7 +354,7 @@ No leaf is filed under a batch member: what a FIX message filed under one states
     ```python
     from yggdryl import MarketDataKind, graph
 
-    order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001", side="BUY")
+    order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001", side="BUYS")
     assert order.marketdatakind is MarketDataKind.ORDR
     ```
 
@@ -362,7 +364,7 @@ No leaf is filed under a batch member: what a FIX message filed under one states
     const assert = require('node:assert/strict')
     const { graph } = require('yggdryl')
 
-    const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUY' })
+    const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' })
     assert.equal(order.marketdatakind, 'ORDR')
     ```
 

@@ -25,7 +25,7 @@ def order(
     return graph.OrderEvent(
         clock,
         crosscode=code,
-        side="BUY",
+        side="BUYS",
         price=D(price),
         quantity=10,
         ticker="IBM",
@@ -48,10 +48,10 @@ class TestBookEvent:
         assert book.currunix == CLOCK and book.crosscode == "IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
         # A book states no side of its own.
-        assert book.side is Side.UNKNOWN
+        assert book.side is Side.UNKN
         assert book.alive == [] and book.deltas == [] and book.executions == []
-        assert book.limits(Side.BUY) == [] and book.limits("SELL") == []
-        assert book.best_price(Side.BUY) is None and book.best_quantity(Side.SELL) is None
+        assert book.limits(Side.BUYS) == [] and book.limits("SELL") == []
+        assert book.best_price(Side.BUYS) is None and book.best_quantity(Side.SELL) is None
         assert book.bidpx is None and book.askpx is None
         assert not book.is_crossed
         assert book.bbo_midpoint is None and book.median_quantity is None
@@ -62,14 +62,14 @@ class TestBookEvent:
 
     def test_limits_of_an_empty_side(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
-        assert decimal_of(book.depth(Side.BUY, 1)) == 0
-        assert decimal_of(book.depth(Side.BUY, 0)) == 0
+        assert decimal_of(book.depth(Side.BUYS, 1)) == 0
+        assert decimal_of(book.depth(Side.BUYS, 0)) == 0
         # A side that is neither a bid nor an ask has no depth.
-        assert book.depth(Side.CROSS, 1) is None
-        assert book.limits(Side.CROSS) == []
+        assert book.depth(Side.CROS, 1) is None
+        assert book.limits(Side.CROS) == []
         # A level count is a count: a negative one is not one.
         with pytest.raises(OverflowError):
-            book.depth(Side.BUY, -1)
+            book.depth(Side.BUYS, -1)
         with pytest.raises(ValueError):
             book.limits("SIDEWAYS")
 
@@ -78,7 +78,7 @@ class TestBookEvent:
         second = order(code="O-2")
         lower = order(price="100", code="O-3")
         book = graph.BookEvent(CLOCK, "IBM").with_operations([first, second, lower])
-        limits = book.limits(Side.BUY)
+        limits = book.limits(Side.BUYS)
         assert all(isinstance(limit, Scalar) for limit in limits)
         assert [limit["price"].as_py() for limit in limits] == [D("101"), D("100")]
         # Two entries at one price are one limit holding both, in live order;
@@ -94,30 +94,30 @@ class TestBookEvent:
             "tradable": True,
         }
         # The depth walks the limits in that order.
-        assert decimal_of(book.depth(Side.BUY, 1)) == D("20")
-        assert decimal_of(book.depth(Side.BUY, 2)) == D("30")
-        assert decimal_of(book.depth("BUY", 9)) == D("30")
+        assert decimal_of(book.depth(Side.BUYS, 1)) == D("20")
+        assert decimal_of(book.depth(Side.BUYS, 2)) == D("30")
+        assert decimal_of(book.depth("BUYS", 9)) == D("30")
 
     def test_the_best_is_the_first_tradable_level(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM").with_operations(
             [order(price="102", code="O-1", tradable=False), order(price="101", code="O-2")]
         )
-        [top, below] = book.limits(Side.BUY)
+        [top, below] = book.limits(Side.BUYS)
         assert top.as_py()["tradable"] is False and below.as_py()["tradable"] is True
-        assert decimal_of(book.best_price(Side.BUY)) == D("101")
+        assert decimal_of(book.best_price(Side.BUYS)) == D("101")
         assert decimal_of(book.bidpx) == D("101")
-        assert decimal_of(book.best_quantity(Side.BUY)) == D("10")
+        assert decimal_of(book.best_quantity(Side.BUYS)) == D("10")
         untradable = graph.BookEvent(CLOCK, "IBM").with_operations([order(tradable=False)])
-        assert untradable.best_price(Side.BUY) is None and untradable.bidpx is None
+        assert untradable.best_price(Side.BUYS) is None and untradable.bidpx is None
 
     def test_an_unpriced_entry_rests_at_the_last_limit(self) -> None:
-        unpriced = graph.OrderEvent(CLOCK, crosscode="M-1", side="BUY", quantity=4, ticker="IBM")
+        unpriced = graph.OrderEvent(CLOCK, crosscode="M-1", side="BUYS", quantity=4, ticker="IBM")
         book = graph.BookEvent(CLOCK, "IBM").with_operations([unpriced, order()])
         # The market order is held rather than refused, after every priced
         # level, and states no best of its own.
-        assert [entry.crosscode for entry in book.alive] == ["BUY:O-1", "BUY:M-1"]
-        assert decimal_of(book.best_price(Side.BUY)) == D("101")
-        last = book.limits(Side.BUY)[-1]
+        assert [entry.crosscode for entry in book.alive] == ["BUYS:O-1", "BUYS:M-1"]
+        assert decimal_of(book.best_price(Side.BUYS)) == D("101")
+        last = book.limits(Side.BUYS)[-1]
         assert last["price"].as_py() is None
         assert last.as_py() == {
             "price": None,
@@ -125,10 +125,10 @@ class TestBookEvent:
             "uuids": [unpriced.curruuid.as_py()],
             "tradable": True,
         }
-        assert decimal_of(book.depth(Side.BUY, 2)) == D("14")
+        assert decimal_of(book.depth(Side.BUYS, 2)) == D("14")
         alone = graph.BookEvent(CLOCK, "IBM").with_operations([unpriced])
-        assert alone.best_price(Side.BUY) is None and alone.best_quantity(Side.BUY) is None
-        assert len(alone.limits(Side.BUY)) == 1
+        assert alone.best_price(Side.BUYS) is None and alone.best_quantity(Side.BUYS) is None
+        assert len(alone.limits(Side.BUYS)) == 1
 
     def test_spread_lock_and_imbalance(self) -> None:
         empty = graph.BookEvent(CLOCK, "IBM")
@@ -158,7 +158,7 @@ class TestBookEvent:
         empty = graph.BookEvent(CLOCK, "IBM")
         book = empty.with_operations([order(), quote()])
         assert empty.alive == []  # immutable: the verb answered a new book
-        assert decimal_of(book.best_price(Side.BUY)) == D("101")
+        assert decimal_of(book.best_price(Side.BUYS)) == D("101")
         assert decimal_of(book.best_price(Side.SELL)) == D("102")
         # The book states its best tradable levels as its own bid and ask.
         assert decimal_of(book.bidpx) == D("101")
@@ -178,10 +178,10 @@ class TestBookEvent:
         assert crossed.is_crossed
 
     def test_executions_and_market_data_fold(self) -> None:
-        execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUY", lastpx=D("101"), lastqty=1)
+        execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1)
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [type(held) for held in book.executions] == [graph.ExecutionEvent]
-        assert book.executions[0].crosscode == "BUY:E-1"
+        assert book.executions[0].crosscode == "BUYS:E-1"
 
     def test_a_snapshot_control_folds(self) -> None:
         snapshot = graph.SnapshotEvent.snapshot(order(), "Symbol=IBM")
@@ -200,7 +200,7 @@ class TestBookEvent:
         twin = pickle.loads(pickle.dumps(book))
         assert twin == book and hash(twin) == hash(book)
         assert twin.alive == book.alive
-        assert twin.limits(Side.BUY) == book.limits(Side.BUY)
+        assert twin.limits(Side.BUYS) == book.limits(Side.BUYS)
         assert copy.copy(book) == book and copy.deepcopy(book) == book
         assert repr(book) == f'BookEvent({book.curruuid.as_py()}, currunix={CLOCK}, crosscode="IBM")'
         later = graph.BookEvent(CLOCK + 1, "IBM")
@@ -234,15 +234,15 @@ class TestSnapshotEvent:
 class TestBookIterator:
     def test_books_over_three_items_in_order(self) -> None:
         execution = graph.ExecutionEvent(
-            CLOCK + 1, crosscode="O-1", side="BUY", lastpx=D("101"), lastqty=1, ticker="IBM"
+            CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM"
         )
         walk = graph.BookIterator([order(), graph.MarketData(quote()), execution])
         books = list(walk)
         assert [type(book) for book in books] == [graph.BookEvent, graph.BookEvent]
         assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
-        assert decimal_of(books[0].best_price(Side.BUY)) == D("101")
+        assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
-        assert [held.crosscode for held in books[1].executions] == ["BUY:O-1"]
+        assert [held.crosscode for held in books[1].executions] == ["BUYS:O-1"]
         assert hash(walk.__class__) is not None and walk.__hash__ is None
 
     def test_a_walk_takes_no_global_mode(self) -> None:

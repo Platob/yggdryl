@@ -20,13 +20,13 @@ D = decimal.Decimal
 
 def leaves() -> list[Any]:
     """One leaf of every kind, in `MarketData.kinds` order."""
-    order = graph.OrderEvent(CLOCK, crosscode="O-1", side="BUY", price=D("101"), quantity=5, ticker="ACME")
+    order = graph.OrderEvent(CLOCK, crosscode="O-1", side="BUYS", price=D("101"), quantity=5, ticker="ACME")
     quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="SELL", price=D("102"), quantity=3, ticker="ACME")
-    execution = graph.ExecutionEvent(CLOCK + 1, crosscode="O-1", side="BUY", lastpx=D("101"), lastqty=5)
+    execution = graph.ExecutionEvent(CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=5)
     trade = graph.TradeEvent.from_parts(
         graph.ExecutionEvent(CLOCK, crosscode="T-1", ticker="ACME"),
         [
-            graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUY", lastpx=1, lastqty=1),
+            graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=1, lastqty=1),
             graph.ExecutionEvent(CLOCK, crosscode="E-2", side="SELL", lastpx=1, lastqty=1),
         ],
     )
@@ -236,7 +236,7 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
         {
             "foreign": [1, 2],
             # A sided row states the cross code its side prefixes.
-            "CrossCode": ["BUY:O-1", "BUY:O-1"],
+            "CrossCode": ["BUYS:O-1", "BUYS:O-1"],
             "MarketDataKind": pa.array([10, 8], pa.int32()),
             "currunix": pa.array([CLOCK, CLOCK + 1], pa.int64()),
             "side": pa.array([1, 1], pa.int32()),
@@ -247,7 +247,7 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
     )
     order, execution = (data.into_leaf() for data in graph.MarketData.from_arrow_reader(batch))
     assert isinstance(order, graph.OrderEvent) and isinstance(execution, graph.ExecutionEvent)
-    assert (order.currunix, order.crosscode, order.side) == (CLOCK, "BUY:O-1", Side.BUY)
+    assert (order.currunix, order.crosscode, order.side) == (CLOCK, "BUYS:O-1", Side.BUYS)
     assert order.price is not None and order.price.as_py() == D("101")
     assert order.altids == {"ORDERID": "O-1"}
     assert execution.lastqty is not None and execution.lastqty.as_py() == 5
@@ -288,7 +288,7 @@ ISIN = "US0378331005"
 
 def _stream() -> pa.RecordBatchReader:
     """Every leaf kind, and an order stating its ISIN."""
-    identified = graph.OrderEvent(CLOCK + 5, crosscode="O-5", side="BUY", securityids={"ISIN": ISIN})
+    identified = graph.OrderEvent(CLOCK + 5, crosscode="O-5", side="BUYS", securityids={"ISIN": ISIN})
     return graph.MarketData.arrow_reader([*leaves(), identified])
 
 
@@ -331,7 +331,7 @@ def test_a_trade_is_one_row_per_execution_its_own_columns_beside_it() -> None:
     table = _view("trades")
     assert table.schema.names == [*_flat(), *_prefixed("executions", "execution")]
     assert table.column("crosscode").to_pylist() == ["T-1", "T-1"]
-    assert sorted(table.column("execution.crosscode").to_pylist()) == ["BUY:E-1", "SELL:E-2"]
+    assert sorted(table.column("execution.crosscode").to_pylist()) == ["BUYS:E-1", "SELL:E-2"]
 
 
 def test_a_book_is_one_row_of_its_own() -> None:
@@ -368,7 +368,7 @@ def test_a_lift_reads_one_key_null_where_missing_and_refuses_a_missing_column() 
     )
     assert table.schema.names == [*_flat(), "isin", "wkn"]
     by_code = dict(zip(table.column("crosscode").to_pylist(), table.column("isin").to_pylist()))
-    assert by_code == {"O-1": None, "BUY:O-1": None, "BUY:O-5": ISIN}
+    assert by_code == {"O-1": None, "BUYS:O-1": None, "BUYS:O-5": ISIN}
     assert table.column("wkn").null_count == table.num_rows
     with pytest.raises(Exception, match="nothing"):
         _view("orders", ["nothing['ISIN'] as isin"])

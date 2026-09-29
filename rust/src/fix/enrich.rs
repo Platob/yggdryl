@@ -401,7 +401,7 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 /// stored under - so its content states it too, and a row read back, a book
 /// folding it, reads the side the walk gave it. A side the message states
 /// always stands, and a chain stating none lends none. A write the rebuild
-/// refuses leaves the side the message stated, `UNKNOWN`, beside a warning.
+/// refuses leaves the side the message stated, `UNKN`, beside a warning.
 fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
     if side == Side::Unknown
@@ -417,7 +417,7 @@ fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
         Ok(_) => true,
         Err(error) => {
             warned!(
-                "FIX side left UNKNOWN: writing the side its chain states was refused",
+                "FIX side left UNKN: writing the side its chain states was refused",
                 current.header().msgtype(),
                 "{error}, inheriting {code} on {}",
                 current.get_crosscode()

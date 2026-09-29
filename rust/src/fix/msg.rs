@@ -72,6 +72,11 @@ const PARTY_ROLE: i32 = 452;
 /// `NoRootPartyIDs(1116)` - each with the tags of its occurrence's
 /// identifier and role.
 const PARTY_GROUPS: [(i32, i32, i32); 2] = [(453, 448, PARTY_ROLE), (1116, 1117, 1119)];
+/// `Account(1)`: the account an order is booked to, one of a message's
+/// accounts under [`ACCOUNT_KEY`].
+const ACCOUNT: i32 = 1;
+/// The `accountids` key `Account(1)` goes under.
+const ACCOUNT_KEY: &str = "ACCOUNT";
 /// The groups naming a message's regulatory trade identifiers -
 /// `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)`
 /// - each with the tags of its occurrence's identifier and type.
@@ -79,6 +84,10 @@ const REGULATORY_GROUPS: [(i32, i32, i32); 2] = [(1907, 1903, 1906), (1971, 1972
 
 /// The members of one occurrence a rebuild reads, by position.
 type Occurrence<const N: usize> = [Option<SmolStr>; N];
+
+/// One party group of a level: its value, beside where its occurrence
+/// states the identifier and the role.
+type PartyGroup<'level> = Option<(&'level Scalar, [Option<usize>; 2])>;
 
 /// Every occurrence of the typed group `value`, each read at the member
 /// `positions` of its item as the text it spells: a member the item does
@@ -96,6 +105,139 @@ fn read_occurrences<const N: usize>(
             into.push(positions.map(|at| at.and_then(|at| held.get(at)).and_then(scalar_text)));
         }
     }
+}
+
+/// Where the fields of one level - a root, a component, an occurrence -
+/// hold the child stating `wanted`: as the group it counts when `counts`,
+/// else as its own tag.
+fn child_by_tag(
+    registry: &FixRegistry,
+    fields: &[Field],
+    counts: bool,
+    wanted: i32,
+) -> Option<usize> {
+    fields.iter().position(|child| {
+        let (tag, counter) = super::schema::tag_and_counter(registry, child);
+        (if counts { counter } else { tag }) == Some(wanted)
+    })
+}
+
+/// Reads the accounts one level of a message states into `into`: each
+/// party of its `Parties(453)` and `RootParties(1116)` groups - each the
+/// group's value beside where its occurrence states the identifier and the
+/// role - under its role's key, then its `Account(1)` under
+/// [`ACCOUNT_KEY`]. The first value of a key stands - a second party of a
+/// role is ordinary, two contra firms - and a value no map holds is kept
+/// in `dropped` as an anomaly where one is asked for.
+fn read_accounts(
+    roles: Option<super::FixCodeSet<'_>>,
+    groups: [PartyGroup<'_>; 2],
+    account: Option<&Scalar>,
+    into: &mut IdMap,
+    mut dropped: Option<&mut Vec<super::FixAnomaly>>,
+) {
+    for (value, positions) in groups.into_iter().flatten() {
+        let mut occurrences = SmallVec::<[Occurrence<2>; 8]>::new();
+        read_occurrences(value, positions, &mut occurrences);
+        for [value, role] in occurrences {
+            if let Some(value) = value {
+                let key = account_key(roles, role.as_deref());
+                admit_account(into, &key, &value, PARTIES, dropped.as_deref_mut());
+            }
+        }
+    }
+    if let Some(account) = account.and_then(scalar_text) {
+        admit_account(into, ACCOUNT_KEY, &account, "account", dropped);
+    }
+}
+
+/// Where the occurrence of a party group states its identifier and its
+/// role, found by tag in the group's `field`.
+fn party_positions(
+    registry: &FixRegistry,
+    field: &Field,
+    counter: i32,
+) -> Option<[Option<usize>; 2]> {
+    let (_, id, role) = PARTY_GROUPS.iter().find(|(held, ..)| *held == counter)?;
+    let serie = field.dtype().as_serie_type()?;
+    let fields = serie.item().fields();
+    Some([*id, *role].map(|tag| child_by_tag(registry, fields, false, tag)))
+}
+
+/// Where one level of a message - a trade side, a book entry - states its
+/// accounts, planned once from its fields and read off each occurrence's
+/// cells: each party group and, inside it, the identifier and the role,
+/// and the `Account(1)`.
+pub(super) struct AccountsAt {
+    parties: [Option<(usize, [Option<usize>; 2])>; 2],
+    account: Option<usize>,
+}
+
+impl AccountsAt {
+    /// Where `fields` state their accounts.
+    pub(super) fn new(registry: &FixRegistry, fields: &[Field]) -> Self {
+        Self {
+            parties: PARTY_GROUPS.map(|(counter, ..)| {
+                let at = child_by_tag(registry, fields, true, counter)?;
+                Some((at, party_positions(registry, fields.get(at)?, counter)?))
+            }),
+            account: child_by_tag(registry, fields, false, ACCOUNT),
+        }
+    }
+
+    /// Whether the level states no account at all.
+    fn is_empty(&self) -> bool {
+        self.parties.iter().all(Option::is_none) && self.account.is_none()
+    }
+
+    /// Reads the accounts one occurrence's `cells` state into `into`, as
+    /// [`read_accounts`] does.
+    pub(super) fn read(
+        &self,
+        roles: Option<super::FixCodeSet<'_>>,
+        cells: &[Scalar],
+        into: &mut IdMap,
+        dropped: Option<&mut Vec<super::FixAnomaly>>,
+    ) {
+        if self.is_empty() {
+            return;
+        }
+        let groups = self
+            .parties
+            .map(|group| group.and_then(|(at, positions)| Some((cells.get(at)?, positions))));
+        let account = self.account.and_then(|at| cells.get(at));
+        read_accounts(roles, groups, account, into, dropped);
+    }
+}
+
+/// States `value` under `key` in `accounts` unless the key is held already
+/// or the value states nothing; a value no map holds is kept in `dropped`
+/// as an anomaly of `field` where one is asked for.
+fn admit_account(
+    accounts: &mut IdMap,
+    key: &str,
+    value: &str,
+    field: &str,
+    dropped: Option<&mut Vec<super::FixAnomaly>>,
+) {
+    if crate::code::is_null_like(value) || accounts.contains_key(key) {
+        return;
+    }
+    if let Err(error) = accounts.insert(key, value) {
+        if let Some(dropped) = dropped {
+            dropped.push(super::FixAnomaly::new(
+                field,
+                format!("states {key}:{value}, which no identifier map holds: {error}"),
+            ));
+        }
+    }
+}
+
+/// The code set `PartyRole(452)` draws from, whose names key the accounts.
+pub(super) fn party_roles(registry: &FixRegistry) -> Option<super::FixCodeSet<'_>> {
+    registry
+        .get_field_by_tag(PARTY_ROLE)
+        .and_then(|field| registry.codeset_of(field))
 }
 
 /// The `accountids` key a party of one `PartyRole(452)` code goes under: the
@@ -217,18 +359,41 @@ fn row_stated_bit(tag: i32) -> Option<u16> {
     }
 }
 
-/// The business category one FIX message type files under.
+/// The category the registry files `msgtype` under, as it files it.
 ///
 /// A custom registry may file its own message type under any category the
 /// crate's [`MarketDataKind`] names; a type the registry does not file falls
 /// to the upstream type-to-category table, and a type neither files is
 /// [`MarketDataKind::Unknown`].
-fn derived_msgcat(registry: &FixRegistry, msgtype: &str) -> MarketDataKind {
+fn filed_msgcat(registry: &FixRegistry, msgtype: &str) -> MarketDataKind {
     registry
         .get_msgtype(msgtype)
         .and_then(super::MsgType::msgcat)
         .or_else(|| super::constants::msgcat_of(msgtype).and_then(MarketDataKind::from_name))
         .unwrap_or(MarketDataKind::Unknown)
+}
+
+/// The business category one FIX message type files a message under: a
+/// type filed under `EXEC` - an execution report - that `reports` no
+/// execution filed as its order's report, [`MarketDataKind::Order`], or its
+/// quote's, [`MarketDataKind::Quotation`], where it names a `QuoteID(117)`
+/// (`quoted`): a lifecycle chains within one category, so an
+/// acknowledgement and a cancel follow their order, and a report of a fill
+/// stays the execution it states until a stream door splits it into its
+/// order's report and that execution. Every other type is as filed
+/// ([`filed_msgcat`]).
+fn derived_msgcat(
+    registry: &FixRegistry,
+    msgtype: &str,
+    quoted: bool,
+    reports: bool,
+) -> MarketDataKind {
+    match filed_msgcat(registry, msgtype) {
+        MarketDataKind::Execution if reports => MarketDataKind::Execution,
+        MarketDataKind::Execution if quoted => MarketDataKind::Quotation,
+        MarketDataKind::Execution => MarketDataKind::Order,
+        other => other,
+    }
 }
 
 /// The category one `msgcat` cell states: the member, its code or any
@@ -946,7 +1111,15 @@ impl FixMsg {
             row_stated &= !ROW_STATED_MSGCAT;
         }
         event.set_marketdatakind(
-            msgcat.unwrap_or_else(|| derived_msgcat(&registry, header.msgtype())),
+            // As filed until the settle below derives it against the state.
+            msgcat.unwrap_or_else(|| {
+                derived_msgcat(
+                    &registry,
+                    header.msgtype(),
+                    lifted.quoteid().is_some(),
+                    true,
+                )
+            }),
         );
         if strikepx.is_none() {
             // A value that is no decimal states none, and derivation
@@ -1187,8 +1360,15 @@ impl FixMsg {
                     self.row_stated |= ROW_STATED_MSGCAT;
                 }
                 None => {
-                    self.event
-                        .set_marketdatakind(derived_msgcat(&self.registry, self.header.msgtype()));
+                    let reports = self
+                        .explicit_execution_type()
+                        .unwrap_or_else(|| self.event.get_state().is_execution());
+                    self.event.set_marketdatakind(derived_msgcat(
+                        &self.registry,
+                        self.header.msgtype(),
+                        self.lifted.quoteid().is_some(),
+                        reports,
+                    ));
                     self.row_stated &= !ROW_STATED_MSGCAT;
                 }
             }
@@ -1504,6 +1684,13 @@ impl FixMsg {
             .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
     }
 
+    /// Whether this is an execution report of no fill: a type filed under
+    /// `EXEC` that reports no execution, its order's or its quote's report.
+    pub(super) fn reports_no_fill(&self) -> bool {
+        filed_msgcat(&self.registry, self.header.msgtype()) == MarketDataKind::Execution
+            && !self.reports_execution()
+    }
+
     /// Whether this message reports an execution rather than merely carrying
     /// execution-shaped fields. A TradeCaptureReport may omit `ExecType(150)`;
     /// its initial `TradeReportTransType(487)` is then the execution signal.
@@ -1608,10 +1795,6 @@ impl FixMsg {
             return;
         }
         let row_stated = self.row_stated;
-        if row_stated & ROW_STATED_MSGCAT == 0 {
-            self.event
-                .set_marketdatakind(derived_msgcat(&self.registry, self.header.msgtype()));
-        }
         if row_stated & ROW_STATED_STRIKE == 0 {
             self.strikepx = self.stated_strikepx();
         }
@@ -1655,7 +1838,7 @@ impl FixMsg {
             Side::read(&held)
                 .inspect_err(|_| {
                     self.unread(
-                        "FIX side defaulted to UNKNOWN: the stated side does not read",
+                        "FIX side defaulted to UNKN: the stated side does not read",
                         54,
                         &held,
                     );
@@ -1823,6 +2006,25 @@ impl FixMsg {
             .into_iter()
             .find_map(|tag| word(tag).and_then(|held| State::from_fix_status(tag, &held)))
             .or_else(|| State::from_fix_msgtype(self.header.msgtype()));
+        // The category it files under, a report of no fill its order's or
+        // its quote's report, read against the state it reached.
+        let msgcat = if row_stated & ROW_STATED_MSGCAT == 0 {
+            let reports = self.explicit_execution_type().unwrap_or_else(|| {
+                if row_stated & ROW_STATED_STATE == 0 {
+                    state.is_some_and(State::is_execution)
+                } else {
+                    self.event.get_state().is_execution()
+                }
+            });
+            derived_msgcat(
+                &self.registry,
+                self.header.msgtype(),
+                self.lifted.quoteid().is_some(),
+                reports,
+            )
+        } else {
+            self.msgcat()
+        };
         let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
@@ -1841,7 +2043,7 @@ impl FixMsg {
         fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
         // A sided quote states its side's bid or offer: its price, quantity
         // and FX parts are that side's where it states none of its own.
-        let quoted = (self.msgcat() == MarketDataKind::Quotation)
+        let quoted = (msgcat == MarketDataKind::Quotation)
             .then(|| side.filter(|side| side.is_bid() || side.is_ask()))
             .flatten();
         let (price, quantity, spotrate, forwardpoints) = match quoted {
@@ -1884,6 +2086,9 @@ impl FixMsg {
             event.set_exprunix(exprunix);
         }
         event.set_tradable(tradable);
+        if row_stated & ROW_STATED_MSGCAT == 0 {
+            event.set_marketdatakind(msgcat);
+        }
         event.set_side(side.unwrap_or(Side::Unknown));
         event.set_currency(currency.unwrap_or_else(Ccy::none));
         event.set_unit(unit.unwrap_or_else(Unit::none));
@@ -2141,35 +2346,21 @@ impl FixMsg {
         tags: [i32; N],
     ) -> SmallVec<[Occurrence<N>; 8]> {
         let registry = &*self.registry;
-        // The child of `item` stating `wanted` - as the group it counts
-        // when `counts`, else as its own tag.
-        let find = |item: &Field, counts: bool, wanted: i32| {
-            item.fields().iter().position(|child| {
-                let (tag, counter) = super::schema::tag_and_counter(registry, child);
-                (if counts { counter } else { tag }) == Some(wanted)
-            })
-        };
         let positions = |group: &Field| {
             let serie = group.dtype().as_serie_type()?;
-            Some(tags.map(|member| find(serie.item(), false, member)))
+            Some(tags.map(|member| child_by_tag(registry, serie.item().fields(), false, member)))
         };
-        let (fields, values) = (self.field.fields(), self.value.as_sequence());
-        let root = |at: usize| Some((fields.get(at)?, values?.get(at)?));
         let mut held = SmallVec::new();
-        if let Some((sides, rows)) = self.index_of_group(SIDES).and_then(root) {
-            let inner = sides.dtype().as_serie_type().and_then(|serie| {
-                let at = find(serie.item(), true, counter)?;
-                Some((at, positions(serie.item().fields().get(at)?)?))
-            });
-            if let (Some((inner, members)), Some(rows)) = (inner, rows.as_serie()) {
-                for occurrence in rows.iter() {
-                    if let Some(value) = occurrence.as_sequence().and_then(|side| side.get(inner)) {
+        self.for_each_side(|fields, cells| {
+            if let Some(inner) = child_by_tag(registry, fields, true, counter) {
+                if let (Some(group), Some(value)) = (fields.get(inner), cells.get(inner)) {
+                    if let Some(members) = positions(group) {
                         read_occurrences(value, members, &mut held);
                     }
                 }
             }
-        }
-        if let Some((group, value)) = self.index_of_group(counter).and_then(root) {
+        });
+        if let Some((group, value)) = self.root_group(counter) {
             if let Some(members) = positions(group) {
                 read_occurrences(value, members, &mut held);
             }
@@ -2177,14 +2368,43 @@ impl FixMsg {
         held
     }
 
+    /// The field and the value of the root group `counter` counts, where
+    /// exactly one root child is that group.
+    fn root_group(&self, counter: i32) -> Option<(&Field, &Scalar)> {
+        let at = self.index_of_group(counter)?;
+        Some((
+            self.field.fields().get(at)?,
+            self.value.as_sequence()?.get(at)?,
+        ))
+    }
+
+    /// Visits every occurrence of a trade's or a cross's `NoSides(552)`, in
+    /// order, as its item's fields beside the occurrence's cells: an
+    /// execution a trade's parse split off holds its one side.
+    fn for_each_side(&self, mut visit: impl FnMut(&[Field], &[Scalar])) {
+        let Some((group, value)) = self.root_group(SIDES) else {
+            return;
+        };
+        let (Some(serie), Some(rows)) = (group.dtype().as_serie_type(), value.as_serie()) else {
+            return;
+        };
+        for occurrence in rows.iter() {
+            if let Some(cells) = occurrence.as_sequence() {
+                visit(serie.item().fields(), cells);
+            }
+        }
+    }
+
     /// Rebuilds the alternate identifiers from the fields that state them,
     /// at every settle: each of the registry's
     /// [`idmap_sources`](FixRegistry::idmap_sources) in turn, a field's own
     /// value or the `PartyID(448)` of every `Parties` occurrence under the
     /// entry's role, then every regulatory trade identifier - and the
-    /// accounts, one per `Parties` or `RootParties` role. The first value a
-    /// key is stated with fills it; a later different one states nothing and
-    /// is kept as an anomaly.
+    /// accounts: one per `Parties` or `RootParties` role and the
+    /// `Account(1)`, a trade side's before the message's. The first value
+    /// an alternate identifier's key is stated with fills it and a later
+    /// different one is kept as an anomaly; a second party of a role is
+    /// ordinary and states nothing.
     fn rebuild_idmaps(&mut self) {
         let mut altids = IdMap::new();
         let mut dropped = Vec::new();
@@ -2231,29 +2451,26 @@ impl FixMsg {
                 }
             }
         }
+        // A side's accounts first - the more specific statement, which an
+        // execution a trade split off is about - then the message's.
         let mut accountids = IdMap::new();
-        let roles = registry
-            .get_field_by_tag(PARTY_ROLE)
-            .and_then(|field| registry.codeset_of(field));
-        for (counter, id, role) in PARTY_GROUPS {
-            for [value, role] in self.tagged_occurrences(counter, [id, role]) {
-                // A role named twice - two contra firms - is ordinary: the
-                // first stands, and the metadata keeps every party.
-                let Some(value) = value else {
-                    continue;
-                };
-                let key = account_key(roles, role.as_deref());
-                if crate::code::is_null_like(&value) || accountids.contains_key(&key) {
-                    continue;
-                }
-                if let Err(error) = accountids.insert(&key, &value) {
-                    dropped.push(super::FixAnomaly::new(
-                        PARTIES,
-                        format!("states {key}:{value}, which no identifier map holds: {error}"),
-                    ));
-                }
-            }
-        }
+        let roles = party_roles(&registry);
+        self.for_each_side(|fields, cells| {
+            AccountsAt::new(&registry, fields).read(
+                roles,
+                cells,
+                &mut accountids,
+                Some(&mut dropped),
+            );
+        });
+        let groups = PARTY_GROUPS.map(|(counter, ..)| {
+            let (field, value) = self.root_group(counter)?;
+            Some((value, party_positions(&registry, field, counter)?))
+        });
+        let account = self
+            .unique_index_of_tag(ACCOUNT)
+            .and_then(|at| self.value.as_sequence()?.get(at));
+        read_accounts(roles, groups, account, &mut accountids, Some(&mut dropped));
         self.anomalies.extend(dropped);
         let _ = self.event.set_altids(altids);
         let _ = self.event.set_accountids(accountids);
@@ -2266,32 +2483,70 @@ impl FixMsg {
     /// metadata holds them, then every root child no typed fact reads,
     /// under its name: a scalar as the canonical text it spells, a group,
     /// a component or a map as one JSON text under its folded name -
-    /// `parties` holds `[{"partyid":"TRADER2","partyidsource":"D",
-    /// "partyrole":"11"}]` - a group an array of one object per occurrence,
-    /// a component or a map one object, nested groups and components
-    /// recursing, every leaf inside the canonical text a root scalar
-    /// spells, so a decimal keeps its stored scale and no value is a JSON
-    /// number. Null, skipped and counter members are left out, and a child
-    /// left with nothing writes no key. Left out
-    /// too are a child the [envelope](super::digest) holds, since the
-    /// message's code leaves the same set out; a typed tag stated twice;
-    /// a tag [`identity::MARKET_TAGS`] reads; an identifier map's source
-    /// and a `parties` occurrence under a role one reads, whole; and a
-    /// child a read reaches by its name - the execution clock a bridge
-    /// states, a detailed classification, a bid's or an ask's currency, an
-    /// identifier source's column.
+    /// `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR"}]` - a
+    /// group an array of one object per occurrence, a component or a map one
+    /// object, nested groups and components recursing, every leaf inside the
+    /// canonical text a root scalar spells, so a decimal keeps its stored
+    /// scale and no value is a JSON number. Null, skipped and counter
+    /// members are left out, and a child left with nothing writes no key.
+    /// Left out too are a child the [envelope](super::digest) holds, since
+    /// the message's code leaves the same set out; a typed tag stated twice;
+    /// a tag [`identity::MARKET_TAGS`] reads; an identifier map's source;
+    /// and a child a read reaches by its name - the execution clock a
+    /// bridge states, a detailed classification, a bid's or an ask's
+    /// currency, an identifier source's column.
+    ///
+    /// Where `held`, what the leaf's identifier maps hold leaves the map too:
+    /// each `Parties(453)` or `RootParties(1116)` occurrence whose party its
+    /// accounts hold under its role - or an identifier map reads under its
+    /// role - each regulatory trade identifier its alternate identifiers
+    /// hold under its type, and the `Account(1)` its accounts hold. What a
+    /// map does not hold stays: a second party of one role, a value no map
+    /// takes. An empty snapshot's control holds no map, so nothing is
+    /// held for it. A scalar whose key ends with one of the identifiers the
+    /// message's type declares under `FIX:identifiers` - its letters and
+    /// digits alone, whatever the case: an execution report's
+    /// `marketorderid`, `reforderid` or a bridge's `firm.x.parentorderid`,
+    /// each ending with its `orderid` - is set aside, for the leaf to lift
+    /// into its alternate identifiers; an occurrence's member ends with one
+    /// its component declares.
     ///
     /// Where `expanded` names a group the message becomes one leaf per
     /// occurrence of, that group is no child of the message's own: each
     /// occurrence answers its own members instead, keyed bare - a nested
     /// member as its JSON text - less the tags `expanded` says its leaf
-    /// reads. A child's tag and a group's member plan are each resolved once
-    /// per walk, never per occurrence.
-    pub(super) fn unmapped(&self, expanded: Option<&Expanded>) -> Unmapped {
+    /// reads and what its leaf holds, the occurrence's own parties and
+    /// account leading the message's. A child's tag and a group's member
+    /// plan are each resolved once per walk, never per occurrence.
+    pub(super) fn unmapped(&self, expanded: Option<&Expanded>, held: bool) -> Unmapped {
+        let nothing = IdMap::new();
+        let holds = Holds {
+            registry: &self.registry,
+            roles: party_roles(&self.registry),
+            accounts: if held {
+                self.event.get_accountids()
+            } else {
+                &nothing
+            },
+            altids: if held {
+                self.event.get_altids()
+            } else {
+                &nothing
+            },
+        };
         let mut unmapped = Unmapped {
-            message: self.metadata.clone(),
+            message: Metadata::new(),
+            lifted: Vec::new(),
             occurrences: Vec::new(),
         };
+        let identifiers = self
+            .registry
+            .get_msgtype(self.header.msgtype())
+            .and_then(|definition| declared_identifiers(definition.as_field()));
+        for (key, value) in &self.metadata {
+            let (message, lifted) = (&mut unmapped.message, &mut unmapped.lifted);
+            holds.land(key, value.clone(), identifiers, message, lifted);
+        }
         let fields = self.field.fields();
         let Some(cells) = self.value.as_sequence() else {
             return unmapped;
@@ -2338,7 +2593,6 @@ impl FixMsg {
                 )
                 .flatten()
                 .collect();
-        let parties = self.field.index_of(PARTIES);
         for (at, ((child, cell), (tag, counter))) in
             fields.iter().zip(cells).zip(&resolved).enumerate()
         {
@@ -2358,7 +2612,7 @@ impl FixMsg {
                 continue;
             }
             if let Some(expanded) = expanded.filter(|expanded| *counter == Some(expanded.counter)) {
-                unmapped.occurrences = self.own_occurrences(child, cell, expanded);
+                unmapped.occurrences = self.own_occurrences(child, cell, expanded, &holds);
                 continue;
             }
             if tag.is_some_and(read) || counter.is_some_and(read) || named.contains(&at) {
@@ -2372,7 +2626,10 @@ impl FixMsg {
             }
             if !nested {
                 if let Some(text) = spelled(cell) {
-                    unmapped.message.insert(SmolStr::new(child.name()), text);
+                    if *tag != Some(ACCOUNT) || !holds.holds_account(None, &text) {
+                        let (message, lifted) = (&mut unmapped.message, &mut unmapped.lifted);
+                        holds.land(child.name(), text, identifiers, message, lifted);
+                    }
                 }
                 continue;
             }
@@ -2380,25 +2637,12 @@ impl FixMsg {
                 registry: &self.registry,
                 skipped: &skipped,
             };
-            let planned = Planned::new(child);
-            let rendered = if Some(at) == parties {
-                // An occurrence under a role an identifier map reads landed
-                // its party there, whole.
-                let role = planned.member(&walk, PARTYROLE);
-                let roles: SmallVec<[&str; 4]> = sources
-                    .iter()
-                    .filter_map(|(_, source)| source.role())
-                    .collect();
-                planned.render_where(&walk, cell, |occurrence| {
-                    !role
-                        .and_then(|at| occurrence.as_sequence()?.get(at))
-                        .and_then(scalar_text)
-                        .is_some_and(|held| roles.contains(&held.as_str()))
-                })
-            } else {
-                planned.shape(&walk).render(&walk, cell)
+            let planned = Planned {
+                tag: *tag,
+                counter: *counter,
+                ..Planned::new(child)
             };
-            if let Some(text) = rendered.as_ref().and_then(json_text) {
+            if let Some(text) = holds.render(&walk, &planned, None, cell) {
                 unmapped.message.insert(SmolStr::new(child.name()), text);
             }
         }
@@ -2407,8 +2651,17 @@ impl FixMsg {
 
     /// Each occurrence of the group `expanded` names, in order: its own
     /// members keyed bare - a scalar as its text, a nested member as its
-    /// JSON text - less the tags its leaf reads.
-    fn own_occurrences(&self, group: &Field, cell: &Scalar, expanded: &Expanded) -> Vec<Metadata> {
+    /// JSON text - less the tags its leaf reads and what its leaf's
+    /// identifier maps hold, the occurrence's own parties and account
+    /// leading the message's; a scalar whose key ends with an identifier
+    /// name is set aside to be lifted.
+    fn own_occurrences(
+        &self,
+        group: &Field,
+        cell: &Scalar,
+        expanded: &Expanded,
+        holds: &Holds<'_>,
+    ) -> Vec<(Metadata, Lifted)> {
         let skipped = |tag: i32| super::digest::is_envelope(tag) || expanded.reads.contains(&tag);
         let walk = Walk {
             registry: &self.registry,
@@ -2420,15 +2673,27 @@ impl FixMsg {
         let Some(rows) = cell.as_serie() else {
             return Vec::new();
         };
-        let members = match item.dtype() {
-            DataType::Struct(_) => walk.members(item.fields()),
-            _ => Vec::new(),
+        let fields = match item.dtype() {
+            DataType::Struct(_) => item.fields(),
+            _ => &[],
         };
+        let members = walk.members(fields);
+        let identifiers = declared_identifiers(item);
+        // Where an occurrence states its own parties and account, planned
+        // once for every occurrence.
+        let accounts_at = AccountsAt::new(&self.registry, fields);
         rows.iter()
             .map(|occurrence| {
-                let mut own = Metadata::new();
+                let mut own = (Metadata::new(), Lifted::new());
                 if let Some(cells) = occurrence.as_sequence() {
-                    land_members(&walk, &members, cells, &mut own);
+                    let mut accounts = IdMap::new();
+                    accounts_at.read(holds.roles, cells, &mut accounts, None);
+                    let level = Level {
+                        holds,
+                        own: &accounts,
+                        identifiers,
+                    };
+                    land_members(&walk, &members, cells, &level, &mut own);
                 }
                 own
             })
@@ -2654,7 +2919,11 @@ impl FixMsg {
 
     /// The business category the message's type files under: the
     /// dictionary's `FIX:msgcat` for its `MsgType(35)`, [`MarketDataKind::Unknown`]
-    /// where it files none; a row stating one is the row's word.
+    /// where it files none, and a type filed under `EXEC` - an execution
+    /// report - that reports no fill its order's report,
+    /// [`MarketDataKind::Order`], or its quote's,
+    /// [`MarketDataKind::Quotation`], where it names a `QuoteID(117)`; a
+    /// row stating one is the row's word.
     #[must_use]
     pub fn msgcat(&self) -> MarketDataKind {
         self.event.marketdatakind()
@@ -4017,22 +4286,181 @@ pub(super) struct Expanded {
 pub(super) struct Unmapped {
     /// The message's own, every leaf of it carries.
     pub(super) message: Metadata,
+    /// The message's own scalars whose keys end with an identifier name,
+    /// which every leaf of it lifts.
+    pub(super) lifted: Lifted,
     /// Each occurrence of the expanded group, in order: its own members,
-    /// keyed bare, which only the occurrence's own leaf carries.
-    pub(super) occurrences: Vec<Metadata>,
+    /// keyed bare, and its own scalars to lift, which only the occurrence's
+    /// own leaf carries.
+    pub(super) occurrences: Vec<(Metadata, Lifted)>,
+}
+
+/// The scalars a leaf's metadata sets aside for its alternate
+/// identifiers, each under its key as stated: those whose key ends with the
+/// name of one of the message's identifiers.
+pub(super) type Lifted = Vec<(SmolStr, SmolStr)>;
+
+/// What one leaf carries out of its message: its metadata, and the scalars
+/// it lifts into its alternate identifiers - the occurrence's before the
+/// message's.
+pub(super) struct Carried {
+    pub(super) metadata: Metadata,
+    pub(super) lifted: Lifted,
 }
 
 impl Unmapped {
     /// What the leaf of occurrence `index` carries: the message's own, then
     /// the occurrence's, which leads a message field of the same name. The
     /// occurrence's is moved out, so each is asked for once.
-    pub(super) fn leaf(&mut self, index: usize) -> Metadata {
-        let mut held = self.message.clone();
-        if let Some(own) = self.occurrences.get_mut(index) {
-            held.append(own);
+    pub(super) fn leaf(&mut self, index: usize) -> Carried {
+        let mut metadata = self.message.clone();
+        let mut lifted = Lifted::new();
+        if let Some((own, own_lifted)) = self.occurrences.get_mut(index) {
+            metadata.append(own);
+            lifted.append(own_lifted);
         }
-        held
+        lifted.extend(self.lifted.iter().cloned());
+        Carried { metadata, lifted }
     }
+
+    /// What the one leaf of a message expanding no group carries.
+    pub(super) fn into_carried(self) -> Carried {
+        Carried {
+            metadata: self.message,
+            lifted: self.lifted,
+        }
+    }
+}
+
+/// What the identifier maps of a leaf hold of what its message states,
+/// which the leaf's metadata leaves out: a party its accounts hold under
+/// its role's key - or an identifier map reads under its role - a
+/// regulatory trade identifier its alternate identifiers hold under its
+/// type's key, and the `Account(1)` its accounts hold. What a map does not
+/// hold - a second party of a role, a value no map takes - stays.
+struct Holds<'a> {
+    registry: &'a FixRegistry,
+    roles: Option<super::FixCodeSet<'a>>,
+    accounts: &'a IdMap,
+    altids: &'a IdMap,
+}
+
+impl Holds<'_> {
+    /// The account `key` names: an occurrence's `own` first, then the
+    /// message's.
+    fn account<'held>(&'held self, own: Option<&'held IdMap>, key: &str) -> Option<&'held str> {
+        own.and_then(|own| own.get(key))
+            .or_else(|| self.accounts.get(key))
+    }
+
+    /// Whether the account the leaf holds is `value`.
+    fn holds_account(&self, own: Option<&IdMap>, value: &str) -> bool {
+        self.account(own, ACCOUNT_KEY) == Some(value.trim())
+    }
+
+    /// Whether one occurrence of the party or regulatory group `counter`
+    /// counts - its `cells`, read at the identifier's and the role's or
+    /// type's `positions` - is held by the leaf's maps.
+    fn holds_occurrence(
+        &self,
+        counter: i32,
+        own: Option<&IdMap>,
+        positions: [Option<usize>; 2],
+        cells: &[Scalar],
+    ) -> bool {
+        let [id, other] = positions.map(|at| at.and_then(|at| cells.get(at)).and_then(scalar_text));
+        let Some(id) = id else {
+            return false;
+        };
+        let other = other.as_deref();
+        if PARTY_GROUPS.iter().any(|(held, ..)| *held == counter) {
+            return self.account(own, &account_key(self.roles, other)) == Some(id.as_str())
+                || self.registry.idmap_sources().iter().any(|(_, source)| {
+                    source.role().is_some()
+                        && source.role() == other
+                        && self.altids.get(source.key()) == Some(id.as_str())
+                });
+        }
+        self.altids.get(&regulatory_key(other)) == Some(id.as_str())
+    }
+
+    /// `planned`'s value as the JSON text a leaf's metadata holds, less the
+    /// occurrences the leaf's maps hold where it is a party or a regulatory
+    /// group; nothing where none renders.
+    fn render<'walk>(
+        &self,
+        walk: &Walk<'walk>,
+        planned: &Planned<'walk>,
+        own: Option<&IdMap>,
+        value: &Scalar,
+    ) -> Option<SmolStr> {
+        let positions = planned.held.get_or_init(|| {
+            let counter = planned.counter?;
+            let (_, id, other) = PARTY_GROUPS
+                .iter()
+                .chain(&REGULATORY_GROUPS)
+                .find(|(held, ..)| *held == counter)?;
+            let serie = planned.field.dtype().as_serie_type()?;
+            let fields = serie.item().fields();
+            Some([*id, *other].map(|tag| child_by_tag(self.registry, fields, false, tag)))
+        });
+        let held = planned.counter.zip(*positions);
+        let rendered = match held {
+            Some((counter, positions)) => planned.render_where(walk, value, |occurrence| {
+                !occurrence
+                    .as_sequence()
+                    .is_some_and(|cells| self.holds_occurrence(counter, own, positions, cells))
+            }),
+            None => planned.shape(walk).render(walk, value),
+        };
+        rendered.as_ref().and_then(json_text)
+    }
+
+    /// Lands one scalar under `key`: set aside to be lifted where the key
+    /// ends with one of the `identifiers` its level declares - the
+    /// `FIX:identifiers` of the message's type, or of an occurrence's
+    /// component: an execution report's `marketorderid` ends with its
+    /// `orderid` - else in `metadata`.
+    fn land(
+        &self,
+        key: &str,
+        text: SmolStr,
+        identifiers: Option<&str>,
+        metadata: &mut Metadata,
+        lifted: &mut Lifted,
+    ) {
+        let identifier = identifiers.is_some_and(|names| {
+            names
+                .split(',')
+                .any(|name| !name.is_empty() && ends_with_name(key, name))
+        });
+        if identifier {
+            lifted.push((SmolStr::new(key), text));
+        } else {
+            metadata.insert(SmolStr::new(key), text);
+        }
+    }
+}
+
+/// Whether `key`, its letters and digits alone, ends with `name`, an
+/// identifier's, whatever the case: `market_order_id` and `#orderid` end
+/// with `orderid`. Nothing allocates.
+fn ends_with_name(key: &str, name: &str) -> bool {
+    let mut folded = key.bytes().rev().filter(u8::is_ascii_alphanumeric);
+    name.bytes()
+        .rev()
+        .filter(u8::is_ascii_alphanumeric)
+        .all(|expected| {
+            folded
+                .next()
+                .is_some_and(|held| held.eq_ignore_ascii_case(&expected))
+        })
+}
+
+/// The `FIX:identifiers` a component - a message's definition, an
+/// occurrence's item - declares, as the comma-separated names it stores.
+fn declared_identifiers(component: &Field) -> Option<&str> {
+    component.get_metadata("FIX:identifiers")
 }
 
 /// What a walk of one message's row plans a nested child by: the
@@ -4060,6 +4488,8 @@ impl<'a> Walk<'a> {
                 let counts =
                     !field.dtype().is_nested() && tag.is_some_and(|tag| counters.contains(&tag));
                 Planned {
+                    tag,
+                    counter,
                     skipped: counts
                         || tag.is_some_and(self.skipped)
                         || counter.is_some_and(self.skipped),
@@ -4090,6 +4520,14 @@ impl<'a> Walk<'a> {
 /// later one - how its members are reached.
 struct Planned<'a> {
     field: &'a Field,
+    /// Its own tag, where it states one.
+    tag: Option<i32>,
+    /// The group it is, by its counter's tag, where it is one.
+    counter: Option<i32>,
+    /// Where one of its occurrences states the identifier and the role or
+    /// type, where it is a group a leaf's identifier maps read; planned on
+    /// the first value that reaches it.
+    held: OnceCell<Option<[Option<usize>; 2]>>,
     /// Whether it is left out: a counter beside its group, or a tag a leaf
     /// reads.
     skipped: bool,
@@ -4114,6 +4552,9 @@ impl<'a> Planned<'a> {
     fn new(field: &'a Field) -> Self {
         Self {
             field,
+            tag: None,
+            counter: None,
+            held: OnceCell::new(),
             skipped: false,
             shape: OnceCell::new(),
         }
@@ -4122,19 +4563,6 @@ impl<'a> Planned<'a> {
     /// How this child's value is walked, planned on the first ask.
     fn shape(&self, walk: &Walk<'a>) -> &Shape<'a> {
         self.shape.get_or_init(|| walk.shape(self.field))
-    }
-
-    /// Where one occurrence of this group holds the member `name`.
-    fn member(&self, walk: &Walk<'a>, name: &str) -> Option<usize> {
-        let Shape::Occurrences(item) = self.shape(walk) else {
-            return None;
-        };
-        let Shape::Members(members) = item.as_ref() else {
-            return None;
-        };
-        members
-            .iter()
-            .position(|member| member.field.name() == name)
     }
 
     /// `value` rendered, keeping only the occurrences `keep` answers for.
@@ -4230,26 +4658,47 @@ fn json_text(value: &Scalar) -> Option<SmolStr> {
 }
 
 /// Lands each member of one occurrence `members` planned under its bare
-/// name: a scalar as the canonical text it spells, a nested member as the
-/// JSON text it renders to.
+/// name: a scalar as the canonical text it spells - an `Account(1)` the
+/// leaf holds left out, and one whose key ends with an identifier name set
+/// aside to be lifted - a nested member as the JSON text it renders to,
+/// less what the leaf's maps hold, the occurrence's `own` accounts first.
 fn land_members<'a>(
     walk: &Walk<'a>,
     members: &[Planned<'a>],
     cells: &[Scalar],
-    into: &mut Metadata,
+    level: &Level<'_>,
+    (metadata, lifted): &mut (Metadata, Lifted),
 ) {
+    let &Level {
+        holds,
+        own,
+        identifiers,
+    } = level;
     for (member, cell) in members.iter().zip(cells) {
         if member.skipped || cell.is_null() {
             continue;
         }
-        let text = match member.shape(walk) {
-            Shape::Leaf => spelled(cell),
-            nested => nested.render(walk, cell).as_ref().and_then(json_text),
-        };
-        if let Some(text) = text {
-            into.insert(SmolStr::new(member.field.name()), text);
+        if let Shape::Leaf = member.shape(walk) {
+            let Some(text) = spelled(cell) else {
+                continue;
+            };
+            if member.tag != Some(ACCOUNT) || !holds.holds_account(Some(own), &text) {
+                holds.land(member.field.name(), text, identifiers, metadata, lifted);
+            }
+            continue;
+        }
+        if let Some(text) = holds.render(walk, member, Some(own), cell) {
+            metadata.insert(SmolStr::new(member.field.name()), text);
         }
     }
+}
+
+/// One occurrence's level of a walk: what the leaf holds, the accounts the
+/// occurrence states itself, and the identifiers its component declares.
+struct Level<'a> {
+    holds: &'a Holds<'a>,
+    own: &'a IdMap,
+    identifiers: Option<&'a str>,
 }
 
 /// The canonical text one scalar spells, which is what a leaf's metadata
@@ -4639,10 +5088,11 @@ impl Market for FixMsg {
         self.event.set_side(side);
     }
 
-    /// Whether the message's `msgcat` is an order's, a quote's or an
-    /// execution's: only those store their cross code under their side.
-    fn is_sided(&self) -> bool {
-        self.event.is_sided()
+    /// The message's `msgcat`: an order's, a quote's or an execution's
+    /// stores its cross code under its side, and a lifecycle chains a
+    /// message with messages of its category only.
+    fn marketdatakind(&self) -> MarketDataKind {
+        self.event.marketdatakind()
     }
 
     fn get_securityids(&self) -> &SecurityIds {
@@ -4964,9 +5414,10 @@ impl Operation for FixMsg {
         self.event.get_accountids()
     }
 
-    /// A message's accounts are its parties, rebuilt at every settle: the
-    /// map it already states is kept, and any other is refused, since no one
-    /// field states a role - write the `Parties(453)` occurrence instead.
+    /// A message's accounts are its parties and its `Account(1)`, rebuilt at
+    /// every settle: the map it already states is kept, and any other is
+    /// refused, since no one field states a role - write the `Parties(453)`
+    /// occurrence or the `Account(1)` instead.
     fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
         if &ids == self.event.get_accountids() {
             return Ok(());
@@ -4998,11 +5449,11 @@ impl Operation for FixMsg {
 }
 
 /// The refusal of a direct write to a message's accounts, which are its
-/// parties.
+/// parties and its `Account(1)`.
 fn accounts_are_parties(written: &str) -> Error {
     identity::refused(
         "accountids",
-        "the accounts a message's Parties(453) state",
+        "the accounts a message's Parties(453) and Account(1) state",
         written,
     )
 }

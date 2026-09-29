@@ -112,6 +112,7 @@ fn text_lines(
     let url = source.as_ref().and_then(LineSource::url).cloned();
     let raw = RawRows::new(bytes, url, Arc::clone(&options));
     let captures_creation = options.capture_names().any(|name| name == "creaunix");
+    let captures_previous = options.capture_names().any(|name| name == "prevunix");
     Ok(TextLines {
         raw,
         source,
@@ -119,6 +120,8 @@ fn text_lines(
         options,
         created: None,
         captures_creation,
+        previous: None,
+        captures_previous,
     })
 }
 
@@ -1303,6 +1306,12 @@ pub struct TextLines {
     /// Whether the row header captures a `creaunix` of its own, which a line
     /// matching it states instead.
     captures_creation: bool,
+    /// The instant the line this read cut before the next one was dated by:
+    /// none before the first line, and none after an undated one.
+    previous: Option<i64>,
+    /// Whether the row header captures a `prevunix` of its own, which a line
+    /// matching it states instead.
+    captures_previous: bool,
 }
 
 impl Iterator for TextLines {
@@ -1331,13 +1340,19 @@ impl TextLines {
     /// that one - the first line's in a log written in order, and never an
     /// instant after the line's own. A capture stating one stands, and a
     /// capture that does not read stays refused by name.
+    ///
+    /// Each line states, as its `prevunix`, the instant the line this read
+    /// cut before it was dated by: none for the first line, or after an
+    /// undated one, and the same precedence for a `prevunix` capture. No
+    /// `prevuuid` is stated, so no line's identity moves.
     fn convert(&mut self, row: RawRow) -> Result<TextLine> {
         let mut line =
             TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
         line.state_source(self.source.clone());
         line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
-        if let Some(dated) = line.dated_unix() {
+        let dated = line.dated_unix();
+        if let Some(dated) = dated {
             self.created = Some(self.created.map_or(dated, |created| created.min(dated)));
         }
         if let Some(created) = self.created {
@@ -1345,6 +1360,12 @@ impl TextLines {
                 line.set_creaunix(Some(created));
             }
         }
+        if let Some(previous) = self.previous {
+            if !self.captures_previous || matches!(line.prevunix(), Ok(None)) {
+                line.set_prevunix(Some(previous));
+            }
+        }
+        self.previous = dated;
         Ok(line)
     }
 }

@@ -31,7 +31,7 @@ const CLASSES = [
 test('every native class is reached through the namespace, and only there', () => {
   assert.deepEqual(
     Object.keys(graph).sort(),
-    [...CLASSES, 'ENTRY_ID', 'ENTRY_REF_ID', 'FOLLOWED_ALTIDS'].sort(),
+    [...CLASSES, 'ENTRY_ID', 'ENTRY_REF_ID'].sort(),
   )
   for (const name of CLASSES) {
     assert.equal(typeof graph[name], 'function', name)
@@ -73,13 +73,10 @@ test('the namespace is frozen', () => {
   assert.throws(() => { graph.Order = null }, TypeError)
 })
 
-test('the three constants are exported, the altids a frozen array', () => {
+test('the two constants are exported, and no followed list: a leaf follows every identifier it lacks', () => {
   assert.equal(graph.ENTRY_ID, 'MDENTRYID')
   assert.equal(graph.ENTRY_REF_ID, 'MDENTRYREFID')
-  assert.ok(Array.isArray(graph.FOLLOWED_ALTIDS))
-  assert.ok(Object.isFrozen(graph.FOLLOWED_ALTIDS))
-  assert.ok(graph.FOLLOWED_ALTIDS.length > 0)
-  assert.ok(graph.FOLLOWED_ALTIDS.every((name) => typeof name === 'string'))
+  assert.equal('FOLLOWED_ALTIDS' in graph, false)
 })
 
 test('the enum listings name the column vocabulary and the market kinds', () => {
@@ -135,7 +132,7 @@ test('a fact is resolved folded, checked by its column and refused by name', () 
 test('the market facts cross as plain values', () => {
   const event = new graph.OrderEvent(1, {
     crosscode: 'O-1',
-    side: 'BUY',
+    side: 'BUYS',
     securityids: { ISIN: 'US0378331005' },
     bidpx: '100.5',
     bidqty: 3,
@@ -151,8 +148,8 @@ test('the market facts cross as plain values', () => {
   assert.deepEqual(event.fxrates, {})
   assert.equal(event.marketdatakind, 'ORDR')
   // A sided element's cross code carries its side (A17).
-  assert.equal(event.crosscode, 'BUY:O-1')
-  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKNOWN')
+  assert.equal(event.crosscode, 'BUYS:O-1')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKN')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
 })
 

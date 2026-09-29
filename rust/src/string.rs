@@ -2337,21 +2337,20 @@ impl StringEnum {
     ];
 
     /// Every side of the market a text column may hold, sorted: the stored
-    /// names of [`Side`](crate::Side)'s members, one per side FIX's
-    /// `Side(54)` code set names across every version, and `UNKNOWN` for a
-    /// side stated as none.
+    /// four-letter codes of [`Side`](crate::Side)'s members, one per side
+    /// FIX's `Side(54)` code set names across every version, and `UNKN` for
+    /// a side stated as none.
     ///
     /// A `side` column stores its member's `int32` code; this listing is the
-    /// names a `FIELD:enum` text column declares, never FIX's one-character
-    /// code: `BUY` rather than `1`, `SSHORT` rather than `5`, so a column
+    /// codes a `FIELD:enum` text column declares, never FIX's one-character
+    /// code: `BUYS` rather than `1`, `SSHT` rather than `5`, so a column
     /// reads without a dictionary beside it and a 4.2 message and a newest
     /// one agree about what a side is. A FIX code or the specification's
     /// name reaches the member through
     /// [`Side::from_spelling`](crate::Side::from_spelling).
     pub const SIDES: &'static [&'static str] = &[
-        "ASDEF", "BORROW", "BUY", "BUYMINUS", "CROSS", "CROSSSH", "CROSSSHX", "LEND", "OPPOSITE",
-        "REDEEM", "SELL", "SELLPLUS", "SELLUND", "SSHORT", "SSHORTEX", "SUBSCR", "UNDISC",
-        "UNKNOWN",
+        "ASDF", "BORR", "BUYM", "BUYS", "CROS", "CRSH", "CRSX", "LEND", "OPPO", "REDM", "SELL",
+        "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UNDI", "UNKN",
     ];
 
     /// Which way a captured line moved.

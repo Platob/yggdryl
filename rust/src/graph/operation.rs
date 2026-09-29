@@ -360,8 +360,8 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_side(&mut self, side: crate::Side) {
         self.data.set_side(side);
     }
-    fn is_sided(&self) -> bool {
-        self.data.is_sided()
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.data.marketdatakind()
     }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         self.data.get_securityids()
@@ -595,15 +595,6 @@ impl<K: OperationKind> OperationEvent<K> {
         self.data = data;
         self.finalize();
         Some(self)
-    }
-
-    /// This event as another statement of an operation event of any kind,
-    /// through the facts both hold; its own kind and control stay.
-    pub(crate) fn restating_facts(mut self, live: &OperationEventFacts) -> Self {
-        let data = std::mem::take(&mut self.data).restating(live);
-        self.data = data;
-        self.finalize();
-        self
     }
 
     /// Which operation this is.
@@ -870,8 +861,8 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn set_side(&mut self, side: crate::Side) {
         self.data.set_side(side);
     }
-    fn is_sided(&self) -> bool {
-        self.data.is_sided()
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.data.marketdatakind()
     }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         self.data.get_securityids()

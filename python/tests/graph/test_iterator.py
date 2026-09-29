@@ -15,7 +15,7 @@ D = decimal.Decimal
 
 
 def order(clock: int, state: str = "NEW", **facts: Any) -> graph.OrderEvent:
-    return graph.OrderEvent(clock, crosscode="O-1", side="BUY", price=D("101"), quantity=10, state=state, **facts)
+    return graph.OrderEvent(clock, crosscode="O-1", side="BUYS", price=D("101"), quantity=10, state=state, **facts)
 
 
 def test_an_order_chains_to_the_live_order_it_follows() -> None:
@@ -37,17 +37,19 @@ def test_an_order_chains_to_the_live_order_it_follows() -> None:
 def test_an_execution_and_every_other_leaf_walk_through() -> None:
     first = order(CLOCK)
     # A millisecond later: two instants in one millisecond share an identity.
-    execution = graph.ExecutionEvent(CLOCK + 1_000_000, crosscode="O-1", side="BUY", lastpx=D("101"), lastqty=10)
+    execution = graph.ExecutionEvent(CLOCK + 1_000_000, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=10)
     book = graph.BookEvent(CLOCK + 2_000_000, "ACME")
     walked = list(graph.EventIterator([first, execution, book, graph.Order(crosscode="O-1")]))
     assert [data.kind for data in walked] == ["order_event", "execution_event", "book_event", "order"]
     # A book is yielded unchanged, in place.
     assert walked[2].as_book_event() == book
     assert walked[3].as_order() == graph.Order(crosscode="O-1")
-    # The execution follows the order it fills across kinds, keeping its own.
+    # A chain holds one market data kind: the execution shares the order's
+    # cross code and is a chain of its own, so it never follows the order it
+    # fills.
     fill = walked[1].as_execution_event()
     assert fill is not None and fill.crossuuid == first.crossuuid
-    assert fill.prevuuid == first.curruuid and fill.seqnum == 0
+    assert fill.prevuuid is None and fill.seqnum == 0
 
 
 def test_unsorted_items_are_sorted_first() -> None:
@@ -67,7 +69,7 @@ def test_alive_and_the_snapshot_grid() -> None:
     assert live.snapshot_ns is None
     list(live)
     # A sided order's cross code states its side.
-    assert [data.crosscode for data in live.alive()] == ["BUY:O-1"]
+    assert [data.crosscode for data in live.alive()] == ["BUYS:O-1"]
     assert all(isinstance(data, graph.MarketData) for data in live.alive())
 
 

@@ -129,7 +129,7 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(element.get_ticker(), Some("BRN"));
     assert_eq!(element.get_tif(), operation.get_tif());
     assert_eq!(element.get_altids(), operation.get_altids());
-    assert_eq!(element.get_crosscode(), "BUY:O-100");
+    assert_eq!(element.get_crosscode(), "BUYS:O-100");
     // The element keeps the identity the operation derived - its kind is in
     // it - until it is finalized as an element.
     assert_eq!(element.get_curruuid(), operation.get_curruuid());
@@ -390,7 +390,7 @@ fn merging_an_undated_element_lets_this_statement_lead() {
         "USD",
         "unknown takes the other"
     );
-    assert_eq!(merged.get_side().as_str(), "BUY");
+    assert_eq!(merged.get_side().as_str(), "BUYS");
     assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
     assert_eq!(
         merged.get_metadata()["Feed"],

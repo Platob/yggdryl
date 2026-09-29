@@ -1605,7 +1605,7 @@ mod types {
             None
         );
         assert_eq!(
-            single_to_value(&22_i32.to_le_bytes(), &DataType::MarketDataKind),
+            single_to_value(&26_i32.to_le_bytes(), &DataType::MarketDataKind),
             None
         );
         assert_eq!(

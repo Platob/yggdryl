@@ -368,7 +368,7 @@ export declare class BookEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -457,7 +457,10 @@ export declare class BookEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: BookEvent): BookEvent | null
   /**
@@ -1328,7 +1331,8 @@ export type JsDigest = Digest
 
 /**
  * A walk that chains each operation event to the live element it follows
- * and yields it enriched, pulling its items lazily from the caller's
+ * within its own market data kind (an order and an execution under one
+ * cross code are two chains) and yields it enriched, pulling its items lazily from the caller's
  * iterable: any leaf or `MarketData`, the dated operations and trades
  * walking and every other variant yielded unchanged, in place. Yields
  * `MarketData`.
@@ -1425,7 +1429,7 @@ export declare class Execution {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -1532,7 +1536,10 @@ export declare class Execution {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: Execution): Execution | null
   /**
@@ -1659,7 +1666,7 @@ export declare class ExecutionEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -1766,7 +1773,10 @@ export declare class ExecutionEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: ExecutionEvent): ExecutionEvent | null
   /**
@@ -2493,7 +2503,9 @@ export declare class FixCodec {
    * yielded so it yields that identity once - the core's one minute when
    * unstated, and `null`, zero or a negative window remembering none;
    * `marketMetadata` is whether a market operation carries its message's
-   * unmapped fields, on when unstated.
+   * unmapped fields - its parties, `Account(1)` and regulatory trade
+   * identifiers stay its `accountids` and `altids` - and lifts the
+   * identifiers among them into its `altids`, on when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
@@ -2584,7 +2596,9 @@ export declare class FixCodec {
   get excludeMsgtypes(): Array<string>
   /**
    * Whether a market operation this codec builds carries, in its
-   * metadata, what its message states that no typed column reads.
+   * metadata, what its message states that no typed column reads and no
+   * identifier map of the leaf holds, and lifts the identifiers among
+   * them into its `altids`.
    */
   get marketMetadata(): boolean
   /**
@@ -2857,7 +2871,9 @@ export declare class FixMsg {
    * The graph market data this message expands to: an order, a quote,
    * an execution or a trade report is one leaf; a book `W` or `X` one per
    * `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
-   * empty `W` - each a `MarketData`.
+   * empty `W` - each a `MarketData` carrying, in its `metadata`, what the
+   * message states that no typed column reads and no identifier map of the
+   * leaf holds, the identifiers among it lifted into the leaf's `altids`.
    */
   marketData(): Array<JsMarketData>
   /** The standard header, typed, as one plain object read once. */
@@ -3005,7 +3021,8 @@ export declare class FixMsg {
   /**
    * The accounts and parties the message names - each `Parties`
    * occurrence's `PartyID` under its `PartyRole`'s name, such as
-   * `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - key to value, in key order.
+   * `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
+   * `ACCOUNT` - key to value, in key order.
    */
   get accountids(): Record<string, string>
   /**
@@ -3024,8 +3041,8 @@ export declare class FixMsg {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name: the one stated, else
-   * `UNKNOWN` - never `null`.
+   * The side, as the `side` member's four-letter code: the one stated, else
+   * `UNKN` - never `null`.
    */
   get side(): string
   /** The currency; `XXX` where none is stated. */
@@ -4497,7 +4514,7 @@ export declare class MarketData {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -4581,7 +4598,10 @@ export declare class MarketData {
   get metadata(): Record<string, string>
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: MarketData): MarketData | null
   /**
@@ -4998,7 +5018,7 @@ export declare class Order {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -5105,7 +5125,10 @@ export declare class Order {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: Order): Order | null
   /**
@@ -5232,7 +5255,7 @@ export declare class OrderEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -5339,7 +5362,10 @@ export declare class OrderEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: OrderEvent): OrderEvent | null
   /**
@@ -5856,7 +5882,7 @@ export declare class Quote {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -5963,7 +5989,10 @@ export declare class Quote {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: Quote): Quote | null
   /**
@@ -6090,7 +6119,7 @@ export declare class QuoteEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -6197,7 +6226,10 @@ export declare class QuoteEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: QuoteEvent): QuoteEvent | null
   /**
@@ -7369,7 +7401,7 @@ export declare class SnapshotEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -7458,7 +7490,10 @@ export declare class SnapshotEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: SnapshotEvent): SnapshotEvent | null
   /**
@@ -8622,7 +8657,7 @@ export declare class TradeEvent {
    */
   get unit(): string
   /**
-   * The side, as the `side` member's stored name; `UNKNOWN` where
+   * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
@@ -8729,7 +8764,10 @@ export declare class TradeEvent {
   get marketdatakind(): string
   /**
    * This value stated as the one after `previous`, or `null` where
-   * it cannot follow it or following changes nothing.
+   * it cannot follow it or following changes nothing. It takes
+   * every `metadata` key of its chain it lacks and, where it names
+   * identifiers, every `altids` key but `MDENTRYREFID` and every
+   * `accountids` role, its own values standing.
    */
   withPrevious(previous: TradeEvent): TradeEvent | null
   /**
@@ -9872,8 +9910,10 @@ export interface FixCodecOptions {
   defaultSendingTime?: Scalar | Date | null
   /**
    * Whether a market operation this codec builds carries, in its
-   * metadata, what its message states that no typed column reads - part
-   * of the leaf's identity; the core's `true` when unstated.
+   * metadata, what its message states that no typed column reads and no
+   * identifier map of the leaf holds, lifting the identifiers among them
+   * into its `altids` - part of the leaf's identity; the core's `true`
+   * when unstated.
    */
   marketMetadata?: boolean
 }
@@ -10485,9 +10525,9 @@ export interface SheetOptions {
 }
 
 /**
- * One member of the core's side enum - FIX's `Side(54)`: its stored name,
+ * One member of the core's side enum - FIX's `Side(54)`: its four-letter code,
  * the code a `side` column stores, what it means, its one-character FIX
- * code (`null` for `UNKNOWN`), and whether it is a bid or an ask.
+ * code (`null` for `UNKN`), and whether it is a bid or an ask.
  */
 export interface SideMember {
   name: string

@@ -128,7 +128,7 @@ impl MarketDataKind {
 
     /// Whether an element of this kind is sided: an order, a quote or an
     /// execution, which takes one side of the market, so its cross code is
-    /// stored under that side - `BUY:ORD-1` - and the two sides of one
+    /// stored under that side - `BUYS:ORD-1` - and the two sides of one
     /// identifier are two chains. The one owner of that rule: every other
     /// kind - a trade, a book, a batch, a category the standard files no
     /// operation under - keeps its cross code as given whatever side it

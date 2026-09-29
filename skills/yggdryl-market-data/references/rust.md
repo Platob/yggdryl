@@ -33,7 +33,7 @@ order.finalize();
 assert_eq!(order.get_curruuid(), order.time_uuid()?);
 assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
 // An order, a quote or an execution stores its cross code under its side: one chain per side.
-assert_eq!(order.get_crosscode(), "BUY:O-1001");
+assert_eq!(order.get_crosscode(), "BUYS:O-1001");
 assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert_eq!(order.get_securityids().get("CUSIP"), Some("037833100"));
@@ -150,8 +150,9 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 `EventIterator` chains a stream by cross identity (and by a live element's
 `altids`), yields a twin as a restatement rather than a successor, retires a
 chain at a terminal state and emits one `EXPIRED` at a deadline. An order's,
-a quote's or an execution's chain is keyed by side, and every walked element
-leaves stating `creaunix`.
+a quote's or an execution's chain is keyed by side, a chain lives within one
+`marketdatakind` (an order and an execution under one cross code are two
+chains), and every walked element leaves stating `creaunix`.
 
 ```rust
 use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
@@ -206,7 +207,7 @@ let joined: Vec<OrderEvent> = EventIterator::new(
 )
 .collect();
 assert_eq!(joined[1].get_prevuuid(), Some(joined[0].get_curruuid()));
-assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "BUY:O-3003"));
+assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "BUYS:O-3003"));
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS: i64 = 1_000_000;
@@ -245,11 +246,11 @@ let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {
 let mut root = OrderEvent::at(T);
 root.set_crosscode("T-1".to_owned());
 root.set_ticker(Some("AAPL".into()));
-let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUY", Side::Buy)?])?;
+let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUYS", Side::Buy)?])?;
 let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).collect();
-assert_eq!(codes, ["BUY:E-BUY", "SELL:E-SELL"]);
+assert_eq!(codes, ["BUYS:E-BUYS", "SELL:E-SELL"]);
 assert!(trade.is_execution());
-let again = TradeEvent::from_parts(&root, vec![fill("E-BUY", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
+let again = TradeEvent::from_parts(&root, vec![fill("E-BUYS", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
 assert_eq!(again.get_curruuid(), trade.get_curruuid());
 // Each execution at the trade's instant; none at all is refused.
 let mut late = fill("E-LATE", Side::Buy)?;
@@ -284,7 +285,7 @@ assert_eq!(value.kind().as_str(), "order_event");
 assert_eq!(value.marketdatakind(), MarketDataKind::Order);
 assert!(value.is_event());
 assert_eq!(value.as_order_event(), Some(&order));
-assert_eq!(label(&value), "BUY:O-1001/BUY");
+assert_eq!(label(&value), "BUYS:O-1001/BUYS");
 assert_eq!(label(&value), label(&order));
 assert!(QuoteEvent::try_from(value.clone()).is_err(), "another kind is refused");
 assert_eq!(OrderEvent::try_from(value)?, order);
@@ -407,7 +408,7 @@ assert_eq!(books.len(), 2, "one book per touched instant");
 let last = &books[1];
 assert_eq!((last.get_currunix(), last.alive().count()), (T + SECOND, 2), "depth persists");
 assert_eq!(last.deltas().count(), 1);
-assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["BUY:E-1"]);
+assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["BUYS:E-1"]);
 
 // A 500 ms grid adds the living book at each crossed tick.
 let gridded = BookIterator::new(stream.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
@@ -556,7 +557,7 @@ assert_eq!(rows(trades.collect::<Result<_, _>>()?), 2);
 let plan = MarketData::plan(&MarketView::read("Trades", None)?, &[])?;
 assert_eq!(plan.to_string().parse::<Plan>()?, plan);
 // A lifecycle follows the cross code as stored: side included.
-let lifecycle = MarketView::read("lifecycle", Some("BUY:O-1001"))?;
+let lifecycle = MarketView::read("lifecycle", Some("BUYS:O-1001"))?;
 assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Result<_, _>>()?), 1);
 ```
 
@@ -595,9 +596,9 @@ assert_eq!(last.executions().len(), 1);
 
 - Setters never finalize: a leaf with stale derived facts is refused when
   written to Arrow. Call `finalize()` after the last `set_*`.
-- `get_crosscode` answers the stored code: `BUY:O-1001` for a buy order,
+- `get_crosscode` answers the stored code: `BUYS:O-1001` for a buy order,
   quote or execution, the bare code for `Side::Unknown` and for every element
-  `is_sided` answers `false` for - a trade, a book, a snapshot control -
+  `marketdatakind().is_sided()` answers `false` for - a trade, a book, a snapshot control -
   whatever side it states. `sided_crosscode(code)` says what a code is stored
   as; a lifecycle view and a lookup name the stored spelling.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a

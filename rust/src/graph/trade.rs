@@ -89,7 +89,7 @@ impl TradeEvent {
         let mut crosscodes = HashSet::with_capacity(self.executions.len());
         for (index, execution) in self.executions.iter().enumerate() {
             let path = |name: &str| format_smolstr!("$.executions[{index}].{name}");
-            // Any side stands, `UNKNOWN` included: a trade side nobody
+            // Any side stands, `UNKN` included: a trade side nobody
             // stated is still a fill.
             if execution.get_currunix() != root_unix {
                 return Err(invalid(

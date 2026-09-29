@@ -304,7 +304,7 @@ fn promote_to_quote(operation: MarketData, data: OperationEventFacts) -> MarketD
 /// entry rather than a copy of each.
 #[derive(Clone, Debug)]
 struct Ladder {
-    /// `BUY` for the bid side, `SELL` for the ask side.
+    /// `BUYS` for the bid side, `SELL` for the ask side.
     side: Side,
     levels: BTreeMap<BookPrice, Vec<Arc<MarketData>>>,
     /// Derived from `levels` and kept in step by every change, shared with
@@ -440,7 +440,7 @@ impl SideJournal {
 }
 
 impl Ladder {
-    /// An empty side: `BUY` is the bid, `SELL` the ask.
+    /// An empty side: `BUYS` is the bid, `SELL` the ask.
     fn new(side: Side) -> Self {
         let mut ladder = Self {
             side,
@@ -1406,7 +1406,7 @@ impl BookEvent {
     /// level's whose [`Limit::tradable`] holds, `None` for an empty side,
     /// one holding only unpriced entries, one no level of which can trade,
     /// or a side that is neither a bid nor an ask. A level that cannot trade
-    /// is skipped, never answered. What the book states as `bidpx` (`BUY`)
+    /// is skipped, never answered. What the book states as `bidpx` (`BUYS`)
     /// and `askpx` (`SELL`).
     #[must_use]
     pub fn best_price(&self, side: Side) -> Option<Decimal> {
@@ -1428,7 +1428,7 @@ impl BookEvent {
     /// entry stating nothing trades, and a level every entry of which states
     /// `false` cannot. Nothing for a
     /// side that is neither a bid nor an ask. What a book's row states
-    /// under `bidlimits` (`BUY`) and `asklimits` (`SELL`); the first priced
+    /// under `bidlimits` (`BUYS`) and `asklimits` (`SELL`); the first priced
     /// limit that can trade is [`Self::best_price`] and
     /// [`Self::best_quantity`].
     ///

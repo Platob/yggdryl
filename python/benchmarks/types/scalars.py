@@ -36,7 +36,7 @@ NATIVE_DECIMAL = Scalar.decimal("1234567890123456789012345678901234567890", 6)
 NATIVE_INTEGER = Scalar.from_(84)
 NATIVE_DIVISOR = Scalar.from_(2)
 NATIVE_ENUM = Scalar.from_enum("IOMode", "append")
-NATIVE_SIDE = Scalar.from_(Side.BUY)
+NATIVE_SIDE = Scalar.from_(Side.BUYS)
 NATIVE_KIND = Scalar.from_(MarketDataKind.ORDR)
 PRICE_EXPRESSION = Term.column("price")
 ARROW_SCALAR = pa.scalar(12.5, pa.float32())
@@ -99,7 +99,7 @@ def main() -> None:
             ("enum text", NATIVE_ENUM.as_str, small),
             ("Side member construction", lambda: Side(1), small),
             ("MarketDataKind member construction", lambda: MarketDataKind(10), small),
-            ("Side member into Scalar", lambda: Scalar.from_(Side.BUY), small),
+            ("Side member into Scalar", lambda: Scalar.from_(Side.BUYS), small),
             ("Side Scalar as_py", NATIVE_SIDE.as_py, small),
             ("MarketDataKind Scalar as_py", NATIVE_KIND.as_py, small),
             ("Python hash", lambda: hash(NATIVE_VALUE), small),

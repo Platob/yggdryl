@@ -197,8 +197,8 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     assert_ne!(execution.get_curruuid(), report.get_curruuid());
     assert_ne!(execution.get_crossuuid(), report.get_crossuuid());
     // Its chain is its own, keyed by the fill, and stored under its side.
-    assert_eq!(execution.get_crosscode(), "BUY:ExecID=E-1");
-    assert_eq!(report.get_crosscode(), "BUY:O-9");
+    assert_eq!(execution.get_crosscode(), "BUYS:E-1");
+    assert_eq!(report.get_crosscode(), "BUYS:O-9");
     assert_eq!(text(execution.get_lastqty()).as_deref(), Some("40"));
     assert_eq!(text(execution.get_lastpx()).as_deref(), Some("10.5"));
 
@@ -219,10 +219,11 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
         assert_eq!(back.get_srcuuids(), held.get_srcuuids());
     }
 
-    // A report of no fill splits nothing.
+    // A report of no fill splits nothing, and is its order's report all
+    // the same: a lifecycle chains within one category.
     let acknowledged = split(b"8=FIX.4.4|35=8|17=A-1|37=O-9|39=0|150=0|55=AAPL|54=1|10=0|");
     assert_eq!(acknowledged.len(), 1);
-    assert_eq!(acknowledged[0].msgcat(), MarketDataKind::Execution);
+    assert_eq!(acknowledged[0].msgcat(), MarketDataKind::Order);
 }
 
 /// A12: a trade splits off one sided execution message per `NoSides(552)`
@@ -261,7 +262,7 @@ fn a_trade_splits_off_one_sided_execution_message_per_side() {
     assert_eq!(sell.get_altids().get("CLORDID"), Some("SELL-CLIENT"));
     assert_ne!(buy.get_curruuid(), sell.get_curruuid());
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
-    assert!(buy.get_crosscode().starts_with("BUY:"));
+    assert!(buy.get_crosscode().starts_with("BUYS:"));
     assert!(sell.get_crosscode().starts_with("SELL:"));
 
     let leaves: Vec<ExecutionEvent> = [buy, sell]
@@ -299,7 +300,7 @@ fn an_order_list_splits_into_one_sided_order_per_entry() {
     assert_eq!((buy.get_side(), sell.get_side()), (Side::Buy, Side::Sell));
     assert_eq!(
         (buy.get_crosscode(), sell.get_crosscode()),
-        ("BUY:C1", "SELL:C2")
+        ("BUYS:C1", "SELL:C2")
     );
     assert_eq!(text(buy.get_price()).as_deref(), Some("100.5"));
     assert_eq!(text(sell.get_quantity()).as_deref(), Some("7"));
@@ -337,7 +338,7 @@ fn a_mass_quote_splits_into_sided_quotes_per_entry() {
     assert_eq!(quote.get_crosscode(), "QuoteSetID=S1|QuoteEntryID=E1");
     assert_eq!(text(quote.get_bidpx()).as_deref(), Some("100"));
     assert_eq!(text(quote.get_askqty()).as_deref(), Some("6"));
-    assert_eq!(bid.get_crosscode(), "BUY:QuoteSetID=S1|QuoteEntryID=E1");
+    assert_eq!(bid.get_crosscode(), "BUYS:QuoteSetID=S1|QuoteEntryID=E1");
     assert_eq!(offer.get_crosscode(), "SELL:QuoteSetID=S1|QuoteEntryID=E1");
     assert_eq!(text(bid.get_price()).as_deref(), Some("100"));
     assert_eq!(text(offer.get_price()).as_deref(), Some("101"));
@@ -373,7 +374,7 @@ const NO_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AA
 const UNREADABLE_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=4|31=101.25|60=20260921-10:00:00|552=1|54=QQ|1427=BAD-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|";
 
 /// A trade side stating no side, or one no side reads, is still a fill:
-/// it splits off an execution of side `UNKNOWN`, chained by its own
+/// it splits off an execution of side `UNKN`, chained by its own
 /// identifiers; the unreadable side stays beside the trade as the anomaly
 /// the parse noted, and stating none is no anomaly.
 #[test]
@@ -583,7 +584,7 @@ fn a_two_sided_quote_splits_into_two_sided_quotes_and_two_book_quotes() {
     assert_eq!(text(bid.get_forwardpoints()).as_deref(), Some("0.5"));
     assert_eq!(text(ask.get_price()).as_deref(), Some("101"));
     assert_eq!(text(ask.get_quantity()).as_deref(), Some("8"));
-    assert_eq!(bid.get_crosscode(), "BUY:Q1");
+    assert_eq!(bid.get_crosscode(), "BUYS:Q1");
     assert_eq!(ask.get_crosscode(), "SELL:Q1");
 
     let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
@@ -618,7 +619,7 @@ fn a_quote_stating_one_side_and_no_side_splits_into_that_sided_quote() {
     assert!(names_its_source(bid, quote));
     assert_eq!(text(bid.get_price()).as_deref(), Some("99"));
     assert_eq!(text(bid.get_quantity()).as_deref(), Some("7"));
-    assert_eq!(bid.get_crosscode(), "BUY:Q2");
+    assert_eq!(bid.get_crosscode(), "BUYS:Q2");
 
     let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
     let book = books.last().expect("a book");
@@ -1370,11 +1371,11 @@ fn fallback_identity_is_scoped_typed_and_stable_across_price_changes() {
 }
 
 /// An entry stating no `MDUpdateAction(279)`, one stating no
-/// `MDEntryType(269)`, and an execution report of no fill.
+/// `MDEntryType(269)`, and a message of no market category - news.
 const UNSUPPORTED: [&[u8]; 3] = [
     b"8=FIX.4.4|35=X|268=1|269=0|278=B1|10=0|",
     b"8=FIX.4.4|35=X|268=1|279=0|278=B1|10=0|",
-    b"8=FIX.4.4|35=8|17=E1|37=O1|150=0|10=0|",
+    b"8=FIX.4.4|35=B|148=HEADLINE|10=0|",
 ];
 
 #[test]
@@ -1816,7 +1817,7 @@ fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an
                 assert_eq!(leaf.get_ticker(), None);
                 assert_eq!(
                     leaf.get_crosscode(),
-                    format!("BUY:{}|MDEntryID=E1", scope_of(leaf))
+                    format!("BUYS:{}|MDEntryID=E1", scope_of(leaf))
                 );
                 scope_of(leaf).to_owned()
             })
@@ -2004,7 +2005,7 @@ fn a_refused_intake_is_passed_over_and_a_source_failure_ends_the_capture_after_i
             .iter()
             .map(|leaf| leaf.get_crosscode())
             .collect::<Vec<_>>(),
-        ["SELL:C2", "BUY:C1"],
+        ["SELL:C2", "BUYS:C1"],
         "sorted by instant"
     );
     let reader = codec
@@ -2023,7 +2024,7 @@ fn a_refused_intake_is_passed_over_and_a_source_failure_ends_the_capture_after_i
             .expect("the prefix")
             .unwrap()
             .get_crosscode(),
-        "BUY:C1"
+        "BUYS:C1"
     );
     let error = operations
         .next()
@@ -2204,8 +2205,6 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     assert_eq!(
         metadata(leaf),
         [
-            // An account is no identifier: it stays the message's word.
-            ("account", "ACC1"),
             // A quantity spells its decimal at the scale it is stored at.
             ("displayqty", "3.000000000000000000"),
             ("execinst", "G"),
@@ -2215,6 +2214,8 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
     for typed in [
+        // The account is the leaf's `ACCOUNT`.
+        "account",
         "symbol",
         "side",
         "price",
@@ -2236,35 +2237,185 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     let order = operation_of(leaf);
     assert_eq!(order.get_ticker(), Some("AAPL"));
     assert_eq!(text(order.get_price()).as_deref(), Some("100.5"));
+    assert_eq!(order.get_accountids().get("ACCOUNT"), Some("ACC1"));
 }
 
 #[test]
-fn a_group_occurrence_is_keyed_by_its_path_and_every_party_stays() {
+fn the_parties_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
     let leaves = message(
-        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=2|448=TRADER1|447=D|452=11|448=ACC9|447=D|452=24|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=3|448=TRADER1|447=D|452=11|448=ACC9|447=D|452=24|448=TRADER2|447=D|452=11|10=0|",
     )
     .into_market_data()
     .expect("an order");
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
     };
-    // No party is an identifier: every occurrence stays in the group, one
-    // key under the group's name holding the JSON array of what it kept.
+    // Each party is an account under its role's name; the second trader of
+    // one role is no account the leaf holds, so its occurrence alone stays,
+    // one key under the group's name holding the JSON array of what it kept.
+    let order = operation_of(leaf);
+    assert_eq!(
+        order.get_accountids().to_string(),
+        "{CUSTOMERACCOUNT=ACC9, ORDERORIGINATIONTRADER=TRADER1}"
+    );
     assert_eq!(
         metadata(leaf),
         [(
             "parties",
-            r#"[{"partyid":"TRADER1","partyidsource":"D","partyrole":"11"},{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#
+            r#"[{"partyid":"TRADER2","partyidsource":"D","partyrole":"11"}]"#
         )]
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
-    assert!(
-        operation_of(leaf)
-            .get_altids()
-            .get("CUSTOMERACCOUNT")
-            .is_none()
-    );
+    assert!(order.get_altids().get("CUSTOMERACCOUNT").is_none());
     assert!(!keys(leaf).iter().any(|key| key == "nopartyids"));
+}
+
+#[test]
+fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs_altids() {
+    let long = "R".repeat(70);
+    let line = format!(
+        "8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|11=C1|37=O-1|150=F|39=2|55=AAPL|54=1|\
+         38=5|31=10|32=5|40=2|1080=R-1|526=S-1|MARKETORDERID=M-1|VENUE.X.PARENTORDERID=V-1|\
+         NAMESPACE.OF.MORE.THAN.THIRTY.TWO.BYTES.ORDERID=N-1|1806={long}|10=0|"
+    );
+    // A fill's report, of the execution report's type.
+    let leaves = message(line.as_bytes()).into_market_data().expect("a fill");
+    assert!(!leaves.is_empty());
+    for leaf in &leaves {
+        let report = operation_of(leaf);
+        // An execution report declares `orderid`, `clordid`, `reforderid`
+        // and `secondaryclordid` among its identifiers: a dictionary field,
+        // a losing alias of `OrderID(37)` and a bridge's namespaced key each
+        // go under their own name, beside the sources.
+        for (key, value) in [
+            ("CLORDID", "C1"),
+            ("ORDERID", "O-1"),
+            ("REFORDERID", "R-1"),
+            ("SECONDARYCLORDID", "S-1"),
+            ("MARKETORDERID", "M-1"),
+            ("VENUE.X.PARENTORDERID", "V-1"),
+        ] {
+            assert_eq!(report.get_altids().get(key), Some(value), "{key}");
+        }
+        // What no map takes - a key past thirty-two bytes, a value past
+        // sixty-four - stays where it was stated.
+        let kept = keys(leaf);
+        assert!(
+            kept.iter().any(|key| key.ends_with("two.bytes.orderid")),
+            "{kept:?}"
+        );
+        assert!(kept.contains(&"refclordid".to_owned()), "{kept:?}");
+        for lifted in [
+            "reforderid",
+            "secondaryclordid",
+            "marketorderid",
+            "venue.x.parentorderid",
+        ] {
+            assert!(!kept.iter().any(|key| key == lifted), "{lifted}: {kept:?}");
+        }
+        assert!(kept.contains(&"ordtype".to_owned()), "{kept:?}");
+    }
+}
+
+#[test]
+fn a_key_ending_with_no_identifier_its_message_declares_stays() {
+    // A new order declares no `orderid`: a bridge's order identifier on
+    // one is no identifier of the order's, and stays.
+    let leaves = message(
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|40=2|\
+          1080=R-1|VENUE.X.PARENTORDERID=V-1|10=0|",
+    )
+    .into_market_data()
+    .expect("an order");
+    let [leaf] = leaves.as_slice() else {
+        panic!("one order")
+    };
+    let order = operation_of(leaf);
+    // `RefOrderID(1080)` is one a new order declares.
+    assert_eq!(order.get_altids().get("REFORDERID"), Some("R-1"));
+    assert_eq!(order.get_altids().get("VENUE.X.PARENTORDERID"), None);
+    assert!(
+        keys(leaf).contains(&"venue.x.parentorderid".to_owned()),
+        "{:?}",
+        keys(leaf)
+    );
+}
+
+#[test]
+fn a_book_entrys_parties_are_its_leafs_accounts_leading_the_messages() {
+    let leaves = message(
+        b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|453=1|448=ROOT|452=1|268=2|\
+          279=0|269=0|278=B1|270=100|271=10|453=1|448=MM1|452=1|\
+          279=0|269=1|278=A1|270=101|271=11|10=0|",
+    )
+    .into_market_data()
+    .expect("a book");
+    let [bid, ask] = leaves.as_slice() else {
+        panic!("two entries")
+    };
+    // The bid's own firm leads the message's; the ask states none of its
+    // own and holds the message's.
+    assert_eq!(
+        operation_of(bid).get_accountids().get("EXECUTINGFIRM"),
+        Some("MM1")
+    );
+    assert_eq!(
+        operation_of(ask).get_accountids().get("EXECUTINGFIRM"),
+        Some("ROOT")
+    );
+    assert!(
+        !keys(bid).contains(&"parties".to_owned()),
+        "{:?}",
+        keys(bid)
+    );
+    assert!(
+        !keys(ask).contains(&"parties".to_owned()),
+        "{:?}",
+        keys(ask)
+    );
+}
+
+#[test]
+fn an_empty_snapshot_holds_no_account_and_keeps_its_parties() {
+    let leaves = message(
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|1=ACC1|453=1|448=ROOT|452=1|268=0|10=0|",
+    )
+    .into_market_data()
+    .expect("a snapshot");
+    let [snapshot] = leaves.as_slice() else {
+        panic!("one control")
+    };
+    assert!(matches!(snapshot, MarketData::SnapshotEvent(_)));
+    let kept = keys(snapshot);
+    for key in ["account", "parties"] {
+        assert!(kept.contains(&key.to_owned()), "{key}: {kept:?}");
+    }
+}
+
+#[test]
+fn a_regulatory_trade_identifier_the_leaf_holds_leaves_its_metadata() {
+    let leaves = message(
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|\
+          1907=2|1903=UTI-1|1906=0|1903=UTI-2|1906=0|10=0|",
+    )
+    .into_market_data()
+    .expect("a report and its fill");
+    for leaf in &leaves {
+        let operation = operation_of(leaf);
+        assert_eq!(operation.get_altids().get("REGTRADEID"), Some("UTI-1"));
+        // The second identifier of one type is none the leaf holds, and
+        // alone stays.
+        let kept = metadata(leaf);
+        let held = kept
+            .iter()
+            .find(|(key, _)| key == "regulatorytradeids")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(
+            held,
+            Some(r#"[{"regulatorytradeid":"UTI-2","regulatorytradeidtype":"0"}]"#),
+            "{kept:?}"
+        );
+    }
 }
 
 #[test]
@@ -2370,25 +2521,23 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
             .collect::<Vec<_>>()
     };
     // Each side's execution carries the trade's own - `TradeReportID(571)`,
-    // which no column reads, and not `TradeReportTransType(487)`, which says
-    // the report executed - and its own side's members, bare, never its
-    // sibling's. `OrderCapacity(528)` sits in the side's
+    // an identifier a trade capture report declares, is lifted into its
+    // alternate identifiers, and `TradeReportTransType(487)`, which says the
+    // report executed, is no metadata - and its own side's members, bare,
+    // never its sibling's. `OrderCapacity(528)` sits in the side's
     // `TradeReportOrderDetail` component, so it lands in that component's
     // JSON object, under the component's bare name.
     assert_eq!(
         of(buy.get_metadata()),
-        owned(&[
-            ("tradereportid", "T1"),
-            ("tradereportorderdetail", r#"{"ordercapacity":"A"}"#)
-        ])
+        owned(&[("tradereportorderdetail", r#"{"ordercapacity":"A"}"#)])
     );
     assert_eq!(
         of(sell.get_metadata()),
-        owned(&[
-            ("tradereportid", "T1"),
-            ("tradereportorderdetail", r#"{"ordercapacity":"P"}"#)
-        ])
+        owned(&[("tradereportorderdetail", r#"{"ordercapacity":"P"}"#)])
     );
+    for side in [buy, sell] {
+        assert_eq!(side.get_altids().get("TRADEREPORTID"), Some("T1"));
+    }
 }
 
 #[test]
@@ -2450,8 +2599,15 @@ fn book_arrow_reader_honours_the_switch() {
     };
     let filled = live(fixed_codec(committed_registry()));
     let bare = live(fixed_codec(committed_registry()).with_market_metadata(false));
-    assert_eq!(filled.get_metadata().len(), 5);
+    assert_eq!(filled.get_metadata().len(), 4);
     assert!(bare.get_metadata().is_empty());
+    // The account is no metadata: both hold it.
+    for leaf in [&filled, &bare] {
+        assert_eq!(
+            operation_of(leaf).get_accountids().get("ACCOUNT"),
+            Some("ACC1")
+        );
+    }
     assert_ne!(filled.get_curruuid(), bare.get_curruuid());
 }
 
@@ -2496,11 +2652,23 @@ fn leaf_metadata_round_trips_through_arrow() {
         &[
             UNMAPPED_ORDER,
             b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|1180=MDP|268=1|279=0|269=0|278=B1|270=100|271=10|83=7|10=0|",
-            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|38=5|453=1|448=TRADER1|447=D|452=11|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|38=5|40=2|1080=R-1|453=1|448=TRADER1|447=D|452=11|10=0|",
         ],
     );
     let expected = drained(codec.market_data(capture.clone())).expect("the leaves");
     assert!(expected.iter().all(|leaf| !leaf.get_metadata().is_empty()));
+    // The third order's party is its account and its `RefOrderID(1080)` an
+    // alternate identifier, lifted out of its metadata.
+    let third = operation_of(&expected[2]);
+    assert_eq!(
+        third.get_accountids().get("ORDERORIGINATIONTRADER"),
+        Some("TRADER1")
+    );
+    assert_eq!(third.get_altids().get("REFORDERID"), Some("R-1"));
+    assert_eq!(
+        metadata(&expected[2]),
+        [("ordtype".to_owned(), "2".to_owned())]
+    );
     let actual = drained(
         MarketData::from_arrow_reader(codec.market_arrow_reader(capture).expect("a reader"))
             .expect("the rows read back"),
@@ -2510,6 +2678,9 @@ fn leaf_metadata_round_trips_through_arrow() {
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
         assert_eq!(read.get_metadata(), stated.get_metadata(), "{index}");
         assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+        let (read, stated) = (operation_of(read), operation_of(stated));
+        assert_eq!(read.get_accountids(), stated.get_accountids(), "{index}");
+        assert_eq!(read.get_altids(), stated.get_altids(), "{index}");
     }
     // The orders state no book control, and read back whole; the entry's
     // walk-time control is no row fact.
@@ -2555,9 +2726,9 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
 /// test pins that it grew rather than what it is.
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::FixMsg;
     use yggdryl::fix::FixMarketIterator;
     use yggdryl::internals::warning::count;
+    use yggdryl::{FixMsg, MarketDataKind};
 
     use super::{
         ANONYMOUS_UPDATE, AROUND_AN_OPENING_PRICE, NO_ENTRIES_GROUP, NO_SIDE, UNREADABLE_SIDE,
@@ -2596,7 +2767,7 @@ mod internal {
 
     #[test]
     fn an_entry_or_a_message_that_cannot_stand_is_warned_as_it_is_excluded() {
-        let [no_action, no_type, no_fill] = UNSUPPORTED;
+        let [no_action, no_type, no_reading] = UNSUPPORTED;
         let cases: [(&str, &str, &[u8]); 5] = [
             (
                 "FIX book entry excluded: it states no MDUpdateAction",
@@ -2608,7 +2779,7 @@ mod internal {
                 "MDEntryType",
                 no_type,
             ),
-            (NO_READING, "8", no_fill),
+            (NO_READING, "B", no_reading),
             (
                 "FIX book entry excluded: MDUpdateAction is not an incremental action",
                 "MDUpdateAction",
@@ -2624,6 +2795,18 @@ mod internal {
             let leaves = warns(what, subject, || message(line).into_market_data().unwrap());
             assert!(leaves.is_empty(), "{what}");
         }
+        let acknowledged = message(b"8=FIX.4.4|35=8|17=E1|37=O1|150=0|10=0|");
+        assert_eq!(
+            acknowledged.msgcat(),
+            MarketDataKind::Order,
+            "its order's report"
+        );
+        let leaves = warns(
+            "FIX message excluded from market data: an execution report of no fill states no fill",
+            "8",
+            || acknowledged.into_market_data().unwrap(),
+        );
+        assert!(leaves.is_empty(), "a report of no fill states no fill");
         let leaves = warns(
             "FIX full refresh states no NoMDEntries group; defaulted to an empty snapshot",
             "NoMDEntries",
@@ -2649,14 +2832,14 @@ mod internal {
     #[test]
     fn a_trade_side_stating_no_side_is_warned_as_it_defaults_to_unknown() {
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKNOWN",
+            "FIX trade side states no Side; its execution's side defaulted to UNKN",
             "Side",
             || split(NO_SIDE),
         );
         // The parse passed over the side no side reads, so the split meets
         // a side stating none.
         warns(
-            "FIX trade side states no Side; its execution's side defaulted to UNKNOWN",
+            "FIX trade side states no Side; its execution's side defaulted to UNKN",
             "Side",
             || split(UNREADABLE_SIDE),
         );

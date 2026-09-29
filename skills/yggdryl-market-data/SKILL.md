@@ -13,7 +13,7 @@ unit, side, security ids and the `isincode` they hold, classification, market,
 the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
 `Operation` (four more: time in force, whether it trades, the `altids`, the
-`accountids` its parties name) - and
+`accountids` the parties and account it names) - and
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
@@ -32,17 +32,24 @@ Hold five facts:
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null, and it keys the chain.** `Side` and
   `MarketDataKind` are `int32` enums; an element stating no side holds
-  `UNKNOWN` (code 0). An order, a quote or an execution stores its cross code
-  under its side - `BUY:O-1001` - so the two sides of one identifier are two
-  chains (`MarketDataKind::is_sided`, Rust-only); `UNKNOWN` keeps the bare
+  `UNKN` (code 0). An order, a quote or an execution stores its cross code
+  under its side - `BUYS:O-1001` - so the two sides of one identifier are two
+  chains (`MarketDataKind::is_sided`, Rust-only); `UNKN` keeps the bare
   code, and so does every trade, book and snapshot control whatever side it
   states.
 - **Chains are walked, not rebuilt.** An event names only its predecessor
   (`prevuuid`); `seqnum` is its place among the events of its instant, which
   orders the identities of one millisecond, and a step keeps its own unless
-  its predecessor shares or passes its instant. `EventIterator` joins a stream by cross identity and
-  by the `altids` a live element went by, folds twins, emits expiries, and
-  leaves every element stating `creaunix`. A grid view is the live element
+  its predecessor shares or passes its instant. A follower takes what its
+  chain states and it does not - every `metadata` key, every `altids` key but
+  `MDENTRYREFID` (a book entry's reference to its predecessor, which names one
+  step) and every `accountids` role, its own values standing - and its
+  identity digests what it took. A FIX lifecycle message takes the `metadata`
+  keys and only the ids its dictionary follows, no account. `EventIterator`
+  joins a stream by cross identity and by the `altids` a live element went by,
+  within one `marketdatakind` (an order and an execution under one cross code
+  are two chains, so a fill never restates, follows or ends its order),
+  folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
   as of its tick: dated at it (`currunix` = `snapunix`), so its `curruuid`
   is the tick's own while content, `seqnum`, `prevuuid` and `crossuuid` are
   the live element's; it advances nothing.
@@ -71,7 +78,7 @@ Hold five facts:
 | fold a sorted stream into books | `BookIterator::new(items, snapshot_millis)?` | `graph.BookIterator(items, snapshot_millis=0)` | `new graph.BookIterator(items, snapshotMillis = 0)` |
 | one book by hand | `BookEvent::new(unix, symbol)`, `add_operations(..)?` | `graph.BookEvent(unix, symbol).with_operations([...])` | `new graph.BookEvent(unix, symbol).withOperations([...])` |
 | a book's entries | `alive()`, `deltas()`, `executions()` | `book.alive`, `book.deltas`, `book.executions` | `book.alive()`, `book.deltas()`, `book.executions()` |
-| read a side | `limits(Side::Buy)`, `best_price(Side::Buy)`, `best_quantity(..)`, `depth(Side::Buy, n)` | `book.limits(Side.BUY)`, `book.best_price(Side.BUY)`, `book.depth(Side.BUY, n)` | `book.limits('BUY')`, `book.bestPrice('BUY')`, `book.depth('BUY', n)` |
+| read a side | `limits(Side::Buy)`, `best_price(Side::Buy)`, `best_quantity(..)`, `depth(Side::Buy, n)` | `book.limits(Side.BUYS)`, `book.best_price(Side.BUYS)`, `book.depth(Side.BUYS, n)` | `book.limits('BUYS')`, `book.bestPrice('BUYS')`, `book.depth('BUYS', n)` |
 | read both sides | `get_bidpx()`, `get_askpx()`, `spread()`, `is_crossed()`, `imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.is_crossed`, `book.imbalance(n)` | `book.bidpx`, `book.askpx`, `book.spread`, `book.isCrossed`, `book.imbalance(n)` |
 | clear a scope with a snapshot | `SnapshotEvent::snapshot(&event, scope)` | `graph.SnapshotEvent.snapshot(event, scope=None)` | `graph.SnapshotEvent.snapshot(event, scope)` |
 | a named view of a stream | `MarketData::apply_view(&MarketView::Orders, &lifts, reader)?` | `graph.MarketData.apply_view("orders", source, lifts)` | `graph.MarketData.applyView('orders', reader, lifts)` |
@@ -112,7 +119,8 @@ Hold five facts:
    states `tradable = false`; `best_price`, the book's `bidpx`/`askpx`, the
    spread and the crossed and locked readings read the first level that trades.
 7. Join and chain by identity: `crossuuid` is one chain whatever identifier an
-   event used; a later event joins a live one of its side through an `altids`
+   event used; a later event joins a live one of its side and its
+   `marketdatakind` through an `altids`
    pair (`ORDERID`, `CLORDID`, `MDENTRYID`...), and one stating no side joins
    the single side alive under its code. Name identifiers there, upper-cased,
    rather than inventing a column.
@@ -136,11 +144,11 @@ Hold five facts:
   1970: `graph.OrderEvent(1_700_000_000_000, ...)` is 28 minutes after the
   epoch. Multiply to nanoseconds first.
 - `crosscode` answers the stored code: a buy order, quote or execution set to
-  `O-1` reads `BUY:O-1`, and the lifecycle view and any lookup name it that
+  `O-1` reads `BUYS:O-1`, and the lifecycle view and any lookup name it that
   way. A trade built on that order reads `O-1`: it is not sided.
-- Python enum facts are `IntEnum` members (`order.side is Side.BUY`); JavaScript
-  getters answer the name (`'BUY'`) while an Arrow column stores the code
-  (`Side.BUY === 1`). Compare against the one you hold.
+- Python enum facts are `IntEnum` members (`order.side is Side.BUYS`); JavaScript
+  getters answer the name (`'BUYS'`) while an Arrow column stores the code
+  (`Side.BUYS === 1`). Compare against the one you hold.
 - `BookIterator` over an unsorted list is no error: each operation dated
   before the book it would fold into is left out with a deduplicated warning,
   and the books lack it; sort first, or take the operations from
@@ -154,14 +162,14 @@ Hold five facts:
   nor the ask cannot be placed on a side: `with_operations`/`add_operations`
   refuse it at `$.operation.side` and `BookIterator` leaves it out with a
   warning. An execution is never placed on a side and may state any,
-  `UNKNOWN` included.
+  `UNKN` included.
 - `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
   unsorted stream is not refused, it silently yields broken chains (an
   element before the live one is yielded as it came and joins nothing). Pass `sorted=False` / `false` for a stream you have not
   sorted (it collects to sort); only `BookIterator` notices a regression, and
   leaves it out with a warning.
 - A trade is built only through `TradeEvent.from_parts`: at least one
-  execution, each on any side - `UNKNOWN` included - at the root's instant,
+  execution, each on any side - `UNKN` included - at the root's instant,
   one ticker, distinct cross codes.
 - A lift key is matched exactly and stored upper case:
   `securityids['ISIN']`, never `securityids['isin']` (that reads null).
@@ -172,8 +180,12 @@ Hold five facts:
   a quote or a book states.
 - `fxrates` maps a target currency to the rate an amount in the element's
   `currency` is divided by; nothing fills it, and a merge unions the targets.
+- A leaf read from a FIX message keeps its parties and `Account(1)` in
+  `accountids`, not `metadata`, and its `altids` can hold more than the
+  message's: an identifier-like `metadata` key (`marketorderid`) is lifted into
+  it (`MARKETORDERID`); see the `yggdryl-fix` skill.
 - The lifecycle view needs its chain: `apply_view("lifecycle", source,
-  crosscode="BUY:O-1")`; every other view refuses a `crosscode`.
+  crosscode="BUYS:O-1")`; every other view refuses a `crosscode`.
 - Rust's `Limit` value type, the column enums' verbs (`EventColumn::fact`,
   `record`) and the `insert_`/`remove_`/`derive_` identifier verbs are
   Rust-only; the bindings answer a limit as a struct `Scalar` (Python) or a

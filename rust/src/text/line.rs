@@ -35,7 +35,9 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
 /// | `get_seqnum` | the row number under `start_rownum`, else the physical index |
 /// | `get_state` | a `state` capture, else `UNKNOWN` |
-/// | `get_creaunix`, `get_recdunix`, `get_exprunix`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_creaunix` | a `creaunix` capture, else the earliest instant the read that cut it dated a line by |
+/// | `get_prevunix` | a `prevunix` capture, else the instant the read that cut it dated the line before it by |
+/// | `get_recdunix`, `get_exprunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
 /// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
@@ -1055,7 +1057,8 @@ impl TextLine {
     }
 
     /// When the record this one follows happened: a `prevunix` capture,
-    /// else none.
+    /// else what the reader that cut it stated - the instant it dated the
+    /// line before this one by - else none.
     ///
     /// # Errors
     ///

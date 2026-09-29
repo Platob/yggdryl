@@ -147,11 +147,21 @@ fn a_store_writes_the_document_as_the_json_it_is_and_reads_it_back() {
     assert_eq!(sources(read), stated);
 }
 
+/// The order's own identities follow a FIX message's chain, never an
+/// execution's or a quote's: a message follows its dictionary's `FIX:idmap`
+/// flags, where a graph leaf follows every identifier it lacks.
+const FOLLOWED: [&str; 7] = [
+    "EXCHANGECLIENTORDERID",
+    "OMSDEALERPARENTORDERID",
+    "ORDERID",
+    "PARENTCLORDID",
+    "PARENTORDERID",
+    "SECONDARYORDERID",
+    "TRANSVERSALKEY",
+];
+
 #[test]
-fn the_committed_dictionary_follows_exactly_what_a_plain_holder_does() {
-    // `FOLLOWED_ALTIDS` is the answer a holder with no dictionary gives; the
-    // shipped dictionary's follow flags are the same keys, so a FIX message
-    // and a plain operation chain alike.
+fn the_committed_dictionary_follows_the_orders_own_identities() {
     let registry = super::committed_registry();
     let mut followed: Vec<&str> = registry
         .idmap_sources()
@@ -160,9 +170,7 @@ fn the_committed_dictionary_follows_exactly_what_a_plain_holder_does() {
         .map(|(_, source)| source.key())
         .collect();
     followed.sort_unstable();
-    let mut constant = yggdryl::graph::FOLLOWED_ALTIDS.to_vec();
-    constant.sort_unstable();
-    assert_eq!(followed, constant);
+    assert_eq!(followed, FOLLOWED);
     // Every source the message rebuilds from, one key once per map.
     let sources = registry.idmap_sources();
     for (index, (_, source)) in sources.iter().enumerate() {
@@ -230,5 +238,5 @@ fn parties_are_accounts_and_regulatory_trade_ids_are_alternate_identifiers() {
     };
     assert_eq!(order.get_accountids().get("CUSTOMERACCOUNT"), Some("ACC-9"));
     assert_eq!(order.get_altids().get("TVTIC"), Some("TVT-1"));
-    assert!(order.get_crosscode().starts_with("BUY:"));
+    assert!(order.get_crosscode().starts_with("BUYS:"));
 }

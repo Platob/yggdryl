@@ -825,7 +825,8 @@ declare module './index' {
     /**
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each placed among the messages of its instant by content,
-     * then stated as following the live message - its `prevuuid`,
+     * then stated as following the live message of its own market data kind
+     * (an order and an execution under one cross code are two chains) - its `prevuuid`,
      * `prevunix`, the higher of its own `seqnum` and one past the
      * predecessor's where that happened at the same instant or later, and
      * the chain's `creaunix` - and settled again. The capture is collected and sorted whole, unless
@@ -3132,32 +3133,32 @@ export type MarketDataKindName = keyof typeof MarketDataKind
 
 /**
  * FIX's `Side(54)`: which side of the market a trade took, each member's
- * stored name under the `int32` code a `side` column stores - `UNKNOWN` at
+ * four-letter code under the `int32` code a `side` column stores - `UNKN` at
  * zero, then the seventeen sides in FIX's own order, so a code is the
  * position of its one-character wire code.
  */
 export declare const Side: Readonly<{
-  UNKNOWN: 0
-  BUY: 1
+  UNKN: 0
+  BUYS: 1
   SELL: 2
-  BUYMINUS: 3
-  SELLPLUS: 4
-  SSHORT: 5
-  SSHORTEX: 6
-  UNDISC: 7
-  CROSS: 8
-  CROSSSH: 9
-  CROSSSHX: 10
-  ASDEF: 11
-  OPPOSITE: 12
-  SUBSCR: 13
-  REDEEM: 14
+  BUYM: 3
+  SELP: 4
+  SSHT: 5
+  SSEX: 6
+  UNDI: 7
+  CROS: 8
+  CRSH: 9
+  CRSX: 10
+  ASDF: 11
+  OPPO: 12
+  SUBS: 13
+  REDM: 14
   LEND: 15
-  BORROW: 16
-  SELLUND: 17
+  BORR: 16
+  SELU: 17
 }>
 
-/** The stored name of one side. */
+/** The four-letter code of one side. */
 export type SideName = keyof typeof Side
 
 export declare const enums: {
@@ -4569,14 +4570,12 @@ export interface Graph {
   readonly MarketDataRowIterator: typeof MarketDataRowIterator
   /** Books from a sorted stream of market items, pulling them lazily. */
   readonly BookIterator: BookIteratorConstructor
-  /** A walk that chains each operation event to the live element it follows. */
+  /** A walk that chains each operation event to the live element it follows within its own market data kind. */
   readonly EventIterator: EventIteratorConstructor
   /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */
   readonly ENTRY_ID: string
   /** The alternate-identifier key an entry's `MDEntryRefID(280)` is held under. */
   readonly ENTRY_REF_ID: string
-  /** The alternate-identifier keys an order's own identifiers may follow across a lifecycle. */
-  readonly FOLLOWED_ALTIDS: readonly string[]
 }
 
 export declare const graph: Graph

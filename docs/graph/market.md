@@ -10,12 +10,13 @@
 | Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts) |
 | Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated |
 | Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side; an order's, a quote's or an execution's cross code carries it ([below](#sides-and-cross-codes)) |
-| Sided | `is_sided()`: required - whether the element's cross code is stored under its side, true exactly for an order, a quote or an execution: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches) of the kind it is filed under, the one owner of the rule - a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) its `msgcat` |
+| Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) its `msgcat`) |
+| Sided | `is_sided()`: provided as `marketdatakind().is_sided()` - whether the element's cross code is stored under its side, true exactly for an order, a quote or an execution: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches), the one owner of the rule |
 | Execution clock | `get_execunix`/`set_execunix` (`Option<i64>`): when the element last executed - the latest execution clock its lifecycle reached, nanoseconds since the Unix epoch, UTC, `None` where unknown; a market fact, not an event's: an undated order, quote or execution states one, a [text line](../media/index.md#plain-text) none, and no digest feeds it. The `execunix` column is a nullable nanosecond UTC clock ([Market data](market-data.md#columns)) |
 | Bid and ask | `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy` ([below](#bid-and-ask)) |
 | FX rates | `get_fxrates`/`set_fxrates`/`insert_fxrate` ([below](#fx-rates)) |
 | Instrument | the [security identifiers](#security-identifiers); `get_isincode`: their `ISIN`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`); `get_ticker`/`set_ticker`: an informal name, apart from the codes |
-| Metadata | `get_metadata`/`set_metadata`: a `BTreeMap<SmolStr, SmolStr>` of source facts no typed column reads, keyed by name/[path](../types/paths.md); never identifier/typed; `None`/empty alike; a FIX leaf's = [`FixMsg::market_data`](../fix/message.md#market-data)'s |
+| Metadata | `get_metadata`/`set_metadata`: a `BTreeMap<SmolStr, SmolStr>` of source facts no typed column reads, keyed by name/[path](../types/paths.md); never identifier/typed; `None`/empty alike; a FIX leaf's = [`FixMsg::market_data`](../fix/message.md#market-data)'s; a follower takes the chain's keys it lacks ([below](#following-and-merging)) |
 | `fill_market` | provided, idempotent, called by `finalize` pre-digest: never invents price/quantity/`cumqty`/`leavesqty`/bid/ask/rates; [derives](#security-identifiers) the national id a canonical ISIN embeds |
 | `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security ids (key/code), classification, market, last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity |
 | Provided on events | where `Self: Event`: `digest_market_event`, `following_market`, `merging_market_event` ([below](#following-and-merging)) |
@@ -24,9 +25,9 @@
 
 | Key | Rule |
 | --- | --- |
-| `sided_crosscode(code)` | provided, the one speller of the prefix: for a sided element, `"{SIDE}:{code}"` under the side's stored name - `BUY:O-1001` - and `code` itself for `Side::Unknown` or an empty code, idempotent, another side's prefix replaced (`SELL:O-1001` read under `BUY` is `BUY:O-1001`); for any other element, `code` as given |
+| `sided_crosscode(code)` | provided, the one speller of the prefix: for a sided element, `"{SIDE}:{code}"` under the side's stored name - `BUYS:O-1001` - and `code` itself for `Side::Unknown` or an empty code, idempotent, another side's prefix replaced (`SELL:O-1001` read under `BUYS` is `BUYS:O-1001`); for any other element, `code` as given |
 | Stored | every holder the crate ships stores its cross code through it, so `set_crosscode` and `set_side` in either order converge; [`crosshashcode` and `crossuuid`](element.md#contract) follow the stored text, and the two sides of one identifier are two chains ([walk](event.md#lifecycle-walk)) |
-| Unprefixed | an order, a quote or an execution stating no side keeps its code as given, and so does every other element whatever side it states - a trade, a book, a snapshot control, a FIX message filed under any other category: a `BUY:` in such a code is its own name, never a prefix |
+| Unprefixed | an order, a quote or an execution stating no side keeps its code as given, and so does every other element whatever side it states - a trade, a book, a snapshot control, a FIX message filed under any other category: a `BUYS:` in such a code is its own name, never a prefix |
 | Copied | a trade or a snapshot control built over a sided element - `TradeEvent::from_parts(&order, ..)`, `SnapshotEvent::snapshot(&order, ..)` - takes its base code, the prefix left off, with the cross hash and element of that code; a sided leaf built over such facts stores it under its side again |
 | `book_crosscode()` | provided: the book the element stands in - its ticker where it states one (borrowed), else `{miccode}:{cficode}` with `XXXX` for no market and `XXXXXX` for no classification (`XPAR:ESVUFR`, `XXXX:XXXXXX`); what [`BookIterator`](book.md#book-fold) keys books by |
 
@@ -71,10 +72,12 @@
 
 | Reading | Rule |
 | --- | --- |
-| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, unit, side (this element's where it states one, the chain's where it states `UNKNOWN`), ticker, each lacked security identifier, classification, market - all from the predecessor where this event says nothing; always leads, even with the timed link unchanged |
+| `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, unit, side (this element's where it states one, the chain's where it states `UNKN`), ticker, each lacked security identifier, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
+| A FIX message | follows the metadata too, as a [`FixMsg`](../fix/message.md) in the [lifecycle](../fix/lifecycle.md): its metadata is the bridge's namespaced keys its row's `metadata` column holds, so a followed message's row carries the chain's keys |
+| Identity | a follower's `currhashcode` and `curruuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
 | Two instruments | two stated ISINs that differ name two instruments: nothing is taken from the predecessor, and a merge keeps the leading statement's identifiers whole; a `ZZ` ISIN names no country's instrument, so it is never the other one - it yields to the real ISIN, which replaces it and everything derived under it |
 | Execution clock | a market event whose state reports an execution ([`is_execution`](event.md#contract)) and states no `execunix` is dated from its own instant first - before it names a predecessor, so an inherited state is never read as its own execution; following then keeps the later of its own clock and its predecessor's, so a delayed report cannot regress it, and a non-execution carries the chain's latest |
-| Restating | a market event's [`restating`](event.md#restating) also takes the market's place: `prevpx`/`prevqty`, what the chain is about where this reading said nothing, and the execution clock - the earliest of the two statements' |
+| Restating | a market event's [`restating`](event.md#restating) also takes the market's place: `prevpx`/`prevqty`, what the chain is about where this reading said nothing - the metadata keys included, as in following - and the execution clock - the earliest of the two statements' |
 | `merging_market` | where `Self: Element`, no event clocks: `self` leads, and the execution clock is the earliest either states |
 | `merging_market_event` | [`Event::merging`](event.md#merging)'s reference leads: price/quantity/unit stand; optional numbers, bid/ask facts, ticker = reference's if stated else other's; the execution clock the earliest either statement knows (an unstamped execution observation dates itself first); metadata and FX rates unioned, reference-led; currency/side/classification/market = the better - an unknown yields to a known one (an `XXXX` [MIC](../types/codes/mic.md), the [CFI](../types/codes/cfi.md) merge); security ids: reference's replace by key, other's fill gaps |
 | Result | each answers nothing where the fold changes nothing, and finalizes where it did |
@@ -128,7 +131,7 @@
     order = graph.OrderEvent(
         1_700_000_000_000_000_000,
         crosscode="O-1001",
-        side="BUY",
+        side="BUYS",
         price=Decimal("189.50"),
         quantity=100,
         currency="USD",
@@ -141,7 +144,7 @@
 
     assert order.price is not None and order.price.as_py() == Decimal("189.50")
     assert order.currency.as_py() == "USD"
-    assert order.side is Side.BUY
+    assert order.side is Side.BUYS
     assert order.unit == "", "unstated"
     # A price is what the element states, never a last executed price or a bid.
     assert order.lastpx is None and order.bidpx is None
@@ -160,7 +163,7 @@
 
     const order = new graph.OrderEvent(1_700_000_000_000_000_000n, {
       crosscode: 'O-1001',
-      side: 'BUY',
+      side: 'BUYS',
       price: '189.50',
       quantity: 100,
       currency: 'USD',
@@ -173,7 +176,7 @@
 
     assert.equal(order.price, '189.5')
     assert.equal(order.currency, 'USD')
-    assert.equal(order.side, 'BUY')
+    assert.equal(order.side, 'BUYS')
     assert.equal(order.unit, '', 'unstated')
     // A price is what the element states, never a last executed price or a bid.
     assert.equal(order.lastpx, null)
@@ -203,10 +206,10 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
         order
     };
     let (buy, sell) = (order(Side::Buy), order(Side::Sell));
-    assert_eq!((buy.get_crosscode(), sell.get_crosscode()), ("BUY:O-1001", "SELL:O-1001"));
+    assert_eq!((buy.get_crosscode(), sell.get_crosscode()), ("BUYS:O-1001", "SELL:O-1001"));
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
     // The prefix is spelled in one place, and a side taken later re-prefixes.
-    assert_eq!(buy.sided_crosscode("SELL:O-1001"), "BUY:O-1001");
+    assert_eq!(buy.sided_crosscode("SELL:O-1001"), "BUYS:O-1001");
     let mut flipped = buy.clone();
     flipped.set_side(Side::Sell);
     assert_eq!(flipped.get_crosscode(), "SELL:O-1001");
@@ -240,19 +243,19 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     ```python
     from yggdryl import Side, graph
 
-    buy = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001", side="BUY")
+    buy = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001", side="BUYS")
     sell = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001", side=Side.SELL)
-    assert (buy.crosscode, sell.crosscode) == ("BUY:O-1001", "SELL:O-1001")
+    assert (buy.crosscode, sell.crosscode) == ("BUYS:O-1001", "SELL:O-1001")
     assert buy.crossuuid != sell.crossuuid
-    # An order stating no side keeps its code as given, and reads UNKNOWN.
+    # An order stating no side keeps its code as given, and reads UNKN.
     unsided = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
-    assert unsided.crosscode == "O-1001" and unsided.side is Side.UNKNOWN
+    assert unsided.crosscode == "O-1001" and unsided.side is Side.UNKN
 
     # A trade is not sided: built on the buy order, it keeps the order's base
     # code whatever side it states, and each execution its own sided one.
     fill = graph.ExecutionEvent(1_700_000_000_000_000_000, crosscode="E-1", side="SELL")
     trade = graph.TradeEvent.from_parts(buy, [fill])
-    assert (trade.crosscode, trade.side) == ("O-1001", Side.BUY)
+    assert (trade.crosscode, trade.side) == ("O-1001", Side.BUYS)
     assert trade.executions[0].crosscode == "SELL:E-1"
     ```
 
@@ -262,22 +265,22 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     const assert = require('node:assert/strict')
     const { Side, graph } = require('yggdryl')
 
-    const buy = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUY' })
+    const buy = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' })
     const sell = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'SELL' })
     // A side crosses as its member's name; `Side` maps each name to its code.
     assert.equal(Side[sell.side], 2)
-    assert.deepEqual([buy.crosscode, sell.crosscode], ['BUY:O-1001', 'SELL:O-1001'])
+    assert.deepEqual([buy.crosscode, sell.crosscode], ['BUYS:O-1001', 'SELL:O-1001'])
     assert.notEqual(buy.crossuuid, sell.crossuuid)
-    // An order stating no side keeps its code as given, and reads UNKNOWN.
+    // An order stating no side keeps its code as given, and reads UNKN.
     const unsided = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001' })
     assert.equal(unsided.crosscode, 'O-1001')
-    assert.equal(unsided.side, 'UNKNOWN')
+    assert.equal(unsided.side, 'UNKN')
 
     // A trade is not sided: built on the buy order, it keeps the order's base
     // code whatever side it states, and each execution its own sided one.
     const fill = new graph.ExecutionEvent(1_700_000_000_000_000_000n, { crosscode: 'E-1', side: 'SELL' })
     const trade = graph.TradeEvent.fromParts(buy, [fill])
-    assert.deepEqual([trade.crosscode, trade.side], ['O-1001', 'BUY'])
+    assert.deepEqual([trade.crosscode, trade.side], ['O-1001', 'BUYS'])
     assert.equal(trade.executions[0].crosscode, 'SELL:E-1')
     ```
 
@@ -341,7 +344,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     # The pair lands canonical under the crate's own key.
     assert quote.securityids == {"FOREX": "EUR/USD"}
     # Two prices and no side: a bid and an ask are facts, not a side.
-    assert quote.side is Side.UNKNOWN
+    assert quote.side is Side.UNKN
     assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal("1.0842")
     assert quote.askccy is not None and quote.askccy.as_py() == "USD"
     # An amount in the quote's currency divided by a rate is in its target.
@@ -371,7 +374,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     // The pair lands canonical under the crate's own key.
     assert.deepEqual(quote.securityids, { FOREX: 'EUR/USD' })
     // Two prices and no side: a bid and an ask are facts, not a side.
-    assert.equal(quote.side, 'UNKNOWN')
+    assert.equal(quote.side, 'UNKN')
     assert.equal(quote.bidpx, '1.0842')
     assert.equal(quote.askccy, 'USD')
     // Rates cross as decimal text under their target currency.
@@ -572,6 +575,67 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
     const other = order(T + 1n, { ISIN: 'US5949181045' }).withPrevious(placed)
     assert.deepEqual(other.securityids, { CUSIP: '594918104', ISIN: 'US5949181045' })
     assert.equal(other.isincode, 'US5949181045')
+    ```
+
+### Metadata along a chain
+
+An amendment states its own `desk` and leaves the `venue` the placement stated to the chain.
+
+=== "Rust"
+
+    ```rust
+    use smol_str::SmolStr;
+    use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
+
+    const T: i64 = 1_700_000_000_000_000_000;
+    let order = |unix: i64, stated: &[(&str, &str)]| {
+        let mut order = OrderEvent::at(unix);
+        order.set_crosscode("O-1001".to_owned());
+        let metadata: Metadata = stated
+            .iter()
+            .map(|&(key, value)| (SmolStr::new(key), SmolStr::new(value)))
+            .collect();
+        order.set_metadata(Some(metadata));
+        order.finalize();
+        order
+    };
+    let placed = order(T, &[("desk", "EQ"), ("venue", "XPAR")]);
+    let amended = order(T + 1, &[("desk", "FX")]).with_previous(&placed).expect("a later event follows");
+
+    // Its own value stands, and the key it did not state is the chain's.
+    let metadata: Vec<(&str, &str)> = amended
+        .get_metadata()
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(metadata, [("desk", "FX"), ("venue", "XPAR")]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import graph
+
+    T = 1_700_000_000_000_000_000
+    placed = graph.OrderEvent(T, crosscode="O-1001", metadata={"desk": "EQ", "venue": "XPAR"})
+    amended = graph.OrderEvent(T + 1, crosscode="O-1001", metadata={"desk": "FX"}).with_previous(placed)
+
+    # Its own value stands, and the key it did not state is the chain's.
+    assert amended is not None and amended.metadata == {"desk": "FX", "venue": "XPAR"}
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { graph } = require('yggdryl')
+
+    const T = 1_700_000_000_000_000_000n
+    const placed = new graph.OrderEvent(T, { crosscode: 'O-1001', metadata: { desk: 'EQ', venue: 'XPAR' } })
+    const amended = new graph.OrderEvent(T + 1n, { crosscode: 'O-1001', metadata: { desk: 'FX' } }).withPrevious(placed)
+
+    // Its own value stands, and the key it did not state is the chain's.
+    assert.deepEqual(amended.metadata, { desk: 'FX', venue: 'XPAR' })
     ```
 
 ## Edges

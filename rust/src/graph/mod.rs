@@ -159,8 +159,8 @@ macro_rules! delegate_market {
             fn set_side(&mut self, side: $crate::Side) {
                 $crate::graph::Market::set_side(&mut self.$($field).+, side);
             }
-            fn is_sided(&self) -> bool {
-                $crate::graph::Market::is_sided(&self.$($field).+)
+            fn marketdatakind(&self) -> $crate::MarketDataKind {
+                $crate::graph::Market::marketdatakind(&self.$($field).+)
             }
             fn get_securityids(&self) -> &$crate::securityid::SecurityIds {
                 $crate::graph::Market::get_securityids(&self.$($field).+)
@@ -357,6 +357,9 @@ macro_rules! delegate_operation {
             fn remove_accountid(&mut self, key: &str) -> $crate::Result<bool> {
                 $crate::graph::Operation::remove_accountid(&mut self.$($field).+, key)
             }
+            fn is_followed_altid(&self, key: &str) -> bool {
+                $crate::graph::Operation::is_followed_altid(&self.$($field).+, key)
+            }
         }
     };
 }
@@ -384,9 +387,7 @@ pub use column::EventColumn;
 pub use element::{Element, Event};
 pub use iterator::EventIterator;
 pub use kind::MarketKind;
-pub use market::{
-    FOLLOWED_ALTIDS, FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata,
-};
+pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
 pub use market_column::MarketColumn;
 pub use market_data::MarketData;
 pub use operation::{

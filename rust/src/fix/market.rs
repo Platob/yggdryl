@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::identity::{BOOK_ENTRY_TAGS, BOOK_ROOT_TAGS, TRADE_SIDE_TAGS};
-use super::msg::{Expanded, Unmapped};
+use super::msg::{AccountsAt, Carried, Expanded, Unmapped, party_roles};
 use super::{FixCodec, FixEntry, FixKey, FixMsg};
 use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
@@ -16,10 +16,12 @@ use crate::graph::facts::OperationEventFacts;
 use crate::graph::market::unsided_crosscode;
 use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
-    Metadata, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
+    Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
 use crate::warning::warned;
-use crate::{DataType, Decimal, Error, MarketDataKind, Result, Scalar, Side, State, TimeUnit};
+use crate::{
+    DataType, Decimal, Error, IdMap, MarketDataKind, Result, Scalar, Side, State, TimeUnit,
+};
 
 const MD_ENTRIES: i32 = 268;
 const TRADE_SIDES: i32 = 552;
@@ -158,6 +160,9 @@ impl Facts {
 
 struct BookEntry {
     facts: Facts,
+    /// The accounts the entry's own parties name, which lead the message's
+    /// on its leaf.
+    accounts: IdMap,
     position: usize,
     date_days: Option<i64>,
     time_nanos: Option<i64>,
@@ -218,7 +223,7 @@ impl FixMsg {
     /// Every leaf carries, in its [`Market::get_metadata`], what the message
     /// states that no typed column reads: the bridge's namespaced keys, then
     /// every other field under its name as the canonical text it spells. A
-    /// group or a component is one key, its name - `parties`,
+    /// group or a component is one key, its name - `miscfees`,
     /// `tradereportorderdetail` - holding JSON: a group an array of objects,
     /// one per occurrence it keeps, a component one object, each member
     /// under its name and each leaf value the same text it spells at the
@@ -229,6 +234,22 @@ impl FixMsg {
     /// The envelope a message's code leaves out stays out, so two hops of
     /// one message are one leaf. [`FixCodec::with_market_metadata`] turns it
     /// off for the codec's own doors; this door always carries it.
+    ///
+    /// What the leaf's identifier maps hold is no metadata: a party its
+    /// `accountids` hold under its role - a book entry's own parties
+    /// leading the message's, as a trade side's do - the `Account(1)` held
+    /// as `ACCOUNT`, and a regulatory trade identifier its `altids` hold.
+    /// A second party of one role, or a value no map takes, stays. A scalar
+    /// whose key ends with one of the identifiers the message's type
+    /// declares under `FIX:identifiers` - its letters and digits alone,
+    /// whatever the case: an execution report's `marketorderid` or
+    /// `RefOrderID(1080)` ending with its `orderid`, a bridge's
+    /// `firm.x.parentorderid` - is lifted into the leaf's `altids` under
+    /// its own key where the leaf holds that key free or with the same
+    /// value, and otherwise stays; an occurrence's own member ends with one
+    /// its component declares. An empty snapshot's control holds
+    /// neither map, and keeps all of it. Nothing is lifted where the
+    /// metadata is off.
     pub fn market_data(&self) -> Result<Vec<MarketData>> {
         Ok(operations(self, self.event().clone()))
     }
@@ -357,18 +378,19 @@ where
 /// its side, an execution, a `W` or `X` book message. A trade and a quote
 /// quoting sides it states no `Side(54)` for are not: what they report are
 /// the messages their parse splits off, so admitting them would state each
-/// fill or side twice.
+/// fill or side twice. Nor is an execution report of no fill, which is its
+/// order's report in a lifecycle and states nothing a book folds.
 fn contributes_to_book(message: &FixMsg) -> bool {
     match message.msgcat() {
-        MarketDataKind::Order => true,
-        MarketDataKind::Quotation => quoted_sides(message).is_empty(),
+        MarketDataKind::Order => !message.reports_no_fill(),
+        MarketDataKind::Quotation => !message.reports_no_fill() && quoted_sides(message).is_empty(),
         MarketDataKind::Execution => message.is_execution(),
         MarketDataKind::Book => matches!(message.header().msgtype(), "W" | "X"),
         _ => false,
     }
 }
 
-/// The sides a quote stating no side of its own quotes: `BUY` where it
+/// The sides a quote stating no side of its own quotes: `BUYS` where it
 /// states a bid's facts, `SELL` where it states an offer's, in that order -
 /// the sided quotes its parse splits it into. Nothing for a quote stating
 /// its side, or stating neither side's facts.
@@ -574,10 +596,10 @@ fn intake(item: Result<FixMsg>) -> Option<Result<FixMsg>> {
 /// The leaves one message moves into, each carrying its message's unmapped
 /// fields where `metadata` says so: the one owner of expansion.
 fn expand_message(message: FixMsg, metadata: bool) -> MessageOperations {
-    if let Some(kind) = direct_kind(message.msgcat(), message.is_execution()) {
-        let unmapped = metadata.then(|| direct_unmapped(&message));
+    if let Some(kind) = direct_of(&message) {
+        let carried = metadata.then(|| direct_unmapped(&message));
         let mut facts = OperationEventFacts::from(message);
-        carry(&mut facts, unmapped);
+        carry(&mut facts, carried, true);
         return MessageOperations::One(Some(operation(kind, facts, None)));
     }
     if !is_book_message(&message) {
@@ -585,7 +607,8 @@ fn expand_message(message: FixMsg, metadata: bool) -> MessageOperations {
     }
     let msgtype = SmolStr::new(message.header().msgtype());
     let entries = book_entries(&message);
-    let unmapped = metadata.then(|| message.unmapped(Some(&BOOK_EXPANSION)));
+    let unmapped =
+        metadata.then(|| message.unmapped(Some(&BOOK_EXPANSION), holds_operations(&entries)));
     let operations = build_book_operations(
         OperationEventFacts::from(message),
         &msgtype,
@@ -605,7 +628,14 @@ fn is_book_message(message: &FixMsg) -> bool {
     if category == MarketDataKind::Book && matches!(msgtype, "W" | "X") {
         return true;
     }
-    if category != MarketDataKind::Trade && !category.is_batch() {
+    if message.reports_no_fill() {
+        warned!(
+            "FIX message excluded from market data: an execution report of no fill states no fill",
+            msgtype,
+            "a {msgtype:?} report of category {} answers no leaf",
+            category.as_str()
+        );
+    } else if category != MarketDataKind::Trade && !category.is_batch() {
         warned!(
             "FIX message excluded from market data: it is no order, quote, execution or W/X book message",
             msgtype,
@@ -619,19 +649,45 @@ fn is_book_message(message: &FixMsg) -> bool {
 /// What a direct message's leaf carries: the message's unmapped fields,
 /// and for the execution a trade's parse split off one side, that side's
 /// own members beside them.
-fn direct_unmapped(message: &FixMsg) -> Metadata {
+fn direct_unmapped(message: &FixMsg) -> Carried {
     if message.header().msgtype() == "AE" && message.msgcat() == MarketDataKind::Execution {
-        return message.unmapped(Some(&TRADE_EXPANSION)).leaf(0);
+        return message.unmapped(Some(&TRADE_EXPANSION), true).leaf(0);
     }
-    message.unmapped(None).message
+    message.unmapped(None, true).into_carried()
 }
 
-/// States `metadata` on a leaf's facts before the leaf is finalized, where
-/// there is any to state.
-fn carry(facts: &mut OperationEventFacts, metadata: Option<Metadata>) {
-    if let Some(metadata) = metadata {
-        facts.set_metadata(Some(metadata));
+/// Whether the leaves of a book message's `entries` are operations, whose
+/// identifier maps hold what the message states: an empty snapshot's is a
+/// control holding none, so its metadata keeps every party and account.
+fn holds_operations(entries: &[BookEntry]) -> bool {
+    !entries.first().is_some_and(|entry| entry.empty_snapshot)
+}
+
+/// States what a leaf carries on its facts before the leaf is finalized,
+/// where there is any: its metadata, less each scalar its alternate
+/// identifiers hold once it is lifted - into a key the leaf does not hold
+/// yet, or one holding the same value - where `lift` asks. What they do not
+/// hold, a value no map takes or a key holding another, stays in the
+/// metadata.
+fn carry(facts: &mut OperationEventFacts, carried: Option<Carried>, lift: bool) {
+    let Some(Carried {
+        mut metadata,
+        lifted,
+    }) = carried
+    else {
+        return;
+    };
+    for (key, value) in lifted {
+        let held = lift
+            && match facts.get_altids().get(&key) {
+                Some(held) => held == value.trim(),
+                None => facts.insert_altid(&key, &value).unwrap_or(false),
+            };
+        if !held {
+            metadata.entry(key).or_insert(value);
+        }
     }
+    facts.set_metadata(Some(metadata));
 }
 
 fn effective_unix(input: &MarketData) -> i64 {
@@ -666,15 +722,15 @@ impl TryFrom<FixMsg> for MarketData {
 /// [`expand_message`] over a borrowed message, every leaf carrying its
 /// unmapped fields.
 fn operations(message: &FixMsg, mut base: OperationEventFacts) -> Vec<MarketData> {
-    if let Some(kind) = direct_kind(message.msgcat(), message.is_execution()) {
-        carry(&mut base, Some(direct_unmapped(message)));
+    if let Some(kind) = direct_of(message) {
+        carry(&mut base, Some(direct_unmapped(message)), true);
         return vec![operation(kind, base, None)];
     }
     if !is_book_message(message) {
         return Vec::new();
     }
     let entries = book_entries(message);
-    let unmapped = message.unmapped(Some(&BOOK_EXPANSION));
+    let unmapped = message.unmapped(Some(&BOOK_EXPANSION), holds_operations(&entries));
     build_book_operations(base, message.header().msgtype(), &entries, Some(unmapped))
 }
 
@@ -684,6 +740,16 @@ enum Direct {
     Order,
     Quote,
     Execution,
+}
+
+/// The leaf a message is directly, where it is one - never an execution
+/// report of no fill, its order's report in a lifecycle, which states no
+/// fill a leaf holds ([`is_book_message`] says so).
+fn direct_of(message: &FixMsg) -> Option<Direct> {
+    if message.reports_no_fill() {
+        return None;
+    }
+    direct_kind(message.msgcat(), message.is_execution())
 }
 
 fn direct_kind(category: MarketDataKind, is_execution: bool) -> Option<Direct> {
@@ -985,21 +1051,23 @@ impl FixMsg {
     ///   `SideExecID(1427)`, `SideTradeID(1506)`, `SideTradeReportID(1005)`,
     ///   `OrderID(37)`, `ClOrdID(11)` it states, else the occurrence's own
     ///   digest. An occurrence stating no side, or one no side reads, splits
-    ///   off an execution of side `UNKNOWN` with a warning; an unreadable
+    ///   off an execution of side `UNKN` with a warning; an unreadable
     ///   side is also kept beside the trade as an anomaly, and so is an
     ///   occurrence whose facts make no execution, which splits off none.
     /// - A quote stating no side of its own splits into one sided quote
-    ///   per side whose facts it states - `BUY` with the bid's facts,
+    ///   per side whose facts it states - `BUYS` with the bid's facts,
     ///   `SELL` with the offer's, each keeping both; [`FixMsg`] reads a
     ///   sided quote's price, quantity and FX parts off its side. A quote
-    ///   quoting only a bid is that bid's `BUY` quote, never an unsided
+    ///   quoting only a bid is that bid's `BUYS` quote, never an unsided
     ///   entry no book side can hold.
     /// - An order's, a quote's or an execution report's report of an
     ///   execution splits off that execution: the report's content under
-    ///   the category `EXEC`, its chain its own - `ExecID(17)`, else
-    ///   `TradeID(1003)`, else the report's chain and code. An execution
-    ///   report is then its order's report, `ORDR` - `QUOT` where it names
-    ///   a `QuoteID(117)` - so the fill is stated by the execution alone.
+    ///   the category `EXEC`, its chain its own - `ExecID(17)` as given,
+    ///   else `TradeID(1003)`, else the report's chain and code - so the
+    ///   fill is stated by the execution alone. The report is then its
+    ///   order's report, `ORDR`, or its quote's, `QUOT`, where it names a
+    ///   `QuoteID(117)`, as an execution report of no fill is from its
+    ///   parse ([`FixMsg::msgcat`]).
     ///
     /// - A batch - an order list, a mass order, a cross, a mass quote, a
     ///   bid list, a match report ([`MarketDataKind::is_batch`]) - splits
@@ -1008,7 +1076,7 @@ impl FixMsg {
     ///   group, the entry's own members at the root, chained by the entry's
     ///   own identifier ([`batch_entries`]). Each is then split as any
     ///   message of its category is, so a mass quote's two-sided entry is a
-    ///   `BUY` and a `SELL` quote. A batch stating its entries in no group
+    ///   `BUYS` and a `SELL` quote. A batch stating its entries in no group
     ///   the crate reads splits into nothing.
     ///
     /// Every message split off reads `FILLED` where it is an execution and
@@ -1050,6 +1118,8 @@ impl FixMsg {
             MarketDataKind::Order | MarketDataKind::Quotation | MarketDataKind::Execution
         ) && self.reports_execution()
         {
+            // A report of a fill is its order's report once the fill is
+            // split off: the execution is that fill.
             if category == MarketDataKind::Execution {
                 let report = if self.lifted().quoteid().is_some() {
                     MarketDataKind::Quotation
@@ -1062,7 +1132,7 @@ impl FixMsg {
             let base = self
                 .lifted()
                 .execid()
-                .map(|id| format!("ExecID={id}"))
+                .map(str::to_owned)
                 .or_else(|| self.lifted().tradeid().map(|id| format!("TradeID={id}")))
                 .unwrap_or_else(|| {
                     format!(
@@ -1210,12 +1280,12 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
 
 /// Says that the `index`th occurrence of a trade's `group` states no side -
 /// `stated` the text no side reads, where it states one - so the execution
-/// it splits off is of side `UNKNOWN`: as a warning, and a stated text
+/// it splits off is of side `UNKN`: as a warning, and a stated text
 /// beside the trade as an anomaly too.
 fn unsided(trade: &mut FixMsg, group: &str, index: usize, stated: Option<&str>) {
     let Some(stated) = stated else {
         warned!(
-            "FIX trade side states no Side; its execution's side defaulted to UNKNOWN",
+            "FIX trade side states no Side; its execution's side defaulted to UNKN",
             "Side",
             "{group}[{index}] of trade {:?}",
             trade.get_crosscode()
@@ -1223,7 +1293,7 @@ fn unsided(trade: &mut FixMsg, group: &str, index: usize, stated: Option<&str>) 
         return;
     };
     warned!(
-        "FIX trade side's Side is unreadable; its execution's side defaulted to UNKNOWN",
+        "FIX trade side's Side is unreadable; its execution's side defaulted to UNKN",
         "Side",
         "{group}[{index}] of trade {:?} states {stated:?}",
         trade.get_crosscode()
@@ -1308,6 +1378,8 @@ static UNTYPED: MemberPaths = MemberPaths {
 struct TypedGroup<'a> {
     occurrences: Cow<'a, [Scalar]>,
     paths: MemberPaths,
+    /// Where an entry states its own parties and account.
+    accounts: AccountsAt,
 }
 
 /// The typed group matching the `count` entries of `message`'s FIX tree,
@@ -1346,7 +1418,12 @@ fn typed_group<'a>(
         spotrate: member_path(message, members, 1026),
         forwardpoints: member_path(message, members, 1027),
     };
-    Ok(TypedGroup { occurrences, paths })
+    let accounts = AccountsAt::new(message.registry(), members);
+    Ok(TypedGroup {
+        occurrences,
+        paths,
+        accounts,
+    })
 }
 
 /// The entries a book message states, each read at the smallest part that
@@ -1409,6 +1486,7 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
     });
     let empty_snapshot = || BookEntry {
         facts: root.clone(),
+        accounts: IdMap::new(),
         position: 0,
         date_days: root_date,
         time_nanos: root_time,
@@ -1445,6 +1523,7 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
         }
     };
 
+    let roles = party_roles(message.registry());
     let typed = typed_group(message, values, occurrences.len())
         .map_err(|reason| {
             warned!(
@@ -1534,8 +1613,13 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
             "MDEntryForwardPoints",
             &at,
         );
+        let mut accounts = IdMap::new();
+        if let Some(typed) = typed.as_ref() {
+            typed.accounts.read(roles, members, &mut accounts, None);
+        }
         answer.push(BookEntry {
             facts,
+            accounts,
             position,
             date_days,
             time_nanos,
@@ -1624,18 +1708,15 @@ fn build_book_operations(
     let mut answer = Vec::with_capacity(entries.len());
     let mut base = Some(base);
     for (index, entry) in entries.iter().enumerate() {
-        let mut event = if index + 1 == entries.len() {
+        let event = if index + 1 == entries.len() {
             base.take().expect("the final entry takes the base")
         } else {
             base.as_ref().expect("the base remains").clone()
         };
-        carry(
-            &mut event,
-            unmapped
-                .as_mut()
-                .map(|unmapped| unmapped.leaf(entry.position)),
-        );
-        answer.extend(build_book_operation(event, msgtype, entry));
+        let carried = unmapped
+            .as_mut()
+            .map(|unmapped| unmapped.leaf(entry.position));
+        answer.extend(build_book_operation(event, msgtype, entry, carried));
     }
     answer.sort_by_key(effective_unix);
     answer
@@ -1647,6 +1728,7 @@ fn build_book_operation(
     mut event: OperationEventFacts,
     msgtype: &str,
     entry: &BookEntry,
+    carried: Option<Carried>,
 ) -> Option<MarketData> {
     let unix = event.get_currunix();
     let place = || {
@@ -1669,6 +1751,7 @@ fn build_book_operation(
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
         event.set_state(State::New);
+        carry(&mut event, carried, false);
         // A snapshot control states no operation of its own: the operation
         // facts a FIX event states drop.
         return Some(MarketData::from(SnapshotEvent::from_facts(
@@ -1761,7 +1844,7 @@ fn build_book_operation(
         (_, None) => Side::Unknown,
         (_, Some(stated)) => Side::from_spelling(stated).unwrap_or_else(|| {
             warned!(
-                "FIX book entry Side is unreadable; defaulted to UNKNOWN",
+                "FIX book entry Side is unreadable; defaulted to UNKN",
                 "Side",
                 "{} states {stated:?}",
                 at(54, "Side")
@@ -1863,6 +1946,13 @@ fn build_book_operation(
         entry_px: entry.facts.price.as_ref().and(price),
         entry_size: entry.facts.size.as_ref().and(entry.size),
     };
+    // The entry's own parties lead the message's, as a trade side's do.
+    if !entry.accounts.is_empty() {
+        let mut accounts = entry.accounts.clone();
+        accounts.merge(event.get_accountids());
+        let _ = event.set_accountids(accounts);
+    }
+    carry(&mut event, carried, true);
     Some(operation(kind, event, Some(book)))
 }
 

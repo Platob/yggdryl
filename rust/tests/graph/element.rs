@@ -723,10 +723,11 @@ fn following_carries_the_lifecycle_forward() {
     assert_eq!(own.get_crossuuid(), own.cross_uuid());
     assert_eq!(own.get_srcuuids(), [Uuid::from_v8(70)]);
 
-    // The order's own identifiers carry forward where the next operation
-    // does not state them, and its own word stays where it does; a name
-    // that is not the order's own - the client's, an execution's - names
-    // one statement and travels along no chain.
+    // Every identifier of the chain carries forward where the next
+    // operation does not state it, and its own word stays where it does -
+    // but a book entry's reference to its predecessor, which names one
+    // step. The metadata alike: the next one's own values stand, and every
+    // key of the chain's it does not state is beside them.
     let mut named = OrderEvent::at(at(10));
     named.set_crosscode("O-100".to_owned());
     named
@@ -735,16 +736,44 @@ fn following_carries_the_lifecycle_forward() {
     named
         .insert_altid("CLORDID", "C-1")
         .expect("a plain holder");
+    named
+        .insert_altid("MDENTRYREFID", "R-1")
+        .expect("a plain holder");
+    named.set_metadata(Some(
+        [("desk", "EQ"), ("venue", "XPAR")]
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect(),
+    ));
     named.finalize();
     let mut next = OrderEvent::at(at(20));
     next.set_crosscode("O-100".to_owned());
     next.insert_altid("EXECID", "E-2").expect("a plain holder");
+    next.set_metadata(Some(
+        [("desk", "FX")]
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect(),
+    ));
     next.finalize();
+    let unfollowed = next.get_curruuid();
     let next = next.with_previous(&named).expect("follows");
     assert_eq!(next.get_altids().get("ORDERID"), Some("O-1"));
     assert_eq!(next.get_altids().get("EXECID"), Some("E-2"));
-    assert_eq!(next.get_altids().get("CLORDID"), None);
-    assert_eq!(next.get_altids().len(), 2);
+    assert_eq!(next.get_altids().get("CLORDID"), Some("C-1"));
+    assert_eq!(next.get_altids().get("MDENTRYREFID"), None);
+    assert_eq!(next.get_altids().len(), 3);
+    let metadata: Vec<_> = next
+        .get_metadata()
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(metadata, [("desk", "FX"), ("venue", "XPAR")]);
+    assert_ne!(
+        next.get_curruuid(),
+        unfollowed,
+        "what it takes is what it states"
+    );
     let mut own = OrderEvent::at(at(20));
     own.set_crosscode("O-100".to_owned());
     own.insert_altid("ORDERID", "O-2").expect("a plain holder");
@@ -919,7 +948,7 @@ fn following_adopts_the_predecessors_cross_code() {
     let before = fill.get_curruuid();
     let fill = fill.with_previous(&placed).expect("follows");
     // The code is stored under the side the event takes.
-    assert_eq!(fill.get_crosscode(), "BUY:O-100");
+    assert_eq!(fill.get_crosscode(), "BUYS:O-100");
     assert_eq!(fill.get_crossuuid(), placed.get_crossuuid());
     assert_eq!(fill.get_prevuuid(), Some(placed.get_curruuid()));
     assert_ne!(fill.get_curruuid(), before, "followed, so finalized");
@@ -1579,7 +1608,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     assert_eq!(held.get_currency().as_str(), "USD");
     assert_eq!(held.get_quantity(), Some(Decimal::from_int(1_000)));
     assert_eq!(held.get_unit().as_str(), "bbl");
-    assert_eq!(held.get_side().as_str(), "BUY");
+    assert_eq!(held.get_side().as_str(), "BUYS");
 
     held.set_price(Some(Decimal::from_int(83)));
     held.set_currency(currency("EUR"));
@@ -2140,7 +2169,7 @@ fn an_operation_following_another_keeps_its_own_side_or_takes_the_chains() {
     let silent = order(30, None)
         .with_previous(&first)
         .expect("the next order");
-    assert_eq!(silent.get_side().as_str(), "BUY", "the chain's side");
+    assert_eq!(silent.get_side().as_str(), "BUYS", "the chain's side");
 }
 
 #[test]
@@ -2200,7 +2229,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_ticker(), Some("BRN"));
     assert_eq!(followed.get_currency().as_str(), "USD");
     assert_eq!(followed.get_unit().as_str(), "bbl");
-    assert_eq!(followed.get_side().as_str(), "BUY");
+    assert_eq!(followed.get_side().as_str(), "BUYS");
     assert_eq!(followed.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the

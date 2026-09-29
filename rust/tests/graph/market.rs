@@ -360,7 +360,7 @@ fn only_an_operation_stores_its_cross_code_under_its_side() {
     buy.set_side(Side::Buy);
     buy.finalize();
     assert!(buy.is_sided());
-    assert_eq!(buy.get_crosscode(), "BUY:O-1");
+    assert_eq!(buy.get_crosscode(), "BUYS:O-1");
 
     let mut book = BookEvent::new(1, "AAPL");
     book.set_side(Side::Buy);
@@ -368,9 +368,9 @@ fn only_an_operation_stores_its_cross_code_under_its_side() {
     assert!(!book.is_sided());
     assert_eq!(book.get_crosscode(), "AAPL");
     assert_eq!(book.sided_crosscode("AAPL"), "AAPL");
-    let mut named = BookEvent::new(1, "BUY:AAPL");
+    let mut named = BookEvent::new(1, "BUYS:AAPL");
     named.set_side(Side::Sell);
-    assert_eq!(named.get_crosscode(), "BUY:AAPL");
+    assert_eq!(named.get_crosscode(), "BUYS:AAPL");
 
     let snapshot = SnapshotEvent::snapshot(&buy, None);
     assert!(!snapshot.is_sided());
@@ -394,7 +394,7 @@ fn only_an_operation_stores_its_cross_code_under_its_side() {
 
     // An order over the trade's facts is sided again, under its side.
     let again = OrderEvent::from(&trade);
-    assert_eq!(again.get_crosscode(), "BUY:O-1");
+    assert_eq!(again.get_crosscode(), "BUYS:O-1");
     assert_eq!(again.get_crosshashcode(), buy.get_crosshashcode());
 }
 

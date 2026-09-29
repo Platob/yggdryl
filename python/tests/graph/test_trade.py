@@ -22,7 +22,7 @@ def fill(code: str, side: str, quantity: int, clock: int = CLOCK) -> graph.Execu
 
 def trade() -> graph.TradeEvent:
     root = graph.ExecutionEvent(CLOCK, crosscode="T-1", ticker="ACME", lastpx=D("101.25"), lastqty=10)
-    return graph.TradeEvent.from_parts(root, [fill("SELL-1", "SELL", 6), fill("BUY-1", "BUY", 4)])
+    return graph.TradeEvent.from_parts(root, [fill("SELL-1", "SELL", 6), fill("BUY-1", "BUYS", 4)])
 
 
 def test_from_parts_of_two_executions() -> None:
@@ -33,18 +33,18 @@ def test_from_parts_of_two_executions() -> None:
     executions = made.executions
     assert [type(execution) for execution in executions] == [graph.ExecutionEvent] * 2
     # In canonical side order, whatever order they were handed over in.
-    assert [execution.side for execution in executions] == [Side.BUY, Side.SELL]
+    assert [execution.side for execution in executions] == [Side.BUYS, Side.SELL]
     # A sided execution's cross code states its side.
-    assert sorted(execution.crosscode for execution in executions) == ["BUY:BUY-1", "SELL:SELL-1"]
+    assert sorted(execution.crosscode for execution in executions) == ["BUYS:BUY-1", "SELL:SELL-1"]
     assert made.is_execution
     assert made.marketdatakind is MarketDataKind.TRAD
-    assert made.side is Side.UNKNOWN
+    assert made.side is Side.UNKN
 
 
 def test_any_dated_operation_or_market_data_roots_a_trade() -> None:
     root = graph.OrderEvent(CLOCK, crosscode="T-1", ticker="ACME")
-    by_leaf = graph.TradeEvent.from_parts(root, [fill("B", "BUY", 1)])
-    by_data = graph.TradeEvent.from_parts(graph.MarketData(root), [fill("B", "BUY", 1)])
+    by_leaf = graph.TradeEvent.from_parts(root, [fill("B", "BUYS", 1)])
+    by_data = graph.TradeEvent.from_parts(graph.MarketData(root), [fill("B", "BUYS", 1)])
     assert by_leaf == by_data
     assert by_leaf.crosscode == "T-1"
 
@@ -53,7 +53,7 @@ def test_refusals_name_what_was_wrong() -> None:
     with pytest.raises(TypeError, match="expected a dated operation as the trade's root, got order"):
         graph.TradeEvent.from_parts(graph.Order(), [])  # type: ignore[arg-type]
     with pytest.raises(ValueError, match=r"executions\[0\]\.currunix: expected the trade timestamp"):
-        graph.TradeEvent.from_parts(graph.ExecutionEvent(CLOCK + 1), [fill("B", "BUY", 1)])
+        graph.TradeEvent.from_parts(graph.ExecutionEvent(CLOCK + 1), [fill("B", "BUYS", 1)])
     with pytest.raises(ValueError, match="at least one execution"):
         graph.TradeEvent.from_parts(graph.ExecutionEvent(CLOCK), [])
     with pytest.raises(TypeError):
@@ -66,7 +66,7 @@ def test_the_verbs_answer_new_trades() -> None:
     first = trade()
     later = graph.TradeEvent.from_parts(
         graph.ExecutionEvent(CLOCK + 1, crosscode="T-1", ticker="ACME"),
-        [fill("BUY-1", "BUY", 4, CLOCK + 1)],
+        [fill("BUY-1", "BUYS", 4, CLOCK + 1)],
     )
     followed = later.with_previous(first)
     assert followed is not None and followed.prevuuid == first.curruuid

@@ -210,7 +210,7 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The side, as the `side` member's stored name; `UNKNOWN` where
+            /// The side, as the `side` member's four-letter code; `UNKN` where
             /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {
@@ -455,7 +455,10 @@ macro_rules! common_verbs {
         #[napi]
         impl $class {
             /// This value stated as the one after `previous`, or `null` where
-            /// it cannot follow it or following changes nothing.
+            /// it cannot follow it or following changes nothing. It takes
+            /// every `metadata` key of its chain it lacks and, where it names
+            /// identifiers, every `altids` key but `MDENTRYREFID` and every
+            /// `accountids` role, its own values standing.
             #[napi]
             pub fn with_previous(&self, previous: &$class) -> Option<$class> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
@@ -814,14 +817,4 @@ pub fn graph_entry_id_native() -> &'static str {
 #[napi(js_name = "_graphEntryRefIdNative", skip_typescript)]
 pub fn graph_entry_ref_id_native() -> &'static str {
     graph::book::ENTRY_REF_ID
-}
-
-/// The alternate-identifier keys an order's own identifiers may follow
-/// across a lifecycle: `graph.FOLLOWED_ALTIDS`'s native half.
-#[napi(js_name = "_graphFollowedAltidsNative", skip_typescript)]
-pub fn graph_followed_altids_native() -> Vec<String> {
-    graph::FOLLOWED_ALTIDS
-        .iter()
-        .map(|value| (*value).to_owned())
-        .collect()
 }

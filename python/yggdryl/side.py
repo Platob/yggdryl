@@ -1,10 +1,11 @@
 """FIX's side of a trade: an enum stored as the ``int32`` code of its member.
 
-``Side`` is the core's enum member for member - its stored name, ``BUY``,
-``SSHORT``, and the code a ``side`` column stores - built once at import from
-the native table, so nothing here lists a member or decides which side takes
-the bid. ``UNKNOWN`` is ``0`` and the seventeen sides FIX's ``Side(54)`` names
-follow in the order of their wire characters, ``1``..``9`` then ``A``..``H``.
+``Side`` is the core's enum member for member - its four-letter code as its
+name, ``BUYS``, ``SSHT``, and the integer code a ``side`` column stores - built
+once at import from the native table, so nothing here lists a member or decides
+which side takes the bid. ``UNKN`` is ``0`` and the seventeen sides FIX's
+``Side(54)`` names follow in the order of their wire characters, ``1``..``9``
+then ``A``..``H``.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ class _Sided(enum.IntEnum):
     @property
     def fix_code(self) -> str | None:
         """The ``Side(54)`` wire character - ``1``..``9`` then ``A``..``H`` -
-        or ``None`` for ``UNKNOWN``, which no message carries."""
+        or ``None`` for ``UNKN``, which no message carries."""
 
         return _FACTS[self.value][1]
 
@@ -52,8 +53,8 @@ class _Sided(enum.IntEnum):
 
     @classmethod
     def from_spelling(cls, spelling: str) -> Side | None:
-        """The side a stored name, a FIX wire code or the specification's name
-        names, or ``None`` where none does."""
+        """The side a four-letter code, a FIX wire code or the specification's
+        name names, or ``None`` where none does."""
 
         code = side_from_spelling(spelling)
         return None if code is None else Side(code)
@@ -64,7 +65,7 @@ class _Sided(enum.IntEnum):
     def __format__(self, format_spec: str) -> str:
         # An `IntEnum` renders as its integer, and the two runtimes disagree
         # about whether `__str__` or `int.__format__` decides that. Both render
-        # the stored name; `int(member)` asks for the code.
+        # the four-letter code; `int(member)` asks for the code.
         return format(self.name, format_spec)
 
 
