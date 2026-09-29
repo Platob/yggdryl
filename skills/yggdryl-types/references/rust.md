@@ -353,7 +353,9 @@ assert_eq!(
 
 `side`, `marketdatakind` and `state` are the `enum` family: each member is an
 `int32` code in a column and its stored name in text, read from every spelling
-its vocabulary has. A side is never absent - `UNKNOWN` (code 0) is unstated.
+its vocabulary has. A side is never absent - `UNKN` (code 0) is unstated. A side's name is a four-letter code (`BUYS`, `SELL`,
+`SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are still read
+and never written.
 
 ```rust
 use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
@@ -361,7 +363,8 @@ use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
 assert_eq!(Side::from_spelling("Sell short"), Some(Side::SShort));
-assert_eq!((Side::Buy.code(), Side::Buy.as_str()), (1, "BUY"));
+assert_eq!((Side::Buy.code(), Side::Buy.as_str()), (1, "BUYS"));
+assert_eq!(Side::from_spelling("BUY"), Some(Side::Buy), "an earlier stored name is read, never written");
 assert_eq!(Side::default(), Side::Unknown);
 assert_eq!(DataType::Side.scalar("SELL")?, Scalar::Side(Side::Sell));
 assert_eq!(DataType::Side.kind().as_str(), "enum");

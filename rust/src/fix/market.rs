@@ -1,5 +1,6 @@
 //! The one FIX boundary into typed graph market data.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::iter::FusedIterator;
 
@@ -7,7 +8,7 @@ use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::identity::{BOOK_ENTRY_TAGS, BOOK_ROOT_TAGS, TRADE_SIDE_TAGS};
-use super::msg::{Expanded, Unmapped};
+use super::msg::{AccountsAt, Carried, Expanded, Unmapped, party_roles};
 use super::{FixCodec, FixEntry, FixKey, FixMsg};
 use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
@@ -15,9 +16,12 @@ use crate::graph::facts::OperationEventFacts;
 use crate::graph::market::unsided_crosscode;
 use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
-    Metadata, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
+    Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
-use crate::{DataType, Decimal, Error, MarketDataKind, Result, Scalar, Side, State, TimeUnit};
+use crate::warning::warned;
+use crate::{
+    DataType, Decimal, Error, IdMap, MarketDataKind, Result, Scalar, Side, State, TimeUnit,
+};
 
 const MD_ENTRIES: i32 = 268;
 const TRADE_SIDES: i32 = 552;
@@ -156,10 +160,15 @@ impl Facts {
 
 struct BookEntry {
     facts: Facts,
+    /// The accounts the entry's own parties name, which lead the message's
+    /// on its leaf.
+    accounts: IdMap,
     position: usize,
     date_days: Option<i64>,
     time_nanos: Option<i64>,
-    price: Option<Decimal>,
+    /// `MDEntryPx(270)`, or the value no exact decimal reads: whether that
+    /// excludes the entry is its action's question.
+    price: std::result::Result<Option<Decimal>, String>,
     size: Option<Decimal>,
     /// `MDEntrySpotRate(1026)` and `MDEntryForwardPoints(1027)`: the FX
     /// parts of the level's price.
@@ -178,21 +187,43 @@ impl FixMsg {
     /// never stated twice. A FIX
     /// `W` or `X` book message is expanded in nondecreasing effective time,
     /// stably retaining `NoMDEntries(268)` source order for equal instants; an
-    /// empty `W` is one scoped snapshot control. The structured entry tree is
-    /// derived at most once and then walked once.
+    /// empty `W` is one scoped snapshot control, and so is a `W` stating no
+    /// `NoMDEntries(268)` group at all. The structured entry tree is derived
+    /// at most once and then walked once.
+    ///
+    /// What the message states never fails the reading; it is read at the
+    /// smallest part that can stand, and what is passed over is said once
+    /// as a deduplicated warning naming the tag, the value and where:
+    ///
+    /// - A message with no market reading answers no leaf: an
+    ///   administrative message, an execution report of no fill, a book
+    ///   message other than `W` or `X`. A trade and a batch answer none in
+    ///   silence: their leaves are the messages their parse splits off.
+    /// - A book entry that cannot stand is excluded and the others stand:
+    ///   an `MDEntryType(269)` absent or other than a bid, an offer or a
+    ///   trade, an `X` entry with no incremental `MDUpdateAction(279)`, an
+    ///   anonymous incremental update naming no entry, and a new or snapshot
+    ///   entry whose `MDEntryPx(270)` is no exact decimal, which no level
+    ///   could rest at.
+    /// - A fact that does not decide the entry takes its default: a price
+    ///   an update restates, a size or an FX part that is no exact decimal
+    ///   is null, an entry clock that names no instant is the message's, an
+    ///   unreadable `Side(54)` on a trade entry is [`Side::Unknown`].
+    /// - A `W` or `X` stating several `NoMDEntries(268)` groups answers no
+    ///   leaf, since which one is the book's cannot be chosen; one whose
+    ///   typed group does not match its entries reads each entry off the
+    ///   FIX tree alone.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] naming the FIX tag and occurrence for
-    /// an unsupported message - a trade among them - update action or
-    /// market-data entry type.
+    /// None from what the message states: the refusals above are warnings.
     ///
     /// # Metadata
     ///
     /// Every leaf carries, in its [`Market::get_metadata`], what the message
     /// states that no typed column reads: the bridge's namespaced keys, then
     /// every other field under its name as the canonical text it spells. A
-    /// group or a component is one key, its name - `parties`,
+    /// group or a component is one key, its name - `miscfees`,
     /// `tradereportorderdetail` - holding JSON: a group an array of objects,
     /// one per occurrence it keeps, a component one object, each member
     /// under its name and each leaf value the same text it spells at the
@@ -203,8 +234,24 @@ impl FixMsg {
     /// The envelope a message's code leaves out stays out, so two hops of
     /// one message are one leaf. [`FixCodec::with_market_metadata`] turns it
     /// off for the codec's own doors; this door always carries it.
+    ///
+    /// What the leaf's identifier maps hold is no metadata: a party its
+    /// `accountids` hold under its role - a book entry's own parties
+    /// leading the message's, as a trade side's do - the `Account(1)` held
+    /// as `ACCOUNT`, and a regulatory trade identifier its `altids` hold.
+    /// A second party of one role, or a value no map takes, stays. A scalar
+    /// whose key ends with one of the identifiers the message's type
+    /// declares under `FIX:identifiers` - its letters and digits alone,
+    /// whatever the case: an execution report's `marketorderid` or
+    /// `RefOrderID(1080)` ending with its `orderid`, a bridge's
+    /// `firm.x.parentorderid` - is lifted into the leaf's `altids` under
+    /// its own key where the leaf holds that key free or with the same
+    /// value, and otherwise stays; an occurrence's own member ends with one
+    /// its component declares. An empty snapshot's control holds
+    /// neither map, and keeps all of it. Nothing is lifted where the
+    /// metadata is off.
     pub fn market_data(&self) -> Result<Vec<MarketData>> {
-        operations(self, self.event().clone())
+        Ok(operations(self, self.event().clone()))
     }
 
     /// Moves this message into graph market data.
@@ -217,21 +264,26 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns the same typed refusals as [`Self::market_data`].
+    /// None from what the message states, as [`Self::market_data`].
     pub fn into_market_data(self) -> Result<Vec<MarketData>> {
-        Ok(expand_message(self, true)?.into_vec())
+        Ok(expand_message(self, true).into_vec())
     }
 }
 
-/// A lazy, fallible projection of sorted FIX messages into graph market
-/// operations. Direct messages occupy no intermediate vector; one book
-/// message retains only its own expanded entries. Each leaf takes the
+/// A lazy projection of sorted FIX messages into graph market operations.
+/// Direct messages occupy no intermediate vector; one book message retains
+/// only its own expanded entries. Each leaf takes the
 /// [place](crate::graph::Event::get_seqnum) its message holds - the parse's,
 /// or the lifecycle's where the messages were walked - so a chain's steps at
 /// one instant keep the order the walk gave them whatever order a table
-/// read them back in, and the entries one book message states share it. The
-/// first source, conversion, or ordering error is yielded once and fuses
-/// the iterator.
+/// read them back in, and the entries one book message states share it.
+///
+/// Each message expands as [`FixMsg::into_market_data`] does. A message
+/// its intake refused for what it states is passed over with a warning,
+/// and an operation dated before one already yielded is yielded with a
+/// warning, a book excluding it. Only the source's own failure
+/// ([`Error::is_source_failure`]) ends the projection: it is yielded after
+/// every operation before it, and the iterator is fused.
 pub struct FixMarketIterator<I>
 where
     I: Iterator,
@@ -285,42 +337,31 @@ where
         loop {
             if let Some(operation) = self.current.as_mut().and_then(Iterator::next) {
                 let unix = effective_unix(&operation);
-                if self.last_unix.is_some_and(|previous| unix < previous) {
-                    self.done = true;
-                    self.current = None;
-                    return Some(Err(invalid(
-                        "$.operations",
-                        // The same words the book walk refuses an unsorted
-                        // stream with, so one mistake reads one way.
-                        format_smolstr!(
-                            "expected a sorted operation timestamp at or after {}, got {unix}",
-                            self.last_unix.expect("the prior timestamp was checked")
-                        ),
-                    )));
+                match self.last_unix {
+                    Some(previous) if unix < previous => warned!(
+                        "FIX market data operation yielded out of order: a book excludes it",
+                        operation.marketdatakind().as_str(),
+                        "{} is dated {unix}, before the {previous} an operation before it was",
+                        operation.get_crosscode()
+                    ),
+                    _ => self.last_unix = Some(unix),
                 }
-                self.last_unix = Some(unix);
                 return Some(Ok(operation));
             }
             self.current = None;
-            let message = match self.source.next() {
-                Some(message) => match message.into() {
-                    Ok(message) => message,
-                    Err(error) => {
-                        self.done = true;
-                        return Some(Err(error));
-                    }
-                },
-                None => {
-                    self.done = true;
-                    return None;
-                }
+            let Some(message) = self.source.next() else {
+                self.done = true;
+                return None;
             };
-            match expand_message(message, self.market_metadata) {
-                Ok(operations) => self.current = Some(operations),
-                Err(error) => {
-                    self.done = true;
-                    return Some(Err(error));
+            match intake(message.into()) {
+                Some(Ok(message)) => {
+                    self.current = Some(expand_message(message, self.market_metadata));
                 }
+                Some(Err(failure)) => {
+                    self.done = true;
+                    return Some(Err(failure));
+                }
+                None => {}
             }
         }
     }
@@ -337,18 +378,19 @@ where
 /// its side, an execution, a `W` or `X` book message. A trade and a quote
 /// quoting sides it states no `Side(54)` for are not: what they report are
 /// the messages their parse splits off, so admitting them would state each
-/// fill or side twice.
+/// fill or side twice. Nor is an execution report of no fill, which is its
+/// order's report in a lifecycle and states nothing a book folds.
 fn contributes_to_book(message: &FixMsg) -> bool {
     match message.msgcat() {
-        MarketDataKind::Order => true,
-        MarketDataKind::Quotation => quoted_sides(message).is_empty(),
+        MarketDataKind::Order => !message.reports_no_fill(),
+        MarketDataKind::Quotation => !message.reports_no_fill() && quoted_sides(message).is_empty(),
         MarketDataKind::Execution => message.is_execution(),
         MarketDataKind::Book => matches!(message.header().msgtype(), "W" | "X"),
         _ => false,
     }
 }
 
-/// The sides a quote stating no side of its own quotes: `BUY` where it
+/// The sides a quote stating no side of its own quotes: `BUYS` where it
 /// states a bid's facts, `SELL` where it states an offer's, in that order -
 /// the sided quotes its parse splits it into. Nothing for a quote stating
 /// its side, or stating neither side's facts.
@@ -382,15 +424,15 @@ impl FixCodec {
     ///
     /// Records outside orders, one-sided quotes, executions and `W`/`X`
     /// book messages are ignored: a trade and a quote stating no side reach the
-    /// book as the messages their parse split off. Source errors and
-    /// invalid admitted messages are never skipped. [`FixMarketIterator`]
-    /// and standalone operation conversions remain strict for every input.
+    /// book as the messages their parse split off. An admitted message is
+    /// read as [`FixMarketIterator`] reads it: what it states that cannot
+    /// stand is passed over with a warning, and the source's own failure
+    /// follows the completed book prefix and fuses the returned reader.
     ///
     /// This method does not run a lifecycle implicitly: callers that need
     /// lifecycle enrichment pass [`Self::lifecycle`] as the source. Input is
-    /// pulled lazily; conversion and ordering errors follow the completed
-    /// book prefix and fuse the returned reader. Each leaf carries its
-    /// message's unmapped fields where [`Self::market_metadata`] says so.
+    /// pulled lazily. Each leaf carries its message's unmapped fields where
+    /// [`Self::market_metadata`] says so.
     pub fn book_arrow_reader<I>(&self, messages: I, snapshot_millis: u64) -> Result<BatchReader>
     where
         I: IntoIterator,
@@ -401,7 +443,7 @@ impl FixCodec {
             .into_iter()
             .filter_map(|message| match message.into() {
                 Ok(message) => contributes_to_book(&message).then_some(Ok(message)),
-                Err(error) => Some(Err(error)),
+                failure => Some(failure),
             });
         let operations =
             FixMarketIterator::new(admitted).with_market_metadata(self.market_metadata());
@@ -432,10 +474,15 @@ impl FixCodec {
     /// which is the key [`FixMarketIterator`] checks, so the answer never
     /// regresses: an entry clock a book message states may stand before an
     /// earlier message's, and sorting the operations rather than the
-    /// messages is what places it. A source error and the refusal of an
-    /// admitted message's expansion are kept in source order and yielded
-    /// first, before every operation, and a refused message drops only its
-    /// own leaves; the iterator is fused.
+    /// messages is what places it.
+    ///
+    /// Nothing a message states fails the capture: a message its intake
+    /// refused for what it states is passed over with a warning, and each
+    /// admitted message answers what [`FixMsg::into_market_data`] answers.
+    /// The source's own failure ([`Error::is_source_failure`]) ends the
+    /// capture where it happens: it is yielded after the operations of every
+    /// message before it, and no later message is read. The iterator is
+    /// fused.
     pub fn market_data<I>(
         &self,
         messages: I,
@@ -444,34 +491,31 @@ impl FixCodec {
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        let mut failures = Vec::new();
+        let mut failure = None;
         let mut operations = Vec::new();
         for message in messages {
-            match message.into() {
-                Ok(message) if contributes_to_book(&message) => {
-                    match expand_message(message, self.market_metadata()) {
-                        Ok(expanded) => operations.extend(expanded),
-                        Err(error) => failures.push(error),
-                    }
+            match intake(message.into()) {
+                Some(Ok(message)) if contributes_to_book(&message) => {
+                    operations.extend(expand_message(message, self.market_metadata()));
                 }
-                Ok(_) => {}
-                Err(error) => failures.push(error),
+                Some(Err(error)) => {
+                    failure = Some(error);
+                    break;
+                }
+                Some(Ok(_)) | None => {}
             }
         }
         operations.sort_by_key(effective_unix);
-        failures
+        operations
             .into_iter()
-            .map(Err)
-            .chain(operations.into_iter().map(Ok))
+            .map(Ok)
+            .chain(failure.into_iter().map(Err))
     }
 
     /// [`Self::market_data`] as bounded Arrow batches of
     /// [`MarketData::field`] rows, closing as [`Self::book_arrow_reader`]
-    /// closes them.
-    ///
-    /// The writer yields a failure where it meets it, and every failure is
-    /// met before the first operation: one intake error is the reader's
-    /// only item, and no row follows it.
+    /// closes them: every row of the capture read before a source failure,
+    /// then that failure.
     ///
     /// # Errors
     ///
@@ -532,48 +576,118 @@ impl Iterator for MessageOperations {
 impl ExactSizeIterator for MessageOperations {}
 impl FusedIterator for MessageOperations {}
 
+/// What one intake item is to a market door: the message, or the source's
+/// own failure, which ends the door. A refusal of what one message states
+/// is said as a warning and passed over (`None`).
+fn intake(item: Result<FixMsg>) -> Option<Result<FixMsg>> {
+    match item {
+        Err(error) if !error.is_source_failure() => {
+            warned!(
+                "FIX message excluded from market data: its intake refused what it states",
+                "intake",
+                "{error}"
+            );
+            None
+        }
+        item => Some(item),
+    }
+}
+
 /// The leaves one message moves into, each carrying its message's unmapped
 /// fields where `metadata` says so: the one owner of expansion.
-fn expand_message(message: FixMsg, metadata: bool) -> Result<MessageOperations> {
-    let category = message.msgcat();
-    if let Some(kind) = direct_kind(category, message.is_execution()) {
-        let unmapped = metadata.then(|| direct_unmapped(&message));
+fn expand_message(message: FixMsg, metadata: bool) -> MessageOperations {
+    if let Some(kind) = direct_of(&message) {
+        let carried = metadata.then(|| direct_unmapped(&message));
         let mut facts = OperationEventFacts::from(message);
-        carry(&mut facts, unmapped);
-        return Ok(MessageOperations::One(Some(operation(kind, facts, None))));
+        carry(&mut facts, carried, true);
+        return MessageOperations::One(Some(operation(kind, facts, None)));
     }
-    let msgtype = message.header().msgtype();
-    if category != MarketDataKind::Book || !matches!(msgtype, "W" | "X") {
-        return Err(unsupported_message(&message));
+    if !is_book_message(&message) {
+        return MessageOperations::One(None);
     }
-    let msgtype = SmolStr::new(msgtype);
-    let entries = book_entries(&message)?;
-    let unmapped = metadata.then(|| message.unmapped(Some(&BOOK_EXPANSION)));
+    let msgtype = SmolStr::new(message.header().msgtype());
+    let entries = book_entries(&message);
+    let unmapped =
+        metadata.then(|| message.unmapped(Some(&BOOK_EXPANSION), holds_operations(&entries)));
     let operations = build_book_operations(
         OperationEventFacts::from(message),
         &msgtype,
         &entries,
         unmapped,
-    )?;
-    Ok(MessageOperations::Many(operations.into_iter()))
+    );
+    MessageOperations::Many(operations.into_iter())
+}
+
+/// Whether a message that is no direct operation is a `W` or `X` book
+/// message, saying why not where it is not: a trade and a batch in
+/// silence, since their leaves are the messages their parse splits off,
+/// any other message with a warning.
+fn is_book_message(message: &FixMsg) -> bool {
+    let category = message.msgcat();
+    let msgtype = message.header().msgtype();
+    if category == MarketDataKind::Book && matches!(msgtype, "W" | "X") {
+        return true;
+    }
+    if message.reports_no_fill() {
+        warned!(
+            "FIX message excluded from market data: an execution report of no fill states no fill",
+            msgtype,
+            "a {msgtype:?} report of category {} answers no leaf",
+            category.as_str()
+        );
+    } else if category != MarketDataKind::Trade && !category.is_batch() {
+        warned!(
+            "FIX message excluded from market data: it is no order, quote, execution or W/X book message",
+            msgtype,
+            "a {msgtype:?} message of category {} answers no leaf",
+            category.as_str()
+        );
+    }
+    false
 }
 
 /// What a direct message's leaf carries: the message's unmapped fields,
 /// and for the execution a trade's parse split off one side, that side's
 /// own members beside them.
-fn direct_unmapped(message: &FixMsg) -> Metadata {
+fn direct_unmapped(message: &FixMsg) -> Carried {
     if message.header().msgtype() == "AE" && message.msgcat() == MarketDataKind::Execution {
-        return message.unmapped(Some(&TRADE_EXPANSION)).leaf(0);
+        return message.unmapped(Some(&TRADE_EXPANSION), true).leaf(0);
     }
-    message.unmapped(None).message
+    message.unmapped(None, true).into_carried()
 }
 
-/// States `metadata` on a leaf's facts before the leaf is finalized, where
-/// there is any to state.
-fn carry(facts: &mut OperationEventFacts, metadata: Option<Metadata>) {
-    if let Some(metadata) = metadata {
-        facts.set_metadata(Some(metadata));
+/// Whether the leaves of a book message's `entries` are operations, whose
+/// identifier maps hold what the message states: an empty snapshot's is a
+/// control holding none, so its metadata keeps every party and account.
+fn holds_operations(entries: &[BookEntry]) -> bool {
+    !entries.first().is_some_and(|entry| entry.empty_snapshot)
+}
+
+/// States what a leaf carries on its facts before the leaf is finalized,
+/// where there is any: its metadata, less each scalar its alternate
+/// identifiers hold once it is lifted - into a key the leaf does not hold
+/// yet, or one holding the same value - where `lift` asks. What they do not
+/// hold, a value no map takes or a key holding another, stays in the
+/// metadata.
+fn carry(facts: &mut OperationEventFacts, carried: Option<Carried>, lift: bool) {
+    let Some(Carried {
+        mut metadata,
+        lifted,
+    }) = carried
+    else {
+        return;
+    };
+    for (key, value) in lifted {
+        let held = lift
+            && match facts.get_altids().get(&key) {
+                Some(held) => held == value.trim(),
+                None => facts.insert_altid(&key, &value).unwrap_or(false),
+            };
+        if !held {
+            metadata.entry(key).or_insert(value);
+        }
     }
+    facts.set_metadata(Some(metadata));
 }
 
 fn effective_unix(input: &MarketData) -> i64 {
@@ -586,10 +700,15 @@ impl TryFrom<FixMsg> for MarketData {
     type Error = Error;
 
     fn try_from(message: FixMsg) -> Result<Self> {
-        let mut operations = expand_message(message, true)?;
+        let path = if message.msgcat() == MarketDataKind::Book {
+            "$.NoMDEntries(268)"
+        } else {
+            "$.MsgType(35)"
+        };
+        let mut operations = expand_message(message, true);
         if operations.len() != 1 {
             return Err(invalid(
-                "$.NoMDEntries(268)",
+                path,
                 format_smolstr!(
                     "expected exactly one market data element, got {}",
                     operations.len()
@@ -602,19 +721,17 @@ impl TryFrom<FixMsg> for MarketData {
 
 /// [`expand_message`] over a borrowed message, every leaf carrying its
 /// unmapped fields.
-fn operations(message: &FixMsg, mut base: OperationEventFacts) -> Result<Vec<MarketData>> {
-    let category = message.msgcat();
-    if let Some(kind) = direct_kind(category, message.is_execution()) {
-        carry(&mut base, Some(direct_unmapped(message)));
-        return Ok(vec![operation(kind, base, None)]);
+fn operations(message: &FixMsg, mut base: OperationEventFacts) -> Vec<MarketData> {
+    if let Some(kind) = direct_of(message) {
+        carry(&mut base, Some(direct_unmapped(message)), true);
+        return vec![operation(kind, base, None)];
     }
-    let msgtype = message.header().msgtype();
-    if category != MarketDataKind::Book || !matches!(msgtype, "W" | "X") {
-        return Err(unsupported_message(message));
+    if !is_book_message(message) {
+        return Vec::new();
     }
-    let entries = book_entries(message)?;
-    let unmapped = message.unmapped(Some(&BOOK_EXPANSION));
-    build_book_operations(base, msgtype, &entries, Some(unmapped))
+    let entries = book_entries(message);
+    let unmapped = message.unmapped(Some(&BOOK_EXPANSION), holds_operations(&entries));
+    build_book_operations(base, message.header().msgtype(), &entries, Some(unmapped))
 }
 
 /// Which operation leaf a message or a market-data entry becomes.
@@ -625,6 +742,16 @@ enum Direct {
     Execution,
 }
 
+/// The leaf a message is directly, where it is one - never an execution
+/// report of no fill, its order's report in a lifecycle, which states no
+/// fill a leaf holds ([`is_book_message`] says so).
+fn direct_of(message: &FixMsg) -> Option<Direct> {
+    if message.reports_no_fill() {
+        return None;
+    }
+    direct_kind(message.msgcat(), message.is_execution())
+}
+
 fn direct_kind(category: MarketDataKind, is_execution: bool) -> Option<Direct> {
     match category {
         MarketDataKind::Order => Some(Direct::Order),
@@ -632,18 +759,6 @@ fn direct_kind(category: MarketDataKind, is_execution: bool) -> Option<Direct> {
         MarketDataKind::Execution if is_execution => Some(Direct::Execution),
         _ => None,
     }
-}
-
-fn unsupported_message(message: &FixMsg) -> Error {
-    invalid(
-        "$.MsgType(35)",
-        format_smolstr!(
-            "expected ORDR, QUOT, an actual EXEC, W or X - a trade states its fills as the \
-             executions its parse splits off - got {:?} ({})",
-            message.header().msgtype(),
-            message.msgcat().as_str()
-        ),
-    )
 }
 
 /// The finalized leaf of `kind` over `data`, with the book control a
@@ -668,6 +783,240 @@ fn operation(kind: Direct, mut data: OperationEventFacts, book: Option<BookRef>)
         Direct::Quote => MarketData::from(leaf::<QuoteKind>(data, book)),
         Direct::Execution => MarketData::from(leaf::<ExecutionKind>(data, book)),
     }
+}
+
+/// Where a batch message states its entries: the counter of the repeating
+/// group whose occurrences are the orders, quotes or trades it states, and,
+/// for a mass quote and its acknowledgement, the counter of the group
+/// inside each occurrence holding the quotes. A batch type with no entry
+/// group - a list's cancel or execute request, a mass order's criteria -
+/// splits into nothing.
+fn batch_groups(msgtype: &str) -> Option<(i32, Option<i32>)> {
+    Some(match msgtype {
+        // NewOrderList, ListStatus: NoOrders.
+        "E" | "N" => (73, None),
+        // MassOrder, MassOrderAck: NoOrderEntries.
+        "DJ" | "DK" => (2428, None),
+        // NewOrderCross and its replace and cancel: NoSides.
+        "s" | "t" | "u" => (TRADE_SIDES, None),
+        // OrderMassCancelReport, OrderMassActionReport: NoAffectedOrders.
+        "r" | "BZ" => (534, None),
+        // MassQuote, MassQuoteAck: NoQuoteSets, then NoQuoteEntries.
+        "i" | "b" => (296, Some(295)),
+        // BidRequest, BidResponse: NoBidComponents.
+        "k" | "l" => (420, None),
+        // ListStrikePrice: NoStrikes.
+        "m" => (428, None),
+        // TradeMatchReport: NoInstrmtMatchSides.
+        "DC" => (1889, None),
+        _ => return None,
+    })
+}
+
+/// The root tag a batch entry's member is stated under where it is not its
+/// own: an affected order's identifiers are the order's.
+fn entry_root_tag(tag: i32) -> i32 {
+    match tag {
+        535 => 37,  // AffectedOrderID: OrderID
+        1824 => 41, // AffectedOrigClOrdID: OrigClOrdID
+        536 => 198, // AffectedSecondaryOrderID: SecondaryOrderID
+        other => other,
+    }
+}
+
+/// One member a batch entry states at the root of the message it becomes:
+/// a field under the root tag it is written at ([`entry_root_tag`]), or a
+/// nested group whole under its own name.
+#[derive(Clone)]
+enum Member {
+    Tag(i32, Scalar),
+    Group(SmolStr, Scalar),
+}
+
+impl Member {
+    fn write(&self) -> (FixKey<'_>, Scalar) {
+        match self {
+            Self::Tag(tag, value) => (FixKey::Tag(*tag), value.clone()),
+            Self::Group(name, value) => (FixKey::Name(name.as_str()), value.clone()),
+        }
+    }
+}
+
+/// The members a typed batch occurrence states: a component's members read
+/// through, a nested group kept whole - the one counted by `skip` left out,
+/// since its entries are split on their own - and a null skipped.
+fn entry_members(
+    message: &FixMsg,
+    fields: &[crate::Field],
+    values: &[Scalar],
+    skip: Option<i32>,
+    members: &mut Vec<Member>,
+) {
+    for (field, value) in fields.iter().zip(values) {
+        if value.is_null() {
+            continue;
+        }
+        match super::schema::tag_and_counter(message.registry(), field) {
+            (_, Some(counter)) if Some(counter) == skip => {}
+            (_, Some(_)) => members.push(Member::Group(SmolStr::new(field.name()), value.clone())),
+            (Some(tag), None) => members.push(Member::Tag(entry_root_tag(tag), value.clone())),
+            (None, None) if matches!(field.dtype(), DataType::Struct(_)) => {
+                if let Some(nested) = value.as_sequence() {
+                    entry_members(message, field.fields(), nested, skip, members);
+                }
+            }
+            (None, None) => {}
+        }
+    }
+}
+
+/// The text one member states, where it states text.
+fn member_text(members: &[Member], tag: i32) -> Option<&str> {
+    members
+        .iter()
+        .rev()
+        .find_map(|member| match member {
+            Member::Tag(held, value) if *held == tag => value.as_str(),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+}
+
+/// The chain one batch entry is walked under: the order it names - its
+/// `OrderID(37)`, `ClOrdID(11)` or `OrigClOrdID(41)`, as a single order
+/// message names it, so the entry joins that order's chain - else its
+/// quote entry, `QuoteEntryID(299)` within its `QuoteSetID(302)`, else its
+/// order entry, `OrderEntryID(2430)`, else its place in the batch.
+fn entry_crosscode(batch: &FixMsg, members: &[Member], place: &str) -> String {
+    if let Some(order) = [37, 11, 41]
+        .into_iter()
+        .find_map(|tag| member_text(members, tag))
+    {
+        return order.to_owned();
+    }
+    if let Some(entry) = member_text(members, 299) {
+        return match member_text(members, 302) {
+            Some(set) => format!("QuoteSetID={set}|QuoteEntryID={entry}"),
+            None => format!("QuoteEntryID={entry}"),
+        };
+    }
+    if let Some(entry) = member_text(members, 2430) {
+        return format!("OrderEntryID={entry}");
+    }
+    let base = match batch.get_crosscode() {
+        "" => batch.header().msgtype(),
+        code => code,
+    };
+    format!("{base}|{place}")
+}
+
+/// The messages a batch splits into, one per entry of its entry group
+/// ([`batch_groups`]), each split again as a message of its category is.
+fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
+    let Some((counter, inner)) = batch_groups(batch.header().msgtype()) else {
+        return Vec::new();
+    };
+    let Some(group_at) = batch.index_of_group(counter) else {
+        return Vec::new();
+    };
+    let Some(group) = batch.as_field().fields().get(group_at) else {
+        return Vec::new();
+    };
+    let name = SmolStr::new(group.name());
+    let Some(item) = group
+        .dtype()
+        .as_serie_type()
+        .map(|sequence| sequence.item().clone())
+    else {
+        return Vec::new();
+    };
+    let Some(rows) = batch
+        .as_value()
+        .as_sequence()
+        .and_then(|values| values.get(group_at))
+        .and_then(Scalar::sequence_rows)
+    else {
+        return Vec::new();
+    };
+    let kind = batch.msgcat().item();
+    let mut answer = Vec::new();
+    for (index, occurrence) in rows.iter().enumerate() {
+        let Some(values) = occurrence.as_sequence() else {
+            crate::warning::warned!(
+                "FIX batch entry excluded: its row is not a record",
+                batch.header().msgtype(),
+                "{name}[{index}] holds {}",
+                occurrence.kind()
+            );
+            continue;
+        };
+        let mut members = Vec::new();
+        entry_members(batch, item.fields(), values, inner, &mut members);
+        let place = format!("{counter}:{index}");
+        let Some(inner) = inner else {
+            answer.extend(batch_entry(batch, &name, kind, members, &place));
+            continue;
+        };
+        let nested = item.fields().iter().zip(values).find(|(field, _)| {
+            super::schema::tag_and_counter(batch.registry(), field).1 == Some(inner)
+        });
+        let Some((field, value)) = nested else {
+            continue;
+        };
+        let (Some(sequence), Some(entries)) =
+            (field.dtype().as_serie_type(), value.sequence_rows())
+        else {
+            continue;
+        };
+        for (at, entry) in entries.iter().enumerate() {
+            let Some(entry) = entry.as_sequence() else {
+                continue;
+            };
+            let mut own = members.clone();
+            entry_members(batch, sequence.item().fields(), entry, None, &mut own);
+            let place = format!("{place}|{inner}:{at}");
+            answer.extend(batch_entry(batch, &name, kind, own, &place));
+        }
+    }
+    answer
+}
+
+/// One batch entry as a message of `kind`, then what it splits into: the
+/// batch without its entry group, `members` at the root, chained by
+/// [`entry_crosscode`] and naming the batch among its sources.
+fn batch_entry(
+    batch: &FixMsg,
+    group: &str,
+    kind: MarketDataKind,
+    members: Vec<Member>,
+    place: &str,
+) -> Vec<FixMsg> {
+    let crosscode = entry_crosscode(batch, &members, place);
+    let mut entry = batch.clone();
+    if let Err(error) = entry.remove(FixKey::Name(group)) {
+        crate::warning::warned!(
+            "FIX batch entry excluded: its batch group could not be taken off",
+            batch.header().msgtype(),
+            "{group} at {place}: {error}"
+        );
+        return Vec::new();
+    }
+    // A member the root cannot hold is passed over, as the lenient write
+    // passes it: the entry keeps what reads.
+    if let Err(error) = entry.set_each(members.iter().map(Member::write)) {
+        crate::warning::warned!(
+            "FIX batch entry excluded: its members do not make a message",
+            batch.header().msgtype(),
+            "{group} at {place}: {error}"
+        );
+        return Vec::new();
+    }
+    entry.record(super::MSGCAT_TAG_NAME.0, &Scalar::MarketDataKind(kind));
+    entry.set_crosscode(crosscode);
+    entry.set_srcuuids(provenance(batch));
+    entry.settle();
+    let (entry, split) = entry.split();
+    std::iter::once(entry).chain(split).collect()
 }
 
 /// The facts a trade side states at the root of the execution its trade
@@ -695,26 +1044,40 @@ impl FixMsg {
     /// and the book reads each once.
     ///
     /// - A trade (`AE`) reporting an execution splits off one execution
-    ///   per `NoSides(552)` occurrence stating a side: the trade's content
+    ///   per `NoSides(552)` occurrence: the trade's content
     ///   with that occurrence alone in its group and the side's facts at
     ///   the root, as an `ExecutionReport` states them ([`SIDE_ROOT_TAGS`]);
     ///   its chain the side's own, its stable identifier the first of
     ///   `SideExecID(1427)`, `SideTradeID(1506)`, `SideTradeReportID(1005)`,
     ///   `OrderID(37)`, `ClOrdID(11)` it states, else the occurrence's own
-    ///   digest. An occurrence stating no side splits nothing and is kept
-    ///   beside the trade as an anomaly.
+    ///   digest. An occurrence stating no side, or one no side reads, splits
+    ///   off an execution of side `UNKN` with a warning; an unreadable
+    ///   side is also kept beside the trade as an anomaly, and so is an
+    ///   occurrence whose facts make no execution, which splits off none.
     /// - A quote stating no side of its own splits into one sided quote
-    ///   per side whose facts it states - `BUY` with the bid's facts,
+    ///   per side whose facts it states - `BUYS` with the bid's facts,
     ///   `SELL` with the offer's, each keeping both; [`FixMsg`] reads a
     ///   sided quote's price, quantity and FX parts off its side. A quote
-    ///   quoting only a bid is that bid's `BUY` quote, never an unsided
+    ///   quoting only a bid is that bid's `BUYS` quote, never an unsided
     ///   entry no book side can hold.
     /// - An order's, a quote's or an execution report's report of an
     ///   execution splits off that execution: the report's content under
-    ///   the category `EXEC`, its chain its own - `ExecID(17)`, else
-    ///   `TradeID(1003)`, else the report's chain and code. An execution
-    ///   report is then its order's report, `ORDR` - `QUOT` where it names
-    ///   a `QuoteID(117)` - so the fill is stated by the execution alone.
+    ///   the category `EXEC`, its chain its own - `ExecID(17)` as given,
+    ///   else `TradeID(1003)`, else the report's chain and code - so the
+    ///   fill is stated by the execution alone. The report is then its
+    ///   order's report, `ORDR`, or its quote's, `QUOT`, where it names a
+    ///   `QuoteID(117)`, as an execution report of no fill is from its
+    ///   parse ([`FixMsg::msgcat`]).
+    ///
+    /// - A batch - an order list, a mass order, a cross, a mass quote, a
+    ///   bid list, a match report ([`MarketDataKind::is_batch`]) - splits
+    ///   into one message of its single category per entry
+    ///   ([`MarketDataKind::item`]): the batch's content without its entry
+    ///   group, the entry's own members at the root, chained by the entry's
+    ///   own identifier ([`batch_entries`]). Each is then split as any
+    ///   message of its category is, so a mass quote's two-sided entry is a
+    ///   `BUYS` and a `SELL` quote. A batch stating its entries in no group
+    ///   the crate reads splits into nothing.
     ///
     /// Every message split off reads `FILLED` where it is an execution and
     /// its own state otherwise, has an identity of its own, and names its
@@ -722,6 +1085,10 @@ impl FixMsg {
     /// keeps what it states, its own state included.
     pub(super) fn split(mut self) -> (Self, Vec<Self>) {
         let category = self.msgcat();
+        if category.is_batch() {
+            let entries = batch_entries(&self);
+            return (self, entries);
+        }
         if category == MarketDataKind::Trade && self.header().msgtype() == "AE" {
             if !self.reports_execution() {
                 return (self, Vec::new());
@@ -751,6 +1118,8 @@ impl FixMsg {
             MarketDataKind::Order | MarketDataKind::Quotation | MarketDataKind::Execution
         ) && self.reports_execution()
         {
+            // A report of a fill is its order's report once the fill is
+            // split off: the execution is that fill.
             if category == MarketDataKind::Execution {
                 let report = if self.lifted().quoteid().is_some() {
                     MarketDataKind::Quotation
@@ -763,7 +1132,7 @@ impl FixMsg {
             let base = self
                 .lifted()
                 .execid()
-                .map(|id| format!("ExecID={id}"))
+                .map(str::to_owned)
                 .or_else(|| self.lifted().tradeid().map(|id| format!("TradeID={id}")))
                 .unwrap_or_else(|| {
                     format!(
@@ -808,14 +1177,25 @@ fn provenance(source: &FixMsg) -> Vec<crate::Uuid> {
 fn sided_quote(source: &FixMsg, side: Side) -> Option<FixMsg> {
     let mut quote = source.clone();
     let code = side.fix_code()?.to_string();
-    quote.set_each([(54, Scalar::from(code))]).ok()?;
+    if let Err(error) = quote.set_each([(54, Scalar::from(code))]) {
+        warned!(
+            "FIX quote side excluded: its Side could not be written",
+            "Side",
+            "the {} quote of {:?}: {error}",
+            side.as_str(),
+            source.get_crosscode()
+        );
+        return None;
+    }
     quote.set_srcuuids(provenance(source));
     quote.settle();
     Some(quote)
 }
 
-/// The executions a trade splits off, one per `NoSides(552)` occurrence
-/// stating a side; an occurrence stating none is kept as an anomaly.
+/// The executions a trade splits off, one per `NoSides(552)` occurrence:
+/// an occurrence stating no side, or one no side reads, is an execution of
+/// side [`Side::Unknown`] - its `Side(54)` unwritten - with a warning, and
+/// an unreadable side is also kept beside the trade as an anomaly.
 fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
     let Some(group_at) = trade.index_of_group(TRADE_SIDES) else {
         return Vec::new();
@@ -846,24 +1226,29 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
         return Vec::new();
     };
     let counted = trade.get_by_tag(TRADE_SIDES).is_some();
-    let chain = SmolStr::new(unsided_crosscode(trade.get_crosscode()));
+    // A trade is not sided, so its cross code is its chain as given.
+    let chain = SmolStr::new(trade.get_crosscode());
     let mut sides = Vec::with_capacity(group.entries().len());
     for (index, occurrence) in group.entries().iter().enumerate() {
-        let side = entry_value(occurrence, 54).and_then(|value| Side::read(value).ok());
-        if side.is_none_or(|side| side == Side::Unknown) {
-            trade.note_anomaly(super::FixAnomaly::new(
-                "NoSides",
-                format!("occurrence {index} states no side, so it splits off no execution"),
-            ));
-            continue;
+        let stated = entry_value(occurrence, 54);
+        let readable = stated.is_some_and(|stated| Side::from_spelling(stated).is_some());
+        if !readable {
+            unsided(trade, &name, index, stated);
         }
-        let Ok(alone) = rows.slice(index, 1) else {
-            continue;
+        let alone = match rows.slice(index, 1) {
+            Ok(alone) => alone,
+            Err(error) => {
+                excluded_side(trade, &name, index, &error);
+                continue;
+            }
         };
         let mut execution = trade.clone();
         let mut writes: Vec<(FixKey<'_>, Scalar)> =
             vec![(FixKey::Name(name.as_str()), Scalar::from(alone))];
         for (member, root) in SIDE_ROOT_TAGS {
+            if member == 54 && !readable {
+                continue;
+            }
             if let Some(value) = entry_value(occurrence, member) {
                 writes.push((FixKey::Tag(root), side_value(root, value)));
             }
@@ -871,7 +1256,8 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
         if counted {
             writes.push((FixKey::Tag(TRADE_SIDES), Scalar::from(1_i32)));
         }
-        if execution.set_each(writes).is_err() {
+        if let Err(error) = execution.set_each(writes) {
+            excluded_side(trade, &name, index, &error);
             continue;
         }
         let stable = [1427, 1506, 1005, 37, 11]
@@ -890,6 +1276,48 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
         sides.push(executed(trade, execution, base));
     }
     sides
+}
+
+/// Says that the `index`th occurrence of a trade's `group` states no side -
+/// `stated` the text no side reads, where it states one - so the execution
+/// it splits off is of side `UNKN`: as a warning, and a stated text
+/// beside the trade as an anomaly too.
+fn unsided(trade: &mut FixMsg, group: &str, index: usize, stated: Option<&str>) {
+    let Some(stated) = stated else {
+        warned!(
+            "FIX trade side states no Side; its execution's side defaulted to UNKN",
+            "Side",
+            "{group}[{index}] of trade {:?}",
+            trade.get_crosscode()
+        );
+        return;
+    };
+    warned!(
+        "FIX trade side's Side is unreadable; its execution's side defaulted to UNKN",
+        "Side",
+        "{group}[{index}] of trade {:?} states {stated:?}",
+        trade.get_crosscode()
+    );
+    trade.note_anomaly(super::FixAnomaly::new(
+        "Side",
+        format!("occurrence {index} states {stated:?}, which names no side"),
+    ));
+}
+
+/// Says that the `index`th occurrence of a trade's `group` splits off no
+/// execution, since `error` refused taking it alone: as a warning, and
+/// beside the trade as an anomaly, since the fill it states is lost.
+fn excluded_side(trade: &mut FixMsg, group: &str, index: usize, error: &Error) {
+    warned!(
+        "FIX trade side excluded: its occurrence does not make an execution",
+        group,
+        "{group}[{index}] of trade {:?}: {error}",
+        trade.get_crosscode()
+    );
+    trade.note_anomaly(super::FixAnomaly::new(
+        group,
+        format!("occurrence {index} splits off no execution: {error}"),
+    ));
 }
 
 /// A side member's text as the root tag it is written under reads it: a
@@ -913,142 +1341,285 @@ fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
         .find_map(|child| entry_value(child, tag))
 }
 
-fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
-    let entries = message.entries();
+/// What one member of a book entry reads as: its value, `None` where it is
+/// not stated, or the value as stated where it reads as nothing.
+type Reading<T> = std::result::Result<Option<T>, String>;
+
+/// Said of an entry's size, FX part, or an update's price that is no exact
+/// decimal.
+const DECIMAL_NULLED: &str = "FIX book entry value is no exact decimal; defaulted to null";
+
+/// Said of an entry's or a message's date or time that names no instant.
+const CLOCK_DEFAULTED: &str =
+    "FIX book entry date or time names no instant; defaulted to the message's clock";
+
+/// Where the members a book entry is read by sit in its typed occurrence.
+struct MemberPaths {
+    date: Option<Vec<usize>>,
+    time: Option<Vec<usize>>,
+    price: Option<Vec<usize>>,
+    size: Option<Vec<usize>>,
+    spotrate: Option<Vec<usize>>,
+    forwardpoints: Option<Vec<usize>>,
+}
+
+/// An entry read off the FIX tree alone: no member has a typed path.
+static UNTYPED: MemberPaths = MemberPaths {
+    date: None,
+    time: None,
+    price: None,
+    size: None,
+    spotrate: None,
+    forwardpoints: None,
+};
+
+/// A book message's typed `NoMDEntries(268)` group: one typed occurrence
+/// per entry of the FIX tree, and where an entry's members sit in each.
+struct TypedGroup<'a> {
+    occurrences: Cow<'a, [Scalar]>,
+    paths: MemberPaths,
+    /// Where an entry states its own parties and account.
+    accounts: AccountsAt,
+}
+
+/// The typed group matching the `count` entries of `message`'s FIX tree,
+/// or why the row holds none that does.
+fn typed_group<'a>(
+    message: &'a FixMsg,
+    values: Option<&'a [Scalar]>,
+    count: usize,
+) -> std::result::Result<TypedGroup<'a>, String> {
+    let values = values.ok_or("the message row is no record")?;
+    let at = message
+        .index_of_group(MD_ENTRIES)
+        .ok_or("no single typed column holds the group")?;
+    let sequence = message
+        .as_field()
+        .fields()
+        .get(at)
+        .and_then(|field| field.dtype().as_serie_type())
+        .ok_or("the group's typed column is no sequence")?;
+    let occurrences = values
+        .get(at)
+        .and_then(Scalar::sequence_rows)
+        .ok_or("the group's typed value is no sequence")?;
+    if occurrences.len() != count {
+        return Err(format!(
+            "the typed group holds {} entries where the FIX tree holds {count}",
+            occurrences.len()
+        ));
+    }
+    let members = sequence.item().fields();
+    let paths = MemberPaths {
+        date: member_path(message, members, 272),
+        time: member_path(message, members, 273),
+        price: member_path(message, members, 270),
+        size: member_path(message, members, 271),
+        spotrate: member_path(message, members, 1026),
+        forwardpoints: member_path(message, members, 1027),
+    };
+    let accounts = AccountsAt::new(message.registry(), members);
+    Ok(TypedGroup {
+        occurrences,
+        paths,
+        accounts,
+    })
+}
+
+/// The entries a book message states, each read at the smallest part that
+/// can stand: a fact no reading takes is null with a warning, and a
+/// message whose group cannot be told apart answers none.
+fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
+    let msgtype = message.header().msgtype();
+    let unix = message.get_currunix();
     let mut root = Facts {
         request_id: message.lifted().mdreqid().map(SmolStr::new),
         ..Facts::default()
     };
     let mut group = None;
-    for entry in entries {
+    let mut groups = 0_usize;
+    for entry in message.entries() {
         if entry.tag() == MD_ENTRIES {
-            if group.replace(entry).is_some() {
-                return Err(invalid(
-                    "$.NoMDEntries(268)",
-                    "expected one repeating group, got multiple",
-                ));
-            }
+            group = Some(entry);
+            groups += 1;
         } else {
             gather(entry, &mut root);
         }
     }
-    let group = group
-        .ok_or_else(|| invalid("$.NoMDEntries(268)", "expected a repeating group, got none"))?;
+    if groups > 1 {
+        warned!(
+            "FIX book message excluded: it states several NoMDEntries groups",
+            msgtype,
+            "the {msgtype:?} message at {unix} states {groups}, and which one is the book's \
+             cannot be chosen"
+        );
+        return Vec::new();
+    }
 
-    let values = message
-        .as_value()
-        .as_sequence()
-        .ok_or_else(|| invalid("$", "expected the FIX message row to be a sequence"))?;
-    let group_at = message.index_of_group(MD_ENTRIES).ok_or_else(|| {
-        invalid(
-            "$.NoMDEntries(268)",
-            "expected one typed repeating group, got none or multiple",
-        )
-    })?;
-    let Some(sequence) = message
-        .as_field()
-        .fields()
-        .get(group_at)
-        .ok_or_else(|| invalid("$.NoMDEntries(268)", "typed group field is absent"))?
-        .dtype()
-        .as_serie_type()
-    else {
-        return Err(invalid(
-            "$.NoMDEntries(268)",
-            "expected the typed group field to be a sequence",
-        ));
+    let values = message.as_value().as_sequence();
+    let root_at = |tag: i32, name: &str| {
+        format!("{name}({tag}) at the root of the {msgtype:?} message at {unix}")
     };
-    let members = sequence.item().fields();
-    let date_at = member_path(message, members, 272);
-    let time_at = member_path(message, members, 273);
-    let price_at = member_path(message, members, 270);
-    let size_at = member_path(message, members, 271);
-    let spotrate_at = member_path(message, members, 1026);
-    let forwardpoints_at = member_path(message, members, 1027);
-    let typed_entries = values
-        .get(group_at)
-        .and_then(Scalar::sequence_rows)
-        .ok_or_else(|| {
-            invalid(
-                "$.NoMDEntries(268)",
-                "expected the typed group value to be a sequence",
-            )
-        })?;
-    if typed_entries.len() != group.entries().len() {
-        return Err(invalid(
-            "$.NoMDEntries(268)",
-            format_smolstr!(
-                "typed group has {} entries but the FIX tree has {}",
-                typed_entries.len(),
-                group.entries().len()
-            ),
-        ));
-    }
+    let root_date = values.and_then(|values| {
+        let value = message
+            .unique_index_of_tag(272)
+            .and_then(|at| values.get(at));
+        or_null(
+            temporal_count(value, TimeUnit::Day),
+            CLOCK_DEFAULTED,
+            272,
+            "MDEntryDate",
+            &root_at,
+        )
+    });
+    let root_time = values.and_then(|values| {
+        let value = message
+            .unique_index_of_tag(273)
+            .and_then(|at| values.get(at));
+        or_null(
+            temporal_count(value, TimeUnit::Nanosecond),
+            CLOCK_DEFAULTED,
+            273,
+            "MDEntryTime",
+            &root_at,
+        )
+    });
+    let empty_snapshot = || BookEntry {
+        facts: root.clone(),
+        accounts: IdMap::new(),
+        position: 0,
+        date_days: root_date,
+        time_nanos: root_time,
+        price: Ok(None),
+        size: None,
+        spotrate: None,
+        forwardpoints: None,
+        empty_snapshot: true,
+    };
+    let occurrences = match group {
+        Some(group) if group.entries().is_empty() => {
+            return if msgtype == "W" {
+                vec![empty_snapshot()]
+            } else {
+                Vec::new()
+            };
+        }
+        Some(group) => group.entries(),
+        None if msgtype == "W" => {
+            warned!(
+                "FIX full refresh states no NoMDEntries group; defaulted to an empty snapshot",
+                "NoMDEntries",
+                "the {msgtype:?} message at {unix} clears its scope"
+            );
+            return vec![empty_snapshot()];
+        }
+        None => {
+            warned!(
+                "FIX incremental refresh excluded: it states no NoMDEntries group",
+                "NoMDEntries",
+                "the {msgtype:?} message at {unix} answers no leaf"
+            );
+            return Vec::new();
+        }
+    };
 
-    let root_date = root_temporal_count(message, values, 272, TimeUnit::Day)?;
-    let root_time = root_temporal_count(message, values, 273, TimeUnit::Nanosecond)?;
-
-    let mut answer = Vec::with_capacity(group.entries().len());
-    if group.entries().is_empty() && message.header().msgtype() == "W" {
-        answer.push(BookEntry {
-            facts: root,
-            position: 0,
-            date_days: root_date,
-            time_nanos: root_time,
-            price: None,
-            size: None,
-            spotrate: None,
-            forwardpoints: None,
-            empty_snapshot: true,
-        });
-        return Ok(answer);
-    }
-    for (position, occurrence) in group.entries().iter().enumerate() {
+    let roles = party_roles(message.registry());
+    let typed = typed_group(message, values, occurrences.len())
+        .map_err(|reason| {
+            warned!(
+                "FIX book entries read off the FIX tree alone: their typed group does not match them",
+                "NoMDEntries",
+                "the {msgtype:?} message at {unix}: {reason}"
+            );
+        })
+        .ok();
+    let mut answer = Vec::with_capacity(occurrences.len());
+    for (position, occurrence) in occurrences.iter().enumerate() {
+        let place =
+            || format!("$.NoMDEntries(268)[{position}] of the {msgtype:?} message at {unix}");
+        let at = |tag: i32, name: &str| format!("{name}({tag}) at {}", place());
         let mut facts = Facts::default();
         facts.inherit_context(&root);
         let mut own = Facts::default();
         gather(occurrence, &mut own);
         facts.overlay(own);
-        let typed = typed_entries[position].as_sequence().ok_or_else(|| {
-            invalid(
-                format_smolstr!("$.NoMDEntries(268)[{position}]"),
-                "expected the typed occurrence to be a sequence",
-            )
-        })?;
-        let date_days = temporal_count(
-            member_value(typed, date_at.as_deref()),
-            TimeUnit::Day,
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntryDate(272)"),
-        )?
+        let (members, paths) = typed
+            .as_ref()
+            .and_then(|typed| {
+                let occurrence = &typed.occurrences[position];
+                let members = occurrence.as_sequence();
+                if members.is_none() {
+                    warned!(
+                        "FIX book entry read off the FIX tree alone: its typed occurrence is no record",
+                        "NoMDEntries",
+                        "{} holds {}",
+                        place(),
+                        occurrence.kind()
+                    );
+                }
+                members.map(|members| (members, &typed.paths))
+            })
+            .unwrap_or((&[], &UNTYPED));
+        let date_days = or_null(
+            temporal_count(member_value(members, paths.date.as_deref()), TimeUnit::Day),
+            CLOCK_DEFAULTED,
+            272,
+            "MDEntryDate",
+            &at,
+        )
         .or(root_date);
-        let time_nanos = temporal_count(
-            member_value(typed, time_at.as_deref()),
-            TimeUnit::Nanosecond,
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntryTime(273)"),
-        )?
+        let time_nanos = or_null(
+            temporal_count(
+                member_value(members, paths.time.as_deref()),
+                TimeUnit::Nanosecond,
+            ),
+            CLOCK_DEFAULTED,
+            273,
+            "MDEntryTime",
+            &at,
+        )
         .or(root_time);
         let price = decimal(
-            member_value(typed, price_at.as_deref()),
+            member_value(members, paths.price.as_deref()),
             facts.price.as_deref(),
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntryPx(270)"),
-        )?;
-        let size = decimal(
-            member_value(typed, size_at.as_deref()),
-            facts.size.as_deref(),
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntrySize(271)"),
-        )?;
-        let spotrate = decimal(
-            member_value(typed, spotrate_at.as_deref()),
-            facts.spotrate.as_deref(),
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntrySpotRate(1026)"),
-        )?;
-        let forwardpoints = decimal(
-            member_value(typed, forwardpoints_at.as_deref()),
-            facts.forwardpoints.as_deref(),
-            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntryForwardPoints(1027)"),
-        )?;
+        );
+        let size = or_null(
+            decimal(
+                member_value(members, paths.size.as_deref()),
+                facts.size.as_deref(),
+            ),
+            DECIMAL_NULLED,
+            271,
+            "MDEntrySize",
+            &at,
+        );
+        let spotrate = or_null(
+            decimal(
+                member_value(members, paths.spotrate.as_deref()),
+                facts.spotrate.as_deref(),
+            ),
+            DECIMAL_NULLED,
+            1026,
+            "MDEntrySpotRate",
+            &at,
+        );
+        let forwardpoints = or_null(
+            decimal(
+                member_value(members, paths.forwardpoints.as_deref()),
+                facts.forwardpoints.as_deref(),
+            ),
+            DECIMAL_NULLED,
+            1027,
+            "MDEntryForwardPoints",
+            &at,
+        );
+        let mut accounts = IdMap::new();
+        if let Some(typed) = typed.as_ref() {
+            typed.accounts.read(roles, members, &mut accounts, None);
+        }
         answer.push(BookEntry {
             facts,
+            accounts,
             position,
             date_days,
             time_nanos,
@@ -1059,7 +1630,23 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
             empty_snapshot: false,
         });
     }
-    Ok(answer)
+    answer
+}
+
+/// What `read` answers, null where the stated value reads as nothing -
+/// with the warning `what` about `name`, naming the value where `at`
+/// places the member.
+fn or_null<T>(
+    read: Reading<T>,
+    what: &'static str,
+    tag: i32,
+    name: &'static str,
+    at: &impl Fn(i32, &str) -> String,
+) -> Option<T> {
+    read.unwrap_or_else(|value| {
+        warned!(what, name, "{} states {value}", at(tag, name));
+        None
+    })
 }
 
 fn member_path(message: &FixMsg, fields: &[crate::Field], tag: i32) -> Option<Vec<usize>> {
@@ -1090,40 +1677,15 @@ fn member_value<'a>(values: &'a [Scalar], path: Option<&[usize]>) -> Option<&'a 
     Some(value)
 }
 
-fn root_temporal_count(
-    message: &FixMsg,
-    values: &[Scalar],
-    tag: i32,
-    unit: TimeUnit,
-) -> Result<Option<i64>> {
-    temporal_count(
-        message
-            .unique_index_of_tag(tag)
-            .and_then(|at| values.get(at)),
-        unit,
-        format_smolstr!(
-            "$.{}({tag})",
-            if tag == 272 {
-                "MDEntryDate"
-            } else {
-                "MDEntryTime"
-            }
-        ),
-    )
-}
-
-fn temporal_count(value: Option<&Scalar>, unit: TimeUnit, path: SmolStr) -> Result<Option<i64>> {
+/// A typed date or time as a count of `unit`.
+fn temporal_count(value: Option<&Scalar>, unit: TimeUnit) -> Reading<i64> {
     let Some(value) = value.filter(|value| !value.is_null()) else {
         return Ok(None);
     };
-    value.temporal_count_at(unit).map(Some).ok_or_else(|| {
-        invalid(
-            path,
-            format_smolstr!(
-                "expected a temporal value exactly representable as {unit}, got {value:?}"
-            ),
-        )
-    })
+    value
+        .temporal_count_at(unit)
+        .map(Some)
+        .ok_or_else(|| format!("{value:?}, which is no exact count of {unit}"))
 }
 
 fn gather(entry: &FixEntry, facts: &mut Facts) {
@@ -1135,42 +1697,47 @@ fn gather(entry: &FixEntry, facts: &mut Facts) {
     }
 }
 
-/// One leaf per entry, each carrying the message's unmapped fields and its
-/// own occurrence's where `unmapped` states them.
+/// One leaf per entry that can stand, each carrying the message's unmapped
+/// fields and its own occurrence's where `unmapped` states them.
 fn build_book_operations(
     base: OperationEventFacts,
     msgtype: &str,
     entries: &[BookEntry],
     mut unmapped: Option<Unmapped>,
-) -> Result<Vec<MarketData>> {
+) -> Vec<MarketData> {
     let mut answer = Vec::with_capacity(entries.len());
     let mut base = Some(base);
     for (index, entry) in entries.iter().enumerate() {
-        let mut event = if index + 1 == entries.len() {
+        let event = if index + 1 == entries.len() {
             base.take().expect("the final entry takes the base")
         } else {
             base.as_ref().expect("the base remains").clone()
         };
-        carry(
-            &mut event,
-            unmapped
-                .as_mut()
-                .map(|unmapped| unmapped.leaf(entry.position)),
-        );
-        answer.push(build_book_operation(event, msgtype, entry)?);
+        let carried = unmapped
+            .as_mut()
+            .map(|unmapped| unmapped.leaf(entry.position));
+        answer.extend(build_book_operation(event, msgtype, entry, carried));
     }
     answer.sort_by_key(effective_unix);
-    Ok(answer)
+    answer
 }
 
+/// The leaf one entry is, or `None` - with a warning - where it cannot
+/// stand: no kind, no action, no identity, or no price to rest at.
 fn build_book_operation(
     mut event: OperationEventFacts,
     msgtype: &str,
     entry: &BookEntry,
-) -> Result<MarketData> {
-    let path = |tag: i32, name: &str| {
-        format_smolstr!("$.NoMDEntries(268)[{}].{name}({tag})", entry.position)
+    carried: Option<Carried>,
+) -> Option<MarketData> {
+    let unix = event.get_currunix();
+    let place = || {
+        format!(
+            "$.NoMDEntries(268)[{}] of the {msgtype:?} message at {unix}",
+            entry.position
+        )
     };
+    let at = |tag: i32, name: &str| format!("{name}({tag}) at {}", place());
     if entry.empty_snapshot {
         let scope = book_scope(&entry.facts, &event);
         let ticker = entry
@@ -1184,49 +1751,84 @@ fn build_book_operation(
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
         event.set_state(State::New);
+        carry(&mut event, carried, false);
         // A snapshot control states no operation of its own: the operation
         // facts a FIX event states drop.
-        return Ok(MarketData::from(SnapshotEvent::from_facts(
+        return Some(MarketData::from(SnapshotEvent::from_facts(
             event.into_event(),
             Some(SmolStr::new(scope)),
         )));
     }
-    let entry_type = entry.facts.entry_type.as_deref().ok_or_else(|| {
-        invalid(
-            path(269, "MDEntryType"),
-            "expected 0 (bid), 1 (offer) or 2 (trade), got no value",
-        )
-    })?;
+    let Some(entry_type) = entry.facts.entry_type.as_deref() else {
+        warned!(
+            "FIX book entry excluded: it states no MDEntryType",
+            "MDEntryType",
+            "{} is absent",
+            at(269, "MDEntryType")
+        );
+        return None;
+    };
     let kind = match entry_type {
         "0" | "1" if entry.facts.order_id.is_some() => Direct::Order,
         "0" | "1" => Direct::Quote,
         "2" => Direct::Execution,
         other => {
-            return Err(invalid(
-                path(269, "MDEntryType"),
-                format_smolstr!("expected 0 (bid), 1 (offer) or 2 (trade), got {other:?}"),
-            ));
+            warned!(
+                "FIX book entry excluded: MDEntryType is not a bid, an offer or a trade",
+                "MDEntryType",
+                "{} states {other:?}; a book reads 0 (bid), 1 (offer) and 2 (trade)",
+                at(269, "MDEntryType")
+            );
+            return None;
         }
     };
     let action = if msgtype == "W" {
         MdUpdateAction::Snapshot
     } else {
-        let stated = entry.facts.action.as_deref().ok_or_else(|| {
-            invalid(
-                path(279, "MDUpdateAction"),
-                "expected an incremental action from 0 through 5, got no value",
-            )
-        })?;
-        MdUpdateAction::read(stated)
-            .filter(|action| *action != MdUpdateAction::Snapshot)
-            .ok_or_else(|| {
-                invalid(
-                    path(279, "MDUpdateAction"),
-                    format_smolstr!(
-                        "expected an incremental action from 0 through 5, got {stated:?}"
-                    ),
-                )
-            })?
+        let Some(stated) = entry.facts.action.as_deref() else {
+            warned!(
+                "FIX book entry excluded: it states no MDUpdateAction",
+                "MDUpdateAction",
+                "{} is absent",
+                at(279, "MDUpdateAction")
+            );
+            return None;
+        };
+        let Some(action) =
+            MdUpdateAction::read(stated).filter(|action| *action != MdUpdateAction::Snapshot)
+        else {
+            warned!(
+                "FIX book entry excluded: MDUpdateAction is not an incremental action",
+                "MDUpdateAction",
+                "{} states {stated:?}; an incremental action is 0 through 5",
+                at(279, "MDUpdateAction")
+            );
+            return None;
+        };
+        action
+    };
+    let rests = matches!(action, MdUpdateAction::Snapshot | MdUpdateAction::New);
+    let price = match &entry.price {
+        Ok(price) => *price,
+        Err(value) if rests => {
+            warned!(
+                "FIX book entry excluded: its MDEntryPx is no exact decimal, and a new entry cannot rest unpriced",
+                "MDEntryPx",
+                "{} states {value}",
+                at(270, "MDEntryPx")
+            );
+            return None;
+        }
+        // An update restating no price keeps the live entry's.
+        Err(value) => {
+            warned!(
+                DECIMAL_NULLED,
+                "MDEntryPx",
+                "{} states {value}",
+                at(270, "MDEntryPx")
+            );
+            None
+        }
     };
     let state = match action {
         MdUpdateAction::Snapshot | MdUpdateAction::New => State::New,
@@ -1236,28 +1838,32 @@ fn build_book_operation(
         }
     };
 
-    let side = match entry_type {
-        "0" => Side::read("Buy").expect("the shipped buy side"),
-        "1" => Side::read("Sell").expect("the shipped sell side"),
-        _ => entry
-            .facts
-            .side
-            .as_deref()
-            .and_then(Side::from_spelling)
-            .unwrap_or(Side::Unknown),
+    let side = match (entry_type, entry.facts.side.as_deref()) {
+        ("0", _) => Side::Buy,
+        ("1", _) => Side::Sell,
+        (_, None) => Side::Unknown,
+        (_, Some(stated)) => Side::from_spelling(stated).unwrap_or_else(|| {
+            warned!(
+                "FIX book entry Side is unreadable; defaulted to UNKN",
+                "Side",
+                "{} states {stated:?}",
+                at(54, "Side")
+            );
+            Side::Unknown
+        }),
     };
-    if let Some(unix) = entry_unix(entry, event.get_currunix(), &path)? {
+    if let Some(instant) = entry_unix(entry, unix, &at) {
         if msgtype == "W" {
             if matches!(kind, Direct::Execution) {
-                event.set_execunix(Some(unix));
+                event.set_execunix(Some(instant));
             } else {
-                event.set_creaunix(Some(unix));
+                event.set_creaunix(Some(instant));
             }
         } else {
-            event.set_currunix(unix);
+            event.set_currunix(instant);
         }
         if msgtype != "W" && matches!(kind, Direct::Execution) {
-            event.set_execunix(Some(unix));
+            event.set_execunix(Some(instant));
         }
     }
     let scope = book_scope(&entry.facts, &event);
@@ -1270,13 +1876,23 @@ fn build_book_operation(
         let mut crosscode = scope.clone();
         push_scope(&mut crosscode, "MDEntryID", identifier);
         crosscode
+    } else if let Some(crosscode) = fallback_crosscode(&scope, entry_type, action, &entry.facts) {
+        crosscode
     } else {
-        fallback_crosscode(&scope, entry_type, action.as_str(), &entry.facts, &path)?
+        warned!(
+            "FIX book entry excluded: an anonymous incremental update names no entry",
+            "MDEntryID",
+            "{} is absent, and so are MDEntryRefID, MDEntryPositionNo and MDPriceLevel for \
+             action {}",
+            at(278, "MDEntryID"),
+            action.as_str()
+        );
+        return None;
     };
 
     // The entry's MDEntryPx(270), MDEntrySpotRate(1026) and
     // MDEntryForwardPoints(1027), each as stated.
-    event.set_price(entry.price);
+    event.set_price(price);
     event.set_quantity(entry.size);
     event.set_spotrate(entry.spotrate);
     event.set_forwardpoints(entry.forwardpoints);
@@ -1301,70 +1917,83 @@ fn build_book_operation(
     ] {
         if let Some(value) = value {
             let _ = event.remove_altid(key);
-            let _ = event.insert_altid(key, value);
+            if let Err(error) = event.insert_altid(key, value) {
+                warned!(
+                    "FIX book entry identifier not kept: the operation's identifiers refuse it",
+                    key,
+                    "{} states {key} {value:?}: {error}",
+                    place()
+                );
+            }
         }
     }
+    let position = entry.facts.position.as_deref().and_then(|position| {
+        let parsed = position.parse().ok();
+        if parsed.is_none() {
+            warned!(
+                "FIX book entry position is no count; defaulted to null",
+                "MDEntryPositionNo",
+                "{} states {position:?}",
+                at(290, "MDEntryPositionNo")
+            );
+        }
+        parsed
+    });
     let book = BookRef {
         action: Some(action),
         scope: Some(SmolStr::new(scope)),
-        position: entry
-            .facts
-            .position
-            .as_deref()
-            .and_then(|position| position.parse().ok()),
-        entry_px: entry.facts.price.as_ref().and(entry.price),
+        position,
+        entry_px: entry.facts.price.as_ref().and(price),
         entry_size: entry.facts.size.as_ref().and(entry.size),
     };
-    Ok(operation(kind, event, Some(book)))
+    // The entry's own parties lead the message's, as a trade side's do.
+    if !entry.accounts.is_empty() {
+        let mut accounts = entry.accounts.clone();
+        accounts.merge(event.get_accountids());
+        let _ = event.set_accountids(accounts);
+    }
+    carry(&mut event, carried, true);
+    Some(operation(kind, event, Some(book)))
 }
 
-fn decimal(
-    typed: Option<&Scalar>,
-    rendered: Option<&str>,
-    path: SmolStr,
-) -> Result<Option<Decimal>> {
-    let Some(value) = typed.filter(|value| !value.is_null()) else {
-        return rendered
-            .map(|value| {
-                value.parse::<Decimal>().map_err(|_| {
-                    invalid(
-                        path.clone(),
-                        format_smolstr!("expected an exact decimal, got {value:?}"),
-                    )
-                })
-            })
-            .transpose();
-    };
-    Decimal::from_scalar(value).map(Some).ok_or_else(|| {
-        invalid(
-            path,
-            format_smolstr!("expected an exact decimal, got {value:?}"),
-        )
-    })
+/// An entry's decimal: the typed value where the row holds one, else the
+/// text the entry states.
+fn decimal(typed: Option<&Scalar>, rendered: Option<&str>) -> Reading<Decimal> {
+    match typed.filter(|value| !value.is_null()) {
+        Some(value) => Decimal::from_scalar(value)
+            .map(Some)
+            .ok_or_else(|| format!("{value:?}")),
+        None => rendered.map_or(Ok(None), |text| {
+            text.parse().map(Some).map_err(|_| format!("{text:?}"))
+        }),
+    }
 }
 
+/// The instant an entry's clock names on the day it states - else the
+/// message's day - or `None`, with a warning, where no nanosecond count
+/// holds it.
 fn entry_unix(
     entry: &BookEntry,
     fallback_unix: i64,
-    path: &impl Fn(i32, &str) -> SmolStr,
-) -> Result<Option<i64>> {
-    let Some(clock) = entry.time_nanos else {
-        return Ok(None);
-    };
+    at: &impl Fn(i32, &str) -> String,
+) -> Option<i64> {
+    let clock = entry.time_nanos?;
     let day = entry
         .date_days
         .unwrap_or_else(|| fallback_unix.div_euclid(NANOS_PER_DAY));
     let unix = i128::from(day)
         .checked_mul(i128::from(NANOS_PER_DAY))
         .and_then(|date| date.checked_add(i128::from(clock)))
-        .and_then(|unix| i64::try_from(unix).ok())
-        .ok_or_else(|| {
-            invalid(
-                path(273, "MDEntryTime"),
-                "market-data entry instant exceeds nanosecond range",
-            )
-        })?;
-    Ok(Some(unix))
+        .and_then(|unix| i64::try_from(unix).ok());
+    if unix.is_none() {
+        warned!(
+            CLOCK_DEFAULTED,
+            "MDEntryTime",
+            "{} states {clock} ns on day {day}, past the nanosecond range",
+            at(273, "MDEntryTime")
+        );
+    }
+    unix
 }
 
 /// The scope a market-data entry stands in. Its symbol is the entry's own,
@@ -1422,13 +2051,17 @@ fn push_scope(scope: &mut String, name: &str, value: &str) {
     }
 }
 
+/// The identity an entry naming no `MDEntryID(278)` or
+/// `MDEntryRefID(280)` stands under: its scope, its type and the position
+/// or level it states, else - for a new or a snapshot entry, which rests at
+/// its price - its price. `None` for an anonymous update stating neither,
+/// which names no entry.
 fn fallback_crosscode(
     scope: &str,
     entry_type: &str,
-    action: &str,
+    action: MdUpdateAction,
     facts: &Facts,
-    path: &impl Fn(i32, &str) -> SmolStr,
-) -> Result<String> {
+) -> Option<String> {
     let mut crosscode = String::with_capacity(scope.len() + 64);
     crosscode.push_str(scope);
     push_scope(&mut crosscode, "MDEntryType", entry_type);
@@ -1439,11 +2072,8 @@ fn fallback_crosscode(
         push_scope(&mut crosscode, "MDPriceLevel", level);
     }
     if facts.position.is_none() && facts.level.is_none() {
-        if !matches!(action, "snapshot" | "0") {
-            return Err(invalid(
-                path(278, "MDEntryID"),
-                "expected MDEntryID, MDEntryRefID, MDEntryPositionNo or MDPriceLevel for an anonymous incremental update",
-            ));
+        if !matches!(action, MdUpdateAction::Snapshot | MdUpdateAction::New) {
+            return None;
         }
         push_scope(
             &mut crosscode,
@@ -1451,7 +2081,7 @@ fn fallback_crosscode(
             facts.price.as_deref().unwrap_or(""),
         );
     }
-    Ok(crosscode)
+    Some(crosscode)
 }
 
 fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {

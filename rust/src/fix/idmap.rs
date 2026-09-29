@@ -17,8 +17,21 @@
 //!
 //! An entry states the map and the key, whether an operation that follows
 //! another carries the key forward, and, on `PartyID(448)`, the
-//! `PartyRole(452)` code of the `Parties` occurrence that states it. The
-//! parties a message names are no identifier: they stay in its metadata.
+//! `PartyRole(452)` code of the `Parties` occurrence that states it.
+//!
+//! Two readings are the crate's own rather than a field's: a message's
+//! parties and its `Account(1)` are its
+//! [`accountids`](crate::graph::Operation::get_accountids), every
+//! `Parties(453)` and `RootParties(1116)` occurrence's identifier under its
+//! role's name - `EXECUTINGTRADER`, `CUSTOMERACCOUNT` - and the account
+//! under `ACCOUNT`, and its regulatory trade identifiers are alternate
+//! identifiers keyed by their `RegulatoryTradeIDType(1906)` - `REGTRADEID`,
+//! `TVTIC`. A side's own parties, account and identifiers come first, so an
+//! execution a trade's parse split off states its side's, and a book
+//! entry's own parties lead the message's on its leaf. A leaf lifts, too,
+//! every scalar of its metadata whose key ends with one of the
+//! `FIX:identifiers` its message's type declares into its alternate
+//! identifiers; the message's own maps are the ones its fields state.
 
 use std::fmt;
 use std::iter::FusedIterator;

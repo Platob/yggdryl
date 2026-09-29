@@ -300,12 +300,19 @@ impl Memo {
 
     /// The wire value the code named `name` has in the set `document` is,
     /// exactly as [`FixCodeSet::code_by_name`](super::FixCodeSet::code_by_name)
-    /// answers it, read once per distinct question.
+    /// answers it, else the first code whose name `reads` - the member a
+    /// field's value door reads a code's name as, where the member's own
+    /// name is no spelling the set holds - read once per distinct question.
     ///
     /// Keyed by the document's address: the registry owns every document
     /// for as long as this memo answers for it, and a set replaced clears
     /// the memo, so an address names one document under one number.
-    pub(super) fn wire_value(&self, document: &str, name: &str) -> Option<SmolStr> {
+    pub(super) fn wire_value(
+        &self,
+        document: &str,
+        name: &str,
+        reads: impl Fn(&str) -> bool,
+    ) -> Option<SmolStr> {
         let key = document.as_ptr() as usize;
         let id = self.id();
         let mirrored = MIRROR.with(|mirror| {
@@ -327,8 +334,10 @@ impl Memo {
         let answer = match known {
             Some(answer) => answer,
             None => {
-                let answer = super::codes::FixCodeSet::new("", document)
+                let set = super::codes::FixCodeSet::new("", document);
+                let answer = set
                     .code_by_name(name)
+                    .or_else(|| set.codes().flatten().find(|code| reads(code.name())))
                     .map(|code| SmolStr::new(code.value()));
                 let mut table = held(&self.wire_values);
                 remember(table.entry(key).or_default(), name, &answer);

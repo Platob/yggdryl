@@ -33,6 +33,10 @@ class MarketDataKind(enum.IntEnum):
     SETL = 19
     STRM = 20
     TRAD = 21
+    ORDB = 22
+    QUOB = 23
+    EXEB = 24
+    TRDB = 25
     @property
     def description(self) -> str: ...
     @classmethod

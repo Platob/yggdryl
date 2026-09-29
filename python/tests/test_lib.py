@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
+import subprocess
+import sys
+import textwrap
 
 import pyarrow as pa
 import pytest
@@ -105,3 +109,47 @@ def test_the_records_hang_off_the_packages_own_logger(
     # the logger name and `yggdryl` is its root.
     assert all(name == "yggdryl" or name.startswith("yggdryl.") for name in names)
     assert "yggdryl.iceberg.table" in names
+
+
+def test_a_data_warning_reaches_logging_once_and_then_is_counted() -> None:
+    # What a parse passes over it says as a warning, deduplicated for the
+    # whole process: the first occurrence in full, then a count at each
+    # tenfold. A fresh interpreter reads the table from its first entry.
+    script = textwrap.dedent(
+        """
+        import json
+        import logging
+
+        records = []
+
+        class Collect(logging.Handler):
+            def emit(self, record):
+                records.append((record.name, record.levelname, record.getMessage()))
+
+        logging.getLogger("yggdryl").addHandler(Collect())
+        from yggdryl.fix import FixCodec, FixRegistry
+
+        codec = FixCodec(FixRegistry())
+        for _ in range(10):
+            message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=bad|10=0|")
+            assert [field for field, _ in message.anomalies] == ["sendingtime"]
+        print(json.dumps(records))
+        """
+    )
+    ran = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=120, check=False
+    )
+    assert ran.returncode == 0, ran.stderr
+    records = [
+        (name, level, text)
+        for name, level, text in json.loads(ran.stdout)
+        if "FIX clock left unstated" in text
+    ]
+    assert [(name, level) for name, level, _ in records] == [
+        ("yggdryl.fix.build", "WARNING"),
+        ("yggdryl.fix.build", "WARNING"),
+    ]
+    first, counted = (text for _, _, text in records)
+    assert "(sendingtime)" in first and '"bad"' in first
+    assert "later occurrences are counted rather than repeated" in first
+    assert counted.endswith("seen 10 times")

@@ -300,7 +300,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:msgcat": "ORDR",
+    "FIX:msgcat": "ORDB",
     "FIX:msgtype": "DJ",
     "FIX:tag": "732130",
     "description": "MsgType = DJ",

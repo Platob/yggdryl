@@ -13,7 +13,7 @@ value as the wire spells it.
 | Source | the typed holders and the content row's [entries](message.md), never the fixed columns |
 | Order | tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the lifted 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003 in that order, then the entries pre-order, so a group's members follow the counter that heads them, then the trailer 93, 89 and 10 |
 | Separator | One byte; SOH by default in Python and JavaScript |
-| Values | the value as the wire spells it, a coded fact as its wire code (`54=1`, never `BUY`); a value the parse derived into the row is emitted like any other, because the message states it, while a market fact the traits derive - the category, a side the walk carried - is emitted nowhere |
+| Values | the value as the wire spells it, a coded fact as its wire code (`54=1`, never `BUYS`); a value the parse derived into the row is emitted like any other, because the message states it, while a market fact the traits derive - the category, a side the walk carried - is emitted nowhere |
 | Digest | `digest()` is the XXH3-128 of exactly these bytes, so two messages that re-emit alike digest alike whatever separator either was read with |
 | Browser | Displays bytes already emitted by the native package for each stored sample |
 
@@ -106,7 +106,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - `BodyLength` and `CheckSum` retain the values that arrived; emission does not
   repair an invalid frame.
 - A coded value is emitted as its wire code, never as the name a reader sees:
-  `by_tag(54)` answers the `Side` member `BUY` and the wire carries `54=1`.
+  `by_tag(54)` answers the `Side` member `BUYS` and the wire carries `54=1`.
 - A group is emitted as the counter pair valued its occurrence count, then the
   members of each occurrence; the counter column beside the group states the
   same count once and is not a second pair.

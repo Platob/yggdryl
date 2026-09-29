@@ -142,6 +142,7 @@ mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
+pub(crate) mod warning;
 pub mod wkb;
 pub mod xml;
 pub mod xmla;
@@ -472,6 +473,7 @@ pub mod internals {
     pub use crate::valuestream::internals as valuestream;
     pub use crate::variant::internals as variant;
     pub use crate::version::internals as version;
+    pub use crate::warning::internals as warning;
     #[cfg(feature = "aws")]
     pub use crate::xml::scanner::internals as xml_scanner;
     pub use crate::xxhash::internals as xxhash;

@@ -1,4 +1,4 @@
-//! `rust/src/graph/market_column.rs`: the twenty-one columns every market
+//! `rust/src/graph/market_column.rs`: the twenty-eight columns every market
 //! element is stated in, each stating back exactly the fact it read.
 
 use std::collections::BTreeMap;
@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
-use yggdryl::{Ccy, Cfi, DataType, Decimal, Field, Mic, Scalar, Side, StructType, Unit};
+use yggdryl::{
+    Ccy, Cfi, DataType, Decimal, Field, Mic, Scalar, Side, StructType, TimeUnit, Timezone, Unit,
+};
 
 fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
@@ -32,6 +34,7 @@ fn market_columns_round_trip_every_optional_band() {
         .unwrap();
     source.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
     source.set_miccode(Some(Mic::new("XNAS").unwrap()));
+    source.set_execunix(Some(1_650_000_000_000_000_000));
     source.set_lastpx(Some(decimal("101")));
     source.set_lastqty(Some(Decimal::from_int(2)));
     source.set_avgpx(Some(decimal("100.5")));
@@ -93,6 +96,7 @@ fn market_columns_round_trip_every_optional_band() {
     );
     assert_eq!(restored.get_cficode(), source.get_cficode());
     assert_eq!(restored.get_miccode(), source.get_miccode());
+    assert_eq!(restored.get_execunix(), Some(1_650_000_000_000_000_000));
     assert_eq!(restored.get_lastpx(), source.get_lastpx());
     assert_eq!(restored.get_lastqty(), source.get_lastqty());
     assert_eq!(restored.get_avgpx(), source.get_avgpx());
@@ -116,6 +120,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     element.set_unit(Unit::new("bbl").unwrap());
     element.set_side(Side::read("Sell").unwrap());
     element.set_lastpx(Some(decimal("3")));
+    element.set_execunix(Some(4));
     element.set_ticker(Some(SmolStr::new("BRN")));
     element
         .insert_securityid(securityid("ISIN", "US0378331005"))
@@ -134,6 +139,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     assert_eq!(element.get_unit(), &Unit::none());
     assert_eq!(element.get_side(), Side::Sell);
     assert_eq!(element.get_lastpx(), None);
+    assert_eq!(element.get_execunix(), None);
     assert_eq!(element.get_ticker(), None);
     assert_eq!(element.get_securityids(), &SecurityIds::default());
     for column in MarketColumn::ALL {
@@ -177,7 +183,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 27);
+    assert_eq!(fields.len(), 28);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
@@ -190,6 +196,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "isincode",
             "cficode",
             "miccode",
+            "execunix",
             "lastpx",
             "lastqty",
             "avgpx",
@@ -227,6 +234,20 @@ fn market_column_schema_has_one_owner_and_order() {
     }
     assert_eq!(MarketColumn::IsinCode.datatype(), DataType::Isin);
     assert_eq!(MarketColumn::IsinCode.display(), "ISIN");
+    // When the element last executed: a market fact, the event clocks'
+    // nanosecond UTC datatype, null where none is known.
+    assert_eq!(
+        MarketColumn::ExecUnix.datatype(),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        }
+    );
+    assert!(MarketColumn::ExecUnix.nullable());
+    assert_eq!(
+        MarketColumn::of_name("ExecUnix"),
+        Some(MarketColumn::ExecUnix)
+    );
     // Target currency to the rate to divide by: keys and rates required.
     assert_eq!(
         MarketColumn::FxRates.datatype(),

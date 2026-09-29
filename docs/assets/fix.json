@@ -100,7 +100,7 @@
     "groups": 581,
     "enumFields": 2028,
     "codesets": 737,
-    "codes": 7812,
+    "codes": 7816,
     "aliases": 47,
     "alternates": 0,
     "messages": 181,
@@ -88715,7 +88715,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AW",
           "FIX:tag": "228230",
           "description": "MsgType = AW",
@@ -90051,7 +90051,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "k",
           "FIX:tag": "253071",
           "description": "MsgType = k (lowercase K)",
@@ -90130,7 +90130,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "l",
           "FIX:tag": "1009512",
           "description": "MsgType = l (lowercase L)",
@@ -98908,7 +98908,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "EXEC",
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "BO",
           "FIX:tag": "968560",
           "description": "MsgType = BO",
@@ -99769,7 +99769,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,quoteid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "t",
           "FIX:tag": "393258",
           "description": "MsgType = t (lowercase T)",
@@ -99999,7 +99999,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "u",
           "FIX:tag": "109341",
           "description": "MsgType = u (lowercase U)",
@@ -100111,7 +100111,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DS",
           "FIX:tag": "704180",
           "description": "MsgType = DS",
@@ -100223,7 +100223,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DT",
           "FIX:tag": "906013",
           "description": "MsgType = DT",
@@ -133247,7 +133247,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "K",
           "FIX:tag": "1096950",
           "description": "MsgType = K",
@@ -133361,7 +133361,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "L",
           "FIX:tag": "185663",
           "description": "MsgType = L",
@@ -134714,7 +134714,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "N",
           "FIX:tag": "881014",
           "description": "MsgType = N",
@@ -134795,7 +134795,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "M",
           "FIX:tag": "743358",
           "description": "MsgType = M",
@@ -134886,7 +134886,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "m",
           "FIX:tag": "869150",
           "description": "MsgType = m (lowercase M)",
@@ -138924,7 +138924,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BU",
           "FIX:tag": "1089468",
           "description": "MsgType = BU",
@@ -139015,7 +139015,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BT",
           "FIX:tag": "664422",
           "description": "MsgType = BT",
@@ -139490,7 +139490,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BV",
           "FIX:tag": "192483",
           "description": "MsgType = BV",
@@ -140214,7 +140214,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DJ",
           "FIX:tag": "732130",
           "description": "MsgType = DJ",
@@ -140609,7 +140609,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DK",
           "FIX:tag": "288135",
           "description": "MsgType = DK",
@@ -140875,7 +140875,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "i",
           "FIX:tag": "720778",
           "description": "MsgType = i (lowercase I)",
@@ -141172,7 +141172,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "b",
           "FIX:tag": "185574",
           "description": "MsgType = b (lowercase B)",
@@ -148083,7 +148083,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoteid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "s",
           "FIX:tag": "898316",
           "description": "MsgType = s (lowercase S)",
@@ -148393,7 +148393,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "E",
           "FIX:tag": "962450",
           "description": "MsgType = E",
@@ -156539,7 +156539,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "BZ",
           "FIX:tag": "182726",
           "description": "MsgType = BZ",
@@ -156868,7 +156868,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "CA",
           "FIX:tag": "806153",
           "description": "MsgType = CA",
@@ -157207,7 +157207,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid,orderid,secondaryorderid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "r",
           "FIX:tag": "203677",
           "description": "MsgType = r (lowercase R)",
@@ -157438,7 +157438,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "q",
           "FIX:tag": "495019",
           "description": "MsgType = q (lowercase Q)",
@@ -157613,7 +157613,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "AF",
           "FIX:tag": "1085293",
           "description": "MsgType = AF",
@@ -207174,7 +207174,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "TRDB",
           "FIX:msgtype": "DC",
           "FIX:tag": "800305",
           "description": "MsgType = DC",
@@ -207319,7 +207319,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "TRDB",
           "FIX:msgtype": "DD",
           "FIX:tag": "756028",
           "description": "MsgType = DD",
@@ -265651,6 +265651,26 @@
           "doc": "Trade capture and matching.",
           "name": "TRAD",
           "value": "21"
+        },
+        {
+          "doc": "Order batches: lists, mass order handling and crosses, one order per entry.",
+          "name": "ORDB",
+          "value": "22"
+        },
+        {
+          "doc": "Quote batches: mass quotes and bid lists, one quote per entry.",
+          "name": "QUOB",
+          "value": "23"
+        },
+        {
+          "doc": "Execution batches: several executions reported at once, one per entry.",
+          "name": "EXEB",
+          "value": "24"
+        },
+        {
+          "doc": "Trade batches: match reports stating several trades, one per entry.",
+          "name": "TRDB",
+          "value": "25"
         }
       ],
       "name": "msgcatcodeset"
@@ -292398,7 +292418,7 @@
         139,
         "AAPL",
         "XNAS",
-        "BUY",
+        "BUYS",
         "2",
         "0",
         "2024-02-01T12:34:56.123000000Z"
@@ -292448,7 +292468,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -292472,16 +292492,15 @@
       "event": {
         "currunix": "1706790896123000000",
         "creaunix": "1706790896123000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-41fb-7000-aa33-4a8cf32438d9",
-        "crossuuid": "00000000-0000-8000-a3a2-5d2e3a379a17",
-        "crosscode": "BUY:ORDER-1",
+        "curruuid": "018d64aa-41fb-7000-993a-621156739b4f",
+        "crossuuid": "00000000-0000-8000-a75d-0f4d91735431",
+        "crosscode": "BUYS:ORDER-1",
         "currhashcode": "13110299088800911465",
-        "crosshashcode": "16402775245963368983",
+        "crosshashcode": "12059812202995209265",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -292490,11 +292509,12 @@
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": "XNAS",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -292517,7 +292537,8 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-1"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -292714,7 +292735,7 @@
         "F",
         "2",
         "AAPL",
-        "BUY",
+        "BUYS",
         "2024-02-01T12:34:57.900000000Z",
         "0",
         "1050.000000000000000000"
@@ -292758,7 +292779,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -292800,16 +292821,15 @@
       "event": {
         "currunix": "1706790897900000000",
         "creaunix": "1706790897900000000",
-        "execunix": "1706790897900000000",
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-48ec-7000-ad6d-84bcbbd8fea7",
-        "crossuuid": "00000000-0000-8000-9902-771027aeaffa",
-        "crosscode": "BUY:O-9",
+        "curruuid": "018d64aa-48ec-7000-8d0c-a07b021d8bb6",
+        "crossuuid": "00000000-0000-8000-bbaf-345203e142f1",
+        "crosscode": "BUYS:O-9",
         "currhashcode": "5378760152938368424",
-        "crosshashcode": "15637191767452725242",
+        "crosshashcode": "18135771751301333745",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -292818,11 +292838,12 @@
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": "1706790897900000000",
         "lastpx": "10.5",
         "lastqty": "100",
         "avgpx": "10.5",
@@ -292846,7 +292867,8 @@
         "altids": {
           "EXECID": "E-1",
           "ORDERID": "O-9"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293159,7 +293181,7 @@
       "value": [
         141,
         "BRN",
-        "BUY",
+        "BUYS",
         2,
         [
           [
@@ -293215,7 +293237,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -293239,16 +293261,15 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-baca-3124772b5224",
-        "crossuuid": "00000000-0000-8000-9d1d-6dfa13bd23be",
-        "crosscode": "BUY:ORDER-2",
+        "curruuid": "018cc9ab-d1d0-7000-a19e-40d52961a9a3",
+        "crossuuid": "00000000-0000-8000-b1b0-83adcaefdf00",
+        "crosscode": "BUYS:ORDER-2",
         "currhashcode": "1207741893478968415",
-        "crosshashcode": "15933011977547097022",
+        "crosshashcode": "3580506486216843008",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -293257,11 +293278,12 @@
         "currency": "XXX",
         "quantity": "50",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -293284,6 +293306,10 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-2"
+        },
+        "accountids": {
+          "CONTRAFIRM": "VENUE",
+          "EXECUTINGFIRM": "BUYSIDE"
         }
       },
       "header": {
@@ -296340,7 +296366,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296358,11 +296383,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296383,7 +296409,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296640,7 +296667,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296658,11 +296684,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296683,7 +296710,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296874,7 +296902,6 @@
       "event": {
         "currunix": "1706788800000000000",
         "creaunix": "1706788800000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296892,11 +296919,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296917,7 +296945,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297041,7 +297070,6 @@
       "event": {
         "currunix": "1706790901000000000",
         "creaunix": "1706790901000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297059,11 +297087,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297084,7 +297113,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.2",
@@ -297238,7 +297268,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297256,11 +297285,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297281,7 +297311,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297437,7 +297468,7 @@
       "value": [
         113,
         "AAPL",
-        "BUY",
+        "BUYS",
         "2",
         "2024-02-01T12:36:00.000000000Z",
         "0"
@@ -297475,7 +297506,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -297499,16 +297530,15 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-90dc-0e5255922969",
-        "crossuuid": "00000000-0000-8000-9902-771027aeaffa",
-        "crosscode": "BUY:O-9",
+        "curruuid": "018cc9ab-d1d0-7000-b852-23e6510aefa2",
+        "crossuuid": "00000000-0000-8000-bbaf-345203e142f1",
+        "crosscode": "BUYS:O-9",
         "currhashcode": "10713160174996091655",
-        "crosshashcode": "15637191767452725242",
+        "crosshashcode": "18135771751301333745",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -297517,11 +297547,12 @@
         "currency": "XXX",
         "quantity": "150",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297546,7 +297577,8 @@
           "CLORDID": "ORDER-3",
           "ORDERID": "O-9",
           "ORIGCLORDID": "ORDER-1"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297758,7 +297790,7 @@
         "US0378331005",
         "4",
         "XNAS",
-        "BUY",
+        "BUYS",
         "USD",
         "0",
         "USD",
@@ -297798,7 +297830,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -297816,7 +297848,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297834,7 +297865,7 @@
         "currency": "USD",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {
           "CUSIP": "037833100",
           "ISIN": "US0378331005"
@@ -297842,6 +297873,7 @@
         "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297862,7 +297894,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298073,7 +298106,7 @@
         45,
         "BBG000BLNQ16",
         "S",
-        "BUY",
+        "BUYS",
         "USD",
         "0",
         "USD",
@@ -298106,7 +298139,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -298118,7 +298151,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298136,13 +298168,14 @@
         "currency": "USD",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {
           "FIGI": "BBG000BLNQ16"
         },
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298163,7 +298196,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298512,7 +298546,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298530,7 +298563,7 @@
         "currency": "GBP",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {
           "ISIN": "GB00BN7SWP63",
           "SEDOL": "BN7SWP6"
@@ -298538,6 +298571,7 @@
         "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298558,7 +298592,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298795,7 +298830,7 @@
       },
       "value": [
         "TTF",
-        "BUY",
+        "BUYS",
         1,
         [
           [
@@ -298820,7 +298855,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -298838,7 +298873,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298856,11 +298890,12 @@
         "currency": "XXX",
         "quantity": "1200",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298881,7 +298916,10 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {
+          "EXECUTINGFIRM": "BUYSIDE"
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299024,7 +299062,7 @@
       "value": [
         48,
         "AAPL",
-        "BUY",
+        "BUYS",
         "0"
       ],
       "mime": "text/fixul",
@@ -299048,7 +299086,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -299060,16 +299098,15 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9771-19cc761dacc1",
-        "crossuuid": "00000000-0000-8000-b9bc-1056254a20fe",
-        "crosscode": "BUY:ORDER-4",
+        "curruuid": "018cc9ab-d1d0-7000-afd3-728e65562ae8",
+        "crossuuid": "00000000-0000-8000-9ffb-d002f6b598f0",
+        "crosscode": "BUYS:ORDER-4",
         "currhashcode": "15032505517709339035",
-        "crosshashcode": "8771904136389730558",
+        "crosshashcode": "6916350363905136880",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
@@ -299078,11 +299115,12 @@
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299105,7 +299143,8 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-4"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299236,7 +299275,7 @@
       "value": [
         41,
         "AAPL",
-        "BUY",
+        "BUYS",
         "house-flag",
         "0"
       ],
@@ -299261,7 +299300,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -299273,7 +299312,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299291,11 +299329,12 @@
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299316,7 +299355,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299445,7 +299485,7 @@
       "value": [
         40,
         "AAPL",
-        "BUY",
+        "BUYS",
         "0"
       ],
       "mime": "text/fix",
@@ -299469,13 +299509,12 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         }
       ],
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299493,11 +299532,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299518,7 +299558,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299700,7 +299741,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299718,11 +299758,12 @@
         "currency": "XXX",
         "quantity": null,
         "unit": "",
-        "side": "UNKNOWN",
+        "side": "UNKN",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299743,7 +299784,11 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {
+          "ACCOUNT": "ACCT-000117",
+          "CLIENTID": "MCFP2"
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299886,7 +299931,7 @@
       "value": [
         42,
         "AAPL",
-        "BUY",
+        "BUYS",
         "0"
       ],
       "mime": "text/fix",
@@ -299910,7 +299955,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "BUY"
+          "v": "BUYS"
         },
         {
           "t": 38,
@@ -299928,7 +299973,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299946,11 +299990,12 @@
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
-        "side": "BUY",
+        "side": "BUYS",
         "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299971,7 +300016,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",

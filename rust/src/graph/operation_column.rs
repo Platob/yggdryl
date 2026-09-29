@@ -1,9 +1,10 @@
-//! The three columns every operation on the market is stated in, beside the
-//! market's twenty-seven.
+//! The four columns every operation on the market is stated in, beside the
+//! market's twenty-eight.
 //!
 //! One column per fact [`Operation`] adds, under one name and one
-//! datatype each: how long it stands, whether it can trade, and its
-//! alternate identifiers as a sorted `map<utf8, utf8>`.
+//! datatype each: how long it stands, whether it can trade, its alternate
+//! identifiers and the accounts it names, each as a sorted
+//! `map<utf8, utf8>`.
 
 use super::Operation;
 use super::market_column::tif_of;
@@ -20,11 +21,18 @@ pub enum OperationColumn {
     Tradable,
     /// The operation's own identifiers, source key to identifier.
     AltIds,
+    /// The accounts the operation names, role key to account.
+    AccountIds,
 }
 
 impl OperationColumn {
     /// Every operation column in canonical row order.
-    pub const ALL: [Self; 3] = [Self::TimeInForce, Self::Tradable, Self::AltIds];
+    pub const ALL: [Self; 4] = [
+        Self::TimeInForce,
+        Self::Tradable,
+        Self::AltIds,
+        Self::AccountIds,
+    ];
 
     /// The column's name: the fact's, as the traits spell it.
     #[must_use]
@@ -33,6 +41,7 @@ impl OperationColumn {
             Self::TimeInForce => "tif",
             Self::Tradable => "tradable",
             Self::AltIds => "altids",
+            Self::AccountIds => "accountids",
         }
     }
 
@@ -43,6 +52,7 @@ impl OperationColumn {
             Self::TimeInForce => "Time In Force",
             Self::Tradable => "Tradable",
             Self::AltIds => "Alternate IDs",
+            Self::AccountIds => "Account IDs",
         }
     }
 
@@ -52,7 +62,7 @@ impl OperationColumn {
         match self {
             Self::TimeInForce => DataType::TimeInForce,
             Self::Tradable => DataType::Boolean,
-            Self::AltIds => IdMap::dtype(),
+            Self::AltIds | Self::AccountIds => IdMap::dtype(),
         }
     }
 
@@ -98,6 +108,7 @@ impl OperationColumn {
             Self::TimeInForce => operation.get_tif().cloned().map(Scalar::from),
             Self::Tradable => operation.get_tradable().map(Scalar::from),
             Self::AltIds => map_fact(operation.get_altids()),
+            Self::AccountIds => map_fact(operation.get_accountids()),
         }
     }
 
@@ -110,6 +121,11 @@ impl OperationColumn {
             Self::AltIds => {
                 if let Some(ids) = map_of(value) {
                     let _ = operation.set_altids(ids);
+                }
+            }
+            Self::AccountIds => {
+                if let Some(ids) = map_of(value) {
+                    let _ = operation.set_accountids(ids);
                 }
             }
         }

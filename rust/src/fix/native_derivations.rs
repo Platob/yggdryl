@@ -36,11 +36,15 @@
 //! | `TotalTradeMultipliedQty(2370)` | `TotalTradeQty * ContractMultiplier` at scale nine |
 //! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` is stated |
 //!
-//! A report is `MsgType` `8` or `9`. Arithmetic that overflows, a value the
-//! target's field refuses and an input the message does not state are all
-//! silence, never a guess.
+//! A report is `MsgType` `8` or `9`. Arithmetic that overflows and an input
+//! the message does not state are silence, never a guess; a value the
+//! target's field refuses is dropped with a deduplicated warning naming the
+//! field.
 
-use crate::{Cusip, DataType, Decimal, Isin, Result, Scalar, Sedol, StringEnum};
+use smol_str::format_smolstr;
+
+use crate::warning::warned;
+use crate::{Cusip, DataType, Decimal, Isin, Scalar, Sedol, StringEnum};
 
 use super::msg::FixMsg;
 
@@ -54,12 +58,28 @@ const DECIMAL9: DataType = DataType::Decimal128 {
 const DECIMAL18: DataType = DataType::DECIMAL;
 
 /// Fill every derivation to a fixpoint and rebuild the message once.
-pub(super) fn fill_all(msg: &mut FixMsg) -> Result<()> {
+///
+/// Where the rebuild refuses the answers together - which no single value
+/// causes - each lands on its own, and one the rebuild refuses alone is
+/// dropped beside a warning naming its tag, so the rest still land and the
+/// message keeps what it stated.
+pub(super) fn fill_all(msg: &mut FixMsg) {
     let landed = NativeRow::new(msg).settle();
-    if !landed.is_empty() {
-        msg.set_each(landed)?;
+    if landed.is_empty() || msg.set_each(landed).is_ok() {
+        return;
     }
-    Ok(())
+    // Derived again rather than kept aside: a refused rebuild leaves the
+    // message as it was, so the fixpoint is the same one.
+    for (tag, value) in NativeRow::new(msg).settle() {
+        if let Err(error) = msg.set_each([(tag, value)]) {
+            warned!(
+                "FIX derived value dropped: the message's rebuild refused it",
+                &format_smolstr!("{tag}"),
+                "{error} on a {} message",
+                msg.header().msgtype()
+            );
+        }
+    }
 }
 
 /// Whether any rule answers for `msg` anew: false where the fixpoint

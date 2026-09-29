@@ -56,9 +56,11 @@
 //! stays the bytes it is. A line that states no message at all - no frame,
 //! no bridge pair, no document - states none, and reads as no message
 //! rather than as an empty one: a sentence carrying an `=` is
-//! a sentence. What is left - input that is not a row at all - is an `Err`
-//! item carrying it, and the stream continues, because one corrupt line must
-//! not end a run over ten million.
+//! a sentence. What is left - input that is not a row at all, a frame whose
+//! clock or identity will not type - is excluded from a stream with a
+//! deduplicated warning naming it, and the stream continues, because one
+//! corrupt line must not end a run over ten million. Only the source's own
+//! failure is an `Err` item, never ahead of the messages read before it.
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
@@ -72,6 +74,7 @@ use smol_str::SmolStr;
 use crate::graph::Element as _;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
+use crate::warning::warned;
 use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
@@ -430,7 +433,7 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it. A capture named for one of the sixteen event columns
+    /// whoever read it. A capture named for one of the fifteen event columns
     /// is silent too: it is the line's own fact - the place, the state, the
     /// instant the line reads off it - and the line states its identity as
     /// the message's source, which is all a line says about a message; the
@@ -1066,11 +1069,15 @@ impl FixCodec {
     ///
     /// On by default, and read by [`Self::market_data`],
     /// [`Self::market_arrow_reader`] and [`Self::book_arrow_reader`]: every
-    /// field but the ones a column types, the envelope and the identifier
-    /// maps' sources, as [`FixMsg::market_data`] states them. The map
-    /// is part of what a leaf's identity digests, so turning it off answers
-    /// other identities for any message stating such a field - and nothing
-    /// changes for a message stating none.
+    /// field but the ones a column types, the envelope, the identifier
+    /// maps' sources and what a leaf's identifier maps hold - its parties,
+    /// its `Account(1)`, its regulatory trade identifiers - as
+    /// [`FixMsg::market_data`] states them, a scalar whose key ends with one
+    /// of its message's `FIX:identifiers` lifted into the leaf's `altids`. The map and the
+    /// lifted identifiers are part of what a leaf's identity digests, so
+    /// turning it off answers other identities for any message stating such
+    /// a field, lifts nothing - and changes nothing for a message stating
+    /// none.
     #[must_use]
     pub const fn with_market_metadata(mut self, market_metadata: bool) -> Self {
         self.market_metadata = market_metadata;
@@ -1344,10 +1351,11 @@ impl FixCodec {
     /// the one split every stream door runs, this one, [`Self::parse_lines`],
     /// the text-line doors and the batch readers alike: an execution report
     /// of a fill is its order's report (`ORDR`, or `QUOT` naming a
-    /// `QuoteID(117)`) followed by the execution (`EXEC`, `FILLED`, chained
-    /// under its `ExecID(17)`); a trade (`AE`) is followed by one execution
+    /// `QuoteID(117)`, as a report of no fill is from its parse) followed
+    /// by the execution (`EXEC`, `FILLED`, chained under its `ExecID(17)`);
+    /// a trade (`AE`) is followed by one execution
     /// per side it states; a quote stating a bid and an offer and no side is
-    /// followed by its `BUY` and its `SELL` quote. Each names its source's
+    /// followed by its `BUYS` and its `SELL` quote. Each names its source's
     /// identity beside its source's sources as its own and is a row of its
     /// own; a book reads each fill and each quoted side once. The
     /// single-message doors - [`Self::parse_fix_line`] and its siblings -
@@ -1441,21 +1449,17 @@ impl FixCodec {
     /// The line iterator everything else is built on: each line is read as
     /// [`Self::parse_line`] reads it - one message per frame, one per
     /// configuration a bulk answer named, none for a line that states no
-    /// message - and
-    /// a line that is not a row at all is an `Err` item; the stream
-    /// continues past it, because one corrupt line must not end a run over
+    /// message - and a line that is not a row at all, or a frame that does
+    /// not build, is excluded with a deduplicated warning naming it; the
+    /// stream reads on, because one corrupt line must not end a run over
     /// ten million. Nothing is collected: the iterator is the
     /// stream. Every stage answers an iterator that owns its codec and
     /// borrows nothing, so the stages compose into [`Self::arrow_reader`]
     /// without the codec outliving the stream.
     ///
-    /// Composed into [`Self::arrow_reader`], that `Err` item is the batch
-    /// reader's error: the completed prefix is yielded, then the error, and
-    /// the reader fuses, as every batch reader in the crate does - a
-    /// consumer of batches has no row to put a refused line in. A caller
-    /// wanting a row per *line* reads the capture through the text reader;
-    /// a FIX batch answers one row per message, so a line stating none
-    /// answers no row.
+    /// A caller wanting a row per *line* reads the capture through the text
+    /// reader; a FIX batch answers one row per message, so a line stating
+    /// none answers no row.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -1545,9 +1549,17 @@ impl FixCodec {
     /// [`Self::parse_text_arrow_reader`] does with the columns the batch
     /// already carries.
     ///
+    /// A line whose `mtime` capture does not read states no recording clock,
+    /// beside a warning naming the capture; a payload that does not parse is
+    /// the empty message the line still is, beside a warning naming what
+    /// would not parse.
+    ///
     /// # Errors
     ///
-    /// Returns the builder's refusal, which a line's content cannot provoke.
+    /// Returns the builder's refusal of a registry that declares a clock
+    /// under a datatype no instant holds. A clock the line's own captures
+    /// state that names no instant is no refusal: it fills nothing, beside
+    /// a warning.
     pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages> {
         // The row's own cells, read by the position the codec resolved.
         let text = |at: usize| line.capture(at);
@@ -1576,13 +1588,23 @@ impl FixCodec {
                 value,
             })
             .collect();
+        // The recording clock is the carrier's statement about the line,
+        // never the message's: one that does not read is left unstated.
+        let recdunix = line.mtime().unwrap_or_else(|error| {
+            warned!(
+                "FIX recording clock defaulted to none: the line's mtime capture does not read",
+                super::messages::refused(&error),
+                "{error}"
+            );
+            None
+        });
         let extras = RowExtras {
             version,
             fills: &fills,
             direction: None,
             direction_pin: None,
             source: source_of(line),
-            recdunix: line.mtime()?,
+            recdunix,
             originator: None,
             conversation: None,
         };
@@ -1591,8 +1613,7 @@ impl FixCodec {
             // A row with no payload at all carries no message.
             return Ok(FixMessages::none());
         }
-        self.parse_page_with(page, extras.clone())
-            .or_else(|_| self.empty_with(extras).map(FixMessages::one))
+        self.parse_page_or_empty(page, extras)
     }
 
     /// Parses a stream of decoded lines into a stream of messages, lazily.
@@ -1600,10 +1621,15 @@ impl FixCodec {
     /// Each line is read as [`Self::parse_text_line`] reads it - none, one or
     /// many messages a line - and a payload nobody could read is an empty
     /// message rather than the end of the run: one corrupt line must not end
-    /// a capture of ten million. Owned and borrowed lines, or their fallible
-    /// counterparts, compose directly. Source errors move through unchanged;
-    /// an owned line is never cloned, a borrowed one only to cross to a
-    /// worker thread, and source exhaustion is fused.
+    /// a capture of ten million. A line the source refused, or one whose
+    /// message does not build, is excluded with a deduplicated warning and
+    /// the stream reads on. The source's own failure moves through in its
+    /// place, after the messages before it, and the lines behind it are read
+    /// as if it had not been there: the stream is the caller's, and ending
+    /// it is the caller's to decide. Owned and borrowed lines, or their
+    /// fallible counterparts, compose directly; an owned line is never
+    /// cloned, a borrowed one only to cross to a worker thread, and source
+    /// exhaustion is fused.
     pub fn parse_text_lines<I, L>(
         &self,
         lines: I,
@@ -1652,8 +1678,9 @@ impl FixCodec {
     /// text a line is. A row's content can never fail
     /// the batch it arrives in: a payload nobody could read is a row
     /// holding an empty message, dated and versioned by what the row itself
-    /// said. A row that carried no message to read is a different fact and
-    /// answers no message at all.
+    /// said, and a payload no line can hold, or a message that does not
+    /// build, is excluded with a warning. A row that carried no message to
+    /// read is a different fact and answers no message at all.
     pub(super) fn parse_row_with(
         &self,
         extras: RowExtras<'_>,
@@ -1682,10 +1709,21 @@ impl FixCodec {
             recdunix: mtime,
             ..extras
         };
-        FixMessages::from_result(
-            self.parse_page_with(line.body_bytes(), extras.clone())
-                .or_else(|_| self.empty_with(extras).map(FixMessages::one)),
-        )
+        FixMessages::from_result(self.parse_page_or_empty(line.body_bytes(), extras))
+    }
+
+    /// [`Self::parse_page_with`] for a row that must answer: a payload that
+    /// does not parse is the empty message the row still is, beside a
+    /// warning naming what would not parse.
+    fn parse_page_or_empty(&self, page: &TextBytes, extras: RowExtras<'_>) -> Result<FixMessages> {
+        self.parse_page_with(page, extras.clone()).or_else(|error| {
+            warned!(
+                "FIX payload read as an empty message: it does not parse",
+                super::messages::refused(&error),
+                "{error}"
+            );
+            self.empty_with(extras).map(FixMessages::one)
+        })
     }
 
     /// What a byte door states beside the line it was handed whole: the
@@ -1923,7 +1961,10 @@ impl FixCodec {
     ///
     /// # Errors
     ///
-    /// Returns the builder's refusal, which a row's content cannot provoke.
+    /// Returns [`Error::Parse`] for a line carrying a second frame, and the
+    /// builder's refusal of a registry that declares a clock under a
+    /// datatype no instant holds. A clock whose text names no instant is no
+    /// refusal: it is left unstated beside an anomaly and a warning.
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = self.entries(&page).0.unwrap_or_default();
@@ -2011,7 +2052,10 @@ impl FixCodec {
     ///
     /// # Errors
     ///
-    /// Returns the builder's refusal, which a row's content cannot provoke.
+    /// Returns [`Error::Parse`] for a row carrying a frame behind it, and the
+    /// builder's refusal of a registry that declares a clock under a
+    /// datatype no instant holds. A clock whose text names no instant is no
+    /// refusal: it is left unstated beside an anomaly and a warning.
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = self.entries(&page).0.unwrap_or_default();
@@ -2430,9 +2474,12 @@ impl FixCodec {
     /// the expirations it hands over first there, and a message following a
     /// predecessor of the same instant or a later one stands after it.
     /// [`Self::lifecycle_arrow_reader`] is the same walk over batches of
-    /// rows. Intake errors are retained in source order and yielded before
-    /// the sorted messages; they never advance the walk, and exhaustion is
-    /// fused.
+    /// rows. The walk never fails on what a message states: an item the
+    /// source refused is excluded with a deduplicated warning, and a message
+    /// whose merge, inherited links or side the walk cannot write is walked
+    /// as it stated, beside a warning. A source failure ends the intake: the
+    /// messages read before it are walked and yielded, then the failure, and
+    /// exhaustion is fused.
     ///
     /// Two observations with the same complete nonempty capture
     /// `(msgtype, msgsessionid, msgctxid, msgseqnum)` - one
@@ -2494,14 +2541,14 @@ impl FixCodec {
                 .map(Into::into)
                 .filter(move |held: &Result<FixMsg>| match held {
                     // A failure is never filtered: what a stream could not read
-                    // has no type to refuse it by, and swallowing it here would
-                    // lose the one report of it.
+                    // has no type to refuse it by, and the walk is where it is
+                    // warned about or ends the intake.
                     Err(_) => true,
                     Ok(message) => codec.reads_msgtype(message.header().msgtype()),
                 })
                 // The walk reads the structured message: a frame the parse
                 // dated by a stand-in clock is dated by its transaction.
-                .map(|held: Result<FixMsg>| held.and_then(FixMsg::dated_by_transaction));
+                .map(|held: Result<FixMsg>| held.map(FixMsg::dated_by_transaction));
         super::enrich::Walked::new(
             walked,
             self.snapshot_ns,
@@ -2721,7 +2768,7 @@ impl FixCodec {
             extras.source,
             self.official_time_delay_ns(),
         )?;
-        super::enrich::enrich(&self.registry, message)
+        Ok(super::enrich::enrich(&self.registry, message))
     }
 
     /// Reads one row a data field carried into the line it arrived on.

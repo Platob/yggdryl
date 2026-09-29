@@ -4439,6 +4439,7 @@ dependencies = [
  "arrow-schema 59.2.0",
  "base64 0.23.1",
  "half",
+ "log",
  "napi",
  "napi-build",
  "napi-derive",

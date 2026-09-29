@@ -88,7 +88,8 @@ test('record options address a sheet, a header and a range, and nothing else doe
   assert.throws(() => {
     ipc.sheet = 'Trades'
   }, /expected Excel options/)
-  assert.throws(() => ipc.withHeader(false), /expected Excel options/)
+  // The header is one knob a CSV and a workbook share.
+  assert.throws(() => ipc.withHeader(false), /expected CSV or Excel options/)
 })
 
 test('records round-trip through a workbook file', (t) => {

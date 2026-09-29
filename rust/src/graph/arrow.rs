@@ -2,8 +2,8 @@
 //! [`MarketData`] leaf is written in and read back from.
 //!
 //! A row is `marketdatakind` - the [`MarketDataKind`]
-//! its leaf stands under - then the sixteen [`EventColumn`]s, the
-//! twenty-seven [`MarketColumn`]s, the three [`OperationColumn`]s, the
+//! its leaf stands under - then the fifteen [`EventColumn`]s, the
+//! twenty-eight [`MarketColumn`]s, the four [`OperationColumn`]s, the
 //! `bookscope` a market-data entry states, and the nested columns a
 //! composite leaf fills: `alive` and `deltas` (a book's entries, alive on
 //! either side and applied since the book before it), `executions` (a
@@ -100,7 +100,7 @@ impl MarketData {
     /// assert_eq!(field.fields()[0].name(), "marketdatakind");
     /// assert_eq!(field.fields()[1].name(), "currunix");
     /// assert!(field.fields()[1].is_nullable());
-    /// assert_eq!(field.field_len(), 1 + 16 + 27 + 3 + 1 + 5);
+    /// assert_eq!(field.field_len(), 1 + 15 + 28 + 4 + 1 + 5);
     /// # Ok(())
     /// # }
     /// ```
@@ -309,7 +309,6 @@ impl Column {
             Self::Event(column) => match column {
                 EventColumn::CurrUnix
                 | EventColumn::CreaUnix
-                | EventColumn::ExecUnix
                 | EventColumn::RecdUnix
                 | EventColumn::ExprUnix
                 | EventColumn::PrevUnix
@@ -330,6 +329,7 @@ impl Column {
                 } else {
                     match column {
                         MarketColumn::Ticker => Storage::Text,
+                        MarketColumn::ExecUnix => Storage::Clock,
                         MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
                         MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
                             Storage::Code(Code::Ccy)
@@ -346,7 +346,7 @@ impl Column {
             Self::Operation(column) => match column {
                 OperationColumn::Tradable => Storage::Boolean,
                 OperationColumn::TimeInForce => Storage::Code(Code::TimeInForce),
-                OperationColumn::AltIds => Storage::Pairs,
+                OperationColumn::AltIds | OperationColumn::AccountIds => Storage::Pairs,
             },
             Self::BookScope => Storage::Text,
             Self::Alive | Self::Deltas | Self::Executions => Storage::Nested,
@@ -569,12 +569,14 @@ impl<'a> Row<'a> {
 impl<'a> Row<'a> {
     fn clock(&self, column: Column) -> Option<i64> {
         let (Column::Event(column), Some(event)) = (column, self.event) else {
-            return None;
+            return match column {
+                Column::Market(MarketColumn::ExecUnix) => self.market.get_execunix(),
+                _ => None,
+            };
         };
         match column {
             EventColumn::CurrUnix => Some(event.get_currunix()),
             EventColumn::CreaUnix => event.get_creaunix(),
-            EventColumn::ExecUnix => event.get_execunix(),
             EventColumn::RecdUnix => event.get_recdunix(),
             EventColumn::ExprUnix => event.get_exprunix(),
             EventColumn::PrevUnix => event.get_prevunix(),
@@ -685,11 +687,15 @@ impl<'a> Row<'a> {
                 }
                 !metadata.is_empty()
             }
-            Column::Operation(OperationColumn::AltIds) => {
+            Column::Operation(column @ (OperationColumn::AltIds | OperationColumn::AccountIds)) => {
                 let Some(operation) = self.operation else {
                     return false;
                 };
-                let ids = operation.get_altids();
+                let ids = if column == OperationColumn::AltIds {
+                    operation.get_altids()
+                } else {
+                    operation.get_accountids()
+                };
                 for (key, value) in ids.iter() {
                     push(key, value);
                 }
@@ -1778,9 +1784,9 @@ impl Layouts {
 /// narrowed once to their leaves.
 struct Landed {
     marketdatakind: Option<Leaf>,
-    event: [Option<Leaf>; 16],
-    market: [Option<Leaf>; 27],
-    operation: [Option<Leaf>; 3],
+    event: [Option<Leaf>; EventColumn::ALL.len()],
+    market: [Option<Leaf>; MarketColumn::ALL.len()],
+    operation: [Option<Leaf>; OperationColumn::ALL.len()],
     bookscope: Option<Leaf>,
     alive: Option<Operations>,
     deltas: Option<Operations>,
@@ -2211,7 +2217,6 @@ impl Landed {
             };
             match column {
                 EventColumn::CreaUnix => target.set_creaunix(leaf.clock(row)),
-                EventColumn::ExecUnix => target.set_execunix(leaf.clock(row)),
                 EventColumn::RecdUnix => target.set_recdunix(leaf.clock(row)),
                 EventColumn::ExprUnix => target.set_exprunix(leaf.clock(row)),
                 EventColumn::PrevUnix => target.set_prevunix(leaf.clock(row)),
@@ -2242,6 +2247,8 @@ impl Landed {
                 set_market_decimal(column, target, leaf.decimal(row));
             } else if column == MarketColumn::Ticker {
                 target.set_ticker(leaf.text(row).map(SmolStr::new));
+            } else if column == MarketColumn::ExecUnix {
+                target.set_execunix(leaf.clock(row));
             } else if column == MarketColumn::SecurityIds {
                 let Some(pairs) = leaf.pairs(row) else {
                     continue;
@@ -2352,7 +2359,7 @@ impl Landed {
             };
             match column {
                 OperationColumn::Tradable => target.set_tradable(leaf.boolean(row)),
-                OperationColumn::AltIds => {
+                OperationColumn::AltIds | OperationColumn::AccountIds => {
                     let Some(pairs) = leaf.pairs(row) else {
                         continue;
                     };
@@ -2361,7 +2368,11 @@ impl Landed {
                     for (key, value) in pairs {
                         ids.insert(key, value).map_err(located)?;
                     }
-                    target.set_altids(ids).map_err(located)?;
+                    if column == OperationColumn::AltIds {
+                        target.set_altids(ids).map_err(located)?;
+                    } else {
+                        target.set_accountids(ids).map_err(located)?;
+                    }
                 }
                 OperationColumn::TimeInForce => {
                     let held =
@@ -2430,7 +2441,6 @@ impl Landed {
             match column {
                 EventColumn::CurrUnix => clock(Some(canonical.get_currunix()))?,
                 EventColumn::CreaUnix => clock(canonical.get_creaunix())?,
-                EventColumn::ExecUnix => clock(canonical.get_execunix())?,
                 EventColumn::RecdUnix => clock(canonical.get_recdunix())?,
                 EventColumn::ExprUnix => clock(canonical.get_exprunix())?,
                 EventColumn::PrevUnix => clock(canonical.get_prevunix())?,
@@ -2484,6 +2494,18 @@ impl Landed {
                 match leaf.decimal(row) {
                     Some(stated) if Some(stated) != derived => {
                         return Err(differs(path, column.name(), &derived, &stated));
+                    }
+                    _ => {}
+                }
+            } else if column == MarketColumn::ExecUnix {
+                match leaf.clock(row) {
+                    Some(stated) if Some(stated) != canonical.get_execunix() => {
+                        return Err(differs(
+                            path,
+                            column.name(),
+                            &canonical.get_execunix(),
+                            &stated,
+                        ));
                     }
                     _ => {}
                 }
@@ -2605,8 +2627,12 @@ impl Landed {
                     }
                     _ => {}
                 },
-                OperationColumn::AltIds => {
-                    let derived = canonical.get_altids();
+                OperationColumn::AltIds | OperationColumn::AccountIds => {
+                    let derived = if column == OperationColumn::AltIds {
+                        canonical.get_altids()
+                    } else {
+                        canonical.get_accountids()
+                    };
                     check_pairs(
                         leaf,
                         row,

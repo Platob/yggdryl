@@ -11,7 +11,7 @@ const { Side, graph } = require('yggdryl')
 const CLOCK = 1_700_000_000_000_000_000n
 
 function order(clock = CLOCK, price = '101', code = 'O-1') {
-  return new graph.OrderEvent(clock, { crosscode: code, side: 'BUY', price, quantity: 10, ticker: 'IBM' })
+  return new graph.OrderEvent(clock, { crosscode: code, side: 'BUYS', price, quantity: 10, ticker: 'IBM' })
 }
 
 function quote(clock = CLOCK, price = '102', code = 'Q-1') {
@@ -21,8 +21,8 @@ function quote(clock = CLOCK, price = '102', code = 'Q-1') {
 test('BookEvent: limits fold the live entries one level a price', () => {
   // An empty side has no limit and no depth to sum.
   const empty = new graph.BookEvent(CLOCK, 'IBM')
-  assert.deepEqual(empty.limits('BUY'), [])
-  assert.equal(empty.depth('BUY', 1), '0')
+  assert.deepEqual(empty.limits('BUYS'), [])
+  assert.equal(empty.depth('BUYS', 1), '0')
 
   // Two entries at one price are one limit naming both, in position
   // order; a lower price is the next limit.
@@ -32,59 +32,59 @@ test('BookEvent: limits fold the live entries one level a price', () => {
     order(CLOCK, '100', 'O-3'),
   ])
   const [first, second, third] = book.alive().map((entry) => entry.curruuid)
-  assert.deepEqual(book.limits('BUY'), [
+  assert.deepEqual(book.limits('BUYS'), [
     { price: '101', quantity: '20', uuids: [first, second], tradable: true },
     { price: '100', quantity: '10', uuids: [third], tradable: true },
   ])
-  // A side is named by its stored name, any spelling `Side` reads, or its
-  // code - what `Side.BUY` holds.
-  assert.deepEqual(book.limits(Side.BUY), book.limits('BUY'))
-  assert.deepEqual(book.limits('buy'), book.limits('BUY'))
+  // A side is named by its four-letter code, any spelling `Side` reads, or its
+  // code - what `Side.BUYS` holds.
+  assert.deepEqual(book.limits(Side.BUYS), book.limits('BUYS'))
+  assert.deepEqual(book.limits('buys'), book.limits('BUYS'))
   assert.deepEqual(book.limits('SELL'), [])
-  assert.equal(book.depth('BUY', 0), '0')
-  assert.equal(book.depth('BUY', 1), '20')
-  assert.equal(book.depth('BUY', 2), '30')
-  assert.equal(book.depth('BUY', 9), '30')
+  assert.equal(book.depth('BUYS', 0), '0')
+  assert.equal(book.depth('BUYS', 1), '20')
+  assert.equal(book.depth('BUYS', 2), '30')
+  assert.equal(book.depth('BUYS', 9), '30')
 
   // An order stating no price - a market order - rests at the one unpriced
   // limit, after every priced one, and the best price is still the first
   // priced limit's.
-  const market = new graph.OrderEvent(CLOCK, { crosscode: 'M-1', side: 'BUY', quantity: 7, ticker: 'IBM' })
+  const market = new graph.OrderEvent(CLOCK, { crosscode: 'M-1', side: 'BUYS', quantity: 7, ticker: 'IBM' })
   const priced = empty.withOperations([order(), market])
   const uuids = priced.alive().map((entry) => entry.curruuid)
-  assert.deepEqual(priced.limits('BUY'), [
+  assert.deepEqual(priced.limits('BUYS'), [
     { price: '101', quantity: '10', uuids: [uuids[0]], tradable: true },
     { price: null, quantity: '7', uuids: [uuids[1]], tradable: true },
   ])
-  assert.equal(priced.bestPrice('BUY'), '101')
-  assert.equal(priced.depth('BUY', 2), '17')
+  assert.equal(priced.bestPrice('BUYS'), '101')
+  assert.equal(priced.depth('BUYS', 2), '17')
 
   // A level count is a whole number of at most 2^53, a side one `Side`
   // names.
-  assert.throws(() => book.depth('BUY', -1), /levels must be a non-negative whole number/)
-  assert.throws(() => book.depth('BUY', 1.5), /levels must be a non-negative whole number/)
+  assert.throws(() => book.depth('BUYS', -1), /levels must be a non-negative whole number/)
+  assert.throws(() => book.depth('BUYS', 1.5), /levels must be a non-negative whole number/)
   assert.throws(() => book.limits('SIDEWAYS'), /side/)
   assert.throws(() => book.limits(99), /side/)
 })
 
 test('BookEvent: the best bid and ask are the best tradable levels', () => {
   const stating = (code, price, tradable) =>
-    new graph.OrderEvent(CLOCK, { crosscode: code, side: 'BUY', price, quantity: 1, tradable, ticker: 'IBM' })
+    new graph.OrderEvent(CLOCK, { crosscode: code, side: 'BUYS', price, quantity: 1, tradable, ticker: 'IBM' })
   const book = new graph.BookEvent(CLOCK, 'IBM').withOperations([
     stating('A', '102', false),
     stating('B', '101', true),
   ])
-  assert.deepEqual(book.limits('BUY').map((limit) => [limit.price, limit.tradable]), [
+  assert.deepEqual(book.limits('BUYS').map((limit) => [limit.price, limit.tradable]), [
     ['102', false],
     ['101', true],
   ])
-  assert.equal(book.bestPrice('BUY'), '101')
-  assert.equal(book.bestQuantity('BUY'), '1')
+  assert.equal(book.bestPrice('BUYS'), '101')
+  assert.equal(book.bestQuantity('BUYS'), '1')
   assert.equal(book.bidpx, '101')
   assert.equal(book.bidqty, '1')
   assert.equal(book.askpx, null)
   const untradable = new graph.BookEvent(CLOCK, 'IBM').withOperations([stating('A', '102', false)])
-  assert.equal(untradable.bestPrice('BUY'), null)
+  assert.equal(untradable.bestPrice('BUYS'), null)
   assert.equal(untradable.bidpx, null)
 })
 
@@ -127,11 +127,11 @@ test('BookEvent: an empty book', () => {
   assert.equal(book.currunix, CLOCK)
   assert.equal(book.crosscode, 'IBM')
   assert.equal(book.marketdatakind, 'BOOK')
-  assert.equal(book.side, 'UNKNOWN')
+  assert.equal(book.side, 'UNKN')
   assert.deepEqual(book.alive(), [])
   assert.deepEqual(book.deltas(), [])
   assert.deepEqual(book.executions(), [])
-  assert.equal(book.bestPrice('BUY'), null)
+  assert.equal(book.bestPrice('BUYS'), null)
   assert.equal(book.bestQuantity('SELL'), null)
   assert.equal(book.isCrossed, false)
   assert.equal(book.bboMidpoint, null)
@@ -142,7 +142,7 @@ test('BookEvent: withOperations of an order and a quote', () => {
   const empty = new graph.BookEvent(CLOCK, 'IBM')
   const book = empty.withOperations([order(), quote()])
   assert.deepEqual(empty.alive(), []) // immutable: the verb answered a new book
-  assert.equal(book.bestPrice('BUY'), '101')
+  assert.equal(book.bestPrice('BUYS'), '101')
   assert.equal(book.bestPrice('SELL'), '102')
   assert.equal(book.bidpx, '101')
   assert.equal(book.askpx, '102')
@@ -152,18 +152,18 @@ test('BookEvent: withOperations of an order and a quote', () => {
   const alive = book.alive()
   assert.ok(alive.every((entry) => entry instanceof graph.MarketData))
   // The bid side's entries first, then the ask side's.
-  assert.deepEqual(alive.map((entry) => entry.side), ['BUY', 'SELL'])
+  assert.deepEqual(alive.map((entry) => entry.side), ['BUYS', 'SELL'])
   assert.ok(alive[0].asOrderEvent() instanceof graph.OrderEvent)
   assert.equal(book.deltas().length, 2)
   assert.equal(empty.withOperations([order(CLOCK, '103'), quote()]).isCrossed, true)
 })
 
 test('BookEvent: executions and MarketData fold, read from any iterable', () => {
-  const execution = new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUY', lastpx: '101', lastqty: 1 })
+  const execution = new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUYS', lastpx: '101', lastqty: 1 })
   const book = new graph.BookEvent(CLOCK, 'IBM').withOperations(new Set([new graph.MarketData(order()), execution]))
   assert.ok(book.executions().every((held) => held instanceof graph.ExecutionEvent))
   // A sided element's cross code carries its side (A17).
-  assert.deepEqual(book.executions().map((held) => held.crosscode), ['BUY:E-1'])
+  assert.deepEqual(book.executions().map((held) => held.crosscode), ['BUYS:E-1'])
 })
 
 test('BookEvent: refusals name the item', () => {
@@ -217,16 +217,16 @@ test('SnapshotEvent: equals, stableHash, toString, clone and toJSON round trip',
 
 test('BookIterator: books over three items in order', () => {
   const execution = new graph.ExecutionEvent(CLOCK + 1n, {
-    crosscode: 'O-1', side: 'BUY', lastpx: '101', lastqty: 1, ticker: 'IBM',
+    crosscode: 'O-1', side: 'BUYS', lastpx: '101', lastqty: 1, ticker: 'IBM',
   })
   const walk = new graph.BookIterator([order(), new graph.MarketData(quote()), execution])
   assert.equal('global' in walk, false)
   const books = [...walk]
   assert.ok(books.every((book) => book instanceof graph.BookEvent))
   assert.deepEqual(books.map((book) => book.currunix), [CLOCK, CLOCK + 1n])
-  assert.equal(books[0].bestPrice('BUY'), '101')
+  assert.equal(books[0].bestPrice('BUYS'), '101')
   assert.equal(books[0].bestPrice('SELL'), '102')
-  assert.deepEqual(books[1].executions().map((held) => held.crosscode), ['BUY:O-1'])
+  assert.deepEqual(books[1].executions().map((held) => held.crosscode), ['BUYS:O-1'])
   assert.equal(walk[Symbol.iterator](), walk)
   assert.equal('GLOBAL_SYMBOL' in graph, false)
 })

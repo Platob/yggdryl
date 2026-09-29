@@ -41,9 +41,11 @@ impl TradeEvent {
 
     /// [`Self::from_parts`] over root facts already held: a move.
     pub(crate) fn from_facts(
-        data: OperationEventFacts,
+        mut data: OperationEventFacts,
         mut executions: Vec<ExecutionEvent>,
     ) -> Result<Self> {
+        // A trade is not sided: its cross code stays as given.
+        data.set_marketdatakind(crate::MarketDataKind::Trade);
         for execution in &mut executions {
             execution.finalize();
         }
@@ -87,15 +89,8 @@ impl TradeEvent {
         let mut crosscodes = HashSet::with_capacity(self.executions.len());
         for (index, execution) in self.executions.iter().enumerate() {
             let path = |name: &str| format_smolstr!("$.executions[{index}].{name}");
-            if !execution.get_side().is_bid() && !execution.get_side().is_ask() {
-                return Err(invalid(
-                    path("side"),
-                    format_smolstr!(
-                        "expected a bid or ask side, got {:?}",
-                        execution.get_side().as_str()
-                    ),
-                ));
-            }
+            // Any side stands, `UNKN` included: a trade side nobody
+            // stated is still a fill.
             if execution.get_currunix() != root_unix {
                 return Err(invalid(
                     path("currunix"),
@@ -283,12 +278,6 @@ impl Event for TradeEvent {
     }
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.data.set_creaunix(unix);
-    }
-    fn get_execunix(&self) -> Option<i64> {
-        self.data.get_execunix()
-    }
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.data.set_execunix(unix);
     }
     fn get_recdunix(&self) -> Option<i64> {
         self.data.get_recdunix()

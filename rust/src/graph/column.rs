@@ -2,7 +2,7 @@
 //!
 //! Every generated schema of an event - a [text line](crate::text::TextLine)
 //! read into a batch, a FIX message parsed out of it, a message the
-//! lifecycle chained - states these sixteen under one name and one datatype
+//! lifecycle chained - states these fifteen under one name and one datatype
 //! each, so the three join on them without a mapping: a message's
 //! `srcuuids` are the `curruuid` of the lines it was read from, and a
 //! chained message's `prevuuid` is the `curruuid` of the message before it. The names are the traits' own: what
@@ -13,7 +13,7 @@ use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
 
 use super::Event;
 
-/// One column of the sixteen every graph event is stated in.
+/// One column of the fifteen every graph event is stated in.
 ///
 /// [`Self::ALL`] is the canonical order [`Self::fields`] and event-native
 /// schemas use: **when** it happened - the instant, then the instants it is
@@ -27,10 +27,12 @@ use super::Event;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
-/// assert_eq!(fields.len(), 16);
+/// assert_eq!(fields.len(), 15);
 /// assert_eq!(fields[0].name(), "currunix");
-/// assert_eq!(fields[7].name(), "curruuid");
-/// assert_eq!(fields[15].name(), "state");
+/// assert_eq!(fields[6].name(), "curruuid");
+/// assert_eq!(fields[14].name(), "state");
+/// // When a market event executed is a market fact, not an event's.
+/// assert_eq!(EventColumn::of_name("execunix"), None);
 /// // What an event states under a column, and the same fact stated back.
 /// let mut event = OrderEvent::at(1_700_000_000_000_000_000);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
@@ -52,8 +54,6 @@ pub enum EventColumn {
     CurrUnix,
     /// When it was created, where that is known.
     CreaUnix,
-    /// The latest execution clock its lifecycle reached, where known.
-    ExecUnix,
     /// When it was recorded, where that is known.
     RecdUnix,
     /// When it stops being good, where it does.
@@ -89,10 +89,9 @@ pub enum EventColumn {
 
 impl EventColumn {
     /// Every column, in canonical event order.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 15] = [
         Self::CurrUnix,
         Self::CreaUnix,
-        Self::ExecUnix,
         Self::RecdUnix,
         Self::ExprUnix,
         Self::PrevUnix,
@@ -114,7 +113,6 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "currunix",
             Self::CreaUnix => "creaunix",
-            Self::ExecUnix => "execunix",
             Self::RecdUnix => "recdunix",
             Self::ExprUnix => "exprunix",
             Self::PrevUnix => "prevunix",
@@ -137,7 +135,6 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "CurrUnix",
             Self::CreaUnix => "CreaUnix",
-            Self::ExecUnix => "ExecUnix",
             Self::RecdUnix => "RecdUnix",
             Self::ExprUnix => "ExprUnix",
             Self::PrevUnix => "PrevUnix",
@@ -161,9 +158,6 @@ impl EventColumn {
             Self::CurrUnix => "When the event happened: the settled instant, UTC.",
             Self::CreaUnix => {
                 "When the event was created, where that is known; the earliest its chain knows once followed."
-            }
-            Self::ExecUnix => {
-                "The latest execution clock this lifecycle reached as of this event; an execution dates itself, following carries it, and duplicate statements keep their earliest observation."
             }
             Self::RecdUnix => {
                 "When this event was recorded, where that is known; the earliest its statements know."
@@ -221,7 +215,6 @@ impl EventColumn {
         Ok(match self {
             Self::CurrUnix
             | Self::CreaUnix
-            | Self::ExecUnix
             | Self::RecdUnix
             | Self::ExprUnix
             | Self::PrevUnix
@@ -291,7 +284,6 @@ impl EventColumn {
         match self {
             Self::CurrUnix => instant(event.get_currunix()),
             Self::CreaUnix => event.get_creaunix().and_then(instant),
-            Self::ExecUnix => event.get_execunix().and_then(instant),
             Self::RecdUnix => event.get_recdunix().and_then(instant),
             Self::ExprUnix => event.get_exprunix().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
@@ -323,7 +315,6 @@ impl EventColumn {
                 }
             }
             Self::CreaUnix => event.set_creaunix(instant()),
-            Self::ExecUnix => event.set_execunix(instant()),
             Self::RecdUnix => event.set_recdunix(instant()),
             Self::ExprUnix => event.set_exprunix(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),

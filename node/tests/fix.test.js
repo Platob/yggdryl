@@ -1310,9 +1310,9 @@ let committedRegistry
     // The side is the event's; the event happened at the sending clock, which
     // is where its chain was created too; the cross code is the client's
     // order identifier, the first stated of the tags a chain is named by.
-    assert.equal(message.side, 'BUY')
+    assert.equal(message.side, 'BUYS')
     // A sided message's cross code carries its side (A17).
-    assert.equal(message.crosscode, 'BUY:C-1')
+    assert.equal(message.crosscode, 'BUYS:C-1')
     assert.equal(message.currunix, SENDING_NS)
     assert.equal(message.creaunix, SENDING_NS)
     // A new order stating no status asks for a new order.
@@ -1347,12 +1347,12 @@ let committedRegistry
     assert.equal(message.byTag(35).asJs(), 'D')
     assert.equal(message.byId(registry.fieldByTag(35).fix.id).asJs(), 'D')
     assert.equal(message.byName('MsgType').asJs(), 'D')
-    assert.equal(message.byTag(54).asJs(), 'BUY')
+    assert.equal(message.byTag(54).asJs(), 'BUYS')
     assert.ok(message.byTag(52).equals(SENDING))
     assert.ok(message.byTag(65001).equals(SENDING), 'unix, as the clock its column holds')
     assert.equal(message.byTag(65008).asJs(), message.curruuid)
     assert.equal(message.byTag(65011).asJs(), message.currhashcode)
-    assert.equal(message.byTag(65010).asJs(), 'BUY:C-1')
+    assert.equal(message.byTag(65010).asJs(), 'BUYS:C-1')
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
     assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
@@ -1432,7 +1432,7 @@ let committedRegistry
     assert.equal(event.ticker, 'AAPL')
     assert.equal(event.currency, 'USD')
     assert.equal(event.unit, 'Shares')
-    assert.equal(event.side, 'BUY')
+    assert.equal(event.side, 'BUYS')
     assert.deepEqual(event.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
     assert.equal(event.isincode, 'US0378331005')
     assert.deepEqual(event.fxrates, {})
@@ -1441,10 +1441,10 @@ let committedRegistry
     assert.equal(event.spotrate, null)
     assert.equal(event.forwardpoints, null)
     // The metadata is what the message states that no typed column reads:
-    // the account (A1: no account map), and the two fields the dictionary
-    // derived from the ISIN and the currency, keyed by name as canonical
-    // text.
-    assert.deepEqual(event.metadata, { account: 'ACC-1', countryofissue: 'US', currencycodesource: '6' })
+    // the two fields the dictionary derived from the ISIN and the currency,
+    // keyed by name as canonical text. The account is the leaf's ACCOUNT.
+    assert.deepEqual(event.metadata, { countryofissue: 'US', currencycodesource: '6' })
+    assert.deepEqual(event.accountids, { ACCOUNT: 'ACC-1' })
     // The operation facts: the names the order goes by, upper-cased keys in
     // key order. An order's own price states no bid (A20).
     assert.deepEqual(event.altids, { CLORDID: 'A1', ORDERID: 'O-1' })
@@ -1463,7 +1463,7 @@ let committedRegistry
     // The retired spellings are gone rather than aliased.
     for (const gone of [
       'identifiers', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
-      'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'accountids', 'userids', 'marketoperationid',
+      'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'userids', 'marketoperationid',
       'bid', 'ask',
     ]) {
       assert.equal(gone in event, false, gone)
@@ -1698,7 +1698,7 @@ let committedRegistry
     assert.equal(field.has('FIX:idmap'), false)
 
     // The committed dictionary compiles every field's once: OrderID follows,
-    // and PartyID names no map - the parties stay in the metadata (A1).
+    // and PartyID names no FIX:idmap entry - a party is an account.
     const registry = seed()
     const table = registry.idmapSources()
     assert.deepEqual(
@@ -1717,7 +1717,8 @@ let committedRegistry
         'PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|',
       ))
       .next().value
-    assert.equal('accountids' in message, false)
+    // A bridge's dealer account is no party: the accounts stay empty.
+    assert.deepEqual(message.accountids, {})
     assert.equal('userids' in message, false)
     assert.deepEqual(message.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1', ULTRADERCLORDID: 'U1' })
   })
@@ -2019,7 +2020,7 @@ let committedRegistry
     assert.equal(bridge.byTag(55).toJSON(), 'TTF')
     assert.equal(bridge.byTag(38).toJSON(), '1200.000000000000000000')
     assert.equal(bridge.byTag(44).toJSON(), '41.250000000000000000')
-    assert.equal(bridge.side, 'BUY')
+    assert.equal(bridge.side, 'BUYS')
     assert.equal(bridge.byPath('parties[0].partyid').asJs(), 'BUYSIDE')
     // The counter said two occurrences and one arrived: the group entry
     // counts what is there.
@@ -2143,9 +2144,9 @@ let committedRegistry
     const codec = fixedCodec(seed())
 
     // A bid alone states the bid facts, in the message's currency (A20);
-    // it names no side, so its side is UNKNOWN, never null (A15).
+    // it names no side, so its side is UNKN, never null (A15).
     const bid = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|'))
-    assert.equal(bid.side, 'UNKNOWN')
+    assert.equal(bid.side, 'UNKN')
     assert.equal(bid.msgcat, 'QUOT')
     assert.deepEqual(
       ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy'].map((name) => bid[name]),
@@ -2165,8 +2166,8 @@ let committedRegistry
     // A13: a two-sided quote parses as itself and one sided quote per side,
     // each keeping the pair its source stated and taking its side's price.
     const [two, buy, sell] = codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
-    assert.equal(two.side, 'UNKNOWN')
-    assert.deepEqual([buy.side, buy.price, buy.crosscode], ['BUY', '101', 'BUY:Q3'])
+    assert.equal(two.side, 'UNKN')
+    assert.deepEqual([buy.side, buy.price, buy.crosscode], ['BUYS', '101', 'BUYS:Q3'])
     assert.deepEqual([sell.side, sell.price, sell.crosscode], ['SELL', '102', 'SELL:Q3'])
     for (const sided of [buy, sell]) {
       assert.deepEqual([sided.bidpx, sided.askpx], ['101', '102'])
@@ -2454,7 +2455,7 @@ let committedRegistry
     assert.equal(latest.price, null)
     assert.equal(latest.lastpx, '10.5')
     // A sided report's cross code carries its side (A17).
-    assert.equal(latest.crosscode, 'BUY:O1')
+    assert.equal(latest.crosscode, 'BUYS:O1')
     assert.deepEqual(latest.altids, { EXECID: 'E1', ORDERID: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
     // in force is a day order, one fill's average is that fill's price, and what
@@ -2513,7 +2514,7 @@ let committedRegistry
     assert.equal(held.curruuid, message.curruuid)
     assert.equal(held.crossuuid, message.crossuuid)
     assert.deepEqual(held.header(), message.header())
-    assert.equal(held.side, 'BUY')
+    assert.equal(held.side, 'BUYS')
     for (const tag of [8, 35, 11, 55, 54, 52]) assert.ok(held.byTag(tag).equals(message.byTag(tag)), `tag ${tag}`)
     assert.ok(held.intoRow(schema).equals(row))
     // The process default is the registry when none is named.
@@ -2888,7 +2889,7 @@ let committedRegistry
     return held
   }
 
-  test('parseLines pulls one line at a time and continues past a refused one', () => {
+  test('parseLines pulls one line at a time and passes over a line that is no row', () => {
     const codec = reading(seed(), { threads: 1 })
     let pulled = 0
     function* lines() {
@@ -2907,11 +2908,10 @@ let committedRegistry
     // The second frame comes out of the same line, without the next pull.
     assert.equal(messages.next().value.byTag(11).asJs(), 'B')
     assert.equal(pulled, 1)
-    // An empty line is not a row at all: thrown where it is met, and the
-    // stream goes on to say it is done.
-    assert.throws(() => messages.next(), /captured row/)
-    assert.equal(pulled, 2)
+    // An empty line is not a row at all: passed over where it is met, with a
+    // warning, and the stream goes on to say it is done.
     assert.equal(messages.next().done, true)
+    assert.equal(pulled, 2)
     assert.equal(messages.next().done, true)
   })
 
@@ -3271,15 +3271,15 @@ let committedRegistry
       ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
     ].map((data) => data.asBookEvent())
     assert.ok(first instanceof graph.BookEvent && second instanceof graph.BookEvent)
-    assert.equal(first.bestPrice('BUY'), '100')
-    assert.equal(second.bestPrice('BUY'), '101')
+    assert.equal(first.bestPrice('BUYS'), '100')
+    assert.equal(second.bestPrice('BUYS'), '101')
     // The best tradable levels are the book's own bid and ask (A20, A22).
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
     assert.equal(second.executions().length, 1)
     const live = second.alive()[0].asQuoteEvent()
     assert.deepEqual(live.altids, { MDENTRYID: 'B1' })
     assert.equal(live.quantity, '11')
-    assert.deepEqual(second.limits('BUY').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
+    assert.deepEqual(second.limits('BUYS').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
   })
 
   test('a lifecycled two-sided trade streams executions without book depth', () => {
@@ -3293,8 +3293,8 @@ let committedRegistry
       '54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|',
     ))]
     assert.deepEqual(messages.map((message) => [message.msgcat, message.side, message.state]), [
-      ['TRAD', 'UNKNOWN', 'TRADE'],
-      ['EXEC', 'BUY', 'FILLED'],
+      ['TRAD', 'UNKN', 'TRADE'],
+      ['EXEC', 'BUYS', 'FILLED'],
       ['EXEC', 'SELL', 'FILLED'],
     ])
     assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].curruuid)))
@@ -3302,12 +3302,12 @@ let committedRegistry
     const executions = books.getChild('executions').get(0)
     // A row's enum columns store each member's code.
     const bySide = new Map(Array.from(executions, (execution) => [execution.side, execution]))
-    const buy = bySide.get(Side.BUY)
+    const buy = bySide.get(Side.BUYS)
     const sell = bySide.get(Side.SELL)
 
     assert.equal(books.numRows, 1)
     assert.equal(books.getChild('marketdatakind').get(0), MarketDataKind.BOOK)
-    assert.deepEqual([...bySide.keys()].sort(), [Side.BUY, Side.SELL])
+    assert.deepEqual([...bySide.keys()].sort(), [Side.BUYS, Side.SELL])
     // Each execution is in the book once (A12).
     assert.equal(executions.length, 2)
     assert.equal(buy.marketdatakind, MarketDataKind.EXEC)
@@ -3334,7 +3334,7 @@ let committedRegistry
     assert.equal(books.getChild('deltas').get(0).length, 0)
   })
 
-  test('a trade side without Side splits off no execution, so no book reads it', () => {
+  test('a trade side without Side splits off an execution of side UNKN', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const line = Buffer.from(
       '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
@@ -3342,11 +3342,16 @@ let committedRegistry
       '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
     )
     // A12: a trade states its fills as the executions its parse splits off,
-    // and a side naming no Side(54) is none of them.
+    // and a side naming no Side(54) is still a fill: of side UNKN, said as
+    // a warning. The trade itself answers no leaf, and its book keeps the
+    // fill among its executions, on neither side.
     const messages = [...codec.parseLine(line)]
-    assert.deepEqual(messages.map((message) => [message.msgcat, message.side]), [['TRAD', 'UNKNOWN']])
-    assert.throws(() => messages[0].marketData(), /a trade states its fills as the executions its parse splits off/)
-    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 0)
+    assert.deepEqual(
+      messages.map((message) => [message.msgcat, message.side]),
+      [['TRAD', 'UNKN'], ['EXEC', 'UNKN']],
+    )
+    assert.deepEqual(messages[0].marketData(), [])
+    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 1)
   })
 
   // One book snapshot, one incremental update a second later, and session
@@ -3537,8 +3542,9 @@ let committedRegistry
     assert.deepEqual(messages[0].altids, { CLORDID: 'C-001', EXECID: 'E-09', ORDERID: 'O-01' })
     assert.deepEqual(Object.keys(messages[0].altids), ['CLORDID', 'EXECID', 'ORDERID'])
     assert.deepEqual(messages[1].altids, {})
-    // A1: the alternate identifiers are the one identifier map.
-    assert.equal('accountids' in messages[0], false)
+    // A1: the alternate identifiers are the one identifier map of names;
+    // the accounts are the parties a message names, none here.
+    assert.deepEqual(messages[0].accountids, {})
     assert.equal('userids' in messages[0], false)
 
     // No column of its own: the row states the source fields, and a row
@@ -3813,7 +3819,7 @@ let committedRegistry
     const message = parsed.clone()
     const size = message.size
     assert.notEqual(message.remove(54), null)
-    assert.equal(message.side, 'UNKNOWN')
+    assert.equal(message.side, 'UNKN')
     assert.equal(message.size, size - 1)
     // An ordinary child leaves, and the content identity follows it.
     const identity = message.currhashcode
@@ -3997,8 +4003,9 @@ let committedRegistry
 // fixtures, and `const` is block-scoped.
 {
   // The one walk over events: `FixCodec.lifecycle` states each message as the
-  // one after the live message it follows, and `lifecycleArrowReader` is the
-  // same walk over batches of rows.
+  // one after the live message of its own market data kind it follows (an
+  // order and an execution under one cross code are two chains), and
+  // `lifecycleArrowReader` is the same walk over batches of rows.
   //
   // Every rule is the core's, pinned in `rust/tests/fix/`; what these check is
   // the crossing - the stream a JavaScript iterable feeds one message at a
@@ -4168,8 +4175,9 @@ let committedRegistry
     const messages = captured(codec)
     // Every line that carries a message is one message, the JSON documents
     // among them, and the parse splits one execution off each of the 56
-    // reports that report a fill (A12; `rust/tests/fix/ulbridge.rs`).
-    assert.equal(messages.length, 94 + 56)
+    // reports that report a fill and one of side UNKN off the trade
+    // capture (A12; `rust/tests/fix/ulbridge.rs`).
+    assert.equal(messages.length, 94 + 57)
 
     // What a bridge's row header states reaches the capture, and what its own
     // namespaces state reaches the metadata.
@@ -4184,7 +4192,7 @@ let committedRegistry
     // quantity, and the names the message goes by.
     assert.equal(report.securityids.ISIN, 'CH0012214059')
     assert.equal(report.miccode, 'XSWX')
-    assert.equal(report.side, 'BUY')
+    assert.equal(report.side, 'BUYS')
     assert.ok(Object.keys(report.altids).includes('CLORDID'))
     // The parties merge to one group with the counter synced.
     const parties = report.entries().find((entry) => entry.tag === 453)
@@ -4210,17 +4218,18 @@ let committedRegistry
     // ten rows stating no FIX type state no sending time either, so each is
     // dated by its line - seven deliveries at their own instants, none a
     // twin, where the one instant every line shared made them two, one of
-    // them a twin.
+    // them a twin. It is 38 since the trade capture's side stating no
+    // Side(54) splits off an execution of side UNKN.
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 37)
+    assert.equal(retained.length, 38)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 38)
+    assert.equal(walked.length, 39)
     // A walk remembering nothing answers the three as well, each an identity
     // it had already answered, and nothing else.
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
-    assert.equal(every.length, 41)
+    assert.equal(every.length, 42)
     const seen = new Set()
     const once = every.filter((message) => !seen.has(message.curruuid) && seen.add(message.curruuid))
     assert.deepEqual(once.map((message) => message.curruuid), walked.map((message) => message.curruuid))
@@ -4243,12 +4252,17 @@ let committedRegistry
     // reject. Of the ten typeless rows nine are deliveries of their own.
     assert.deepEqual(removed, { 8: 104, '': 1, D: 1, cancelreject: 7 })
 
-    // The default cross-code chains six retained bridge messages, each
-    // stating its predecessor.
-    assert.equal(walked.filter((message) => message.prevuuid !== null).length, 6)
+    // The default cross-code chains five retained bridge messages, each
+    // stating its predecessor. It was six until a lifecycle chained within
+    // one market data kind: the order placed under XM8NNITE383 no longer
+    // follows the typeless FIXML row naming that ClOrdID, while the two
+    // execution reports of no fill that follow a report before them are
+    // filed as their orders' reports and follow it still.
+    assert.equal(walked.filter((message) => message.prevuuid !== null).length, 5)
     // seqnum > 0 now marks a place after another event of the same instant:
-    // split executions beside their reports, and same-instant chain steps.
-    assert.equal(walked.filter((message) => message.seqnum > 0).length, 11)
+    // split executions beside their reports - and beside the trade - and
+    // same-instant chain steps.
+    assert.equal(walked.filter((message) => message.seqnum > 0).length, 12)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
     // one output; only the four twins the window yields once take their own
@@ -4282,7 +4296,7 @@ let committedRegistry
     const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
     const chained = [...codec.messages(rows)]
     assert.equal(chained.length, walked.length)
-    assert.equal(chained.filter((message) => message.prevuuid !== null).length, 6)
+    assert.equal(chained.filter((message) => message.prevuuid !== null).length, 5)
 
     // Row intake preserves recorded identity; the lifecycle event clock,
     // facts and chain topology agree on both doors.
@@ -4356,43 +4370,47 @@ let committedRegistry
     for (const line of IOBase.fromBytes(fs.readFileSync(CAPTURE)).readTextLines(options)) {
       for (const message of codec.parseTextLine(line)) messages.push(message)
     }
-    // A12: 56 executions split off the fills.
-    assert.equal(messages.length, 94 + 56)
+    // A12: 56 executions split off the fills, and one of side UNKN off
+    // the trade capture.
+    assert.equal(messages.length, 94 + 57)
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 38)
+    assert.equal(walked.length, 39)
 
-    // Seventeen deliveries reach a book - eight fills, the eight reports they
-    // were split off, now their orders' reports, and three orders, less a
-    // fill and a report the window yields once - and nothing is refused: the
-    // trade capture is no book input, since a trade's fills are the
-    // executions its parse splits off (A12).
+    // Eighteen deliveries reach a book - eight fills, the eight reports they
+    // were split off, now their orders' reports, three orders, less a fill
+    // and a report the window yields once, and the trade capture's fill -
+    // and nothing is refused: the trade itself is no book input, since a
+    // trade's fills are the executions its parse splits off (A12).
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 17)
+    assert.equal(operations.length, 18)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 7, order_event: 10 })
+    assert.deepEqual(census, { execution_event: 8, order_event: 10 })
     // The two a walk remembering nothing answers beside them each repeat an
     // identity already there.
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
-    assert.equal(every.length, 19)
+    assert.equal(every.length, 20)
     const seen = new Set()
     const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
     assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
-    // Every operation folds into a book: seven, the last holding nothing,
-    // its unpriced order having rested and left at one instant.
+    // Every operation folds into a book: eight - one the trade's - the last
+    // holding nothing, its unpriced order having rested and left at one
+    // instant.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 7)
+    assert.equal(books.length, 8)
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
-    assert.deepEqual([last.limits('BUY'), last.limits('SELL'), last.alive()], [[], [], []])
+    assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
     assert.deepEqual(last.deltas().map((delta) => delta.price), [null, null])
     // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
     // book digests its entries and deltas rather than side summaries (A2),
     // no book control but its scope (A1), no lanes (A10), and the deltas'
-    // side-prefixed cross codes (A17), and each event's place out of its
-    // content code, a delta's place its instant's.
-    assert.equal(last.currhashcode, 10_559_977_729_007_194_651n)
+    // side-prefixed cross codes (A17), each event's place out of its
+    // content code, a delta's place its instant's, the metadata a
+    // follower takes from its chain, and the four-letter side code the
+    // book's own unstated side feeds (`UNKN`).
+    assert.equal(last.currhashcode, 7_372_418_038_390_061_154n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

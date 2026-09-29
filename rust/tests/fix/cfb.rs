@@ -1484,7 +1484,7 @@ fn a_refused_cfb_field_cannot_replace_a_builtin_code_set() {
         .codeset("msgcatcodeset")
         .expect("the builtin categories");
     assert_eq!(held.document(), codes);
-    assert_eq!(held.codes().count(), 22);
+    assert_eq!(held.codes().count(), 26);
     assert!(
         warnings.iter().any(|warning| warning.contains("msgcat")),
         "{warnings:?}"

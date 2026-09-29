@@ -1,4 +1,4 @@
-//! The twenty-seven columns every market element is stated in.
+//! The twenty-eight columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
@@ -11,7 +11,7 @@ use super::{FxRates, Market};
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::{
     Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeInForce,
-    Unit,
+    TimeUnit, Timezone, Unit,
 };
 
 /// One column of the market facts every market element answers.
@@ -35,6 +35,9 @@ pub enum MarketColumn {
     CfiCode,
     /// The market it trades on.
     MicCode,
+    /// When it last executed: the latest execution clock its lifecycle
+    /// reached, a nanosecond UTC clock.
+    ExecUnix,
     /// The last executed price it reports.
     LastPx,
     /// The last executed quantity it reports.
@@ -75,7 +78,7 @@ pub enum MarketColumn {
 
 impl MarketColumn {
     /// Every market column in canonical row order.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Price,
         Self::Currency,
         Self::Quantity,
@@ -85,6 +88,7 @@ impl MarketColumn {
         Self::IsinCode,
         Self::CfiCode,
         Self::MicCode,
+        Self::ExecUnix,
         Self::LastPx,
         Self::LastQty,
         Self::AvgPx,
@@ -118,6 +122,7 @@ impl MarketColumn {
             Self::IsinCode => "isincode",
             Self::CfiCode => "cficode",
             Self::MicCode => "miccode",
+            Self::ExecUnix => "execunix",
             Self::LastPx => "lastpx",
             Self::LastQty => "lastqty",
             Self::AvgPx => "avgpx",
@@ -152,6 +157,7 @@ impl MarketColumn {
             Self::IsinCode => "ISIN",
             Self::CfiCode => "CFI",
             Self::MicCode => "MIC",
+            Self::ExecUnix => "ExecUnix",
             Self::LastPx => "Last Price",
             Self::LastQty => "Last Quantity",
             Self::AvgPx => "Average Price",
@@ -174,7 +180,8 @@ impl MarketColumn {
     }
 
     /// The one datatype the column is built and read at: the crate's
-    /// decimal for every price and quantity, each code's own leaf, a sorted
+    /// decimal for every price and quantity, each code's own leaf, the
+    /// execution clock at nanoseconds UTC, a sorted
     /// `map<utf8, utf8>` for the identifiers and the metadata, a sorted
     /// `map<ccy, decimal>` for the rates - keys and values required - and
     /// `utf8` for the ticker.
@@ -203,6 +210,10 @@ impl MarketColumn {
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
             Self::MicCode => DataType::Mic,
+            Self::ExecUnix => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
             Self::FxRates => fxrates_datatype(),
             Self::Ticker => DataType::utf8(),
             Self::Metadata => DataType::map_of(DataType::utf8(), DataType::utf8(), true)
@@ -212,7 +223,7 @@ impl MarketColumn {
 
     /// Whether a row may leave the column null: never for the currency,
     /// the unit and the side, which every market element states, if only as
-    /// nothing - `XXX`, the empty unit, `UNKNOWN`.
+    /// nothing - `XXX`, the empty unit, `UNKN`.
     #[must_use]
     pub const fn nullable(self) -> bool {
         !matches!(self, Self::Currency | Self::Unit | Self::Side)
@@ -265,6 +276,9 @@ impl MarketColumn {
                 .map(Scalar::Isin),
             Self::CfiCode => element.get_cficode().cloned().map(Scalar::from),
             Self::MicCode => element.get_miccode().cloned().map(Scalar::from),
+            Self::ExecUnix => element.get_execunix().and_then(|unix| {
+                Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok()
+            }),
             Self::LastPx => element.get_lastpx().map(Scalar::from),
             Self::LastQty => element.get_lastqty().map(Scalar::from),
             Self::AvgPx => element.get_avgpx().map(Scalar::from),
@@ -388,6 +402,9 @@ impl MarketColumn {
                 Scalar::Null => None,
                 other => other.as_str().and_then(|text| Mic::new(text).ok()),
             }),
+            Self::ExecUnix => {
+                element.set_execunix(value.temporal_count_at(TimeUnit::Nanosecond));
+            }
             Self::LastPx => element.set_lastpx(decimal()),
             Self::LastQty => element.set_lastqty(decimal()),
             Self::AvgPx => element.set_avgpx(decimal()),

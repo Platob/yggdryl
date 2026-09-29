@@ -10,12 +10,12 @@ use super::Element;
 use super::element::InstantSequence;
 use super::market::unsided_crosscode;
 use crate::idmap::IdMap;
-use crate::{Side, State, Uuid};
+use crate::{MarketDataKind, Side, State, Uuid};
 
 mod sealed {
-    use super::super::{Element, Event, MarketData, Operation};
+    use super::super::{Element, Event, Market, MarketData, Operation};
     use crate::idmap::IdMap;
-    use crate::{Side, State};
+    use crate::{MarketDataKind, Side, State};
 
     /// [`Walked::walked_made`] over an event's own facts.
     fn made<E: Event + ?Sized>(event: &E) -> bool {
@@ -49,7 +49,7 @@ mod sealed {
         fn walked_set_creaunix(&mut self, unix: Option<i64>);
         /// [`Event::get_exprunix`].
         fn walked_exprunix(&self) -> Option<i64>;
-        /// [`Event::set_execunix`].
+        /// [`Market::set_execunix`](super::super::Market::set_execunix).
         fn walked_set_execunix(&mut self, unix: Option<i64>);
         /// [`Event::set_recdunix`].
         fn walked_set_recdunix(&mut self, unix: Option<i64>);
@@ -67,18 +67,25 @@ mod sealed {
         fn walked_altids(&self) -> Option<&IdMap>;
         /// [`Event::restating`].
         fn walked_restating(self, live: &Self) -> Self;
-        /// [`super::super::element::fill_execution`].
+        /// [`super::super::market::fill_execution`].
         fn walked_fill_execution(&mut self);
         /// Whether the walk chains this element at all.
         fn is_walked(&self) -> bool;
         /// [`Market::get_side`](super::super::Market::get_side);
         /// `Side::Unknown` for an element the walk does not chain.
         fn walked_side(&self) -> Side;
+        /// [`Market::is_sided`](super::super::Market::is_sided): whether
+        /// the element's cross code carries its side, so its base code is
+        /// what an element stating no side joins it by.
+        fn walked_sided(&self) -> bool;
         /// Whether the element may join another chain by a name or a base
         /// code it shares with it: every chained element but an execution,
         /// [`Event::is_execution`], which is a chain of its own and follows
         /// only its own cross code.
         fn walked_joins(&self) -> bool;
+        /// [`Market::marketdatakind`](super::super::Market::marketdatakind):
+        /// the category a chain holds elements of only.
+        fn walked_kind(&self) -> MarketDataKind;
     }
 
     impl<E: Event + Operation + Clone> Walked for E {
@@ -130,7 +137,7 @@ mod sealed {
             self.restating(live)
         }
         fn walked_fill_execution(&mut self) {
-            let _ = super::super::element::fill_execution(self);
+            let _ = super::super::market::fill_execution(self);
         }
         fn is_walked(&self) -> bool {
             true
@@ -138,8 +145,14 @@ mod sealed {
         fn walked_side(&self) -> Side {
             self.get_side()
         }
+        fn walked_sided(&self) -> bool {
+            self.is_sided()
+        }
         fn walked_joins(&self) -> bool {
             !self.is_execution()
+        }
+        fn walked_kind(&self) -> MarketDataKind {
+            self.marketdatakind()
         }
     }
 
@@ -211,23 +224,10 @@ mod sealed {
                 None => None,
             }
         }
-        /// Restates through the leaf's own [`Event::restating`] where both
-        /// are the same walked variant, and through the facts both hold
-        /// where two operation events differ in kind - a fill logged twice
-        /// under the order's identity keeps its own kind; else this
-        /// statement stands as it is.
+        /// Restates through the leaf's own [`Event::restating`]: a chain
+        /// holds one category, so the live element is the same walked
+        /// variant; else this statement stands as it is.
         fn walked_restating(self, live: &Self) -> Self {
-            if std::mem::discriminant(&self) != std::mem::discriminant(live) {
-                let Some(facts) = live.operation_event_facts() else {
-                    return self;
-                };
-                return match self {
-                    Self::OrderEvent(this) => Self::OrderEvent(this.restating_facts(facts)),
-                    Self::QuoteEvent(this) => Self::QuoteEvent(this.restating_facts(facts)),
-                    Self::ExecutionEvent(this) => Self::ExecutionEvent(this.restating_facts(facts)),
-                    this => this,
-                };
-            }
             match (self, live) {
                 (Self::OrderEvent(this), Self::OrderEvent(live)) => {
                     Self::OrderEvent(this.restating(live))
@@ -246,7 +246,7 @@ mod sealed {
         }
         fn walked_fill_execution(&mut self) {
             if let Some(operation) = self.as_event_operation_mut() {
-                let _ = super::super::element::fill_execution(operation);
+                let _ = super::super::market::fill_execution(operation);
             }
         }
         fn is_walked(&self) -> bool {
@@ -256,9 +256,15 @@ mod sealed {
             self.as_event_operation()
                 .map_or(Side::Unknown, |operation| operation.get_side())
         }
+        fn walked_sided(&self) -> bool {
+            self.is_walked() && self.is_sided()
+        }
         fn walked_joins(&self) -> bool {
             self.as_event_operation()
                 .is_some_and(|operation| !operation.is_execution())
+        }
+        fn walked_kind(&self) -> MarketDataKind {
+            self.marketdatakind()
         }
     }
 }
@@ -282,10 +288,14 @@ enum Source<E, I> {
 /// [`State`], and not
 /// past their expiration - under the identity every incarnation of one
 /// thing shares: the cross element, which is the element's own identity
-/// where it states no cross code. An element arriving under an identity a
-/// live element holds - or, where its own is alive under nothing, under a
-/// name a live element goes by, so a report that spells only the `ClOrdID`
-/// a live order was placed under still finds the order - is stated as the
+/// where it states no cross code, within the element's
+/// [`MarketDataKind`](crate::MarketDataKind) - a chain holds one category,
+/// so an order and an execution under one cross code are two chains and a
+/// fill never follows the order it filled. An element arriving under an
+/// identity a live element of its category holds - or, where its own is
+/// alive under nothing, under a name a live element of its category goes
+/// by, so a report that spells only the `ClOrdID` a live order was placed
+/// under still finds the order - is stated as the
 /// one after it by its own [`Element::with_previous`], so it records its
 /// predecessor, stands after it where they share an instant and carries the
 /// lifecycle forward; what that answers is what the walk yields. The
@@ -414,26 +424,27 @@ pub struct EventIterator<E, I> {
     source: Source<E, I>,
     lookahead: Option<E>,
     source_started: bool,
-    alive: HashMap<Uuid, Live<E>>,
+    alive: HashMap<Chain, Live<E>>,
     /// Every name a live element goes by, by scheme then name, under the
-    /// identity it is alive under and the side it takes: where an element
+    /// identity it is alive under and the side it takes, one per side and
+    /// category: where an element
     /// arrives under no live identity, a name it shares with a live element
     /// of its own side is the chain it belongs to, and an element stating no
     /// side joins the one side a name is alive on. Two levels, so a name is
     /// looked up by the borrowed scheme and name an element states and never
     /// by a copy of them.
-    named: HashMap<String, HashMap<String, Vec<(Side, Uuid)>>>,
+    named: HashMap<String, HashMap<String, Vec<(Side, Chain)>>>,
     /// The live identities of each base cross code - the code without the
     /// side prefix [`Market::sided_crosscode`](super::Market::sided_crosscode)
     /// gives it - so an element stating no side joins the one side its code
     /// is alive on.
-    bases: HashMap<String, Vec<Uuid>>,
+    bases: HashMap<String, Vec<Chain>>,
     /// The names each live identity is known by, so retiring it forgets
     /// exactly those.
-    names_of: HashMap<Uuid, Vec<(String, String)>>,
+    names_of: HashMap<Chain, Vec<(String, String)>>,
     /// The one current finite deadline of each live identity, ordered so a
     /// deadline is retired before anything arriving at the same instant.
-    expirations: BTreeSet<(i64, Uuid)>,
+    expirations: BTreeSet<(i64, Chain)>,
     /// The grid step in nanoseconds, or nothing positive for no grid.
     snapshot_ns: i64,
     /// The next epoch-aligned grid instant still to read.
@@ -441,7 +452,7 @@ pub struct EventIterator<E, I> {
     /// Identities copied at the active grid instant, one clone emitted at a
     /// time rather than a queue proportional to the number of ticks.
     snapshot_at: Option<i64>,
-    snapshot_identities: Vec<Uuid>,
+    snapshot_identities: Vec<Chain>,
     snapshot_index: usize,
     /// A source instant whose whole equal-time group was just read. Its
     /// exact grid snapshot is owed after the group.
@@ -456,6 +467,12 @@ pub struct EventIterator<E, I> {
     /// keeping the places they came with.
     placing: bool,
 }
+
+/// A chain the walk keeps alive: its cross element, within one market data
+/// category - an order and an execution under one cross code are two
+/// chains, and a lifecycle matches an element with a chain of its own
+/// category only.
+type Chain = (Uuid, MarketDataKind);
 
 /// One identity's live element and the identity it arrived under - what it
 /// was before the walk stated it, which is what another statement of the
@@ -551,7 +568,7 @@ where
 
     /// Records `element` as the live one under `identity` where it is still
     /// alive, its names with it, and retires the identity where it is not.
-    fn settle(&mut self, identity: Uuid, element: &E, arrived: Uuid) {
+    fn settle(&mut self, identity: Chain, element: &E, arrived: Uuid) {
         if let Some(deadline) = self
             .alive
             .get(&identity)
@@ -572,8 +589,11 @@ where
                     Some(slots) => slots,
                     None => names.entry(name.to_owned()).or_default(),
                 };
-                // One identity per side a name is alive on.
-                let held = match slots.iter_mut().find(|(held, _)| *held == side) {
+                // One identity per side and category a name is alive on.
+                let held = match slots
+                    .iter_mut()
+                    .find(|(held, chain)| *held == side && chain.1 == identity.1)
+                {
                     Some(slot) => Some(std::mem::replace(&mut slot.1, identity)),
                     None => {
                         slots.push((side, identity));
@@ -603,7 +623,9 @@ where
             }
             let code = element.get_crosscode();
             let base = unsided_crosscode(code);
-            if base.len() != code.len() {
+            // Only a sided element's prefix is one the holder gave it: an
+            // unsided code that reads `BUYS:...` is its own name.
+            if base.len() != code.len() && element.walked_sided() {
                 // Looked up borrowed first: a chain settled again under its
                 // base allocates nothing.
                 match self.bases.get_mut(base) {
@@ -630,7 +652,7 @@ where
     }
 
     /// Retires the live identity and every index and deadline it owns.
-    fn retire(&mut self, identity: Uuid) -> Option<Live<E>> {
+    fn retire(&mut self, identity: Chain) -> Option<Live<E>> {
         let live = self.alive.remove(&identity)?;
         if let Some(deadline) = live.element.walked_exprunix() {
             self.expirations.remove(&(deadline, identity));
@@ -651,7 +673,7 @@ where
         }
         let code = live.element.get_crosscode();
         let base = unsided_crosscode(code);
-        if base.len() != code.len() {
+        if base.len() != code.len() && live.element.walked_sided() {
             if let Some(held) = self.bases.get_mut(base) {
                 held.retain(|held| *held != identity);
                 if held.is_empty() {
@@ -723,7 +745,7 @@ where
     }
 
     /// Emits and retires the current generation whose deadline is next.
-    fn expire(&mut self, deadline: i64, identity: Uuid) -> Option<E> {
+    fn expire(&mut self, deadline: i64, identity: Chain) -> Option<E> {
         self.expirations.remove(&(deadline, identity));
         if self
             .alive
@@ -809,7 +831,7 @@ where
         let identity = if self.alive.contains_key(&identity) {
             identity
         } else {
-            element.get_crossuuid()
+            (element.get_crossuuid(), element.walked_kind())
         };
         self.settle(identity, &element, arrived);
         element
@@ -828,22 +850,21 @@ where
     /// under its base cross code, else under the first name it shares with a
     /// live element, where exactly one side is; where both are, it starts a
     /// chain of its own. An execution joins nothing by a name or a base: it
-    /// is a chain of its own, followed only under its own cross code.
-    fn identity_of(&self, element: &E) -> Uuid {
-        let own = element.get_crossuuid();
+    /// is a chain of its own, followed only under its own cross code. Every
+    /// chain an element joins is one of its own category.
+    fn identity_of(&self, element: &E) -> Chain {
+        let kind = element.walked_kind();
+        let own = (element.get_crossuuid(), kind);
         if self.alive.contains_key(&own) || !element.walked_joins() {
             return own;
         }
         let side = element.walked_side();
-        let alive = |identity: &Uuid| self.alive.contains_key(identity);
+        let alive = |identity: &Chain| identity.1 == kind && self.alive.contains_key(identity);
         if side == Side::Unknown {
             let code = element.get_crosscode();
-            if let Some([identity]) = (!code.is_empty())
-                .then(|| self.bases.get(code))
-                .flatten()
-                .map(Vec::as_slice)
-            {
-                if alive(identity) {
+            if let Some(held) = (!code.is_empty()).then(|| self.bases.get(code)).flatten() {
+                let mut live = held.iter().filter(|identity| alive(identity));
+                if let (Some(identity), None) = (live.next(), live.next()) {
                     return *identity;
                 }
             }
@@ -1039,23 +1060,29 @@ pub mod internals {
     use super::{EventIterator, Walked};
     use crate::Uuid;
 
-    /// Settle `element` as the element alive under `identity`, arriving as
-    /// `arrived`.
+    /// Settle `element` as the element alive under `identity`, within its
+    /// own category, arriving as `arrived`.
     pub fn settle<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid, element: &E, arrived: Uuid)
     where
         E: Walked,
         I: Iterator<Item = E>,
     {
-        walk.settle(identity, element, arrived);
+        walk.settle((identity, element.walked_kind()), element, arrived);
     }
 
-    /// Retire the element alive under `identity`, answering whether one was.
+    /// Retire the element alive under `identity`, of whichever category,
+    /// answering whether one was.
     pub fn retire<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid) -> bool
     where
         E: Walked,
         I: Iterator<Item = E>,
     {
-        walk.retire(identity).is_some()
+        let chain = walk
+            .alive
+            .keys()
+            .copied()
+            .find(|(held, _)| *held == identity);
+        chain.is_some_and(|chain| walk.retire(chain).is_some())
     }
 
     /// How many schemes the walk currently indexes names under.
@@ -1074,7 +1101,7 @@ pub mod internals {
             .get(scheme)?
             .get(name)?
             .first()
-            .map(|(_, identity)| *identity)
+            .map(|(_, (identity, _))| *identity)
     }
 
     /// How many identities hold a reverse record of the names they go by.

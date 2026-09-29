@@ -2692,9 +2692,10 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     };
     if let Some(value) = retry {
         if let Some(held) = refit(column, value) {
-            log::warn!(
-                "FIX column {}: kept what reads and nulled the rest ({refusal})",
-                column.name()
+            crate::warning::warned!(
+                "FIX column kept what reads and nulled the rest",
+                column.name(),
+                "{refusal}"
             );
             return Ok(held);
         }
@@ -2703,7 +2704,11 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     // refuses one answers with the refusal the value earned.
     match column.scalar(crate::Scalar::Null) {
         Ok(null) => {
-            log::warn!("FIX column {}: null, {refusal}", column.name());
+            crate::warning::warned!(
+                "FIX column value unreadable, stored as null",
+                column.name(),
+                "{refusal}"
+            );
             Ok(null)
         }
         Err(_) => Err(refusal),

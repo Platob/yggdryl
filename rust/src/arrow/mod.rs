@@ -127,6 +127,19 @@ pub enum Error {
 }
 
 impl Error {
+    /// Whether this failure is the source's rather than the data's: Arrow
+    /// or a downstream backend refusing to answer, or a core failure that
+    /// is one ([`crate::Error::is_source_failure`]). A data door ends its
+    /// stream on it and passes over every other failure with a warning.
+    #[must_use]
+    pub fn is_source_failure(&self) -> bool {
+        match self {
+            Self::Core(core) => core.is_source_failure(),
+            Self::Arrow(_) | Self::External(_) => true,
+            _ => false,
+        }
+    }
+
     /// Preserves a downstream backend error and its source chain.
     pub fn external(error: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::External(Box::new(error))

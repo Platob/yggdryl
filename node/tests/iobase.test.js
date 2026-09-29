@@ -24,7 +24,7 @@ const {
 } = require('yggdryl')
 
 const EVENT_COLUMNS = [
-  'currunix', 'creaunix', 'execunix', 'recdunix',
+  'currunix', 'creaunix', 'recdunix',
   'exprunix', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
   'prevuuid', 'seqnum', 'srcuuids', 'state',
@@ -891,7 +891,7 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     batches.map((batch) => batch.numRows),
     [1, 1, 1],
   )
-  // The seventeen event columns lead the row, the line's own behind them.
+  // The fifteen event columns lead the row, the line's own behind them.
   const schemaFields = batches[0].schema.fields
   assert.deepEqual(
     schemaFields.slice(0, EVENT_COLUMNS.length).map((field) => field.name),

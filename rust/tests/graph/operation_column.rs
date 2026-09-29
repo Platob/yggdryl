@@ -1,6 +1,6 @@
-//! `rust/src/graph/operation_column.rs`: the three columns every operation
-//! on the market is stated in beside the market's twenty-one, each stating
-//! back exactly the fact it read.
+//! `rust/src/graph/operation_column.rs`: the four columns every operation
+//! on the market is stated in beside the market's twenty-eight, each
+//! stating back exactly the fact it read.
 
 use yggdryl::graph::{Operation, OperationColumn, OrderEvent};
 use yggdryl::idmap::IdMap;
@@ -13,6 +13,7 @@ fn operation_columns_round_trip_every_fact() {
     source.set_tradable(Some(true));
     source.insert_altid("ORDERID", "O-1").unwrap();
     source.insert_altid("CLORDID", "C-1").unwrap();
+    source.insert_accountid("CUSTOMERACCOUNT", "ACC-1").unwrap();
 
     let row: Vec<Scalar> = OperationColumn::ALL
         .into_iter()
@@ -34,6 +35,11 @@ fn operation_columns_round_trip_every_fact() {
     assert_eq!(restored.get_tradable(), Some(true));
     assert_eq!(restored.get_altids(), source.get_altids());
     assert_eq!(restored.get_altids().get("ORDERID"), Some("O-1"));
+    assert_eq!(restored.get_accountids(), source.get_accountids());
+    assert_eq!(
+        restored.get_accountids().get("CUSTOMERACCOUNT"),
+        Some("ACC-1")
+    );
 }
 
 #[test]
@@ -41,11 +47,15 @@ fn a_null_clears_and_nothing_stated_is_none() {
     let mut operation = OrderEvent::at(7);
     operation.set_tradable(Some(false));
     operation.insert_altid("ORDERID", "O-1").unwrap();
+    operation
+        .insert_accountid("CUSTOMERACCOUNT", "ACC-1")
+        .unwrap();
     for column in OperationColumn::ALL {
         column.record(&mut operation, &Scalar::Null);
     }
     assert_eq!(operation.get_tradable(), None);
     assert!(operation.get_altids().is_empty());
+    assert!(operation.get_accountids().is_empty());
     for column in OperationColumn::ALL {
         assert_eq!(column.fact(&operation), None, "{}", column.name());
         assert!(column.nullable(), "{}", column.name());
@@ -55,10 +65,10 @@ fn a_null_clears_and_nothing_stated_is_none() {
 #[test]
 fn operation_column_schema_has_one_owner_and_order() {
     let fields = OperationColumn::fields().unwrap();
-    assert_eq!(fields.len(), 3);
+    assert_eq!(fields.len(), 4);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
-        ["tif", "tradable", "altids"]
+        ["tif", "tradable", "altids", "accountids"]
     );
     assert_eq!(
         OperationColumn::TimeInForce.datatype(),
@@ -69,9 +79,15 @@ fn operation_column_schema_has_one_owner_and_order() {
         IdMap::dtype(),
         "the alternate identifiers are a sorted utf8 map"
     );
-    // An account and a user are no operation fact, and neither is a lane:
-    // a book states its price levels under `bidlimits` and `asklimits`.
-    assert_eq!(OperationColumn::of_name("accountids"), None);
+    // The accounts an operation names are an operation fact, a sorted utf8
+    // map keyed by role; a user is none, and neither is a lane: a book
+    // states its price levels under `bidlimits` and `asklimits`.
+    assert_eq!(
+        OperationColumn::of_name("accountids"),
+        Some(OperationColumn::AccountIds)
+    );
+    assert_eq!(OperationColumn::AccountIds.datatype(), IdMap::dtype());
+    assert_eq!(OperationColumn::AccountIds.display(), "Account IDs");
     assert_eq!(OperationColumn::of_name("userids"), None);
     assert_eq!(OperationColumn::of_name("bid"), None);
     assert_eq!(OperationColumn::of_name("ask"), None);

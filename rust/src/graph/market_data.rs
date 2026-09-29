@@ -302,6 +302,9 @@ impl Market for MarketData {
     fn set_side(&mut self, side: crate::Side) {
         delegate_by_variant!(self, set_side, side);
     }
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.kind().marketdatakind()
+    }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         delegate_by_variant!(self, get_securityids)
     }
@@ -328,6 +331,12 @@ impl Market for MarketData {
     }
     fn set_miccode(&mut self, code: Option<crate::Mic>) {
         delegate_by_variant!(self, set_miccode, code);
+    }
+    fn get_execunix(&self) -> Option<i64> {
+        delegate_by_variant!(self, get_execunix)
+    }
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        delegate_by_variant!(self, set_execunix, unix);
     }
     fn get_lastpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_lastpx)

@@ -3125,10 +3125,19 @@ mod committed {
     /// the events of its instant rather than in its chain: the one
     /// description of that crate field moved, and no document, tag or count
     /// of the census with it.
+    /// It last moved when `MarketDataKind` gained the four batch categories
+    /// `ORDB` (22), `QUOB` (23), `EXEB` (24) and `TRDB` (25) and the message
+    /// types were filed again: the `msgcatcodeset` document holds four
+    /// members more, and the `FIX:msgcat` of twenty-nine message definitions
+    /// moved - seventeen order lists, mass orders and crosses to `ORDB`, five
+    /// mass quotes and bid lists to `QUOB`, the two match reports to `TRDB`,
+    /// `AssignmentReport` and `ContraryIntentionReport` to `POSN` and the
+    /// three market definitions to `MKST`; no tag and no count of the census
+    /// moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 16_320_696_011_309_504_681);
+        assert_eq!(registry.stable_hash(), 3_264_037_823_180_760_624);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

@@ -16,7 +16,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, the market data it is, what a parse splits off it, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
 | [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - each execution and each quoted side a parse split off folded once - or back to the wire under bounded Arrow batches |
-| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |
+| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, what a parse fills in for a message, and the [warnings](capture.md#warnings) it says instead of failing: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
@@ -25,7 +25,9 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 files the type under, stored as its `int32` code. Each committed message
 component carries its four-character `FIX:msgcat` metadata, and the builtin
 `msgcatcodeset` names every member the row may store (`UNKN=0`, `BOOK=3`,
-`EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, and so on). The normalized
+`EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
+[filing](#a-message-type-is-filed-under-one-category) says which types each
+holds. The normalized
 instrument columns are `isincode(65023)`, `forexcode(65024)`,
 `bloombergcode(65025)`, `figicode(65026)` and `miccode(65027)` - the first
 four views of the message's security identifiers, the last its market -
@@ -36,8 +38,8 @@ The protocol view exposes the category beside the message type: Rust
 `field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
 `field.fix.msgcat`, each the four-character text. Set it with Rust
 `field.as_fix_mut().set_msgcat("ORDR")?` or the corresponding Python/JavaScript
-property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and
-`BOOK`; `MsgType::msgcat` answers the definition's member - Rust
+property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD`,
+`BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::msgcat` answers the definition's member - Rust
 `Option<MarketDataKind>`, Python the `MarketDataKind` member or `None`,
 JavaScript its name or `null` - and `FixMsg::msgcat` the message's own, which
 a [market data leaf](message.md#market-data) states again as its
@@ -216,6 +218,81 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
 | `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `msgcat(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
+
+## A message type is filed under one category
+
+The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order, a quote or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)); a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
+
+| Category | `MsgType(35)` |
+| --- | --- |
+| `ORDR` | `D` `F` `G` `H` `9` `AB` `AC` |
+| `ORDB` | `E` `K` `L` `M` `N` `q` `r` `AF` `CA` `BZ` `DJ` `DK` `s` `t` `u` `DS` `DT` |
+| `QUOT` | `6` `7` `R` `S` `Z` `a` `AG` `AH` `AI` `AJ` `CW` |
+| `QUOB` | `i` `b` `k` `l` `m` |
+| `EXEC` | `8` `BN` `Q` |
+| `EXEB` | none |
+| `TRAD` | `AD` `AE` `AQ` `AR` `DW` `DX` |
+| `TRDB` | `DC` `DD` |
+| `BOOK` | `V` `W` `X` `Y` `DO` `DP` `DR` `EQ` |
+| `SESS` | `0` `1` `2` `3` `4` `5` `A` `j` `n` `BC` `BD` `BE` `BF` `CB` `BW` `BX` `BY` `EL` `EM` `EN` `EO` `EP` |
+| `SECU` | `c` `d` `e` `f` `v` `w` `x` `y` `z` `AA` `BK` `BP` `BR` `CN` `CO` `EG` `ER` |
+| `MKST` | `g` `h` `BI` `BJ` `BS` `ES` `BT` `BU` `BV` |
+| `ALLO` | `J` `P` `AS` `AT` `BM` `DU` `DV` |
+| `POSN` | `AL` `AM` `AN` `AO` `AP` `BL` `DL` `DM` `DN` `AW` `BO` |
+| `SETL` | `T` `AV` `BQ` `EC` `ED` `EE` `EF` |
+| `COLL` | `AX` `AY` `AZ` `BA` `BB` `BG` `DQ` `CH` `CI` `CJ` |
+| `PRTY` | `CF` `CG` `CK` `CX` `CY` `DH` `DI` `CU` `CV` `CZ` `DA` `DB` |
+| `RISK` | `CL` `CM` `CR` `CS` `CT` `DE` `DF` `DG` |
+| `PAYM` | `DY` `DZ` `EA` `EB` |
+| `CONF` | `AK` `AU` `BH` |
+| `REGI` | `o` `p` |
+| `STRM` | `CC` `CD` `CE` |
+| `ACCT` | `CQ` |
+| `COMM` | `B` `C` |
+| `CERT` | `EH` `EI` `EJ` `EK` |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{FixRegistry, MarketDataKind};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
+    assert_eq!(registry.msgtype("D")?.msgcat(), Some(MarketDataKind::Order));
+    assert_eq!(registry.msgtype("E")?.msgcat(), Some(MarketDataKind::OrderBatch));
+    assert_eq!(registry.msgtype("i")?.msgcat(), Some(MarketDataKind::QuoteBatch));
+    assert_eq!(registry.msgtype("DC")?.msgcat(), Some(MarketDataKind::TradeBatch));
+    assert_eq!(registry.msgtype("BU")?.msgcat(), Some(MarketDataKind::MarketStructure));
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl import MarketDataKind
+    from yggdryl.fix import FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    assert registry.msgtype("D").msgcat is MarketDataKind.ORDR
+    assert registry.msgtype("E").msgcat is MarketDataKind.ORDB
+    assert registry.msgtype("i").msgcat is MarketDataKind.QUOB
+    assert registry.msgtype("AW").msgcat is MarketDataKind.POSN
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    assert.equal(registry.msgtype('D').msgcat, 'ORDR')
+    assert.equal(registry.msgtype('E').msgcat, 'ORDB')
+    assert.equal(registry.msgtype('DC').msgcat, 'TRDB')
+    ```
 
 ## Identity is a tag and a name
 

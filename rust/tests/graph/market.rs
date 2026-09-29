@@ -6,7 +6,8 @@ use std::borrow::Cow;
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    Element, Event, ExecutionEvent, FxRates, Market, Operation, Order, OrderEvent,
+    BookEvent, Element, Event, ExecutionEvent, FxRates, Market, Operation, Order, OrderEvent,
+    SnapshotEvent, TradeEvent,
 };
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
 use yggdryl::{Ccy, Cfi, Decimal, Mic, Side, TimeInForce, Uuid};
@@ -344,6 +345,57 @@ fn get_isincode_borrows_the_isin_identifier() {
     let stored = listed.get_securityids().get("ISIN").unwrap();
     assert!(std::ptr::eq(projected, stored));
     assert_eq!(order(2).get_isincode(), None);
+}
+
+/// Only an order, a quote and an execution store their cross code under
+/// their side, and the cross hash and element follow the stored text. A
+/// book, a snapshot control and a trade keep their code as given whatever
+/// side they state - a `BUY:` in it is its own name, never a prefix - and
+/// one built from a sided element takes that element's base code, which a
+/// sided leaf built from it prefixes again.
+#[test]
+fn only_an_operation_stores_its_cross_code_under_its_side() {
+    let mut buy = OrderEvent::at(1);
+    buy.set_crosscode("O-1".to_owned());
+    buy.set_side(Side::Buy);
+    buy.finalize();
+    assert!(buy.is_sided());
+    assert_eq!(buy.get_crosscode(), "BUYS:O-1");
+
+    let mut book = BookEvent::new(1, "AAPL");
+    book.set_side(Side::Buy);
+    book.finalize();
+    assert!(!book.is_sided());
+    assert_eq!(book.get_crosscode(), "AAPL");
+    assert_eq!(book.sided_crosscode("AAPL"), "AAPL");
+    let mut named = BookEvent::new(1, "BUYS:AAPL");
+    named.set_side(Side::Sell);
+    assert_eq!(named.get_crosscode(), "BUYS:AAPL");
+
+    let snapshot = SnapshotEvent::snapshot(&buy, None);
+    assert!(!snapshot.is_sided());
+    assert_eq!(
+        (snapshot.get_crosscode(), snapshot.get_side()),
+        ("O-1", Side::Buy)
+    );
+
+    let mut fill = ExecutionEvent::at(1);
+    fill.set_crosscode("E-1".to_owned());
+    fill.set_side(Side::Sell);
+    fill.finalize();
+    assert_eq!(fill.get_crosscode(), "SELL:E-1");
+    let trade = TradeEvent::from_parts(&buy, vec![fill]).unwrap();
+    assert!(!trade.is_sided());
+    assert_eq!(trade.get_crosscode(), "O-1");
+    assert_eq!(trade.executions()[0].get_crosscode(), "SELL:E-1");
+    let mut unnamed = BookEvent::new(1, "O-1");
+    unnamed.finalize();
+    assert_eq!(trade.get_crosshashcode(), unnamed.get_crosshashcode());
+
+    // An order over the trade's facts is sided again, under its side.
+    let again = OrderEvent::from(&trade);
+    assert_eq!(again.get_crosscode(), "BUYS:O-1");
+    assert_eq!(again.get_crosshashcode(), buy.get_crosshashcode());
 }
 
 /// A book's key is the ticker where one is stated, else the category.

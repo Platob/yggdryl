@@ -154,9 +154,10 @@ pub(super) fn emit_text(
 /// one pair.
 /// [`wire_text`] under the field the value is stated as: a coded value -
 /// a side, a state - spells the wire code the field's own code set gives
-/// its name, so `BUY` under `Side(54)` is `1` on the wire and `BUY` in a
-/// dictionary that never coded it; everything else spells as it does
-/// under no field.
+/// its name, else, for an enum member, the code whose name the field reads
+/// as that member - so `BUYS` under `Side(54)` is `1` on the wire, the set
+/// naming it `Buy` - and `BUYS` in a dictionary that never coded it;
+/// everything else spells as it does under no field.
 pub(super) fn wire_text_under(
     registry: &super::FixRegistry,
     field: &crate::Field,
@@ -164,9 +165,16 @@ pub(super) fn wire_text_under(
 ) -> Option<SmolStr> {
     let coded = value.is_code() || field.dtype().is_enum();
     if coded {
+        let member = |held: &str| {
+            value.is_enum()
+                && field
+                    .dtype()
+                    .scalar(crate::Scalar::from(held))
+                    .is_ok_and(|read| read == *value)
+        };
         if let Some(code) = value.as_str().and_then(|name| {
             let document = registry.codeset_of(field)?.document();
-            registry.memo().wire_value(document, name)
+            registry.memo().wire_value(document, name, member)
         }) {
             return Some(code);
         }

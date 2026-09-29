@@ -23,9 +23,10 @@
 //! An unknown tag is kept as nullable `utf8` under its decimal spelling, and
 //! an unknown name under its own. Every venue sends fields no dictionary has,
 //! and dropping them loses data. A value that will not type is null rather
-//! than a failure, with the raw text still in the entries and the refusal
-//! readable through the message's anomalies: a null nobody can explain is
-//! worse than the value that actually arrived. An unresolved numeric or named
+//! than a failure, with the raw text still in the entries, the refusal
+//! readable through the message's anomalies and warned about once per
+//! field: a null nobody can explain is worse than the value that actually
+//! arrived. An unresolved numeric or named
 //! key records tag zero; its parsed number is not a dictionary identity.
 
 use std::sync::Arc;
@@ -36,6 +37,7 @@ use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::text::TextBytes;
+use crate::warning::warned;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 
 /// What a key resolved to, before any field is built.
@@ -1048,8 +1050,10 @@ impl<'registry> Builder<'registry> {
     ///
     /// Row only: no entry is recorded, because the entries are what arrived
     /// on the line and this arrived on the row beside it. A value the field
-    /// cannot hold fills nothing rather than a null, so a column the row
-    /// carried in the wrong kind leaves the field to what the message said.
+    /// cannot hold fills nothing rather than a null, beside a warning naming
+    /// the field, so a column the row carried in the wrong kind leaves the
+    /// field to what the message said. A clock or an identity the field
+    /// refuses is the message's refusal instead: it cannot stand without it.
     pub(super) fn fill(&mut self, fill: &Fill<'_>) {
         if fill.value.is_null() {
             return;
@@ -1074,9 +1078,12 @@ impl<'registry> Builder<'registry> {
         let typed = match typed {
             Ok(typed) => typed,
             Err(error) => {
-                if critical && self.failure.is_none() {
-                    self.failure = Some(error);
-                }
+                warned!(
+                    "FIX row cell not filled: its field's type refuses it",
+                    fill.field.name(),
+                    "{error}, got {:?}",
+                    fill.value
+                );
                 return;
             }
         };
@@ -1267,10 +1274,14 @@ impl<'registry> Builder<'registry> {
             Err(error) => {
                 // The refusal, then what arrived: the text the row could not
                 // take is the fact worth reading beside the null.
-                self.anomalies.push(super::FixAnomaly::new(
+                let detail = format!("{error}, got {cleaned:?}");
+                warned!(
+                    "FIX value defaulted to null: its field's type refuses it",
                     field.name(),
-                    format!("{error}, got {cleaned:?}"),
-                ));
+                    "{detail}"
+                );
+                self.anomalies
+                    .push(super::FixAnomaly::new(field.name(), detail));
                 Scalar::Null
             }
         }
@@ -1316,8 +1327,14 @@ impl<'registry> Builder<'registry> {
         }
     }
 
-    /// Root invariants retain their first conversion refusal and never clean
-    /// invalid bytes into a different valid identity or clock spelling.
+    /// A root clock - `SendingTime(52)`, `TransactTime(60)` - typed from the
+    /// bytes as they arrived, never cleaned into a different valid spelling.
+    ///
+    /// A registry declaring the clock under another datatype is a defect of
+    /// the registry, retained as this build's refusal. A text naming no
+    /// instant is data: the clock is left unstated - so the message is dated
+    /// as one stating none is - beside an anomaly and a warning, as every
+    /// other value that will not type is.
     fn typed_root(
         &mut self,
         field: &Field,
@@ -1335,17 +1352,28 @@ impl<'registry> Builder<'registry> {
             }
             return self.typed(field, source, raw, text);
         }
-        let value = super::identity::validate_field(field, tag).and_then(|_| {
-            super::identity::resolve_tag(field, self.registry)?;
-            let text = std::str::from_utf8(raw).map_err(|error| invalid_value(field, error))?;
-            self.typed_value(field, source, raw, text)
-        });
+        let declared = super::identity::validate_field(field, tag)
+            .and_then(|()| super::identity::resolve_tag(field, self.registry).map(drop));
+        if let Err(error) = declared {
+            if self.failure.is_none() {
+                self.failure = Some(invalid_value(field, error));
+            }
+            return Scalar::Null;
+        }
+        let value = std::str::from_utf8(raw)
+            .map_err(|error| invalid_value(field, error))
+            .and_then(|text| self.typed_value(field, source, raw, text));
         match value {
             Ok(value) => value,
             Err(error) => {
-                if self.failure.is_none() {
-                    self.failure = Some(invalid_value(field, error));
-                }
+                let detail = format!("{error}, got {text:?}");
+                warned!(
+                    "FIX clock left unstated: its text names no instant",
+                    field.name(),
+                    "{detail}; the message is dated as one stating none is"
+                );
+                self.anomalies
+                    .push(super::FixAnomaly::new(field.name(), detail));
                 Scalar::Null
             }
         }
@@ -2001,10 +2029,13 @@ impl<'registry> Builder<'registry> {
                     .as_i64()
                     .filter(|stated| *stated != i64::from(count))
                 {
-                    anomalies.push(super::FixAnomaly::new(
+                    let detail = format!("states {stated}, the group holds {held}");
+                    warned!(
+                        "FIX group counter restated: it disagrees with the occurrences the group holds",
                         fields[at].name(),
-                        format!("states {stated}, the group holds {held}"),
-                    ));
+                        "{detail}"
+                    );
+                    anomalies.push(super::FixAnomaly::new(fields[at].name(), detail));
                 }
                 if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
                     values[at] = value;

@@ -35,7 +35,9 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
 /// | `get_seqnum` | the row number under `start_rownum`, else the physical index |
 /// | `get_state` | a `state` capture, else `UNKNOWN` |
-/// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_exprunix`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_creaunix` | a `creaunix` capture, else the earliest instant the read that cut it dated a line by |
+/// | `get_prevunix` | a `prevunix` capture, else the instant the read that cut it dated the line before it by |
+/// | `get_recdunix`, `get_exprunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
 /// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
@@ -234,7 +236,6 @@ struct Stated {
     state: Option<State>,
     seqnum: Option<u64>,
     creaunix: Option<Option<i64>>,
-    execunix: Option<Option<i64>>,
     recdunix: Option<Option<i64>>,
     exprunix: Option<Option<i64>>,
     prevunix: Option<Option<i64>>,
@@ -288,7 +289,6 @@ struct Resolved {
     seqnum: OnceLock<Reading<u64>>,
     state: OnceLock<Reading<State>>,
     creaunix: OnceLock<Reading<Option<i64>>>,
-    execunix: OnceLock<Reading<Option<i64>>>,
     recdunix: OnceLock<Reading<Option<i64>>>,
     exprunix: OnceLock<Reading<Option<i64>>>,
     prevunix: OnceLock<Reading<Option<i64>>>,
@@ -763,7 +763,6 @@ impl TextLine {
         self.resolved.seqnum = OnceLock::new();
         self.resolved.state = OnceLock::new();
         self.resolved.creaunix = OnceLock::new();
-        self.resolved.execunix = OnceLock::new();
         self.resolved.recdunix = OnceLock::new();
         self.resolved.exprunix = OnceLock::new();
         self.resolved.prevunix = OnceLock::new();
@@ -1023,23 +1022,6 @@ impl TextLine {
         self.answer(reading).copied()
     }
 
-    /// When the line's event was executed: an `execunix` capture, else none.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
-    /// the capture when it does not read as an instant.
-    pub fn execunix(&self) -> Result<Option<i64>> {
-        if let Some(stated) = self.stated.execunix {
-            return Ok(stated);
-        }
-        let reading = self
-            .resolved
-            .execunix
-            .get_or_init(|| self.instant_capture("execunix"));
-        self.answer(reading).copied()
-    }
-
     /// When the line's event was recorded: a `recdunix` capture, else none.
     ///
     /// # Errors
@@ -1075,7 +1057,8 @@ impl TextLine {
     }
 
     /// When the record this one follows happened: a `prevunix` capture,
-    /// else none.
+    /// else what the reader that cut it stated - the instant it dated the
+    /// line before this one by - else none.
     ///
     /// # Errors
     ///
@@ -1291,9 +1274,6 @@ impl TextLine {
             }
             EventColumn::CreaUnix => {
                 self.creaunix()?;
-            }
-            EventColumn::ExecUnix => {
-                self.execunix()?;
             }
             EventColumn::RecdUnix => {
                 self.recdunix()?;
@@ -1523,15 +1503,6 @@ impl Event for TextLine {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.stated.creaunix = Some(unix);
-    }
-
-    /// [`TextLine::execunix`]; none over a refused capture.
-    fn get_execunix(&self) -> Option<i64> {
-        self.execunix().ok().flatten()
-    }
-
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.stated.execunix = Some(unix);
     }
 
     /// [`TextLine::recdunix`]; none over a refused capture.

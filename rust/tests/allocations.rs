@@ -4293,7 +4293,7 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// One of the ten is the sixteen event columns the plan compiles once per
+/// One of the ten is the fifteen event columns the plan compiles once per
 /// read: the identity list and the state's own type allocate as the
 /// columns are planned, and nothing of them per line. The count was
 /// thirteen while the event had an `identifiers` column: the names' map
@@ -4742,7 +4742,22 @@ struct StageCosts {
 /// for the identities its deduplication window keeps and, walking a clone,
 /// no longer pays a table of names: a frame's walk stands at 7; and a bridge
 /// row's fell from 35 to 8 when redating a message a parse built settled
-/// what its clock moved alone.
+/// what its clock moved alone. A trade side stating no `Side(54)` came to
+/// split off an execution of side `UNKN` where it noted an anomaly: the
+/// packed frame's parse 1029 to 1132, that execution's 106 less the
+/// anomaly's 3. Reading the accounts off the parties at every settle took
+/// the bridge row to 641 and the packed frame to 1145, thirteen each for
+/// six and seven parties per message; the frame's regulatory `TVTIC`, a
+/// fifth alternate identifier growing its map at each of three settles,
+/// took it to 233. Reading the accounts level by level - a trade side's
+/// parties, then the message's - rather than gathered into one list that
+/// spilled past its eight inline occurrences took two back off the packed
+/// frame at its two settles (1143); its `Account(1)` costs these lines
+/// nothing. An execution split off a report came to be chained under its
+/// `ExecID(17)` as given rather than `ExecID=` before it: the code is the
+/// identifier copied once where `format!` reserved twice its seven-byte
+/// literal and grew once for the sixteen-byte identifier, so the bridge
+/// row's parse fell to 640 and the frame's to 232.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -4750,7 +4765,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 628,
+            parse: 640,
             into_row: 77,
             landing: 1381,
             batch: 190,
@@ -4762,7 +4777,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 230,
+            parse: 232,
             into_row: 57,
             landing: 1362,
             batch: 190,
@@ -4774,7 +4789,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1029,
+            parse: 1143,
             into_row: 243,
             landing: 1398,
             batch: 190,

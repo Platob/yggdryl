@@ -288,7 +288,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid,quoteid",
-    "FIX:msgcat": "QUOT",
+    "FIX:msgcat": "QUOB",
     "FIX:msgtype": "b",
     "FIX:tag": "185574",
     "description": "MsgType = b (lowercase B)",

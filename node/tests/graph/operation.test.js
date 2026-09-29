@@ -16,7 +16,7 @@ function orderEvent(facts = {}) {
     seqnum: 3,
     creaunix: CLOCK - 100_000_000_000n,
     recdunix: CLOCK - 50_000_000_000n,
-    side: 'BUY',
+    side: 'BUYS',
     price: '101',
     currency: 'USD',
     quantity: 5,
@@ -32,7 +32,7 @@ test('an order event reads every fact back typed', () => {
   assert.match(event.curruuid, /^[0-9a-f-]{36}$/)
   assert.match(event.crossuuid, /^[0-9a-f-]{36}$/)
   // A sided element's cross code carries its side (A17).
-  assert.equal(event.crosscode, 'BUY:O-100')
+  assert.equal(event.crosscode, 'BUYS:O-100')
   assert.equal(typeof event.currhashcode, 'bigint')
   assert.equal(typeof event.crosshashcode, 'bigint')
   assert.deepEqual(event.srcuuids, [])
@@ -50,7 +50,7 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.currency, 'USD')
   assert.equal(event.quantity, '5')
   assert.equal(event.unit, '')
-  assert.equal(event.side, 'BUY')
+  assert.equal(event.side, 'BUYS')
   assert.deepEqual(event.securityids, {})
   assert.equal(event.isincode, null)
   assert.equal(event.cficode, null)
@@ -65,10 +65,12 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.tif, '0')
   assert.equal(event.tradable, null)
   assert.deepEqual(event.altids, { ORDERID: 'O-100' })
+  // The accounts an operation names, by role: none stated here.
+  assert.deepEqual(event.accountids, {})
   assert.equal(event.kind, 'order')
   assert.equal(event.marketdatakind, 'ORDR')
   // A1/A7: the retired facts answer nothing.
-  for (const name of ['marketoperationid', 'accountids', 'userids', 'bid', 'ask']) {
+  for (const name of ['marketoperationid', 'userids', 'bid', 'ask']) {
     assert.equal(name in event, false, name)
   }
   assert.equal(event.isExecution, false)
@@ -187,7 +189,7 @@ test('book states the control facts', () => {
 
 test('an order follows the order it replaces', () => {
   const first = orderEvent({ seqnum: undefined })
-  const later = new graph.OrderEvent(CLOCK + 1n, { crosscode: 'O-100', side: 'BUY', price: '100', quantity: 4 })
+  const later = new graph.OrderEvent(CLOCK + 1n, { crosscode: 'O-100', side: 'BUYS', price: '100', quantity: 4 })
   const followed = later.withPrevious(first)
   assert.notEqual(followed, null)
   assert.equal(followed.prevuuid, first.curruuid)

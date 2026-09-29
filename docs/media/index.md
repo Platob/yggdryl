@@ -962,6 +962,8 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
 
 An object's lines are one chain - they share the object as their cross code - so a read states when that chain began: every line whose own `creaunix` capture states none takes the earliest `currunix` the read has dated a line of its object by so far - never an instant after its own, the first line its own instant. A line the header does not date, of a handle with no time of its own, is dated by nothing and states no creation until a line that is dated; a `creaunix` capture that does not read as an instant stays refused by name. A line built by hand states what it is given.
 
+Each line likewise states, as `prevunix`, the `currunix` the read dated the line cut before it by - none for the first line of an object and none after an undated line, a `prevunix` capture winning - and no `prevuuid`, so no line's `curruuid` or `currhashcode` moves; each object read, each leaf of a folder or glob, starts again, and the [FIX text doors](../fix/arrow.md#a-column-is-the-caller-speaking-per-row) ignore a line's `prevunix`.
+
 === "Rust"
 
     ```rust
@@ -988,12 +990,12 @@ An object's lines are one chain - they share the object as their cross code - so
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    // The sixteen event columns, then the body, then the header's captures.
-    assert_eq!(text_batch.schema().fields().len(), 19);
+    // The fifteen event columns, then the body, then the header's captures.
+    assert_eq!(text_batch.schema().fields().len(), 18);
     // The record's place is its row number, under `seqnum`.
     assert_eq!(
         text_batch
-            .column(13)
+            .column(12)
             .as_any()
             .downcast_ref::<UInt64Array>()
             .unwrap()
@@ -1003,7 +1005,7 @@ An object's lines are one chain - they share the object as their cross code - so
     // The body is the record past the header the reader took off it.
     assert_eq!(
         text_batch
-            .column(16)
+            .column(15)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()

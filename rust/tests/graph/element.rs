@@ -49,7 +49,6 @@ struct Report {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
-    execunix: Option<i64>,
     recdunix: Option<i64>,
     exprunix: Option<i64>,
     prevunix: Option<i64>,
@@ -74,7 +73,6 @@ impl Report {
             state: State::from_spelling("New").expect("a shipped state"),
             seqnum: 0,
             creaunix: None,
-            execunix: None,
             recdunix: None,
             exprunix: None,
             prevunix: None,
@@ -191,14 +189,6 @@ impl Event for Report {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.creaunix = unix;
-    }
-
-    fn get_execunix(&self) -> Option<i64> {
-        self.execunix
-    }
-
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.execunix = unix;
     }
 
     fn get_recdunix(&self) -> Option<i64> {
@@ -733,10 +723,11 @@ fn following_carries_the_lifecycle_forward() {
     assert_eq!(own.get_crossuuid(), own.cross_uuid());
     assert_eq!(own.get_srcuuids(), [Uuid::from_v8(70)]);
 
-    // The order's own identifiers carry forward where the next operation
-    // does not state them, and its own word stays where it does; a name
-    // that is not the order's own - the client's, an execution's - names
-    // one statement and travels along no chain.
+    // Every identifier of the chain carries forward where the next
+    // operation does not state it, and its own word stays where it does -
+    // but a book entry's reference to its predecessor, which names one
+    // step. The metadata alike: the next one's own values stand, and every
+    // key of the chain's it does not state is beside them.
     let mut named = OrderEvent::at(at(10));
     named.set_crosscode("O-100".to_owned());
     named
@@ -745,16 +736,44 @@ fn following_carries_the_lifecycle_forward() {
     named
         .insert_altid("CLORDID", "C-1")
         .expect("a plain holder");
+    named
+        .insert_altid("MDENTRYREFID", "R-1")
+        .expect("a plain holder");
+    named.set_metadata(Some(
+        [("desk", "EQ"), ("venue", "XPAR")]
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect(),
+    ));
     named.finalize();
     let mut next = OrderEvent::at(at(20));
     next.set_crosscode("O-100".to_owned());
     next.insert_altid("EXECID", "E-2").expect("a plain holder");
+    next.set_metadata(Some(
+        [("desk", "FX")]
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect(),
+    ));
     next.finalize();
+    let unfollowed = next.get_curruuid();
     let next = next.with_previous(&named).expect("follows");
     assert_eq!(next.get_altids().get("ORDERID"), Some("O-1"));
     assert_eq!(next.get_altids().get("EXECID"), Some("E-2"));
-    assert_eq!(next.get_altids().get("CLORDID"), None);
-    assert_eq!(next.get_altids().len(), 2);
+    assert_eq!(next.get_altids().get("CLORDID"), Some("C-1"));
+    assert_eq!(next.get_altids().get("MDENTRYREFID"), None);
+    assert_eq!(next.get_altids().len(), 3);
+    let metadata: Vec<_> = next
+        .get_metadata()
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(metadata, [("desk", "FX"), ("venue", "XPAR")]);
+    assert_ne!(
+        next.get_curruuid(),
+        unfollowed,
+        "what it takes is what it states"
+    );
     let mut own = OrderEvent::at(at(20));
     own.set_crosscode("O-100".to_owned());
     own.insert_altid("ORDERID", "O-2").expect("a plain holder");
@@ -764,18 +783,34 @@ fn following_carries_the_lifecycle_forward() {
 }
 
 #[test]
-fn following_carries_the_latest_execution_but_not_the_recording_clock() {
+fn following_never_carries_the_recording_clock() {
     let mut previous = Report::at(1, 10);
     previous.set_state(filled());
-    previous.set_execunix(Some(7));
     previous.set_recdunix(Some(9));
-
     let next = Report::at(2, 20)
         .with_previous(&previous)
         .expect("the later event follows");
     assert_eq!(
+        next.get_recdunix(),
+        None,
+        "no predecessor recording carries"
+    );
+}
+
+#[test]
+fn following_a_market_event_carries_its_latest_execution() {
+    let mut previous = stated(10);
+    previous.set_state(filled());
+    previous.set_execunix(Some(at(7)));
+    previous.set_recdunix(Some(at(9)));
+    previous.finalize();
+
+    let next = operation(20)
+        .with_previous(&previous)
+        .expect("the later event follows");
+    assert_eq!(
         next.get_execunix(),
-        Some(7),
+        Some(at(7)),
         "the latest lifecycle execution carries"
     );
     assert_eq!(
@@ -784,98 +819,92 @@ fn following_carries_the_latest_execution_but_not_the_recording_clock() {
         "no predecessor recording carries"
     );
 
-    // The successor inherited the predecessor's furthest lifecycle state and
-    // execution clock. Restating and fully merging it preserve that clock
-    // without dating the non-execution successor from its own instant.
-    let restated = Report::at(2, 20).restating(&next);
-    assert_eq!(restated.get_execunix(), Some(7));
-    let merged = Report::at(2, 20)
-        .merge_with(&next)
-        .expect("the inherited lifecycle moved");
-    assert_eq!(merged.get_execunix(), Some(7));
-
-    let restated = next.clone().restating(&Report::at(2, 20));
-    assert_eq!(
-        restated.get_execunix(),
-        Some(7),
-        "the carried clock survives another observation"
-    );
-    let mut other = Report::at(2, 20);
+    // The successor inherited the predecessor's furthest state and its
+    // execution clock. Another statement of it keeps that clock rather than
+    // dating the inherited state from its own instant.
+    let mut other = next.clone();
+    other.set_execunix(None);
     other.set_srcuuids(vec![Uuid::from_v8(99)]);
+    let restated = other.clone().restating(&next);
+    assert_eq!(restated.get_execunix(), Some(at(7)));
     let merged = next
         .clone()
         .merge_with(&other)
         .expect("the other statement added a source");
     assert_eq!(
         merged.get_execunix(),
-        Some(7),
+        Some(at(7)),
         "the carried clock survives a full merge"
     );
     assert!(
         next.clone().with_previous(&previous).is_none(),
         "replaying the same lifecycle edge changes nothing"
     );
-    assert_eq!(
-        next.get_execunix(),
-        Some(7),
-        "replay keeps the clock rather than dating the inherited state anew"
-    );
-    let inserted = Report::at(7, 15)
+    let inserted = operation(15)
         .with_previous(&previous)
         .expect("the inserted event follows");
     let relinked = next
         .clone()
         .with_previous(&inserted)
         .expect("the stamped successor takes the inserted predecessor");
-    assert_eq!(relinked.get_execunix(), Some(7));
+    assert_eq!(relinked.get_execunix(), Some(at(7)));
     assert_eq!(relinked.get_prevuuid(), Some(inserted.get_curruuid()));
 
-    let mut execution = Report::at(3, 30);
+    // An execution stating no clock dates itself from its own instant.
+    let mut execution = stated(30);
     execution.set_state(filled());
-    execution.set_recdunix(Some(31));
+    execution.set_recdunix(Some(at(31)));
+    execution.finalize();
     let execution = execution
-        .with_previous(&Report::at(4, 25))
+        .with_previous(&operation(25))
         .expect("the execution follows");
-    assert_eq!(execution.get_execunix(), Some(30));
-    assert_eq!(execution.get_recdunix(), Some(31));
+    assert_eq!(execution.get_execunix(), Some(at(30)));
+    assert_eq!(execution.get_recdunix(), Some(at(31)));
 
-    let later = Report::at(9, 40)
+    let later = operation(40)
         .with_previous(&execution)
         .expect("the non-execution successor follows");
     assert_eq!(
         later.get_execunix(),
-        Some(30),
+        Some(at(30)),
         "a later non-execution carries the last execution clock"
     );
 
-    let mut later_execution = Report::at(10, 50);
+    let mut later_execution = stated(50);
     later_execution.set_state(State::read("PartiallyFilled").unwrap());
+    later_execution.finalize();
     let later_execution = later_execution
         .with_previous(&later)
         .expect("the later execution follows");
     assert_eq!(
         later_execution.get_execunix(),
-        Some(50),
+        Some(at(50)),
         "a later execution replaces the carried clock"
     );
 
-    let mut stated = Report::at(5, 40);
-    stated.set_state(filled());
-    stated.set_execunix(Some(35));
-    let stated = stated
-        .with_previous(&Report::at(6, 39))
+    let mut explicit = stated(41);
+    explicit.set_state(filled());
+    explicit.set_execunix(Some(at(35)));
+    explicit.finalize();
+    let explicit = explicit
+        .with_previous(&operation(39))
         .expect("the stated execution follows");
-    assert_eq!(stated.get_execunix(), Some(35), "an explicit instant wins");
+    assert_eq!(
+        explicit.get_execunix(),
+        Some(at(35)),
+        "an explicit instant wins"
+    );
 
-    let mut stale_execution = Report::at(11, 60);
-    stale_execution.set_state(filled());
-    stale_execution.set_execunix(Some(25));
-    let stale_execution = stale_execution
+    let mut stale = stated(60);
+    stale.set_state(filled());
+    stale.set_execunix(Some(at(25)));
+    stale.finalize();
+    let stale = stale
         .with_previous(&later_execution)
         .expect("the delayed execution report follows");
     assert_eq!(
-        stale_execution.get_execunix(),
-        Some(50),
+        stale.get_execunix(),
+        Some(at(50)),
         "a delayed report cannot regress the lifecycle's latest execution"
     );
 }
@@ -919,7 +948,7 @@ fn following_adopts_the_predecessors_cross_code() {
     let before = fill.get_curruuid();
     let fill = fill.with_previous(&placed).expect("follows");
     // The code is stored under the side the event takes.
-    assert_eq!(fill.get_crosscode(), "BUY:O-100");
+    assert_eq!(fill.get_crosscode(), "BUYS:O-100");
     assert_eq!(fill.get_crossuuid(), placed.get_crossuuid());
     assert_eq!(fill.get_prevuuid(), Some(placed.get_curruuid()));
     assert_ne!(fill.get_curruuid(), before, "followed, so finalized");
@@ -1003,38 +1032,35 @@ fn restating_and_merging_keep_the_earliest_per_event_instants() {
     one.set_state(filled());
     one.set_recdunix(Some(30));
     let mut other = Report::at(1, 20);
-    other.set_execunix(Some(18));
     other.set_recdunix(Some(25));
 
     // Only the earliest recording survives either fold: `one` is the
     // reference (recorded at 30, after 25), but no separate reference clock
     // keeps its 30, so the folded statement ranks at 25 from here on.
     let restated = one.clone().restating(&other);
-    assert_eq!(restated.get_execunix(), Some(18));
     assert_eq!(restated.get_recdunix(), Some(25));
 
     let merged = one.merge_with(&other).expect("the instants moved");
-    assert_eq!(merged.get_execunix(), Some(18));
     assert_eq!(merged.get_recdunix(), Some(25));
     assert!(
         merged.clone().merge_with(&other).is_none(),
         "the fold is idempotent"
     );
 
-    let mut unstamped = Report::at(8, 40);
+    let mut unstamped = trade(40);
     unstamped.set_state(filled());
-    let observed = Report::at(8, 40);
+    let observed = trade(40);
     let merged = unstamped
         .merge_with(&observed)
         .expect("the execution clock was filled");
     assert_eq!(
         merged.get_execunix(),
-        Some(40),
+        Some(at(40)),
         "a raw execution observation dates itself before the full merge"
     );
 
-    // Market events override both readings to fold their market facts too;
-    // the shared per-event clocks obey the same contract there.
+    // Market events fold their execution clock, a market fact, the way
+    // every event folds its recording: the earliest either statement knows.
     let mut market = trade(20);
     market.set_state(filled());
     market.set_recdunix(Some(at(30)));
@@ -1128,7 +1154,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
     let mut event_time_later = Report::at(1, 30);
     event_time_later.set_currhashcode(0xA);
     event_time_later.set_recdunix(Some(100));
-    event_time_later.set_execunix(Some(12));
     event_time_later.set_crosscode("OLD".to_owned());
     event_time_later.set_srcuuids(vec![Uuid::from_v8(70)]);
     event_time_later.set_prevuuid(Some(Uuid::from_v8(2)));
@@ -1138,7 +1163,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
     let mut recorded_later = Report::at(1, 20);
     recorded_later.set_currhashcode(0xB);
     recorded_later.set_recdunix(Some(200));
-    recorded_later.set_execunix(Some(15));
     recorded_later.set_crosscode("REFERENCE".to_owned());
     recorded_later.set_srcuuids(vec![Uuid::from_v8(71)]);
     recorded_later.set_prevuuid(Some(Uuid::from_v8(3)));
@@ -1165,7 +1189,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(3)));
         assert_eq!(merged.get_prevunix(), Some(19));
         assert_eq!(merged.get_snapunix(), Some(21));
-        assert_eq!(merged.get_execunix(), Some(12));
         // The reference selects conflicts; the recording clock still folds
         // to the earliest, and the reference's own 200 is kept nowhere.
         assert_eq!(merged.get_recdunix(), Some(100));
@@ -1585,7 +1608,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     assert_eq!(held.get_currency().as_str(), "USD");
     assert_eq!(held.get_quantity(), Some(Decimal::from_int(1_000)));
     assert_eq!(held.get_unit().as_str(), "bbl");
-    assert_eq!(held.get_side().as_str(), "BUY");
+    assert_eq!(held.get_side().as_str(), "BUYS");
 
     held.set_price(Some(Decimal::from_int(83)));
     held.set_currency(currency("EUR"));
@@ -1837,7 +1860,6 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_crossuuid(Uuid::from_v8(77));
     moved.set_srcuuids(vec![Uuid::from_v8(70)]);
     moved.set_creaunix(Some(1));
-    moved.set_execunix(Some(2));
     moved.set_recdunix(Some(3));
     moved.set_exprunix(Some(200));
     moved.set_snapunix(Some(10));
@@ -2147,7 +2169,7 @@ fn an_operation_following_another_keeps_its_own_side_or_takes_the_chains() {
     let silent = order(30, None)
         .with_previous(&first)
         .expect("the next order");
-    assert_eq!(silent.get_side().as_str(), "BUY", "the chain's side");
+    assert_eq!(silent.get_side().as_str(), "BUYS", "the chain's side");
 }
 
 #[test]
@@ -2207,7 +2229,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_ticker(), Some("BRN"));
     assert_eq!(followed.get_currency().as_str(), "USD");
     assert_eq!(followed.get_unit().as_str(), "bbl");
-    assert_eq!(followed.get_side().as_str(), "BUY");
+    assert_eq!(followed.get_side().as_str(), "BUYS");
     assert_eq!(followed.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the

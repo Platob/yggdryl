@@ -11,9 +11,11 @@ enum_leaf! {
     /// the seventeen sides the code set names follow in FIX's own order,
     /// `1`..=`9` then `A`..=`H`, so a code is the position of its wire
     /// character. What [`Self::as_str`] answers and every text format writes
-    /// is the crate's explicit spelling - `BUY`, `SSHORT`, `CROSSSHX` -
-    /// never the one-character code, which [`Self::fix_code`] answers on its
-    /// own; what a column stores is the code, which every engine reads.
+    /// is the member's fixed four-letter code - `BUYS`, `SSHT`, `CRSX` - the
+    /// prefix a sided cross code is stored under, never the one-character
+    /// wire code, which [`Self::fix_code`] answers on its own; the long name
+    /// is the member's description. What a column stores is the integer
+    /// code, which every engine reads.
     ///
     /// ```
     /// use yggdryl::Side;
@@ -21,29 +23,30 @@ enum_leaf! {
     /// assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
     /// assert_eq!(Side::Buy.code(), 1);
     /// assert_eq!(Side::from_code(2), Some(Side::Sell));
-    /// assert_eq!(Side::SShort.as_str(), "SSHORT");
+    /// assert_eq!(Side::SShort.as_str(), "SSHT");
+    /// assert_eq!(Side::SShort.description(), "Sell short.");
     /// assert_eq!(Side::Unknown.merge_with(Side::Sell), Side::Sell);
     /// ```
     pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME {
         #[default]
-        Unknown = 0 as "UNKNOWN": "A side stated as none, which a merge takes the other side over.",
-        Buy = 1 as "BUY": "Buy.",
+        Unknown = 0 as "UNKN": "A side stated as none, which a merge takes the other side over.",
+        Buy = 1 as "BUYS": "Buy.",
         Sell = 2 as "SELL": "Sell.",
-        BuyMinus = 3 as "BUYMINUS": "Buy minus.",
-        SellPlus = 4 as "SELLPLUS": "Sell plus.",
-        SShort = 5 as "SSHORT": "Sell short.",
-        SShortEx = 6 as "SSHORTEX": "Sell short exempt.",
-        Undisc = 7 as "UNDISC": "Undisclosed.",
-        Cross = 8 as "CROSS": "Cross.",
-        CrossSh = 9 as "CROSSSH": "Cross short.",
-        CrossShX = 10 as "CROSSSHX": "Cross short exempt.",
-        AsDef = 11 as "ASDEF": "As defined.",
-        Opposite = 12 as "OPPOSITE": "Opposite.",
-        Subscr = 13 as "SUBSCR": "Subscribe.",
-        Redeem = 14 as "REDEEM": "Redeem.",
+        BuyMinus = 3 as "BUYM": "Buy minus.",
+        SellPlus = 4 as "SELP": "Sell plus.",
+        SShort = 5 as "SSHT": "Sell short.",
+        SShortEx = 6 as "SSEX": "Sell short exempt.",
+        Undisc = 7 as "UNDI": "Undisclosed.",
+        Cross = 8 as "CROS": "Cross.",
+        CrossSh = 9 as "CRSH": "Cross short.",
+        CrossShX = 10 as "CRSX": "Cross short exempt.",
+        AsDef = 11 as "ASDF": "As defined.",
+        Opposite = 12 as "OPPO": "Opposite.",
+        Subscr = 13 as "SUBS": "Subscribe.",
+        Redeem = 14 as "REDM": "Redeem.",
         Lend = 15 as "LEND": "Lend.",
-        Borrow = 16 as "BORROW": "Borrow.",
-        SellUnd = 17 as "SELLUND": "Sell undisclosed.",
+        Borrow = 16 as "BORR": "Borrow.",
+        SellUnd = 17 as "SELU": "Sell undisclosed.",
     }
 }
 
@@ -100,8 +103,8 @@ impl Side {
     /// Whether this side takes the ask of a quote or a book: a party willing
     /// to be paid.
     ///
-    /// Everything on neither side - a cross, `UNDISC`, `ASDEF`, `OPPOSITE`, a
-    /// side stated as none - takes neither: a cross is both sides at once and
+    /// Everything on neither side - a cross, `UNDI`, `ASDF`, `OPPO`, a side
+    /// stated as none - takes neither: a cross is both sides at once and
     /// `OPPOSITE` means "whatever the other leg was".
     ///
     /// ```
@@ -135,7 +138,9 @@ impl Side {
     ///
     /// Three vocabularies reach one value, because they name one thing:
     ///
-    /// - the stored name itself - `BUY`, `SSHORT`, `ASDEF`;
+    /// - the stored four-letter code itself - `BUYS`, `SSHT`, `ASDF` - and
+    ///   the names the members were stored under before it, `BUY`,
+    ///   `SSHORT`, `ASDEF`, read and never written;
     /// - a FIX `Side(54)` wire code - `1`, `2`, `5`, `H`;
     /// - the specification's own name for it - `Buy`, `SellShort`, `AsDefined`.
     ///
@@ -148,9 +153,10 @@ impl Side {
     /// ```
     /// use yggdryl::Side;
     ///
-    /// // The wire code, the specification's name and the stored name.
+    /// // The wire code, the specification's name and the stored code.
     /// assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
     /// assert_eq!(Side::from_spelling("SellShort"), Some(Side::SShort));
+    /// assert_eq!(Side::from_spelling("SSHT"), Some(Side::SShort));
     /// assert_eq!(Side::from_spelling("sshort"), Some(Side::SShort));
     /// assert_eq!(Side::from_spelling("H"), Some(Side::SellUnd));
     /// assert!(Side::from_spelling("X").is_none());
@@ -196,34 +202,51 @@ static SIDE_CODES: &[(&str, Side)] = &[
     ("H", Side::SellUnd),
 ];
 
-/// Every name that reaches a side, folded: the specification's, and the
-/// stored names in any case.
+/// Every name that reaches a side, folded: the four-letter codes, the
+/// specification's names, and the names the members were stored under
+/// before their codes, read and never written.
 static SIDE_NAMES: &[(&str, Side)] = &[
     ("asdef", Side::AsDef),
     ("asdefined", Side::AsDef),
+    ("asdf", Side::AsDef),
+    ("borr", Side::Borrow),
     ("borrow", Side::Borrow),
     ("buy", Side::Buy),
+    ("buym", Side::BuyMinus),
     ("buyminus", Side::BuyMinus),
+    ("buys", Side::Buy),
+    ("cros", Side::Cross),
     ("cross", Side::Cross),
     ("crossshort", Side::CrossSh),
     ("crossshortexempt", Side::CrossShX),
     ("crosssh", Side::CrossSh),
     ("crossshx", Side::CrossShX),
+    ("crsh", Side::CrossSh),
+    ("crsx", Side::CrossShX),
     ("lend", Side::Lend),
+    ("oppo", Side::Opposite),
     ("opposite", Side::Opposite),
     ("redeem", Side::Redeem),
+    ("redm", Side::Redeem),
+    ("selp", Side::SellPlus),
     ("sell", Side::Sell),
     ("sellplus", Side::SellPlus),
     ("sellshort", Side::SShort),
     ("sellshortexempt", Side::SShortEx),
     ("sellund", Side::SellUnd),
     ("sellundisclosed", Side::SellUnd),
+    ("selu", Side::SellUnd),
+    ("ssex", Side::SShortEx),
+    ("ssht", Side::SShort),
     ("sshort", Side::SShort),
     ("sshortex", Side::SShortEx),
+    ("subs", Side::Subscr),
     ("subscr", Side::Subscr),
     ("subscribe", Side::Subscr),
+    ("undi", Side::Undisc),
     ("undisc", Side::Undisc),
     ("undisclosed", Side::Undisc),
+    ("unkn", Side::Unknown),
     ("unknown", Side::Unknown),
 ];
 
