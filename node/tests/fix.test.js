@@ -774,13 +774,13 @@ let committedRegistry
 
     // A venue reusing a tag under another name is a new thing it defined over
     // that tag: it is registered under its own identity beside the holder,
-    // the holder gains the name as an alias, and the bare tag keeps answering
-    // the holder while the newcomer is reached by its name or its identity.
+    // neither learns the other's name, and the bare tag keeps answering the
+    // holder while the newcomer is reached by its name or its identity.
     const venueId = fixField('VenueSymbol', 'utf8', 55, { branches: ['cme'] })
     assert.equal(registry.insert(venueId), null)
     assert.equal(registry.size, 3 + SEEDED)
     assert.equal(registry.fieldByTag(55).name, 'Symbol')
-    assert.deepEqual(registry.fieldByTag(55).fix.names, ['Ticker', 'VenueTicker', 'VenueSymbol'])
+    assert.deepEqual(registry.fieldByTag(55).fix.names, ['Ticker', 'VenueTicker'])
     const newcomer = registry.fieldByName('venuesymbol')
     assert.equal(newcomer.name, 'VenueSymbol')
     assert.notEqual(newcomer.fix.id, symbol.fix.id)
@@ -816,9 +816,8 @@ let committedRegistry
     assert.equal(removed.name, 'VenueSymbol')
     assert.equal(registry.size, 2 + SEEDED)
     assert.equal(registry.getFieldById(venue), null)
-    // The alias the holder gained when the newcomer arrived is the holder's
-    // to keep: the name still answers, now to the holder alone.
-    assert.equal(registry.getFieldByName('venuesymbol').name, 'Symbol')
+    // The holder never learned the newcomer's name, so the name leaves with it.
+    assert.equal(registry.getFieldByName('venuesymbol'), null)
     assert.equal(registry.fieldByTag(55).name, 'Symbol')
     // A field that is not there answers null rather than throwing.
     assert.equal(registry.removeById(venue), null)
@@ -2659,9 +2658,11 @@ let committedRegistry
   test('a CBlock is read for what it says, and a truncated one is refused', () => {
     const root = scratch()
 
-    // A declaration this reader cannot make a field of is dropped and the rest
-    // of the file is still a dictionary: what went is a warning the host reads
-    // through a logger, never a failed read.
+    // A declaration this reader cannot make a field of - a tag named by no
+    // decimal - is dropped and the rest of the file is still a dictionary:
+    // what went is a warning the host reads through a logger, never a failed
+    // read. A type word nothing reads keeps its tag, typed as the text it is
+    // on the wire.
     const dropped = path.join(root, 'dropped.cfb')
     fs.writeFileSync(
       dropped,
@@ -2669,8 +2670,9 @@ let committedRegistry
         '<?xml version="1.0"?>',
         '<cplugin-configuration fix-version="4.4">',
         '<vocabulary>',
-        '<vocabulary-tag name="35" alt="MsgType" type="decimal" />',
+        '<vocabulary-tag name="MsgType" alt="MsgType" type="string" />',
         '<vocabulary-tag name="55" alt="Symbol" type="string" />',
+        '<vocabulary-tag name="54" alt="Side" type="widget" />',
         '</vocabulary>',
         '</cplugin-configuration>',
       ].join('\n'),
@@ -2679,6 +2681,8 @@ let committedRegistry
     const [registry] = fix.FixRegistry.fromCfbFile(dropped, 'bloomberg')
     assert.equal(registry.fieldByTag(55).name, 'symbol')
     assert.throws(() => registry.fieldByTag(35))
+    assert.equal(registry.fieldByTag(54).name, 'side')
+    assert.ok(registry.fieldByTag(54).dtype.equals(DataType.from('utf8')))
 
     // A document that stops with an element open leaves nothing to keep, and
     // the native sentence crosses whole rather than as a bare "invalid file":
