@@ -1208,6 +1208,7 @@ pub struct ResolvedFileSystemUri  (one URI resolved once into filesystem configu
 ### yggdryl::graph  [rust/src/graph/mod.rs]
 pub mod arrow;
 pub mod book;
+pub mod candle;
 pub mod column;
 pub mod element;
 pub(crate) mod facts;
@@ -1218,9 +1219,11 @@ pub mod market_column;
 pub mod market_data;
 pub mod operation;
 pub mod operation_column;
+pub mod serve;  (behind the `http` feature)
 pub mod trade;
 pub mod view;
   pub use book::{BookEvent, BookIterator, SnapshotEvent};
+  pub use candle::{Candle, CandleIterator, CandleOptions, Ohlc};
   pub use column::EventColumn;
   pub use element::{Element, Event};
   pub use iterator::EventIterator;
@@ -1230,6 +1233,7 @@ pub mod view;
   pub use market_data::MarketData;
   pub use operation::{BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, Order, OrderEvent, OrderKind, OperationElement, OperationEvent, OperationKind, Quote, QuoteEvent, QuoteKind};
   pub use operation_column::OperationColumn;
+  pub use serve::{BookQuery, BookService, BookServiceOptions, BookTable};  (behind the `http` feature)
   pub use trade::TradeEvent;
   pub use view::MarketView;
   macro_rules! delegate_event, delegate_market, delegate_operation  (pub(crate): `impl Event`, `impl Market` and `impl Operation` forwarding every accessor to a field that is one; `delegate_event!(Type, field, restating = .., is_execution = .., set_currunix = ..)` takes the readings a wrapper answers itself as closures, the last two optional)
@@ -1475,6 +1479,28 @@ pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>> 
   impl<I> Iterator<Item = Result<BookEvent>> for BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>>
   impl<I> FusedIterator for BookIterator<I> where I: FusedIterator, I::Item: Into<Result<MarketData>>
 
+### yggdryl::graph::candle  [rust/src/graph/candle.rs]  (one OHLC per book cross code and bucket over a sorted stream of books: the best bid, the best ask, the midpoint and the spread, the quantities at the touch when the bucket closed, the books and executions folded and their volume; the buckets aligned to a zone's wall clock)
+pub struct Ohlc { pub open: Decimal, pub high: Decimal, pub low: Decimal, pub close: Decimal }  (one reading's open, high, low and close over a bucket: the first value, the greatest, the least and the last, a bucket that saw one value stating it four times; Clone, Copy, Debug, Eq, Hash, PartialEq)
+  pub const fn at(value: Decimal) -> Self  (a reading that saw one value)
+  pub fn fold(&mut self, value: Decimal)  (a later value: the close moves, the high and the low widen)
+pub struct Candle { pub crosscode: SmolStr, pub ticker: Option<SmolStr>, pub start: i64, pub end: i64, pub bid: Option<Ohlc>, pub ask: Option<Ohlc>, pub mid: Option<Ohlc>, pub spread: Option<Ohlc>, pub bidqty: Option<Decimal>, pub askqty: Option<Decimal>, pub books: u64, pub executions: u64, pub volume: Decimal }  (one book's OHLC over `[start, end)`, nanoseconds UTC: `bid`, `ask`, `mid` and `spread` folded over the books that stated the reading - `best_price` per side, `bbo_midpoint`, `spread` - `None` where none did; `ticker` the first book's; `bidqty`/`askqty` the last book's `best_quantity`; `executions` the count of every book's, `volume` the sum of the quantities they state; a value of its own, never a datatype; Clone, Debug, Eq, Hash, PartialEq)
+  pub fn field() -> Result<Field>  (the required struct `candle`, 25 cells: `crosscode: utf8 not null`, `ticker: utf8`, `start` and `end` `datetime64(ns, UTC) not null`, `bidopen`, `bidhigh`, `bidlow`, `bidclose` and the same under `ask`, `mid` and `spread` as a nullable `decimal` each, `bidqty` and `askqty` the same, `books` and `executions` `uint64 not null`, `volume` `decimal not null`)
+  pub fn into_scalar(&self) -> Scalar  (the named struct of the 25 cells)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct, or the ordered row `field()` canonicalizes to, through the field's own value door once; an absent name reads null, a reading stating some but not all of its four cells is refused at `$.candle`)
+  pub fn arrow_reader<I>(candles: I, batch_row_size: Option<usize>) -> Result<BatchReader> where I: IntoIterator<Item = Result<Self>>, I::IntoIter: Send + 'static  (candles laid out as batches of `field()`, lazily; a source error follows the completed prefix)
+pub struct CandleOptions  (the interval, nanoseconds, and the zone whose wall clock the buckets align to - a daily candle opens at local midnight, hourly candles follow a saving-time change, the skipped hour yielding no candle and the repeated hour one; every edge the earliest instant whose wall clock reads at or after the local edge, so a sorted stream never re-enters a bucket it left; Clone, Debug, Eq, Hash, PartialEq)
+  pub fn new(interval: i64) -> Result<Self>  (aligned to UTC; a non-positive interval refused at `$.interval`)
+  pub fn with_timezone(mut self, timezone: Timezone) -> Self
+  pub fn interval(&self) -> i64
+  pub fn timezone(&self) -> &Timezone
+  pub fn from_spelling(text: &str) -> Result<Self>  (a count and a unit - `w`, `d`, `h`, `m`, `s`, `ms`, `us`, `ns`: `30s`, `1m`, `5m`, `1h`, `1d`, `1w` - aligned to UTC; anything else, or an interval past `i64` nanoseconds, refused at `$.interval`)
+  pub fn spelling(&self) -> String  (the count and the widest unit dividing the interval exactly, what `from_spelling` reads back: `90s`, `2m`, `1500ms`)
+pub struct CandleIterator<I>  (the fold: books already sorted by `get_currunix()` pulled lazily, the candles of a bucket yielded in cross-code order when the stream moves past it and at the end, an empty bucket yielding none; a regression is refused at `$.book.currunix` as `expected an instant at or after <prev>, got <this>`, an instant the zone cannot hold in `i64` nanoseconds at the same path, a volume past decimal at `$.candle.volume`; a source error or a refusal ends the walk after the completed buckets, the open bucket dropped rather than emitted incomplete, and the iterator fuses)
+  pub fn new(books: I, options: CandleOptions) -> Self where I: Iterator<Item = Result<BookEvent>>
+  pub fn options(&self) -> &CandleOptions
+  impl<I: Iterator<Item = Result<BookEvent>>> Iterator for CandleIterator<I>  (Item = Result<Candle>)
+  impl<I: Iterator<Item = Result<BookEvent>>> FusedIterator for CandleIterator<I>
+
 ### yggdryl::graph::arrow  [rust/src/graph/arrow.rs]
 impl MarketData
   pub fn field() -> Result<Field>  (the required `marketdata` struct: `marketdatakind` - the `MarketDataKind` member - then `EventColumn::ALL`, every one nullable because an undated leaf states no clock, `MarketColumn::ALL`, `OperationColumn::ALL`, `bookscope` - the one book control a row states - then the nullable nested `alive` and `deltas` (a book's operation rows), `executions` (a trade's or a book's), and `bidlimits` and `asklimits` - a book's price levels, `serie<limit>` best first and the unpriced one last, an empty side an empty list, null on every other leaf; 53 columns, 1 + 16 + 27 + 3 + 1 + 5; an operation row, the item of the three operation lists, is the first 48 and nests nothing; every fact its own typed column, every decimal the registered `decimal`)
@@ -1519,6 +1545,32 @@ pub enum MarketView { Orders, Quotes, Executions, Trades, Books, Lifecycle { cro
 impl MarketData
   pub fn plan(view: &MarketView, lifts: &[FieldPath]) -> Result<Plan>  (built structurally; its text reads back as the plan; lifts appended as projections, a missing key reading null and a missing column refused at bind)
   pub fn apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchReader) -> Result<BatchReader>  (exactly plan.apply_arrow_reader(reader), bound once)
+
+### yggdryl::graph::serve  [rust/src/graph/serve.rs]  (behind the `http` feature: the HTTP face of a market-data table - the tickers it holds, the candles a ticker's books fold into, the book standing at an instant and the audit of every entry, delta and execution of the books in a range - as JSON for the display and as CSV for a download; a table is any record location a `Holder` reads books from - an Iceberg folder, an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it - `marketdatakind` the `BOOK` member, the ticker, the instants - pushed into the location's own record options and read back through `MarketData::from_arrow_reader`, the `BookEvent`s kept and stably sorted by instant; nothing cached, every request reading the table as it stands; each reading answered without HTTP too, the routes only reading the query and spelling its answer)
+pub struct BookServiceOptions  (what a service states about itself; Clone, Debug, Default, Eq, Hash, PartialEq)
+  pub const DEFAULT_MAX_EVENT_ROWS: u64 = 5_000  (the most rows `/api/events` answers when the query states no `limit`, and the most it answers whatever the query states)
+  pub fn new() -> Self  (no snapshot grid, `DEFAULT_MAX_EVENT_ROWS` event rows)
+  pub fn with_snapshot_millis(mut self, snapshot_millis: u64) -> Self  (the grid a capture is folded on before it lands in a table - what `yggdryl market serve --snapshot-millis` states and hands `BookIterator::new`; zero none; the service reads books already folded and re-folds nothing)
+  pub fn with_max_event_rows(mut self, max_event_rows: u64) -> Self  (at least one; the CSV audit is never bounded)
+  pub fn snapshot_millis(&self) -> u64
+  pub fn max_event_rows(&self) -> u64
+pub struct BookTable  (one served table: a name and the location holding its `marketdata` rows; Debug)
+  pub fn name(&self) -> &str  (what every route's `table` parameter states)
+  pub fn holder(&self) -> &Holder  (the location the books are read from)
+pub struct BookQuery { pub table: String, pub ticker: String, pub from: i64, pub to: i64, pub timezone: Timezone, pub interval: Option<CandleOptions>, pub side: Option<Side> }  (one question about one ticker's books over `[from, to)`, nanoseconds UTC, `to` exclusive; `timezone` the zone instants are rendered in and a naive instant is read in, `interval` how candles are bucketed - `None` a minute in that zone - `side` the side the audit keeps, `None` both; what `/api/candles`, `/api/events` and the audit routes read off their query; Clone, Debug, Eq, Hash, PartialEq)
+  pub fn from_parameters(parameters: &Parameters<'_>) -> Result<Self>  (`table` and `ticker` required; `from` and `to` required ISO-8601 instants - one stating an offset or `Z` that instant, a naive one a wall clock in `tz`; `tz` an IANA zone this build has rules for, default `UTC`; `interval` a candle spelling (`30s`, `5m`, `1h`, `1d`); `side` `bid` or `ask` in any case; `InvalidRecord` at `$.<parameter>` for one missing or unreadable, at `$.to` when `from` is not before `to`, at `$.tz` for a zone this build has no rules for)
+  pub fn candle_options(&self) -> Result<CandleOptions>  (`interval` where stated, else a minute aligned to `timezone`)
+pub struct BookService  (the service over its tables; Debug)
+  pub fn new(options: BookServiceOptions) -> Self  (over no table yet)
+  pub fn with_table(mut self, name: impl Into<String>, holder: Holder) -> Self  (a name already listed is replaced)
+  pub fn tables(&self) -> &[BookTable]  (in the order they were added)
+  pub fn options(&self) -> &BookServiceOptions
+  pub fn events_field() -> Result<Field>  (the audit row: the required struct `event` of `bookunix: datetime64(ns, UTC) not null`, `role: utf8 not null` - `alive`, `delta` or `execution` - then every flat column of `MarketData::field` - `marketdatakind`, the event, market and operation columns and `bookscope` - the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` left out; 50 columns)
+  pub fn route(self: Arc<Self>, server: &Server, prefix: &str) -> Result<Url>  (the eight `GET` routes under `{prefix}/api` - `tables`, `tickers`, `candles`, `book`, `events`, `audit.csv`, `audit.csv.gz`, `audit.csv.zst` - and the endpoint, `prefix` under the server's own URL (`Server::url_of`; `public_url_of` is the one behind a proxy), a prefix routed again replacing the service that answered there; `HEAD` answered off a `GET`, `POST` the server's 405; every answer `Cache-Control: no-store` and its `Content-Type`, JSON `application/json`, a refusal JSON `{"error": "<text>"}` - 400 for a parameter at `$.table`, `$.ticker`, `$.from`, `$.to`, `$.at`, `$.tz`, `$.interval`, `$.side` or `$.limit`, 404 for a table, a ticker or a book there is none of, 500 otherwise; instants spelled RFC 9557 in `tz` with nine fraction digits, decimals text, uuids canonical text, counts integers; the audit routes the events reader written by the CSV medium into a `Buffer` of the suffix's media type, `Content-Type` `text/csv`, `application/gzip` or `application/zstd` and `Content-Disposition: attachment; filename="audit-<ticker>-<from>-<to>.<suffix>"`; a prefix carrying a query, a fragment or a control byte refused)
+  pub fn tickers(&self, table: &str) -> Result<Scalar>  (a sequence of `{ticker, crosscode, from, to, books}` structs ordered by ticker, `from` the whole second the first book stands in and `to` the whole second after the last, both `datetime64(ns, UTC)`, so `[from, to)` holds every book; a book stating no ticker not listed, since no query can name it; one projected scan, `select ticker, crosscode, currunix where marketdatakind = 'BOOK'`; `Absent` for a table the service does not hold)
+  pub fn candles(&self, query: &BookQuery) -> Result<Vec<Candle>>  (the books in range folded by `CandleIterator` under `query.candle_options()`; `InvalidRecord` at `$.to` when `from` is not before `to`, `Absent` for a table not held or a ticker the table holds no book of, an empty range of a known ticker the empty vector)
+  pub fn book(&self, table: &str, ticker: &str, at: i64) -> Result<Option<BookEvent>>  (the last book at or before `at`, nanoseconds UTC, one filtered read with the latest kept; `None` when none stands there yet, which `/api/book` answers as 404)
+  pub fn events(&self, query: &BookQuery) -> Result<BatchReader>  (the audit rows of `events_field()`: for every book in range, in instant order, its alive entries (`alive`), the deltas applied since the book before it (`delta`) and its executions (`execution`), each kept where it stands on `query.side` - an execution on its own side; unbounded, what the CSV audit writes whole and `/api/events` bounds at `limit`, answering `{rows, truncated}`)
 
 ### yggdryl::hashing  [rust/src/hashing/mod.rs]
 (no public items: the private stable-hash adapters the digests share; xxhash and txhash are root modules with sections of their own)
@@ -2624,6 +2676,53 @@ pub fn into_single_object_vec(schema: &Schema, value: &Scalar) -> Result<Vec<u8>
   pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Scalar>
   pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Scalar>
 
+### yggdryl::csv  [rust/src/csv/mod.rs]  (comma-separated values, RFC 4180, as record media over any byte handle: `text/csv` and `text/tab-separated-values` read and write through the ordinary record surface, streaming - a record cut at a time, a read holding one batch and a count one record; a declared field is the contract every cell is read under, else the header names the columns and a bounded sample types them; compression and charsets are the handle's, `trades.csv.gz` gzip by name and `;charset=windows-1252` a declared charset; `media`, `options`, `reader` and `writer` are private modules, every public name re-exported here)
+pub const DEFAULT_CSV_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the batch byte bound `CsvOptions::new` states)
+pub const DEFAULT_CSV_INFER_ROW_SIZE: usize = 1024  (the records sampled to infer a column's datatype when no field is declared)
+pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &CsvOptions) -> Result<Field>  (the declared field as is, else the header's columns - an empty name `column_<i>`, 1-based - typed by the sample, one rung per column over its non-null cells: Boolean (`true`/`false` in any case), Int64, Float64, Date32 (`YYYY-MM-DD`), DateTime64(ns, UTC) (ISO 8601, a naive text read as UTC), else Utf8, all nulls Utf8, every inferred column nullable, the root `required_field(options.name())`; a header naming a column twice refused at `$.header`, an empty document refused because it declares no schema)
+pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &CsvOptions, ) -> crate::arrow::Result<BatchReader>  (one owned decoded transport - the handle's codings peeled, its charset transcribed, a leading UTF-8 byte-order mark skipped - records cut one at a time and batched under `batch_row_size`/`batch_byte_size`; a declared field with a header matches columns by exact name (an extra CSV column ignored, a missing nullable one null, a missing required one refused at `$.header`), without one positionally; the sampled rows are emitted first and the rest streamed under the inferred field; an empty or absent handle is the empty reader; a ragged record is `InvalidRecord` at `$[row]` as `expected N cells, got M in row L of <url>`, a cell its column refuses at `$[row].<column>`, a nullable column taking it as null under `safe`)
+pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &CsvOptions, ) -> Result<()>  (the header - under `header` - then one record per row through the handle's coding and charset: text and code leaves as their text, numbers, booleans, temporals and uuids through the canonical `Display`, a byte leaf base64, a nested value compact JSON, null the first `null_values` spelling; a cell quoted when it holds the separator, the quote, CR or LF, opens or closes with a blank, spells a null value, or is a first cell opening with the comment byte, a quote inside doubled or escaped; refused by name under `quote` None; nothing reaches the handle until the last batch is encoded)
+pub struct Csv<H: IOBase>  (the medium over one handle: `IOMedia` and `IOBase` through `delegate_iobase!`, `is_tabular` true, `is_atomic` false, `open` caching the schema until `close`, a read publishing the `select`ed shape of an inferred field; `RecordOptions::Csv` is how a `Holder` reaches it; Debug)
+  pub fn new(handle: H) -> Self  (`CsvOptions::tsv()` under a `text/tab-separated-values` media type, `CsvOptions::new()` otherwise)
+  pub fn with_options(mut self, options: CsvOptions) -> Self
+  pub fn with_field(mut self, field: Field) -> Self
+  pub const fn options(&self) -> &CsvOptions
+  pub fn options_mut(&mut self) -> &mut CsvOptions
+  pub const fn handle(&self) -> &H
+  pub fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_byte_size`, `batch_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, `commit_row_size`, `level` - as `pub` fields under `IORecordOptions`, and the dialect behind validated setters, each refusal `InvalidRecord` at `$.<setting>` leaving the options unchanged; Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)
+  pub fn new() -> Self  (`,`, `"`, no escape, no comment, a header, `[""]` the null spellings, no trim, `DEFAULT_CSV_INFER_ROW_SIZE`, LF; `safe` true, `DEFAULT_RECORD_BATCH_ROW_SIZE` rows and `DEFAULT_CSV_BATCH_BYTE_SIZE` bytes a batch)
+  pub fn tsv() -> Self  (`new()` under a tab)
+  pub const fn separator(&self) -> u8
+  pub fn set_separator(&mut self, separator: u8) -> Result<()>  (an ASCII byte that is neither `\n` nor `\r` nor the quote, the escape or the comment; refused at `$.separator`)
+  pub fn with_separator(mut self, separator: u8) -> Result<Self>
+  pub const fn quote(&self) -> Option<u8>
+  pub fn set_quote(&mut self, quote: Option<u8>) -> Result<()>  (`None` quotes nothing on read and write; refused at `$.quote`)
+  pub fn with_quote(mut self, quote: Option<u8>) -> Result<Self>
+  pub const fn escape(&self) -> Option<u8>
+  pub fn set_escape(&mut self, escape: Option<u8>) -> Result<()>  (`None` doubles a quote inside a quoted cell, RFC 4180; `Some(x)` reads `x` before a byte as that byte; refused at `$.escape`)
+  pub fn with_escape(mut self, escape: Option<u8>) -> Result<Self>
+  pub const fn comment(&self) -> Option<u8>
+  pub fn set_comment(&mut self, comment: Option<u8>) -> Result<()>  (a record opening with it is skipped; refused at `$.comment`)
+  pub fn with_comment(mut self, comment: Option<u8>) -> Result<Self>
+  pub const fn header(&self) -> bool
+  pub fn set_header(&mut self, header: bool)  (read: the first record names the columns, else `column_1`, `column_2`, ...; write: the names are written first)
+  pub const fn with_header(mut self, header: bool) -> Self
+  pub fn null_values(&self) -> &[SmolStr]
+  pub fn set_null_values<I, S>(&mut self, null_values: I) -> Result<()> where I: IntoIterator<Item = S>, S: Into<SmolStr>  (an unquoted cell spelling one is null and a quoted empty cell `""` the empty text; a null is written as the first; a spelling listed twice refused at `$.null_values`)
+  pub fn with_null_values<I, S>(mut self, null_values: I) -> Result<Self> where I: IntoIterator<Item = S>, S: Into<SmolStr>
+  pub const fn trim(&self) -> bool
+  pub fn set_trim(&mut self, trim: bool)  (strip the ASCII blanks around an unquoted cell before reading it)
+  pub const fn with_trim(mut self, trim: bool) -> Self
+  pub const fn infer_row_size(&self) -> usize
+  pub fn set_infer_row_size(&mut self, infer_row_size: usize) -> Result<()>  (zero refused at `$.infer_row_size`)
+  pub fn with_infer_row_size(mut self, infer_row_size: usize) -> Result<Self>
+  pub const fn linesep(&self) -> &LineSep
+  pub fn set_linesep(&mut self, linesep: LineSep)  (the terminator written; a read takes `\n` and `\r\n` whatever it states, a lone `\r` being content)
+  pub fn with_linesep(mut self, linesep: LineSep) -> Self
+  impl IORecordOptions for CsvOptions  (`record_options_fields!`)
+
 ### yggdryl::iceberg::catalog  [rust/src/iceberg/catalog/catalogs.rs]
 pub struct Catalog<H: IOBase>
   pub const fn new(warehouse: H) -> Self
@@ -2970,6 +3069,7 @@ pub enum Media
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
   pub fn xmla(handle: Holder) -> Self
+  pub fn csv(handle: Holder) -> Self  (the `Csv(crate::csv::Csv<Holder>)` variant, which `open`/`open_as` bind `text/csv` and `text/tab-separated-values` to and `Holder::into_media` composes for a `.csv`, `.tsv` or `.csv.gz` name; `impl From<crate::csv::Csv<Holder>> for Media`)
   pub const fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase
@@ -3058,11 +3158,27 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]>
   pub fn set_parquet_key_value_metadata( &mut self, metadata: Vec<(String, String)>, ) -> Result<()>
   pub fn push_parquet_key_value( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<()>
+  pub const fn csv_separator(&self) -> Option<u8>  (the `Csv(crate::csv::CsvOptions)` variant's dialect, `impl From<CsvOptions> for RecordOptions`; each reader `None` for another encoding, each setter refusing one by name at `$.name` and otherwise `CsvOptions`'s own)
+  pub fn set_csv_separator(&mut self, separator: u8) -> Result<()>
+  pub const fn csv_quote(&self) -> Option<Option<u8>>
+  pub fn set_csv_quote(&mut self, quote: Option<u8>) -> Result<()>
+  pub const fn csv_escape(&self) -> Option<Option<u8>>
+  pub fn set_csv_escape(&mut self, escape: Option<u8>) -> Result<()>
+  pub const fn csv_comment(&self) -> Option<Option<u8>>
+  pub fn set_csv_comment(&mut self, comment: Option<u8>) -> Result<()>
+  pub const fn csv_header(&self) -> Option<bool>
+  pub fn set_csv_header(&mut self, header: bool) -> Result<()>
+  pub fn csv_null_values(&self) -> Option<&[SmolStr]>
+  pub fn set_csv_null_values<I, S>(&mut self, null_values: I) -> Result<()> where I: IntoIterator<Item = S>, S: Into<SmolStr>
+  pub const fn csv_trim(&self) -> Option<bool>
+  pub fn set_csv_trim(&mut self, trim: bool) -> Result<()>
+  pub const fn csv_infer_row_size(&self) -> Option<usize>
+  pub fn set_csv_infer_row_size(&mut self, infer_row_size: usize) -> Result<()>
   pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
   pub fn require_commit_row_size(&self) -> Result<Option<usize>>
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
-  pub fn for_mime_type(base: &MimeType) -> Result<Self>
-  pub const fn mime_type(&self) -> MimeType
+  pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
+  pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)
 
 ### yggdryl::parquet::metadata  [rust/src/parquet/metadata.rs]
 pub struct ColumnStatistics

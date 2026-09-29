@@ -30,9 +30,16 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 
 Every leaf is filed under one [`MarketDataKind`](../types/enum/marketdatakind.md) - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot control `BOOK` - the first column of its [row](market-data.md#arrow).
 
+Two readings stand over the books, neither a leaf:
+
+| Reading | Page | Rust types | Bindings |
+| --- | --- | --- | --- |
+| Candle | [Candle](candle.md) | `Candle`, `Ohlc`, `CandleOptions`, `CandleIterator` - one OHLC of the best bid, the best ask, the mid and the spread per book cross code and bucket, the buckets aligned to a zone's wall clock | Python `graph.candles`, `graph.Candle`, `CandleOptions`, `CandleIterator`; JavaScript `graph.candles`, `graph.Candle`, `CandleOptions`, `CandleIterator` |
+| Book display | [Book display](serve.md) | `BookService`, `BookServiceOptions`, `BookTable`, `BookQuery` (the `http` feature) - a `marketdata` table's tickers, candles, books and audits over HTTP, and the Node.js display in front of them | `yggdryl market serve`, and `node/book.js` in the npm package |
+
 ## Bindings
 
-Rust-only traits; the leaves plus `MarketData`, `BookRef`, `BookIterator`, `EventIterator` and `MarketDataRowIterator` are one class each in Python's `yggdryl.graph`/JS's `graph`:
+Rust-only traits; the leaves plus `MarketData`, `BookRef`, `BookIterator`, `EventIterator`, `MarketDataRowIterator`, `Candle`, `CandleOptions` and `CandleIterator` are one class each in Python's `yggdryl.graph`/JS's `graph`:
 
 - built from named facts by column name (`...`/`undefined` skips one, `None`/`null` clears it), checked by its field, finalized on construction; a derived identity (`curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`) refused by name;
 - immutable: every verb - `with_previous`, `merge_with`, `restating`, `with_book`, `with_operations` - answers a new value;

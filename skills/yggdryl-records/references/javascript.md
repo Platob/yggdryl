@@ -22,9 +22,9 @@ assert.equal(new IOBase(path.join(root, 'trades.avro')).recordOptions().blockCod
 
 // Absent reads as empty; an unimplemented encoding is named, never guessed.
 assert.equal([...new IOBase(path.join(root, 'absent.arrows')).readArrowReader()].length, 0)
-const csv = IOBase.fromBytes()
-csv.mediaType = MimeType.CSV
-assert.throws(() => csv.recordOptions(), /text\/csv/)
+const orc = IOBase.fromBytes()
+orc.mediaType = MimeType.ORC
+assert.throws(() => orc.recordOptions(), /application\/vnd\.apache\.orc/)
 
 fs.rmSync(root, { recursive: true, force: true })
 ```
@@ -345,6 +345,53 @@ assert.deepEqual(levels.intoTable().schema.fields.slice(-2).map((field) => field
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
+## CSV and TSV: the dialect in the options object
+
+A `.csv` handle reads RFC 4180 records under its header and a sample of the rows, or under the declared `field`; a `.tsv` name is the same medium under a tab. The dialect is option properties (`separator`, `quote`, `escape`, `comment`, `header`, `nullValues`, `trim`, `inferRowSize`), each also a key of the options object on any read or write; compression is the name's (`trades.csv.gz`).
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { Field, IOBase, RecordOptions, fields } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+const field = fields.struct('trade', [new Field('id', 'int64', false), Field.from('symbol: utf8')], {
+  nullable: false,
+})
+const rows = [{ id: 1n, symbol: 'AAPL' }, { id: 2n, symbol: null }, { id: 3n, symbol: '' }]
+
+// The name says CSV and gzip; the declared field is the contract every cell crosses.
+const handle = new IOBase(path.join(root, 'trades.csv.gz'))
+assert.equal(String(handle.recordOptions().mimeType), 'text/csv')
+handle.overwriteRecords(rows, { field })
+// A null is the empty cell; the empty text is quoted, so the two read back apart.
+assert.deepEqual([...handle.readRecords({ field })], rows)
+
+// Undeclared, the header names the columns and the sample types them, every one nullable.
+assert.deepEqual(Array.from(handle.readArrowField().dtype, (child) => child.name), ['id', 'symbol'])
+assert.deepEqual([handle.rowSize, handle.columnSize], [3, 2])
+
+// A `;` document another writer saved: the separator is a property of the read.
+fs.writeFileSync(path.join(root, 'eu.csv'), 'id;symbol\n1;AAPL\n2;\n')
+assert.deepEqual([...new IOBase(path.join(root, 'eu.csv')).readRecords({ separator: ';' })], rows.slice(0, 2))
+// Under the default dialect the same header is one column.
+assert.equal(new IOBase(path.join(root, 'eu.csv')).readArrowField().dtype.length, 1)
+
+// The dialect on an options value: a byte role is one character, null clears one.
+const options = RecordOptions.from('trades.csv').withSeparator('|').withQuote(null).withNullValues(['NA', ''])
+assert.deepEqual([options.separator, options.quote, options.nullValues], ['|', null, ['NA', '']])
+assert.equal(RecordOptions.from('trades.tsv').separator, '\t')
+assert.equal(RecordOptions.from('trades.parquet').separator, null) // a CSV-only setting
+
+// A record with the wrong number of cells is refused by row, never widened.
+fs.writeFileSync(path.join(root, 'ragged.csv'), 'a,b\n1,2\n3\n')
+assert.throws(() => [...new IOBase(path.join(root, 'ragged.csv')).readRecords()], /expected 2 cells, got 1 in row 3/)
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
 ## Partitioned folders: route on write, prune on read
 
 Addressing a folder writes each row to its `column=value` leaf (the path carries the partition columns, the leaf does not) and reads them back typed. A `filter` equality prunes leaves by path before anything is decoded.
@@ -502,5 +549,6 @@ fs.rmSync(root, { recursive: true, force: true })
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `{ safe: false }` to have it refused.
 - Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro stores them as the plain values. Pass `{ field }` on the write to state the column instead.
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.
+- A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character string, `null` clearing an optional one; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options reads `null` and throws when set.
 - A plan's `offset` given through `withPlan` is the options' `rowOffset`; a merge with one is refused.
 - No `readArrow`/`writeArrow` and no `scanPolars`: structured-text rows go through the codecs in `yggdryl-documents`.

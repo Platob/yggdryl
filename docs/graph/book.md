@@ -1,6 +1,6 @@
 # Book
 
-A book is live depth over time: `BookEvent` one book at an instant - the entries alive on both sides, the deltas since the book before, the executions at its instant, each side read as its price levels - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books.
+A book is live depth over time: `BookEvent` one book at an instant - the entries alive on both sides, the deltas since the book before, the executions at its instant, each side read as its price levels - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md), and the [book display](serve.md) serves a table of them as candles, books and audits.
 
 ## Contract
 
@@ -10,6 +10,7 @@ A book is live depth over time: `BookEvent` one book at an instant - the entries
 | `SnapshotEvent` | an empty FIX `W`'s full-snapshot control: event + replaced scope, no entry | `Element`, `Event`, `Market` |
 | `BookIterator` | the [fold](#book-fold) from a sorted stream to books | `Iterator<Item = Result<BookEvent>>` |
 | `yggdryl::Limit` | one [price level](#limits) of a side, a root value type | - |
+| `CandleIterator` | the fold of sorted books into [`Candle`s](candle.md), one OHLC per cross code and bucket, which the [book display](serve.md) serves over a table | `Iterator<Item = Result<Candle>>` |
 
 All in `graph::book`, with the keys `ENTRY_ID` (`MDENTRYID`) and `ENTRY_REF_ID` (`MDENTRYREFID`); `Limit` in the root `limit.rs`. A book states no side of its own - `Side::Unknown` - so its cross code is never side-prefixed. Its row nests exactly `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` ([Market data](market-data.md#arrow)).
 

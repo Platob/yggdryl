@@ -14,9 +14,12 @@ non-null `Struct` field describes rows, and a row is one ordered
 Storage backends (local, memory-mapped, ZIP, HTTP/1.1 behind the `http`
 feature with HTTP/2 and HTTP/3 behind `http2` and `http3`,
 and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
-feature), record media, and the FIX
-protocol are core domains over those same values; the expression layer is a
-grammar over them, never a second query engine.
+feature), record media (Arrow IPC, Parquet, Avro, CSV, plain text, XML for
+Analysis and Iceberg tables), the event graph - orders, quotes, executions,
+books, candles, and the book display `yggdryl market serve` hosts over a
+table of them - and the FIX protocol are core domains over those same
+values; the expression layer is a grammar over them, never a second query
+engine.
 
 ## Documentation
 

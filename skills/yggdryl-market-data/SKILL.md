@@ -1,6 +1,6 @@
 ---
 name: yggdryl-market-data
-description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (curruuid, crossuuid, with_previous / withPrevious, EventIterator), order books (BookIterator, BookEvent, limits, best_price / bestPrice, spread, depth, SnapshotEvent), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books, or persisting or querying marketdata batches.
+description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (curruuid, crossuuid, with_previous / withPrevious, EventIterator), order books (BookIterator, BookEvent, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve, BookService, node/book.js), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches, or serving a table of books as a display.
 ---
 
 # yggdryl market data
@@ -44,7 +44,10 @@ Hold five facts:
   the live element's; it advances nothing.
 - **Books are folded, not replayed by hand.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant; read books back from
-  `marketdata` rows, never by re-applying their deltas.
+  `marketdata` rows, never by re-applying their deltas. Sorted books fold on
+  into `Candle`s - one OHLC of the best bid, the best ask, the mid and the
+  spread per cross code and bucket - and `yggdryl market serve` serves a
+  table of them as candles, books and audits behind the Node.js display.
 
 ## Choose the door
 
@@ -73,6 +76,10 @@ Hold five facts:
 | a named view of a stream | `MarketData::apply_view(&MarketView::Orders, &lifts, reader)?` | `graph.MarketData.apply_view("orders", source, lifts)` | `graph.MarketData.applyView('orders', reader, lifts)` |
 | a view as a plan | `MarketData::plan(&view, &lifts)?` | `graph.MarketData.plan("trades")` | `graph.MarketData.plan('trades')` |
 | FIX to sorted market data / books | `codec.market_data(codec.lifecycle(msgs))`, `codec.book_arrow_reader(msgs, 0)?` | `codec.market_data(...)`, `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.marketData(..)`, `codec.bookArrowReader(msgs, 0)` |
+| fold sorted books into candles | `CandleIterator::new(books, CandleOptions::from_spelling("1m")?.with_timezone(zone))` | `graph.candles(books, "1m", timezone=None)`, `graph.CandleIterator(books, graph.CandleOptions("1m", zone))` | `graph.candles(books, '1m', zone)`, `new graph.CandleIterator(books, new graph.CandleOptions('1m', zone))` |
+| a candle's row, and candles as Arrow | `Candle::field()?`, `Candle::arrow_reader(candles, None)?`, `candle.into_scalar()`, `Candle::from_scalar(&value)?` | `graph.Candle.field()`, `candle.into_scalar()`, `candle.as_py()`, `graph.Candle.from_scalar(value)` | `graph.Candle.field()`, `candle.intoScalar()`, `candle.toJSON()`, `graph.Candle.fromScalar(value)` |
+| serve a table of books as the display | `BookService::new(options).with_table(name, holder)`, `Arc::new(service).route(&server, "/")?`; `yggdryl market serve books=/data/books` | `yggdryl market serve books=/data/books`, the wheel's own command | `book.serve({ tables: 'books=/data/books' })` over the package's `book.js`; `yggdryl market serve` |
+| a served table's readings without HTTP | `service.tickers("books")?`, `service.candles(&query)?`, `service.book(table, ticker, at)?`, `service.events(&query)?` | Rust-only | Rust-only |
 
 ## Rules for fast, correct use
 
@@ -124,6 +131,17 @@ Hold five facts:
     `'189.5'` in JavaScript - a float price (`189.5`) is refused at `$.price`
     (`got f64`). Python answers `Scalar` (`.as_py()` -> `Decimal`), JavaScript
     exact text (`'189.5'`), Rust `Decimal`.
+11. Candles bucket by a zone's wall clock. `CandleOptions` carries the interval
+    (`30s`, `1m`, `5m`, `1h`, `1d`, `1w`, sub-second `ms`/`us`/`ns`) and a
+    `Timezone`, UTC by default, so a daily candle opens at local midnight and
+    hourly candles follow a saving-time change: the hour a spring-forward skips
+    yields no candle, the hour a fall-back repeats is one two-hour candle, the
+    day is 23 or 25 hours. Feed `CandleIterator` books sorted by `currunix`
+    (a `BookIterator`'s are); a regression is refused at `$.book.currunix`.
+    One candle per cross code and bucket: `bid`, `ask`, `mid` and `spread`
+    each `{open, high, low, close}` over the books that stated one, `bidqty`/
+    `askqty` the last book's touch, `volume` the executions' quantities summed,
+    and an empty bucket yields no candle.
 
 ## Pitfalls
 
@@ -165,10 +183,24 @@ Hold five facts:
   `record`) and the `insert_`/`remove_`/`derive_` identifier verbs are
   Rust-only; the bindings answer a limit as a struct `Scalar` (Python) or a
   plain object (JavaScript) and state identifiers when they build a leaf.
+- `graph.candles` and `CandleIterator` take `BookEvent`s, or `MarketData`
+  holding one: a bare order is refused (`$.kind: expected book_event, got
+  order_event`). A one-sided book states no `mid` and no `spread`, and a
+  bucket whose ask side empties keeps the ask readings its earlier books made
+  while `askqty` reads `None`/`null`, because the touch is the last book's.
+- The display's routes render instants as RFC 9557 text with a bracketed zone,
+  `2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]`, which `Date.parse`
+  does not read: hand a candle's `start`/`end` back as the next question's
+  `from`, `to` or `at` rather than re-parsing them. A naive `from`/`to` is a
+  wall clock in `tz`, and `to` is exclusive.
+- `yggdryl market serve --capture` appends the capture's books to the first
+  table every time it runs: prepare the table once, then serve it without the
+  capture. The Iceberg table it makes of an absent folder needs the `iceberg`
+  feature, which the wheel's command has.
 
 ## Language references
 
-- Rust: [references/rust.md](references/rust.md) - `yggdryl::graph::*` leaves and traits, `Decimal`, `Side`, `MarketDataKind`, `Ccy`.
+- Rust: [references/rust.md](references/rust.md) - `yggdryl::graph::*` leaves, traits, candles and the book service, `Decimal`, `Side`, `MarketDataKind`, `Ccy`.
 - Python: [references/python.md](references/python.md) - `from yggdryl import graph`, `Side`, `MarketDataKind`, pyarrow readers.
 - JavaScript: [references/javascript.md](references/javascript.md) - `graph`, `Side`, `MarketDataKind`.
 
@@ -185,6 +217,8 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Trade: https://platob.github.io/yggdryl/graph/trade/
 - Book, limits, snapshots, the fold: https://platob.github.io/yggdryl/graph/book/
 - `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
+- Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
+- The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
 - `Side` and `MarketDataKind`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting

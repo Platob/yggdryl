@@ -2,6 +2,16 @@
 
 `yggdryl fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees, with `codesets` beside them for the vocabularies they read by; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
 
+## Namespaces
+
+`yggdryl` is one binary over three namespaces, each a subcommand owning its own verbs and state; this page is `fix`'s.
+
+| Namespace | Serves | Page |
+| --- | --- | --- |
+| `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively | this page |
+| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/index.md#provider) |
+| `market` | `yggdryl market serve`: tables of market data as the book display - bid and ask candles, books and audits over HTTP - a FIX bridge capture folded in first | [Book display](../graph/serve.md) |
+
 ## Contract
 
 | Aspect | Rule |
@@ -38,11 +48,12 @@ yggdryl fix --root config/fix components list Order
 
 ## Install
 
-The published wheel includes the native executable. From a checkout, Cargo runs the same binary:
+The published wheel includes the native executable, every namespace in it: `yggdryl market serve --help` is the book display's own usage. From a checkout, Cargo runs the same binary:
 
 ```bash
 pip install yggdryl
 yggdryl fix --help
+yggdryl market serve --help
 cargo run -p yggdryl-cli -- fix fields list Symbol
 ```
 
@@ -230,8 +241,10 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ```bash
 cargo test -p yggdryl-cli --test fix
+cargo test -p yggdryl-cli --test market      # `yggdryl market serve`: the refusals; `-- --ignored` hosts the live display
 cargo clippy -p yggdryl-cli --all-targets -- -D warnings
 cargo run -p yggdryl-cli -- fix groups create --help
+cargo run -p yggdryl-cli -- market serve --help
 ```
 
 ## Performance
