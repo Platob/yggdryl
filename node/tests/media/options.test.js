@@ -235,7 +235,7 @@ test('a CSV setting is absent on another encoding rather than invented', () => {
   }, /\$\.quote: expected CSV options/)
   assert.throws(() => {
     parquet.header = false
-  }, /\$\.header: expected CSV options/)
+  }, /\$\.header: expected CSV or Excel options/)
   assert.throws(() => {
     parquet.nullValues = []
   }, /\$\.null_values: expected CSV options/)
