@@ -198,7 +198,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:msgcat": "EXEC",
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "BO",
     "FIX:tag": "968560",
     "description": "MsgType = BO",

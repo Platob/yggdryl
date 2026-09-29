@@ -717,14 +717,13 @@ mod text {
         assert_eq!(line.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
     }
 
-    /// The sixteen event columns every line batch opens with, in front of
+    /// The fifteen event columns every line batch opens with, in front of
     /// the line's own: the line is an event of the graph, and a message parsed
-    /// out of it contains the same sixteen under the same names and
+    /// out of it contains the same fifteen under the same names and
     /// datatypes.
-    const EVENT_COLUMNS: [&str; 16] = [
+    const EVENT_COLUMNS: [&str; 15] = [
         "currunix",
         "creaunix",
-        "execunix",
         "recdunix",
         "exprunix",
         "prevunix",
@@ -938,7 +937,7 @@ mod text {
             assert_eq!(line.get_crossuuid(), line.cross_uuid());
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
             assert_eq!((line.get_creaunix(), line.get_exprunix()), (None, None));
-            assert_eq!((line.get_execunix(), line.get_recdunix()), (None, None));
+            assert_eq!(line.get_recdunix(), None);
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
             // The identity: the instant coupled with the content code, and no
             // cross-hash seed on this unlocated line. The code is the event the
@@ -984,11 +983,14 @@ mod text {
         }
 
         #[test]
-        fn execution_and_recording_captures_are_typed_event_instants() {
-            const EXECUTED: i64 = INSTANT + 1_000_000_000;
+        fn a_recording_capture_is_a_typed_event_instant_and_execution_is_no_event_fact() {
             const RECORDED: i64 = INSTANT + 2_000_000_000;
-            /// The third capture's text: `refrecdunix` names no event fact, so
-            /// it is read as the header matched it and never as an instant.
+            /// The first capture's text: when a market element executed is a
+            /// market fact, never a line's, so `execunix` names no event fact
+            /// and is read as the header matched it.
+            const FIRST: &str = "2026-01-02T10:15:31Z";
+            /// The third capture's text: `refrecdunix` names no event fact
+            /// either.
             const THIRD: &str = "2026-01-02T10:15:33Z";
             let options = Arc::new(
                 TextOptions::new()
@@ -1000,25 +1002,18 @@ mod text {
                 &options,
             );
 
-            assert_eq!(line.execunix().unwrap(), Some(EXECUTED));
             assert_eq!(line.recdunix().unwrap(), Some(RECORDED));
-            assert_eq!(line.get_execunix(), Some(EXECUTED));
             assert_eq!(line.get_recdunix(), Some(RECORDED));
-            assert_eq!(
-                line.event_fact(EventColumn::ExecUnix)
-                    .unwrap()
-                    .and_then(|value| value.temporal_count()),
-                Some(EXECUTED)
-            );
             assert_eq!(
                 line.event_fact(EventColumn::RecdUnix)
                     .unwrap()
                     .and_then(|value| value.temporal_count()),
                 Some(RECORDED)
             );
-            // `refrecdunix` was once an event capture too; the fact is gone
-            // from the event, so the capture is an ordinary one: its text is
-            // the line's, and it names the line like any other capture.
+            // Neither `execunix` nor `refrecdunix` is an event capture: each
+            // is the text it matched, and names the line like any other.
+            assert_eq!(line.capture(0), Some(FIRST));
+            assert_eq!(line.named_captures()["execunix"], FIRST);
             assert_eq!(line.capture(2), Some(THIRD));
             assert_eq!(line.named_captures()["refrecdunix"], THIRD);
 
@@ -1030,12 +1025,10 @@ mod text {
                 .expect("a page"),
             )
             .expect("a body");
-            assert_eq!(line.get_execunix(), Some(INSTANT + 3_000_000_000));
             assert_eq!(line.get_recdunix(), Some(INSTANT + 4_000_000_000));
             assert_eq!(line.capture(2), Some("2026-01-02T10:15:35Z"));
 
             // A value stated through the Event contract stands over later bodies.
-            line.set_execunix(Some(7));
             line.set_recdunix(Some(8));
             line.set_body(
                 TextBytes::from_bytes(
@@ -1044,16 +1037,13 @@ mod text {
                 .expect("a page"),
             )
             .expect("a body");
-            assert_eq!(
-                (line.get_execunix(), line.get_recdunix()),
-                (Some(7), Some(8))
-            );
+            assert_eq!(line.get_recdunix(), Some(8));
 
-            // The two event captures feed the event columns themselves, not
-            // duplicate text columns behind them: both are consumed, so the row
-            // is the sixteen, the body, and the one capture no event fact
-            // owns - `refrecdunix`, as the text the header matched. A row read
-            // back states every one of the facts again.
+            // The recording capture feeds the event column itself, not a
+            // duplicate text column behind it: it is consumed, so the row is
+            // the fifteen, the body, and the two captures no event fact owns
+            // - `execunix` and `refrecdunix`, as the text the header matched.
+            // A row read back states every one of the facts again.
             let source = self::line(
                 "2026-01-02T10:15:31Z 2026-01-02T10:15:32Z 2026-01-02T10:15:33Z body",
                 &options,
@@ -1065,38 +1055,41 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            assert_eq!(names, super::with_event(&["body", "refrecdunix"]));
-            for name in ["execunix", "recdunix"] {
+            assert_eq!(
+                names,
+                super::with_event(&["body", "execunix", "refrecdunix"])
+            );
+            assert_eq!(
+                schema.field_with_name("recdunix").unwrap().data_type(),
+                &arrow_schema::DataType::Timestamp(
+                    arrow_schema::TimeUnit::Nanosecond,
+                    Some("UTC".into())
+                )
+            );
+            for (name, text) in [("execunix", FIRST), ("refrecdunix", THIRD)] {
                 assert_eq!(
                     schema.field_with_name(name).unwrap().data_type(),
-                    &arrow_schema::DataType::Timestamp(
-                        arrow_schema::TimeUnit::Nanosecond,
-                        Some("UTC".into())
-                    )
+                    &arrow_schema::DataType::Utf8
+                );
+                assert_eq!(
+                    batch
+                        .column_by_name(name)
+                        .unwrap()
+                        .as_any()
+                        .downcast_ref::<arrow_array::StringArray>()
+                        .unwrap()
+                        .value(0),
+                    text
                 );
             }
-            assert_eq!(
-                schema.field_with_name("refrecdunix").unwrap().data_type(),
-                &arrow_schema::DataType::Utf8
-            );
-            assert_eq!(
-                batch
-                    .column_by_name("refrecdunix")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<arrow_array::StringArray>()
-                    .unwrap()
-                    .value(0),
-                THIRD
-            );
             let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("a line");
-            assert_eq!(back[0].get_execunix(), Some(EXECUTED));
             assert_eq!(back[0].get_recdunix(), Some(RECORDED));
+            assert_eq!(back[0].named_captures()["execunix"], FIRST);
             assert_eq!(back[0].named_captures()["refrecdunix"], THIRD);
         }
 
         #[test]
-        fn execution_and_recording_captures_refuse_bad_instants_by_name() {
+        fn a_recording_capture_refuses_a_bad_instant_by_name() {
             let options = Arc::new(
                 TextOptions::new()
                     .try_with_rowheader(EVENT_TIMES)
@@ -1106,24 +1099,19 @@ mod text {
                 "not-an-instant still-not-an-instant nor-an-instant body",
                 &options,
             );
-            for (name, refused) in [
-                ("execunix", line.execunix().err()),
-                ("recdunix", line.recdunix().err()),
-            ] {
-                let refused = refused
-                    .unwrap_or_else(|| panic!("{name} refuses"))
-                    .to_string();
-                assert!(refused.contains(&format!("$[0].{name}")), "{refused}");
-            }
-            assert_eq!((line.get_execunix(), line.get_recdunix()), (None, None));
-            // `refrecdunix` names no event fact, so nothing reads it as an
-            // instant and nothing refuses it: it is the text it matched.
+            let refused = line.recdunix().expect_err("recdunix refuses").to_string();
+            assert!(refused.contains("$[0].recdunix"), "{refused}");
+            assert_eq!(line.get_recdunix(), None);
+            // `execunix` and `refrecdunix` name no event fact, so nothing
+            // reads them as instants and nothing refuses them: each is the
+            // text it matched.
+            assert_eq!(line.capture(0), Some("not-an-instant"));
             assert_eq!(line.capture(2), Some("nor-an-instant"));
             let error = line
-                .event_fact(EventColumn::ExecUnix)
+                .event_fact(EventColumn::RecdUnix)
                 .expect_err("the event column refuses")
                 .to_string();
-            assert!(error.contains("$[0].execunix"), "{error}");
+            assert!(error.contains("$[0].recdunix"), "{error}");
         }
 
         #[test]
@@ -1608,7 +1596,7 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            // The batch opens with the sixteen event columns the line is stated
+            // The batch opens with the fifteen event columns the line is stated
             // in, and the body closes it. Captured facts feed their own event
             // columns - every capture this header declares is one, so no capture
             // column is left - while `seqnum` and `crosscode` state the line's

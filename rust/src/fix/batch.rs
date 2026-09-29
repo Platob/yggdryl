@@ -54,6 +54,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use arrow_schema::ArrowError;
 
 use smallvec::SmallVec;
 use smol_str::SmolStr;
@@ -63,11 +64,13 @@ use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
 use crate::graph::EventColumn;
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
+use crate::warning::warned;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, Placed, SOH, Spread};
+use super::messages::source_failure;
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
 use crate::graph::element::InstantSequence;
@@ -92,7 +95,10 @@ impl FixCodec {
     /// following ([`fix_schema_carrying`](super::fix_schema_carrying)), a
     /// capture column named as a FIX column yielding to it. Batches close as
     /// `arrow_reader` closes them, on the bytes each row lands as against
-    /// [`Self::with_batch_byte_size`].
+    /// [`Self::with_batch_byte_size`]. A row the stream cannot read, or a
+    /// message its row will not hold, is excluded with a deduplicated
+    /// warning; the source reader's own failure ends the reader after the
+    /// completed prefix.
     ///
     /// One thread reads rows where they stand. Several threads hand one owned
     /// input batch to each worker, at most one batch per worker ahead, then
@@ -121,7 +127,7 @@ impl FixCodec {
             }));
             return self.closing_reader(
                 field,
-                messages.map(move |message| charged(message, &schema)),
+                messages.filter_map(move |message| charged(message, &schema)),
             );
         }
         // A row is parsed and every message it carries filled into its
@@ -130,15 +136,17 @@ impl FixCodec {
         // of a batch's first instant, which cross once to be placed.
         let worker = schema.clone();
         let batches = crate::parallel::ordered(
-            CaptureBatches::over(source),
+            SourceBatches::over(Some(source)),
             self.threads(),
             1,
             move |held| -> SeamedBatch {
                 match held.and_then(|batch| reader.land(batch)) {
                     Err(error) => SeamedBatch::of(std::iter::once(Err(error)), &worker),
-                    Ok(batch) => SeamedBatch::of(
-                        (0..batch.records.len())
-                            .flat_map(|row| carried_messages(reader.row(&batch, row))),
+                    Ok(landed) => SeamedBatch::of(
+                        landed.iter().flat_map(|batch| {
+                            (0..batch.records.len())
+                                .flat_map(|row| carried_messages(reader.row(batch, row)))
+                        }),
                         &worker,
                     ),
                 }
@@ -183,9 +191,15 @@ impl FixCodec {
     /// 385, the column [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME)
     /// names, takes the row's stated `msgdirection`, else the reading over
     /// the prose in front of its payload, else [`Self::try_with_direction`]'s
-    /// pin. A source batch of another schema than the first is a conflict
-    /// item, because every cell is read by the position the declared schema
-    /// gave it; the source reader's own failure is an error item.
+    /// pin.
+    ///
+    /// Nothing a row holds ends the stream. A source batch of another schema
+    /// than the first is excluded with a warning, because every cell is read
+    /// by the position the declared schema gave it; a row whose cells the
+    /// carrier refuses - a code no registry holds - is excluded with a
+    /// warning naming it, the rest of its batch read; a message that does not
+    /// build is excluded the same way. The source reader's own failure is
+    /// yielded after the messages before it and ends the stream.
     ///
     /// # Errors
     ///
@@ -226,16 +240,19 @@ impl FixCodec {
             })));
         }
         let rows = crate::parallel::ordered(
-            CaptureBatches::over(source),
+            SourceBatches::over(Some(source)),
             threads,
             1,
             move |held| -> Vec<Result<FixMsg>> {
                 match held.and_then(|batch| reader.land(batch)) {
                     Err(error) => vec![Err(error)],
-                    Ok(batch) => {
-                        let mut messages = Vec::with_capacity(batch.records.len());
-                        for row in 0..batch.records.len() {
-                            messages.extend(carried_messages(reader.row(&batch, row)));
+                    Ok(landed) => {
+                        let rows = landed.iter().map(|batch| batch.records.len()).sum();
+                        let mut messages = Vec::with_capacity(rows);
+                        for batch in &landed {
+                            for row in 0..batch.records.len() {
+                                messages.extend(carried_messages(reader.row(batch, row)));
+                            }
                         }
                         messages
                     }
@@ -286,12 +303,17 @@ impl FixCodec {
     /// exactly as in `lifecycle`, and takes its row with it. Batches close as
     /// `arrow_reader` closes them, on the bytes each row lands as.
     ///
+    /// A row that is not a message is excluded with a deduplicated warning
+    /// and the walk goes on without it; the source reader's own failure is
+    /// the reader's error once every row read before it is walked and
+    /// written.
+    ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the source's schema does not
     /// make a root field, and the Arrow layer's when it does not make an
-    /// Arrow schema; a row that is not a FIX row and the source reader's own
-    /// failure are error batches.
+    /// Arrow schema; a schema that makes no FIX row is the reader's error
+    /// batch.
     pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         let schema = Self::row_field(source.schema().as_ref())?;
         let walked = self.lifecycle(self.messages(source));
@@ -305,8 +327,9 @@ impl FixCodec {
     /// [`Self::messages`] into [`Self::market_arrow_reader`]: each row is read
     /// as its own message, its market facts derived from what the row
     /// states, and the capture is expanded, sorted and batched as that door
-    /// does it - so a row that is not a FIX row, or a failure of the source
-    /// reader, is the reader's only item. Over rows no walk wrote, it answers
+    /// does it - a row that is not a message excluded with a warning, and a
+    /// schema that makes no FIX row, or a failure of the source reader, the
+    /// one error `messages` hands it. Over rows no walk wrote, it answers
     /// the leaves `market_arrow_reader` answers for their messages. A walked
     /// capture reaches the sorted door as messages -
     /// `market_arrow_reader(codec.lifecycle(messages))` - never as the rows
@@ -334,9 +357,15 @@ impl FixCodec {
     /// represented content. No source line is parsed again.
     /// One thread holds one batch at a time. Several threads retain bounded
     /// row chunks, which can span batches, and yield messages in source order.
-    /// A source batch of another schema than the first is a conflict item,
-    /// and a row the schema does not make a message of is an error item;
-    /// either fuses the stream.
+    ///
+    /// A schema that makes no FIX row is the one item the stream yields,
+    /// before a row is read. Past it, nothing a row holds ends the stream: a
+    /// source batch of another schema than the first is excluded with a
+    /// warning, a row whose cells the schema refuses - a code no registry
+    /// holds - is excluded with a warning naming it and the rest of its
+    /// batch read, and a row that does not rebuild into a message is excluded
+    /// the same way. The source reader's own failure is yielded after the
+    /// messages before it and ends the stream.
     ///
     /// The one half every door that reads rows composes with
     /// [`Self::arrow_reader`]: `lifecycle_arrow_reader` walks between the
@@ -346,27 +375,40 @@ impl FixCodec {
         &self,
         source: BatchReader,
     ) -> impl Iterator<Item = Result<FixMsg>> + Send + use<> {
-        // The schema is read once, off the source; a schema that does not
-        // make a root is the one item the stream yields.
-        let (schema, refused) = match Self::row_field(source.schema().as_ref()) {
+        // The schema is read and planned once, off the source: a schema that
+        // makes no FIX row is the caller's, and refused before a row.
+        let registry = Arc::clone(self.registry());
+        let planned = Self::row_field(source.schema().as_ref()).and_then(|schema| {
+            super::schema::column_plan_of(&schema, &registry)?;
+            Ok(schema)
+        });
+        let (schema, refused) = match planned {
             Ok(schema) => (schema, None),
             Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
         };
-        let registry = Arc::clone(self.registry());
         let root = Resolved::of(Arc::new(schema.clone()));
         let read = crate::parallel::ordered(
-            StructRows::over(source, root, refused),
+            StructRows::over(source, root, refused.is_some()),
             self.threads(),
             self.chunk(),
             move |held: Result<(Arc<Serie>, usize)>| {
-                let (records, row) = held?;
-                let row = records.scalar(row)?;
-                FixMsg::from_landed_row(Arc::clone(&registry), &schema, &row)
+                let message = held.and_then(|(records, row)| {
+                    FixMsg::from_landed_row(Arc::clone(&registry), &schema, &records.scalar(row)?)
+                });
+                match message {
+                    Ok(message) => Some(Ok(message)),
+                    Err(error) => source_failure(
+                        error,
+                        "FIX row excluded: it does not rebuild into a message",
+                    )
+                    .map(Err),
+                }
             },
-        );
-        // An error among the rows ends the stream where it stands, as it
-        // does read one at a time.
-        Fused::over(read)
+        )
+        .flatten();
+        // The reader's own failure is the one error the rows yield, and it
+        // ends them: nothing follows it.
+        refused.map(Err).into_iter().chain(read)
     }
 
     /// A stream of messages as a stream of batches of FIX rows under `schema`.
@@ -379,9 +421,12 @@ impl FixCodec {
     /// [`Self::messages`] is the one its messages return to. Batches close on
     /// the bytes each row lands as - the leaves of every column it fills and
     /// a per-row width - against [`Self::with_batch_byte_size`], whichever of
-    /// it and [`Self::with_batch_row_size`] binds first. An error item yields
-    /// the completed prefix, then the error, and fuses the reader.
-    /// Owned messages and their fallible counterparts are accepted directly.
+    /// it and [`Self::with_batch_row_size`] binds first. A message the row
+    /// will not hold - a required column it leaves empty - and an item the
+    /// stream refused are excluded with a deduplicated warning; a source
+    /// failure yields the completed prefix, then the error, and fuses the
+    /// reader. Owned messages and their fallible counterparts are accepted
+    /// directly.
     ///
     /// # Errors
     ///
@@ -403,15 +448,16 @@ impl FixCodec {
             self.threads(),
             self.chunk(),
             move |held: Result<FixMsg>| charged(held, &schema),
-        );
+        )
+        .flatten();
         self.closing_reader(root, rows)
     }
 
     /// The batches a stream of charged rows under `root` closes into: on
     /// the bytes each row lands as against [`Self::with_batch_byte_size`],
-    /// whichever of it and [`Self::with_batch_row_size`] binds first. An
-    /// error item yields the completed prefix, then the error, and fuses
-    /// the reader.
+    /// whichever of it and [`Self::with_batch_row_size`] binds first. The
+    /// one error that reaches it is a source failure, which yields the
+    /// completed prefix, then the error, and fuses the reader.
     fn closing_reader<I>(&self, root: Field, rows: I) -> Result<BatchReader>
     where
         I: Iterator<Item = Result<Charged>> + Send + 'static,
@@ -444,7 +490,10 @@ impl FixCodec {
     /// its order, each filled by the tag its own field carries, the crate's
     /// derivations answering the columns a message did not state, and a value
     /// the column will not hold nulled rather than refused. `field` is read
-    /// once here and never per message.
+    /// once here and never per message. A message a column that cannot be
+    /// null will not hold, and an item the stream refused, are excluded with
+    /// a deduplicated warning; the source's own failure moves through in its
+    /// place, after the rows before it.
     ///
     /// A column the message does not carry is read off its arrival record
     /// first, which is what makes formatting a narrow row into a wider field
@@ -487,10 +536,12 @@ impl FixCodec {
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        messages
-            .into_iter()
-            .fuse()
-            .map(move |held| held.into()?.into_row(field))
+        messages.into_iter().fuse().filter_map(move |held| {
+            match held.into().and_then(|message| message.into_row(field)) {
+                Ok(row) => Some(Ok(row)),
+                Err(error) => source_failure(error, ROW_REFUSED).map(Err),
+            }
+        })
     }
 
     /// A stream of batches of stable FIX rows as batches under one message field.
@@ -560,7 +611,9 @@ impl FixCodec {
     /// A batch without the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message
-    /// held no pairs is an empty line - and the count of lines is answered.
+    /// held no pairs is an empty line, and a row that is not a message is
+    /// excluded with a deduplicated warning, as [`Self::messages`] excludes
+    /// it - and the count of lines is answered.
     ///
     /// One batch is pulled, its rows written, and it is dropped. The source is
     /// never concatenated and no output buffer bigger than a row is held.
@@ -568,8 +621,9 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] when the source has no entries column,
-    /// the source reader's own failure, a row's refusal to be a message, or
-    /// the sink's write failure.
+    /// the schema's refusal to make a FIX row, the source reader's own
+    /// failure once the rows before it are written, or the sink's write
+    /// failure.
     pub fn write_arrow_reader(
         &self,
         source: BatchReader,
@@ -828,10 +882,17 @@ impl Columns {
 /// carrying its record alike.
 type Charged = (u64, Scalar);
 
-/// `message` filled into its row under `schema`, and charged.
-fn charged(message: Result<FixMsg>, schema: &Field) -> Result<Charged> {
-    let row = message?.into_row(schema)?;
-    Ok((appended_bytes(&row), row))
+/// What a door filling rows warns about a message it excludes.
+const ROW_REFUSED: &str = "FIX row excluded: its message was not read or does not fill the row";
+
+/// `message` filled into its row under `schema`, and charged: none for a
+/// message the row will not hold, or an item the stream refused, excluded
+/// with a warning; a source failure as itself.
+fn charged(message: Result<FixMsg>, schema: &Field) -> Option<Result<Charged>> {
+    match message.and_then(|message| message.into_row(schema)) {
+        Ok(row) => Some(Ok((appended_bytes(&row), row))),
+        Err(error) => source_failure(error, ROW_REFUSED).map(Err),
+    }
 }
 
 /// One capture batch's messages as a worker read them: those of the
@@ -867,7 +928,7 @@ impl SeamedBatch {
                 continue;
             }
             let sequence = tail.get_or_insert_with(InstantSequence::default);
-            rest.push(charged(
+            rest.extend(charged(
                 message.map(|mut held| {
                     sequence.place_naming_sources(&mut held);
                     held
@@ -911,13 +972,17 @@ impl<I: Iterator<Item = SeamedBatch>> Iterator for Seams<I> {
         loop {
             if let Some(message) = self.head.next() {
                 let sequence = &mut self.sequence;
-                return Some(charged(
+                let row = charged(
                     message.map(|mut held| {
                         sequence.place_naming_sources(&mut held);
                         held
                     }),
                     &self.schema,
-                ));
+                );
+                if row.is_some() {
+                    return row;
+                }
+                continue;
             }
             // The batch's own runs past its first instant stand where its
             // worker left them.
@@ -939,7 +1004,8 @@ impl<I: Iterator<Item = SeamedBatch>> Iterator for Seams<I> {
 type Cells = Vec<(SmolStr, Scalar)>;
 
 /// The messages one row answered, each carrying the row's own cells; a
-/// row that refused is its refusal, once.
+/// row that refused is its refusal, once - passed over with a warning, or
+/// the source's failure.
 fn carried_messages(held: Result<(FixMessages, Cells)>) -> impl Iterator<Item = Result<FixMsg>> {
     let (messages, carried) = match held {
         Ok(held) => held,
@@ -957,8 +1023,9 @@ fn carried_messages(held: Result<(FixMessages, Cells)>) -> impl Iterator<Item = 
 /// the codec reads on.
 ///
 /// A batch lands once under the carrier, which proves the rows its layout
-/// does not - a code no registry holds is refused there, naming its row -
-/// and a row is then read cell by cell through the columns' own leaves:
+/// does not - a code no registry holds is refused there, and its row
+/// excluded with a warning naming it ([`landed`]) - and a row is then read
+/// cell by cell through the columns' own leaves:
 /// the payload as the bytes it is, a parameter column as the text it
 /// holds, a carried column as the value it becomes. Nothing is copied that
 /// the message does not keep, so a row costs its parse and the few cells
@@ -974,11 +1041,16 @@ struct RowReader {
 }
 
 impl RowReader {
-    /// Land one batch under the carrier, narrowing its payload column once.
-    fn land(&self, batch: RecordBatch) -> Result<Landed> {
-        let records = land_batch(&self.root, batch, &Proof::Unproven)?;
-        let payload = Payload::of(&records.children()[self.columns.payload]);
-        Ok(Landed { records, payload })
+    /// Land one batch under the carrier - whole, or the rows the landing
+    /// accepts - narrowing each landed column's payload once.
+    fn land(&self, batch: RecordBatch) -> Result<SmallVec<[Landed; 1]>> {
+        Ok(landed(&self.root, batch)?
+            .into_iter()
+            .map(|records| {
+                let payload = Payload::of(&records.children()[self.columns.payload]);
+                Landed { records, payload }
+            })
+            .collect())
     }
 
     /// One row of one landed batch as the messages it carries and the
@@ -1065,59 +1137,128 @@ impl RowReader {
     }
 }
 
-/// The capture batches one source declares, validated once before either its
-/// row-at-a-time sequential reader or its whole-batch worker jobs consume it.
-struct CaptureBatches {
-    source: BatchReader,
+/// The batches one source reader yields, each of the schema it declared:
+/// what every door reading batches pulls through, before the rows are landed
+/// on one thread or a batch is handed to a worker whole.
+///
+/// Every cell is read by the position the declared schema gave it, so a
+/// batch of another schema is excluded with a warning. A failure of the
+/// reader that is the source's own is yielded and ends the batches; one
+/// refusing a batch it read is warned about and passed over.
+struct SourceBatches {
+    /// The reader still read: none once it ended or failed.
+    source: Option<BatchReader>,
 }
 
-impl CaptureBatches {
-    const fn over(source: BatchReader) -> Self {
+impl SourceBatches {
+    const fn over(source: Option<BatchReader>) -> Self {
         Self { source }
     }
 }
 
-impl Iterator for CaptureBatches {
+impl Iterator for SourceBatches {
     type Item = Result<RecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.source.next() {
-            Some(Ok(batch)) if batch.schema() != self.source.schema() => {
-                Some(Err(Error::conflict(
-                    "the capture reader's declared Arrow schema",
-                    "a different batch schema",
-                    "FIX capture",
-                )))
+        loop {
+            let source = self.source.as_mut()?;
+            match source.next() {
+                Some(Ok(batch)) if batch.schema() != source.schema() => warned!(
+                    "FIX batch excluded: its schema is not the one its reader declared",
+                    "schema",
+                    "a batch of {} rows",
+                    batch.num_rows()
+                ),
+                Some(Ok(batch)) => return Some(Ok(batch)),
+                Some(Err(error)) => {
+                    if let Some(error) = read_failure(error) {
+                        self.source = None;
+                        return Some(Err(error));
+                    }
+                }
+                None => {
+                    self.source = None;
+                    return None;
+                }
             }
-            Some(Ok(batch)) => Some(Ok(batch)),
-            Some(Err(error)) => Some(Err(crate::arrow::from_reader_error(error).into())),
-            None => None,
         }
     }
 }
 
-/// The rows of a stream of validated capture batches, each beside the batch
-/// it is a row of, landed once, in row order.
+/// The failure a reader's `error` is, where it is the source's own; none
+/// once a refusal of the batch it read is warned about.
+fn read_failure(error: ArrowError) -> Option<Error> {
+    let error = crate::arrow::from_reader_error(error);
+    if error.is_source_failure() {
+        return Some(error.into());
+    }
+    warned!(
+        "FIX batch excluded: its reader refused it",
+        landing_subject(&error),
+        "{error}"
+    );
+    None
+}
+
+/// One batch landed under `root`: whole where it lands, else row by row,
+/// each row the landing refuses - a code no registry holds - excluded with a
+/// warning naming it, so one cell no column accepts costs its row and never
+/// its batch. Only a batch holding a refused row is landed twice.
+fn landed(root: &Resolved, batch: RecordBatch) -> crate::arrow::Result<SmallVec<[Serie; 1]>> {
+    match land_batch(root, batch.clone(), &Proof::Unproven) {
+        Ok(records) => return Ok(smallvec::smallvec![records]),
+        Err(error) if error.is_source_failure() => return Err(error),
+        Err(_) => {}
+    }
+    let mut kept = SmallVec::new();
+    for row in 0..batch.num_rows() {
+        match land_batch(root, batch.slice(row, 1), &Proof::Unproven) {
+            Ok(records) => kept.push(records),
+            Err(error) if error.is_source_failure() => return Err(error),
+            Err(error) => warned!(
+                "FIX row excluded: the landing refuses a cell of it",
+                landing_subject(&error),
+                "{error}, in row {row} of its batch"
+            ),
+        }
+    }
+    Ok(kept)
+}
+
+/// The column a landing's refusal names, the key its warning is counted
+/// under: a row landed on its own is row zero of its own array, so the path
+/// names the column and never where the row stood.
+fn landing_subject(error: &crate::arrow::Error) -> &str {
+    match error {
+        crate::arrow::Error::InvalidValue { path, .. }
+        | crate::arrow::Error::RequiredField { path, .. } => path,
+        crate::arrow::Error::Core(core) => super::messages::refused(core),
+        _ => "batch",
+    }
+}
+
+/// The rows of a stream of capture batches, each beside the batch it is a
+/// row of, landed once ([`landed`]), in row order.
 ///
-/// Every cell is read by the position the declared schema gave it, so a
-/// batch of another schema than the first is a conflict item; a batch whose
-/// rows the carrier refuses at the landing, and the source reader's own
-/// failure, are error items; the stream goes on past each to the next
-/// batch. The puller holds one batch, and a row keeps its own alive until it
-/// is read.
+/// The stream goes on past every batch and row it passes over; the source
+/// reader's own failure is its one error, and ends it. The puller holds one
+/// batch, and a row keeps its own alive until it is read.
 struct BatchRows {
-    source: CaptureBatches,
+    source: SourceBatches,
     reader: Arc<RowReader>,
     /// The batch being read, and the row the next pull reads.
     held: Option<(Arc<Landed>, usize)>,
+    /// What a batch landed row by row holds past `held`.
+    pending: smallvec::IntoIter<[Landed; 1]>,
 }
 
 impl BatchRows {
-    const fn over(source: BatchReader, reader: Arc<RowReader>) -> Self {
+    fn over(source: BatchReader, reader: Arc<RowReader>) -> Self {
         Self {
-            source: CaptureBatches::over(source),
+            source: SourceBatches::over(Some(source)),
             reader,
             held: None,
+            pending: SmallVec::new().into_iter(),
         }
     }
 }
@@ -1134,14 +1275,16 @@ impl Iterator for BatchRows {
                     return Some(Ok((Arc::clone(batch), row)));
                 }
             }
+            if let Some(batch) = self.pending.next() {
+                self.held = Some((Arc::new(batch), 0));
+                continue;
+            }
             // The batch is spent, or none is held yet: the next validated one
             // is pulled, landed, and the spent one dropped.
+            self.held = None;
             match self.source.next().map(|batch| self.reader.land(batch?)) {
-                Some(Ok(batch)) => self.held = Some((Arc::new(batch), 0)),
-                Some(Err(error)) => {
-                    self.held = None;
-                    return Some(Err(error));
-                }
+                Some(Ok(landed)) => self.pending = landed.into_iter(),
+                Some(Err(error)) => return Some(Err(error)),
                 None => return None,
             }
         }
@@ -1149,27 +1292,27 @@ impl Iterator for BatchRows {
 }
 
 /// The rows of a stream of batches of FIX rows, each beside the Struct its
-/// batch is, in row order, ended by the first refusal: the schema's own, a
-/// batch of another schema than the first, or the source reader's failure.
+/// batch is, landed once ([`landed`]), in row order: the source reader's own
+/// failure is the one error, and ends them.
 struct StructRows {
-    source: BatchReader,
+    source: SourceBatches,
     /// The root every batch lands under, resolved once off the source.
     root: Resolved,
-    /// The refusal the source's schema earned, yielded once and first.
-    refused: Option<Error>,
     /// The record column being read, beside the row the next pull reads.
     held: Option<(Arc<Serie>, usize)>,
-    done: bool,
+    /// What a batch landed row by row holds past `held`.
+    pending: smallvec::IntoIter<[Serie; 1]>,
 }
 
 impl StructRows {
-    const fn over(source: BatchReader, root: Resolved, refused: Option<Error>) -> Self {
+    /// The rows of `source` under `root`, or none where the schema was
+    /// `refused` and nothing is read.
+    fn over(source: BatchReader, root: Resolved, refused: bool) -> Self {
         Self {
-            source,
+            source: SourceBatches::over((!refused).then_some(source)),
             root,
-            refused,
             held: None,
-            done: false,
+            pending: SmallVec::new().into_iter(),
         }
     }
 }
@@ -1178,13 +1321,6 @@ impl Iterator for StructRows {
     type Item = Result<(Arc<Serie>, usize)>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        if let Some(error) = self.refused.take() {
-            self.done = true;
-            return Some(Err(error));
-        }
         loop {
             if let Some((batch, at)) = &mut self.held {
                 if *at < batch.len() {
@@ -1193,62 +1329,21 @@ impl Iterator for StructRows {
                     return Some(Ok((Arc::clone(batch), row)));
                 }
             }
-            match self.source.next() {
-                Some(Ok(batch)) if batch.schema() != self.source.schema() => {
-                    self.done = true;
-                    return Some(Err(Error::conflict(
-                        "the FIX reader's declared Arrow schema",
-                        "a different batch schema",
-                        "FIX rows",
-                    )));
-                }
-                // Each batch lands once, proving the rows its schema's
-                // layout does not: a row it refuses is named here.
-                Some(Ok(batch)) => match land_batch(&self.root, batch, &Proof::Unproven) {
-                    Ok(records) => self.held = Some((Arc::new(records), 0)),
-                    Err(error) => {
-                        self.done = true;
-                        return Some(Err(error.into()));
-                    }
-                },
-                Some(Err(error)) => {
-                    self.done = true;
-                    return Some(Err(crate::arrow::from_reader_error(error).into()));
-                }
-                None => {
-                    self.done = true;
-                    return None;
-                }
+            if let Some(records) = self.pending.next() {
+                self.held = Some((Arc::new(records), 0));
+                continue;
+            }
+            self.held = None;
+            let root = &self.root;
+            match self
+                .source
+                .next()
+                .map(|batch| -> Result<_> { Ok(landed(root, batch?)?) })
+            {
+                Some(Ok(landed)) => self.pending = landed.into_iter(),
+                Some(Err(error)) => return Some(Err(error)),
+                None => return None,
             }
         }
     }
 }
-
-/// A stream ended by its first error: the error is yielded, and nothing
-/// after it - the stream underneath is dropped there, its threads with it.
-struct Fused<I> {
-    inner: Option<I>,
-}
-
-impl<I> Fused<I> {
-    const fn over(inner: I) -> Self {
-        Self { inner: Some(inner) }
-    }
-}
-
-impl<I, T> Iterator for Fused<I>
-where
-    I: Iterator<Item = Result<T>>,
-{
-    type Item = Result<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let next = self.inner.as_mut()?.next();
-        if next.as_ref().is_none_or(Result::is_err) {
-            self.inner = None;
-        }
-        next
-    }
-}
-
-impl<I, T> std::iter::FusedIterator for Fused<I> where I: Iterator<Item = Result<T>> {}

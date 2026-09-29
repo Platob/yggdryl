@@ -41,7 +41,7 @@ order = graph.OrderEvent(
 )
 # A dated identity is a UUIDv7: its millisecond leads.
 assert order.curruuid.as_py().startswith("018bcfe5-6800-7")
-# A sided element stores its cross code under its side: one chain per side.
+# An order, a quote or an execution stores its cross code under its side: one chain per side.
 assert order.crosscode == "BUY:O-1001"
 assert order.crossuuid != order.curruuid, "the cross code names a chain"
 # Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
@@ -137,7 +137,8 @@ assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `altids`), yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
-Chains are keyed by side, and every walked element leaves stating `creaunix`.
+An order's, a quote's or an execution's chain is keyed by side, and every
+walked element leaves stating `creaunix`.
 
 ```python
 from yggdryl import Side, State, graph
@@ -192,7 +193,8 @@ assert (timed[-1].currunix, timed[-1].state) == (T + 70 * MS, State.EXPIRED)
 ## Build a composite trade
 
 `graph.TradeEvent.from_parts` is the one door: a root event and its sided
-executions, canonicalized so input order never changes the trade.
+executions, canonicalized so input order never changes the trade. The trade
+itself is not sided: it keeps the root's cross code, a sided root's base code.
 
 ```python
 from decimal import Decimal
@@ -254,9 +256,9 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 53 columns: marketdatakind, 16 event, 27 market, 3 operation, bookscope, 5 nested.
+# 54 columns: marketdatakind, 15 event, 28 market, 4 operation, bookscope, 5 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 53
+assert len(list(field)) == 54
 assert [child.name for child in field][0] == "marketdatakind"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)
@@ -313,8 +315,6 @@ persists; deltas and executions are each book's own.
 ```python
 from decimal import Decimal
 
-import pytest
-
 from yggdryl import graph
 
 T = 1_700_000_000_000_000_000
@@ -338,9 +338,9 @@ assert len(list(graph.BookIterator(stream, snapshot_millis=500))) == 3
 # No ticker: the book is the category, `XXXX` or `XXXXXX` for what is unstated.
 [book] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL", miccode="XNAS")])
 assert (book.crosscode, book.ticker) == ("XNAS:XXXXXX", None)
-# Out of order is refused.
-with pytest.raises(ValueError, match="sorted operation timestamp"):
-    list(graph.BookIterator(list(reversed(stream))))
+# Out of order is no error: the operation dated before its book is left out,
+# with a warning.
+assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
 ```
 
 ## Read a book
@@ -498,8 +498,9 @@ assert len(last.executions) == 1
 - Seconds or milliseconds where nanoseconds are expected land in 1970; build
   instants with integer arithmetic, never `datetime.timestamp() * 1e9` (a float
   loses the last digits).
-- `crosscode` answers the stored code: `"BUY:O-1001"` for a buy, the bare code
-  for `Side.UNKNOWN`. The lifecycle view's `crosscode=` names the stored one.
+- `crosscode` answers the stored code: `"BUY:O-1001"` for a buy order, quote
+  or execution, the bare code for `Side.UNKNOWN` and for a trade, a book or a
+  snapshot control whatever side it states. The lifecycle view's `crosscode=` names the stored one.
 - `side`, `state` and `marketdatakind` are `IntEnum` members: compare with
   `is Side.BUY`, never `== "BUY"`; a column stores `int(member)`. A side is
   never `None` - `Side.UNKNOWN` is unstated.
@@ -512,17 +513,20 @@ assert len(last.executions) == 1
   `price=189.5` is refused at `$.price` (`got f64`). `fxrates` takes
   `{"EUR": Decimal("1.1")}` and reads back as `dict[str, Scalar]`: each rate
   is a decimal `Scalar`, as `price` and `bidpx` are, so `.as_py()` is the
-  `Decimal` - unlike `securityids` and `altids`, whose values are `str`
+  `Decimal` - unlike `securityids`, `altids` and `accountids`, whose values are `str`
   ([FX rates](https://platob.github.io/yggdryl/graph/market/#fx-rates)).
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`.
+  `with_operations` at `$.operations[i].kind`. What `BookIterator` finds wrong
+  in the data - an operation dated before its book, an order or a quote
+  stating neither side - it leaves out, with a `logging` warning under
+  `yggdryl.graph.book`, and no error.
 - A leaf compares equal to its own class only: compare `value.into_leaf()` or
   `value.as_order_event()` with a leaf, `MarketData` with `MarketData`.
 - `book.limits(side)` answers struct `Scalar`s: `limit.as_py()` is a dict of
   `price`, `quantity`, `uuids`, `tradable`. `alive`, `deltas`, `executions`,
   `spread`, `is_crossed` and `is_locked` are properties; `limits`,
   `best_price`, `best_quantity`, `depth` and `imbalance` take arguments.
-- Identifier verbs (`insert_securityid`, `insert_altid`, ...) are Rust-only:
-  state `securityids=` and `altids=` when you build.
+- Identifier verbs (`insert_securityid`, `insert_altid`, `insert_accountid`, ...)
+  are Rust-only: state `securityids=`, `altids=` and `accountids=` when you build.

@@ -1,6 +1,6 @@
 # MarketDataKind
 
-What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-two members, stored as the `int32` code of its member - the code set's own value, `UNKN` at `0` and `TRAD` at `21` - and the first column of every [market data row](../../graph/market-data.md).
+What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-six members, stored as the `int32` code of its member - the code set's own value, `UNKN` at `0` to `TRAD` at `21`, then the four batch categories the crate files after them, `ORDB` `22` to `TRDB` `25` - and the first column of every [market data row](../../graph/market-data.md).
 
 ## Contract
 
@@ -12,7 +12,7 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no kind, naming the spelling |
 | Stores | `int32` under `yggdryl.marketdatakind`: the MsgCat value itself |
-| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member |
+| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds store their cross code under their side |
 
 A reader tells the leaves of market data apart by one column every FIX engine already speaks: an order is `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD` and a book `BOOK`.
 
@@ -122,7 +122,7 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
     // A stored code is an integer, never text; the code of no member answers
     // nothing.
     assert!(DataType::MarketDataKind.scalar("10").is_err());
-    assert!(DataType::MarketDataKind.scalar(22_i32).is_err());
+    assert!(DataType::MarketDataKind.scalar(26_i32).is_err());
     ```
 
 === "Python"
@@ -243,16 +243,22 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 | `19` | `SETL` | `settlement` | Settlement instructions and obligations |
 | `20` | `STRM` | `stream` | Stream assignment |
 | `21` | `TRAD` | `trade` | Trade capture and matching |
+| `22` | `ORDB` | `orderbatch` | Order batches: lists, mass order handling and crosses, one order per entry |
+| `23` | `QUOB` | `quotebatch` | Quote batches: mass quotes and bid lists, one quote per entry |
+| `24` | `EXEB` | `executionbatch` | Execution batches: several executions reported at once, one per entry |
+| `25` | `TRDB` | `tradebatch` | Trade batches: match reports stating several trades, one per entry |
 
 === "Rust"
 
     ```rust
     use yggdryl::MarketDataKind;
 
-    assert_eq!(MarketDataKind::ALL.len(), 22);
+    assert_eq!(MarketDataKind::ALL.len(), 26);
     assert!(MarketDataKind::ALL.windows(2).all(|pair| pair[0].code() < pair[1].code()));
     assert_eq!(MarketDataKind::from_code(3), Some(MarketDataKind::Book));
     assert_eq!(MarketDataKind::from_name("TRAD"), Some(MarketDataKind::Trade));
+    assert_eq!(MarketDataKind::from_code(22), Some(MarketDataKind::OrderBatch));
+    assert_eq!(MarketDataKind::from_spelling("trade batch"), Some(MarketDataKind::TradeBatch));
     assert_eq!(MarketDataKind::from_spelling("Market Structure"), Some(MarketDataKind::MarketStructure));
     assert_eq!(MarketDataKind::Execution.as_str(), "EXEC");
     assert!(MarketDataKind::Quotation.description().starts_with("Quotation"));
@@ -263,8 +269,10 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
     ```python
     from yggdryl import MarketDataKind
 
-    assert [int(kind) for kind in MarketDataKind] == list(range(22))
+    assert [int(kind) for kind in MarketDataKind] == list(range(26))
     assert MarketDataKind(3) is MarketDataKind.BOOK
+    assert MarketDataKind.ORDB == 22 and MarketDataKind.TRDB == 25
+    assert MarketDataKind.from_spelling("quote_batch") is MarketDataKind.QUOB
     assert MarketDataKind.from_spelling("Market Structure") is MarketDataKind.MKST
     assert MarketDataKind.from_spelling("10") is None
     assert MarketDataKind.QUOT.description.startswith("Quotation")
@@ -276,14 +284,45 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
     const assert = require('node:assert/strict')
     const { MarketDataKind } = require('yggdryl')
 
-    assert.deepEqual(Object.values(MarketDataKind), Array.from({ length: 22 }, (_, code) => code))
+    assert.deepEqual(Object.values(MarketDataKind), Array.from({ length: 26 }, (_, code) => code))
     assert.equal(MarketDataKind.BOOK, 3)
+    assert.equal(MarketDataKind.ORDB, 22)
+    assert.equal(MarketDataKind.TRDB, 25)
     assert.ok(Object.isFrozen(MarketDataKind))
+    ```
+
+## Sided kinds and batches
+
+`is_sided`, `is_batch` and `item` decide how the graph and a FIX parse treat what a member files. All three are Rust-only: a binding exposes the members, their codes, `description` and `from_spelling`.
+
+| Reading | Rule |
+| --- | --- |
+| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its cross code is stored under that side - `BUY:ORD-1` - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - keeps its cross code as given whatever side it states |
+| `is_batch()` | `ORDB`, `QUOB`, `EXEB` and `TRDB`: a message stating many orders, quotes, executions or trades at once - a list, a mass order, a cross, a mass quote, a match report - which a [FIX parse splits](../../fix/message.md#a-parse-splits-what-a-message-reports) into one message per entry; no standard message type is filed under `EXEB` |
+| `item()` | the kind one entry of a batch is - `ORDB` `ORDR`, `QUOB` `QUOT`, `EXEB` `EXEC`, `TRDB` `TRAD` - and the member itself for any other |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::MarketDataKind;
+
+    let sided: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_sided()).map(|kind| kind.as_str()).collect();
+    assert_eq!(sided, ["EXEC", "ORDR", "QUOT"]);
+    assert!(!MarketDataKind::Trade.is_sided() && !MarketDataKind::Book.is_sided());
+
+    let batches: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_batch()).map(|kind| kind.as_str()).collect();
+    assert_eq!(batches, ["ORDB", "QUOB", "EXEB", "TRDB"]);
+    assert_eq!(MarketDataKind::OrderBatch.item(), MarketDataKind::Order);
+    assert_eq!(MarketDataKind::QuoteBatch.item(), MarketDataKind::Quotation);
+    assert_eq!(MarketDataKind::TradeBatch.item(), MarketDataKind::Trade);
+    assert_eq!(MarketDataKind::Book.item(), MarketDataKind::Book);
+    // An entry is never a batch, and a batch is never sided.
+    assert!(MarketDataKind::ALL.iter().all(|kind| !kind.item().is_batch() && !(kind.is_batch() && kind.is_sided())));
     ```
 
 ## The category of a market data leaf
 
-Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary files its message type under, `FixMsg::msgcat`, `UNKN` where it files none ([FIX message](../../fix/message.md)).
+Every [market data](../../graph/market-data.md) leaf is filed under one member, which its `marketdatakind` column states and a leaf answers without a lookup: `MarketKind::marketdatakind` in Rust, the `marketdatakind` getter on every leaf in Python and JavaScript. A FIX message states the member its dictionary [files its message type under](../../fix/index.md#a-message-type-is-filed-under-one-category), `FixMsg::msgcat`, `UNKN` where it files none ([FIX message](../../fix/message.md)).
 
 | Leaf | Member |
 | --- | --- |
@@ -292,6 +331,8 @@ Every [market data](../../graph/market-data.md) leaf is filed under one member, 
 | `Execution`, `ExecutionEvent` | `EXEC` |
 | `TradeEvent` | `TRAD` |
 | `BookEvent`, `SnapshotEvent` | `BOOK` |
+
+No leaf is filed under a batch member: what a FIX message filed under one states reaches the graph as the messages its parse [splits it into](../../fix/message.md#a-parse-splits-what-a-message-reports), each filed under the batch's `item`.
 
 === "Rust"
 
@@ -335,6 +376,7 @@ Every [market data](../../graph/market-data.md) leaf is filed under one member, 
 - JSON, TOML, YAML and XML write a kind as its four-letter name, a Hive partition is named by it, and the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the kind's own identifier, so a kind, a [state](state.md) and an integer of one code are three values.
 - `utf8` under `yggdryl.marketdatakind` is a foreign field wearing the name and imports as the text it is; a [state](state.md) column cast into a kind is read again member by member, and a state's code names no kind.
 - The member is not the leaf: `ORDR` files an order and its dated event alike, and `BOOK` a book and a snapshot control, so `MarketKind` is what names the leaf.
+- The batch members follow `TRAD` rather than sitting beside their items, because a code is a wire value: `ORDR` stays `10` and `ORDB` is `22`.
 
 ## Commands
 

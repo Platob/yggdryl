@@ -87,10 +87,13 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   assert.equal(enums.marketKinds.length, 9)
   assert.ok(Object.isFrozen(enums.marketKinds))
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
-  assert.equal(enums.eventColumns.length, 16)
-  assert.equal(enums.marketColumns.length, 27)
-  assert.equal(enums.operationColumns.length, 3)
-  assert.deepEqual(enums.operationColumns, ['tif', 'tradable', 'altids'])
+  assert.equal(enums.eventColumns.length, 15)
+  assert.equal(enums.marketColumns.length, 28)
+  assert.equal(enums.operationColumns.length, 4)
+  assert.deepEqual(enums.operationColumns, ['tif', 'tradable', 'altids', 'accountids'])
+  // When an element last executed is a market fact, never an event's.
+  assert.ok(enums.marketColumns.includes('execunix'))
+  assert.equal(enums.eventColumns.includes('execunix'), false)
   for (const column of ['isincode', 'fxrates', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
     assert.ok(enums.marketColumns.includes(column), column)
   }

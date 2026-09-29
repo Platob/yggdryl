@@ -48,14 +48,21 @@
 //! An absent input answers nothing, so the target stays unfilled; a
 //! condition that does not hold answers nothing the same way. A value the
 //! target's field refuses - an identifier whose check digit does not close,
-//! a spelling a code set does not read - is silence, as one refused
-//! [`FixMsg::set`] is. The cost of silence is a null column; the cost of a
-//! guess is a wrong number nobody can tell from a sent one.
+//! a spelling a code set does not read - is dropped with a deduplicated
+//! warning naming the field. The cost of a dropped value is a null column;
+//! the cost of a guess is a wrong number nobody can tell from a sent one.
+//!
+//! # The pass never refuses the message
+//!
+//! Every step is best effort over a message that already stands: a
+//! restatement, an FX detection or a landing of derived values the rebuild
+//! refuses leaves the message as it was stated, beside a warning naming the
+//! message type and why, and the pass goes on to the next step.
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::iter::{Fuse, FusedIterator};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter::FusedIterator;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::vec;
 
@@ -64,6 +71,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
 use crate::securityid::SecurityIdRegistry;
+use crate::warning::warned;
 use crate::{Error, Result, Scalar, Side, State, Uuid};
 
 use super::msg::FixMsg;
@@ -80,14 +88,21 @@ use super::registry::FixRegistry;
 /// row, typed by the dictionary's own field for the tag - so a derived
 /// value is indistinguishable from a stated one, and a value the field
 /// refuses, such as an identifier whose check digit does not close, is
-/// silence. A declared identifier that cannot spell text is silence too:
-/// it is left out rather than allowed to refuse the message.
-pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+/// dropped with a warning. A declared identifier that cannot spell text is
+/// left out rather than allowed to refuse the message. A step the rebuild
+/// refuses leaves the message as the step found it, beside a warning.
+pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads a child by its tag or its canonical name, and a child
     // stored under an alias is invisible until it has been canonicalized.
     let mut held = msg;
-    super::latest::restate(&mut held)?;
+    if let Err(error) = super::latest::restate(&mut held) {
+        warned!(
+            "FIX message kept as stated: restating it under the dictionary was refused",
+            held.header().msgtype(),
+            "{error}"
+        );
+    }
     enrich_restated(registry, held)
 }
 
@@ -95,24 +110,39 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
 /// restated: a message redated keeps the row it was built with, and what
 /// its new clock can move is a derivation and its identity - never a rule,
 /// which reads the row and not the clock.
-pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
-    held.derive_forex(registry.forex_memo())?;
+    detect_forex(registry, &mut held);
     enrich_detected(held)
 }
 
 /// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
 /// the one settle.
-fn enrich_detected(msg: FixMsg) -> crate::Result<FixMsg> {
+fn enrich_detected(msg: FixMsg) -> FixMsg {
     let mut held = msg;
-    super::native_derivations::fill_all(&mut held)?;
+    super::native_derivations::fill_all(&mut held);
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
     held.settle();
-    Ok(held)
+    held
+}
+
+/// Detects the currency pair `msg`'s symbol names, answering whether
+/// detection moved anything. A detection the rebuild refuses is warned about
+/// and answers that it moved, so the message is settled whole after it.
+fn detect_forex(registry: &FixRegistry, msg: &mut FixMsg) -> bool {
+    msg.derive_forex(registry.forex_memo())
+        .unwrap_or_else(|error| {
+            warned!(
+                "FIX currency pair not detected: writing what Symbol(55) names was refused",
+                msg.header().msgtype(),
+                "{error}"
+            );
+            true
+        })
 }
 
 /// [`enrich_restated`] for a message whose clock alone moved -
@@ -124,14 +154,13 @@ fn enrich_detected(msg: FixMsg) -> crate::Result<FixMsg> {
 /// moves is settled alone, [`FixMsg::settle_clock`]. A message detection or
 /// a rule still answers for - fields a caller wrote without a pass - is
 /// enriched whole.
-pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
-    if held.derive_forex(registry.forex_memo())? || super::native_derivations::lands_anything(&held)
-    {
+    if detect_forex(registry, &mut held) || super::native_derivations::lands_anything(&held) {
         return enrich_detected(held);
     }
     held.settle_clock();
-    Ok(held)
+    held
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -292,7 +321,7 @@ fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
 /// the lifecycle walk can mistake them for successive events. The most
 /// recently recorded message is the retained FIX row; the graph fold unions
 /// the other observations into it and keeps the earliest per-event clocks.
-fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -> Vec<FixMsg> {
+fn merge_session_events(messages: Vec<FixMsg>) -> Vec<FixMsg> {
     let mut positions = HashMap::with_capacity(messages.len().min(4_096));
     let mut merged: Vec<SessionEventObservations> = Vec::with_capacity(messages.len());
 
@@ -318,16 +347,14 @@ fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -
         }
     }
 
-    merged
-        .into_iter()
-        .map(|held| fold_observations(held, failures))
-        .collect()
+    merged.into_iter().map(fold_observations).collect()
 }
 
 /// One session event out of every observation of it: the reference - the
-/// latest recorded - with the others folded in, a fold that fails reported
-/// and passed over.
-fn fold_observations(mut held: SessionEventObservations, failures: &mut VecDeque<Error>) -> FixMsg {
+/// latest recorded - with the others folded in. An observation whose
+/// content the rebuild refuses to merge folds its clocks, its anomalies and
+/// its provenance alone, beside a warning.
+fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     if held.others.is_empty() {
         return held.message;
     }
@@ -356,7 +383,12 @@ fn fold_observations(mut held: SessionEventObservations, failures: &mut VecDeque
                 merged.push(other);
             }
             Err(error) => {
-                failures.push_back(error);
+                warned!(
+                    "FIX observation's content not merged: the rebuild refused it; its clocks and provenance are folded",
+                    other.header().msgtype(),
+                    "{error}"
+                );
+                reference.fold_session_event_facts(&other);
             }
         }
     }
@@ -364,23 +396,52 @@ fn fold_observations(mut held: SessionEventObservations, failures: &mut VecDeque
 }
 
 /// A message stating no `Side(54)` restated with the side of the chain it
-/// follows: the walk joined it to the one live side of its order, and its
-/// cross code already carries that side, so its content states it too - a
-/// row read back, a book folding it, reads the side the walk gave it. A side
-/// the message states always stands, and a chain stating none lends none.
-fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> Result<bool> {
+/// follows, answering whether it was: the walk joined it to the one live
+/// side of its order - where its kind is sided, the side its cross code is
+/// stored under - so its content states it too, and a row read back, a book
+/// folding it, reads the side the walk gave it. A side the message states
+/// always stands, and a chain stating none lends none. A write the rebuild
+/// refuses leaves the side the message stated, `UNKNOWN`, beside a warning.
+fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
     if side == Side::Unknown
         || current.get_side() != Side::Unknown
         || current.get_by_tag(54).is_some_and(|held| !held.is_null())
     {
-        return Ok(false);
+        return false;
     }
     let Some(code) = side.fix_code() else {
-        return Ok(false);
+        return false;
     };
-    current.set_each([(54, Scalar::from(code.to_string()))])?;
-    Ok(true)
+    match current.set_each([(54, Scalar::from(code.to_string()))]) {
+        Ok(_) => true,
+        Err(error) => {
+            warned!(
+                "FIX side left UNKNOWN: writing the side its chain states was refused",
+                current.header().msgtype(),
+                "{error}, inheriting {code} on {}",
+                current.get_crosscode()
+            );
+            false
+        }
+    }
+}
+
+/// The order links `current` takes from its exact predecessor, answering
+/// whether it took any. A write the rebuild refuses leaves the links the
+/// message stated, settled again, beside a warning.
+fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> bool {
+    super::latest::inherit_order_links(current, previous).unwrap_or_else(|error| {
+        warned!(
+            "FIX order links not inherited: writing its predecessor's was refused",
+            current.header().msgtype(),
+            "{error}, following {}",
+            previous.get_curruuid()
+        );
+        // A refusal after one link landed leaves the message unsettled.
+        current.settle();
+        false
+    })
 }
 
 /// One FIX message while the generic event walk selects its exact
@@ -390,15 +451,11 @@ fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> Result<bool> {
 #[derive(Clone)]
 struct LifecycleMessage {
     message: FixMsg,
-    failure: Option<SmolStr>,
 }
 
 impl From<FixMsg> for LifecycleMessage {
     fn from(message: FixMsg) -> Self {
-        Self {
-            message,
-            failure: None,
-        }
+        Self { message }
     }
 }
 
@@ -461,43 +518,37 @@ impl Element for LifecycleMessage {
 
     fn with_previous(self, previous: &Self) -> Option<Self> {
         let mut message = self.message;
-        let mut failure = self.failure;
         if message.should_merge_session_event(&previous.message) {
-            return match message.clone().merge_session_event(&previous.message) {
-                Ok(message) => Some(Self { message, failure }),
-                Err(error) => {
-                    if failure.is_none() {
-                        failure = Some(format_smolstr!("{error}"));
-                    }
-                    Some(Self { message, failure })
-                }
-            };
+            // An observation the rebuild refuses to merge is walked as it
+            // was stated: the chain still reads it, and so does the caller.
+            return Some(Self {
+                message: message
+                    .clone()
+                    .merge_session_event(&previous.message)
+                    .unwrap_or_else(|error| {
+                        warned!(
+                            "FIX observation walked unmerged: merging it into the one it repeats was refused",
+                            message.header().msgtype(),
+                            "{error}, repeating {}",
+                            previous.message.get_curruuid()
+                        );
+                        message
+                    }),
+            });
         }
-        let inherited = if failure.is_none() {
-            match super::latest::inherit_order_links(&mut message, &previous.message)
-                .and_then(|links| Ok(inherit_side(&mut message, &previous.message)? || links))
-            {
-                Ok(changed) => changed,
-                Err(error) => {
-                    failure = Some(format_smolstr!("{error}"));
-                    false
-                }
-            }
-        } else {
-            false
-        };
+        let links = inherit_order_links(&mut message, &previous.message);
+        let inherited = inherit_side(&mut message, &previous.message) || links;
         let fallback = inherited.then(|| message.clone());
         let message = match message.with_previous(&previous.message) {
             Some(message) => message,
             None => fallback?,
         };
-        Some(Self { message, failure })
+        Some(Self { message })
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
         Some(Self {
             message: self.message.merge_with(&other.message)?,
-            failure: self.failure.or_else(|| other.failure.clone()),
         })
     }
 }
@@ -506,7 +557,6 @@ impl Event for LifecycleMessage {
     fn restating(self, live: &Self) -> Self {
         Self {
             message: self.message.restating(&live.message),
-            failure: self.failure.or_else(|| live.failure.clone()),
         }
     }
 
@@ -544,14 +594,6 @@ impl Event for LifecycleMessage {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.message.set_creaunix(unix);
-    }
-
-    fn get_execunix(&self) -> Option<i64> {
-        self.message.get_execunix()
-    }
-
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.message.set_execunix(unix);
     }
 
     fn get_recdunix(&self) -> Option<i64> {
@@ -691,8 +733,13 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Intake<I> {
 /// a bucket already walked is walked where it arrives, as any late element
 /// is. What is held is the messages of the hours not yet walked - two of
 /// them for a source in order - never the stream.
+///
+/// An item the source refused is excluded with a warning; a source failure
+/// ends the reading, every bucket still held is walked, and the failure
+/// waits for the walk to yield them.
 struct Hourly<I> {
-    source: Fuse<I>,
+    /// The source still read: none once it ended or failed.
+    source: Option<I>,
     /// The session events not yet walked, every observation of each, by the
     /// epoch hour of its first observation.
     buckets: BTreeMap<i64, Vec<SessionEventObservations>>,
@@ -702,8 +749,9 @@ struct Hourly<I> {
     position: Option<i64>,
     /// The bucket being walked, merged and sorted.
     ready: vec::IntoIter<FixMsg>,
-    /// What the source could not read, reported by the walk as it goes.
-    failures: Arc<Mutex<VecDeque<Error>>>,
+    /// The source failure that ended the reading, shared with the walk,
+    /// which yields it after the messages read before it.
+    ended: Arc<Mutex<Option<Error>>>,
 }
 
 impl<I: Iterator<Item = Result<FixMsg>>> Hourly<I> {
@@ -727,9 +775,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
             if let Some(message) = self.ready.next() {
                 return Some(message);
             }
-            let read = self.source.next();
-            let done = read.is_none();
-            match read {
+            match self.source.as_mut().and_then(Iterator::next) {
                 Some(Ok(message)) => {
                     let hour = message.get_currunix().div_euclid(HOUR_NS);
                     self.position = Some(hour);
@@ -754,13 +800,15 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
                         key,
                     });
                 }
-                Some(Err(error)) => self
-                    .failures
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push_back(error),
-                None => {}
+                Some(Err(error)) => {
+                    if let Some(error) = super::messages::source_failure(error, UNREAD) {
+                        *self.ended.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
+                        self.source = None;
+                    }
+                }
+                None => self.source = None,
             }
+            let done = self.source.is_none();
             let Some(hour) = self.walkable(done) else {
                 if done {
                     return None;
@@ -768,15 +816,13 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
                 continue;
             };
             let bucket = self.buckets.remove(&hour).unwrap_or_default();
-            let mut failures = self.failures.lock().unwrap_or_else(PoisonError::into_inner);
             let mut messages = Vec::with_capacity(bucket.len());
             for observations in bucket {
                 if let Some(key) = &observations.key {
                     self.held.remove(key);
                 }
-                messages.push(fold_observations(observations, &mut failures));
+                messages.push(fold_observations(observations));
             }
-            drop(failures);
             messages.sort_by(order);
             self.ready = messages.into_iter();
         }
@@ -851,19 +897,27 @@ impl Window {
     }
 }
 
-/// A capture walked in event-time order. Collected whole, its intake
-/// failures are reported before its messages, because sorting consumes the
-/// capture first; read sorted, one hour at a time, each is reported as the
-/// walk reaches it.
+/// What the walk warns about an item its source could not read, excluding
+/// it.
+const UNREAD: &str = "FIX message excluded from the lifecycle: its stream could not read it";
+
+/// A capture walked in event-time order.
+///
+/// An item the source refused is excluded with a warning and never queued.
+/// A source failure ends the intake: the messages read before it are
+/// walked and yielded, then the failure, once - collected whole, the
+/// capture is read up to it before the walk; read sorted, one hour at a
+/// time, the hours still held are walked once it is met.
 pub(super) struct Walked<I> {
     walk: EventIterator<LifecycleMessage, Prepared<I>>,
     /// What the walk already yielded within the codec's window.
     window: Window,
-    /// What the whole capture's intake could not read, in its order.
-    failures: VecDeque<Error>,
-    /// What an hourly intake could not read, found as the walk reads on:
-    /// the one queue shared with it, and allocated only for that intake.
-    reading: Option<Arc<Mutex<VecDeque<Error>>>>,
+    /// The source failure that ended a whole capture's intake.
+    failure: Option<Error>,
+    /// The source failure that ended an hourly intake, found as the walk
+    /// reads on: the one slot shared with it, and allocated only for that
+    /// intake.
+    reading: Option<Arc<Mutex<Option<Error>>>>,
 }
 
 impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
@@ -872,28 +926,33 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
     /// held one hour at a time ([`Hourly`]); a positive `window_ns` yields
     /// each identity once within that span of event time ([`Window`]).
     pub(super) fn new(source: I, snapshot_ns: i64, sorted: bool, window_ns: i64) -> Self {
-        let mut failures = VecDeque::new();
+        let mut failure = None;
         let mut reading = None;
         let intake = if sorted {
-            let shared = Arc::new(Mutex::new(VecDeque::new()));
+            let shared = Arc::new(Mutex::new(None));
             reading = Some(Arc::clone(&shared));
             Intake::Hourly(Box::new(Hourly {
-                source: source.fuse(),
+                source: Some(source),
                 buckets: BTreeMap::new(),
                 held: HashMap::new(),
                 position: None,
                 ready: Vec::new().into_iter(),
-                failures: shared,
+                ended: shared,
             }))
         } else {
             let mut messages = Vec::new();
             for held in source {
                 match held {
                     Ok(message) => messages.push(message),
-                    Err(error) => failures.push_back(error),
+                    Err(error) => {
+                        failure = super::messages::source_failure(error, UNREAD);
+                        if failure.is_some() {
+                            break;
+                        }
+                    }
                 }
             }
-            let mut messages = merge_session_events(messages, &mut failures);
+            let mut messages = merge_session_events(messages);
             messages.sort_by(order);
             Intake::Whole(messages.into_iter())
         };
@@ -902,18 +961,19 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
                 .with_snapshot_ns(snapshot_ns)
                 .with_placing(true),
             window: Window::new(window_ns),
-            failures,
+            failure,
             reading,
         }
     }
 
+    /// The source failure that ended the intake, taken once.
     fn failure(&mut self) -> Option<Error> {
-        self.failures.pop_front().or_else(|| {
+        self.failure.take().or_else(|| {
             self.reading
                 .as_ref()?
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .pop_front()
+                .take()
         })
     }
 }
@@ -923,19 +983,10 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Walked<I> {
 
     fn next(&mut self) -> Option<Result<FixMsg>> {
         loop {
-            if let Some(error) = self.failure() {
-                return Some(Err(error));
-            }
             let Some(held) = self.walk.next() else {
-                // Reading the source's end can find a last failure.
+                // Every message read before the source failed is out.
                 return self.failure().map(Err);
             };
-            if let Some(reason) = held.failure {
-                return Some(Err(Error::InvalidRecord {
-                    path: "fix.lifecycle".into(),
-                    reason,
-                }));
-            }
             // The walk has already moved on it; only its copy goes.
             if self.window.repeats(&held.message) {
                 continue;
@@ -963,13 +1014,9 @@ pub mod internals {
     use super::FixMsg;
 
     /// [`FixMsg::dated_by_transaction`] through the whole enriching pass.
-    ///
-    /// # Errors
-    ///
-    /// Returns the enriching pass's refusal.
-    pub fn dated_by_transaction_whole(mut msg: FixMsg) -> crate::Result<FixMsg> {
+    pub fn dated_by_transaction_whole(mut msg: FixMsg) -> FixMsg {
         if !msg.redate_by_transaction() {
-            return Ok(msg);
+            return msg;
         }
         let registry = Arc::clone(msg.registry());
         super::enrich_restated(&registry, msg)

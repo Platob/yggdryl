@@ -15,9 +15,10 @@ event (identity, clocks, state, side, price...) over a content row typed by the
 dictionary. Every message projects onto one fixed row, `fix_schema(registry)`,
 decided from the dictionary alone, so a whole capture streams as Arrow batches.
 Each message states its `msgcat` - the `MarketDataKind` its type files under
-(`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, ...) - and the parse splits what it
-reports once: a filling execution report adds its `EXEC` message, a trade one
-execution per side, a two-sided quote a `BUY` and a `SELL` quote.
+(`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, the batches `ORDB`, `QUOB`, `TRDB`,
+...) - and the parse splits what it reports once: a filling execution report
+adds its `EXEC` message, a trade one execution per side, a two-sided quote a
+`BUY` and a `SELL` quote, a batch one message per entry.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -111,18 +112,19 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
    it. One message is one leaf - an order, a one-sided quote, an execution -
-   and a `W`/`X` message one per entry; a trade and a two-sided quote reach
-   the book as the messages their parse split off, never twice.
-   `book_arrow_reader` is strict - it refuses out-of-order input - and neither
-   door runs the lifecycle for you. For a capture already landed as FIX rows,
+   and a `W`/`X` message one per entry; a trade, a batch and a two-sided quote
+   reach the book as the messages their parse split off, never twice.
+   `book_arrow_reader` does not sort - an operation dated before its book is
+   left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
    again) and sorts its leaves; it runs no lifecycle either, and a
    `lifecycle_arrow_reader` row lacks what the walk settled (`prevpx`, a
    carried side), so hand walked messages, not rows.
 7. Pin `default_sending_time` for reproducible reads. A frame stating no
    `SendingTime(52)` whose line carries no clock is dated by one UTC-now read,
-   and the clock feeds `curruuid`; a pinned instant (or a row-header `mtime`
-   capture) makes two reads identical.
+   and the clock feeds `curruuid`, as does a `SendingTime(52)` naming no
+   instant; a pinned instant (or a row-header `mtime` capture) makes two reads
+   identical.
 8. A column is found by name, never position: `schema.index_of("msgtype")`, or
    `fix_column_of(&schema, 35)` in Rust. Columns are the dictionary's folded
    names; the tag stays on each column's `FIX:tag`. Two captures under one
@@ -175,6 +177,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 13. The derived fills and the retired-field restatements are native code: a
     registry carries no rule of its own, and nothing in `FIX:` metadata
     changes how a field is filled.
+14. Data is never an error; only a source failure is. A parse, the market
+    projection, the lifecycle and the book walk default what a message states
+    that they cannot read - a value that will not type is null beside a
+    `FixAnomaly`, a clock naming no instant is unstated - or leave the item
+    out, each with a deduplicated warning: Rust `log` at `WARN`, Python
+    `logging` under `yggdryl.<module path>`, standard error in JavaScript and
+    the CLI. Only a reader, store or runtime that could not answer is an error
+    item, yielded after the messages before it, and it ends the stream.
 
 ## Pitfalls
 
@@ -185,8 +195,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   for a sentence, two for two frames on one line; unpack it
   (`message, = codec.parse_line(b)` / `const [m] = codec.parseLine(buf)`).
   `parse_fix_line` refuses a body holding a second frame.
-- An empty line through `parse_lines` is an error *item*, not a stream end:
-  iterate and handle per item (Rust `Result`, Python raises at `next`).
+- An empty line, a frame that builds no message and a clock naming no instant
+  are no error items: `parse_lines` leaves the line out - or reads the message
+  with its clock unstated - beside a warning, and the stream reads on. Only
+  `parse_line(b"")`, the one-line door, still refuses no bytes at all.
 - Names are folded (ASCII case, `_`, `-`, space dropped): `MsgType`,
   `msg_type`, `MSG-TYPE` are one name; `Größe` and `GRÖSSE` are two. Every
   name lookup also reads four word pairs either way inside the folded name -
@@ -208,9 +220,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   44...), the market facts (`side`, `price`...) and the crate's own columns are
   typed, but every other key is unmapped - it lands in `metadata` under its raw
   spelling: no code names, no groups, no `fixentries`.
-- A sided message's `crosscode` carries its side (`BUY:A1`); a derived
-  execution is keyed by its fill (`BUY:ExecID=E-1`). Count messages after the
+- An order's, a quote's or an execution's `crosscode` carries its side
+  (`BUY:A1`) - `msgcat` `ORDR`, `QUOT` or `EXEC`; every other message keeps
+  its code as spelled, whatever side it states. A derived execution is keyed
+  by its fill (`BUY:ExecID=E-1`). Count messages after the
   parse, not lines: one filling report is two messages.
+- A message's parties are its `accountids` - each `PartyID(448)` under its
+  `PartyRole(452)`'s upper-cased name (`EXECUTINGTRADER`, `CUSTOMERACCOUNT`),
+  `PARTY` where no role is stated, the first party of a role standing - and
+  read-only: write the `Parties` occurrence, not the map. `Account(1)` is no
+  party and stays in `metadata`. Regulatory trade ids
+  (`NoRegulatoryTradeIDs(1907)`) are `altids` under `REGTRADEID`, `TVTIC`, ...
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
   a RIC's `EURUSD=` - states the derived `FOREX` security identifier `EUR/USD`
   (the `forexcode` column); a pair a row states is stated, never re-derived.
@@ -237,7 +257,7 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Store layout and snapshots: https://platob.github.io/yggdryl/fix/store/
 - `FixMsg` holders, accessors, writes: https://platob.github.io/yggdryl/fix/message/
 - Arrow doors, pins, market books: https://platob.github.io/yggdryl/fix/arrow/
-- Capture, fixed row, clocks: https://platob.github.io/yggdryl/fix/capture/
+- Capture, fixed row, clocks, warnings: https://platob.github.io/yggdryl/fix/capture/
 - Lifecycle walk: https://platob.github.io/yggdryl/fix/lifecycle/
 - CLI: https://platob.github.io/yggdryl/fix/cli/
 - Sibling skills: `yggdryl-market-data` (the market data and books FIX turns

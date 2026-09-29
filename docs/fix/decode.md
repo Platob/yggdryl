@@ -266,8 +266,10 @@ A payload that was there and would not parse - a malformed document - is the one
 case that still answers a message with nothing in it, named `unknown`:
 `parse_text_line` and the batch reader answer it rather than fail, because
 malformed syntax must never fail the batch it arrives in, while `parse_line` hands
-the refusal back. A payload that was not there at all answers no message, and no
-bytes at all is the one typed refusal, [not a row](capture.md#lines-are-a-stream).
+the refusal back and `parse_lines` leaves the line out with a [warning](capture.md#warnings).
+A payload that was not there at all answers no message, and no bytes at all is the
+one typed refusal, [not a row](capture.md#lines-are-a-stream): `parse_line` answers
+it, and a stream leaves it out with a warning.
 
 ## Read a frame
 
@@ -301,7 +303,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 - A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired - the committed capture's cancel reject states `#NOTRDREGTIMESTAMPS=4` and indexes five occurrences, and reads as five occurrences under a counter of four, the count the entries state being the one the group holds - and an ambiguous group context needs a message definition to select the layout.
 - A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
-- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is silence rather than an error - except a stated clock - `SendingTime(52)` and `TransactTime(60)`, the two the registry types as instants, and `currunix` and `creaunix`, the two the identity is settled against - whose unreadable value is a located error item. A `TrdRegTimestamp(769)` the registry seeds nothing for is an ordinary value under that rule: where a dictionary types it as an instant it can [date the message](capture.md#the-official-clock-dates-the-message) and an unreadable one is a null that dates nothing, never an error item.
+- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is an anomaly and a [warning](capture.md#warnings) rather than an error, a clock included: `SendingTime(52)` and `TransactTime(60)`, the two the registry types as instants, are left unstated when their text names no instant, and the message is dated as one stating none is. A `TrdRegTimestamp(769)` the registry seeds nothing for is an ordinary value under that rule: where a dictionary types it as an instant it can [date the message](capture.md#the-official-clock-dates-the-message) and an unreadable one is a null that dates nothing.
 - Every message states a `BeginString(8)` on its [typed header](message.md#typed-tags): what the line itself said, else the crate's own `FIX.4.4`, so a bridge row and the row a JSON document is say which FIX they were read as exactly as a frame does. A read never rewrites what arrived.
 - A key the dictionary does not name is looked for in the message it arrived in before it is kept unexplained: the message root's own children for a flat key, the occurrence's declared members for a packed one. A dialect that spelled one name over two tags has named neither of them in the dictionary, and this is where its own grammar says which of them a key means.
 - `XmlData(213)` is read into the line that carried it, whichever of the two things a bridge writes into it: a row of its own pairs, or the FIXML the tag is named for. Either becomes real fields resolved to real tags rather than one opaque value, a nested element's attributes flattening the way a packed occurrence already does. The field still holds the bytes it arrived as and the wire re-emits them exactly, because a reading of a value is not a second arrival; a document that will not parse fills nothing and the value stays whole.

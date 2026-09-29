@@ -2220,12 +2220,21 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     // FIX means local time by stating no offset, which an instant cannot
     // hold, so that reads as nothing rather than as a guessed UTC. It is the
     // same declared datatype rule that rejects a dateless `UTCTimestamp`.
-    // The latter is a critical event clock, so its refusal fails intake.
+    // The latter is an event clock, so it is left unstated beside the
+    // anomaly naming what arrived.
     assert_eq!(latest("07:39:12", 1079), Scalar::Null);
-    let refused = reader
+    let unstated = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=10:15:30.000|10=0|")
-        .unwrap_err();
-    assert!(refused.to_string().contains("transacttime"));
+        .expect("a message");
+    assert!(unstated.by_tag(60).map_or(true, |held| held.is_null()));
+    assert!(
+        unstated
+            .anomalies()
+            .iter()
+            .any(|anomaly| anomaly.to_string().starts_with("transacttime")),
+        "{:?}",
+        unstated.anomalies()
+    );
 
     // TZTransactTime(1132) is a TZTimestamp: it states the zone, so writing
     // `Z` over it would spell one twice and read as nothing.
@@ -2899,7 +2908,7 @@ mod clock_intake_tests {
     };
     use yggdryl::internals::fix_schema::clock_datatype;
     use yggdryl::text::{TextBytes, TextLine};
-    use yggdryl::{DataType, Error, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone};
+    use yggdryl::{DataType, FixCodec, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone};
 
     fn clock(value: i64) -> Scalar {
         Scalar::datetime64(value, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
@@ -3163,40 +3172,43 @@ mod clock_intake_tests {
     }
 
     #[test]
-    fn malformed_root_invariants_are_items_not_recovered_messages() {
+    fn a_clock_that_names_no_instant_is_left_unstated_beside_an_anomaly() {
         let codec = codec();
-        // The two clocks: a crate column a spelling will not type is
-        // silence, the way every other typed fact is.
+        // The two clocks: a text naming no instant is data, so the clock is
+        // left unstated - the message dated as one stating none is - and
+        // the text is kept as an anomaly, the way every other typed fact
+        // that will not type is null.
         for tag in [52, 60] {
             let body = format!("8=FIX.4.4|35=D|{tag}=invalid|10=0|");
-            assert!(
-                matches!(
-                    codec.parse_fix_line(body.as_bytes()),
-                    Err(Error::InvalidRecord { .. })
-                ),
-                "tag {tag}"
-            );
+            let unstated = |message: &FixMsg| {
+                assert!(
+                    message
+                        .anomalies()
+                        .iter()
+                        .any(|anomaly| anomaly.to_string().contains("invalid")),
+                    "tag {tag}: {:?}",
+                    message.anomalies()
+                );
+            };
+            let message = codec.parse_fix_line(body.as_bytes()).expect("a message");
+            unstated(&message);
+            assert!(!message.header().stated_sendingtime(), "tag {tag}");
             let mut messages = codec.parse_line(body.as_bytes()).unwrap();
-            assert!(
-                matches!(messages.next(), Some(Err(Error::InvalidRecord { .. }))),
-                "tag {tag}"
-            );
+            unstated(&messages.next().expect("an item").expect("a message"));
             assert!(messages.next().is_none());
             let mut captured = codec.parse_text_line(&text_line(body.as_bytes())).unwrap();
-            assert!(
-                matches!(captured.next(), Some(Err(Error::InvalidRecord { .. }))),
-                "tag {tag}"
-            );
+            unstated(&captured.next().expect("an item").expect("a message"));
             assert!(captured.next().is_none());
         }
-        let mut multiple = codec
+        let multiple = codec
             .parse_line(b"8=FIX.4.4|35=D|52=bad|10=0|8=FIX.4.4|35=D|10=0|")
-            .unwrap();
-        assert!(multiple.next().unwrap().is_err());
-        assert!(multiple.next().is_none());
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .expect("both frames stand");
+        assert_eq!(multiple.len(), 2);
         let xml = text_line(br#"<FIXML><Order SendingTime="bad"/></FIXML>"#);
         let mut messages = codec.parse_text_line(&xml).unwrap();
-        assert!(messages.next().unwrap().is_err());
+        assert!(messages.next().unwrap().is_ok());
         assert!(messages.next().is_none());
     }
 
@@ -3259,13 +3271,28 @@ mod clock_intake_tests {
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=|").unwrap();
         assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(!absent.header().stated_sendingtime());
+        // With no null spellings, an empty clock is a failed conversion
+        // rather than a declared absence: unstated all the same, since a
+        // clock is never cleaned into another spelling, but kept beside the
+        // anomaly naming what arrived - and so is one carrying a byte no
+        // clock spells.
         let literal = codec.with_null_values::<[&str; 0], &str>([]);
-        assert!(literal.parse_fix_line(b"8=FIX.4.4|35=D|52=|").is_err());
         for body in [
+            &b"8=FIX.4.4|35=D|52=|"[..],
             &b"8=FIX.4.4|35=D|52=20260102-10:15:30\xff|"[..],
             &b"8=FIX.4.4|35=D|52=20260102-10:15:30\0|"[..],
         ] {
-            assert!(literal.parse_fix_line(body).is_err());
+            let failed = literal.parse_fix_line(body).expect("a message");
+            assert_eq!(failed.by_tag(52).unwrap(), clock(17));
+            assert!(!failed.header().stated_sendingtime());
+            assert!(
+                failed
+                    .anomalies()
+                    .iter()
+                    .any(|anomaly| anomaly.to_string().starts_with("sendingtime")),
+                "{:?}",
+                failed.anomalies()
+            );
         }
         let ordinary = literal
             .parse_fix_line(b"8=FIX.4.4|35=D|90001=bad\0value|")
@@ -4224,6 +4251,8 @@ mod threads {
         );
     }
 
+    /// The source's own failure is yielded after every message read before
+    /// it, and ends the stream: nothing after a reader that failed is read.
     #[test]
     fn arrow_parse_pool_keeps_source_errors_at_their_input_position() {
         let codec = super::fixed_codec(super::committed_registry()).with_threads(3);
@@ -4261,24 +4290,7 @@ mod threads {
                 .to_string()
                 .contains("ordered source failure")
         );
-        assert_eq!(
-            read.next()
-                .unwrap()
-                .unwrap()
-                .get_by_tag(11)
-                .unwrap()
-                .as_str(),
-            Some("AFTER")
-        );
-        assert!(
-            read.next()
-                .unwrap()
-                .unwrap_err()
-                .to_string()
-                .contains("different batch schema")
-        );
-        assert!(read.next().unwrap().is_ok());
-        assert!(read.next().is_none());
+        assert!(read.next().is_none(), "the failure ends the stream");
         assert!(read.next().is_none());
 
         let mut output = codec.parse_text_arrow_reader(source()).unwrap();

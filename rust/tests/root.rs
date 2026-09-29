@@ -180,6 +180,9 @@ mod variant;
 mod version;
 #[path = "root/vocabulary.rs"]
 mod vocabulary;
+#[cfg(feature = "internals")]
+#[path = "root/warning.rs"]
+mod warning;
 #[path = "root/wkb.rs"]
 mod wkb;
 #[path = "root/zlib.rs"]

@@ -65,7 +65,11 @@ The native core narrates its work through Rust's `log` facade, so a Rust caller
 installs any `log` implementation. Python bridges it into `logging` under the
 package's own logger: a record's name is the Rust module path it came from, so
 `yggdryl.iceberg.table` and its siblings all hang off `yggdryl` and one
-`setLevel` is the whole switch. JavaScript has no bridge.
+`setLevel` is the whole switch. The Node addon writes warnings to standard
+error as `yggdryl: <message>` when it loads, unless the process already
+installed a logger, and the `yggdryl` command writes them to standard error
+prefixed `!`. What a data door passes over is said once per kind and then
+counted ([Warnings](fix/capture.md#warnings)).
 
 Debug is an operation starting; info is one done, carrying the counts a monitor
 watches. Nothing is reported per row, per batch, or per file: a commit is the

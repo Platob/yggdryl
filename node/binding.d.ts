@@ -3095,8 +3095,8 @@ export type StateName = keyof typeof State
  * What kind of market data an element is: FIX's MsgCat code set, each
  * member's four-letter name under the `int32` code a `marketdatakind`
  * column stores - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a
- * trade `TRAD`, a book `BOOK`, and `UNKN` for a type the dictionary files
- * under none.
+ * trade `TRAD`, a book `BOOK`, the batches `ORDB`, `QUOB`, `EXEB` and
+ * `TRDB`, and `UNKN` for a type the dictionary files under none.
  */
 export declare const MarketDataKind: Readonly<{
   UNKN: 0
@@ -3121,6 +3121,10 @@ export declare const MarketDataKind: Readonly<{
   SETL: 19
   STRM: 20
   TRAD: 21
+  ORDB: 22
+  QUOB: 23
+  EXEB: 24
+  TRDB: 25
 }>
 
 /** The stored name of one market data kind. */
@@ -3195,18 +3199,21 @@ export declare const enums: {
   readonly marketViews: readonly string[]
   /** Every `BookRef.action` spelling. */
   readonly mdUpdateActions: readonly string[]
-  /** The sixteen event column names, in schema order. */
+  /** The fifteen event column names, in schema order. */
   readonly eventColumns: readonly string[]
   /**
-   * The twenty-seven market column names, in schema order: `price`,
+   * The twenty-eight market column names, in schema order: `price`,
    * `currency`, `quantity`, `unit`, `side`, `securityids`, `isincode`,
-   * `cficode`, `miccode`, `lastpx`, `lastqty`, `avgpx`, `cumqty`,
-   * `leavesqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `bidpx`,
-   * `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`,
-   * `metadata`.
+   * `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`,
+   * `cumqty`, `leavesqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`,
+   * `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`,
+   * `ticker`, `metadata`.
    */
   readonly marketColumns: readonly string[]
-  /** The three operation column names, in schema order: `tif`, `tradable`, `altids`. */
+  /**
+   * The four operation column names, in schema order: `tif`, `tradable`,
+   * `altids`, `accountids`.
+   */
   readonly operationColumns: readonly string[]
 }
 /** Generic format-inferred byte codec. */

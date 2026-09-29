@@ -1592,6 +1592,14 @@ impl JsFixMsg {
         idmap_view(self.inner.get_altids())
     }
 
+    /// The accounts and parties the message names - each `Parties`
+    /// occurrence's `PartyID` under its `PartyRole`'s name, such as
+    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - key to value, in key order.
+    #[napi(getter, ts_return_type = "Record<string, string>")]
+    pub fn accountids(&self) -> BTreeMap<String, String> {
+        idmap_view(self.inner.get_accountids())
+    }
+
     /// The price stated, as decimal text, or `null` where none is. Never a
     /// last executed price, which `lastpx` answers.
     #[napi(getter)]
@@ -2098,10 +2106,11 @@ const SOH: u8 = 0x01;
 /// stream of lines parsed, records parsed, messages filled or stamped, a
 /// batch read back - so a message stream has one shape at this boundary
 /// whatever made it. Nothing is collected: the core iterator is the stream,
-/// and a JavaScript iterable behind it is pulled one item at a time. A line
-/// the reader refuses throws where it is met and the stream goes on past it;
-/// a failure in the iterable behind the stream throws and ends it. The loader
-/// supplies `Symbol.iterator` over `next`.
+/// and a JavaScript iterable behind it is pulled one item at a time. What a
+/// line or a message states that cannot stand is passed over with a warning
+/// on standard error, never thrown; a failure in the iterable behind the
+/// stream throws and ends it. The loader supplies `Symbol.iterator` over
+/// `next`.
 #[napi(js_name = "FixMessages")]
 pub struct JsFixMessages {
     inner: Box<dyn Iterator<Item = yggdryl::Result<CoreFixMsg>>>,
@@ -2137,9 +2146,8 @@ impl JsFixMessages {
 impl JsFixMessages {
     /// Advance the stream: the next message, or `null` at its end.
     ///
-    /// A line the reader refused throws here and the stream continues on
-    /// the next call; a failure behind the stream throws once, in place of
-    /// the end.
+    /// A line the reader passed over is no item; a failure behind the stream
+    /// throws once, in place of the end.
     #[allow(clippy::should_implement_trait)] // JavaScript's iterator adapter needs a throwing next().
     #[napi(ts_return_type = "IteratorResult<FixMsg>")]
     pub fn next(&mut self) -> Result<Option<JsFixMsg>> {
@@ -2584,8 +2592,8 @@ impl JsFixCodec {
     ///
     /// The loader turns the iterable into the pull function this takes, so
     /// a file of ten million lines costs one line at a time. A line that is
-    /// not a row at all throws where it is met and the stream continues past
-    /// it; an item that is not bytes throws and ends it.
+    /// not a row at all is passed over with a warning and the stream reads
+    /// on; an item that is not bytes throws and ends it.
     #[napi(js_name = "_parseLinesNative", skip_typescript)]
     pub fn parse_lines_native(
         &self,

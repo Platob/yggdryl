@@ -17710,11 +17710,11 @@ ulbridge[100]:0.field.recdunix	"2026-08-14T14:46:40.350000000Z"
 ulbridge[100]:0.field.creaunix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[100]:0.field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 ulbridge[100]:0.field.transacttime	"2026-08-14T12:46:39.743016000Z"
-ulbridge[100]:0.field.curruuid	"01a0004f-6a7f-7000-8a36-c4af2aec9aab"
-ulbridge[100]:0.field.crossuuid	"00000000-0000-8000-b40d-34aac405008a"
-ulbridge[100]:0.field.crosscode	"BUY:00079132557GLXC0.9"
+ulbridge[100]:0.field.curruuid	"01a0004f-6a7f-7000-a1d1-296b00cd18c1"
+ulbridge[100]:0.field.crossuuid	"00000000-0000-8000-8607-a89973d3e25e"
+ulbridge[100]:0.field.crosscode	"00079132557GLXC0.9"
 ulbridge[100]:0.field.currhashcode	3547934104631505044
-ulbridge[100]:0.field.crosshashcode	3750711972707238026
+ulbridge[100]:0.field.crosshashcode	9657873302946046558
 ulbridge[100]:0.field.srcuuids	["01a000bd-49de-7065-9618-175b7cafde53"]
 ulbridge[100]:0.field.beginstring	"FIX.4.4"
 ulbridge[100]:0.field.msgcat	"UNKN"
@@ -17760,11 +17760,11 @@ ulbridge[101]:0.field.currunix	"2026-08-14T14:46:40.352000000Z"
 ulbridge[101]:0.field.recdunix	"2026-08-14T14:46:40.352000000Z"
 ulbridge[101]:0.field.creaunix	"2026-08-14T14:46:40.352000000Z"
 ulbridge[101]:0.field.transacttime	"2026-08-14T12:46:40.001000000Z"
-ulbridge[101]:0.field.curruuid	"01a000bd-49e0-7000-a60d-2b718f3a81c7"
-ulbridge[101]:0.field.crossuuid	"00000000-0000-8000-90a8-73a77f728670"
-ulbridge[101]:0.field.crosscode	"BUY:XM8NNITE383"
+ulbridge[101]:0.field.curruuid	"01a000bd-49e0-7000-be7f-24f073e9ba90"
+ulbridge[101]:0.field.crossuuid	"00000000-0000-8000-b15f-99df69f35990"
+ulbridge[101]:0.field.crosscode	"XM8NNITE383"
 ulbridge[101]:0.field.currhashcode	15420718308985245989
-ulbridge[101]:0.field.crosshashcode	5812022482356569712
+ulbridge[101]:0.field.crosshashcode	3557731415480293776
 ulbridge[101]:0.field.srcuuids	["01a000bd-49e0-7066-8f3b-e2f18fa532cb"]
 ulbridge[101]:0.field.beginstring	"FIX.4.4"
 ulbridge[101]:0.field.msgcat	"UNKN"
@@ -18513,7 +18513,192 @@ ulbridge[111]:0.field.xmldata	"QUdHUkVTU09SSU5ESUNBVE9SPUFnZ3Jlc3NvcnxBUFBMVkVSS
 ulbridge[111]:0.field.checksum	"087"
 ulbridge[111]:0.field.metadata	{"client.clientid":"LIFC","client.source":"TRTN","client.symbol":"XAU","client.trader":"trader1","client.tradingplatform":"MMDF","env":"PROD","hedgetradetype":"spot","main.uti":"5493000EXAMPLE00000M","metal.loco":"LN","nohedgegroups":"{\\"nohedgegroup\\":{\\"hedgecurrency\\":\\"XAU\\",\\"hedgeprice\\":\\"4381.525\\",\\"hedgeqty\\":\\"161\\",\\"hedgesettldate\\":\\"20260818\\",\\"hedgeside\\":\\"takerbuys\\",\\"hedgevenuetransid\\":\\"V8FIS17K343KXE3JJJM328200D8ZBED\\"}}","pluginoriginator":"TRTN_FX_TradeCapture","pluginowner":"TRTN_FX_TradeCapture","trnoudfgroup":"{\\"trnoudfgroup\\":{\\"trudfname\\":\\"PM_Location\\",\\"trudfsequencenumber\\":\\"0\\",\\"trudfvalue\\":\\"LONDON\\"}}","trsourceofdata":"11","ulfromsessionname":"TRTN_FX_TradeCapture","ultosessionname":"ULMSG_BROKER_TO_POSTTRADE","unresolvedrouting":"yes","upi":"QZ48QKHD7TRK"}
 ulbridge[111]:0.field.fixentries	{"109:clientid":"LIFC","1128:applverid":"8","1907:regulatorytradeids":"[{\\"0:tradeidtype\\":\\"reporting-tracking-number\\",\\"1003:tradeid\\":\\"5493000EXAMPLE00000R\\"}]","2489:packageid":"4528370608","552:trdcaprptsidegrp":"[{\\"11:clordid\\":\\"NOREF\\",\\"453:parties\\":[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"DEFAULT\\",\\"452:partyrole\\":\\"72\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"5493000EXAMPLE00000H\\"},{\\"523:partysubid\\":\\"5493000EXAMPLE00000L\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"LFZA\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLEBK\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"MMDF\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YUCC\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLECO\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"11\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"TRADER ONE\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"122\\"}]}]","555:trdinstrmtleggrp":"[{\\"0:deltaleg\\":\\"-0.3037\\",\\"0:legcutzone\\":\\"USNYC\\",\\"0:legisincode\\":\\"EZN11TD1F7K3\\",\\"0:leglastspotrate\\":\\"4381.525\\",\\"0:legpremiumbasis\\":\\"3\\",\\"0:legquotebasis\\":\\"3\\",\\"0:optionstrategy\\":\\"1\\",\\"0:premiumcurrency\\":\\"USD\\",\\"0:premiumsettlementdate\\":\\"20260818\\",\\"0:trlegvenuetransid\\":\\"YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\\",\\"1358:legputorcall\\":\\"1\\",\\"1379:legvolatility\\":\\"21.5651\\",\\"1418:leglastqty\\":\\"600\\",\\"1420:legexercisestyle\\":\\"0\\",\\"2893:legupicode\\":\\"QZ48QKHD7TRK\\",\\"556:legcurrency\\":\\"XAU\\",\\"566:legprice\\":\\"6187.833333333333\\",\\"588:legsettldate\\":\\"20261002-00:00:00\\",\\"600:legsymbol\\":\\"XAU/USD\\",\\"602:legsecurityid\\":\\"EZN11TD1F7K3\\",\\"603:legsecurityidsource\\":\\"4\\",\\"611:legmaturitydate\\":\\"20260930-00:00:00\\",\\"612:legstrikeprice\\":\\"4600\\",\\"624:legside\\":\\"2\\",\\"670:legallocs\\":[{\\"0:trlegcalculatedallocqty\\":\\"2760000\\",\\"671:legallocaccount\\":\\"UNSPECIFIED\\",\\"673:legallocqty\\":\\"600\\"}],\\"687:legqty\\":\\"37127\\",\\"942:legstrikecurrency\\":\\"XAU\\"}]","571:tradereportid":"830850681","76:execbroker":"LFZA"}
-ulbridge[111].messages	1
+ulbridge[111]:1.type	AE
+ulbridge[111]:1.digest	ae7eff4e94430ffdefbc8f4a90b2e204
+ulbridge[111]:1.wire	8=FIX.4.2|35=AE|49=ULB_BKRBDG|56=ULB_PTBDG|34=3222|52=20260814-14:52:55|11=NOREF|17=9612147_C|31=0|32=0|38=0|9=3430|1128=8|212=3347|213=AGGRESSORINDICATOR=Aggressor|APPLVERID=8|CLORDID=830850681|CONVERSATIONID=3059c3eb-a802-49d5-8a50-21904940de91|CREATIONTIME=20260814145255|ENV=PROD|EXECBROKER=LFZA|EXECID=9612147_C|EXECTYPE=trade|HEDGETRADETYPE=spot|ISINCODE=EZN11TD1F7K3|LASTPX=0|LASTQTY=0|MAIN.UTI=5493000EXAMPLE00000M|MANUALORDERINDICATOR=no|METAL.LOCO=LN|MSGTYPE=tradecapturereport|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafHEDGEPRICE=4381.525\xe2\x96\xaf\xe2\x96\xafHEDGEQTY=161\xe2\x96\xaf\xe2\x96\xafHEDGESETTLDATE=20260818\xe2\x96\xaf\xe2\x96\xafHEDGESIDE=takerbuys\xe2\x96\xaf\xe2\x96\xafHEDGEVENUETRANSID=V8FIS17K343KXE3JJJM328200D8ZBED\xe2\x96\xaf\xe2\x96\xaf|NOLEGS=1|NOLEGS[0]=DELTALEG=-0.3037\xe2\x96\xaf\xe2\x96\xafLEGCURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGCUTZONE=USNYC\xe2\x96\xaf\xe2\x96\xafLEGEXERCISESTYLE=0\xe2\x96\xaf\xe2\x96\xafLEGISINCODE=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGLASTQTY=600\xe2\x96\xaf\xe2\x96\xafLEGLASTSPOTRATE=4381.525\xe2\x96\xaf\xe2\x96\xafLEGMATURITYDATE=20260930\xe2\x96\xaf\xe2\x96\xafLEGMATURITYTIME=093000\xe2\x96\xaf\xe2\x96\xafLEGPREMIUMBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGPRICE=6187.833333333333\xe2\x96\xaf\xe2\x96\xafLEGPUTORCALL=1\xe2\x96\xaf\xe2\x96\xafLEGQTY=37127\xe2\x96\xaf\xe2\x96\xafLEGQUOTEBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYID=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYIDSOURCE=4\xe2\x96\xaf\xe2\x96\xafLEGSETTLDATE=20261002\xe2\x96\xaf\xe2\x96\xafLEGSIDE=sell\xe2\x96\xaf\xe2\x96\xafLEGSTRIKECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGSTRIKEPRICE=4600\xe2\x96\xaf\xe2\x96\xafLEGSYMBOL=XAU/USD\xe2\x96\xaf\xe2\x96\xafLEGUPICODE=QZ48QKHD7TRK\xe2\x96\xaf\xe2\x96\xafLEGVOLATILITY=21.5651\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS=1\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS[0]=LEGALLOCACCOUNT=UNSPECIFIED\xe2\x96\xaf\xe2\x96\xafLEGALLOCQTY=600\xe2\x96\xaf\xe2\x96\xafTR_LEGCALCULATEDALLOCQTY=2760000\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafOPTIONSTRATEGY=1\xe2\x96\xaf\xe2\x96\xafPREMIUMCURRENCY=USD\xe2\x96\xaf\xe2\x96\xafPREMIUMSETTLEMENTDATE=20260818\xe2\x96\xaf\xe2\x96\xafTR_LEGVENUETRANSID=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\xe2\x96\xaf\xe2\x96\xaf|NOREGULATORYTRADEIDS=1|NOREGULATORYTRADEIDS[0]=TRADEID=5493000EXAMPLE00000R\xe2\x96\xaf\xe2\x96\xafTRADEIDTYPE=reporting-tracking-number\xe2\x96\xaf\xe2\x96\xaf|NOSIDES=1|NOSIDES[0]=AGGRESSORINDICATOR=Aggressor\xe2\x96\xaf\xe2\x96\xafCLORDID=NOREF\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS=7\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[0]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=orderoriginationtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[1]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=TRADER ONE\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=TraderName\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[2]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLEBK\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=LFZA\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingfirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[3]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLECO\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=YUCC\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=clientid\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[4]=PARTYID=MMDF\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=publishername\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[5]=NOPARTYSUBIDS=2\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=5493000EXAMPLE00000L\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDLeg\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[1]=PARTYSUBID=5493000EXAMPLE00000H\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDHedge\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=DEFAULT\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=reportingintermediary\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[6]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=investmentdecisionmaker\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf|NOTRDREGTIMESTAMPS=1|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814145255000\xe2\x96\xaf\xe2\x96\xafTRDREGTIMESTAMPTYPE=execution-time\xe2\x96\xaf\xe2\x96\xaf|ORDERQTY=0|ORDSTATUS=filled|PACKAGEID=4528370608|CLIENT.CLIENTID=LIFC|CLIENT.SOURCE=TRTN|CLIENT.SYMBOL=XAU|CLIENT.TRADER=trader1|CLIENT.TRADINGPLATFORM=MMDF|PLUGINORIGINATOR=TRTN_FX_TradeCapture|PLUGINOWNER=TRTN_FX_TradeCapture|PRODUCT=currency|SECURITYTYPE=option|SYMBOL=XAU/USD|TRADEDATE=20260814|TRADEREPORTID=830850681|TRANSACTTIME=20260814145255000|TR_NOUDFGROUP=1|TR_NOUDFGROUP[0]=TR_UDF_NAME=PM_Location\xe2\x96\xaf\xe2\x96\xafTR_UDF_SEQUENCENUMBER=0\xe2\x96\xaf\xe2\x96\xafTR_UDF_VALUE=LONDON\xe2\x96\xaf\xe2\x96\xaf|TR_SOURCEOFDATA=11|ULFROMSESSIONNAME=TRTN_FX_TradeCapture|ULTOSESSIONNAME=ULMSG_BROKER_TO_POSTTRADE|UNRESOLVEDROUTING=yes|UPI=QZ48QKHD7TRK|env=PROD|76=LFZA|150=F|hedgetradetype=spot|hedgecurrency=XAU|hedgeprice=4381.525|hedgeqty=161|hedgesettldate=20260818|hedgeside=takerbuys|hedgevenuetransid=V8FIS17K343KXE3JJJM328200D8ZBED|555=1|deltaleg=-0.3037|556=XAU|legcutzone=USNYC|1420=0|legisincode=EZN11TD1F7K3|1418=600|leglastspotrate=4381.525|611=20260930-00:00:00|legpremiumbasis=3|566=6187.833333333333|1358=1|687=37127|legquotebasis=3|602=EZN11TD1F7K3|603=4|588=20261002-00:00:00|624=2|942=XAU|612=4600|600=XAU/USD|2893=QZ48QKHD7TRK|1379=21.5651|670=1|671=UNSPECIFIED|673=600|trlegcalculatedallocqty=2760000|optionstrategy=1|premiumcurrency=USD|premiumsettlementdate=20260818|trlegvenuetransid=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8|1907=1|1003=5493000EXAMPLE00000R|tradeidtype=reporting-tracking-number|552=1|11=NOREF|453=7|448=DEFAULT|447=D|452=72|802=2|523=5493000EXAMPLE00000H|523=5493000EXAMPLE00000L|448=LFZA|447=D|452=1|802=1|523=EXAMPLEBK|803=5|448=MMDF|447=D|448=YUCC|447=D|452=3|802=1|523=EXAMPLECO|803=5|448=trader1|447=D|452=11|448=trader1|447=D|452=12|802=1|523=TRADER ONE|448=trader1|447=D|452=122|768=1|769=20260814-14:52:55|770=1|39=2|2489=4528370608|pluginoriginator=TRTN_FX_TradeCapture|pluginowner=TRTN_FX_TradeCapture|460=4|167=OPT|55=XAU/USD|75=20260814-00:00:00|571=830850681|60=20260814-14:52:55|trudfname=PM_Location|trudfsequencenumber=0|trudfvalue=LONDON|trsourceofdata=11|ulfromsessionname=TRTN_FX_TradeCapture|ultosessionname=ULMSG_BROKER_TO_POSTTRADE|unresolvedrouting=yes|upi=QZ48QKHD7TRK|109=LIFC|453=2|448=LFZA|452=1|448=LIFC|452=3|461=OXXXXX|10=087|
+ulbridge[111]:1.entry[0]	t9 bodylength=3430
+ulbridge[111]:1.entry[1]	t1128 applverid=8
+ulbridge[111]:1.entry[2]	t212 xmldatalen=3347
+ulbridge[111]:1.entry[3]	t213 xmldata=AGGRESSORINDICATOR=Aggressor|APPLVERID=8|CLORDID=830850681|CONVERSATIONID=3059c3eb-a802-49d5-8a50-21904940de91|CREATIONTIME=20260814145255|ENV=PROD|EXECBROKER=LFZA|EXECID=9612147_C|EXECTYPE=trade|HEDGETRADETYPE=spot|ISINCODE=EZN11TD1F7K3|LASTPX=0|LASTQTY=0|MAIN.UTI=5493000EXAMPLE00000M|MANUALORDERINDICATOR=no|METAL.LOCO=LN|MSGTYPE=tradecapturereport|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafHEDGEPRICE=4381.525\xe2\x96\xaf\xe2\x96\xafHEDGEQTY=161\xe2\x96\xaf\xe2\x96\xafHEDGESETTLDATE=20260818\xe2\x96\xaf\xe2\x96\xafHEDGESIDE=takerbuys\xe2\x96\xaf\xe2\x96\xafHEDGEVENUETRANSID=V8FIS17K343KXE3JJJM328200D8ZBED\xe2\x96\xaf\xe2\x96\xaf|NOLEGS=1|NOLEGS[0]=DELTALEG=-0.3037\xe2\x96\xaf\xe2\x96\xafLEGCURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGCUTZONE=USNYC\xe2\x96\xaf\xe2\x96\xafLEGEXERCISESTYLE=0\xe2\x96\xaf\xe2\x96\xafLEGISINCODE=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGLASTQTY=600\xe2\x96\xaf\xe2\x96\xafLEGLASTSPOTRATE=4381.525\xe2\x96\xaf\xe2\x96\xafLEGMATURITYDATE=20260930\xe2\x96\xaf\xe2\x96\xafLEGMATURITYTIME=093000\xe2\x96\xaf\xe2\x96\xafLEGPREMIUMBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGPRICE=6187.833333333333\xe2\x96\xaf\xe2\x96\xafLEGPUTORCALL=1\xe2\x96\xaf\xe2\x96\xafLEGQTY=37127\xe2\x96\xaf\xe2\x96\xafLEGQUOTEBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYID=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYIDSOURCE=4\xe2\x96\xaf\xe2\x96\xafLEGSETTLDATE=20261002\xe2\x96\xaf\xe2\x96\xafLEGSIDE=sell\xe2\x96\xaf\xe2\x96\xafLEGSTRIKECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGSTRIKEPRICE=4600\xe2\x96\xaf\xe2\x96\xafLEGSYMBOL=XAU/USD\xe2\x96\xaf\xe2\x96\xafLEGUPICODE=QZ48QKHD7TRK\xe2\x96\xaf\xe2\x96\xafLEGVOLATILITY=21.5651\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS=1\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS[0]=LEGALLOCACCOUNT=UNSPECIFIED\xe2\x96\xaf\xe2\x96\xafLEGALLOCQTY=600\xe2\x96\xaf\xe2\x96\xafTR_LEGCALCULATEDALLOCQTY=2760000\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafOPTIONSTRATEGY=1\xe2\x96\xaf\xe2\x96\xafPREMIUMCURRENCY=USD\xe2\x96\xaf\xe2\x96\xafPREMIUMSETTLEMENTDATE=20260818\xe2\x96\xaf\xe2\x96\xafTR_LEGVENUETRANSID=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\xe2\x96\xaf\xe2\x96\xaf|NOREGULATORYTRADEIDS=1|NOREGULATORYTRADEIDS[0]=TRADEID=5493000EXAMPLE00000R\xe2\x96\xaf\xe2\x96\xafTRADEIDTYPE=reporting-tracking-number\xe2\x96\xaf\xe2\x96\xaf|NOSIDES=1|NOSIDES[0]=AGGRESSORINDICATOR=Aggressor\xe2\x96\xaf\xe2\x96\xafCLORDID=NOREF\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS=7\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[0]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=orderoriginationtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[1]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=TRADER ONE\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=TraderName\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[2]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLEBK\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=LFZA\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingfirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[3]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLECO\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=YUCC\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=clientid\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[4]=PARTYID=MMDF\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=publishername\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[5]=NOPARTYSUBIDS=2\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=5493000EXAMPLE00000L\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDLeg\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[1]=PARTYSUBID=5493000EXAMPLE00000H\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDHedge\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=DEFAULT\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=reportingintermediary\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[6]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=investmentdecisionmaker\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf|NOTRDREGTIMESTAMPS=1|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814145255000\xe2\x96\xaf\xe2\x96\xafTRDREGTIMESTAMPTYPE=execution-time\xe2\x96\xaf\xe2\x96\xaf|ORDERQTY=0|ORDSTATUS=filled|PACKAGEID=4528370608|CLIENT.CLIENTID=LIFC|CLIENT.SOURCE=TRTN|CLIENT.SYMBOL=XAU|CLIENT.TRADER=trader1|CLIENT.TRADINGPLATFORM=MMDF|PLUGINORIGINATOR=TRTN_FX_TradeCapture|PLUGINOWNER=TRTN_FX_TradeCapture|PRODUCT=currency|SECURITYTYPE=option|SYMBOL=XAU/USD|TRADEDATE=20260814|TRADEREPORTID=830850681|TRANSACTTIME=20260814145255000|TR_NOUDFGROUP=1|TR_NOUDFGROUP[0]=TR_UDF_NAME=PM_Location\xe2\x96\xaf\xe2\x96\xafTR_UDF_SEQUENCENUMBER=0\xe2\x96\xaf\xe2\x96\xafTR_UDF_VALUE=LONDON\xe2\x96\xaf\xe2\x96\xaf|TR_SOURCEOFDATA=11|ULFROMSESSIONNAME=TRTN_FX_TradeCapture|ULTOSESSIONNAME=ULMSG_BROKER_TO_POSTTRADE|UNRESOLVEDROUTING=yes|UPI=QZ48QKHD7TRK
+ulbridge[111]:1.entry[4]	t0 env=PROD
+ulbridge[111]:1.entry[5]	t76 execbroker=LFZA
+ulbridge[111]:1.entry[6]	t150 exectype=F
+ulbridge[111]:1.entry[7]	t0 hedgetradetype=spot
+ulbridge[111]:1.entry[8]	t0 nohedgegroups
+ulbridge[111]:1.entry[8.0]	t0 nohedgegroup
+ulbridge[111]:1.entry[8.0.0]	t0 hedgecurrency=XAU
+ulbridge[111]:1.entry[8.0.1]	t0 hedgeprice=4381.525
+ulbridge[111]:1.entry[8.0.2]	t0 hedgeqty=161
+ulbridge[111]:1.entry[8.0.3]	t0 hedgesettldate=20260818
+ulbridge[111]:1.entry[8.0.4]	t0 hedgeside=takerbuys
+ulbridge[111]:1.entry[8.0.5]	t0 hedgevenuetransid=V8FIS17K343KXE3JJJM328200D8ZBED
+ulbridge[111]:1.entry[9]	t555 trdinstrmtleggrp=1
+ulbridge[111]:1.entry[9.0]	t0 trdinstrmtleg
+ulbridge[111]:1.entry[9.0.0]	t0 deltaleg=-0.3037
+ulbridge[111]:1.entry[9.0.1]	t556 legcurrency=XAU
+ulbridge[111]:1.entry[9.0.2]	t0 legcutzone=USNYC
+ulbridge[111]:1.entry[9.0.3]	t1420 legexercisestyle=0
+ulbridge[111]:1.entry[9.0.4]	t0 legisincode=EZN11TD1F7K3
+ulbridge[111]:1.entry[9.0.5]	t1418 leglastqty=600
+ulbridge[111]:1.entry[9.0.6]	t0 leglastspotrate=4381.525
+ulbridge[111]:1.entry[9.0.7]	t611 legmaturitydate=20260930-00:00:00
+ulbridge[111]:1.entry[9.0.8]	t0 legpremiumbasis=3
+ulbridge[111]:1.entry[9.0.9]	t566 legprice=6187.833333333333
+ulbridge[111]:1.entry[9.0.10]	t1358 legputorcall=1
+ulbridge[111]:1.entry[9.0.11]	t687 legqty=37127
+ulbridge[111]:1.entry[9.0.12]	t0 legquotebasis=3
+ulbridge[111]:1.entry[9.0.13]	t602 legsecurityid=EZN11TD1F7K3
+ulbridge[111]:1.entry[9.0.14]	t603 legsecurityidsource=4
+ulbridge[111]:1.entry[9.0.15]	t588 legsettldate=20261002-00:00:00
+ulbridge[111]:1.entry[9.0.16]	t624 legside=2
+ulbridge[111]:1.entry[9.0.17]	t942 legstrikecurrency=XAU
+ulbridge[111]:1.entry[9.0.18]	t612 legstrikeprice=4600
+ulbridge[111]:1.entry[9.0.19]	t600 legsymbol=XAU/USD
+ulbridge[111]:1.entry[9.0.20]	t2893 legupicode=QZ48QKHD7TRK
+ulbridge[111]:1.entry[9.0.21]	t1379 legvolatility=21.5651
+ulbridge[111]:1.entry[9.0.22]	t670 legallocs=1
+ulbridge[111]:1.entry[9.0.22.0]	t0 legprealloc
+ulbridge[111]:1.entry[9.0.22.0.0]	t671 legallocaccount=UNSPECIFIED
+ulbridge[111]:1.entry[9.0.22.0.1]	t673 legallocqty=600
+ulbridge[111]:1.entry[9.0.22.0.2]	t0 trlegcalculatedallocqty=2760000
+ulbridge[111]:1.entry[9.0.23]	t0 optionstrategy=1
+ulbridge[111]:1.entry[9.0.24]	t0 premiumcurrency=USD
+ulbridge[111]:1.entry[9.0.25]	t0 premiumsettlementdate=20260818
+ulbridge[111]:1.entry[9.0.26]	t0 trlegvenuetransid=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8
+ulbridge[111]:1.entry[10]	t1907 regulatorytradeids=1
+ulbridge[111]:1.entry[10.0]	t0 regulatorytradeidcomponent
+ulbridge[111]:1.entry[10.0.0]	t1003 tradeid=5493000EXAMPLE00000R
+ulbridge[111]:1.entry[10.0.1]	t0 tradeidtype=reporting-tracking-number
+ulbridge[111]:1.entry[11]	t552 trdcaprptsidegrp=1
+ulbridge[111]:1.entry[11.0]	t0 trdcaprptside
+ulbridge[111]:1.entry[11.0.0]	t11 clordid=NOREF
+ulbridge[111]:1.entry[11.0.1]	t453 parties=7
+ulbridge[111]:1.entry[11.0.1.0]	t0 party
+ulbridge[111]:1.entry[11.0.1.0.0]	t448 partyid=DEFAULT
+ulbridge[111]:1.entry[11.0.1.0.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.0.2]	t452 partyrole=72
+ulbridge[111]:1.entry[11.0.1.0.3]	t802 partysubids=2
+ulbridge[111]:1.entry[11.0.1.0.3.0]	t0 ptyssub
+ulbridge[111]:1.entry[11.0.1.0.3.0.0]	t523 partysubid=5493000EXAMPLE00000H
+ulbridge[111]:1.entry[11.0.1.0.3.1]	t0 ptyssub
+ulbridge[111]:1.entry[11.0.1.0.3.1.0]	t523 partysubid=5493000EXAMPLE00000L
+ulbridge[111]:1.entry[11.0.1.1]	t0 party
+ulbridge[111]:1.entry[11.0.1.1.0]	t448 partyid=LFZA
+ulbridge[111]:1.entry[11.0.1.1.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.1.2]	t452 partyrole=1
+ulbridge[111]:1.entry[11.0.1.1.3]	t802 partysubids=1
+ulbridge[111]:1.entry[11.0.1.1.3.0]	t0 ptyssub
+ulbridge[111]:1.entry[11.0.1.1.3.0.0]	t523 partysubid=EXAMPLEBK
+ulbridge[111]:1.entry[11.0.1.1.3.0.1]	t803 partysubidtype=5
+ulbridge[111]:1.entry[11.0.1.2]	t0 party
+ulbridge[111]:1.entry[11.0.1.2.0]	t448 partyid=MMDF
+ulbridge[111]:1.entry[11.0.1.2.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.3]	t0 party
+ulbridge[111]:1.entry[11.0.1.3.0]	t448 partyid=YUCC
+ulbridge[111]:1.entry[11.0.1.3.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.3.2]	t452 partyrole=3
+ulbridge[111]:1.entry[11.0.1.3.3]	t802 partysubids=1
+ulbridge[111]:1.entry[11.0.1.3.3.0]	t0 ptyssub
+ulbridge[111]:1.entry[11.0.1.3.3.0.0]	t523 partysubid=EXAMPLECO
+ulbridge[111]:1.entry[11.0.1.3.3.0.1]	t803 partysubidtype=5
+ulbridge[111]:1.entry[11.0.1.4]	t0 party
+ulbridge[111]:1.entry[11.0.1.4.0]	t448 partyid=trader1
+ulbridge[111]:1.entry[11.0.1.4.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.4.2]	t452 partyrole=11
+ulbridge[111]:1.entry[11.0.1.5]	t0 party
+ulbridge[111]:1.entry[11.0.1.5.0]	t448 partyid=trader1
+ulbridge[111]:1.entry[11.0.1.5.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.5.2]	t452 partyrole=12
+ulbridge[111]:1.entry[11.0.1.5.3]	t802 partysubids=1
+ulbridge[111]:1.entry[11.0.1.5.3.0]	t0 ptyssub
+ulbridge[111]:1.entry[11.0.1.5.3.0.0]	t523 partysubid=TRADER ONE
+ulbridge[111]:1.entry[11.0.1.6]	t0 party
+ulbridge[111]:1.entry[11.0.1.6.0]	t448 partyid=trader1
+ulbridge[111]:1.entry[11.0.1.6.1]	t447 partyidsource=D
+ulbridge[111]:1.entry[11.0.1.6.2]	t452 partyrole=122
+ulbridge[111]:1.entry[12]	t768 trdregtimestamps=1
+ulbridge[111]:1.entry[12.0]	t0 trdregtimestampcomponent
+ulbridge[111]:1.entry[12.0.0]	t769 trdregtimestamp=20260814-14:52:55
+ulbridge[111]:1.entry[12.0.1]	t770 trdregtimestamptype=1
+ulbridge[111]:1.entry[13]	t39 ordstatus=2
+ulbridge[111]:1.entry[14]	t2489 packageid=4528370608
+ulbridge[111]:1.entry[15]	t0 pluginoriginator=TRTN_FX_TradeCapture
+ulbridge[111]:1.entry[16]	t0 pluginowner=TRTN_FX_TradeCapture
+ulbridge[111]:1.entry[17]	t460 product=4
+ulbridge[111]:1.entry[18]	t167 securitytype=OPT
+ulbridge[111]:1.entry[19]	t55 symbol=XAU/USD
+ulbridge[111]:1.entry[20]	t75 tradedate=20260814-00:00:00
+ulbridge[111]:1.entry[21]	t571 tradereportid=830850681
+ulbridge[111]:1.entry[22]	t60 transacttime=20260814-14:52:55
+ulbridge[111]:1.entry[23]	t0 trnoudfgroup
+ulbridge[111]:1.entry[23.0]	t0 trnoudfgroup
+ulbridge[111]:1.entry[23.0.0]	t0 trudfname=PM_Location
+ulbridge[111]:1.entry[23.0.1]	t0 trudfsequencenumber=0
+ulbridge[111]:1.entry[23.0.2]	t0 trudfvalue=LONDON
+ulbridge[111]:1.entry[24]	t0 trsourceofdata=11
+ulbridge[111]:1.entry[25]	t0 ulfromsessionname=TRTN_FX_TradeCapture
+ulbridge[111]:1.entry[26]	t0 ultosessionname=ULMSG_BROKER_TO_POSTTRADE
+ulbridge[111]:1.entry[27]	t0 unresolvedrouting=yes
+ulbridge[111]:1.entry[28]	t0 upi=QZ48QKHD7TRK
+ulbridge[111]:1.entry[29]	t109 clientid=LIFC
+ulbridge[111]:1.entry[30]	t453 parties=2
+ulbridge[111]:1.entry[30.0]	t0 party
+ulbridge[111]:1.entry[30.0.0]	t448 partyid=LFZA
+ulbridge[111]:1.entry[30.0.1]	t452 partyrole=1
+ulbridge[111]:1.entry[30.1]	t0 party
+ulbridge[111]:1.entry[30.1.0]	t448 partyid=LIFC
+ulbridge[111]:1.entry[30.1.1]	t452 partyrole=3
+ulbridge[111]:1.entry[31]	t461 cficode=OXXXXX
+ulbridge[111]:1.field.currunix	"2026-08-14T14:52:55.000000000Z"
+ulbridge[111]:1.field.execunix	"2026-08-14T14:52:55.000000000Z"
+ulbridge[111]:1.field.recdunix	"2026-08-14T16:52:55.861000000Z"
+ulbridge[111]:1.field.creaunix	"2026-08-14T14:52:55.000000000Z"
+ulbridge[111]:1.field.sendingtime	"2026-08-14T14:52:55.000000000Z"
+ulbridge[111]:1.field.transacttime	"2026-08-14T14:52:55.000000000Z"
+ulbridge[111]:1.field.tradedate	"2026-08-14T00:00:00.000000000"
+ulbridge[111]:1.field.curruuid	"01a000c3-0158-7001-a310-c1d9de1637cd"
+ulbridge[111]:1.field.crossuuid	"00000000-0000-8000-9b70-7d59a2288e08"
+ulbridge[111]:1.field.crosscode	"5:NOREF|11:5:NOREF"
+ulbridge[111]:1.field.currhashcode	14778102281453037599
+ulbridge[111]:1.field.crosshashcode	6588904078769163784
+ulbridge[111]:1.field.seqnum	1
+ulbridge[111]:1.field.srcuuids	["01a000c3-0158-7000-8785-06311ca28cc4","01a00130-e1b5-7070-8772-5c92e6cdd246"]
+ulbridge[111]:1.field.beginstring	"FIX.4.2"
+ulbridge[111]:1.field.msgtype	"AE"
+ulbridge[111]:1.field.msgcat	"EXEC"
+ulbridge[111]:1.field.msgseqnum	3222
+ulbridge[111]:1.field.sendercompid	"ULB_BKRBDG"
+ulbridge[111]:1.field.targetcompid	"ULB_PTBDG"
+ulbridge[111]:1.field.msgdirection	"S"
+ulbridge[111]:1.field.msgpluginid	"ULMSG_BROKER_TO_POSTTRADE"
+ulbridge[111]:1.field.msgctxid	"9f038a00b4"
+ulbridge[111]:1.field.msgsessionid	"e7254b1a"
+ulbridge[111]:1.field.msgsesseventid	"AE:e7254b1a:9f038a00b4:3222"
+ulbridge[111]:1.field.conversationid	"3059c3eb-a802-49d5-8a50-21904940de91"
+ulbridge[111]:1.field.symbol	"XAU/USD"
+ulbridge[111]:1.field.isincode	"EZN11TD1F7K3"
+ulbridge[111]:1.field.securitytype	"OPT"
+ulbridge[111]:1.field.cficode	"OXXXXX"
+ulbridge[111]:1.field.product	4
+ulbridge[111]:1.field.clordid	"NOREF"
+ulbridge[111]:1.field.execid	"9612147_C"
+ulbridge[111]:1.field.lastpx	"0.000000000000000000"
+ulbridge[111]:1.field.orderqty	"0.000000000000000000"
+ulbridge[111]:1.field.lastqty	"0.000000000000000000"
+ulbridge[111]:1.field.state	"FILLED"
+ulbridge[111]:1.field.ordstatus	"2"
+ulbridge[111]:1.field.exectype	"F"
+ulbridge[111]:1.field.nopartyids	2
+ulbridge[111]:1.field.parties	[["LFZA",null,1,null,null,null],["LIFC",null,3,null,null,null]]
+ulbridge[111]:1.field.notrdregtimestamps	1
+ulbridge[111]:1.field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
+ulbridge[111]:1.field.bodylength	3430
+ulbridge[111]:1.field.xmldatalen	3347
+ulbridge[111]:1.field.xmldata	"QUdHUkVTU09SSU5ESUNBVE9SPUFnZ3Jlc3NvcnxBUFBMVkVSSUQ9OHxDTE9SRElEPTgzMDg1MDY4MXxDT05WRVJTQVRJT05JRD0zMDU5YzNlYi1hODAyLTQ5ZDUtOGE1MC0yMTkwNDk0MGRlOTF8Q1JFQVRJT05USU1FPTIwMjYwODE0MTQ1MjU1fEVOVj1QUk9EfEVYRUNCUk9LRVI9TEZaQXxFWEVDSUQ9OTYxMjE0N19DfEVYRUNUWVBFPXRyYWRlfEhFREdFVFJBREVUWVBFPXNwb3R8SVNJTkNPREU9RVpOMTFURDFGN0szfExBU1RQWD0wfExBU1RRVFk9MHxNQUlOLlVUST01NDkzMDAwRVhBTVBMRTAwMDAwTXxNQU5VQUxPUkRFUklORElDQVRPUj1ub3xNRVRBTC5MT0NPPUxOfE1TR1RZUEU9dHJhZGVjYXB0dXJlcmVwb3J0fE5PSEVER0VHUk9VUFM9MXxOT0hFREdFR1JPVVBTWzBdPUhFREdFQ1VSUkVOQ1k9WEFV4pav4pavSEVER0VQUklDRT00MzgxLjUyNeKWr+KWr0hFREdFUVRZPTE2MeKWr+KWr0hFREdFU0VUVExEQVRFPTIwMjYwODE44pav4pavSEVER0VTSURFPXRha2VyYnV5c+KWr+KWr0hFREdFVkVOVUVUUkFOU0lEPVY4RklTMTdLMzQzS1hFM0pKSk0zMjgyMDBEOFpCRUTilq/ilq98Tk9MRUdTPTF8Tk9MRUdTWzBdPURFTFRBTEVHPS0wLjMwMzfilq/ilq9MRUdDVVJSRU5DWT1YQVXilq/ilq9MRUdDVVRaT05FPVVTTllD4pav4pavTEVHRVhFUkNJU0VTVFlMRT0w4pav4pavTEVHSVNJTkNPREU9RVpOMTFURDFGN0sz4pav4pavTEVHTEFTVFFUWT02MDDilq/ilq9MRUdMQVNUU1BPVFJBVEU9NDM4MS41MjXilq/ilq9MRUdNQVRVUklUWURBVEU9MjAyNjA5MzDilq/ilq9MRUdNQVRVUklUWVRJTUU9MDkzMDAw4pav4pavTEVHUFJFTUlVTUJBU0lTPTPilq/ilq9MRUdQUklDRT02MTg3LjgzMzMzMzMzMzMzM+KWr+KWr0xFR1BVVE9SQ0FMTD0x4pav4pavTEVHUVRZPTM3MTI34pav4pavTEVHUVVPVEVCQVNJUz0z4pav4pavTEVHU0VDVVJJVFlJRD1FWk4xMVREMUY3SzPilq/ilq9MRUdTRUNVUklUWUlEU09VUkNFPTTilq/ilq9MRUdTRVRUTERBVEU9MjAyNjEwMDLilq/ilq9MRUdTSURFPXNlbGzilq/ilq9MRUdTVFJJS0VDVVJSRU5DWT1YQVXilq/ilq9MRUdTVFJJS0VQUklDRT00NjAw4pav4pavTEVHU1lNQk9MPVhBVS9VU0Tilq/ilq9MRUdVUElDT0RFPVFaNDhRS0hEN1RSS+KWr+KWr0xFR1ZPTEFUSUxJVFk9MjEuNTY1MeKWr+KWr05PTEVHQUxMT0NTPTHilq/ilq9OT0xFR0FMTE9DU1swXT1MRUdBTExPQ0FDQ09VTlQ9VU5TUEVDSUZJRUTilq/ilq9MRUdBTExPQ1FUWT02MDDilq/ilq9UUl9MRUdDQUxDVUxBVEVEQUxMT0NRVFk9Mjc2MDAwMOKWr+KWr+KWr+KWr09QVElPTlNUUkFURUdZPTHilq/ilq9QUkVNSVVNQ1VSUkVOQ1k9VVNE4pav4pavUFJFTUlVTVNFVFRMRU1FTlREQVRFPTIwMjYwODE44pav4pavVFJfTEVHVkVOVUVUUkFOU0lEPVlEVVZEVjNWVk9JMkdLMFFTWUtYN0dPMjZVWEVBOOKWr+KWr3xOT1JFR1VMQVRPUllUUkFERUlEUz0xfE5PUkVHVUxBVE9SWVRSQURFSURTWzBdPVRSQURFSUQ9NTQ5MzAwMEVYQU1QTEUwMDAwMFLilq/ilq9UUkFERUlEVFlQRT1yZXBvcnRpbmctdHJhY2tpbmctbnVtYmVy4pav4pavfE5PU0lERVM9MXxOT1NJREVTWzBdPUFHR1JFU1NPUklORElDQVRPUj1BZ2dyZXNzb3Lilq/ilq9DTE9SRElEPU5PUkVG4pav4pavTk9QQVJUWUlEUz034pav4pavTk9QQVJUWUlEU1swXT1QQVJUWUlEPXRyYWRlcjHilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9b3JkZXJvcmlnaW5hdGlvbnRyYWRlcuKWr+KWr+KWr+KWr05PUEFSVFlJRFNbMV09Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPVRSQURFUiBPTkXilq/ilq9QQVJUWVNVQklEVFlQRT1UcmFkZXJOYW1l4pav4pav4pav4pavUEFSVFlJRD10cmFkZXIx4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPWV4ZWN1dGluZ3RyYWRlcuKWr+KWr+KWr+KWr05PUEFSVFlJRFNbMl09Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPUVYQU1QTEVCS+KWr+KWr1BBUlRZU1VCSURUWVBFPWZ1bGxsZWdhbG5hbWVvZmZpcm3ilq/ilq/ilq/ilq9QQVJUWUlEPUxGWkHilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9ZXhlY3V0aW5nZmlybeKWr+KWr+KWr+KWr05PUEFSVFlJRFNbM109Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPUVYQU1QTEVDT+KWr+KWr1BBUlRZU1VCSURUWVBFPWZ1bGxsZWdhbG5hbWVvZmZpcm3ilq/ilq/ilq/ilq9QQVJUWUlEPVlVQ0Pilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9Y2xpZW50aWTilq/ilq/ilq/ilq9OT1BBUlRZSURTWzRdPVBBUlRZSUQ9TU1ERuKWr+KWr1BBUlRZSURTT1VSQ0U9cHJvcHJpZXRhcnkvY3VzdG9tY29kZeKWr+KWr1BBUlRZUk9MRT1wdWJsaXNoZXJuYW1l4pav4pav4pav4pavTk9QQVJUWUlEU1s1XT1OT1BBUlRZU1VCSURTPTLilq/ilq9OT1BBUlRZU1VCSURTWzBdPVBBUlRZU1VCSUQ9NTQ5MzAwMEVYQU1QTEUwMDAwMEzilq/ilq9QQVJUWVNVQklEVFlQRT1VbmlxdWVUcmFuc2FjdGlvbklETGVn4pav4pav4pav4pavTk9QQVJUWVNVQklEU1sxXT1QQVJUWVNVQklEPTU0OTMwMDBFWEFNUExFMDAwMDBI4pav4pavUEFSVFlTVUJJRFRZUEU9VW5pcXVlVHJhbnNhY3Rpb25JREhlZGdl4pav4pav4pav4pavUEFSVFlJRD1ERUZBVUxU4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPXJlcG9ydGluZ2ludGVybWVkaWFyeeKWr+KWr+KWr+KWr05PUEFSVFlJRFNbNl09UEFSVFlJRD10cmFkZXIx4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPWludmVzdG1lbnRkZWNpc2lvbm1ha2Vy4pav4pav4pav4pavfE5PVFJEUkVHVElNRVNUQU1QUz0xfE5PVFJEUkVHVElNRVNUQU1QU1swXT1UUkRSRUdUSU1FU1RBTVA9MjAyNjA4MTQxNDUyNTUwMDDilq/ilq9UUkRSRUdUSU1FU1RBTVBUWVBFPWV4ZWN1dGlvbi10aW1l4pav4pavfE9SREVSUVRZPTB8T1JEU1RBVFVTPWZpbGxlZHxQQUNLQUdFSUQ9NDUyODM3MDYwOHxDTElFTlQuQ0xJRU5USUQ9TElGQ3xDTElFTlQuU09VUkNFPVRSVE58Q0xJRU5ULlNZTUJPTD1YQVV8Q0xJRU5ULlRSQURFUj10cmFkZXIxfENMSUVOVC5UUkFESU5HUExBVEZPUk09TU1ERnxQTFVHSU5PUklHSU5BVE9SPVRSVE5fRlhfVHJhZGVDYXB0dXJlfFBMVUdJTk9XTkVSPVRSVE5fRlhfVHJhZGVDYXB0dXJlfFBST0RVQ1Q9Y3VycmVuY3l8U0VDVVJJVFlUWVBFPW9wdGlvbnxTWU1CT0w9WEFVL1VTRHxUUkFERURBVEU9MjAyNjA4MTR8VFJBREVSRVBPUlRJRD04MzA4NTA2ODF8VFJBTlNBQ1RUSU1FPTIwMjYwODE0MTQ1MjU1MDAwfFRSX05PVURGR1JPVVA9MXxUUl9OT1VERkdST1VQWzBdPVRSX1VERl9OQU1FPVBNX0xvY2F0aW9u4pav4pavVFJfVURGX1NFUVVFTkNFTlVNQkVSPTDilq/ilq9UUl9VREZfVkFMVUU9TE9ORE9O4pav4pavfFRSX1NPVVJDRU9GREFUQT0xMXxVTEZST01TRVNTSU9OTkFNRT1UUlROX0ZYX1RyYWRlQ2FwdHVyZXxVTFRPU0VTU0lPTk5BTUU9VUxNU0dfQlJPS0VSX1RPX1BPU1RUUkFERXxVTlJFU09MVkVEUk9VVElORz15ZXN8VVBJPVFaNDhRS0hEN1RSSw=="
+ulbridge[111]:1.field.checksum	"087"
+ulbridge[111]:1.field.metadata	{"client.clientid":"LIFC","client.source":"TRTN","client.symbol":"XAU","client.trader":"trader1","client.tradingplatform":"MMDF","env":"PROD","hedgetradetype":"spot","main.uti":"5493000EXAMPLE00000M","metal.loco":"LN","nohedgegroups":"{\\"nohedgegroup\\":{\\"hedgecurrency\\":\\"XAU\\",\\"hedgeprice\\":\\"4381.525\\",\\"hedgeqty\\":\\"161\\",\\"hedgesettldate\\":\\"20260818\\",\\"hedgeside\\":\\"takerbuys\\",\\"hedgevenuetransid\\":\\"V8FIS17K343KXE3JJJM328200D8ZBED\\"}}","pluginoriginator":"TRTN_FX_TradeCapture","pluginowner":"TRTN_FX_TradeCapture","trnoudfgroup":"{\\"trnoudfgroup\\":{\\"trudfname\\":\\"PM_Location\\",\\"trudfsequencenumber\\":\\"0\\",\\"trudfvalue\\":\\"LONDON\\"}}","trsourceofdata":"11","ulfromsessionname":"TRTN_FX_TradeCapture","ultosessionname":"ULMSG_BROKER_TO_POSTTRADE","unresolvedrouting":"yes","upi":"QZ48QKHD7TRK"}
+ulbridge[111]:1.field.fixentries	{"109:clientid":"LIFC","1128:applverid":"8","1907:regulatorytradeids":"[{\\"0:tradeidtype\\":\\"reporting-tracking-number\\",\\"1003:tradeid\\":\\"5493000EXAMPLE00000R\\"}]","2489:packageid":"4528370608","552:trdcaprptsidegrp":"[{\\"11:clordid\\":\\"NOREF\\",\\"453:parties\\":[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"DEFAULT\\",\\"452:partyrole\\":\\"72\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"5493000EXAMPLE00000H\\"},{\\"523:partysubid\\":\\"5493000EXAMPLE00000L\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"LFZA\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLEBK\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"MMDF\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YUCC\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLECO\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"11\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"TRADER ONE\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"122\\"}]}]","555:trdinstrmtleggrp":"[{\\"0:deltaleg\\":\\"-0.3037\\",\\"0:legcutzone\\":\\"USNYC\\",\\"0:legisincode\\":\\"EZN11TD1F7K3\\",\\"0:leglastspotrate\\":\\"4381.525\\",\\"0:legpremiumbasis\\":\\"3\\",\\"0:legquotebasis\\":\\"3\\",\\"0:optionstrategy\\":\\"1\\",\\"0:premiumcurrency\\":\\"USD\\",\\"0:premiumsettlementdate\\":\\"20260818\\",\\"0:trlegvenuetransid\\":\\"YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\\",\\"1358:legputorcall\\":\\"1\\",\\"1379:legvolatility\\":\\"21.5651\\",\\"1418:leglastqty\\":\\"600\\",\\"1420:legexercisestyle\\":\\"0\\",\\"2893:legupicode\\":\\"QZ48QKHD7TRK\\",\\"556:legcurrency\\":\\"XAU\\",\\"566:legprice\\":\\"6187.833333333333\\",\\"588:legsettldate\\":\\"20261002-00:00:00\\",\\"600:legsymbol\\":\\"XAU/USD\\",\\"602:legsecurityid\\":\\"EZN11TD1F7K3\\",\\"603:legsecurityidsource\\":\\"4\\",\\"611:legmaturitydate\\":\\"20260930-00:00:00\\",\\"612:legstrikeprice\\":\\"4600\\",\\"624:legside\\":\\"2\\",\\"670:legallocs\\":[{\\"0:trlegcalculatedallocqty\\":\\"2760000\\",\\"671:legallocaccount\\":\\"UNSPECIFIED\\",\\"673:legallocqty\\":\\"600\\"}],\\"687:legqty\\":\\"37127\\",\\"942:legstrikecurrency\\":\\"XAU\\"}]","571:tradereportid":"830850681","76:execbroker":"LFZA"}
+ulbridge[111].messages	2
 ulbridge[112]:0.type	n
 ulbridge[112]:0.digest	5955f83f420fc75ec3c63035b4722256
 ulbridge[112]:0.wire	8=FIX.4.2|35=n|49=ULB_DMZ_BROKER_BDG|56=ULB_CLI_BROKER_BDG|34=40331|52=20260814-12:46:41|6=72.28|11=XM8NNITE384|14=120|17=00064703463GBYZ0|31=72.28|32=120|9=464|212=365|213=<FIXML v="5.0 SP2"><ExecRpt ExecID="00064703463GBYZ0" ClOrdID="XM8NNITE384" ExecType="F" OrdStatus="2" Side="1" LastQty="120" LastPx="72.28" CumQty="120" AvgPx="72.28" Currency="CHF" LastMkt="XSWX" TransactTime="20260814-12:46:41.118"><Instrmt Symbol="HOLN" SecurityID="CH0012214059" SecurityIDSource="4" /><Pty PartyID="TRADER2" PartyRole="11" /></ExecRpt></FIXML>|v=5.0 SP2|150=F|39=2|54=1|15=CHF|30=XSWX|60=20260814-12:46:41.118|55=HOLN|48=CH0012214059|22=4|448=TRADER2|452=11|120=CHF|470=CH|2897=6|10=094|
@@ -18541,11 +18726,11 @@ ulbridge[112]:0.field.recdunix	"2026-08-14T14:46:41.118000000Z"
 ulbridge[112]:0.field.creaunix	"2026-08-14T12:46:41.118000000Z"
 ulbridge[112]:0.field.sendingtime	"2026-08-14T12:46:41.000000000Z"
 ulbridge[112]:0.field.transacttime	"2026-08-14T12:46:41.118000000Z"
-ulbridge[112]:0.field.curruuid	"01a0004f-6fde-7000-acc3-87873d51864b"
-ulbridge[112]:0.field.crossuuid	"00000000-0000-8000-80f4-26de7d9f25da"
-ulbridge[112]:0.field.crosscode	"BUY:XM8NNITE384"
+ulbridge[112]:0.field.curruuid	"01a0004f-6fde-7000-bf1a-c73d6bd17c3e"
+ulbridge[112]:0.field.crossuuid	"00000000-0000-8000-9637-985cdd46c6ac"
+ulbridge[112]:0.field.crosscode	"XM8NNITE384"
 ulbridge[112]:0.field.currhashcode	7776834895309933564
-ulbridge[112]:0.field.crosshashcode	4680408649776965082
+ulbridge[112]:0.field.crosshashcode	15435973772452480684
 ulbridge[112]:0.field.srcuuids	["01a000bd-4cde-7071-bd38-b1970bd93c41"]
 ulbridge[112]:0.field.beginstring	"FIX.4.2"
 ulbridge[112]:0.field.msgtype	"n"
@@ -21853,11 +22038,11 @@ lifecycle[014].field.recdunix	"2026-08-14T14:46:40.350000000Z"
 lifecycle[014].field.creaunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[014].field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 lifecycle[014].field.transacttime	"2026-08-14T12:46:39.743016000Z"
-lifecycle[014].field.curruuid	"01a0004f-6a7f-7006-b27e-0731809c7254"
-lifecycle[014].field.crossuuid	"00000000-0000-8000-b40d-34aac405008a"
-lifecycle[014].field.crosscode	"BUY:00079132557GLXC0.9"
+lifecycle[014].field.curruuid	"01a0004f-6a7f-7006-b26c-05585ce08b72"
+lifecycle[014].field.crossuuid	"00000000-0000-8000-8607-a89973d3e25e"
+lifecycle[014].field.crosscode	"00079132557GLXC0.9"
 lifecycle[014].field.currhashcode	3547934104631505044
-lifecycle[014].field.crosshashcode	3750711972707238026
+lifecycle[014].field.crosshashcode	9657873302946046558
 lifecycle[014].field.seqnum	6
 lifecycle[014].field.srcuuids	["01a000bd-49de-7065-9618-175b7cafde53"]
 lifecycle[014].field.beginstring	"FIX.4.4"
@@ -22640,11 +22825,11 @@ lifecycle[019].field.currunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[019].field.recdunix	"2026-08-14T14:46:40.352000000Z"
 lifecycle[019].field.creaunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[019].field.transacttime	"2026-08-14T12:46:40.001000000Z"
-lifecycle[019].field.curruuid	"01a0004f-6b81-7000-a60d-2b718f3a81c7"
-lifecycle[019].field.crossuuid	"00000000-0000-8000-90a8-73a77f728670"
-lifecycle[019].field.crosscode	"BUY:XM8NNITE383"
+lifecycle[019].field.curruuid	"01a0004f-6b81-7000-be7f-24f073e9ba90"
+lifecycle[019].field.crossuuid	"00000000-0000-8000-b15f-99df69f35990"
+lifecycle[019].field.crosscode	"XM8NNITE383"
 lifecycle[019].field.currhashcode	15420718308985245989
-lifecycle[019].field.crosshashcode	5812022482356569712
+lifecycle[019].field.crosshashcode	3557731415480293776
 lifecycle[019].field.srcuuids	["01a000bd-49e0-7066-8f3b-e2f18fa532cb"]
 lifecycle[019].field.beginstring	"FIX.4.4"
 lifecycle[019].field.msgcat	"UNKN"
@@ -22769,12 +22954,12 @@ lifecycle[023].field.creaunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[023].field.prevunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[023].field.sendingtime	"2026-08-14T12:46:40.020000000Z"
 lifecycle[023].field.transacttime	"2026-08-14T12:46:40.001000000Z"
-lifecycle[023].field.curruuid	"01a0004f-6b94-7000-ac79-a1cd655b1c4c"
+lifecycle[023].field.curruuid	"01a0004f-6b94-7000-8350-cf4f9e8521ba"
 lifecycle[023].field.crossuuid	"00000000-0000-8000-90a8-73a77f728670"
 lifecycle[023].field.crosscode	"BUY:XM8NNITE383"
-lifecycle[023].field.currhashcode	5239401405509624600
+lifecycle[023].field.currhashcode	11288877366437393026
 lifecycle[023].field.crosshashcode	5812022482356569712
-lifecycle[023].field.prevuuid	"01a0004f-6b81-7000-a60d-2b718f3a81c7"
+lifecycle[023].field.prevuuid	"01a0004f-6b81-7000-be7f-24f073e9ba90"
 lifecycle[023].field.srcuuids	["01a000bd-4a75-706b-ba71-ce59257661f7","01a000bd-4a77-706c-a463-63f4733edf75"]
 lifecycle[023].field.beginstring	"FIX.4.4"
 lifecycle[023].field.msgtype	"D"
@@ -22828,11 +23013,11 @@ lifecycle[024].field.recdunix	"2026-08-14T14:46:41.118000000Z"
 lifecycle[024].field.creaunix	"2026-08-14T12:46:41.118000000Z"
 lifecycle[024].field.sendingtime	"2026-08-14T12:46:41.000000000Z"
 lifecycle[024].field.transacttime	"2026-08-14T12:46:41.118000000Z"
-lifecycle[024].field.curruuid	"01a0004f-6fde-7000-acc3-87873d51864b"
-lifecycle[024].field.crossuuid	"00000000-0000-8000-80f4-26de7d9f25da"
-lifecycle[024].field.crosscode	"BUY:XM8NNITE384"
+lifecycle[024].field.curruuid	"01a0004f-6fde-7000-bf1a-c73d6bd17c3e"
+lifecycle[024].field.crossuuid	"00000000-0000-8000-9637-985cdd46c6ac"
+lifecycle[024].field.crosscode	"XM8NNITE384"
 lifecycle[024].field.currhashcode	7776834895309933564
-lifecycle[024].field.crosshashcode	4680408649776965082
+lifecycle[024].field.crosshashcode	15435973772452480684
 lifecycle[024].field.srcuuids	["01a000bd-4cde-7071-bd38-b1970bd93c41"]
 lifecycle[024].field.beginstring	"FIX.4.2"
 lifecycle[024].field.msgtype	"n"
@@ -23473,505 +23658,690 @@ lifecycle[031].field.xmldata	"QUdHUkVTU09SSU5ESUNBVE9SPUFnZ3Jlc3NvcnxBUFBMVkVSSU
 lifecycle[031].field.checksum	"087"
 lifecycle[031].field.metadata	{"client.clientid":"LIFC","client.source":"TRTN","client.symbol":"XAU","client.trader":"trader1","client.tradingplatform":"MMDF","env":"PROD","hedgetradetype":"spot","main.uti":"5493000EXAMPLE00000M","metal.loco":"LN","nohedgegroups":"{\\"nohedgegroup\\":{\\"hedgecurrency\\":\\"XAU\\",\\"hedgeprice\\":\\"4381.525\\",\\"hedgeqty\\":\\"161\\",\\"hedgesettldate\\":\\"20260818\\",\\"hedgeside\\":\\"takerbuys\\",\\"hedgevenuetransid\\":\\"V8FIS17K343KXE3JJJM328200D8ZBED\\"}}","pluginoriginator":"TRTN_FX_TradeCapture","pluginowner":"TRTN_FX_TradeCapture","trnoudfgroup":"{\\"trnoudfgroup\\":{\\"trudfname\\":\\"PM_Location\\",\\"trudfsequencenumber\\":\\"0\\",\\"trudfvalue\\":\\"LONDON\\"}}","trsourceofdata":"11","ulfromsessionname":"TRTN_FX_TradeCapture","ultosessionname":"ULMSG_BROKER_TO_POSTTRADE","unresolvedrouting":"yes","upi":"QZ48QKHD7TRK"}
 lifecycle[031].field.fixentries	{"109:clientid":"LIFC","1128:applverid":"8","1907:regulatorytradeids":"[{\\"0:tradeidtype\\":\\"reporting-tracking-number\\",\\"1003:tradeid\\":\\"5493000EXAMPLE00000R\\"}]","2489:packageid":"4528370608","552:trdcaprptsidegrp":"[{\\"11:clordid\\":\\"NOREF\\",\\"453:parties\\":[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"DEFAULT\\",\\"452:partyrole\\":\\"72\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"5493000EXAMPLE00000H\\"},{\\"523:partysubid\\":\\"5493000EXAMPLE00000L\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"LFZA\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLEBK\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"MMDF\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YUCC\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLECO\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"11\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"TRADER ONE\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"122\\"}]}]","555:trdinstrmtleggrp":"[{\\"0:deltaleg\\":\\"-0.3037\\",\\"0:legcutzone\\":\\"USNYC\\",\\"0:legisincode\\":\\"EZN11TD1F7K3\\",\\"0:leglastspotrate\\":\\"4381.525\\",\\"0:legpremiumbasis\\":\\"3\\",\\"0:legquotebasis\\":\\"3\\",\\"0:optionstrategy\\":\\"1\\",\\"0:premiumcurrency\\":\\"USD\\",\\"0:premiumsettlementdate\\":\\"20260818\\",\\"0:trlegvenuetransid\\":\\"YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\\",\\"1358:legputorcall\\":\\"1\\",\\"1379:legvolatility\\":\\"21.5651\\",\\"1418:leglastqty\\":\\"600\\",\\"1420:legexercisestyle\\":\\"0\\",\\"2893:legupicode\\":\\"QZ48QKHD7TRK\\",\\"556:legcurrency\\":\\"XAU\\",\\"566:legprice\\":\\"6187.833333333333\\",\\"588:legsettldate\\":\\"20261002-00:00:00\\",\\"600:legsymbol\\":\\"XAU/USD\\",\\"602:legsecurityid\\":\\"EZN11TD1F7K3\\",\\"603:legsecurityidsource\\":\\"4\\",\\"611:legmaturitydate\\":\\"20260930-00:00:00\\",\\"612:legstrikeprice\\":\\"4600\\",\\"624:legside\\":\\"2\\",\\"670:legallocs\\":[{\\"0:trlegcalculatedallocqty\\":\\"2760000\\",\\"671:legallocaccount\\":\\"UNSPECIFIED\\",\\"673:legallocqty\\":\\"600\\"}],\\"687:legqty\\":\\"37127\\",\\"942:legstrikecurrency\\":\\"XAU\\"}]","571:tradereportid":"830850681","76:execbroker":"LFZA"}
-lifecycle[032].type	8
-lifecycle[032].digest	f9a84cbc7f7705643db964ec5d4c6478
-lifecycle[032].wire	8=FIX.4.4|35=8|49=OADDKMEHSUIJ|56=FIRMX1|34=3089|43=N|52=20260814-12:46:39.764616|6=0|11=XM8NNITE512|14=0|17=00802052392GWQN0|31=0|32=0|37=00079132559GLXC0|38=400|44=121.94|151=400|198=20260814-1126195|1=YNHD5_NCI|9=413|15=CHF|21=1|22=4|29=agency|30=XSWX|39=0|40=2|48=CH0012005267|54=1|55=NOVN|59=0|60=20260814-12:46:39.757079|63=0|100=S|107=NOVARTIS|120=CHF|126=20260814-16:25:00|150=0|167=CS|207=XSWX|377=Y|381=0|453=6|447=C|448=HIGH_TOUCH|452=3|447=generallyacceptedmarketparticipantidentifier|448=HIGH_TOUCH|452=3|447=D|448=TRADER2|452=122|447=D|448=TRADER2|452=36|447=D|448=ULTrader|447=D|448=trader1|452=12|454=3|455=dbi;CH0012005267_XSWX_CHF|456=OMSINSTRUMENTID|455=dbi;CH0012005267_XSWX_CHF|456=ULLINKINSTRUMENTID|455=NOVN SW|456=A|460=5|461=ESXXXX|470=CH|528=A|562=1|768=2|769=20260814-12:46:39.534|770=10|771=CLIENT|769=20260814-12:46:39.717|771=ULBRIDGE|2897=6|65032=YNHD5|65033=trader1|65034=-8NNI7PA-00|65035=0200370669762303|65036=-8NNI7PA-00|65038=0200380204002|65039=XM8NNITE5-00|65040=dbi;CH0012005267_XSWX_CHF|65041=dbi;CH0012005267_XSWX_CHF|avexdestination=XSWX|clientbu=CLI|cumulnoorders=-1|detailedcficode=ESVTFR|env=PROD|group=0000|instrument[description]=NOVARTIS N|marketorderid=U8NNITE0-00|omsactionid=sqx20260814-987785-667-97|omsactiontype=order.assign.request|omsdealerorderid=U8NNITE0-00|orderorigin=buyside|origdelivertocompid=OMSX1|pluginoriginator=OMSDealer|pluginowner=ULMSG_BROKER_BDG_DMZ_CLI|quotationgroup=ACBc|ulfromsessionname=OMS_X1_OrderOut|ultosessionname=@Broker_Routing|10=093|
-lifecycle[032].entry[0]	t1 account=YNHD5_NCI
-lifecycle[032].entry[1]	t9 bodylength=413
-lifecycle[032].entry[2]	t15 currency=CHF
-lifecycle[032].entry[3]	t21 handlinst=1
-lifecycle[032].entry[4]	t22 securityidsource=4
-lifecycle[032].entry[5]	t29 lastcapacity=agency
-lifecycle[032].entry[6]	t30 lastmkt=XSWX
-lifecycle[032].entry[7]	t39 ordstatus=0
-lifecycle[032].entry[8]	t40 ordtype=2
-lifecycle[032].entry[9]	t48 securityid=CH0012005267
-lifecycle[032].entry[10]	t54 side=1
-lifecycle[032].entry[11]	t55 symbol=NOVN
-lifecycle[032].entry[12]	t59 timeinforce=0
-lifecycle[032].entry[13]	t60 transacttime=20260814-12:46:39.757079
-lifecycle[032].entry[14]	t63 settltype=0
-lifecycle[032].entry[15]	t100 exdestination=S
-lifecycle[032].entry[16]	t107 securitydesc=NOVARTIS
-lifecycle[032].entry[17]	t120 settlcurrency=CHF
-lifecycle[032].entry[18]	t126 expiretime=20260814-16:25:00
-lifecycle[032].entry[19]	t150 exectype=0
-lifecycle[032].entry[20]	t167 securitytype=CS
-lifecycle[032].entry[21]	t207 securityexchange=XSWX
-lifecycle[032].entry[22]	t377 solicitedflag=Y
-lifecycle[032].entry[23]	t381 grosstradeamt=0
-lifecycle[032].entry[24]	t453 parties=6
-lifecycle[032].entry[24.0]	t0 party
-lifecycle[032].entry[24.0.0]	t447 partyidsource=C
-lifecycle[032].entry[24.0.1]	t448 partyid=HIGH_TOUCH
-lifecycle[032].entry[24.0.2]	t452 partyrole=3
-lifecycle[032].entry[24.1]	t0 party
-lifecycle[032].entry[24.1.0]	t447 partyidsource=generallyacceptedmarketparticipantidentifier
-lifecycle[032].entry[24.1.1]	t448 partyid=HIGH_TOUCH
-lifecycle[032].entry[24.1.2]	t452 partyrole=3
-lifecycle[032].entry[24.2]	t0 party
-lifecycle[032].entry[24.2.0]	t447 partyidsource=D
-lifecycle[032].entry[24.2.1]	t448 partyid=TRADER2
-lifecycle[032].entry[24.2.2]	t452 partyrole=122
-lifecycle[032].entry[24.3]	t0 party
-lifecycle[032].entry[24.3.0]	t447 partyidsource=D
-lifecycle[032].entry[24.3.1]	t448 partyid=TRADER2
-lifecycle[032].entry[24.3.2]	t452 partyrole=36
-lifecycle[032].entry[24.4]	t0 party
-lifecycle[032].entry[24.4.0]	t447 partyidsource=D
-lifecycle[032].entry[24.4.1]	t448 partyid=ULTrader
-lifecycle[032].entry[24.5]	t0 party
-lifecycle[032].entry[24.5.0]	t447 partyidsource=D
-lifecycle[032].entry[24.5.1]	t448 partyid=trader1
-lifecycle[032].entry[24.5.2]	t452 partyrole=12
-lifecycle[032].entry[25]	t454 secaltids=3
-lifecycle[032].entry[25.0]	t0 secaltid
-lifecycle[032].entry[25.0.0]	t455 securityaltid=dbi;CH0012005267_XSWX_CHF
-lifecycle[032].entry[25.0.1]	t456 securityaltidsource=OMSINSTRUMENTID
-lifecycle[032].entry[25.1]	t0 secaltid
-lifecycle[032].entry[25.1.0]	t455 securityaltid=dbi;CH0012005267_XSWX_CHF
-lifecycle[032].entry[25.1.1]	t456 securityaltidsource=ULLINKINSTRUMENTID
-lifecycle[032].entry[25.2]	t0 secaltid
-lifecycle[032].entry[25.2.0]	t455 securityaltid=NOVN SW
-lifecycle[032].entry[25.2.1]	t456 securityaltidsource=A
-lifecycle[032].entry[26]	t460 product=5
-lifecycle[032].entry[27]	t461 cficode=ESXXXX
-lifecycle[032].entry[28]	t470 countryofissue=CH
-lifecycle[032].entry[29]	t528 ordercapacity=A
-lifecycle[032].entry[30]	t562 mintradevol=1
-lifecycle[032].entry[31]	t768 trdregtimestamps=2
-lifecycle[032].entry[31.0]	t0 trdregtimestampcomponent
-lifecycle[032].entry[31.0.0]	t769 trdregtimestamp=20260814-12:46:39.534
-lifecycle[032].entry[31.0.1]	t770 trdregtimestamptype=10
-lifecycle[032].entry[31.0.2]	t771 trdregtimestamporigin=CLIENT
-lifecycle[032].entry[31.1]	t0 trdregtimestampcomponent
-lifecycle[032].entry[31.1.0]	t769 trdregtimestamp=20260814-12:46:39.717
-lifecycle[032].entry[31.1.1]	t771 trdregtimestamporigin=ULBRIDGE
-lifecycle[032].entry[32]	t2897 currencycodesource=6
-lifecycle[032].entry[33]	t65032 omsdealeraccount=YNHD5
-lifecycle[032].entry[34]	t65033 omsuserid=trader1
-lifecycle[032].entry[35]	t65034 parentorderid=-8NNI7PA-00
-lifecycle[032].entry[36]	t65035 parentclordid=0200370669762303
-lifecycle[032].entry[37]	t65036 omsdealerparentorderid=-8NNI7PA-00
-lifecycle[032].entry[38]	t65038 transversalkey=0200380204002
-lifecycle[032].entry[39]	t65039 ultraderclordid=XM8NNITE5-00
-lifecycle[032].entry[40]	t65040 omsinstrumentid=dbi;CH0012005267_XSWX_CHF
-lifecycle[032].entry[41]	t65041 ullinkinstrumentid=dbi;CH0012005267_XSWX_CHF
-lifecycle[032].entry[42]	t0 avexdestination=XSWX
-lifecycle[032].entry[43]	t0 clientbu=CLI
-lifecycle[032].entry[44]	t0 cumulnoorders=-1
-lifecycle[032].entry[45]	t0 detailedcficode=ESVTFR
-lifecycle[032].entry[46]	t0 env=PROD
-lifecycle[032].entry[47]	t0 group=0000
-lifecycle[032].entry[48]	t0 instrument[description]=NOVARTIS N
-lifecycle[032].entry[49]	t0 marketorderid=U8NNITE0-00
-lifecycle[032].entry[50]	t0 omsactionid=sqx20260814-987785-667-97
-lifecycle[032].entry[51]	t0 omsactiontype=order.assign.request
-lifecycle[032].entry[52]	t0 omsdealerorderid=U8NNITE0-00
-lifecycle[032].entry[53]	t0 orderorigin=buyside
-lifecycle[032].entry[54]	t0 origdelivertocompid=OMSX1
-lifecycle[032].entry[55]	t0 pluginoriginator=OMSDealer
-lifecycle[032].entry[56]	t0 pluginowner=ULMSG_BROKER_BDG_DMZ_CLI
-lifecycle[032].entry[57]	t0 quotationgroup=ACBc
-lifecycle[032].entry[58]	t0 ulfromsessionname=OMS_X1_OrderOut
-lifecycle[032].entry[59]	t0 ultosessionname=@Broker_Routing
-lifecycle[032].field.currunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[032].field.creaunix	"2026-08-14T12:46:39.757000000Z"
-lifecycle[032].field.prevunix	"2026-08-14T12:46:39.757079000Z"
-lifecycle[032].field.exprunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[032].field.sendingtime	"2026-08-14T12:46:39.764616000Z"
-lifecycle[032].field.transacttime	"2026-08-14T12:46:39.757079000Z"
-lifecycle[032].field.expiretime	"2026-08-14T16:25:00.000000000Z"
-lifecycle[032].field.curruuid	"01a00117-4f60-7000-89eb-bf15dbd0a544"
-lifecycle[032].field.crossuuid	"00000000-0000-8000-a25d-e24c4081ff60"
-lifecycle[032].field.crosscode	"BUY:00079132559GLXC0"
-lifecycle[032].field.currhashcode	12607984144445040087
-lifecycle[032].field.crosshashcode	16311442242533457760
-lifecycle[032].field.prevuuid	"01a0004f-6a8d-7000-b7e3-c9ee8fb7b426"
-lifecycle[032].field.srcuuids	["01a000bd-479a-7018-9d8d-0a733d7030cb","01a000bd-479a-7019-9ab6-15cc25e3ceaf","01a000bd-479a-701a-adb3-cf84321d774f","01a000bd-479a-701b-ad16-e6fa6095962b","01a000bd-479a-701c-8162-558a3873ab86","01a000bd-479a-701f-93a7-9934f594181d","01a000bd-479a-7021-8653-0576caa532d5"]
-lifecycle[032].field.beginstring	"FIX.4.4"
-lifecycle[032].field.msgtype	"8"
+lifecycle[032].type	AE
+lifecycle[032].digest	ae7eff4e94430ffdefbc8f4a90b2e204
+lifecycle[032].wire	8=FIX.4.2|35=AE|49=ULB_BKRBDG|56=ULB_PTBDG|34=3222|52=20260814-14:52:55|11=NOREF|17=9612147_C|31=0|32=0|38=0|9=3430|1128=8|212=3347|213=AGGRESSORINDICATOR=Aggressor|APPLVERID=8|CLORDID=830850681|CONVERSATIONID=3059c3eb-a802-49d5-8a50-21904940de91|CREATIONTIME=20260814145255|ENV=PROD|EXECBROKER=LFZA|EXECID=9612147_C|EXECTYPE=trade|HEDGETRADETYPE=spot|ISINCODE=EZN11TD1F7K3|LASTPX=0|LASTQTY=0|MAIN.UTI=5493000EXAMPLE00000M|MANUALORDERINDICATOR=no|METAL.LOCO=LN|MSGTYPE=tradecapturereport|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafHEDGEPRICE=4381.525\xe2\x96\xaf\xe2\x96\xafHEDGEQTY=161\xe2\x96\xaf\xe2\x96\xafHEDGESETTLDATE=20260818\xe2\x96\xaf\xe2\x96\xafHEDGESIDE=takerbuys\xe2\x96\xaf\xe2\x96\xafHEDGEVENUETRANSID=V8FIS17K343KXE3JJJM328200D8ZBED\xe2\x96\xaf\xe2\x96\xaf|NOLEGS=1|NOLEGS[0]=DELTALEG=-0.3037\xe2\x96\xaf\xe2\x96\xafLEGCURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGCUTZONE=USNYC\xe2\x96\xaf\xe2\x96\xafLEGEXERCISESTYLE=0\xe2\x96\xaf\xe2\x96\xafLEGISINCODE=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGLASTQTY=600\xe2\x96\xaf\xe2\x96\xafLEGLASTSPOTRATE=4381.525\xe2\x96\xaf\xe2\x96\xafLEGMATURITYDATE=20260930\xe2\x96\xaf\xe2\x96\xafLEGMATURITYTIME=093000\xe2\x96\xaf\xe2\x96\xafLEGPREMIUMBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGPRICE=6187.833333333333\xe2\x96\xaf\xe2\x96\xafLEGPUTORCALL=1\xe2\x96\xaf\xe2\x96\xafLEGQTY=37127\xe2\x96\xaf\xe2\x96\xafLEGQUOTEBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYID=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYIDSOURCE=4\xe2\x96\xaf\xe2\x96\xafLEGSETTLDATE=20261002\xe2\x96\xaf\xe2\x96\xafLEGSIDE=sell\xe2\x96\xaf\xe2\x96\xafLEGSTRIKECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGSTRIKEPRICE=4600\xe2\x96\xaf\xe2\x96\xafLEGSYMBOL=XAU/USD\xe2\x96\xaf\xe2\x96\xafLEGUPICODE=QZ48QKHD7TRK\xe2\x96\xaf\xe2\x96\xafLEGVOLATILITY=21.5651\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS=1\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS[0]=LEGALLOCACCOUNT=UNSPECIFIED\xe2\x96\xaf\xe2\x96\xafLEGALLOCQTY=600\xe2\x96\xaf\xe2\x96\xafTR_LEGCALCULATEDALLOCQTY=2760000\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafOPTIONSTRATEGY=1\xe2\x96\xaf\xe2\x96\xafPREMIUMCURRENCY=USD\xe2\x96\xaf\xe2\x96\xafPREMIUMSETTLEMENTDATE=20260818\xe2\x96\xaf\xe2\x96\xafTR_LEGVENUETRANSID=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\xe2\x96\xaf\xe2\x96\xaf|NOREGULATORYTRADEIDS=1|NOREGULATORYTRADEIDS[0]=TRADEID=5493000EXAMPLE00000R\xe2\x96\xaf\xe2\x96\xafTRADEIDTYPE=reporting-tracking-number\xe2\x96\xaf\xe2\x96\xaf|NOSIDES=1|NOSIDES[0]=AGGRESSORINDICATOR=Aggressor\xe2\x96\xaf\xe2\x96\xafCLORDID=NOREF\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS=7\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[0]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=orderoriginationtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[1]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=TRADER ONE\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=TraderName\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[2]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLEBK\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=LFZA\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingfirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[3]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLECO\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=YUCC\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=clientid\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[4]=PARTYID=MMDF\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=publishername\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[5]=NOPARTYSUBIDS=2\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=5493000EXAMPLE00000L\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDLeg\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[1]=PARTYSUBID=5493000EXAMPLE00000H\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDHedge\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=DEFAULT\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=reportingintermediary\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[6]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=investmentdecisionmaker\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf|NOTRDREGTIMESTAMPS=1|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814145255000\xe2\x96\xaf\xe2\x96\xafTRDREGTIMESTAMPTYPE=execution-time\xe2\x96\xaf\xe2\x96\xaf|ORDERQTY=0|ORDSTATUS=filled|PACKAGEID=4528370608|CLIENT.CLIENTID=LIFC|CLIENT.SOURCE=TRTN|CLIENT.SYMBOL=XAU|CLIENT.TRADER=trader1|CLIENT.TRADINGPLATFORM=MMDF|PLUGINORIGINATOR=TRTN_FX_TradeCapture|PLUGINOWNER=TRTN_FX_TradeCapture|PRODUCT=currency|SECURITYTYPE=option|SYMBOL=XAU/USD|TRADEDATE=20260814|TRADEREPORTID=830850681|TRANSACTTIME=20260814145255000|TR_NOUDFGROUP=1|TR_NOUDFGROUP[0]=TR_UDF_NAME=PM_Location\xe2\x96\xaf\xe2\x96\xafTR_UDF_SEQUENCENUMBER=0\xe2\x96\xaf\xe2\x96\xafTR_UDF_VALUE=LONDON\xe2\x96\xaf\xe2\x96\xaf|TR_SOURCEOFDATA=11|ULFROMSESSIONNAME=TRTN_FX_TradeCapture|ULTOSESSIONNAME=ULMSG_BROKER_TO_POSTTRADE|UNRESOLVEDROUTING=yes|UPI=QZ48QKHD7TRK|env=PROD|76=LFZA|150=F|hedgetradetype=spot|hedgecurrency=XAU|hedgeprice=4381.525|hedgeqty=161|hedgesettldate=20260818|hedgeside=takerbuys|hedgevenuetransid=V8FIS17K343KXE3JJJM328200D8ZBED|555=1|deltaleg=-0.3037|556=XAU|legcutzone=USNYC|1420=0|legisincode=EZN11TD1F7K3|1418=600|leglastspotrate=4381.525|611=20260930-00:00:00|legpremiumbasis=3|566=6187.833333333333|1358=1|687=37127|legquotebasis=3|602=EZN11TD1F7K3|603=4|588=20261002-00:00:00|624=2|942=XAU|612=4600|600=XAU/USD|2893=QZ48QKHD7TRK|1379=21.5651|670=1|671=UNSPECIFIED|673=600|trlegcalculatedallocqty=2760000|optionstrategy=1|premiumcurrency=USD|premiumsettlementdate=20260818|trlegvenuetransid=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8|1907=1|1003=5493000EXAMPLE00000R|tradeidtype=reporting-tracking-number|552=1|11=NOREF|453=7|448=DEFAULT|447=D|452=72|802=2|523=5493000EXAMPLE00000H|523=5493000EXAMPLE00000L|448=LFZA|447=D|452=1|802=1|523=EXAMPLEBK|803=5|448=MMDF|447=D|448=YUCC|447=D|452=3|802=1|523=EXAMPLECO|803=5|448=trader1|447=D|452=11|448=trader1|447=D|452=12|802=1|523=TRADER ONE|448=trader1|447=D|452=122|768=1|769=20260814-14:52:55|770=1|39=2|2489=4528370608|pluginoriginator=TRTN_FX_TradeCapture|pluginowner=TRTN_FX_TradeCapture|460=4|167=OPT|55=XAU/USD|75=20260814-00:00:00|571=830850681|60=20260814-14:52:55|trudfname=PM_Location|trudfsequencenumber=0|trudfvalue=LONDON|trsourceofdata=11|ulfromsessionname=TRTN_FX_TradeCapture|ultosessionname=ULMSG_BROKER_TO_POSTTRADE|unresolvedrouting=yes|upi=QZ48QKHD7TRK|109=LIFC|453=2|448=LFZA|452=1|448=LIFC|452=3|461=OXXXXX|10=087|
+lifecycle[032].entry[0]	t9 bodylength=3430
+lifecycle[032].entry[1]	t1128 applverid=8
+lifecycle[032].entry[2]	t212 xmldatalen=3347
+lifecycle[032].entry[3]	t213 xmldata=AGGRESSORINDICATOR=Aggressor|APPLVERID=8|CLORDID=830850681|CONVERSATIONID=3059c3eb-a802-49d5-8a50-21904940de91|CREATIONTIME=20260814145255|ENV=PROD|EXECBROKER=LFZA|EXECID=9612147_C|EXECTYPE=trade|HEDGETRADETYPE=spot|ISINCODE=EZN11TD1F7K3|LASTPX=0|LASTQTY=0|MAIN.UTI=5493000EXAMPLE00000M|MANUALORDERINDICATOR=no|METAL.LOCO=LN|MSGTYPE=tradecapturereport|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafHEDGEPRICE=4381.525\xe2\x96\xaf\xe2\x96\xafHEDGEQTY=161\xe2\x96\xaf\xe2\x96\xafHEDGESETTLDATE=20260818\xe2\x96\xaf\xe2\x96\xafHEDGESIDE=takerbuys\xe2\x96\xaf\xe2\x96\xafHEDGEVENUETRANSID=V8FIS17K343KXE3JJJM328200D8ZBED\xe2\x96\xaf\xe2\x96\xaf|NOLEGS=1|NOLEGS[0]=DELTALEG=-0.3037\xe2\x96\xaf\xe2\x96\xafLEGCURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGCUTZONE=USNYC\xe2\x96\xaf\xe2\x96\xafLEGEXERCISESTYLE=0\xe2\x96\xaf\xe2\x96\xafLEGISINCODE=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGLASTQTY=600\xe2\x96\xaf\xe2\x96\xafLEGLASTSPOTRATE=4381.525\xe2\x96\xaf\xe2\x96\xafLEGMATURITYDATE=20260930\xe2\x96\xaf\xe2\x96\xafLEGMATURITYTIME=093000\xe2\x96\xaf\xe2\x96\xafLEGPREMIUMBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGPRICE=6187.833333333333\xe2\x96\xaf\xe2\x96\xafLEGPUTORCALL=1\xe2\x96\xaf\xe2\x96\xafLEGQTY=37127\xe2\x96\xaf\xe2\x96\xafLEGQUOTEBASIS=3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYID=EZN11TD1F7K3\xe2\x96\xaf\xe2\x96\xafLEGSECURITYIDSOURCE=4\xe2\x96\xaf\xe2\x96\xafLEGSETTLDATE=20261002\xe2\x96\xaf\xe2\x96\xafLEGSIDE=sell\xe2\x96\xaf\xe2\x96\xafLEGSTRIKECURRENCY=XAU\xe2\x96\xaf\xe2\x96\xafLEGSTRIKEPRICE=4600\xe2\x96\xaf\xe2\x96\xafLEGSYMBOL=XAU/USD\xe2\x96\xaf\xe2\x96\xafLEGUPICODE=QZ48QKHD7TRK\xe2\x96\xaf\xe2\x96\xafLEGVOLATILITY=21.5651\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS=1\xe2\x96\xaf\xe2\x96\xafNOLEGALLOCS[0]=LEGALLOCACCOUNT=UNSPECIFIED\xe2\x96\xaf\xe2\x96\xafLEGALLOCQTY=600\xe2\x96\xaf\xe2\x96\xafTR_LEGCALCULATEDALLOCQTY=2760000\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafOPTIONSTRATEGY=1\xe2\x96\xaf\xe2\x96\xafPREMIUMCURRENCY=USD\xe2\x96\xaf\xe2\x96\xafPREMIUMSETTLEMENTDATE=20260818\xe2\x96\xaf\xe2\x96\xafTR_LEGVENUETRANSID=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\xe2\x96\xaf\xe2\x96\xaf|NOREGULATORYTRADEIDS=1|NOREGULATORYTRADEIDS[0]=TRADEID=5493000EXAMPLE00000R\xe2\x96\xaf\xe2\x96\xafTRADEIDTYPE=reporting-tracking-number\xe2\x96\xaf\xe2\x96\xaf|NOSIDES=1|NOSIDES[0]=AGGRESSORINDICATOR=Aggressor\xe2\x96\xaf\xe2\x96\xafCLORDID=NOREF\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS=7\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[0]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=orderoriginationtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[1]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=TRADER ONE\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=TraderName\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingtrader\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[2]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLEBK\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=LFZA\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=executingfirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[3]=NOPARTYSUBIDS=1\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=EXAMPLECO\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=fulllegalnameoffirm\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=YUCC\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=clientid\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[4]=PARTYID=MMDF\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=publishername\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[5]=NOPARTYSUBIDS=2\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[0]=PARTYSUBID=5493000EXAMPLE00000L\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDLeg\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYSUBIDS[1]=PARTYSUBID=5493000EXAMPLE00000H\xe2\x96\xaf\xe2\x96\xafPARTYSUBIDTYPE=UniqueTransactionIDHedge\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafPARTYID=DEFAULT\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=reportingintermediary\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xafNOPARTYIDS[6]=PARTYID=trader1\xe2\x96\xaf\xe2\x96\xafPARTYIDSOURCE=proprietary/customcode\xe2\x96\xaf\xe2\x96\xafPARTYROLE=investmentdecisionmaker\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf\xe2\x96\xaf|NOTRDREGTIMESTAMPS=1|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814145255000\xe2\x96\xaf\xe2\x96\xafTRDREGTIMESTAMPTYPE=execution-time\xe2\x96\xaf\xe2\x96\xaf|ORDERQTY=0|ORDSTATUS=filled|PACKAGEID=4528370608|CLIENT.CLIENTID=LIFC|CLIENT.SOURCE=TRTN|CLIENT.SYMBOL=XAU|CLIENT.TRADER=trader1|CLIENT.TRADINGPLATFORM=MMDF|PLUGINORIGINATOR=TRTN_FX_TradeCapture|PLUGINOWNER=TRTN_FX_TradeCapture|PRODUCT=currency|SECURITYTYPE=option|SYMBOL=XAU/USD|TRADEDATE=20260814|TRADEREPORTID=830850681|TRANSACTTIME=20260814145255000|TR_NOUDFGROUP=1|TR_NOUDFGROUP[0]=TR_UDF_NAME=PM_Location\xe2\x96\xaf\xe2\x96\xafTR_UDF_SEQUENCENUMBER=0\xe2\x96\xaf\xe2\x96\xafTR_UDF_VALUE=LONDON\xe2\x96\xaf\xe2\x96\xaf|TR_SOURCEOFDATA=11|ULFROMSESSIONNAME=TRTN_FX_TradeCapture|ULTOSESSIONNAME=ULMSG_BROKER_TO_POSTTRADE|UNRESOLVEDROUTING=yes|UPI=QZ48QKHD7TRK
+lifecycle[032].entry[4]	t0 env=PROD
+lifecycle[032].entry[5]	t76 execbroker=LFZA
+lifecycle[032].entry[6]	t150 exectype=F
+lifecycle[032].entry[7]	t0 hedgetradetype=spot
+lifecycle[032].entry[8]	t0 nohedgegroups
+lifecycle[032].entry[8.0]	t0 nohedgegroup
+lifecycle[032].entry[8.0.0]	t0 hedgecurrency=XAU
+lifecycle[032].entry[8.0.1]	t0 hedgeprice=4381.525
+lifecycle[032].entry[8.0.2]	t0 hedgeqty=161
+lifecycle[032].entry[8.0.3]	t0 hedgesettldate=20260818
+lifecycle[032].entry[8.0.4]	t0 hedgeside=takerbuys
+lifecycle[032].entry[8.0.5]	t0 hedgevenuetransid=V8FIS17K343KXE3JJJM328200D8ZBED
+lifecycle[032].entry[9]	t555 trdinstrmtleggrp=1
+lifecycle[032].entry[9.0]	t0 trdinstrmtleg
+lifecycle[032].entry[9.0.0]	t0 deltaleg=-0.3037
+lifecycle[032].entry[9.0.1]	t556 legcurrency=XAU
+lifecycle[032].entry[9.0.2]	t0 legcutzone=USNYC
+lifecycle[032].entry[9.0.3]	t1420 legexercisestyle=0
+lifecycle[032].entry[9.0.4]	t0 legisincode=EZN11TD1F7K3
+lifecycle[032].entry[9.0.5]	t1418 leglastqty=600
+lifecycle[032].entry[9.0.6]	t0 leglastspotrate=4381.525
+lifecycle[032].entry[9.0.7]	t611 legmaturitydate=20260930-00:00:00
+lifecycle[032].entry[9.0.8]	t0 legpremiumbasis=3
+lifecycle[032].entry[9.0.9]	t566 legprice=6187.833333333333
+lifecycle[032].entry[9.0.10]	t1358 legputorcall=1
+lifecycle[032].entry[9.0.11]	t687 legqty=37127
+lifecycle[032].entry[9.0.12]	t0 legquotebasis=3
+lifecycle[032].entry[9.0.13]	t602 legsecurityid=EZN11TD1F7K3
+lifecycle[032].entry[9.0.14]	t603 legsecurityidsource=4
+lifecycle[032].entry[9.0.15]	t588 legsettldate=20261002-00:00:00
+lifecycle[032].entry[9.0.16]	t624 legside=2
+lifecycle[032].entry[9.0.17]	t942 legstrikecurrency=XAU
+lifecycle[032].entry[9.0.18]	t612 legstrikeprice=4600
+lifecycle[032].entry[9.0.19]	t600 legsymbol=XAU/USD
+lifecycle[032].entry[9.0.20]	t2893 legupicode=QZ48QKHD7TRK
+lifecycle[032].entry[9.0.21]	t1379 legvolatility=21.5651
+lifecycle[032].entry[9.0.22]	t670 legallocs=1
+lifecycle[032].entry[9.0.22.0]	t0 legprealloc
+lifecycle[032].entry[9.0.22.0.0]	t671 legallocaccount=UNSPECIFIED
+lifecycle[032].entry[9.0.22.0.1]	t673 legallocqty=600
+lifecycle[032].entry[9.0.22.0.2]	t0 trlegcalculatedallocqty=2760000
+lifecycle[032].entry[9.0.23]	t0 optionstrategy=1
+lifecycle[032].entry[9.0.24]	t0 premiumcurrency=USD
+lifecycle[032].entry[9.0.25]	t0 premiumsettlementdate=20260818
+lifecycle[032].entry[9.0.26]	t0 trlegvenuetransid=YDUVDV3VVOI2GK0QSYKX7GO26UXEA8
+lifecycle[032].entry[10]	t1907 regulatorytradeids=1
+lifecycle[032].entry[10.0]	t0 regulatorytradeidcomponent
+lifecycle[032].entry[10.0.0]	t1003 tradeid=5493000EXAMPLE00000R
+lifecycle[032].entry[10.0.1]	t0 tradeidtype=reporting-tracking-number
+lifecycle[032].entry[11]	t552 trdcaprptsidegrp=1
+lifecycle[032].entry[11.0]	t0 trdcaprptside
+lifecycle[032].entry[11.0.0]	t11 clordid=NOREF
+lifecycle[032].entry[11.0.1]	t453 parties=7
+lifecycle[032].entry[11.0.1.0]	t0 party
+lifecycle[032].entry[11.0.1.0.0]	t448 partyid=DEFAULT
+lifecycle[032].entry[11.0.1.0.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.0.2]	t452 partyrole=72
+lifecycle[032].entry[11.0.1.0.3]	t802 partysubids=2
+lifecycle[032].entry[11.0.1.0.3.0]	t0 ptyssub
+lifecycle[032].entry[11.0.1.0.3.0.0]	t523 partysubid=5493000EXAMPLE00000H
+lifecycle[032].entry[11.0.1.0.3.1]	t0 ptyssub
+lifecycle[032].entry[11.0.1.0.3.1.0]	t523 partysubid=5493000EXAMPLE00000L
+lifecycle[032].entry[11.0.1.1]	t0 party
+lifecycle[032].entry[11.0.1.1.0]	t448 partyid=LFZA
+lifecycle[032].entry[11.0.1.1.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.1.2]	t452 partyrole=1
+lifecycle[032].entry[11.0.1.1.3]	t802 partysubids=1
+lifecycle[032].entry[11.0.1.1.3.0]	t0 ptyssub
+lifecycle[032].entry[11.0.1.1.3.0.0]	t523 partysubid=EXAMPLEBK
+lifecycle[032].entry[11.0.1.1.3.0.1]	t803 partysubidtype=5
+lifecycle[032].entry[11.0.1.2]	t0 party
+lifecycle[032].entry[11.0.1.2.0]	t448 partyid=MMDF
+lifecycle[032].entry[11.0.1.2.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.3]	t0 party
+lifecycle[032].entry[11.0.1.3.0]	t448 partyid=YUCC
+lifecycle[032].entry[11.0.1.3.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.3.2]	t452 partyrole=3
+lifecycle[032].entry[11.0.1.3.3]	t802 partysubids=1
+lifecycle[032].entry[11.0.1.3.3.0]	t0 ptyssub
+lifecycle[032].entry[11.0.1.3.3.0.0]	t523 partysubid=EXAMPLECO
+lifecycle[032].entry[11.0.1.3.3.0.1]	t803 partysubidtype=5
+lifecycle[032].entry[11.0.1.4]	t0 party
+lifecycle[032].entry[11.0.1.4.0]	t448 partyid=trader1
+lifecycle[032].entry[11.0.1.4.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.4.2]	t452 partyrole=11
+lifecycle[032].entry[11.0.1.5]	t0 party
+lifecycle[032].entry[11.0.1.5.0]	t448 partyid=trader1
+lifecycle[032].entry[11.0.1.5.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.5.2]	t452 partyrole=12
+lifecycle[032].entry[11.0.1.5.3]	t802 partysubids=1
+lifecycle[032].entry[11.0.1.5.3.0]	t0 ptyssub
+lifecycle[032].entry[11.0.1.5.3.0.0]	t523 partysubid=TRADER ONE
+lifecycle[032].entry[11.0.1.6]	t0 party
+lifecycle[032].entry[11.0.1.6.0]	t448 partyid=trader1
+lifecycle[032].entry[11.0.1.6.1]	t447 partyidsource=D
+lifecycle[032].entry[11.0.1.6.2]	t452 partyrole=122
+lifecycle[032].entry[12]	t768 trdregtimestamps=1
+lifecycle[032].entry[12.0]	t0 trdregtimestampcomponent
+lifecycle[032].entry[12.0.0]	t769 trdregtimestamp=20260814-14:52:55
+lifecycle[032].entry[12.0.1]	t770 trdregtimestamptype=1
+lifecycle[032].entry[13]	t39 ordstatus=2
+lifecycle[032].entry[14]	t2489 packageid=4528370608
+lifecycle[032].entry[15]	t0 pluginoriginator=TRTN_FX_TradeCapture
+lifecycle[032].entry[16]	t0 pluginowner=TRTN_FX_TradeCapture
+lifecycle[032].entry[17]	t460 product=4
+lifecycle[032].entry[18]	t167 securitytype=OPT
+lifecycle[032].entry[19]	t55 symbol=XAU/USD
+lifecycle[032].entry[20]	t75 tradedate=20260814-00:00:00
+lifecycle[032].entry[21]	t571 tradereportid=830850681
+lifecycle[032].entry[22]	t60 transacttime=20260814-14:52:55
+lifecycle[032].entry[23]	t0 trnoudfgroup
+lifecycle[032].entry[23.0]	t0 trnoudfgroup
+lifecycle[032].entry[23.0.0]	t0 trudfname=PM_Location
+lifecycle[032].entry[23.0.1]	t0 trudfsequencenumber=0
+lifecycle[032].entry[23.0.2]	t0 trudfvalue=LONDON
+lifecycle[032].entry[24]	t0 trsourceofdata=11
+lifecycle[032].entry[25]	t0 ulfromsessionname=TRTN_FX_TradeCapture
+lifecycle[032].entry[26]	t0 ultosessionname=ULMSG_BROKER_TO_POSTTRADE
+lifecycle[032].entry[27]	t0 unresolvedrouting=yes
+lifecycle[032].entry[28]	t0 upi=QZ48QKHD7TRK
+lifecycle[032].entry[29]	t109 clientid=LIFC
+lifecycle[032].entry[30]	t453 parties=2
+lifecycle[032].entry[30.0]	t0 party
+lifecycle[032].entry[30.0.0]	t448 partyid=LFZA
+lifecycle[032].entry[30.0.1]	t452 partyrole=1
+lifecycle[032].entry[30.1]	t0 party
+lifecycle[032].entry[30.1.0]	t448 partyid=LIFC
+lifecycle[032].entry[30.1.1]	t452 partyrole=3
+lifecycle[032].entry[31]	t461 cficode=OXXXXX
+lifecycle[032].field.currunix	"2026-08-14T14:52:55.000000000Z"
+lifecycle[032].field.execunix	"2026-08-14T14:52:55.000000000Z"
+lifecycle[032].field.recdunix	"2026-08-14T16:52:55.861000000Z"
+lifecycle[032].field.creaunix	"2026-08-14T14:52:55.000000000Z"
+lifecycle[032].field.sendingtime	"2026-08-14T14:52:55.000000000Z"
+lifecycle[032].field.transacttime	"2026-08-14T14:52:55.000000000Z"
+lifecycle[032].field.tradedate	"2026-08-14T00:00:00.000000000"
+lifecycle[032].field.curruuid	"01a000c3-0158-7001-a310-c1d9de1637cd"
+lifecycle[032].field.crossuuid	"00000000-0000-8000-9b70-7d59a2288e08"
+lifecycle[032].field.crosscode	"5:NOREF|11:5:NOREF"
+lifecycle[032].field.currhashcode	14778102281453037599
+lifecycle[032].field.crosshashcode	6588904078769163784
+lifecycle[032].field.seqnum	1
+lifecycle[032].field.srcuuids	["01a000c3-0158-7000-8785-06311ca28cc4","01a00130-e1b5-7070-8772-5c92e6cdd246"]
+lifecycle[032].field.beginstring	"FIX.4.2"
+lifecycle[032].field.msgtype	"AE"
 lifecycle[032].field.msgcat	"EXEC"
-lifecycle[032].field.msgseqnum	3089
-lifecycle[032].field.sendercompid	"OADDKMEHSUIJ"
-lifecycle[032].field.targetcompid	"FIRMX1"
-lifecycle[032].field.possdupflag	false
-lifecycle[032].field.msgdirection	"R"
-lifecycle[032].field.msgpluginid	"OMS_X1_OrderOut"
-lifecycle[032].field.msgoriginator	"OMS_X1_OrderOut"
-lifecycle[032].field.msgctxid	"9f0316669a"
-lifecycle[032].field.msgsessionid	"e7254b11"
-lifecycle[032].field.msgsesseventid	"8:e7254b11:9f0316669a:3089"
-lifecycle[032].field.conversationid	"4081b18f-5e85-4df1-b2ec-b98ffb9f1960"
-lifecycle[032].field.symbol	"NOVN"
-lifecycle[032].field.securityid	"CH0012005267"
-lifecycle[032].field.securityidsource	"4"
-lifecycle[032].field.isincode	"CH0012005267"
-lifecycle[032].field.bloombergcode	"NOVN SW"
-lifecycle[032].field.miccode	"XSWX"
-lifecycle[032].field.securitytype	"CS"
-lifecycle[032].field.securityexchange	"XSWX"
-lifecycle[032].field.exdestination	"S"
-lifecycle[032].field.lastmkt	"XSWX"
-lifecycle[032].field.cficode	"ESXXXX"
-lifecycle[032].field.product	5
-lifecycle[032].field.account	"YNHD5_NCI"
-lifecycle[032].field.clordid	"XM8NNITE512"
-lifecycle[032].field.orderid	"00079132559GLXC0"
-lifecycle[032].field.secondaryorderid	"20260814-1126195"
-lifecycle[032].field.execid	"00802052392GWQN0"
-lifecycle[032].field.side	"BUY"
-lifecycle[032].field.price	"121.940000000000000000"
+lifecycle[032].field.msgseqnum	3222
+lifecycle[032].field.sendercompid	"ULB_BKRBDG"
+lifecycle[032].field.targetcompid	"ULB_PTBDG"
+lifecycle[032].field.msgdirection	"S"
+lifecycle[032].field.msgpluginid	"ULMSG_BROKER_TO_POSTTRADE"
+lifecycle[032].field.msgctxid	"9f038a00b4"
+lifecycle[032].field.msgsessionid	"e7254b1a"
+lifecycle[032].field.msgsesseventid	"AE:e7254b1a:9f038a00b4:3222"
+lifecycle[032].field.conversationid	"3059c3eb-a802-49d5-8a50-21904940de91"
+lifecycle[032].field.symbol	"XAU/USD"
+lifecycle[032].field.isincode	"EZN11TD1F7K3"
+lifecycle[032].field.securitytype	"OPT"
+lifecycle[032].field.cficode	"OXXXXX"
+lifecycle[032].field.product	4
+lifecycle[032].field.clordid	"NOREF"
+lifecycle[032].field.execid	"9612147_C"
 lifecycle[032].field.lastpx	"0.000000000000000000"
-lifecycle[032].field.avgpx	"0.000000000000000000"
-lifecycle[032].field.orderqty	"400.000000000000000000"
+lifecycle[032].field.orderqty	"0.000000000000000000"
 lifecycle[032].field.lastqty	"0.000000000000000000"
-lifecycle[032].field.cumqty	"0.000000000000000000"
-lifecycle[032].field.leavesqty	"400.000000000000000000"
-lifecycle[032].field.currency	"CHF"
-lifecycle[032].field.settlcurrency	"CHF"
-lifecycle[032].field.ordtype	"2"
-lifecycle[032].field.timeinforce	"0"
-lifecycle[032].field.state	"EXPIRED"
-lifecycle[032].field.ordstatus	"0"
-lifecycle[032].field.exectype	"0"
-lifecycle[032].field.nopartyids	6
-lifecycle[032].field.parties	[["HIGH_TOUCH","C",3,null,null,null],["HIGH_TOUCH","generallyacceptedmarketparticipantidentifier",3,null,null,null],["TRADER2","D",122,null,null,null],["TRADER2","D",36,null,null,null],["ULTrader","D",null,null,null,null],["trader1","D",12,null,null,null]]
-lifecycle[032].field.nosecurityaltid	3
-lifecycle[032].field.secaltids	[["dbi;CH0012005267_XSWX_CHF","OMSINSTRUMENTID",null],["dbi;CH0012005267_XSWX_CHF","ULLINKINSTRUMENTID",null],["NOVN SW","A",null]]
-lifecycle[032].field.notrdregtimestamps	2
-lifecycle[032].field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-lifecycle[032].field.bodylength	413
-lifecycle[032].field.checksum	"093"
-lifecycle[032].field.metadata	{"avexdestination":"XSWX","clientbu":"CLI","cumulnoorders":"-1","detailedcficode":"ESVTFR","env":"PROD","firm.lastinstrumentlookupdate":"20260814","firm.lastinstrumentlookupsucceed":"yes","firm.orig.clientid":"2540498.003","firm.orig.ulfromsessionname":"OMS_X1_OrderOut","group":"0000","instrument[description]":"NOVARTIS N","marketorderid":"U8NNITE0-00","omsactionid":"sqx20260814-987785-667-97","omsactiontype":"order.assign.request","omsdealerorderid":"U8NNITE0-00","orderorigin":"buyside","origdelivertocompid":"OMSX1","pluginoriginator":"OMSDealer","pluginowner":"ULMSG_BROKER_BDG_DMZ_CLI","quotationgroup":"ACBc","ulfromsessionname":"OMS_X1_OrderOut","ullink.bypassrisk":"no","ullink.clientid":"trader1","ultosessionname":"@Broker_Routing"}
-lifecycle[032].field.fixentries	{"107:securitydesc":"NOVARTIS","21:handlinst":"1","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","470:countryofissue":"CH","528:ordercapacity":"A","562:mintradevol":"1","63:settltype":"0","65032:omsdealeraccount":"YNHD5","65033:omsuserid":"trader1","65034:parentorderid":"-8NNI7PA-00","65035:parentclordid":"0200370669762303","65036:omsdealerparentorderid":"-8NNI7PA-00","65038:transversalkey":"0200380204002","65039:ultraderclordid":"XM8NNITE5-00","65040:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","65041:ullinkinstrumentid":"dbi;CH0012005267_XSWX_CHF"}
-lifecycle[033].type	F
-lifecycle[033].digest	be0b2112b031f046abdc15c8722d3963
-lifecycle[033].wire	8=FIX.4.2|35=F|49=YDUZFSOA|56=CSJPJ|34=72|52=20260814-21:59:46|11=0201623594616113|37=931070583-1940-30712_192|38=10000|41=0201623594616112|9=245|128=RDXY|57=RDXY|116=trader3|129=TRITON|22=4|48=TW0002454006|54=2|55=2454|60=20260814-21:59:46|107=MEDIATEK|167=CS|460=5|461=ESXXXX|470=TW|10=016|
-lifecycle[033].entry[0]	t9 bodylength=245
-lifecycle[033].entry[1]	t128 delivertocompid=RDXY
-lifecycle[033].entry[2]	t57 targetsubid=RDXY
-lifecycle[033].entry[3]	t116 onbehalfofsubid=trader3
-lifecycle[033].entry[4]	t129 delivertosubid=TRITON
-lifecycle[033].entry[5]	t22 securityidsource=4
-lifecycle[033].entry[6]	t48 securityid=TW0002454006
-lifecycle[033].entry[7]	t54 side=2
-lifecycle[033].entry[8]	t55 symbol=2454
-lifecycle[033].entry[9]	t60 transacttime=20260814-21:59:46
-lifecycle[033].entry[10]	t107 securitydesc=MEDIATEK
-lifecycle[033].entry[11]	t167 securitytype=CS
-lifecycle[033].entry[12]	t460 product=5
-lifecycle[033].entry[13]	t461 cficode=ESXXXX
-lifecycle[033].entry[14]	t470 countryofissue=TW
-lifecycle[033].field.currunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[033].field.recdunix	"2026-08-14T23:59:46.417985000Z"
-lifecycle[033].field.creaunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[033].field.sendingtime	"2026-08-14T21:59:46.000000000Z"
-lifecycle[033].field.transacttime	"2026-08-14T21:59:46.000000000Z"
-lifecycle[033].field.curruuid	"01a00249-cc50-7000-97c1-85efb134b742"
-lifecycle[033].field.crossuuid	"00000000-0000-8000-b74b-42ba8f9fb430"
-lifecycle[033].field.crosscode	"SELL:931070583-1940-30712_192"
-lifecycle[033].field.currhashcode	3227868321125502163
-lifecycle[033].field.crosshashcode	13207723701235070000
-lifecycle[033].field.srcuuids	["01a002b7-aaf1-7082-bd16-d36b3cb125b5"]
-lifecycle[033].field.beginstring	"FIX.4.2"
-lifecycle[033].field.msgtype	"F"
-lifecycle[033].field.msgcat	"ORDR"
-lifecycle[033].field.msgseqnum	72
-lifecycle[033].field.sendercompid	"YDUZFSOA"
-lifecycle[033].field.targetcompid	"CSJPJ"
-lifecycle[033].field.msgdirection	"S"
-lifecycle[033].field.msgpluginid	"Autex_FIX42_BuySide"
-lifecycle[033].field.msgctxid	"9f0510c9f1"
-lifecycle[033].field.msgsessionid	"e7254ef0"
-lifecycle[033].field.msgsesseventid	"F:e7254ef0:9f0510c9f1:72"
-lifecycle[033].field.symbol	"2454"
-lifecycle[033].field.securityid	"TW0002454006"
+lifecycle[032].field.state	"FILLED"
+lifecycle[032].field.ordstatus	"2"
+lifecycle[032].field.exectype	"F"
+lifecycle[032].field.nopartyids	2
+lifecycle[032].field.parties	[["LFZA",null,1,null,null,null],["LIFC",null,3,null,null,null]]
+lifecycle[032].field.notrdregtimestamps	1
+lifecycle[032].field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
+lifecycle[032].field.bodylength	3430
+lifecycle[032].field.xmldatalen	3347
+lifecycle[032].field.xmldata	"QUdHUkVTU09SSU5ESUNBVE9SPUFnZ3Jlc3NvcnxBUFBMVkVSSUQ9OHxDTE9SRElEPTgzMDg1MDY4MXxDT05WRVJTQVRJT05JRD0zMDU5YzNlYi1hODAyLTQ5ZDUtOGE1MC0yMTkwNDk0MGRlOTF8Q1JFQVRJT05USU1FPTIwMjYwODE0MTQ1MjU1fEVOVj1QUk9EfEVYRUNCUk9LRVI9TEZaQXxFWEVDSUQ9OTYxMjE0N19DfEVYRUNUWVBFPXRyYWRlfEhFREdFVFJBREVUWVBFPXNwb3R8SVNJTkNPREU9RVpOMTFURDFGN0szfExBU1RQWD0wfExBU1RRVFk9MHxNQUlOLlVUST01NDkzMDAwRVhBTVBMRTAwMDAwTXxNQU5VQUxPUkRFUklORElDQVRPUj1ub3xNRVRBTC5MT0NPPUxOfE1TR1RZUEU9dHJhZGVjYXB0dXJlcmVwb3J0fE5PSEVER0VHUk9VUFM9MXxOT0hFREdFR1JPVVBTWzBdPUhFREdFQ1VSUkVOQ1k9WEFV4pav4pavSEVER0VQUklDRT00MzgxLjUyNeKWr+KWr0hFREdFUVRZPTE2MeKWr+KWr0hFREdFU0VUVExEQVRFPTIwMjYwODE44pav4pavSEVER0VTSURFPXRha2VyYnV5c+KWr+KWr0hFREdFVkVOVUVUUkFOU0lEPVY4RklTMTdLMzQzS1hFM0pKSk0zMjgyMDBEOFpCRUTilq/ilq98Tk9MRUdTPTF8Tk9MRUdTWzBdPURFTFRBTEVHPS0wLjMwMzfilq/ilq9MRUdDVVJSRU5DWT1YQVXilq/ilq9MRUdDVVRaT05FPVVTTllD4pav4pavTEVHRVhFUkNJU0VTVFlMRT0w4pav4pavTEVHSVNJTkNPREU9RVpOMTFURDFGN0sz4pav4pavTEVHTEFTVFFUWT02MDDilq/ilq9MRUdMQVNUU1BPVFJBVEU9NDM4MS41MjXilq/ilq9MRUdNQVRVUklUWURBVEU9MjAyNjA5MzDilq/ilq9MRUdNQVRVUklUWVRJTUU9MDkzMDAw4pav4pavTEVHUFJFTUlVTUJBU0lTPTPilq/ilq9MRUdQUklDRT02MTg3LjgzMzMzMzMzMzMzM+KWr+KWr0xFR1BVVE9SQ0FMTD0x4pav4pavTEVHUVRZPTM3MTI34pav4pavTEVHUVVPVEVCQVNJUz0z4pav4pavTEVHU0VDVVJJVFlJRD1FWk4xMVREMUY3SzPilq/ilq9MRUdTRUNVUklUWUlEU09VUkNFPTTilq/ilq9MRUdTRVRUTERBVEU9MjAyNjEwMDLilq/ilq9MRUdTSURFPXNlbGzilq/ilq9MRUdTVFJJS0VDVVJSRU5DWT1YQVXilq/ilq9MRUdTVFJJS0VQUklDRT00NjAw4pav4pavTEVHU1lNQk9MPVhBVS9VU0Tilq/ilq9MRUdVUElDT0RFPVFaNDhRS0hEN1RSS+KWr+KWr0xFR1ZPTEFUSUxJVFk9MjEuNTY1MeKWr+KWr05PTEVHQUxMT0NTPTHilq/ilq9OT0xFR0FMTE9DU1swXT1MRUdBTExPQ0FDQ09VTlQ9VU5TUEVDSUZJRUTilq/ilq9MRUdBTExPQ1FUWT02MDDilq/ilq9UUl9MRUdDQUxDVUxBVEVEQUxMT0NRVFk9Mjc2MDAwMOKWr+KWr+KWr+KWr09QVElPTlNUUkFURUdZPTHilq/ilq9QUkVNSVVNQ1VSUkVOQ1k9VVNE4pav4pavUFJFTUlVTVNFVFRMRU1FTlREQVRFPTIwMjYwODE44pav4pavVFJfTEVHVkVOVUVUUkFOU0lEPVlEVVZEVjNWVk9JMkdLMFFTWUtYN0dPMjZVWEVBOOKWr+KWr3xOT1JFR1VMQVRPUllUUkFERUlEUz0xfE5PUkVHVUxBVE9SWVRSQURFSURTWzBdPVRSQURFSUQ9NTQ5MzAwMEVYQU1QTEUwMDAwMFLilq/ilq9UUkFERUlEVFlQRT1yZXBvcnRpbmctdHJhY2tpbmctbnVtYmVy4pav4pavfE5PU0lERVM9MXxOT1NJREVTWzBdPUFHR1JFU1NPUklORElDQVRPUj1BZ2dyZXNzb3Lilq/ilq9DTE9SRElEPU5PUkVG4pav4pavTk9QQVJUWUlEUz034pav4pavTk9QQVJUWUlEU1swXT1QQVJUWUlEPXRyYWRlcjHilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9b3JkZXJvcmlnaW5hdGlvbnRyYWRlcuKWr+KWr+KWr+KWr05PUEFSVFlJRFNbMV09Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPVRSQURFUiBPTkXilq/ilq9QQVJUWVNVQklEVFlQRT1UcmFkZXJOYW1l4pav4pav4pav4pavUEFSVFlJRD10cmFkZXIx4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPWV4ZWN1dGluZ3RyYWRlcuKWr+KWr+KWr+KWr05PUEFSVFlJRFNbMl09Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPUVYQU1QTEVCS+KWr+KWr1BBUlRZU1VCSURUWVBFPWZ1bGxsZWdhbG5hbWVvZmZpcm3ilq/ilq/ilq/ilq9QQVJUWUlEPUxGWkHilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9ZXhlY3V0aW5nZmlybeKWr+KWr+KWr+KWr05PUEFSVFlJRFNbM109Tk9QQVJUWVNVQklEUz0x4pav4pavTk9QQVJUWVNVQklEU1swXT1QQVJUWVNVQklEPUVYQU1QTEVDT+KWr+KWr1BBUlRZU1VCSURUWVBFPWZ1bGxsZWdhbG5hbWVvZmZpcm3ilq/ilq/ilq/ilq9QQVJUWUlEPVlVQ0Pilq/ilq9QQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXilq/ilq9QQVJUWVJPTEU9Y2xpZW50aWTilq/ilq/ilq/ilq9OT1BBUlRZSURTWzRdPVBBUlRZSUQ9TU1ERuKWr+KWr1BBUlRZSURTT1VSQ0U9cHJvcHJpZXRhcnkvY3VzdG9tY29kZeKWr+KWr1BBUlRZUk9MRT1wdWJsaXNoZXJuYW1l4pav4pav4pav4pavTk9QQVJUWUlEU1s1XT1OT1BBUlRZU1VCSURTPTLilq/ilq9OT1BBUlRZU1VCSURTWzBdPVBBUlRZU1VCSUQ9NTQ5MzAwMEVYQU1QTEUwMDAwMEzilq/ilq9QQVJUWVNVQklEVFlQRT1VbmlxdWVUcmFuc2FjdGlvbklETGVn4pav4pav4pav4pavTk9QQVJUWVNVQklEU1sxXT1QQVJUWVNVQklEPTU0OTMwMDBFWEFNUExFMDAwMDBI4pav4pavUEFSVFlTVUJJRFRZUEU9VW5pcXVlVHJhbnNhY3Rpb25JREhlZGdl4pav4pav4pav4pavUEFSVFlJRD1ERUZBVUxU4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPXJlcG9ydGluZ2ludGVybWVkaWFyeeKWr+KWr+KWr+KWr05PUEFSVFlJRFNbNl09UEFSVFlJRD10cmFkZXIx4pav4pavUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4pav4pavUEFSVFlST0xFPWludmVzdG1lbnRkZWNpc2lvbm1ha2Vy4pav4pav4pav4pavfE5PVFJEUkVHVElNRVNUQU1QUz0xfE5PVFJEUkVHVElNRVNUQU1QU1swXT1UUkRSRUdUSU1FU1RBTVA9MjAyNjA4MTQxNDUyNTUwMDDilq/ilq9UUkRSRUdUSU1FU1RBTVBUWVBFPWV4ZWN1dGlvbi10aW1l4pav4pavfE9SREVSUVRZPTB8T1JEU1RBVFVTPWZpbGxlZHxQQUNLQUdFSUQ9NDUyODM3MDYwOHxDTElFTlQuQ0xJRU5USUQ9TElGQ3xDTElFTlQuU09VUkNFPVRSVE58Q0xJRU5ULlNZTUJPTD1YQVV8Q0xJRU5ULlRSQURFUj10cmFkZXIxfENMSUVOVC5UUkFESU5HUExBVEZPUk09TU1ERnxQTFVHSU5PUklHSU5BVE9SPVRSVE5fRlhfVHJhZGVDYXB0dXJlfFBMVUdJTk9XTkVSPVRSVE5fRlhfVHJhZGVDYXB0dXJlfFBST0RVQ1Q9Y3VycmVuY3l8U0VDVVJJVFlUWVBFPW9wdGlvbnxTWU1CT0w9WEFVL1VTRHxUUkFERURBVEU9MjAyNjA4MTR8VFJBREVSRVBPUlRJRD04MzA4NTA2ODF8VFJBTlNBQ1RUSU1FPTIwMjYwODE0MTQ1MjU1MDAwfFRSX05PVURGR1JPVVA9MXxUUl9OT1VERkdST1VQWzBdPVRSX1VERl9OQU1FPVBNX0xvY2F0aW9u4pav4pavVFJfVURGX1NFUVVFTkNFTlVNQkVSPTDilq/ilq9UUl9VREZfVkFMVUU9TE9ORE9O4pav4pavfFRSX1NPVVJDRU9GREFUQT0xMXxVTEZST01TRVNTSU9OTkFNRT1UUlROX0ZYX1RyYWRlQ2FwdHVyZXxVTFRPU0VTU0lPTk5BTUU9VUxNU0dfQlJPS0VSX1RPX1BPU1RUUkFERXxVTlJFU09MVkVEUk9VVElORz15ZXN8VVBJPVFaNDhRS0hEN1RSSw=="
+lifecycle[032].field.checksum	"087"
+lifecycle[032].field.metadata	{"client.clientid":"LIFC","client.source":"TRTN","client.symbol":"XAU","client.trader":"trader1","client.tradingplatform":"MMDF","env":"PROD","hedgetradetype":"spot","main.uti":"5493000EXAMPLE00000M","metal.loco":"LN","nohedgegroups":"{\\"nohedgegroup\\":{\\"hedgecurrency\\":\\"XAU\\",\\"hedgeprice\\":\\"4381.525\\",\\"hedgeqty\\":\\"161\\",\\"hedgesettldate\\":\\"20260818\\",\\"hedgeside\\":\\"takerbuys\\",\\"hedgevenuetransid\\":\\"V8FIS17K343KXE3JJJM328200D8ZBED\\"}}","pluginoriginator":"TRTN_FX_TradeCapture","pluginowner":"TRTN_FX_TradeCapture","trnoudfgroup":"{\\"trnoudfgroup\\":{\\"trudfname\\":\\"PM_Location\\",\\"trudfsequencenumber\\":\\"0\\",\\"trudfvalue\\":\\"LONDON\\"}}","trsourceofdata":"11","ulfromsessionname":"TRTN_FX_TradeCapture","ultosessionname":"ULMSG_BROKER_TO_POSTTRADE","unresolvedrouting":"yes","upi":"QZ48QKHD7TRK"}
+lifecycle[032].field.fixentries	{"109:clientid":"LIFC","1128:applverid":"8","1907:regulatorytradeids":"[{\\"0:tradeidtype\\":\\"reporting-tracking-number\\",\\"1003:tradeid\\":\\"5493000EXAMPLE00000R\\"}]","2489:packageid":"4528370608","552:trdcaprptsidegrp":"[{\\"11:clordid\\":\\"NOREF\\",\\"453:parties\\":[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"DEFAULT\\",\\"452:partyrole\\":\\"72\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"5493000EXAMPLE00000H\\"},{\\"523:partysubid\\":\\"5493000EXAMPLE00000L\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"LFZA\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLEBK\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"MMDF\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YUCC\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"EXAMPLECO\\",\\"803:partysubidtype\\":\\"5\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"11\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"TRADER ONE\\"}]},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"122\\"}]}]","555:trdinstrmtleggrp":"[{\\"0:deltaleg\\":\\"-0.3037\\",\\"0:legcutzone\\":\\"USNYC\\",\\"0:legisincode\\":\\"EZN11TD1F7K3\\",\\"0:leglastspotrate\\":\\"4381.525\\",\\"0:legpremiumbasis\\":\\"3\\",\\"0:legquotebasis\\":\\"3\\",\\"0:optionstrategy\\":\\"1\\",\\"0:premiumcurrency\\":\\"USD\\",\\"0:premiumsettlementdate\\":\\"20260818\\",\\"0:trlegvenuetransid\\":\\"YDUVDV3VVOI2GK0QSYKX7GO26UXEA8\\",\\"1358:legputorcall\\":\\"1\\",\\"1379:legvolatility\\":\\"21.5651\\",\\"1418:leglastqty\\":\\"600\\",\\"1420:legexercisestyle\\":\\"0\\",\\"2893:legupicode\\":\\"QZ48QKHD7TRK\\",\\"556:legcurrency\\":\\"XAU\\",\\"566:legprice\\":\\"6187.833333333333\\",\\"588:legsettldate\\":\\"20261002-00:00:00\\",\\"600:legsymbol\\":\\"XAU/USD\\",\\"602:legsecurityid\\":\\"EZN11TD1F7K3\\",\\"603:legsecurityidsource\\":\\"4\\",\\"611:legmaturitydate\\":\\"20260930-00:00:00\\",\\"612:legstrikeprice\\":\\"4600\\",\\"624:legside\\":\\"2\\",\\"670:legallocs\\":[{\\"0:trlegcalculatedallocqty\\":\\"2760000\\",\\"671:legallocaccount\\":\\"UNSPECIFIED\\",\\"673:legallocqty\\":\\"600\\"}],\\"687:legqty\\":\\"37127\\",\\"942:legstrikecurrency\\":\\"XAU\\"}]","571:tradereportid":"830850681","76:execbroker":"LFZA"}
+lifecycle[033].type	8
+lifecycle[033].digest	f9a84cbc7f7705643db964ec5d4c6478
+lifecycle[033].wire	8=FIX.4.4|35=8|49=OADDKMEHSUIJ|56=FIRMX1|34=3089|43=N|52=20260814-12:46:39.764616|6=0|11=XM8NNITE512|14=0|17=00802052392GWQN0|31=0|32=0|37=00079132559GLXC0|38=400|44=121.94|151=400|198=20260814-1126195|1=YNHD5_NCI|9=413|15=CHF|21=1|22=4|29=agency|30=XSWX|39=0|40=2|48=CH0012005267|54=1|55=NOVN|59=0|60=20260814-12:46:39.757079|63=0|100=S|107=NOVARTIS|120=CHF|126=20260814-16:25:00|150=0|167=CS|207=XSWX|377=Y|381=0|453=6|447=C|448=HIGH_TOUCH|452=3|447=generallyacceptedmarketparticipantidentifier|448=HIGH_TOUCH|452=3|447=D|448=TRADER2|452=122|447=D|448=TRADER2|452=36|447=D|448=ULTrader|447=D|448=trader1|452=12|454=3|455=dbi;CH0012005267_XSWX_CHF|456=OMSINSTRUMENTID|455=dbi;CH0012005267_XSWX_CHF|456=ULLINKINSTRUMENTID|455=NOVN SW|456=A|460=5|461=ESXXXX|470=CH|528=A|562=1|768=2|769=20260814-12:46:39.534|770=10|771=CLIENT|769=20260814-12:46:39.717|771=ULBRIDGE|2897=6|65032=YNHD5|65033=trader1|65034=-8NNI7PA-00|65035=0200370669762303|65036=-8NNI7PA-00|65038=0200380204002|65039=XM8NNITE5-00|65040=dbi;CH0012005267_XSWX_CHF|65041=dbi;CH0012005267_XSWX_CHF|avexdestination=XSWX|clientbu=CLI|cumulnoorders=-1|detailedcficode=ESVTFR|env=PROD|group=0000|instrument[description]=NOVARTIS N|marketorderid=U8NNITE0-00|omsactionid=sqx20260814-987785-667-97|omsactiontype=order.assign.request|omsdealerorderid=U8NNITE0-00|orderorigin=buyside|origdelivertocompid=OMSX1|pluginoriginator=OMSDealer|pluginowner=ULMSG_BROKER_BDG_DMZ_CLI|quotationgroup=ACBc|ulfromsessionname=OMS_X1_OrderOut|ultosessionname=@Broker_Routing|10=093|
+lifecycle[033].entry[0]	t1 account=YNHD5_NCI
+lifecycle[033].entry[1]	t9 bodylength=413
+lifecycle[033].entry[2]	t15 currency=CHF
+lifecycle[033].entry[3]	t21 handlinst=1
+lifecycle[033].entry[4]	t22 securityidsource=4
+lifecycle[033].entry[5]	t29 lastcapacity=agency
+lifecycle[033].entry[6]	t30 lastmkt=XSWX
+lifecycle[033].entry[7]	t39 ordstatus=0
+lifecycle[033].entry[8]	t40 ordtype=2
+lifecycle[033].entry[9]	t48 securityid=CH0012005267
+lifecycle[033].entry[10]	t54 side=1
+lifecycle[033].entry[11]	t55 symbol=NOVN
+lifecycle[033].entry[12]	t59 timeinforce=0
+lifecycle[033].entry[13]	t60 transacttime=20260814-12:46:39.757079
+lifecycle[033].entry[14]	t63 settltype=0
+lifecycle[033].entry[15]	t100 exdestination=S
+lifecycle[033].entry[16]	t107 securitydesc=NOVARTIS
+lifecycle[033].entry[17]	t120 settlcurrency=CHF
+lifecycle[033].entry[18]	t126 expiretime=20260814-16:25:00
+lifecycle[033].entry[19]	t150 exectype=0
+lifecycle[033].entry[20]	t167 securitytype=CS
+lifecycle[033].entry[21]	t207 securityexchange=XSWX
+lifecycle[033].entry[22]	t377 solicitedflag=Y
+lifecycle[033].entry[23]	t381 grosstradeamt=0
+lifecycle[033].entry[24]	t453 parties=6
+lifecycle[033].entry[24.0]	t0 party
+lifecycle[033].entry[24.0.0]	t447 partyidsource=C
+lifecycle[033].entry[24.0.1]	t448 partyid=HIGH_TOUCH
+lifecycle[033].entry[24.0.2]	t452 partyrole=3
+lifecycle[033].entry[24.1]	t0 party
+lifecycle[033].entry[24.1.0]	t447 partyidsource=generallyacceptedmarketparticipantidentifier
+lifecycle[033].entry[24.1.1]	t448 partyid=HIGH_TOUCH
+lifecycle[033].entry[24.1.2]	t452 partyrole=3
+lifecycle[033].entry[24.2]	t0 party
+lifecycle[033].entry[24.2.0]	t447 partyidsource=D
+lifecycle[033].entry[24.2.1]	t448 partyid=TRADER2
+lifecycle[033].entry[24.2.2]	t452 partyrole=122
+lifecycle[033].entry[24.3]	t0 party
+lifecycle[033].entry[24.3.0]	t447 partyidsource=D
+lifecycle[033].entry[24.3.1]	t448 partyid=TRADER2
+lifecycle[033].entry[24.3.2]	t452 partyrole=36
+lifecycle[033].entry[24.4]	t0 party
+lifecycle[033].entry[24.4.0]	t447 partyidsource=D
+lifecycle[033].entry[24.4.1]	t448 partyid=ULTrader
+lifecycle[033].entry[24.5]	t0 party
+lifecycle[033].entry[24.5.0]	t447 partyidsource=D
+lifecycle[033].entry[24.5.1]	t448 partyid=trader1
+lifecycle[033].entry[24.5.2]	t452 partyrole=12
+lifecycle[033].entry[25]	t454 secaltids=3
+lifecycle[033].entry[25.0]	t0 secaltid
+lifecycle[033].entry[25.0.0]	t455 securityaltid=dbi;CH0012005267_XSWX_CHF
+lifecycle[033].entry[25.0.1]	t456 securityaltidsource=OMSINSTRUMENTID
+lifecycle[033].entry[25.1]	t0 secaltid
+lifecycle[033].entry[25.1.0]	t455 securityaltid=dbi;CH0012005267_XSWX_CHF
+lifecycle[033].entry[25.1.1]	t456 securityaltidsource=ULLINKINSTRUMENTID
+lifecycle[033].entry[25.2]	t0 secaltid
+lifecycle[033].entry[25.2.0]	t455 securityaltid=NOVN SW
+lifecycle[033].entry[25.2.1]	t456 securityaltidsource=A
+lifecycle[033].entry[26]	t460 product=5
+lifecycle[033].entry[27]	t461 cficode=ESXXXX
+lifecycle[033].entry[28]	t470 countryofissue=CH
+lifecycle[033].entry[29]	t528 ordercapacity=A
+lifecycle[033].entry[30]	t562 mintradevol=1
+lifecycle[033].entry[31]	t768 trdregtimestamps=2
+lifecycle[033].entry[31.0]	t0 trdregtimestampcomponent
+lifecycle[033].entry[31.0.0]	t769 trdregtimestamp=20260814-12:46:39.534
+lifecycle[033].entry[31.0.1]	t770 trdregtimestamptype=10
+lifecycle[033].entry[31.0.2]	t771 trdregtimestamporigin=CLIENT
+lifecycle[033].entry[31.1]	t0 trdregtimestampcomponent
+lifecycle[033].entry[31.1.0]	t769 trdregtimestamp=20260814-12:46:39.717
+lifecycle[033].entry[31.1.1]	t771 trdregtimestamporigin=ULBRIDGE
+lifecycle[033].entry[32]	t2897 currencycodesource=6
+lifecycle[033].entry[33]	t65032 omsdealeraccount=YNHD5
+lifecycle[033].entry[34]	t65033 omsuserid=trader1
+lifecycle[033].entry[35]	t65034 parentorderid=-8NNI7PA-00
+lifecycle[033].entry[36]	t65035 parentclordid=0200370669762303
+lifecycle[033].entry[37]	t65036 omsdealerparentorderid=-8NNI7PA-00
+lifecycle[033].entry[38]	t65038 transversalkey=0200380204002
+lifecycle[033].entry[39]	t65039 ultraderclordid=XM8NNITE5-00
+lifecycle[033].entry[40]	t65040 omsinstrumentid=dbi;CH0012005267_XSWX_CHF
+lifecycle[033].entry[41]	t65041 ullinkinstrumentid=dbi;CH0012005267_XSWX_CHF
+lifecycle[033].entry[42]	t0 avexdestination=XSWX
+lifecycle[033].entry[43]	t0 clientbu=CLI
+lifecycle[033].entry[44]	t0 cumulnoorders=-1
+lifecycle[033].entry[45]	t0 detailedcficode=ESVTFR
+lifecycle[033].entry[46]	t0 env=PROD
+lifecycle[033].entry[47]	t0 group=0000
+lifecycle[033].entry[48]	t0 instrument[description]=NOVARTIS N
+lifecycle[033].entry[49]	t0 marketorderid=U8NNITE0-00
+lifecycle[033].entry[50]	t0 omsactionid=sqx20260814-987785-667-97
+lifecycle[033].entry[51]	t0 omsactiontype=order.assign.request
+lifecycle[033].entry[52]	t0 omsdealerorderid=U8NNITE0-00
+lifecycle[033].entry[53]	t0 orderorigin=buyside
+lifecycle[033].entry[54]	t0 origdelivertocompid=OMSX1
+lifecycle[033].entry[55]	t0 pluginoriginator=OMSDealer
+lifecycle[033].entry[56]	t0 pluginowner=ULMSG_BROKER_BDG_DMZ_CLI
+lifecycle[033].entry[57]	t0 quotationgroup=ACBc
+lifecycle[033].entry[58]	t0 ulfromsessionname=OMS_X1_OrderOut
+lifecycle[033].entry[59]	t0 ultosessionname=@Broker_Routing
+lifecycle[033].field.currunix	"2026-08-14T16:25:00.000000000Z"
+lifecycle[033].field.creaunix	"2026-08-14T12:46:39.757000000Z"
+lifecycle[033].field.prevunix	"2026-08-14T12:46:39.757079000Z"
+lifecycle[033].field.exprunix	"2026-08-14T16:25:00.000000000Z"
+lifecycle[033].field.sendingtime	"2026-08-14T12:46:39.764616000Z"
+lifecycle[033].field.transacttime	"2026-08-14T12:46:39.757079000Z"
+lifecycle[033].field.expiretime	"2026-08-14T16:25:00.000000000Z"
+lifecycle[033].field.curruuid	"01a00117-4f60-7000-89eb-bf15dbd0a544"
+lifecycle[033].field.crossuuid	"00000000-0000-8000-a25d-e24c4081ff60"
+lifecycle[033].field.crosscode	"BUY:00079132559GLXC0"
+lifecycle[033].field.currhashcode	12607984144445040087
+lifecycle[033].field.crosshashcode	16311442242533457760
+lifecycle[033].field.prevuuid	"01a0004f-6a8d-7000-b7e3-c9ee8fb7b426"
+lifecycle[033].field.srcuuids	["01a000bd-479a-7018-9d8d-0a733d7030cb","01a000bd-479a-7019-9ab6-15cc25e3ceaf","01a000bd-479a-701a-adb3-cf84321d774f","01a000bd-479a-701b-ad16-e6fa6095962b","01a000bd-479a-701c-8162-558a3873ab86","01a000bd-479a-701f-93a7-9934f594181d","01a000bd-479a-7021-8653-0576caa532d5"]
+lifecycle[033].field.beginstring	"FIX.4.4"
+lifecycle[033].field.msgtype	"8"
+lifecycle[033].field.msgcat	"EXEC"
+lifecycle[033].field.msgseqnum	3089
+lifecycle[033].field.sendercompid	"OADDKMEHSUIJ"
+lifecycle[033].field.targetcompid	"FIRMX1"
+lifecycle[033].field.possdupflag	false
+lifecycle[033].field.msgdirection	"R"
+lifecycle[033].field.msgpluginid	"OMS_X1_OrderOut"
+lifecycle[033].field.msgoriginator	"OMS_X1_OrderOut"
+lifecycle[033].field.msgctxid	"9f0316669a"
+lifecycle[033].field.msgsessionid	"e7254b11"
+lifecycle[033].field.msgsesseventid	"8:e7254b11:9f0316669a:3089"
+lifecycle[033].field.conversationid	"4081b18f-5e85-4df1-b2ec-b98ffb9f1960"
+lifecycle[033].field.symbol	"NOVN"
+lifecycle[033].field.securityid	"CH0012005267"
 lifecycle[033].field.securityidsource	"4"
-lifecycle[033].field.isincode	"TW0002454006"
+lifecycle[033].field.isincode	"CH0012005267"
+lifecycle[033].field.bloombergcode	"NOVN SW"
+lifecycle[033].field.miccode	"XSWX"
 lifecycle[033].field.securitytype	"CS"
+lifecycle[033].field.securityexchange	"XSWX"
+lifecycle[033].field.exdestination	"S"
+lifecycle[033].field.lastmkt	"XSWX"
 lifecycle[033].field.cficode	"ESXXXX"
 lifecycle[033].field.product	5
-lifecycle[033].field.clordid	"0201623594616113"
-lifecycle[033].field.origclordid	"0201623594616112"
-lifecycle[033].field.orderid	"931070583-1940-30712_192"
-lifecycle[033].field.side	"SELL"
-lifecycle[033].field.orderqty	"10000.000000000000000000"
-lifecycle[033].field.state	"PENDING_CANCEL"
-lifecycle[033].field.bodylength	245
-lifecycle[033].field.delivertocompid	"RDXY"
-lifecycle[033].field.targetsubid	"RDXY"
-lifecycle[033].field.onbehalfofsubid	"trader3"
-lifecycle[033].field.delivertosubid	"TRITON"
-lifecycle[033].field.checksum	"016"
-lifecycle[033].field.fixentries	{"107:securitydesc":"MEDIATEK","470:countryofissue":"TW"}
-lifecycle[034].type	9
-lifecycle[034].digest	8ac530c9ffb6e8e0c0ddce6f33dc9801
-lifecycle[034].wire	8=FIX.4.2|35=9|49=CSJPJ|56=YDUZFSOA|34=72|52=20260814-21:59:47|11=0201623594616113|37=931070583-1940-30712_192|41=0201623594616112|151=0|9=215|115=RDXY|39=8|60=20260814-21:59:46|434=1|54=2|454=1|455=TW0002454006|456=4|10=113|
-lifecycle[034].entry[0]	t9 bodylength=215
-lifecycle[034].entry[1]	t115 onbehalfofcompid=RDXY
-lifecycle[034].entry[2]	t39 ordstatus=8
-lifecycle[034].entry[3]	t60 transacttime=20260814-21:59:46
-lifecycle[034].entry[4]	t434 cxlrejresponseto=1
-lifecycle[034].entry[5]	t54 side=2
-lifecycle[034].entry[6]	t454 secaltids=1
-lifecycle[034].entry[6.0]	t0 secaltid
-lifecycle[034].entry[6.0.0]	t455 securityaltid=TW0002454006
-lifecycle[034].entry[6.0.1]	t456 securityaltidsource=4
+lifecycle[033].field.account	"YNHD5_NCI"
+lifecycle[033].field.clordid	"XM8NNITE512"
+lifecycle[033].field.orderid	"00079132559GLXC0"
+lifecycle[033].field.secondaryorderid	"20260814-1126195"
+lifecycle[033].field.execid	"00802052392GWQN0"
+lifecycle[033].field.side	"BUY"
+lifecycle[033].field.price	"121.940000000000000000"
+lifecycle[033].field.lastpx	"0.000000000000000000"
+lifecycle[033].field.avgpx	"0.000000000000000000"
+lifecycle[033].field.orderqty	"400.000000000000000000"
+lifecycle[033].field.lastqty	"0.000000000000000000"
+lifecycle[033].field.cumqty	"0.000000000000000000"
+lifecycle[033].field.leavesqty	"400.000000000000000000"
+lifecycle[033].field.currency	"CHF"
+lifecycle[033].field.settlcurrency	"CHF"
+lifecycle[033].field.ordtype	"2"
+lifecycle[033].field.timeinforce	"0"
+lifecycle[033].field.state	"EXPIRED"
+lifecycle[033].field.ordstatus	"0"
+lifecycle[033].field.exectype	"0"
+lifecycle[033].field.nopartyids	6
+lifecycle[033].field.parties	[["HIGH_TOUCH","C",3,null,null,null],["HIGH_TOUCH","generallyacceptedmarketparticipantidentifier",3,null,null,null],["TRADER2","D",122,null,null,null],["TRADER2","D",36,null,null,null],["ULTrader","D",null,null,null,null],["trader1","D",12,null,null,null]]
+lifecycle[033].field.nosecurityaltid	3
+lifecycle[033].field.secaltids	[["dbi;CH0012005267_XSWX_CHF","OMSINSTRUMENTID",null],["dbi;CH0012005267_XSWX_CHF","ULLINKINSTRUMENTID",null],["NOVN SW","A",null]]
+lifecycle[033].field.notrdregtimestamps	2
+lifecycle[033].field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
+lifecycle[033].field.bodylength	413
+lifecycle[033].field.checksum	"093"
+lifecycle[033].field.metadata	{"avexdestination":"XSWX","clientbu":"CLI","cumulnoorders":"-1","detailedcficode":"ESVTFR","env":"PROD","firm.lastinstrumentlookupdate":"20260814","firm.lastinstrumentlookupsucceed":"yes","firm.orig.clientid":"2540498.003","firm.orig.ulfromsessionname":"OMS_X1_OrderOut","group":"0000","instrument[description]":"NOVARTIS N","marketorderid":"U8NNITE0-00","omsactionid":"sqx20260814-987785-667-97","omsactiontype":"order.assign.request","omsdealerorderid":"U8NNITE0-00","orderorigin":"buyside","origdelivertocompid":"OMSX1","pluginoriginator":"OMSDealer","pluginowner":"ULMSG_BROKER_BDG_DMZ_CLI","quotationgroup":"ACBc","ulfromsessionname":"OMS_X1_OrderOut","ullink.bypassrisk":"no","ullink.clientid":"trader1","ultosessionname":"@Broker_Routing"}
+lifecycle[033].field.fixentries	{"107:securitydesc":"NOVARTIS","21:handlinst":"1","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","470:countryofissue":"CH","528:ordercapacity":"A","562:mintradevol":"1","63:settltype":"0","65032:omsdealeraccount":"YNHD5","65033:omsuserid":"trader1","65034:parentorderid":"-8NNI7PA-00","65035:parentclordid":"0200370669762303","65036:omsdealerparentorderid":"-8NNI7PA-00","65038:transversalkey":"0200380204002","65039:ultraderclordid":"XM8NNITE5-00","65040:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","65041:ullinkinstrumentid":"dbi;CH0012005267_XSWX_CHF"}
+lifecycle[034].type	F
+lifecycle[034].digest	be0b2112b031f046abdc15c8722d3963
+lifecycle[034].wire	8=FIX.4.2|35=F|49=YDUZFSOA|56=CSJPJ|34=72|52=20260814-21:59:46|11=0201623594616113|37=931070583-1940-30712_192|38=10000|41=0201623594616112|9=245|128=RDXY|57=RDXY|116=trader3|129=TRITON|22=4|48=TW0002454006|54=2|55=2454|60=20260814-21:59:46|107=MEDIATEK|167=CS|460=5|461=ESXXXX|470=TW|10=016|
+lifecycle[034].entry[0]	t9 bodylength=245
+lifecycle[034].entry[1]	t128 delivertocompid=RDXY
+lifecycle[034].entry[2]	t57 targetsubid=RDXY
+lifecycle[034].entry[3]	t116 onbehalfofsubid=trader3
+lifecycle[034].entry[4]	t129 delivertosubid=TRITON
+lifecycle[034].entry[5]	t22 securityidsource=4
+lifecycle[034].entry[6]	t48 securityid=TW0002454006
+lifecycle[034].entry[7]	t54 side=2
+lifecycle[034].entry[8]	t55 symbol=2454
+lifecycle[034].entry[9]	t60 transacttime=20260814-21:59:46
+lifecycle[034].entry[10]	t107 securitydesc=MEDIATEK
+lifecycle[034].entry[11]	t167 securitytype=CS
+lifecycle[034].entry[12]	t460 product=5
+lifecycle[034].entry[13]	t461 cficode=ESXXXX
+lifecycle[034].entry[14]	t470 countryofissue=TW
 lifecycle[034].field.currunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[034].field.recdunix	"2026-08-14T23:59:46.524315000Z"
+lifecycle[034].field.recdunix	"2026-08-14T23:59:46.417985000Z"
 lifecycle[034].field.creaunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[034].field.prevunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[034].field.sendingtime	"2026-08-14T21:59:47.000000000Z"
+lifecycle[034].field.sendingtime	"2026-08-14T21:59:46.000000000Z"
 lifecycle[034].field.transacttime	"2026-08-14T21:59:46.000000000Z"
-lifecycle[034].field.curruuid	"01a00249-cc50-7001-930e-48987421161f"
+lifecycle[034].field.curruuid	"01a00249-cc50-7000-97c1-85efb134b742"
 lifecycle[034].field.crossuuid	"00000000-0000-8000-b74b-42ba8f9fb430"
 lifecycle[034].field.crosscode	"SELL:931070583-1940-30712_192"
-lifecycle[034].field.currhashcode	6600626771825296914
+lifecycle[034].field.currhashcode	3227868321125502163
 lifecycle[034].field.crosshashcode	13207723701235070000
-lifecycle[034].field.prevuuid	"01a00249-cc50-7000-97c1-85efb134b742"
-lifecycle[034].field.seqnum	1
-lifecycle[034].field.srcuuids	["01a002b7-ab5c-7083-b31d-037ccd199c3d"]
+lifecycle[034].field.srcuuids	["01a002b7-aaf1-7082-bd16-d36b3cb125b5"]
 lifecycle[034].field.beginstring	"FIX.4.2"
-lifecycle[034].field.msgtype	"9"
+lifecycle[034].field.msgtype	"F"
 lifecycle[034].field.msgcat	"ORDR"
 lifecycle[034].field.msgseqnum	72
-lifecycle[034].field.sendercompid	"CSJPJ"
-lifecycle[034].field.targetcompid	"YDUZFSOA"
-lifecycle[034].field.msgdirection	"R"
+lifecycle[034].field.sendercompid	"YDUZFSOA"
+lifecycle[034].field.targetcompid	"CSJPJ"
+lifecycle[034].field.msgdirection	"S"
 lifecycle[034].field.msgpluginid	"Autex_FIX42_BuySide"
-lifecycle[034].field.msgoriginator	"Autex_FIX42_BuySide"
-lifecycle[034].field.msgctxid	"9f0510ca5c"
-lifecycle[034].field.msgsessionid	"e7254ed2"
-lifecycle[034].field.msgsesseventid	"9:e7254ed2:9f0510ca5c:72"
+lifecycle[034].field.msgctxid	"9f0510c9f1"
+lifecycle[034].field.msgsessionid	"e7254ef0"
+lifecycle[034].field.msgsesseventid	"F:e7254ef0:9f0510c9f1:72"
+lifecycle[034].field.symbol	"2454"
+lifecycle[034].field.securityid	"TW0002454006"
+lifecycle[034].field.securityidsource	"4"
 lifecycle[034].field.isincode	"TW0002454006"
+lifecycle[034].field.securitytype	"CS"
+lifecycle[034].field.cficode	"ESXXXX"
+lifecycle[034].field.product	5
 lifecycle[034].field.clordid	"0201623594616113"
 lifecycle[034].field.origclordid	"0201623594616112"
 lifecycle[034].field.orderid	"931070583-1940-30712_192"
 lifecycle[034].field.side	"SELL"
-lifecycle[034].field.leavesqty	"0.000000000000000000"
-lifecycle[034].field.state	"REJECTED"
-lifecycle[034].field.ordstatus	"8"
-lifecycle[034].field.text	"Counterparty unavailable - please contact support"
-lifecycle[034].field.nosecurityaltid	1
-lifecycle[034].field.secaltids	[["TW0002454006","4",null]]
-lifecycle[034].field.bodylength	215
-lifecycle[034].field.onbehalfofcompid	"RDXY"
-lifecycle[034].field.checksum	"113"
-lifecycle[034].field.fixentries	{"434:cxlrejresponseto":"1"}
-lifecycle[035].type	cancelreject
-lifecycle[035].digest	fb768c8ece98c01fb0946843765409c8
-lifecycle[035].wire	8=FIX.4.4|35=cancelreject|49=CSJPJ|56=YDUZFSOA|34=72|11=0201623594616113|37=931070583-1940-30712_192|38=10000|41=0201623594616112|15=TWD|22=4|39=8|48=TW0002454006|55=2454|57=RDXY|59=day|60=20260814-21:59:46.479|100=TW|107=MEDIATEK|115=RDXY|120=TWD|128=RDXY|167=equity|207=XTAI|377=Y|434=cancel|453=10|447=D|448=0200|452=122|447=D|448=0200|452=36|447=D|448=0201CSWRRI2|452=12|447=D|448=1740647.028|452=1|447=D|448=2540498.029|452=3|447=D|448=Autex|447=shortcodeid|448=KU/BBZ|452=3|447=D|448=OARNC8201|452=5|447=D|448=OMSVENDOR0102|447=generallyacceptedmarketparticipantidentifier|448=RDXY_TRITON@1|452=1|454=3|455=2454 TT Equity|456=bloomberg|455=2454.TW|456=ric|455=dbi;TW0002454006_XTAI_TWD|456=ULLINKINSTRUMENTID|460=5|461=ESXXXX|470=TW|562=1|768=5|769=20260814-01:13:45|771=CLIENT|769=20260814-01:13:45.162|770=10|771=CLIENT|769=20260814-01:13:45.549|771=ULBRIDGE|769=20260814-21:59:46.416|771=ULBRIDGE|769=20260814-21:59:46.479|771=CLIENT|2897=6|65034=1613925|65038=0201625920204|65041=dbi;TW0002454006_XTAI_TWD|env=PROD|group=PMA2|marketorderid=3365109|orderorigin=buyside|pluginoriginator=OMSVENDOR_FIX_44_SellSide0102|pluginowner=ULMSG_DMZ_FIRM|prenetworkorg=114|preorderorigin=14|ulfromsessionname=Autex_FIX42_BuySide|ultosessionname=ULMSG_DMZ_FIRM|
-lifecycle[035].entry[0]	t15 currency=TWD
-lifecycle[035].entry[1]	t22 securityidsource=4
+lifecycle[034].field.orderqty	"10000.000000000000000000"
+lifecycle[034].field.state	"PENDING_CANCEL"
+lifecycle[034].field.bodylength	245
+lifecycle[034].field.delivertocompid	"RDXY"
+lifecycle[034].field.targetsubid	"RDXY"
+lifecycle[034].field.onbehalfofsubid	"trader3"
+lifecycle[034].field.delivertosubid	"TRITON"
+lifecycle[034].field.checksum	"016"
+lifecycle[034].field.fixentries	{"107:securitydesc":"MEDIATEK","470:countryofissue":"TW"}
+lifecycle[035].type	9
+lifecycle[035].digest	8ac530c9ffb6e8e0c0ddce6f33dc9801
+lifecycle[035].wire	8=FIX.4.2|35=9|49=CSJPJ|56=YDUZFSOA|34=72|52=20260814-21:59:47|11=0201623594616113|37=931070583-1940-30712_192|41=0201623594616112|151=0|9=215|115=RDXY|39=8|60=20260814-21:59:46|434=1|54=2|454=1|455=TW0002454006|456=4|10=113|
+lifecycle[035].entry[0]	t9 bodylength=215
+lifecycle[035].entry[1]	t115 onbehalfofcompid=RDXY
 lifecycle[035].entry[2]	t39 ordstatus=8
-lifecycle[035].entry[3]	t48 securityid=TW0002454006
-lifecycle[035].entry[4]	t55 symbol=2454
-lifecycle[035].entry[5]	t57 targetsubid=RDXY
-lifecycle[035].entry[6]	t59 timeinforce=day
-lifecycle[035].entry[7]	t60 transacttime=20260814-21:59:46.479
-lifecycle[035].entry[8]	t100 exdestination=TW
-lifecycle[035].entry[9]	t107 securitydesc=MEDIATEK
-lifecycle[035].entry[10]	t115 onbehalfofcompid=RDXY
-lifecycle[035].entry[11]	t120 settlcurrency=TWD
-lifecycle[035].entry[12]	t128 delivertocompid=RDXY
-lifecycle[035].entry[13]	t167 securitytype=equity
-lifecycle[035].entry[14]	t207 securityexchange=XTAI
-lifecycle[035].entry[15]	t377 solicitedflag=Y
-lifecycle[035].entry[16]	t434 cxlrejresponseto=cancel
-lifecycle[035].entry[17]	t453 parties=10
-lifecycle[035].entry[17.0]	t0 party
-lifecycle[035].entry[17.0.0]	t447 partyidsource=D
-lifecycle[035].entry[17.0.1]	t448 partyid=0200
-lifecycle[035].entry[17.0.2]	t452 partyrole=122
-lifecycle[035].entry[17.1]	t0 party
-lifecycle[035].entry[17.1.0]	t447 partyidsource=D
-lifecycle[035].entry[17.1.1]	t448 partyid=0200
-lifecycle[035].entry[17.1.2]	t452 partyrole=36
-lifecycle[035].entry[17.2]	t0 party
-lifecycle[035].entry[17.2.0]	t447 partyidsource=D
-lifecycle[035].entry[17.2.1]	t448 partyid=0201CSWRRI2
-lifecycle[035].entry[17.2.2]	t452 partyrole=12
-lifecycle[035].entry[17.3]	t0 party
-lifecycle[035].entry[17.3.0]	t447 partyidsource=D
-lifecycle[035].entry[17.3.1]	t448 partyid=1740647.028
-lifecycle[035].entry[17.3.2]	t452 partyrole=1
-lifecycle[035].entry[17.4]	t0 party
-lifecycle[035].entry[17.4.0]	t447 partyidsource=D
-lifecycle[035].entry[17.4.1]	t448 partyid=2540498.029
-lifecycle[035].entry[17.4.2]	t452 partyrole=3
-lifecycle[035].entry[17.5]	t0 party
-lifecycle[035].entry[17.5.0]	t447 partyidsource=D
-lifecycle[035].entry[17.5.1]	t448 partyid=Autex
-lifecycle[035].entry[17.6]	t0 party
-lifecycle[035].entry[17.6.0]	t447 partyidsource=shortcodeid
-lifecycle[035].entry[17.6.1]	t448 partyid=KU/BBZ
-lifecycle[035].entry[17.6.2]	t452 partyrole=3
-lifecycle[035].entry[17.7]	t0 party
-lifecycle[035].entry[17.7.0]	t447 partyidsource=D
-lifecycle[035].entry[17.7.1]	t448 partyid=OARNC8201
-lifecycle[035].entry[17.7.2]	t452 partyrole=5
-lifecycle[035].entry[17.8]	t0 party
-lifecycle[035].entry[17.8.0]	t447 partyidsource=D
-lifecycle[035].entry[17.8.1]	t448 partyid=OMSVENDOR0102
-lifecycle[035].entry[17.9]	t0 party
-lifecycle[035].entry[17.9.0]	t447 partyidsource=generallyacceptedmarketparticipantidentifier
-lifecycle[035].entry[17.9.1]	t448 partyid=RDXY_TRITON@1
-lifecycle[035].entry[17.9.2]	t452 partyrole=1
-lifecycle[035].entry[18]	t454 secaltids=3
-lifecycle[035].entry[18.0]	t0 secaltid
-lifecycle[035].entry[18.0.0]	t455 securityaltid=2454 TT Equity
-lifecycle[035].entry[18.0.1]	t456 securityaltidsource=bloomberg
-lifecycle[035].entry[18.1]	t0 secaltid
-lifecycle[035].entry[18.1.0]	t455 securityaltid=2454.TW
-lifecycle[035].entry[18.1.1]	t456 securityaltidsource=ric
-lifecycle[035].entry[18.2]	t0 secaltid
-lifecycle[035].entry[18.2.0]	t455 securityaltid=dbi;TW0002454006_XTAI_TWD
-lifecycle[035].entry[18.2.1]	t456 securityaltidsource=ULLINKINSTRUMENTID
-lifecycle[035].entry[19]	t460 product=5
-lifecycle[035].entry[20]	t461 cficode=ESXXXX
-lifecycle[035].entry[21]	t470 countryofissue=TW
-lifecycle[035].entry[22]	t562 mintradevol=1
-lifecycle[035].entry[23]	t768 trdregtimestamps=5
-lifecycle[035].entry[23.0]	t0 trdregtimestampcomponent
-lifecycle[035].entry[23.0.0]	t769 trdregtimestamp=20260814-01:13:45
-lifecycle[035].entry[23.0.1]	t771 trdregtimestamporigin=CLIENT
-lifecycle[035].entry[23.1]	t0 trdregtimestampcomponent
-lifecycle[035].entry[23.1.0]	t769 trdregtimestamp=20260814-01:13:45.162
-lifecycle[035].entry[23.1.1]	t770 trdregtimestamptype=10
-lifecycle[035].entry[23.1.2]	t771 trdregtimestamporigin=CLIENT
-lifecycle[035].entry[23.2]	t0 trdregtimestampcomponent
-lifecycle[035].entry[23.2.0]	t769 trdregtimestamp=20260814-01:13:45.549
-lifecycle[035].entry[23.2.1]	t771 trdregtimestamporigin=ULBRIDGE
-lifecycle[035].entry[23.3]	t0 trdregtimestampcomponent
-lifecycle[035].entry[23.3.0]	t769 trdregtimestamp=20260814-21:59:46.416
-lifecycle[035].entry[23.3.1]	t771 trdregtimestamporigin=ULBRIDGE
-lifecycle[035].entry[23.4]	t0 trdregtimestampcomponent
-lifecycle[035].entry[23.4.0]	t769 trdregtimestamp=20260814-21:59:46.479
-lifecycle[035].entry[23.4.1]	t771 trdregtimestamporigin=CLIENT
-lifecycle[035].entry[24]	t2897 currencycodesource=6
-lifecycle[035].entry[25]	t65034 parentorderid=1613925
-lifecycle[035].entry[26]	t65038 transversalkey=0201625920204
-lifecycle[035].entry[27]	t65041 ullinkinstrumentid=dbi;TW0002454006_XTAI_TWD
-lifecycle[035].entry[28]	t0 env=PROD
-lifecycle[035].entry[29]	t0 group=PMA2
-lifecycle[035].entry[30]	t0 marketorderid=3365109
-lifecycle[035].entry[31]	t0 orderorigin=buyside
-lifecycle[035].entry[32]	t0 pluginoriginator=OMSVENDOR_FIX_44_SellSide0102
-lifecycle[035].entry[33]	t0 pluginowner=ULMSG_DMZ_FIRM
-lifecycle[035].entry[34]	t0 prenetworkorg=114
-lifecycle[035].entry[35]	t0 preorderorigin=14
-lifecycle[035].entry[36]	t0 ulfromsessionname=Autex_FIX42_BuySide
-lifecycle[035].entry[37]	t0 ultosessionname=ULMSG_DMZ_FIRM
-lifecycle[035].field.currunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[035].field.recdunix	"2026-08-14T23:59:46.524507000Z"
-lifecycle[035].field.creaunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[035].field.transacttime	"2026-08-14T21:59:46.479000000Z"
-lifecycle[035].field.curruuid	"01a00249-ce2f-7000-bca1-dae80f200039"
-lifecycle[035].field.crossuuid	"00000000-0000-8000-a9bd-cb89bc3989c3"
-lifecycle[035].field.crosscode	"931070583-1940-30712_192"
-lifecycle[035].field.currhashcode	2757313247405323742
-lifecycle[035].field.crosshashcode	12231155955436980675
-lifecycle[035].field.srcuuids	["01a002b7-ab5c-7084-a6c6-612af803fe89","01a002b7-ab5c-7085-9a9c-94d359a9aa72","01a002b7-ab5c-7086-b315-89df759d7187","01a002b7-ab5c-7087-b265-d2effcbf590e","01a002b7-ab5c-7088-92f0-5799272c72d3","01a002b7-ab5c-708b-9cfb-e63705128bd6","01a002b7-ab5c-708d-87b5-cc62fa037f22"]
-lifecycle[035].field.beginstring	"FIX.4.4"
-lifecycle[035].field.msgtype	"cancelreject"
-lifecycle[035].field.msgcat	"UNKN"
+lifecycle[035].entry[3]	t60 transacttime=20260814-21:59:46
+lifecycle[035].entry[4]	t434 cxlrejresponseto=1
+lifecycle[035].entry[5]	t54 side=2
+lifecycle[035].entry[6]	t454 secaltids=1
+lifecycle[035].entry[6.0]	t0 secaltid
+lifecycle[035].entry[6.0.0]	t455 securityaltid=TW0002454006
+lifecycle[035].entry[6.0.1]	t456 securityaltidsource=4
+lifecycle[035].field.currunix	"2026-08-14T21:59:46.000000000Z"
+lifecycle[035].field.recdunix	"2026-08-14T23:59:46.524315000Z"
+lifecycle[035].field.creaunix	"2026-08-14T21:59:46.000000000Z"
+lifecycle[035].field.prevunix	"2026-08-14T21:59:46.000000000Z"
+lifecycle[035].field.sendingtime	"2026-08-14T21:59:47.000000000Z"
+lifecycle[035].field.transacttime	"2026-08-14T21:59:46.000000000Z"
+lifecycle[035].field.curruuid	"01a00249-cc50-7001-930e-48987421161f"
+lifecycle[035].field.crossuuid	"00000000-0000-8000-b74b-42ba8f9fb430"
+lifecycle[035].field.crosscode	"SELL:931070583-1940-30712_192"
+lifecycle[035].field.currhashcode	6600626771825296914
+lifecycle[035].field.crosshashcode	13207723701235070000
+lifecycle[035].field.prevuuid	"01a00249-cc50-7000-97c1-85efb134b742"
+lifecycle[035].field.seqnum	1
+lifecycle[035].field.srcuuids	["01a002b7-ab5c-7083-b31d-037ccd199c3d"]
+lifecycle[035].field.beginstring	"FIX.4.2"
+lifecycle[035].field.msgtype	"9"
+lifecycle[035].field.msgcat	"ORDR"
 lifecycle[035].field.msgseqnum	72
 lifecycle[035].field.sendercompid	"CSJPJ"
 lifecycle[035].field.targetcompid	"YDUZFSOA"
-lifecycle[035].field.msgpluginid	"ULMSG_DMZ_FIRM"
+lifecycle[035].field.msgdirection	"R"
+lifecycle[035].field.msgpluginid	"Autex_FIX42_BuySide"
 lifecycle[035].field.msgoriginator	"Autex_FIX42_BuySide"
 lifecycle[035].field.msgctxid	"9f0510ca5c"
 lifecycle[035].field.msgsessionid	"e7254ed2"
-lifecycle[035].field.msgsesseventid	"cancelreject:e7254ed2:9f0510ca5c:72"
-lifecycle[035].field.conversationid	"4cee0727-3b2d-4c09-8183-461850474e65"
-lifecycle[035].field.symbol	"2454"
-lifecycle[035].field.securityid	"TW0002454006"
-lifecycle[035].field.securityidsource	"4"
+lifecycle[035].field.msgsesseventid	"9:e7254ed2:9f0510ca5c:72"
 lifecycle[035].field.isincode	"TW0002454006"
-lifecycle[035].field.bloombergcode	"2454 TT Equity"
-lifecycle[035].field.miccode	"XTAI"
-lifecycle[035].field.securitytype	"equity"
-lifecycle[035].field.securityexchange	"XTAI"
-lifecycle[035].field.exdestination	"TW"
-lifecycle[035].field.cficode	"ESXXXX"
-lifecycle[035].field.product	5
 lifecycle[035].field.clordid	"0201623594616113"
 lifecycle[035].field.origclordid	"0201623594616112"
 lifecycle[035].field.orderid	"931070583-1940-30712_192"
-lifecycle[035].field.orderqty	"10000.000000000000000000"
-lifecycle[035].field.currency	"TWD"
-lifecycle[035].field.settlcurrency	"TWD"
-lifecycle[035].field.timeinforce	"day"
+lifecycle[035].field.side	"SELL"
+lifecycle[035].field.leavesqty	"0.000000000000000000"
 lifecycle[035].field.state	"REJECTED"
 lifecycle[035].field.ordstatus	"8"
 lifecycle[035].field.text	"Counterparty unavailable - please contact support"
-lifecycle[035].field.nopartyids	10
-lifecycle[035].field.parties	[["0200","D",122,null,null,null],["0200","D",36,null,null,null],["0201CSWRRI2","D",12,null,null,null],["1740647.028","D",1,null,null,null],["2540498.029","D",3,null,null,null],["Autex","D",null,null,null,null],["KU/BBZ","shortcodeid",3,null,null,null],["OARNC8201","D",5,null,null,null],["OMSVENDOR0102","D",null,null,null,null],["RDXY_TRITON@1","generallyacceptedmarketparticipantidentifier",1,null,null,null]]
-lifecycle[035].field.nosecurityaltid	3
-lifecycle[035].field.secaltids	[["2454 TT Equity","bloomberg",null],["2454.TW","ric",null],["dbi;TW0002454006_XTAI_TWD","ULLINKINSTRUMENTID",null]]
-lifecycle[035].field.notrdregtimestamps	5
-lifecycle[035].field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+lifecycle[035].field.nosecurityaltid	1
+lifecycle[035].field.secaltids	[["TW0002454006","4",null]]
+lifecycle[035].field.bodylength	215
 lifecycle[035].field.onbehalfofcompid	"RDXY"
-lifecycle[035].field.delivertocompid	"RDXY"
-lifecycle[035].field.targetsubid	"RDXY"
-lifecycle[035].field.metadata	{"env":"PROD","firm.acronym":"OARNC8201","firm.lastinstrumentlookupdate":"20260814","firm.lastinstrumentlookupsucceed":"yes","group":"PMA2","marketorderid":"3365109","omsvendor.orderqty":"10000","omsvendor.timeinforce":"day","orderorigin":"buyside","pluginoriginator":"OMSVENDOR_FIX_44_SellSide0102","pluginowner":"ULMSG_DMZ_FIRM","prenetworkorg":"114","preorderorigin":"14","ulfromsessionname":"Autex_FIX42_BuySide","ullink.bypassrisk":"yes","ultosessionname":"ULMSG_DMZ_FIRM"}
-lifecycle[035].field.fixentries	{"107:securitydesc":"MEDIATEK","2897:currencycodesource":"6","377:solicitedflag":"Y","434:cxlrejresponseto":"cancel","470:countryofissue":"TW","562:mintradevol":"1","65034:parentorderid":"1613925","65038:transversalkey":"0201625920204","65041:ullinkinstrumentid":"dbi;TW0002454006_XTAI_TWD"}
-lifecycle[036].type	0
-lifecycle[036].digest	13ad44e6cf85d1be05046be3db50369f
-lifecycle[036].wire	8=FIX.4.2|35=0|49=FIRMB|56=FIDESSA|34=16384|52=20260814-21:59:48.512549|9=62|10=033|
-lifecycle[036].entry[0]	t9 bodylength=62
-lifecycle[036].field.currunix	"2026-08-14T21:59:48.512549000Z"
-lifecycle[036].field.recdunix	"2026-08-14T23:59:48.512589000Z"
-lifecycle[036].field.creaunix	"2026-08-14T21:59:48.512549000Z"
-lifecycle[036].field.sendingtime	"2026-08-14T21:59:48.512549000Z"
-lifecycle[036].field.curruuid	"01a00249-d620-7000-b41a-39bbacdcf895"
-lifecycle[036].field.crossuuid	"01a00249-d620-7000-b41a-39bbacdcf895"
-lifecycle[036].field.currhashcode	3491125381250579226
-lifecycle[036].field.crosshashcode	0
-lifecycle[036].field.srcuuids	["01a002b7-b320-708f-aea1-97d01795d4a3"]
-lifecycle[036].field.beginstring	"FIX.4.2"
-lifecycle[036].field.msgtype	"0"
-lifecycle[036].field.msgcat	"SESS"
-lifecycle[036].field.msgseqnum	16384
-lifecycle[036].field.sendercompid	"FIRMB"
-lifecycle[036].field.targetcompid	"FIDESSA"
-lifecycle[036].field.msgdirection	"S"
-lifecycle[036].field.msgpluginid	"Fidessa_Fix42_BuySide"
-lifecycle[036].field.state	"UNKNOWN"
-lifecycle[036].field.bodylength	62
-lifecycle[036].field.checksum	"033"
-lifecycle[036].field.fixentries	{}
+lifecycle[035].field.checksum	"113"
+lifecycle[035].field.fixentries	{"434:cxlrejresponseto":"1"}
+lifecycle[036].type	cancelreject
+lifecycle[036].digest	fb768c8ece98c01fb0946843765409c8
+lifecycle[036].wire	8=FIX.4.4|35=cancelreject|49=CSJPJ|56=YDUZFSOA|34=72|11=0201623594616113|37=931070583-1940-30712_192|38=10000|41=0201623594616112|15=TWD|22=4|39=8|48=TW0002454006|55=2454|57=RDXY|59=day|60=20260814-21:59:46.479|100=TW|107=MEDIATEK|115=RDXY|120=TWD|128=RDXY|167=equity|207=XTAI|377=Y|434=cancel|453=10|447=D|448=0200|452=122|447=D|448=0200|452=36|447=D|448=0201CSWRRI2|452=12|447=D|448=1740647.028|452=1|447=D|448=2540498.029|452=3|447=D|448=Autex|447=shortcodeid|448=KU/BBZ|452=3|447=D|448=OARNC8201|452=5|447=D|448=OMSVENDOR0102|447=generallyacceptedmarketparticipantidentifier|448=RDXY_TRITON@1|452=1|454=3|455=2454 TT Equity|456=bloomberg|455=2454.TW|456=ric|455=dbi;TW0002454006_XTAI_TWD|456=ULLINKINSTRUMENTID|460=5|461=ESXXXX|470=TW|562=1|768=5|769=20260814-01:13:45|771=CLIENT|769=20260814-01:13:45.162|770=10|771=CLIENT|769=20260814-01:13:45.549|771=ULBRIDGE|769=20260814-21:59:46.416|771=ULBRIDGE|769=20260814-21:59:46.479|771=CLIENT|2897=6|65034=1613925|65038=0201625920204|65041=dbi;TW0002454006_XTAI_TWD|env=PROD|group=PMA2|marketorderid=3365109|orderorigin=buyside|pluginoriginator=OMSVENDOR_FIX_44_SellSide0102|pluginowner=ULMSG_DMZ_FIRM|prenetworkorg=114|preorderorigin=14|ulfromsessionname=Autex_FIX42_BuySide|ultosessionname=ULMSG_DMZ_FIRM|
+lifecycle[036].entry[0]	t15 currency=TWD
+lifecycle[036].entry[1]	t22 securityidsource=4
+lifecycle[036].entry[2]	t39 ordstatus=8
+lifecycle[036].entry[3]	t48 securityid=TW0002454006
+lifecycle[036].entry[4]	t55 symbol=2454
+lifecycle[036].entry[5]	t57 targetsubid=RDXY
+lifecycle[036].entry[6]	t59 timeinforce=day
+lifecycle[036].entry[7]	t60 transacttime=20260814-21:59:46.479
+lifecycle[036].entry[8]	t100 exdestination=TW
+lifecycle[036].entry[9]	t107 securitydesc=MEDIATEK
+lifecycle[036].entry[10]	t115 onbehalfofcompid=RDXY
+lifecycle[036].entry[11]	t120 settlcurrency=TWD
+lifecycle[036].entry[12]	t128 delivertocompid=RDXY
+lifecycle[036].entry[13]	t167 securitytype=equity
+lifecycle[036].entry[14]	t207 securityexchange=XTAI
+lifecycle[036].entry[15]	t377 solicitedflag=Y
+lifecycle[036].entry[16]	t434 cxlrejresponseto=cancel
+lifecycle[036].entry[17]	t453 parties=10
+lifecycle[036].entry[17.0]	t0 party
+lifecycle[036].entry[17.0.0]	t447 partyidsource=D
+lifecycle[036].entry[17.0.1]	t448 partyid=0200
+lifecycle[036].entry[17.0.2]	t452 partyrole=122
+lifecycle[036].entry[17.1]	t0 party
+lifecycle[036].entry[17.1.0]	t447 partyidsource=D
+lifecycle[036].entry[17.1.1]	t448 partyid=0200
+lifecycle[036].entry[17.1.2]	t452 partyrole=36
+lifecycle[036].entry[17.2]	t0 party
+lifecycle[036].entry[17.2.0]	t447 partyidsource=D
+lifecycle[036].entry[17.2.1]	t448 partyid=0201CSWRRI2
+lifecycle[036].entry[17.2.2]	t452 partyrole=12
+lifecycle[036].entry[17.3]	t0 party
+lifecycle[036].entry[17.3.0]	t447 partyidsource=D
+lifecycle[036].entry[17.3.1]	t448 partyid=1740647.028
+lifecycle[036].entry[17.3.2]	t452 partyrole=1
+lifecycle[036].entry[17.4]	t0 party
+lifecycle[036].entry[17.4.0]	t447 partyidsource=D
+lifecycle[036].entry[17.4.1]	t448 partyid=2540498.029
+lifecycle[036].entry[17.4.2]	t452 partyrole=3
+lifecycle[036].entry[17.5]	t0 party
+lifecycle[036].entry[17.5.0]	t447 partyidsource=D
+lifecycle[036].entry[17.5.1]	t448 partyid=Autex
+lifecycle[036].entry[17.6]	t0 party
+lifecycle[036].entry[17.6.0]	t447 partyidsource=shortcodeid
+lifecycle[036].entry[17.6.1]	t448 partyid=KU/BBZ
+lifecycle[036].entry[17.6.2]	t452 partyrole=3
+lifecycle[036].entry[17.7]	t0 party
+lifecycle[036].entry[17.7.0]	t447 partyidsource=D
+lifecycle[036].entry[17.7.1]	t448 partyid=OARNC8201
+lifecycle[036].entry[17.7.2]	t452 partyrole=5
+lifecycle[036].entry[17.8]	t0 party
+lifecycle[036].entry[17.8.0]	t447 partyidsource=D
+lifecycle[036].entry[17.8.1]	t448 partyid=OMSVENDOR0102
+lifecycle[036].entry[17.9]	t0 party
+lifecycle[036].entry[17.9.0]	t447 partyidsource=generallyacceptedmarketparticipantidentifier
+lifecycle[036].entry[17.9.1]	t448 partyid=RDXY_TRITON@1
+lifecycle[036].entry[17.9.2]	t452 partyrole=1
+lifecycle[036].entry[18]	t454 secaltids=3
+lifecycle[036].entry[18.0]	t0 secaltid
+lifecycle[036].entry[18.0.0]	t455 securityaltid=2454 TT Equity
+lifecycle[036].entry[18.0.1]	t456 securityaltidsource=bloomberg
+lifecycle[036].entry[18.1]	t0 secaltid
+lifecycle[036].entry[18.1.0]	t455 securityaltid=2454.TW
+lifecycle[036].entry[18.1.1]	t456 securityaltidsource=ric
+lifecycle[036].entry[18.2]	t0 secaltid
+lifecycle[036].entry[18.2.0]	t455 securityaltid=dbi;TW0002454006_XTAI_TWD
+lifecycle[036].entry[18.2.1]	t456 securityaltidsource=ULLINKINSTRUMENTID
+lifecycle[036].entry[19]	t460 product=5
+lifecycle[036].entry[20]	t461 cficode=ESXXXX
+lifecycle[036].entry[21]	t470 countryofissue=TW
+lifecycle[036].entry[22]	t562 mintradevol=1
+lifecycle[036].entry[23]	t768 trdregtimestamps=5
+lifecycle[036].entry[23.0]	t0 trdregtimestampcomponent
+lifecycle[036].entry[23.0.0]	t769 trdregtimestamp=20260814-01:13:45
+lifecycle[036].entry[23.0.1]	t771 trdregtimestamporigin=CLIENT
+lifecycle[036].entry[23.1]	t0 trdregtimestampcomponent
+lifecycle[036].entry[23.1.0]	t769 trdregtimestamp=20260814-01:13:45.162
+lifecycle[036].entry[23.1.1]	t770 trdregtimestamptype=10
+lifecycle[036].entry[23.1.2]	t771 trdregtimestamporigin=CLIENT
+lifecycle[036].entry[23.2]	t0 trdregtimestampcomponent
+lifecycle[036].entry[23.2.0]	t769 trdregtimestamp=20260814-01:13:45.549
+lifecycle[036].entry[23.2.1]	t771 trdregtimestamporigin=ULBRIDGE
+lifecycle[036].entry[23.3]	t0 trdregtimestampcomponent
+lifecycle[036].entry[23.3.0]	t769 trdregtimestamp=20260814-21:59:46.416
+lifecycle[036].entry[23.3.1]	t771 trdregtimestamporigin=ULBRIDGE
+lifecycle[036].entry[23.4]	t0 trdregtimestampcomponent
+lifecycle[036].entry[23.4.0]	t769 trdregtimestamp=20260814-21:59:46.479
+lifecycle[036].entry[23.4.1]	t771 trdregtimestamporigin=CLIENT
+lifecycle[036].entry[24]	t2897 currencycodesource=6
+lifecycle[036].entry[25]	t65034 parentorderid=1613925
+lifecycle[036].entry[26]	t65038 transversalkey=0201625920204
+lifecycle[036].entry[27]	t65041 ullinkinstrumentid=dbi;TW0002454006_XTAI_TWD
+lifecycle[036].entry[28]	t0 env=PROD
+lifecycle[036].entry[29]	t0 group=PMA2
+lifecycle[036].entry[30]	t0 marketorderid=3365109
+lifecycle[036].entry[31]	t0 orderorigin=buyside
+lifecycle[036].entry[32]	t0 pluginoriginator=OMSVENDOR_FIX_44_SellSide0102
+lifecycle[036].entry[33]	t0 pluginowner=ULMSG_DMZ_FIRM
+lifecycle[036].entry[34]	t0 prenetworkorg=114
+lifecycle[036].entry[35]	t0 preorderorigin=14
+lifecycle[036].entry[36]	t0 ulfromsessionname=Autex_FIX42_BuySide
+lifecycle[036].entry[37]	t0 ultosessionname=ULMSG_DMZ_FIRM
+lifecycle[036].field.currunix	"2026-08-14T21:59:46.479000000Z"
+lifecycle[036].field.recdunix	"2026-08-14T23:59:46.524507000Z"
+lifecycle[036].field.creaunix	"2026-08-14T21:59:46.479000000Z"
+lifecycle[036].field.transacttime	"2026-08-14T21:59:46.479000000Z"
+lifecycle[036].field.curruuid	"01a00249-ce2f-7000-bca1-dae80f200039"
+lifecycle[036].field.crossuuid	"00000000-0000-8000-a9bd-cb89bc3989c3"
+lifecycle[036].field.crosscode	"931070583-1940-30712_192"
+lifecycle[036].field.currhashcode	2757313247405323742
+lifecycle[036].field.crosshashcode	12231155955436980675
+lifecycle[036].field.srcuuids	["01a002b7-ab5c-7084-a6c6-612af803fe89","01a002b7-ab5c-7085-9a9c-94d359a9aa72","01a002b7-ab5c-7086-b315-89df759d7187","01a002b7-ab5c-7087-b265-d2effcbf590e","01a002b7-ab5c-7088-92f0-5799272c72d3","01a002b7-ab5c-708b-9cfb-e63705128bd6","01a002b7-ab5c-708d-87b5-cc62fa037f22"]
+lifecycle[036].field.beginstring	"FIX.4.4"
+lifecycle[036].field.msgtype	"cancelreject"
+lifecycle[036].field.msgcat	"UNKN"
+lifecycle[036].field.msgseqnum	72
+lifecycle[036].field.sendercompid	"CSJPJ"
+lifecycle[036].field.targetcompid	"YDUZFSOA"
+lifecycle[036].field.msgpluginid	"ULMSG_DMZ_FIRM"
+lifecycle[036].field.msgoriginator	"Autex_FIX42_BuySide"
+lifecycle[036].field.msgctxid	"9f0510ca5c"
+lifecycle[036].field.msgsessionid	"e7254ed2"
+lifecycle[036].field.msgsesseventid	"cancelreject:e7254ed2:9f0510ca5c:72"
+lifecycle[036].field.conversationid	"4cee0727-3b2d-4c09-8183-461850474e65"
+lifecycle[036].field.symbol	"2454"
+lifecycle[036].field.securityid	"TW0002454006"
+lifecycle[036].field.securityidsource	"4"
+lifecycle[036].field.isincode	"TW0002454006"
+lifecycle[036].field.bloombergcode	"2454 TT Equity"
+lifecycle[036].field.miccode	"XTAI"
+lifecycle[036].field.securitytype	"equity"
+lifecycle[036].field.securityexchange	"XTAI"
+lifecycle[036].field.exdestination	"TW"
+lifecycle[036].field.cficode	"ESXXXX"
+lifecycle[036].field.product	5
+lifecycle[036].field.clordid	"0201623594616113"
+lifecycle[036].field.origclordid	"0201623594616112"
+lifecycle[036].field.orderid	"931070583-1940-30712_192"
+lifecycle[036].field.orderqty	"10000.000000000000000000"
+lifecycle[036].field.currency	"TWD"
+lifecycle[036].field.settlcurrency	"TWD"
+lifecycle[036].field.timeinforce	"day"
+lifecycle[036].field.state	"REJECTED"
+lifecycle[036].field.ordstatus	"8"
+lifecycle[036].field.text	"Counterparty unavailable - please contact support"
+lifecycle[036].field.nopartyids	10
+lifecycle[036].field.parties	[["0200","D",122,null,null,null],["0200","D",36,null,null,null],["0201CSWRRI2","D",12,null,null,null],["1740647.028","D",1,null,null,null],["2540498.029","D",3,null,null,null],["Autex","D",null,null,null,null],["KU/BBZ","shortcodeid",3,null,null,null],["OARNC8201","D",5,null,null,null],["OMSVENDOR0102","D",null,null,null,null],["RDXY_TRITON@1","generallyacceptedmarketparticipantidentifier",1,null,null,null]]
+lifecycle[036].field.nosecurityaltid	3
+lifecycle[036].field.secaltids	[["2454 TT Equity","bloomberg",null],["2454.TW","ric",null],["dbi;TW0002454006_XTAI_TWD","ULLINKINSTRUMENTID",null]]
+lifecycle[036].field.notrdregtimestamps	5
+lifecycle[036].field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+lifecycle[036].field.onbehalfofcompid	"RDXY"
+lifecycle[036].field.delivertocompid	"RDXY"
+lifecycle[036].field.targetsubid	"RDXY"
+lifecycle[036].field.metadata	{"env":"PROD","firm.acronym":"OARNC8201","firm.lastinstrumentlookupdate":"20260814","firm.lastinstrumentlookupsucceed":"yes","group":"PMA2","marketorderid":"3365109","omsvendor.orderqty":"10000","omsvendor.timeinforce":"day","orderorigin":"buyside","pluginoriginator":"OMSVENDOR_FIX_44_SellSide0102","pluginowner":"ULMSG_DMZ_FIRM","prenetworkorg":"114","preorderorigin":"14","ulfromsessionname":"Autex_FIX42_BuySide","ullink.bypassrisk":"yes","ultosessionname":"ULMSG_DMZ_FIRM"}
+lifecycle[036].field.fixentries	{"107:securitydesc":"MEDIATEK","2897:currencycodesource":"6","377:solicitedflag":"Y","434:cxlrejresponseto":"cancel","470:countryofissue":"TW","562:mintradevol":"1","65034:parentorderid":"1613925","65038:transversalkey":"0201625920204","65041:ullinkinstrumentid":"dbi;TW0002454006_XTAI_TWD"}
 lifecycle[037].type	0
 lifecycle[037].digest	13ad44e6cf85d1be05046be3db50369f
-lifecycle[037].wire	8=FIX.4.2|35=0|49=FIDESSA_KOVBZ|56=FIRMAPRD|34=2481|43=N|52=20260814-21:59:49.825|9=72|10=122|
-lifecycle[037].entry[0]	t9 bodylength=72
-lifecycle[037].field.currunix	"2026-08-14T21:59:49.825000000Z"
-lifecycle[037].field.recdunix	"2026-08-14T23:59:49.868569000Z"
-lifecycle[037].field.creaunix	"2026-08-14T21:59:49.825000000Z"
-lifecycle[037].field.sendingtime	"2026-08-14T21:59:49.825000000Z"
-lifecycle[037].field.curruuid	"01a00249-db41-7000-b41a-39bbacdcf895"
-lifecycle[037].field.crossuuid	"01a00249-db41-7000-b41a-39bbacdcf895"
+lifecycle[037].wire	8=FIX.4.2|35=0|49=FIRMB|56=FIDESSA|34=16384|52=20260814-21:59:48.512549|9=62|10=033|
+lifecycle[037].entry[0]	t9 bodylength=62
+lifecycle[037].field.currunix	"2026-08-14T21:59:48.512549000Z"
+lifecycle[037].field.recdunix	"2026-08-14T23:59:48.512589000Z"
+lifecycle[037].field.creaunix	"2026-08-14T21:59:48.512549000Z"
+lifecycle[037].field.sendingtime	"2026-08-14T21:59:48.512549000Z"
+lifecycle[037].field.curruuid	"01a00249-d620-7000-b41a-39bbacdcf895"
+lifecycle[037].field.crossuuid	"01a00249-d620-7000-b41a-39bbacdcf895"
 lifecycle[037].field.currhashcode	3491125381250579226
 lifecycle[037].field.crosshashcode	0
-lifecycle[037].field.srcuuids	["01a002b7-b86c-7090-a49a-8af85681b2c4"]
+lifecycle[037].field.srcuuids	["01a002b7-b320-708f-aea1-97d01795d4a3"]
 lifecycle[037].field.beginstring	"FIX.4.2"
 lifecycle[037].field.msgtype	"0"
 lifecycle[037].field.msgcat	"SESS"
-lifecycle[037].field.msgseqnum	2481
-lifecycle[037].field.sendercompid	"FIDESSA_KOVBZ"
-lifecycle[037].field.targetcompid	"FIRMAPRD"
-lifecycle[037].field.possdupflag	false
-lifecycle[037].field.msgdirection	"R"
-lifecycle[037].field.msgpluginid	"Fidessa_Fix42_SellSideCTAC"
-lifecycle[037].field.msgoriginator	"Fidessa_Fix42_SellSideCTAC"
-lifecycle[037].field.msgctxid	"9f0510d76c"
-lifecycle[037].field.msgsessionid	"e7254ee7"
-lifecycle[037].field.msgsesseventid	"0:e7254ee7:9f0510d76c:2481"
+lifecycle[037].field.msgseqnum	16384
+lifecycle[037].field.sendercompid	"FIRMB"
+lifecycle[037].field.targetcompid	"FIDESSA"
+lifecycle[037].field.msgdirection	"S"
+lifecycle[037].field.msgpluginid	"Fidessa_Fix42_BuySide"
 lifecycle[037].field.state	"UNKNOWN"
-lifecycle[037].field.bodylength	72
-lifecycle[037].field.checksum	"122"
+lifecycle[037].field.bodylength	62
+lifecycle[037].field.checksum	"033"
 lifecycle[037].field.fixentries	{}
+lifecycle[038].type	0
+lifecycle[038].digest	13ad44e6cf85d1be05046be3db50369f
+lifecycle[038].wire	8=FIX.4.2|35=0|49=FIDESSA_KOVBZ|56=FIRMAPRD|34=2481|43=N|52=20260814-21:59:49.825|9=72|10=122|
+lifecycle[038].entry[0]	t9 bodylength=72
+lifecycle[038].field.currunix	"2026-08-14T21:59:49.825000000Z"
+lifecycle[038].field.recdunix	"2026-08-14T23:59:49.868569000Z"
+lifecycle[038].field.creaunix	"2026-08-14T21:59:49.825000000Z"
+lifecycle[038].field.sendingtime	"2026-08-14T21:59:49.825000000Z"
+lifecycle[038].field.curruuid	"01a00249-db41-7000-b41a-39bbacdcf895"
+lifecycle[038].field.crossuuid	"01a00249-db41-7000-b41a-39bbacdcf895"
+lifecycle[038].field.currhashcode	3491125381250579226
+lifecycle[038].field.crosshashcode	0
+lifecycle[038].field.srcuuids	["01a002b7-b86c-7090-a49a-8af85681b2c4"]
+lifecycle[038].field.beginstring	"FIX.4.2"
+lifecycle[038].field.msgtype	"0"
+lifecycle[038].field.msgcat	"SESS"
+lifecycle[038].field.msgseqnum	2481
+lifecycle[038].field.sendercompid	"FIDESSA_KOVBZ"
+lifecycle[038].field.targetcompid	"FIRMAPRD"
+lifecycle[038].field.possdupflag	false
+lifecycle[038].field.msgdirection	"R"
+lifecycle[038].field.msgpluginid	"Fidessa_Fix42_SellSideCTAC"
+lifecycle[038].field.msgoriginator	"Fidessa_Fix42_SellSideCTAC"
+lifecycle[038].field.msgctxid	"9f0510d76c"
+lifecycle[038].field.msgsessionid	"e7254ee7"
+lifecycle[038].field.msgsesseventid	"0:e7254ee7:9f0510d76c:2481"
+lifecycle[038].field.state	"UNKNOWN"
+lifecycle[038].field.bodylength	72
+lifecycle[038].field.checksum	"122"
+lifecycle[038].field.fixentries	{}
 shapes[000].line	sending >> 8=FIX.4.2|9=176|35=D|11=ORDER-1|55=AAPL|54=1|10=203| << queued seq=1092
 shapes[000]:0.type	D
 shapes[000]:0.digest	8810937bcf3a1e1b113bcd946123892b
@@ -25001,7 +25371,38 @@ frames[033]:0.field.msgtype	"AE"
 frames[033]:0.field.msgcat	"TRAD"
 frames[033]:0.field.state	"UNKNOWN"
 frames[033]:0.field.fixentries	{"552:trdcaprptsidegrp":"[{\\"453:parties\\":[{\\"448:partyid\\":\\"Y\\",\\"452:partyrole\\":\\"3\\"},{\\"448:partyid\\":\\"X\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"a\\",\\"803:partysubidtype\\":\\"1\\"}]}]}]"}
-frames[033].messages	1
+frames[033]:1.type	AE
+frames[033]:1.digest	710822e45b5e6ea2a94184d8324a6123
+frames[033]:1.wire	8=FIX.4.4|35=AE|552=1|453=2|448=Y|452=3|802=1|523=a|803=1|448=X|452=1|
+frames[033]:1.entry[0]	t552 trdcaprptsidegrp=1
+frames[033]:1.entry[0.0]	t0 trdcaprptside
+frames[033]:1.entry[0.0.0]	t453 parties=2
+frames[033]:1.entry[0.0.0.0]	t0 party
+frames[033]:1.entry[0.0.0.0.0]	t448 partyid=Y
+frames[033]:1.entry[0.0.0.0.1]	t452 partyrole=3
+frames[033]:1.entry[0.0.0.1]	t0 party
+frames[033]:1.entry[0.0.0.1.0]	t802 partysubids=1
+frames[033]:1.entry[0.0.0.1.0.0]	t0 ptyssub
+frames[033]:1.entry[0.0.0.1.0.0.0]	t523 partysubid=a
+frames[033]:1.entry[0.0.0.1.0.0.1]	t803 partysubidtype=1
+frames[033]:1.entry[0.0.0.1.1]	t448 partyid=X
+frames[033]:1.entry[0.0.0.1.2]	t452 partyrole=1
+frames[033]:1.field.currunix	"2024-01-02T10:15:30.000000000Z"
+frames[033]:1.field.execunix	"2024-01-02T10:15:30.000000000Z"
+frames[033]:1.field.creaunix	"2024-01-02T10:15:30.000000000Z"
+frames[033]:1.field.curruuid	"018cc9ab-d1d0-7001-9d62-e5318bbf606a"
+frames[033]:1.field.crossuuid	"00000000-0000-8000-81ff-736fd0fef1ab"
+frames[033]:1.field.crosscode	"0:|content:15e3b4ab09ded8f8c6201ea997ab81b0"
+frames[033]:1.field.currhashcode	17276554178393189948
+frames[033]:1.field.crosshashcode	143960637184078251
+frames[033]:1.field.seqnum	1
+frames[033]:1.field.srcuuids	["018cc9ab-d1d0-7000-b7a1-92708234b232"]
+frames[033]:1.field.beginstring	"FIX.4.4"
+frames[033]:1.field.msgtype	"AE"
+frames[033]:1.field.msgcat	"EXEC"
+frames[033]:1.field.state	"FILLED"
+frames[033]:1.field.fixentries	{"552:trdcaprptsidegrp":"[{\\"453:parties\\":[{\\"448:partyid\\":\\"Y\\",\\"452:partyrole\\":\\"3\\"},{\\"448:partyid\\":\\"X\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"a\\",\\"803:partysubidtype\\":\\"1\\"}]}]}]"}
+frames[033].messages	2
 frames[034].line	recv 8=FIX.4.4\x019=61\x0135=0\x0149=XPAR\x0110=017\x01
 frames[034]:0.type	0
 frames[034]:0.digest	13ad44e6cf85d1be05046be3db50369f
@@ -25590,11 +25991,11 @@ bridge[004]:0.entry[0]	t54 side=1
 bridge[004]:0.entry[1]	t0 ordqty=50
 bridge[004]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.creaunix	"2024-01-02T10:15:30.000000000Z"
-bridge[004]:0.field.curruuid	"018cc9ab-d1d0-7000-8f38-bc778428b562"
-bridge[004]:0.field.crossuuid	"00000000-0000-8000-9d1d-6dfa13bd23be"
-bridge[004]:0.field.crosscode	"BUY:ORDER-2"
+bridge[004]:0.field.curruuid	"018cc9ab-d1d0-7000-9d8f-c796f33ca10f"
+bridge[004]:0.field.crossuuid	"00000000-0000-8000-aed9-a4c54eea99f9"
+bridge[004]:0.field.crosscode	"ORDER-2"
 bridge[004]:0.field.currhashcode	12420915885257313203
-bridge[004]:0.field.crosshashcode	15933011977547097022
+bridge[004]:0.field.crosshashcode	7987596581457795577
 bridge[004]:0.field.beginstring	"FIX.4.4"
 bridge[004]:0.field.msgcat	"UNKN"
 bridge[004]:0.field.clordid	"ORDER-2"
@@ -28015,7 +28416,38 @@ verbatim[033]:0.field.msgtype	"AE"
 verbatim[033]:0.field.msgcat	"TRAD"
 verbatim[033]:0.field.state	"UNKNOWN"
 verbatim[033]:0.field.fixentries	{"552:trdcaprptsidegrp":"[{\\"453:parties\\":[{\\"448:partyid\\":\\"Y\\",\\"452:partyrole\\":\\"3\\"},{\\"448:partyid\\":\\"X\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"a\\",\\"803:partysubidtype\\":\\"1\\"}]}]}]"}
-verbatim[033].messages	1
+verbatim[033]:1.type	AE
+verbatim[033]:1.digest	710822e45b5e6ea2a94184d8324a6123
+verbatim[033]:1.wire	8=FIX.4.4|35=AE|552=1|453=2|448=Y|452=3|802=1|523=a|803=1|448=X|452=1|
+verbatim[033]:1.entry[0]	t552 trdcaprptsidegrp=1
+verbatim[033]:1.entry[0.0]	t0 trdcaprptside
+verbatim[033]:1.entry[0.0.0]	t453 parties=2
+verbatim[033]:1.entry[0.0.0.0]	t0 party
+verbatim[033]:1.entry[0.0.0.0.0]	t448 partyid=Y
+verbatim[033]:1.entry[0.0.0.0.1]	t452 partyrole=3
+verbatim[033]:1.entry[0.0.0.1]	t0 party
+verbatim[033]:1.entry[0.0.0.1.0]	t802 partysubids=1
+verbatim[033]:1.entry[0.0.0.1.0.0]	t0 ptyssub
+verbatim[033]:1.entry[0.0.0.1.0.0.0]	t523 partysubid=a
+verbatim[033]:1.entry[0.0.0.1.0.0.1]	t803 partysubidtype=1
+verbatim[033]:1.entry[0.0.0.1.1]	t448 partyid=X
+verbatim[033]:1.entry[0.0.0.1.2]	t452 partyrole=1
+verbatim[033]:1.field.currunix	"2024-01-02T10:15:30.000000000Z"
+verbatim[033]:1.field.execunix	"2024-01-02T10:15:30.000000000Z"
+verbatim[033]:1.field.creaunix	"2024-01-02T10:15:30.000000000Z"
+verbatim[033]:1.field.curruuid	"018cc9ab-d1d0-7001-9d62-e5318bbf606a"
+verbatim[033]:1.field.crossuuid	"00000000-0000-8000-81ff-736fd0fef1ab"
+verbatim[033]:1.field.crosscode	"0:|content:15e3b4ab09ded8f8c6201ea997ab81b0"
+verbatim[033]:1.field.currhashcode	17276554178393189948
+verbatim[033]:1.field.crosshashcode	143960637184078251
+verbatim[033]:1.field.seqnum	1
+verbatim[033]:1.field.srcuuids	["018cc9ab-d1d0-7000-b7a1-92708234b232"]
+verbatim[033]:1.field.beginstring	"FIX.4.4"
+verbatim[033]:1.field.msgtype	"AE"
+verbatim[033]:1.field.msgcat	"EXEC"
+verbatim[033]:1.field.state	"FILLED"
+verbatim[033]:1.field.fixentries	{"552:trdcaprptsidegrp":"[{\\"453:parties\\":[{\\"448:partyid\\":\\"Y\\",\\"452:partyrole\\":\\"3\\"},{\\"448:partyid\\":\\"X\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"a\\",\\"803:partysubidtype\\":\\"1\\"}]}]}]"}
+verbatim[033].messages	2
 verbatim[034].line	recv 8=FIX.4.4\x019=61\x0135=0\x0149=XPAR\x0110=017\x01
 verbatim[034]:0.type	0
 verbatim[034]:0.digest	13ad44e6cf85d1be05046be3db50369f

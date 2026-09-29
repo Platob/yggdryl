@@ -433,6 +433,36 @@ impl JsDifferenceIterator {
     }
 }
 
+/// The core's warnings - a value a FIX parse, a market read or a lifecycle
+/// walk passed over, said once and then counted - written to standard
+/// error: an addon brings no logger of its own, so nothing else would say
+/// them.
+struct Warnings;
+
+impl log::Log for Warnings {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() <= log::Level::Warn
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) {
+            eprintln!("yggdryl: {}", record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// Installs [`Warnings`] as the process's logger when the addon loads,
+/// unless something in the process already installed one.
+#[napi_derive::module_init]
+fn install_warnings() {
+    static WARNINGS: Warnings = Warnings;
+    if log::set_logger(&WARNINGS).is_ok() {
+        log::set_max_level(log::LevelFilter::Warn);
+    }
+}
+
 impl Generator for JsDifferenceIterator {
     type Yield = String;
     type Next = ();

@@ -70,7 +70,9 @@ def test_the_enum_listings_name_the_column_vocabulary() -> None:
     event = graph.OrderEvent(1, crosscode="O-1")
     for column in (*enums.EVENT_COLUMNS, *enums.MARKET_COLUMNS, *enums.OPERATION_COLUMNS):
         assert hasattr(event, column), column
-    assert len(enums.MARKET_COLUMNS) == 27 and len(enums.OPERATION_COLUMNS) == 3
+    assert len(enums.MARKET_COLUMNS) == 28 and len(enums.OPERATION_COLUMNS) == 4
+    # When an element last executed is a market fact, never an event's.
+    assert "execunix" in enums.MARKET_COLUMNS and "execunix" not in enums.EVENT_COLUMNS
     assert enums.MARKET_KINDS == graph.MarketData.kinds
     assert "book_side" not in enums.MARKET_KINDS
 

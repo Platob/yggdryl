@@ -100,7 +100,7 @@
     "groups": 581,
     "enumFields": 2028,
     "codesets": 737,
-    "codes": 7812,
+    "codes": 7816,
     "aliases": 47,
     "alternates": 0,
     "messages": 181,
@@ -88715,7 +88715,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AW",
           "FIX:tag": "228230",
           "description": "MsgType = AW",
@@ -90051,7 +90051,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "k",
           "FIX:tag": "253071",
           "description": "MsgType = k (lowercase K)",
@@ -90130,7 +90130,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "l",
           "FIX:tag": "1009512",
           "description": "MsgType = l (lowercase L)",
@@ -98908,7 +98908,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "EXEC",
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "BO",
           "FIX:tag": "968560",
           "description": "MsgType = BO",
@@ -99769,7 +99769,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,quoteid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "t",
           "FIX:tag": "393258",
           "description": "MsgType = t (lowercase T)",
@@ -99999,7 +99999,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "u",
           "FIX:tag": "109341",
           "description": "MsgType = u (lowercase U)",
@@ -100111,7 +100111,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DS",
           "FIX:tag": "704180",
           "description": "MsgType = DS",
@@ -100223,7 +100223,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DT",
           "FIX:tag": "906013",
           "description": "MsgType = DT",
@@ -133247,7 +133247,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "K",
           "FIX:tag": "1096950",
           "description": "MsgType = K",
@@ -133361,7 +133361,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "L",
           "FIX:tag": "185663",
           "description": "MsgType = L",
@@ -134714,7 +134714,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "N",
           "FIX:tag": "881014",
           "description": "MsgType = N",
@@ -134795,7 +134795,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "M",
           "FIX:tag": "743358",
           "description": "MsgType = M",
@@ -134886,7 +134886,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "m",
           "FIX:tag": "869150",
           "description": "MsgType = m (lowercase M)",
@@ -138924,7 +138924,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BU",
           "FIX:tag": "1089468",
           "description": "MsgType = BU",
@@ -139015,7 +139015,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BT",
           "FIX:tag": "664422",
           "description": "MsgType = BT",
@@ -139490,7 +139490,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "BOOK",
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BV",
           "FIX:tag": "192483",
           "description": "MsgType = BV",
@@ -140214,7 +140214,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DJ",
           "FIX:tag": "732130",
           "description": "MsgType = DJ",
@@ -140609,7 +140609,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "DK",
           "FIX:tag": "288135",
           "description": "MsgType = DK",
@@ -140875,7 +140875,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "i",
           "FIX:tag": "720778",
           "description": "MsgType = i (lowercase I)",
@@ -141172,7 +141172,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
-          "FIX:msgcat": "QUOT",
+          "FIX:msgcat": "QUOB",
           "FIX:msgtype": "b",
           "FIX:tag": "185574",
           "description": "MsgType = b (lowercase B)",
@@ -148083,7 +148083,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoteid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "s",
           "FIX:tag": "898316",
           "description": "MsgType = s (lowercase S)",
@@ -148393,7 +148393,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "E",
           "FIX:tag": "962450",
           "description": "MsgType = E",
@@ -156539,7 +156539,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "BZ",
           "FIX:tag": "182726",
           "description": "MsgType = BZ",
@@ -156868,7 +156868,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "CA",
           "FIX:tag": "806153",
           "description": "MsgType = CA",
@@ -157207,7 +157207,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid,orderid,secondaryorderid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "r",
           "FIX:tag": "203677",
           "description": "MsgType = r (lowercase R)",
@@ -157438,7 +157438,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "q",
           "FIX:tag": "495019",
           "description": "MsgType = q (lowercase Q)",
@@ -157613,7 +157613,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "ORDR",
+          "FIX:msgcat": "ORDB",
           "FIX:msgtype": "AF",
           "FIX:tag": "1085293",
           "description": "MsgType = AF",
@@ -207174,7 +207174,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "TRDB",
           "FIX:msgtype": "DC",
           "FIX:tag": "800305",
           "description": "MsgType = DC",
@@ -207319,7 +207319,7 @@
           "type": "struct"
         },
         "metadata": {
-          "FIX:msgcat": "TRAD",
+          "FIX:msgcat": "TRDB",
           "FIX:msgtype": "DD",
           "FIX:tag": "756028",
           "description": "MsgType = DD",
@@ -265651,6 +265651,26 @@
           "doc": "Trade capture and matching.",
           "name": "TRAD",
           "value": "21"
+        },
+        {
+          "doc": "Order batches: lists, mass order handling and crosses, one order per entry.",
+          "name": "ORDB",
+          "value": "22"
+        },
+        {
+          "doc": "Quote batches: mass quotes and bid lists, one quote per entry.",
+          "name": "QUOB",
+          "value": "23"
+        },
+        {
+          "doc": "Execution batches: several executions reported at once, one per entry.",
+          "name": "EXEB",
+          "value": "24"
+        },
+        {
+          "doc": "Trade batches: match reports stating several trades, one per entry.",
+          "name": "TRDB",
+          "value": "25"
         }
       ],
       "name": "msgcatcodeset"
@@ -292472,7 +292492,6 @@
       "event": {
         "currunix": "1706790896123000000",
         "creaunix": "1706790896123000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -292495,6 +292514,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": "XNAS",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -292517,7 +292537,8 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-1"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -292800,7 +292821,6 @@
       "event": {
         "currunix": "1706790897900000000",
         "creaunix": "1706790897900000000",
-        "execunix": "1706790897900000000",
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -292823,6 +292843,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": "1706790897900000000",
         "lastpx": "10.5",
         "lastqty": "100",
         "avgpx": "10.5",
@@ -292846,7 +292867,8 @@
         "altids": {
           "EXECID": "E-1",
           "ORDERID": "O-9"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293239,7 +293261,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -293262,6 +293283,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -293284,6 +293306,10 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-2"
+        },
+        "accountids": {
+          "CONTRAFIRM": "VENUE",
+          "EXECUTINGFIRM": "BUYSIDE"
         }
       },
       "header": {
@@ -296340,7 +296366,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296363,6 +296388,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296383,7 +296409,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296640,7 +296667,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296663,6 +296689,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296683,7 +296710,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296874,7 +296902,6 @@
       "event": {
         "currunix": "1706788800000000000",
         "creaunix": "1706788800000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -296897,6 +296924,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296917,7 +296945,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297041,7 +297070,6 @@
       "event": {
         "currunix": "1706790901000000000",
         "creaunix": "1706790901000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297064,6 +297092,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297084,7 +297113,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.2",
@@ -297238,7 +297268,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297261,6 +297290,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297281,7 +297311,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297499,7 +297530,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297522,6 +297552,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297546,7 +297577,8 @@
           "CLORDID": "ORDER-3",
           "ORDERID": "O-9",
           "ORIGCLORDID": "ORDER-1"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297816,7 +297848,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -297842,6 +297873,7 @@
         "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297862,7 +297894,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298118,7 +298151,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298143,6 +298175,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298163,7 +298196,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298512,7 +298546,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298538,6 +298571,7 @@
         "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298558,7 +298592,8 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298838,7 +298873,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -298861,6 +298895,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298881,7 +298916,10 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {
+          "EXECUTINGFIRM": "BUYSIDE"
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299060,7 +299098,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299083,6 +299120,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299105,7 +299143,8 @@
         "tradable": null,
         "altids": {
           "CLORDID": "ORDER-4"
-        }
+        },
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299273,7 +299312,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299296,6 +299334,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299316,7 +299355,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299475,7 +299515,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299498,6 +299537,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299518,7 +299558,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299700,7 +299741,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299723,6 +299763,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299743,7 +299784,10 @@
         "metadata": {},
         "tif": null,
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {
+          "CLIENTID": "MCFP2"
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299928,7 +299972,6 @@
       "event": {
         "currunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "execunix": null,
         "recdunix": null,
         "exprunix": null,
         "prevunix": null,
@@ -299951,6 +299994,7 @@
         "isincode": null,
         "cficode": null,
         "miccode": null,
+        "execunix": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299971,7 +300015,8 @@
         "metadata": {},
         "tif": "0",
         "tradable": null,
-        "altids": {}
+        "altids": {},
+        "accountids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",

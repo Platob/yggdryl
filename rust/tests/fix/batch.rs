@@ -566,39 +566,153 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     assert!(matches!(refused, yggdryl::Error::Parse { .. }), "{refused}");
 }
 
+/// The tag-11 values of every row of `batches`, in order.
+fn clordids(batches: &[RecordBatch]) -> Vec<Option<String>> {
+    batches
+        .iter()
+        .flat_map(|batch| {
+            let at = super::tag_index(batch, 11);
+            rows_of(batch)
+                .into_iter()
+                .map(move |row| {
+                    row.as_sequence().expect("columns")[at]
+                        .as_str()
+                        .map(str::to_owned)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// A line that is not a row, and a frame whose clock will not type, between
+/// two good lines: what a capture holds in its middle.
+const MALFORMED_MIDDLE: [&str; 4] = [
+    "8=FIX.4.4|35=D|11=A|10=0|",
+    "",
+    "8=FIX.4.4|35=D|52=not a clock|11=M|10=0|",
+    "8=FIX.4.4|35=D|11=B|10=0|",
+];
+
 #[test]
-fn a_refused_line_ends_the_batch_stream_after_the_completed_prefix() {
+fn a_refused_line_is_passed_over_and_every_line_after_it_reads() {
     let codec = codec();
     let schema = fix_schema(codec.registry(), "fix").unwrap();
-    let lines = ["8=FIX.4.4|35=D|11=A|10=0|", "", "8=FIX.4.4|35=D|11=B|10=0|"];
 
-    // The line door yields the refusal as an item and goes on past it.
-    let read: Vec<_> = codec.parse_lines(lines).collect();
-    assert_eq!(read.len(), 3);
-    assert!(read[0].is_ok() && read[1].is_err() && read[2].is_ok());
+    // The line door passes over what cannot stand and goes on past it: no
+    // item for the empty line. A frame whose clock will not type stands with
+    // its clock unstated - dated as one stating none is - beside the anomaly
+    // naming the text, as every other value that will not type does.
+    let messages = codec
+        .parse_lines(MALFORMED_MIDDLE)
+        .collect::<yggdryl::Result<Vec<FixMsg>>>()
+        .expect("nothing the lines hold is an error");
+    let read: Vec<_> = messages
+        .iter()
+        .map(|message| message.by_tag(11).unwrap().as_str().map(str::to_owned))
+        .collect();
+    let every = [
+        Some("A".to_owned()),
+        Some("M".to_owned()),
+        Some("B".to_owned()),
+    ];
+    assert_eq!(read, every);
+    assert!(!messages[1].header().stated_sendingtime());
+    assert!(
+        messages[1]
+            .anomalies()
+            .iter()
+            .any(|anomaly| anomaly.to_string().contains("not a clock")),
+        "{:?}",
+        messages[1].anomalies()
+    );
 
-    // Composed into batches, the refusal is the reader's error: the prefix,
-    // then the error, then nothing.
-    let mut reader = codec
-        .arrow_reader(schema, codec.parse_lines(lines))
-        .unwrap();
+    // Composed into batches, the rows before and after it are the batches.
+    let rows = batches(
+        codec
+            .arrow_reader(schema, codec.parse_lines(MALFORMED_MIDDLE))
+            .unwrap(),
+    );
+    assert_eq!(clordids(&rows), every);
+
+    // The capture door reads the same: the empty cell is a row that carried
+    // no payload, passed over, and the frame stands without its clock.
+    let rows = batches(
+        codec
+            .parse_text_arrow_reader(capture_reader(&MALFORMED_MIDDLE, 2))
+            .unwrap(),
+    );
+    assert_eq!(clordids(&rows), every);
+    // And so does the walk over what the capture door wrote.
+    let schema = rows[0].schema();
+    let walked = batches(
+        codec
+            .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(schema, rows))
+            .unwrap(),
+    );
+    assert_eq!(row_count(&walked), 3);
+}
+
+#[test]
+fn a_source_failure_ends_the_batch_stream_after_the_completed_prefix() {
+    let codec = codec();
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let parsed = |body: &[u8]| codec.sole_line(body).expect("a message");
+    let marker = Arc::new(());
+    let messages = [
+        Ok(parsed(b"8=FIX.4.4|35=D|11=A|10=0|")),
+        Err(source_failure(&marker)),
+        Ok(parsed(b"8=FIX.4.4|35=D|11=B|10=0|")),
+    ];
+    // The prefix, then the source's own failure, then nothing.
+    let mut reader = codec.arrow_reader(schema, messages).unwrap();
     let prefix = reader.next().unwrap().unwrap();
     assert_eq!(prefix.num_rows(), 1);
     assert_eq!(first_tag_value(&prefix, 11).as_str(), Some("A"));
-    assert!(reader.next().unwrap().is_err());
+    let failed = yggdryl::arrow::from_reader_error(reader.next().unwrap().unwrap_err());
+    same_source_failure(failed.into(), &marker);
     assert!(reader.next().is_none(), "fused");
+}
 
-    // The capture door has no refusal to make and no empty row to answer
-    // with: the empty cell is a row that carried no payload, so it yields no
-    // row at all and the two framed lines come through as two.
-    let read: Vec<_> = codec
-        .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
-        .unwrap()
-        .collect();
-    assert!(read.iter().all(|batch| batch.is_ok()), "no line refused");
-    let rows: Vec<RecordBatch> = read.into_iter().map(Result::unwrap).collect();
-    assert_eq!(row_count(&rows), 2);
-    assert_eq!(first_tag_value(&rows[0], 11).as_str(), Some("A"));
+#[test]
+fn a_reader_failure_ends_the_rows_after_the_messages_read_before_it() {
+    use arrow_array::RecordBatchIterator;
+
+    let codec = codec();
+    let written = batches(codec.parse_text_arrow_reader(source()).unwrap());
+    let batch = &written[0];
+    let marker = Arc::new(());
+    let halves = [batch.slice(0, 2), batch.slice(2, batch.num_rows() - 2)];
+    let failing = || -> BatchReader {
+        Box::new(RecordBatchIterator::new(
+            [
+                Ok(halves[0].clone()),
+                Err(arrow_schema::ArrowError::ExternalError(Box::new(
+                    source_failure(&marker),
+                ))),
+                Ok(halves[1].clone()),
+            ],
+            batch.schema(),
+        ))
+    };
+    // The rows before the failure, then the failure, then nothing: a reader
+    // that failed is not read again.
+    let mut messages = codec.messages(failing());
+    for _ in 0..2 {
+        messages
+            .next()
+            .unwrap()
+            .expect("a row read before the failure");
+    }
+    same_source_failure(messages.next().unwrap().unwrap_err(), &marker);
+    assert!(messages.next().is_none());
+
+    // The walk yields every message read before it, then the failure.
+    let mut walked = codec.lifecycle_arrow_reader(failing()).unwrap();
+    let prefix = walked.next().unwrap().unwrap();
+    assert_eq!(prefix.num_rows(), 2);
+    let failed = yggdryl::arrow::from_reader_error(walked.next().unwrap().unwrap_err());
+    same_source_failure(failed.into(), &marker);
+    assert!(walked.next().is_none());
 }
 
 #[test]
@@ -699,26 +813,17 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     drop(codec);
     // The parse is lazy; the walk is not, because a chain is read in instant
     // order and no order is known until the last message is in - so the walk
-    // drains the source it was handed, once, and fuses it there.
-    assert_eq!(pulls.get(), 4);
-    let mut read = Vec::new();
-    for held in pipeline.by_ref() {
-        match held {
-            // The source's own failure moves through as itself.
-            Err(error) => same_source_failure(error, &marker),
-            Ok(message) => read.push(message),
-        }
-    }
-    assert_eq!(read.len(), 2);
-    assert_eq!(read[1].get_prevuuid(), Some(read[0].get_curruuid()));
-    // One chain, one creation - the first message's own instant - and one
-    // cross element.
-    assert_eq!(read[0].get_creaunix(), Some(read[0].get_currunix()));
-    assert_eq!(read[1].get_creaunix(), read[0].get_creaunix());
-    assert_eq!(read[1].get_crossuuid(), read[0].get_crossuuid());
+    // reads the source it was handed, once, up to its own failure, which
+    // ends the reading: nothing past a source that failed is read.
+    assert_eq!(pulls.get(), 2);
+    let first = pipeline.next().expect("an item").expect("the message read");
+    assert_eq!(first.get_creaunix(), Some(first.get_currunix()));
+    // The source's own failure moves through as itself, after the messages
+    // read before it, and ends the walk.
+    same_source_failure(pipeline.next().expect("the failure").unwrap_err(), &marker);
     assert!(pipeline.next().is_none());
     assert!(pipeline.next().is_none());
-    assert_eq!(pulls.get(), 4);
+    assert_eq!(pulls.get(), 2);
 }
 
 /// A walked message names its predecessor and keeps its own source.
@@ -2490,11 +2595,12 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
 }
 
-/// A batch lands whole before its first row is read: a `state` cell no
-/// `State` accepts is refused at the landing, naming its row and its
-/// column, and never read as a message.
+/// A batch lands before its first row is read: a `state` cell no `State`
+/// accepts is refused at the landing, and costs its own row alone - the
+/// row is excluded with a warning naming its column, never read as a
+/// message, and every other row of the batch reads.
 #[test]
-fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
+fn a_fix_batch_row_with_an_invalid_state_code_is_excluded_at_the_landing() {
     use arrow_array::cast::AsArray as _;
 
     // A code no member of the state enum takes.
@@ -2526,18 +2632,17 @@ fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
     let mut columns = batch.columns().to_vec();
     columns[at] = Arc::new(arrow_array::Int32Array::from(codes));
     let forged = RecordBatch::try_new(batch.schema(), columns).unwrap();
-    let mut messages = codec.messages(yggdryl::arrow::batch_reader(forged.schema(), [forged]));
-    let refused = messages
-        .next()
-        .expect("an item")
-        .expect_err("the landing refuses the batch before its first row")
-        .to_string();
-    assert!(
-        refused.starts_with("invalid record value at $[1].state: "),
-        "{refused}"
-    );
-    assert!(refused.contains("the code of a state, got 7"), "{refused}");
-    assert!(messages.next().is_none(), "the refusal ends the stream");
+    let read = codec
+        .messages(yggdryl::arrow::batch_reader(forged.schema(), [forged]))
+        .collect::<yggdryl::Result<Vec<FixMsg>>>()
+        .expect("a refused row is no error");
+    let kept: Vec<_> = intact
+        .iter()
+        .enumerate()
+        .filter(|(at, _)| *at != 1)
+        .map(|(_, message)| message.clone())
+        .collect();
+    assert_eq!(read, kept, "every row but the refused one");
 
     // A capture carrying a state column lands the same way at the parse door.
     let capture = StructType::from_fields([
@@ -2559,18 +2664,13 @@ fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
         ],
     )
     .unwrap();
-    let mut parsed = codec
+    let parsed = codec
         .parse_arrow_messages(yggdryl::arrow::batch_reader(carried.schema(), [carried]))
-        .unwrap();
-    let refused = parsed
-        .next()
-        .expect("an item")
-        .expect_err("the landing refuses the capture before its first row")
-        .to_string();
-    assert!(
-        refused.starts_with("invalid record value at $[1].state: "),
-        "{refused}"
-    );
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<FixMsg>>>()
+        .expect("a refused row is no error");
+    assert_eq!(parsed.len(), 1, "the first row alone");
+    assert_eq!(parsed[0].by_tag(11).unwrap().as_str(), Some("A"));
 }
 
 #[test]

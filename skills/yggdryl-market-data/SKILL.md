@@ -8,21 +8,23 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-place at its instant, clocks), `Market` (twenty-seven facts: price, quantity, currency,
+place at its instant, clocks), `Market` (twenty-eight facts: price, quantity, currency,
 unit, side, security ids and the `isincode` they hold, classification, market,
-last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
+the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
-`Operation` (three more: time in force, whether it trades, the `altids`) - and
+`Operation` (four more: time in force, whether it trades, the `altids`, the
+`accountids` its parties name) - and
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (53 columns, led by the
+leaf, and the lifted **`marketdata` Arrow row** (54 columns, led by the
 `marketdatakind` its leaf stands under) is how any of them crosses a boundary.
 
 Hold five facts:
 
 - **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `currunix`,
-  `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`.
+  `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`, and the market's
+  `execunix`, which an undated element states too.
   Python ints, JavaScript `bigint`s, Arrow `datetime64(ns, UTC)`.
 - **Identity is derived, not assigned.** A leaf is finalized on construction:
   `currhashcode` is the XXH3-64 of its content, `curruuid` a UUIDv7 of
@@ -30,9 +32,11 @@ Hold five facts:
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null, and it keys the chain.** `Side` and
   `MarketDataKind` are `int32` enums; an element stating no side holds
-  `UNKNOWN` (code 0). A sided element stores its cross code under its side -
-  `BUY:O-1001` - so the two sides of one identifier are two chains; `UNKNOWN`
-  and books keep the bare code.
+  `UNKNOWN` (code 0). An order, a quote or an execution stores its cross code
+  under its side - `BUY:O-1001` - so the two sides of one identifier are two
+  chains (`MarketDataKind::is_sided`, Rust-only); `UNKNOWN` keeps the bare
+  code, and so does every trade, book and snapshot control whatever side it
+  states.
 - **Chains are walked, not rebuilt.** An event names only its predecessor
   (`prevuuid`); `seqnum` is its place among the events of its instant, which
   orders the identities of one millisecond, and a step keeps its own unless
@@ -93,9 +97,10 @@ Hold five facts:
    nested fact as a column with a lift (`securityids['ISIN'] as isin`) instead
    of post-processing rows. The `lifecycle` view collects (it orders).
 4. Feed `BookIterator` a **sorted** stream (by `snapunix`, else `currunix`); it
-   refuses a timestamp regression. `FixCodec.market_data` is the sorted door
-   for a FIX capture; `EventIterator(sorted=false)` sorts a finite stream
-   itself.
+   leaves an operation dated before its book out with a warning, so an unsorted
+   stream loses operations without an error. `FixCodec.market_data` is the
+   sorted door for a FIX capture; `EventIterator(sorted=false)` sorts a finite
+   stream itself.
 5. One book per touched instant and book key - the input's ticker, else its
    category `{miccode}:{cficode}` (`XXXX`, `XXXXXX` for what it does not
    state). Depth persists, `deltas` and `executions` carry only that instant's
@@ -130,26 +135,34 @@ Hold five facts:
 - A millisecond or second timestamp where nanoseconds are expected lands in
   1970: `graph.OrderEvent(1_700_000_000_000, ...)` is 28 minutes after the
   epoch. Multiply to nanoseconds first.
-- `crosscode` answers the stored, side-prefixed code: a buy set to `O-1`
-  reads `BUY:O-1`, and the lifecycle view and any lookup name it that way.
+- `crosscode` answers the stored code: a buy order, quote or execution set to
+  `O-1` reads `BUY:O-1`, and the lifecycle view and any lookup name it that
+  way. A trade built on that order reads `O-1`: it is not sided.
 - Python enum facts are `IntEnum` members (`order.side is Side.BUY`); JavaScript
   getters answer the name (`'BUY'`) while an Arrow column stores the code
   (`Side.BUY === 1`). Compare against the one you hold.
-- `BookIterator` over an unsorted list refuses the first regression at
-  `$.operations` ("expected a sorted operation timestamp at or after ...");
-  sort first, or take the operations from `FixCodec.market_data`.
+- `BookIterator` over an unsorted list is no error: each operation dated
+  before the book it would fold into is left out with a deduplicated warning,
+  and the books lack it; sort first, or take the operations from
+  `FixCodec.market_data`. The walk leaves out, never fails on, an order or a
+  quote resting on no side and a group the book refuses; only a source's own
+  failure ends it, and so does a value no book folds (the next bullet).
 - A book folds only dated operations, trades and snapshot controls: an
   undated `Order` or a `BookEvent` is refused - by `BookIterator` at
   `$.operation.kind`, by `with_operations`/`add_operations` at
-  `$.operations[i].kind`. A live entry or an execution whose side is
-  `UNKNOWN` cannot be placed on a side.
+  `$.operations[i].kind`. An order or a quote whose side is neither the bid
+  nor the ask cannot be placed on a side: `with_operations`/`add_operations`
+  refuse it at `$.operation.side` and `BookIterator` leaves it out with a
+  warning. An execution is never placed on a side and may state any,
+  `UNKNOWN` included.
 - `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
   unsorted stream is not refused, it silently yields broken chains (an
   element before the live one is yielded as it came and joins nothing). Pass `sorted=False` / `false` for a stream you have not
-  sorted (it collects to sort); only `BookIterator` refuses a regression.
+  sorted (it collects to sort); only `BookIterator` notices a regression, and
+  leaves it out with a warning.
 - A trade is built only through `TradeEvent.from_parts`: at least one
-  execution, each bid- or ask-sided, at the root's instant, one ticker,
-  distinct cross codes.
+  execution, each on any side - `UNKNOWN` included - at the root's instant,
+  one ticker, distinct cross codes.
 - A lift key is matched exactly and stored upper case:
   `securityids['ISIN']`, never `securityids['isin']` (that reads null).
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`

@@ -1134,9 +1134,10 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // 94: every JSON document the capture holds - the seven Jolokia
     // answers, the two wildcards and the error among them, and the
     // statistics line - is one `unknown` row, never one per plugin it named
-    // and never none - and 56 more: the execution the parse splits off each
-    // execution report of a fill (A12).
-    assert_eq!(messages.len(), 94 + 56, "the corpus");
+    // and never none - and 57 more: the execution the parse splits off each
+    // execution report of a fill (A12), and the one of side `UNKNOWN` the
+    // trade capture, stating no `Side(54)`, splits off.
+    assert_eq!(messages.len(), 94 + 57, "the corpus");
     let forward: Vec<FixMsg> = messages.to_vec();
     let mut backward: Vec<FixMsg> = messages.iter().rev().cloned().collect();
     backward.reverse();
@@ -1341,7 +1342,7 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
 
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::graph::{Element, Event};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::internals::fix_enrich::dated_by_transaction_whole;
     use yggdryl::text::{TextOptions, read_text_lines};
@@ -1383,11 +1384,11 @@ mod internal {
             .filter_map(Result::ok)
             .collect();
         for messages in [framed, lined] {
-            assert_eq!(messages.len(), 94 + 56);
+            assert_eq!(messages.len(), 94 + 57);
             let mut moved = 0;
             for message in messages {
-                let settled = message.clone().dated_by_transaction().expect("redated");
-                let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+                let settled = message.clone().dated_by_transaction();
+                let whole = dated_by_transaction_whole(message.clone());
                 assert_eq!(settled, whole, "{}", message.header().msgtype());
                 assert_eq!(settled.get_curruuid(), whole.get_curruuid());
                 assert_eq!(settled.get_execunix(), whole.get_execunix());
@@ -1410,8 +1411,8 @@ mod internal {
             .set(55, yggdryl::Scalar::from("EUR/USD"))
             .expect("a symbol");
         assert_eq!(message.get_by_tag(15), None, "no parse detected the pair");
-        let settled = message.clone().dated_by_transaction().expect("redated");
-        let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+        let settled = message.clone().dated_by_transaction();
+        let whole = dated_by_transaction_whole(message.clone());
         assert_ne!(settled.get_currunix(), message.get_currunix());
         assert_eq!(settled, whole);
         assert_eq!(

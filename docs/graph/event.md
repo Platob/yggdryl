@@ -11,7 +11,7 @@
 | `state` | `get_state`/`set_state`: the lifecycle-sorted [`State`](../types/enum/state.md) member, never absent - `UNKNOWN` where none reached |
 | `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ - an operation leaf's kind decides |
 | `seqnum` | `get_seqnum`/`set_seqnum`: its place among the events of its instant (same `currunix`) - zero for the first a stream hands over there, one more for each next, the next instant starting again at zero; outside the content code. The FIX parse places by order; the [FIX lifecycle](../fix/lifecycle.md#a-place-counts-one-instant) places by content, after the expirations it hands over at that instant - a content repeated at an instant takes the place it already took there; market leaves take their message's place; `EventIterator` keeps each source element's own place and places only its expirations; a text line's place is its row number |
-| Clocks | `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `creaunix` when its lifecycle was created, `execunix` the execution instant, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step |
+| Clocks | `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `creaunix` when its lifecycle was created, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor, `snapunix` the grid step. `execunix`, when an element last executed, is no event's clock: it is a [market fact](market.md#contract), so a text line states none |
 | `digest_event` | provided: continues [`Element::digest`](element.md#contract) with the state and predecessor's identity; no place, no instant fed |
 | `fold_lifecycle` | provided, `(&mut self, &Self) -> bool`: earliest creation, latest expiration, the further state ([`State::merge_with`](../types/enum/state.md#the-further-along-stands)) |
 
@@ -30,9 +30,8 @@
 | Moves | Rule |
 | --- | --- |
 | The link | predecessor's identity/instant as `prevuuid`/`prevunix`; `seqnum` stays this event's own unless the predecessor happened at the same instant or later, where it is the higher of its own and one past the predecessor's (saturating); chain history stops at `prevuuid` |
-| The cross code | the predecessor's is forced on where this event's differs - one chain shares it, its side prefix included |
+| The cross code | the predecessor's is forced on where this event's differs - one chain shares it, the side prefix of an order's, a quote's or an execution's included |
 | The lifecycle | earliest creation either knows; this event's explicit expiration else the predecessor's (can shorten a deadline); the furthest state |
-| Execution | the later of this event's precise execution clock and the predecessor's |
 | Nothing else | current/recording instants, sources and snapshot move nowhere |
 | Refusals | nothing for its own predecessor, one that happened after it, or no change; an equal instant follows |
 
@@ -40,7 +39,7 @@ An event that moved is finalized; [`Market::following_market`](market.md#followi
 
 ## Restating
 
-`restating(self, live: &Self) -> Self`, provided: another statement of `live` (same instant/content read again), taking `live`'s predecessor, place, snapshot and cross code, never sources; lifecycle folded, earliest execution/recording kept, then finalized - one identity, chain unchanged. A market event also takes the market's place, an operation event the operation's ([Market](market.md#following-and-merging), [Operation](operation.md#following-and-merging)). The caller must give `live` under the identity it *arrived* under - following moved it; the [walk](#lifecycle-walk) does this.
+`restating(self, live: &Self) -> Self`, provided: another statement of `live` (same instant/content read again), taking `live`'s predecessor, place, snapshot and cross code, never sources; lifecycle folded, earliest recording kept, then finalized - one identity, chain unchanged. A market event also takes the market's place, an operation event the operation's ([Market](market.md#following-and-merging), [Operation](operation.md#following-and-merging)). The caller must give `live` under the identity it *arrived* under - following moved it; the [walk](#lifecycle-walk) does this.
 
 ## Merging
 
@@ -50,7 +49,7 @@ An event that moved is finalized; [`Market::following_market`](market.md#followi
 | --- | --- |
 | The reference | the statement with the later `recdunix` (stated beats unstated; equal/absent falls back to the greater `currunix`; an exact tie keeps `self`) |
 | From the reference | cross code, current instant/code, predecessor, snapshot; the other fills what it leaves unstated |
-| Folded | sources: position-independent sorted-unique union; the higher place; `fold_lifecycle`; execution/recording = earliest of either |
+| Folded | sources: position-independent sorted-unique union; the higher place; `fold_lifecycle`; recording = earliest of either |
 | Refusals | nothing for another element (different `curruuid`) or no change |
 
 Merge order can change which of three statements leads (ranked by earliest recording kept). [`Market::merging_market_event`](market.md#following-and-merging)/[`Operation::merging_operation_event`](operation.md#following-and-merging) continue it.
@@ -302,13 +301,13 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 | Key | Rule |
 | --- | --- |
 | Live set, twins | elements still alive (a live state, not past expiration) share the cross identity; an arrival under a live identity - or (if dead) under a `(key, value)` of a live element's `get_altids()` - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead |
-| Sides | a sided cross code carries its [side](market.md#sides-and-cross-codes), so a `BUY` and a `SELL` under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with |
-| No side | an element stating `UNKNOWN` joins the one side alive under its base cross code (the code without its prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
+| Sides | an order's, a quote's or an execution's cross code carries its [side](market.md#sides-and-cross-codes), so a `BUY` and a `SELL` under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with |
+| No side | an element stating `UNKNOWN` joins the one side alive under its base cross code (a live order's, quote's or execution's code without its side prefix; an unsided element's code reading `BUY:...` is its own name, never a base), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
 | `UPDATED` | a `NEW` stated over a live element that is new-like - [`State::is_new_like`](../types/enum/state.md): acknowledged or working (rank 20 or 30), or `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` - is yielded `UPDATED` (`3004`, rank 30), read before following folds the state, so later progress folds over it; a `PENDING_NEW` followed by `NEW` stays `NEW` |
 | Creation | every element leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold kept - or, starting a chain, its own instant; a stated one is never replaced, and no identity moves, since no instant is digested |
 | One cross element | a chain whose first element states no cross code stands under that element's identity, and every element joining it by a name carries that identity as its `crossuuid` |
 | Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element, refused by it, or unchanged by following, is yielded as it came |
-| Executions | an execution joins nothing by a name or a base code: it is a chain of its own, followed only under its own cross code; `execunix` defaults to `currunix` pre-placement when `Event::is_execution` holds; following carries the latest execution clock through non-executions, never filling/carrying `recdunix`; a FIX message's fills are split into execution messages at the [parse](../fix/message.md#market-data) |
+| Executions | an execution joins nothing by a name or a base code: it is a chain of its own, followed only under its own cross code; a market event stating no `execunix` is dated from `currunix` pre-placement when `Event::is_execution` holds; a market event carries the latest execution clock through non-executions ([`execunix`](market.md#following-and-merging)), and no event carries `recdunix`; a FIX message's fills are split into execution messages at the [parse](../fix/message.md#market-data) |
 | Deadlines, end | a finite `exprunix` emits one owned `EXPIRED` at that instant, following the live generation, then purges it; the expirations of one deadline take its next places in the order of the identities they retire, and a source element keeps its own place; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
 | Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, never backdating; `snapshot_ns()` reads it back. A view is the live element as of its tick: dated at it (`currunix` = `snapunix` = the tick), so its `curruuid` is the identity that instant derives - a row of its own wherever rows are keyed by identity within a time - while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live element's; it does not advance the chain |
 | `MarketData` | `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` walk; every other variant yields unchanged and never stands live; unsorted, an undated value sorts first |
@@ -551,7 +550,7 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
 - A later `following` call replaces a prior predecessor; place saturates past `u64::MAX`. `following_market`/`following_operation` still fill missing facts even when the timed link is unchanged.
 - `restating` never refuses (unlike `following`/`merging`) - it is the caller's unchecked assertion that the two are the same twin.
-- The later `recdunix` picks the merge reference even if its event instant is earlier; merged `execunix`/`recdunix` stay earliest observed, so merge order can change the winner.
+- The later `recdunix` picks the merge reference even if its event instant is earlier; the merged `recdunix` - and, for a market event, `execunix` - stay earliest observed, so merge order can change the winner.
 - The walk clones a source at most twice (as the live one, or one its predecessor refuses), plus one clone per expiration/grid view; it holds one live element per identity, emitting views lazily rather than queued.
 - A grid starts at the first epoch-aligned tick at/after the first source instant; output is crossed ticks × identities alive, caller-chosen width, no implicit count/span cap.
 - An element stating no side whose base code and names are alive on both sides is ambiguous: it neither picks one nor is refused - it starts a chain of its own under its unprefixed code.

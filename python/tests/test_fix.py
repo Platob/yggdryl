@@ -486,10 +486,11 @@ def test_market_data_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) 
     # A sided message's cross code states its side (A17).
     assert [leaf.crosscode for leaf in leaves][1:] == ["BUY:C1", "BUY:C2"]
     assert next(operations, None) is None
-    # The book door stays strict over the same unsorted capture, and the
-    # sorted operations fold through the stateful book, one book a leaf.
-    with pytest.raises(Exception, match=r"\$\.operations"):
-        codec.book_arrow_reader(unsorted).read_all()
+    # The book door folds the unsorted capture in the order it reads it: an
+    # operation dated before the book it would fold into is left out, with a
+    # warning, so one book comes out; the sorted operations fold through the
+    # stateful book, one book a leaf.
+    assert codec.book_arrow_reader(unsorted).read_all().num_rows == 1
     assert len(list(graph.BookIterator(leaves))) == 3
 
 
@@ -511,21 +512,18 @@ def test_market_data_place_an_entry_clock_before_an_earlier_message(
     assert len(list(graph.BookIterator(leaves))) == 2
 
 
-def test_a_refused_expansion_raises_first_and_drops_only_its_message(seed_batch: FixRegistry) -> None:
+def test_a_full_refresh_stating_no_entries_is_an_empty_snapshot(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch)
     capture = [
         codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=100|38=5|10=0|"),
         codec.parse_fix_line(b"8=FIX.4.4|35=W|52=20260921-10:00:02|55=AAPL|10=0|"),
         codec.parse_fix_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|"),
     ]
+    # Nothing a message states is refused: a W stating no NoMDEntries(268)
+    # group clears its scope, with a warning, as the empty snapshot it is.
     operations = codec.market_data(capture)
-    with pytest.raises(ValueError, match=r"NoMDEntries\(268\)"):
-        next(operations)
-    assert [leaf.kind for leaf in operations] == ["quote_event", "order_event"]
-    # The Arrow door meets the refusal before any row: it is the whole answer.
-    reader = codec.market_arrow_reader(capture)
-    with pytest.raises(Exception, match=r"NoMDEntries\(268\)"):
-        reader.read_next_batch()
+    assert [leaf.kind for leaf in operations] == ["quote_event", "order_event", "snapshot_event"]
+    assert codec.market_arrow_reader(capture).read_all().num_rows == 3
 
 
 def test_a_python_failure_ends_the_capture_and_surfaces_at_its_end(seed_batch: FixRegistry) -> None:
@@ -658,35 +656,37 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert len(lines) == 144
     codec = _fixed_batch(seed_batch, capture_names=list(options.capture_names))
     messages = list(codec.parse_text_lines(lines))
-    # Executions and two-sided quotes split once, at the parse (A12, A13).
-    assert len(messages) == 150
+    # Executions, two-sided quotes and trades split once, at the parse (A12,
+    # A13): the trade capture's one side states no Side(54), so its
+    # execution is of side UNKNOWN.
+    assert len(messages) == 151
     walked = list(codec.lifecycle(messages))
-    # Three of the 41 deliveries are twins restating the live message they
+    # Three of the 42 deliveries are twins restating the live message they
     # repeat, under its identity: the window yields each identity once. The
     # capture's ten typeless rows state no sending time, so each is dated by
     # its own line: seven deliveries, none a twin.
-    assert len(walked) == 38
+    assert len(walked) == 39
     every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
-    assert len(every) == 41
+    assert len(every) == 42
     seen: set[object] = set()
     once = [held.curruuid for held in every if not (held.curruuid in seen or seen.add(held.curruuid))]
     assert once == [held.curruuid for held in walked]
 
-    # Seventeen deliveries reach a book - seven fills and ten order reports,
-    # a fill and a report of the nineteen yielded once - and none is
-    # refused: a trade whose side states no Side(54) splits into no fill
-    # rather than into one a book cannot place.
+    # Eighteen deliveries reach a book - eight fills and ten order reports,
+    # a fill and a report of the twenty yielded once - and none is refused:
+    # the trade whose side states no Side(54) split into a fill of side
+    # UNKNOWN, which its book keeps among its executions on neither side.
     operations = list(codec.market_data(walked))
-    assert len(operations) == 17
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 7 + ["order_event"] * 10
+    assert len(operations) == 18
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 10
 
     # Every operation folds; the unpriced sell order of 2454 rests at its
     # side's unpriced level and leaves at the same instant, so the last of
-    # the seven books holds nothing and states both as deltas. The hash moved
-    # with the split fills, the sided cross codes and the book's own bid and
-    # ask facts (A12, A17, A20).
+    # the eight books - one the trade's - holds nothing and states both as
+    # deltas. The hash moved with the split fills, the sided cross codes and
+    # the book's own bid and ask facts (A12, A17, A20).
     books = list(graph.BookIterator(operations))
-    assert len(books) == 7
+    assert len(books) == 8
     last = books[-1]
     assert last.ticker == "2454"
     assert last.alive == []
@@ -768,25 +768,37 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "fills", "books"),
     [
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
-        b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
-        b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
-        b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
+        (
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
+            b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
+            [Side.UNKNOWN],
+            1,
+        ),
+        (
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
+            [],
+            0,
+        ),
     ],
 )
-def test_a_trade_stating_no_sided_execution_splits_into_nothing_a_book_folds(
-    seed_batch: FixRegistry, body: bytes
+def test_a_trade_side_stating_no_side_splits_into_a_fill_of_side_unknown(
+    seed_batch: FixRegistry, body: bytes, fills: list[Side], books: int
 ) -> None:
-    # The executions split once, at the parse (A12): a trade whose sides
-    # state no Side(54) - or no side at all - yields no fill, and the report
-    # itself is no leaf of a book.
+    # The executions split once, at the parse (A12): a side stating no
+    # Side(54) is still a fill, of side UNKNOWN, said as a warning - never a
+    # lost fill - and a trade stating no side at all splits into none. The
+    # report itself is no leaf of a book; a fill of side UNKNOWN is one of
+    # its book's executions, on neither side.
     codec = _fixed_batch(seed_batch)
-    [trade] = codec.parse_line(body)
+    trade, *split = codec.parse_line(body)
     assert (trade.state, trade.side) == (State.TRADE, Side.UNKNOWN)
-    assert codec.book_arrow_reader([trade], snapshot_millis=0).read_all().num_rows == 0
+    assert [fill.side for fill in split] == fills
+    rows = codec.book_arrow_reader([trade, *split], snapshot_millis=0).read_all()
+    assert rows.num_rows == books
 
 
 def test_messages_pull_from_the_reader_one_batch_at_a_time(seed_batch: FixRegistry) -> None:
@@ -2765,7 +2777,9 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert event.crosscode == "BUY:A1"
     # The names the order goes by, each under the field that stated it.
     assert event.altids == {"CLORDID": "A1"}
-    assert not hasattr(event, "accountids") and not hasattr(event, "userids")
+    # The accounts are the parties the message names, by role; the
+    # Account(1) field is no party and stays in the metadata.
+    assert event.accountids == {} and not hasattr(event, "userids")
     # An order states no instrument code, no bridge metadata and no FX legs.
     assert event.securityids == {}
     assert event.cficode is None and event.miccode is None

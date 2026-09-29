@@ -1295,10 +1295,10 @@ fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
 /// stream of lines parsed, records parsed, messages chained by the
 /// lifecycle, a batch read back - so a message stream has one shape at this
 /// boundary whatever made it. Nothing is collected: the core iterator is the
-/// stream, and a Python iterable behind it is pulled one item at a time. A
-/// line the reader refuses, or a message a stage refuses, raises `ValueError`
-/// where it is met and the stream goes on past it; a Python failure behind
-/// the stream raises as itself and ends it.
+/// stream, and a Python iterable behind it is pulled one item at a time.
+/// What a line or a message states that cannot stand is passed over with a
+/// warning to `logging`, never raised; a Python failure behind the stream
+/// raises as itself and ends it.
 #[pyclass(name = "FixMessages", module = "yggdryl._native")]
 pub(crate) struct PyFixMessages {
     /// The stream, behind the lock a class shared between threads needs; a
@@ -1340,12 +1340,17 @@ impl PyFixMessages {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self) -> PyResult<Option<PyFixMsg>> {
-        let next = self
-            .inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .next();
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyFixMsg>> {
+        // The GIL is released while the core pulls: a parse worker that
+        // warns takes it to reach Python's `logging`, and the worker this
+        // pull waits on must not wait on this thread.
+        let inner = &self.inner;
+        let next = py.detach(|| {
+            inner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .next()
+        });
         match next {
             Some(held) => held
                 .map(PyFixMsg::from_inner)
@@ -2347,6 +2352,15 @@ impl PyFixMsg {
         idmap_dict(self.inner.get_altids())
     }
 
+    /// The accounts and parties the message names - each `Parties`
+    /// occurrence's `PartyID` under its `PartyRole`'s name, such as
+    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - in key order; empty where it
+    /// names none.
+    #[getter]
+    fn accountids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_accountids())
+    }
+
     /// What the message states, as a tree: `(tag, name, value, entries)`.
     ///
     /// One tuple per row child that states a value, in the row's order,
@@ -2815,9 +2829,9 @@ impl PyFixCodec {
     ///
     /// `lines` is any iterable of bytes-like lines, pulled one line at a time
     /// as the stream is read, so a capture of ten million lines costs one at
-    /// a time. A line that is not a row at all raises `ValueError` where it
-    /// is met and the stream continues past it; an item that is not bytes
-    /// raises `TypeError` and ends it.
+    /// a time. A line that is not a row at all is passed over with a
+    /// warning to `logging` and the stream reads on; an item that is not
+    /// bytes raises `TypeError` and ends it.
     fn parse_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(lines, line_bytes)?;
         let failed = pulled.failed.clone();
@@ -3057,10 +3071,10 @@ impl PyFixCodec {
     /// of `FixMsg`, collected when this is called; the operations are then
     /// sorted, stably, by the instant a book folds them at - `snapunix`,
     /// else `currunix` - so a book message's entry clock standing before an
-    /// earlier message's cannot regress. An admitted message whose
-    /// expansion is refused raises `ValueError` first, in source order, and
-    /// drops only its own leaves; a failure of the iterable itself raises
-    /// as itself once the operations it reached are read.
+    /// earlier message's cannot regress. Nothing a message states is
+    /// refused: an entry that cannot stand is left out with a warning to
+    /// `logging`; a failure of the iterable itself raises as itself once
+    /// the operations it reached are read.
     fn market_data(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyMarketDataRowIterator> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -3072,9 +3086,10 @@ impl PyFixCodec {
 
     /// `market_data` as a `pyarrow.RecordBatchReader` of lifted
     /// `marketdata` rows, batches closing on `batch_row_size` and
-    /// `batch_byte_size`. Every refusal is met before the first operation,
-    /// so one - an expansion refused, a bad item, the iterable's own
-    /// failure - is the reader's only item, raised by its first batch.
+    /// `batch_byte_size`. The operations are collected before the first
+    /// batch, so a bad item or the iterable's own failure is the reader's
+    /// only item, raised by its first batch; nothing a message states is
+    /// refused.
     fn market_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -3182,10 +3197,10 @@ impl PyFixCodec {
     /// is settled
     /// again around
     /// them; a message that arrives before the live one it would follow is
-    /// yielded as it came. A message the walk refuses raises `ValueError`
-    /// where it is met and the stream continues; an item that is not a
-    /// `FixMsg`, or a failure of the iterable itself, raises as itself and
-    /// ends it. The walk reads the structured message first: one whose
+    /// yielded as it came. Nothing a message states is refused: what the
+    /// walk cannot take is passed over with a warning to `logging`; an item
+    /// that is not a `FixMsg`, or a failure of the iterable itself, raises
+    /// as itself and ends it, after the messages read before it. The walk reads the structured message first: one whose
     /// sending clock the parse supplied rather than read is dated by the
     /// `TransactTime(60)` it states, so a capture whose frames state no
     /// `SendingTime(52)` still orders, expires and folds by when its
@@ -3319,7 +3334,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65001.
 ///
-/// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
+/// The event's clocks - `currunix`, `creaunix`, `recdunix`,
 /// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached and the `msgcat` it is

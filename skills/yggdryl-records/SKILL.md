@@ -113,7 +113,7 @@ medium does the work before a byte is decoded.
    not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
-14. **Plain text has a fixed shape.** A text read answers the sixteen event
+14. **Plain text has a fixed shape.** A text read answers the fifteen event
     columns (`currunix` first, `state` last), then `body`, then one column per
     named `rowheader` capture - the row header is the only thing that lifts a
     column out of a line. `autotype` settles each capture's datatype from the

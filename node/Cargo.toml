@@ -17,6 +17,7 @@ arrow-ipc.workspace = true
 arrow-schema.workspace = true
 base64.workspace = true
 half.workspace = true
+log.workspace = true
 napi = { workspace = true, features = ["serde-json"] }
 napi-derive.workspace = true
 yggdryl = { path = "../rust", default-features = false, features = [

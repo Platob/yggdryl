@@ -185,7 +185,6 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
         "snapshotpartitions",
         "live",
         "limits",
-        "accountids",
         "userids",
         "marketoperationid",
         "spread",

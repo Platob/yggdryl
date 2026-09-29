@@ -183,3 +183,52 @@ fn the_committed_dictionary_follows_exactly_what_a_plain_holder_does() {
         "{sources:?}"
     );
 }
+
+/// A message's parties are its accounts: each `Parties(453)` occurrence's
+/// `PartyID(448)` under its `PartyRole(452)`'s name - `PARTYROLE{code}` for
+/// a role the set does not name or one longer than a key holds, `PARTY` for
+/// none - and its regulatory trade identifiers are alternate identifiers
+/// keyed by their `RegulatoryTradeIDType(1906)`. The leaf a message becomes
+/// states both.
+#[test]
+fn parties_are_accounts_and_regulatory_trade_ids_are_alternate_identifiers() {
+    use yggdryl::graph::{Element, MarketData, Operation};
+
+    let message = super::fixed_codec(super::committed_registry())
+        .parse_fix_line(
+            b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|40=2|44=100|453=5|448=TRADER1|447=D|452=12|448=ACC-9|447=D|452=24|448=CA-1|452=71|448=X-1|452=999|448=NOROLE|1907=2|1903=UTI-1|1906=0|1903=TVT-1|1906=5|10=0|",
+        )
+        .expect("one order");
+    let accounts = message.get_accountids();
+    assert_eq!(accounts.get("EXECUTINGTRADER"), Some("TRADER1"));
+    assert_eq!(accounts.get("CUSTOMERACCOUNT"), Some("ACC-9"));
+    // `CompetentAuthorityTransactionVenue` is longer than a key holds.
+    assert_eq!(accounts.get("PARTYROLE71"), Some("CA-1"));
+    assert_eq!(accounts.get("PARTYROLE999"), Some("X-1"));
+    assert_eq!(accounts.get("PARTY"), Some("NOROLE"));
+    let altids = message.get_altids();
+    assert_eq!(altids.get("REGTRADEID"), Some("UTI-1"));
+    assert_eq!(altids.get("TVTIC"), Some("TVT-1"));
+    assert_eq!(altids.get("CLORDID"), Some("C1"));
+
+    // The accounts are the parties': a direct write is refused by name.
+    let mut written = message.clone();
+    let refused = written
+        .insert_accountid("CLIENTID", "C-2")
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("accountids"), "{refused}");
+    assert!(
+        !written
+            .insert_accountid("EXECUTINGTRADER", "OTHER")
+            .unwrap()
+    );
+
+    let leaves = message.into_market_data().expect("an order leaf");
+    let [MarketData::OrderEvent(order)] = leaves.as_slice() else {
+        panic!("one order event, got {}", leaves.len())
+    };
+    assert_eq!(order.get_accountids().get("CUSTOMERACCOUNT"), Some("ACC-9"));
+    assert_eq!(order.get_altids().get("TVTIC"), Some("TVT-1"));
+    assert!(order.get_crosscode().starts_with("BUY:"));
+}

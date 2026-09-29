@@ -134,13 +134,18 @@ test('the field is the lifted marketdata struct', () => {
   for (const name of ['currunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'altids', 'bookscope']) {
     assert.ok(names.includes(name), name)
   }
-  // A1/A10: the kind, sixteen event, twenty-seven market and three
+  // A1/A10: the kind, fifteen event, twenty-eight market and four
   // operation columns, the book scope, and the five nested columns closing
   // the row.
-  assert.equal(names.length, 1 + 16 + 27 + 3 + 1 + 5)
-  assert.equal(names[47], 'bookscope')
-  assert.deepEqual(names.slice(48), NESTED)
-  for (const retired of ['kind', 'bid', 'ask', 'mdupdateaction', 'accountids', 'userids', 'marketoperationid',
+  assert.equal(names.length, 1 + 15 + 28 + 4 + 1 + 5)
+  assert.equal(names[48], 'bookscope')
+  assert.deepEqual(names.slice(49), NESTED)
+  // When an element last executed is a market fact, stated among the
+  // market columns, and the accounts an operation names an operation one.
+  assert.ok(names.indexOf('execunix') > names.indexOf('state'))
+  assert.equal(names.indexOf('execunix'), names.indexOf('miccode') + 1)
+  assert.equal(names.indexOf('accountids'), names.indexOf('altids') + 1)
+  for (const retired of ['kind', 'bid', 'ask', 'mdupdateaction', 'userids', 'marketoperationid',
     'bidside', 'askside', 'snapshotpartitions', 'live', 'limits', 'spread', 'crossed', 'locked']) {
     assert.equal(names.includes(retired), false, retired)
   }
