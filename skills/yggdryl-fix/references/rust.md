@@ -595,10 +595,15 @@ and its declared roots, stamping the dialect on everything it produced;
 themselves - a glob listing, several listings or single holders chained, a
 container passed by, a file named twice folding once - and `merge_with` folds
 a whole other registry, dialect defaulting to each file's own stem. A fold
-keeps every declaration the dictionary already holds and passes over what a
-source states otherwise, naming it in the answered `FixMerge` rather than
+keeps every declaration the dictionary already holds. The answered `FixMerge`
+counts `sources`, `added` and `merged`, `restated` among the merged - a
+field whose source stated another precision of the stored datatype (a
+CBlock's `float` against `decimal128`, `string` against `ccy`) and folded
+under it - and lists in `dropped` each contradiction passed over rather than
 refusing the whole source; only a source that leaves nothing to keep -
 malformed XML or JSON, a catalog that does not validate - is refused whole.
+What the reader cannot keep of a file is a `log` warning naming the line, the
+column, the element and what the reader did instead.
 
 ```rust
 use yggdryl::local::{LocalFile, LocalFolder};
@@ -624,6 +629,7 @@ assert!(roots.is_empty());
 let mut registry = FixRegistry::new();
 let merge = registry.add_cfb_files(LocalFolder::new(&path)?.glob("*.cfb", false)?, None)?;
 assert_eq!(merge.sources, 2);
+assert_eq!(merge.restated, 0, "both files type tag 4 alike");
 assert!(merge.is_clean(), "{:?}", merge.dropped);
 // Ascending URL order, each file stamped with its stem.
 assert_eq!(registry.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["alpha", "beta"]);

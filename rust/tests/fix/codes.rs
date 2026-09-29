@@ -3,7 +3,9 @@
 //!
 //! A vocabulary is registry-owned: a field names the set it reads by and the
 //! document lives once beside the fields. Every door here is one a caller has,
-//! so this reaches the crate through `yggdryl::` alone.
+//! so this reaches the crate through `yggdryl::` - but for a stored document
+//! no caller can render, which `mod internal` files through
+//! `yggdryl::internals` the way a store's load does.
 
 use super::SoleMessage;
 use super::committed_registry;
@@ -23,6 +25,110 @@ fn dictionary(name: &str, tag: i32, codes: &[FixCode]) -> (FixRegistry, Field) {
     field.as_fix_mut().set_codeset(name).unwrap();
     registry.insert(field.clone()).unwrap();
     (registry, field)
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::fix_codes::create_codeset;
+    use yggdryl::{DataType, FixCode, FixRegistry};
+
+    /// A store files the document it reads without re-rendering it, so a set
+    /// stating one spelling on two codes - which no caller's `set_codeset`
+    /// renders - can be held, and every fold that meets it heals it rather
+    /// than refusing the whole source with "expected each name once".
+    #[test]
+    fn a_stored_set_stating_one_name_twice_merges_with_any_set() {
+        let document = r#"[{"value":"8","name":"none"},{"value":"Z","name":"none"}]"#;
+        let held = || {
+            let mut registry = FixRegistry::new();
+            create_codeset(&mut registry, "ordstatuscodeset", document.to_owned()).unwrap();
+            let mut field = DataType::utf8().nullable_field("ordstatus");
+            field.as_fix_mut().set_tag(39).unwrap();
+            field.as_fix_mut().set_codeset("ordstatuscodeset").unwrap();
+            registry.insert(field).unwrap();
+            registry
+        };
+        // The first code keeps the name, the second keeps its value.
+        let assert_healed = |registry: &FixRegistry, values: &[&str]| {
+            let set = registry.codeset("ordstatuscodeset").unwrap();
+            assert_eq!(
+                set.codes()
+                    .map(|code| code.unwrap().value().to_owned())
+                    .collect::<Vec<_>>(),
+                values
+            );
+            assert_eq!(set.code_name("8"), Some("none"));
+            assert_eq!(set.code_name("Z"), Some("Z"));
+            assert_eq!(set.code_value("none"), Some("8"));
+            assert_eq!(set.code_value("Z"), Some("Z"));
+            assert_eq!(
+                &FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+                registry
+            );
+        };
+
+        let mut registry = held();
+        registry
+            .merge_codeset("ordstatuscodeset", &[FixCode::new("Filled", "2")])
+            .unwrap();
+        assert_healed(&registry, &["8", "Z", "2"]);
+        let set = registry.codeset("ordstatuscodeset").unwrap();
+        assert_eq!(set.code_name("2"), Some("Filled"));
+
+        // A set that states nothing new heals it all the same, and so does a
+        // whole dictionary folded in.
+        let mut registry = held();
+        registry
+            .merge_codeset("ordstatuscodeset", &[FixCode::new("Z", "Z")])
+            .unwrap();
+        assert_healed(&registry, &["8", "Z"]);
+        let mut registry = held();
+        let mut other = FixRegistry::new();
+        other
+            .set_codeset("ordstatuscodeset", &[FixCode::new("New", "0")])
+            .unwrap();
+        registry.merge_with(&other).unwrap();
+        assert_healed(&registry, &["8", "Z", "0"]);
+    }
+}
+
+#[test]
+fn an_alias_two_held_codes_share_names_neither_after_a_merge() {
+    // Rendering holds names to one code each and aliases to nothing, so a set
+    // may state one alias on two codes - and then it names neither. A merge
+    // widening that set keeps both codes' aliases as they are: folding the
+    // alias onto the first would make it name one code where it named none.
+    let (mut registry, _) = dictionary(
+        "venuecodeset",
+        9001,
+        &[
+            FixCode::new("Primary", "1").with_aliases(["shared"]),
+            FixCode::new("Secondary", "2").with_aliases(["shared"]),
+        ],
+    );
+    assert_eq!(
+        registry
+            .codeset("venuecodeset")
+            .unwrap()
+            .code_value("shared"),
+        None
+    );
+    registry
+        .merge_codeset("venuecodeset", &[FixCode::new("Tertiary", "3")])
+        .unwrap();
+    let set = registry.codeset("venuecodeset").unwrap();
+    assert_eq!(set.codes().count(), 3);
+    assert_eq!(
+        set.code_value("shared"),
+        None,
+        "the shared alias names neither"
+    );
+    let aliases: Vec<Vec<String>> = set
+        .codes()
+        .map(|code| code.unwrap().aliases().map(str::to_owned).collect())
+        .collect();
+    assert_eq!(aliases, [vec!["shared"], vec!["shared"], vec![]]);
+    assert_eq!(set.code_value("Tertiary"), Some("3"));
 }
 
 #[test]
@@ -382,4 +488,50 @@ fn folding_two_dictionaries_keeps_both_cases_of_one_message_code() {
     assert_eq!(set.code_value("B"), Some("B"));
     assert_eq!(set.code_value("massquoteacknowledgement"), Some("b"));
     assert_eq!(set.code_value("news"), Some("B"));
+}
+
+/// A new value arriving under a name another value already holds keeps its
+/// value under no name, and the fold says so.
+///
+/// Two maps of one field disagree about what a name means - a venue's
+/// `ORDSTATUS` calls `Z` what FIX's `OrdStatus` calls `8` - and a spelling
+/// reaching two codes resolves to neither. The value is a fact about the wire
+/// the set keeps whatever it is called; the name stays with the code that
+/// held it.
+#[test]
+fn a_code_whose_name_another_value_holds_keeps_its_value_unnamed() {
+    let (mut registry, field) =
+        dictionary("ordstatuscodeset", 39, &[FixCode::new("Rejected", "8")]);
+    let (merged, warnings) = super::warned::during(|| {
+        registry.merge_codeset("ordstatuscodeset", &[FixCode::new("rejected", "Z")])
+    });
+    merged.unwrap();
+    let set = registry.codeset_of(&field).expect("the set");
+    assert_eq!(
+        set.codes()
+            .map(|code| code.unwrap().value().to_owned())
+            .collect::<Vec<_>>(),
+        ["8", "Z"]
+    );
+    assert_eq!(set.code_name("8"), Some("Rejected"));
+    assert_eq!(
+        set.code_name("Z"),
+        Some("Z"),
+        "unnamed: its name is its value"
+    );
+    assert_eq!(set.code_value("rejected"), Some("8"));
+    assert_eq!(set.code_value("Z"), Some("Z"));
+    assert!(
+        warnings.iter().any(|warning| warning.contains("\"Z\"")
+            && warning.contains("\"rejected\"")
+            && warning.contains("\"8\"")),
+        "{warnings:?}"
+    );
+
+    // Folding the same codes again finds the value held and changes nothing.
+    let before = registry.clone();
+    registry
+        .merge_codeset("ordstatuscodeset", &[FixCode::new("rejected", "Z")])
+        .unwrap();
+    assert_eq!(registry, before);
 }

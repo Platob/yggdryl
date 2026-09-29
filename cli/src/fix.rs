@@ -9,7 +9,7 @@ use yggdryl::{
     DataType, Field, FixCategory, FixDirection, FixMerge, FixRegistry, IOBase, IOKind, Result, Url,
 };
 
-use crate::{diff, quality, registry, schema, shell, style};
+use crate::{diff, quality, registry, schema, shell, style, warnings};
 
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
@@ -42,11 +42,15 @@ pub enum Command {
     ///
     /// Every file is parsed side by side and folded into one staged
     /// dictionary in ascending URL order, which is then committed once,
-    /// writing only the documents that moved. What a file declares otherwise
-    /// than the dictionary already does - a tag typed two ways by two
-    /// counterparties - is passed over and named, and the rest still folds.
+    /// writing only the documents that moved. A tag declared at another
+    /// precision than the datatype held - text, a number of another kind or
+    /// width, a date beside a datetime - folds under the held one; one that
+    /// contradicts it - a flag to one counterparty, an integer to another -
+    /// is passed over and named, and the rest still folds. What a file states
+    /// in a way the reader cannot keep is named with its line and column and
+    /// what the reader did instead.
     #[command(
-        after_help = "Examples:\n  yggdryl fix ingest cblocks/venue.cfb --dialect venue\n  yggdryl fix ingest 'cblocks/*.cfb'\n  yggdryl fix ingest 'cblocks/**/*.cfb' --annotate\n  yggdryl fix ingest cblocks/a.cfb cblocks/b.cfb\n\nQuote a glob to have it walked here - `*` stays inside one name, `**` spans folders - or let the shell expand it; either way every file folds in one staged dictionary and one commit.\nWithout --dialect each file's own stem names its dialect (MSFIX44.cfb stamps msfix44).\nWhere two files disagree about one tag, the first in URL order is held and the other is passed over; --annotate prints each as a workflow warning."
+        after_help = "Examples:\n  yggdryl fix ingest cblocks/venue.cfb --dialect venue\n  yggdryl fix ingest 'cblocks/*.cfb'\n  yggdryl fix ingest 'cblocks/**/*.cfb' --annotate\n  yggdryl fix ingest cblocks/a.cfb cblocks/b.cfb\n\nQuote a glob to have it walked here - `*` stays inside one name, `**` spans folders - or let the shell expand it; either way every file folds in one staged dictionary and one commit.\nWithout --dialect each file's own stem names its dialect (MSFIX44.cfb stamps msfix44).\nWhere two files disagree about one tag, the first in URL order is held; a coarser datatype folds under the held one (restated), and only a contradiction is passed over.\nWhat a file states in a way the reader cannot keep is named with its line and column and what the reader did instead.\n--annotate prints every one of them as a workflow warning."
     )]
     Ingest {
         /// `.cfb` files, or glob patterns such as `cblocks/*.cfb`.
@@ -413,6 +417,7 @@ fn sync(store: &mut registry::Store, source: &Path, annotate: bool) -> Result<()
     progress.tick();
     let merge = store.registry_mut().merge_with(&other)?;
     progress.finish(&folded(&merge, "dictionary"));
+    warnings::report(annotate);
     passed_over(&merge, annotate);
     Ok(())
 }
@@ -471,14 +476,21 @@ fn ingest(
     progress.tick();
     let merge = store.registry_mut().add_cfb_files(files, dialect)?;
     progress.finish(&folded(&merge, "file"));
+    warnings::report(annotate);
     passed_over(&merge, annotate);
     Ok(())
 }
 
-/// What one fold did, in one line.
+/// What one fold did, in one line: the merged fields restated under the
+/// datatype held, where any were, beside the count they are among.
 fn folded(merge: &FixMerge, source: &str) -> String {
+    let restated = if merge.restated > 0 {
+        format!(" ({} restated)", merge.restated)
+    } else {
+        String::new()
+    };
     format!(
-        "{} {source}(s): {} added, {} merged, {} passed over",
+        "{} {source}(s): {} added, {} merged{restated}, {} passed over",
         merge.sources,
         merge.added,
         merge.merged,
@@ -575,7 +587,9 @@ fn interactive(store: &mut registry::Store) -> Result<()> {
         if matches!(line, "quit" | "exit") {
             break;
         }
-        if let Err(error) = dispatch(store, line) {
+        let outcome = dispatch(store, line);
+        warnings::report(false);
+        if let Err(error) = outcome {
             style::bad(&error.to_string());
         }
     }

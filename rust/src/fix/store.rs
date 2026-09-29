@@ -662,7 +662,11 @@ impl FixRegistry {
 
     /// Re-resolves every named definition against the fields now held.
     pub(super) fn refresh_references(&mut self) -> Result<()> {
-        let raw = self.compact_catalog()?;
+        let mut raw = self.compact_catalog()?;
+        // A member reading a field under the identity it held before a fold
+        // renamed it reads the identity it holds now.
+        let renamed = std::mem::take(&mut self.renamed);
+        super::catalog::rename_raw_references(&mut raw, &renamed)?;
         self.resolve_catalog(raw)
     }
 

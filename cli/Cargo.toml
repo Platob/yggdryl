@@ -34,6 +34,9 @@ clap = { version = "4.5", features = ["derive", "wrap_help"] }
 # it rather than pulling a line editor and a spinner crate for each.
 crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 shlex = "2.0"
+# The facade the core warns through: `warnings` collects what the FIX reader
+# dropped and prints it once the progress line is done.
+log.workspace = true
 
 [features]
 # `yggdryl xmla serve` over an Iceberg folder needs the core's table reader; without

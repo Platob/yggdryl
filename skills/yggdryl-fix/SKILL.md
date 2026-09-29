@@ -140,15 +140,27 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     holds, and answers `written`/`removed`; never hand-edit the generated
     shards, and state a code set before the field that names it. A fold
     (`add_cfb_file`, `add_cfb_files`, `merge_with`) keeps every declaration the
-    dictionary already holds and passes over what a source states otherwise -
-    a disagreeing datatype, a member a held definition declares in another
-    shape, a group on another counter - naming each in the answered
-    `FixMerge` rather than refusing the whole source; it refuses whole only
-    where nothing is left to keep (malformed XML or JSON, a source whose own
-    catalog does not validate). `add_cfb_files` folds in ascending URL order,
-    so where two files disagree about one tag the first-sorting file's
-    declaration is held and the later one is passed over, and a code set only
-    widens (the held name wins a shared value).
+    dictionary already holds. A datatype a source states at another precision
+    of the stored one - unbounded text against anything, any two numbers, an
+    integer against an enum, a date against a datetime (a CBlock's `float`
+    against `decimal128`, `string` against `ccy`) - folds under it and is
+    counted in `restated`; a contradiction (`boolean` against `int32`, a
+    time of day against a timestamp), a member a held definition declares in
+    another shape and a group on another counter are passed over, each named
+    in the answered `FixMerge` rather than refusing the whole source. A field
+    named by nothing but its tag (a CBlock tag no `alt` or binding names) is
+    unnamed: one on a held tag folds into the holder, and the first name to
+    arrive on its tag names it. A field on a held tag under another name
+    stands beside the holder, and neither learns the other's name. A fold
+    refuses whole only where nothing is left to keep (malformed XML or JSON,
+    a source whose own catalog does not validate); what a CBlock states that
+    the reader cannot keep is dropped, or kept another way (an unread type
+    word types the tag string), with a `log` warning naming the line, the
+    column, the element and what the reader did instead. `add_cfb_files`
+    folds in ascending URL order, so where two files type one tag two ways the
+    first-sorting file's declaration is held, and a code set only widens (the
+    held name wins a shared value; a new value under a taken name stays
+    unnamed).
 11. Mutations are atomic: a refused `insert`, `set` or `set_codeset` leaves the
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.

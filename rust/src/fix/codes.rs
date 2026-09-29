@@ -716,8 +716,11 @@ impl FixCodes<'_> {
     /// What cannot be kept is a spelling another code already answers to,
     /// folded: two codes one spelling reaches resolve to nothing rather than
     /// to either, and two sharing a name are refused outright. So that
-    /// spelling is dropped, and a code whose own *name* is taken is dropped
-    /// with it, having no other name to arrive under.
+    /// spelling is dropped, and a code whose own *name* is taken keeps its
+    /// value under no name - a code named after its own wire value carries
+    /// none - because the value is a fact about the wire the vocabulary has
+    /// to keep whatever it is called, and the collision is logged at warn
+    /// level naming both codes.
     ///
     /// One exception to the winner keeping its name: a code named after its
     /// own wire value carries no name at all - it is what a source that knows
@@ -725,6 +728,14 @@ impl FixCodes<'_> {
     /// from either side takes its place. That is what folds a dialect's
     /// `6 Inbound` into whatever the dictionary already calls tag 35 `6`,
     /// rather than renaming the type after the dialect's qualifier.
+    ///
+    /// The winner is read as it is stored, its aliases untouched - an alias
+    /// two of its codes share names neither, and stays so - except that a
+    /// name two of its codes state, which a loader files as it is handed and
+    /// rendering refuses, is healed by the same rule: the first code keeps
+    /// the name, the second keeps its value. A code whose value is itself
+    /// another code's name cannot be kept even unnamed, and is dropped with a
+    /// warning, so the fold never answers a set the writer refuses.
     ///
     /// Either side may be absent, which is what a dictionary meeting a set it
     /// does not hold has; two absences answer nothing, and a fold that keeps
@@ -734,56 +745,119 @@ impl FixCodes<'_> {
     ///
     /// Returns [`Error::Parse`] when either document does not parse, and what
     /// [`Self::render`] refuses the fold on.
-    pub(super) fn merge(winner: Option<&str>, other: Option<&str>) -> Result<Option<String>> {
+    pub(super) fn merge(
+        set: &str,
+        winner: Option<&str>,
+        other: Option<&str>,
+    ) -> Result<Option<String>> {
         let mut codes: Vec<FixCode> = Vec::new();
+        // The held side as it is stored, its aliases untouched: an alias two
+        // codes share names neither, and folding it onto the first would
+        // make it name one. Only a name another code already states - what a
+        // loader files and rendering refuses - is healed.
         for code in FixCodes::over(winner) {
-            codes.push(FixCode::from(code?));
-        }
-        for code in FixCodes::over(other) {
-            let incoming = FixCode::from(code?);
-            // Every spelling this code arrives with, its name first, held
-            // apart from the code so the code itself can move into the set.
-            let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
-            spellings.extend(incoming.aliases().iter().cloned());
-            let named = !incoming.is_unnamed();
-            let at = match codes
-                .iter()
-                .position(|held| held.value() == incoming.value())
-            {
-                Some(at) => {
-                    // A placeholder name yields to a real one, whichever side
-                    // carries it. The incoming name is a spelling either way,
-                    // so it is added below like any other spelling; taking it
-                    // here is only a question of which one leads.
-                    if named
-                        && codes[at].is_unnamed()
-                        && !codes
-                            .iter()
-                            .enumerate()
-                            .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
-                    {
-                        codes[at] = codes[at].clone().with_name(spellings[0].clone());
-                    }
-                    at
-                }
-                None if codes.iter().any(|held| held.is_spelled(&spellings[0])) => continue,
-                None => {
-                    codes.push(incoming.with_aliases(std::iter::empty::<SmolStr>()));
-                    codes.len() - 1
-                }
-            };
-            // A code answers its own name, so this adds it where the value was
-            // already held and skips it where the code was just pushed.
-            for spelling in &spellings {
-                if !codes.iter().any(|held| held.is_spelled(spelling)) {
-                    codes[at].push_alias(spelling.clone());
+            let code = FixCode::from(code?);
+            match render_collision(&codes, code.name(), code.value()) {
+                None => codes.push(code),
+                Some(held) => {
+                    let held = SmolStr::new(held.value());
+                    keep_unnamed(set, &mut codes, code, &held);
                 }
             }
+        }
+        for code in FixCodes::over(other) {
+            fold_code(set, &mut codes, FixCode::from(code?));
         }
         if codes.is_empty() {
             return Ok(None);
         }
         FixCodes::render(&codes).map(Some)
+    }
+}
+
+/// The code among `codes` whose name [`FixCodes::render`] would refuse
+/// `name` beside, the one rule rendering holds names to.
+fn render_collision<'held>(
+    codes: &'held [FixCode],
+    name: &str,
+    value: &str,
+) -> Option<&'held FixCode> {
+    codes.iter().find(|held| {
+        spelled_as(&held.name, &held.value, name) || spelled_as(name, value, &held.name)
+    })
+}
+
+/// Keeps `code` under its value alone, because the name it states is another
+/// code's - `held` - or drops it where even its value is a name another code
+/// states, warning either way with what was kept.
+fn keep_unnamed(set: &str, codes: &mut Vec<FixCode>, code: FixCode, held: &str) {
+    let value = SmolStr::new(code.value());
+    let name = SmolStr::new(code.name());
+    if render_collision(codes, &value, &value).is_some() {
+        log::warn!(
+            "fix code set {set:?}: value {value:?} is dropped, {name:?} already names value {held:?} and {value:?} is another code's name"
+        );
+        return;
+    }
+    log::warn!(
+        "fix code set {set:?}: value {value:?} keeps no name, {name:?} already names value {held:?}; the value is kept, the spelling is not"
+    );
+    codes.push(code.with_name(value));
+}
+
+/// Folds one code into the codes already held, under [`FixCodes::merge`]'s
+/// rule.
+fn fold_code(set: &str, codes: &mut Vec<FixCode>, incoming: FixCode) {
+    // Every spelling this code arrives with, its name first, held apart from
+    // the code so the code itself can move into the set.
+    let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
+    spellings.extend(incoming.aliases().iter().cloned());
+    let named = !incoming.is_unnamed();
+    let at = match codes
+        .iter()
+        .position(|held| held.value() == incoming.value())
+    {
+        Some(at) => {
+            // A placeholder name yields to a real one, whichever side carries
+            // it. The incoming name is a spelling either way, so it is added
+            // below like any other spelling; taking it here is only a
+            // question of which one leads.
+            if named
+                && codes[at].is_unnamed()
+                && !codes
+                    .iter()
+                    .enumerate()
+                    .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
+            {
+                codes[at] = codes[at].clone().with_name(spellings[0].clone());
+            }
+            at
+        }
+        None => {
+            let code = incoming.with_aliases(std::iter::empty::<SmolStr>());
+            match codes.iter().find(|held| held.is_spelled(&spellings[0])) {
+                // The spelling names the code that already answers to it, so
+                // this one keeps its value and nothing else - or, where even
+                // its value is taken, nothing at all.
+                Some(held) => {
+                    let held = SmolStr::new(held.value());
+                    let before = codes.len();
+                    keep_unnamed(set, codes, code, &held);
+                    if codes.len() == before {
+                        return;
+                    }
+                }
+                None => codes.push(code),
+            }
+            codes.len() - 1
+        }
+    };
+    // A code answers its own name, so this adds it where the value was already
+    // held and skips it where the code was just pushed.
+    for spelling in &spellings {
+        if !codes.iter().any(|held| held.is_spelled(spelling)) {
+            codes[at].push_alias(spelling.clone());
+        }
     }
 }
 
@@ -1105,7 +1179,7 @@ impl FixRegistry {
         validate_intrinsic_merge(&key, codes)?;
         let incoming = FixCodes::render(codes)?;
         let held = self.codesets.get(&key).map(Arc::clone);
-        let Some(merged) = FixCodes::merge(held.as_deref(), Some(incoming.as_str()))? else {
+        let Some(merged) = FixCodes::merge(&key, held.as_deref(), Some(incoming.as_str()))? else {
             return Ok(());
         };
         validate_intrinsic_codeset(&key, Some(&merged))?;
@@ -1165,7 +1239,7 @@ impl FixRegistry {
                         continue;
                     }
                     if let Some(merged) =
-                        FixCodes::merge(Some(slot.get()), Some(incoming.as_ref()))?
+                        FixCodes::merge(name, Some(slot.get()), Some(incoming.as_ref()))?
                     {
                         validate_intrinsic_codeset(name, Some(&merged))?;
                         slot.insert(Arc::from(merged.as_str()));
@@ -1213,7 +1287,7 @@ impl FixRegistry {
             return Ok(());
         };
         let held = self.get_codeset(stored).map(FixCodeSet::document);
-        let Some(merged) = FixCodes::merge(held, Some(other))? else {
+        let Some(merged) = FixCodes::merge(stored, held, Some(other))? else {
             return Ok(());
         };
         if held == Some(merged.as_str()) {

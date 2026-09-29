@@ -1159,21 +1159,23 @@ mod lenient {
         assert_eq!(msgtype.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
 
         // Row 2: a held tag under another name is a second field beside the
-        // holder. The bare tag keeps answering the first holder, which gained
-        // the arrival's name as an alias; the newcomer is reached by its name
-        // and by its id, and holds the tag canonically too.
+        // holder, and neither learns the other's name: two fields sharing a
+        // tag are two fields, not two spellings of one. The bare tag keeps
+        // answering the first holder; the newcomer is reached by its name and
+        // by its id, and holds the tag canonically too.
         let symbol = registry.field_by_tag(55).unwrap();
         assert_eq!(symbol.name(), "Symbol");
-        assert_eq!(symbol.as_fix().names().collect::<Vec<_>>(), ["VenueSymbol"]);
+        assert!(symbol.as_fix().names().next().is_none());
         assert!(symbol.as_fix().tags().unwrap().is_empty());
         assert_eq!(
             symbol.as_fix().branches().collect::<Vec<_>>(),
             ["fix44"],
-            "an alias lent to the holder is not a membership"
+            "the arrival's membership is its own"
         );
         let venue = registry.field_by_name("VenueSymbol").unwrap();
         assert!(!std::ptr::eq(venue, symbol));
         assert_eq!(venue.name(), "VenueSymbol");
+        assert!(venue.as_fix().names().next().is_none());
         assert_eq!(venue.as_fix().tag().unwrap(), Some(55));
         assert!(std::ptr::eq(
             registry
@@ -1272,43 +1274,25 @@ mod lenient {
     fn two_fields_on_one_tag_survive_a_snapshot_round_trip() {
         // The snapshot writes fields in iteration order - tag-major, then id -
         // and reads them back in that order, so which of two fields on one tag
-        // the bare tag answers, and which of them lent its name to the other,
-        // has to be what the writer held: `Symbol` was first and holds
-        // `VenueSymbol` as an alias; `VenueSymbol` holds no alias.
+        // the bare tag answers has to be what the writer held: `Symbol` was
+        // first. Neither holds the other's name as an alias, before the round
+        // trip or after it.
         let mut registry = holders();
         let [_, venue, _, _] = arrivals();
         assert!(registry.add_field(venue).unwrap());
-        assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
-        assert!(
-            registry
-                .field_by_name("VenueSymbol")
-                .unwrap()
-                .as_fix()
-                .names()
-                .next()
-                .is_none()
-        );
+        let unaliased = |registry: &FixRegistry| {
+            assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
+            for name in ["Symbol", "VenueSymbol"] {
+                let field = registry.field_by_name(name).unwrap();
+                assert_eq!(field.name(), name);
+                assert_eq!(field.as_fix().tag().unwrap(), Some(55), "{name}");
+                assert!(field.as_fix().names().next().is_none(), "{name}");
+            }
+        };
+        unaliased(&registry);
 
         let restored = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
-        assert_eq!(restored.field_by_tag(55).unwrap().name(), "Symbol");
-        assert_eq!(
-            restored
-                .field_by_name("Symbol")
-                .unwrap()
-                .as_fix()
-                .names()
-                .collect::<Vec<_>>(),
-            ["VenueSymbol"]
-        );
-        assert!(
-            restored
-                .field_by_name("VenueSymbol")
-                .unwrap()
-                .as_fix()
-                .names()
-                .next()
-                .is_none()
-        );
+        unaliased(&restored);
         assert_eq!(restored, registry);
     }
 
@@ -1329,7 +1313,7 @@ mod lenient {
 
         // The other way round says the same thing with the roles swapped: the
         // source's `VenueSymbol` is then the first holder of 55, and `Symbol`
-        // arrives beside it.
+        // arrives beside it, neither learning the other's name.
         let mut reversed = FixRegistry::from_fields(arrivals()).unwrap();
         assert_eq!(
             reversed
@@ -1340,16 +1324,11 @@ mod lenient {
         );
         assert_eq!(super::scalars(&reversed), 5 + super::seeded_fields());
         assert_eq!(reversed.field_by_tag(55).unwrap().name(), "VenueSymbol");
-        assert_eq!(
-            reversed
-                .field_by_tag(55)
-                .unwrap()
-                .as_fix()
-                .names()
-                .collect::<Vec<_>>(),
-            ["Symbol"]
-        );
-        assert_eq!(reversed.field_by_name("Symbol").unwrap().name(), "Symbol");
+        for name in ["VenueSymbol", "Symbol"] {
+            let field = reversed.field_by_name(name).unwrap();
+            assert_eq!(field.name(), name);
+            assert!(field.as_fix().names().next().is_none(), "{name}");
+        }
         assert_eq!(reversed.field_by_tag(9001).unwrap().name(), "price");
         assert_eq!(
             reversed
@@ -1561,12 +1540,12 @@ mod lenient {
 
     /// Merging a dictionary that names one wire field differently keeps one member.
     ///
-    /// Two dictionaries reach tag 448 under two names, and each states the same
-    /// component's member under its own. The merge folds the field - a tag
-    /// another field holds is a merge, and the arriving spelling becomes an
-    /// alias - and the component keeps one member, not two. Folding the same
-    /// dictionary again changes nothing, which is the property a reload rests
-    /// on.
+    /// Two dictionaries reach tag 448 under two spellings of one name, and each
+    /// states the same component's member under its own. The merge folds the
+    /// field - `party_id` and `PartyID` are one identity, so the arrival merges
+    /// into the holder under the held spelling - and the component keeps one
+    /// member, not two. Folding the same dictionary again changes nothing,
+    /// which is the property a reload rests on.
     #[test]
     fn merging_two_spellings_of_one_field_keeps_one_member() {
         let mut registry =
@@ -1657,6 +1636,347 @@ mod lenient {
             left.field_by_tag(55).unwrap().description(),
             right.field_by_tag(55).unwrap().description()
         );
+    }
+
+    fn dtype(spelling: &str) -> DataType {
+        spelling
+            .parse()
+            .unwrap_or_else(|error| panic!("{spelling}: {error}"))
+    }
+
+    /// Five fields a dictionary holds, each beside a source's coarser
+    /// statement of it: a price as the text every FIX datatype derives from,
+    /// an exact amount as a float, a sequence number at the narrower width,
+    /// a zone-less date as a UTC instant, and a flag as text.
+    fn precisions() -> [(&'static str, i32, DataType, DataType); 5] {
+        [
+            ("Price", 44, DataType::Float64, DataType::utf8()),
+            ("AvgPx", 6, dtype("decimal128(38, 18)"), DataType::Float64),
+            ("MsgSeqNum", 34, DataType::Int64, DataType::Int32),
+            (
+                "TradeDate",
+                75,
+                dtype("datetime64(ns)"),
+                dtype("datetime64(ns, UTC)"),
+            ),
+            ("PossDupFlag", 43, DataType::Boolean, DataType::utf8()),
+        ]
+    }
+
+    #[test]
+    fn merge_with_restates_a_coarser_datatype_under_the_held_one() {
+        let mut held = Vec::new();
+        let mut declared = Vec::new();
+        for (name, tag, stored, incoming) in precisions() {
+            let mut field = tagged(name, tag, stored);
+            field.as_fix_mut().set_branches(["fix44"]).unwrap();
+            held.push(field);
+            let mut field = tagged(name, tag, incoming);
+            field.as_fix_mut().set_branches(["venue"]).unwrap();
+            field
+                .as_fix_mut()
+                .set_description(format!("{name} per venue"))
+                .unwrap();
+            declared.push(field);
+        }
+        let mut registry = FixRegistry::from_fields(held).unwrap();
+        let source = FixRegistry::from_fields(declared.clone()).unwrap();
+
+        // Each folds under the declaration held and is counted among the
+        // merged - beside the two standard clock seeds - as restated.
+        let merge = registry.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        assert_eq!((merge.added, merge.merged, merge.restated), (0, 7, 5));
+        assert_eq!(super::scalars(&registry), 5 + super::seeded_fields());
+        for (name, tag, stored, _) in precisions() {
+            let field = registry.field_by_tag(tag).unwrap();
+            assert_eq!(field.name(), name);
+            assert_eq!(field.dtype(), &stored, "{name}: the held datatype stays");
+            assert_eq!(
+                field.as_fix().branches().collect::<Vec<_>>(),
+                ["fix44", "venue"],
+                "{name}: the membership is the union"
+            );
+            assert_eq!(
+                field.description(),
+                Some(format!("{name} per venue").as_str()),
+                "{name}: the rest of the declaration folds as any does"
+            );
+        }
+
+        // The same source again restates the same five and changes nothing.
+        let before = registry.clone();
+        let merge = registry.merge_with(&source).unwrap();
+        assert_eq!((merge.merged, merge.restated), (7, 5));
+        assert_eq!(registry, before);
+
+        // The strict doors state no precision of their own: a differing
+        // datatype is refused whole, whichever door it knocks on.
+        for field in &declared {
+            let error = registry.add_field(field.clone()).unwrap_err();
+            assert!(
+                matches!(error, Error::InvalidRecord { .. }),
+                "add_field {}: {error}",
+                field.name()
+            );
+            let error = registry.update(field.clone()).unwrap_err();
+            assert!(
+                matches!(error, Error::InvalidRecord { .. }),
+                "update {}: {error}",
+                field.name()
+            );
+            assert_eq!(registry, before);
+        }
+        let error = registry
+            .add_fields([tagged("Account", 1, DataType::utf8()), declared[1].clone()])
+            .unwrap_err();
+        assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+        let message = error.to_string();
+        assert!(
+            message.contains("decimal128") && message.contains("float64"),
+            "{message}"
+        );
+        assert_eq!(registry, before, "the field before it did not arrive");
+        // `insert` replaces an identity rather than folding into it, so what
+        // it holds afterwards is the datatype the caller stated, never a
+        // restatement of the one it replaced.
+        let mut replaced = registry.clone();
+        let prior = replaced.insert(declared[0].clone()).unwrap();
+        assert_eq!(prior.as_ref().map(Field::dtype), Some(&DataType::Float64));
+        assert_eq!(
+            replaced.field_by_tag(44).unwrap().dtype(),
+            &DataType::utf8()
+        );
+    }
+
+    #[test]
+    fn merge_with_passes_a_contradiction_over_rather_than_restating_it() {
+        // A flag is no count, a time of day is no instant, and two bounded
+        // strings of two widths are two layouts.
+        let contradictions = [
+            ("PossDupFlag", 43, DataType::Boolean, DataType::Int32),
+            (
+                "MDEntryTime",
+                273,
+                dtype("time64(ns)"),
+                dtype("datetime64(ns)"),
+            ),
+            (
+                "Account",
+                1,
+                dtype("fixed_ascii(8)"),
+                dtype("sized_utf8(32)"),
+            ),
+        ];
+        let mut registry = FixRegistry::from_fields(
+            contradictions
+                .iter()
+                .map(|(name, tag, stored, _)| tagged(name, *tag, stored.clone())),
+        )
+        .unwrap();
+        let source = FixRegistry::from_fields(
+            contradictions
+                .iter()
+                .map(|(name, tag, _, incoming)| tagged(name, *tag, incoming.clone()))
+                .chain([tagged("Text", 58, DataType::utf8())]),
+        )
+        .unwrap();
+
+        let merge = registry.merge_with(&source).unwrap();
+        assert_eq!((merge.added, merge.merged, merge.restated), (1, 2, 0));
+        assert_eq!(merge.dropped.len(), 3, "{:?}", merge.dropped);
+        for (name, tag, stored, incoming) in &contradictions {
+            let drop = merge
+                .dropped
+                .iter()
+                .find(|drop| drop.incoming.name() == *name)
+                .unwrap_or_else(|| panic!("{name} passed over"));
+            assert_eq!(drop.incoming.dtype(), incoming, "{name}");
+            assert!(
+                drop.reason.contains(&stored.to_string())
+                    && drop.reason.contains(&incoming.to_string()),
+                "{name}: {drop}"
+            );
+            assert_eq!(registry.field_by_tag(*tag).unwrap().dtype(), stored);
+        }
+        assert_eq!(registry.field_by_tag(58).unwrap().name(), "Text");
+    }
+
+    #[test]
+    fn a_field_named_by_its_bare_tag_merges_into_the_holder_of_that_tag() {
+        let mut registry = FixRegistry::from_fields([maturity()]).unwrap();
+
+        // A CBlock declaring the tag with no name of its own names it after
+        // the digits: a placeholder, which folds into whatever holds the tag.
+        let mut unnamed = tagged("541", 541, DataType::utf8());
+        unnamed.as_fix_mut().set_branches(["cblock"]).unwrap();
+        unnamed
+            .as_fix_mut()
+            .set_description("a tag the file never named")
+            .unwrap();
+        assert_eq!(registry.add_fields([unnamed.clone()]).unwrap(), (0, 1));
+        assert_eq!(super::scalars(&registry), 1 + super::seeded_fields());
+        let stored = registry.field_by_tag(541).unwrap();
+        assert_eq!(stored.name(), "maturitydate");
+        assert_eq!(stored.display(), Some("MaturityDate"));
+        assert_eq!(
+            stored.as_fix().id().unwrap(),
+            Some(FixId::of(541, "maturitydate").unwrap())
+        );
+        assert_eq!(
+            stored.as_fix().branches().collect::<Vec<_>>(),
+            ["cblock", "fix44"]
+        );
+        assert_eq!(stored.description(), Some("a tag the file never named"));
+        assert!(
+            stored.as_fix().names().next().is_none(),
+            "the digits are no name to answer to"
+        );
+        let before = registry.clone();
+        assert_eq!(registry.add_fields([unnamed]).unwrap(), (0, 1));
+        assert_eq!(registry, before);
+    }
+
+    #[test]
+    fn a_source_member_reading_a_bare_tag_reads_the_held_field_after_a_merge() {
+        // The source's own members reading the digits read the held field:
+        // one member, under the held name, and nothing passed over - what a
+        // CBlock beside the standard used to refuse with "expected a
+        // reference to fields "541" stored for it, got a reference to fields
+        // "maturitydate"".
+        let mut registry = FixRegistry::from_fields([maturity()]).unwrap();
+        let mut member = registry.field(541).unwrap().clone();
+        member.as_fix_mut().set_field_ref("maturitydate").unwrap();
+        registry
+            .insert(
+                StructType::from_fields([member])
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("Instrument"),
+            )
+            .unwrap();
+        let mut source = FixRegistry::from_fields([tagged("541", 541, DataType::utf8())]).unwrap();
+        let mut member = source.field(541).unwrap().clone();
+        member.as_fix_mut().set_field_ref("541").unwrap();
+        source
+            .insert(
+                StructType::from_fields([member])
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("Instrument"),
+            )
+            .unwrap();
+        let merge = registry.merge_with(&source).unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        let instrument = registry.field_by_name("Instrument").unwrap();
+        assert_eq!(names(instrument), ["maturitydate"]);
+        assert_eq!(
+            instrument.fields()[0].as_fix().field_ref(),
+            Some("maturitydate")
+        );
+        assert_eq!(
+            FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+            registry
+        );
+    }
+
+    /// A dictionary whose tag 541 is named by nothing but its digits, and a
+    /// component reading it under them.
+    fn unnamed_with_reader() -> FixRegistry {
+        let mut unnamed = tagged("541", 541, DataType::utf8());
+        unnamed.as_fix_mut().set_branches(["cblock"]).unwrap();
+        let mut registry = FixRegistry::from_fields([unnamed]).unwrap();
+        let mut member = registry.field(541).unwrap().clone();
+        member.as_fix_mut().set_field_ref("541").unwrap();
+        registry
+            .insert(
+                StructType::from_fields([member])
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("Instrument"),
+            )
+            .unwrap();
+        registry
+    }
+
+    /// Tag 541 as the standard names it.
+    fn maturity() -> Field {
+        let mut named = tagged("maturitydate", 541, DataType::utf8());
+        named.set_display("MaturityDate").unwrap();
+        named.as_fix_mut().set_branches(["fix44"]).unwrap();
+        named
+    }
+
+    /// What a named arrival leaves on a tag an unnamed field held: one field,
+    /// under the arrival's name and display, the membership the union, and
+    /// the component reading it under that name.
+    fn assert_named_holder(registry: &FixRegistry) {
+        assert_eq!(super::scalars(registry), 1 + super::seeded_fields());
+        let stored = registry.field_by_tag(541).unwrap();
+        assert_eq!(stored.name(), "maturitydate");
+        assert_eq!(stored.display(), Some("MaturityDate"));
+        assert_eq!(
+            stored.as_fix().id().unwrap(),
+            Some(FixId::of(541, "maturitydate").unwrap())
+        );
+        assert!(
+            registry
+                .get_field_by_id(FixId::of(541, "541").unwrap())
+                .is_none(),
+            "the placeholder identity is gone"
+        );
+        assert_eq!(
+            stored.as_fix().branches().collect::<Vec<_>>(),
+            ["cblock", "fix44"]
+        );
+        let instrument = registry.field_by_name("Instrument").unwrap();
+        assert_eq!(names(instrument), ["maturitydate"]);
+        let member = registry
+            .field_by_path(&fpath("Instrument.maturitydate"))
+            .unwrap();
+        assert_eq!(member.as_fix().tag().unwrap(), Some(541));
+        assert_eq!(member.as_fix().field_ref(), Some("maturitydate"));
+        assert_eq!(
+            &FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+            registry
+        );
+    }
+
+    #[test]
+    fn a_named_arrival_on_a_tag_an_unnamed_field_holds_renames_the_holder_through_add_fields() {
+        let mut registry = unnamed_with_reader();
+        assert_eq!(registry.add_fields([maturity()]).unwrap(), (0, 1));
+        assert_named_holder(&registry);
+        let before = registry.clone();
+        assert_eq!(registry.add_fields([maturity()]).unwrap(), (0, 1));
+        assert_eq!(registry, before);
+    }
+
+    #[test]
+    fn a_named_arrival_on_a_tag_an_unnamed_field_holds_renames_the_holder_through_add_field() {
+        let mut registry = unnamed_with_reader();
+        assert!(!registry.add_field(maturity()).unwrap());
+        assert_named_holder(&registry);
+    }
+
+    #[test]
+    fn a_named_arrival_on_a_tag_an_unnamed_field_holds_renames_the_holder_through_merge_with() {
+        let mut registry = unnamed_with_reader();
+        let merge = registry
+            .merge_with(&FixRegistry::from_fields([maturity()]).unwrap())
+            .unwrap();
+        assert!(merge.is_clean(), "{:?}", merge.dropped);
+        assert_eq!((merge.added, merge.merged), (0, 3));
+        assert_named_holder(&registry);
+    }
+
+    #[test]
+    fn an_unnamed_arrival_on_a_tag_nobody_holds_arrives_as_it_is() {
+        let mut registry = FixRegistry::from_fields([maturity()]).unwrap();
+        let unnamed = tagged("9999", 9999, DataType::utf8());
+        assert_eq!(registry.add_fields([unnamed.clone()]).unwrap(), (1, 0));
+        assert_eq!(registry.field_by_tag(9999).unwrap(), &unnamed);
+        assert_eq!(registry.field_by_tag(541).unwrap(), &maturity());
     }
 }
 

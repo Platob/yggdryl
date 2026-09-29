@@ -71,7 +71,7 @@ pub(super) fn is_msgcat(value: &str) -> bool {
 /// What separates the elements of a comma-separated property: the
 /// memberships, the identifiers and the null spellings, whose elements can
 /// hold no comma. The names and the tags are JSON arrays instead.
-const SEPARATOR: char = ',';
+pub(super) const SEPARATOR: char = ',';
 
 /// What a tag is, spelled once for every refusal.
 const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 1 to 2147483647";
