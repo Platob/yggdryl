@@ -6465,13 +6465,6 @@ export declare class RecordOptions {
   /** Address the worksheet `sheet`, or the first worksheet for `null`. */
   set sheet(sheet: string | undefined | null)
   /**
-   * Whether a workbook's first row names its columns, `null` for another
-   * encoding.
-   */
-  get header(): boolean | null
-  /** State whether the first row names the columns. */
-  set header(header: boolean)
-  /**
    * The cells a workbook read or write addresses, `null` for the whole
    * sheet - or for another encoding.
    */
@@ -6480,8 +6473,6 @@ export declare class RecordOptions {
   set range(range: CellRangeInput | undefined | null)
   /** These options addressing the sheet `sheet`. */
   withSheet(sheet?: string | undefined | null): RecordOptions
-  /** These options with or without a header row. */
-  withHeader(header: boolean): RecordOptions
   /** These options addressing the cells of `range`. */
   withRange(range?: CellRangeInput | undefined | null): RecordOptions
   /** The Avro block codec name, or `null` for another encoding. */
@@ -6551,11 +6542,14 @@ export declare class RecordOptions {
    */
   set comment(comment: string | null)
   /**
-   * Whether the CSV's first record names the columns; `null` for another
-   * encoding.
+   * Whether the first record names the columns - a CSV's first record, a
+   * workbook's first row; `null` for another encoding.
    */
   get header(): boolean | null
-  /** Set whether the CSV's first record names the columns. */
+  /**
+   * Set whether the first record names the columns: a CSV's first record,
+   * a workbook's first row.
+   */
   set header(header: boolean)
   /**
    * The CSV spellings of an absent value - an unquoted cell spelling one
@@ -6599,7 +6593,10 @@ export declare class RecordOptions {
   withEscape(escape: string | null): RecordOptions
   /** Return these options with another CSV comment byte, or `null` for none. */
   withComment(comment: string | null): RecordOptions
-  /** Return these options with or without a CSV header record. */
+  /**
+   * Return these options with or without a header record: a CSV's first
+   * record, a workbook's first row.
+   */
   withHeader(header: boolean): RecordOptions
   /** Return these options with other CSV spellings of an absent value. */
   withNullValues(nullValues: Array<string>): RecordOptions
