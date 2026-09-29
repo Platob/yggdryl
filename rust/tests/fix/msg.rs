@@ -800,7 +800,7 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
             .unwrap()
             .as_ref()
             .and_then(Scalar::as_str),
-        Some("BUY")
+        Some("BUYS")
     );
     let symbol = message
         .entries()
@@ -1525,7 +1525,7 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
             b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|",
         )
         .unwrap();
-    assert_eq!(bid.get_side().as_str(), "UNKNOWN");
+    assert_eq!(bid.get_side().as_str(), "UNKN");
     assert_eq!((bid.get_price(), bid.get_quantity()), (None, None));
     assert_eq!(bid.get_currency().as_str(), "USD");
     let wire = bid.into_bytes(b'|');
@@ -1548,7 +1548,7 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
             b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
         )
         .unwrap();
-    assert_eq!(fill.get_side().as_str(), "UNKNOWN");
+    assert_eq!(fill.get_side().as_str(), "UNKN");
     assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
     assert_eq!(fill.get_lastpx(), Some(decimal("100")));
     assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(10)));
@@ -1559,9 +1559,9 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
             b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=C1|55=AAPL|15=USD|54=1|44=100|38=10|10=0|",
         )
         .unwrap();
-    assert_eq!(order.get_side().as_str(), "BUY");
+    assert_eq!(order.get_side().as_str(), "BUYS");
     order.remove(54).unwrap();
-    assert_eq!(order.get_side().as_str(), "UNKNOWN");
+    assert_eq!(order.get_side().as_str(), "UNKN");
 }
 
 mod market_ladder {
@@ -1721,8 +1721,9 @@ mod market_ladder {
 
 mod identifier_maps {
     //! The alternate identifiers a message rebuilds from the dictionary's
-    //! `FIX:idmap` sources at every settle, and the accounts, users and
-    //! parties it names, which are no identifier and stay in its metadata.
+    //! `FIX:idmap` sources at every settle, and the accounts its parties and
+    //! its `Account(1)` name, which leave its leaves' metadata; a user is no
+    //! identifier and stays content.
 
     use yggdryl::FixMsg;
     use yggdryl::graph::{Market, Operation};
@@ -1784,17 +1785,15 @@ mod identifier_maps {
             assert!(yggdryl::fix_column_of(&schema, tag).is_none(), "{tag}");
         }
         // An account and a user are no identifier: no alternate identifier
-        // holds them. `Account(1)` is what the leaf's metadata carries, and
-        // the bridge's own two stay content of the message's row.
+        // holds them. `Account(1)` is the message's `ACCOUNT` account, which
+        // its leaf holds rather than its metadata, and the bridge's own two
+        // stay content of the message's row.
         for key in ["ACCOUNT", "OMSDEALERACCOUNT", "OMSUSERID"] {
             assert!(alts.iter().all(|(held, _)| held != key), "{key}: {alts:?}");
         }
+        assert_eq!(held.get_accountids().get("ACCOUNT"), Some("ACC"));
         let metadata = leaf_metadata(&held);
-        assert_eq!(
-            metadata.get("account").map(|held| held.as_str()),
-            Some("ACC"),
-            "{metadata:?}"
-        );
+        assert!(!metadata.contains_key("account"), "{metadata:?}");
         for (name, value) in [("omsdealeraccount", "YNHD5"), ("omsuserid", "trader1")] {
             assert_eq!(
                 held.get_by_name(name)
@@ -1814,17 +1813,24 @@ mod identifier_maps {
     }
 
     #[test]
-    fn the_parties_a_message_names_stay_in_its_metadata() {
+    fn the_parties_a_message_names_are_its_accounts_and_a_second_of_a_role_stays() {
         let held = parsed(
             "8=FIX.4.4|35=8|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|453=3|448=T1|\
              447=D|452=36|448=T2|447=D|452=36|\
              448=C1|447=D|452=24|10=0|",
         );
+        // The first party of each role is an account; the second trader of
+        // one role is ordinary, no anomaly, and it alone stays in the leaf's
+        // metadata, since no map the leaf holds names it.
+        assert_eq!(
+            held.get_accountids().to_string(),
+            "{CUSTOMERACCOUNT=C1, ENTERINGTRADER=T1}"
+        );
         let metadata = leaf_metadata(&held);
-        let parties = metadata.get("parties").expect("the parties as JSON");
-        for id in ["T1", "T2", "C1"] {
-            assert!(parties.contains(id), "{id}: {parties}");
-        }
+        assert_eq!(
+            metadata.get("parties").map(|held| held.as_str()),
+            Some(r#"[{"partyid":"T2","partyidsource":"D","partyrole":"36"}]"#)
+        );
         // No party is an alternate identifier, so none is an anomaly.
         assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
         assert!(
@@ -1839,7 +1845,15 @@ mod identifier_maps {
     #[test]
     fn a_following_operation_carries_what_the_dictionary_follows() {
         let held = parsed("8=FIX.4.4|35=8|17=E1|37=O1|10=0|");
-        for key in yggdryl::graph::FOLLOWED_ALTIDS {
+        for key in [
+            "ORDERID",
+            "SECONDARYORDERID",
+            "PARENTORDERID",
+            "PARENTCLORDID",
+            "OMSDEALERPARENTORDERID",
+            "EXCHANGECLIENTORDERID",
+            "TRANSVERSALKEY",
+        ] {
             assert!(held.is_followed_altid(key), "{key}");
         }
         for key in ["CLORDID", "EXECID", "ULTRADERCLORDID", "MARKETORDERID"] {
@@ -1979,9 +1993,26 @@ mod settled_market {
         .unwrap();
         assert_eq!(stated.msgcat(), MarketDataKind::Book);
         // A written type derives its own.
-        order.set(35, Scalar::from("8")).unwrap();
-        assert_eq!(order.msgcat(), category("8"));
+        order.set(35, Scalar::from("S")).unwrap();
+        assert_eq!(order.msgcat(), category("S"));
         assert_ne!(order.msgcat(), MarketDataKind::Order);
+        // An execution report of no fill is its order's report, whatever
+        // category its type files it under.
+        order.set(35, Scalar::from("8")).unwrap();
+        assert_eq!(category("8"), MarketDataKind::Execution);
+        assert_eq!(order.msgcat(), MarketDataKind::Order);
+        order.set(117, Scalar::from("Q-1")).unwrap();
+        assert_eq!(
+            order.msgcat(),
+            MarketDataKind::Quotation,
+            "its quote's, naming one"
+        );
+        order.set(150, Scalar::from("F")).unwrap();
+        assert_eq!(
+            order.msgcat(),
+            MarketDataKind::Execution,
+            "a fill's report states its fill"
+        );
     }
 
     /// The first leaf's metadata, key by key.
@@ -2002,29 +2033,16 @@ mod settled_market {
 
     #[test]
     fn a_group_no_column_reads_is_one_json_text_under_its_name() {
+        // The parties are the leaf's accounts, so their group writes nothing.
         let order = parsed(
             "8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=2|448=TRADER2|447=D|452=11|448=ACC9|447=D|452=24|10=0|",
         );
-        assert_eq!(
-            value(&order, "parties").as_deref(),
-            Some(
-                r#"[{"partyid":"TRADER2","partyidsource":"D","partyrole":"11"},{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#
-            ),
-            "no party is an identifier: every occurrence stays"
-        );
+        assert_eq!(value(&order, "parties"), None);
         assert!(
             !metadata(&order)
                 .iter()
-                .any(|(key, _)| key.starts_with("parties[")),
+                .any(|(key, _)| key.starts_with("parties")),
             "no member keyed by its path"
-        );
-        // A customer account's occurrence is no identifier's either.
-        let account = parsed(
-            "8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=1|448=ACC9|447=D|452=24|10=0|",
-        );
-        assert_eq!(
-            value(&account, "parties").as_deref(),
-            Some(r#"[{"partyid":"ACC9","partyidsource":"D","partyrole":"24"}]"#)
         );
         // A decimal keeps its stored scale inside the text, as a string.
         let fees = parsed(

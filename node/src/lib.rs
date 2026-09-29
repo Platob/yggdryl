@@ -87,7 +87,6 @@ pub use graph::{
     BookLimit, BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsEventIterator, JsExecution,
     JsExecutionEvent, JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent, JsQuote,
     JsQuoteEvent, JsSnapshotEvent, JsTradeEvent, graph_entry_id_native, graph_entry_ref_id_native,
-    graph_followed_altids_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use http::{

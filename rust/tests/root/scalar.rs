@@ -1550,11 +1550,11 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two values whose text agrees are two
     // values, and neither is the string spelling the same bytes.
-    let side = Scalar::Side(yggdryl::Side::new("BUY").unwrap());
-    let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUY").unwrap());
+    let side = Scalar::Side(yggdryl::Side::new("BUYS").unwrap());
+    let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUYS").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
-    assert_ne!(side, Scalar::from("BUY"));
+    assert_ne!(side, Scalar::from("BUYS"));
     assert_ne!(side, Scalar::from(1_i32));
 
     let mut point = vec![1, 1, 0, 0, 0];

@@ -168,12 +168,12 @@ assert.deepEqual([message.header().beginstring, message.header().msgtype], ['FIX
 // The category its type files under, and the option strike it identifies.
 assert.deepEqual([message.msgcat, message.strikepx], ['ORDR', '105'])
 // A coded value reads as its name; the wire keeps its code.
-assert.equal(message.byTag(54).asJs(), 'BUY')
-assert.equal(message.side, 'BUY')
+assert.equal(message.byTag(54).asJs(), 'BUYS')
+assert.equal(message.side, 'BUYS')
 assert.equal(message.quantity, '100')
 assert.equal(message.byName('symbol').asJs(), 'AAPL')
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert.equal(message.crosscode, 'BUY:A1')
+assert.equal(message.crosscode, 'BUYS:A1')
 assert.deepEqual(message.altids, { CLORDID: 'A1' })
 // Instants are bigint nanoseconds since the epoch, UTC.
 assert.equal(message.currunix, 1_767_348_930_000_000_000n)
@@ -366,9 +366,10 @@ fs.rmSync(directory, { recursive: true, force: true })
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`; a report stating no side joins the
-one side alive under its identifiers. A fill's execution, split off at the
-parse, is a chain of its own. A codec pinned `{ sortedLifecycle: true }` reads a source already in
+its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+report stating no side joins the one side alive under its identifiers. A fill's
+execution, split off at the parse, is a chain of its own and never restates,
+follows or ends its order. A codec pinned `{ sortedLifecycle: true }` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
 each `curruuid` once within `dedupWindowMs` of event time, one minute unless
 the codec says otherwise; `{ dedupWindowMs: null }` yields every restated twin too.
@@ -403,7 +404,7 @@ assert.equal(ack.prevuuid, order.curruuid)
 assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
 // The reports stated no side: they joined the buy alive under A1 and O1.
-assert.ok([ack, fill].every((held) => held.side === 'BUY' && held.crosscode === 'BUY:A1'))
+assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === 'BUYS:A1'))
 assert.deepEqual([fill.msgcat, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
 assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
@@ -421,11 +422,12 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 ## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report that fills is its order's report
-(`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
-chained by its `ExecID`; a trade (`AE`) adds one sided execution per
+fill or a side twice: an execution report is its order's report (`msgcat`
+`ORDR`, its own state) - one of no fill from its parse - and one that fills
+adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
+`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
 message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
 chained by the order the entry names and split again as its category is.
@@ -444,12 +446,12 @@ assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
 assert.ok(execution.srcuuids.includes(report.curruuid))
 // An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
-assert.deepEqual([report.crosscode, execution.crosscode], ['BUY:O-9', 'BUY:ExecID=E-1'])
+assert.deepEqual([report.crosscode, execution.crosscode], ['BUYS:O-9', 'BUYS:E-1'])
 
 const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
 const [quote, bid, ask] = codec.parseLine(Buffer.from(stated))
-assert.deepEqual([quote.side, bid.side, ask.side], ['UNKNOWN', 'BUY', 'SELL'])
-assert.deepEqual([bid.crosscode, ask.crosscode], ['BUY:Q1', 'SELL:Q1'])
+assert.deepEqual([quote.side, bid.side, ask.side], ['UNKN', 'BUYS', 'SELL'])
+assert.deepEqual([bid.crosscode, ask.crosscode], ['BUYS:Q1', 'SELL:Q1'])
 // Each side prices at its own level and keeps the pair its source stated.
 assert.deepEqual([bid.price, ask.price, ask.bidpx, bid.bidccy], ['99', '101', '99', 'USD'])
 ```
@@ -484,7 +486,7 @@ assert.equal(leaves.length, 4, 'one leaf per entry')
 assert.equal(leaves[leaves.length - 1].kind, 'execution_event')
 const books = [...new graph.BookIterator(leaves)]
 assert.equal(books.length, 2)
-assert.equal(books[1].bestPrice('BUY'), '101')
+assert.equal(books[1].bestPrice('BUYS'), '101')
 
 // The book door does not sort: the same capture out of order is no error - the
 // snapshot dated before the book it would fold into is left out, with a warning.
@@ -583,8 +585,8 @@ fs.rmSync(folder, { recursive: true, force: true })
   it truncates every character above U+00FF.
 - Decimals come back as exact text (`'100'`, `'10.5'`), instants and 64-bit
   hashes as `bigint`: compare with `1_767_348_930_000_000_000n`, never a number.
-- `side`, `state` and `msgcat` answer the member's stored name (`'BUY'`,
-  `'FILLED'`, `'ORDR'`); an Arrow column stores its code (`Side.BUY`,
+- `side`, `state` and `msgcat` answer the member's stored name (`'BUYS'`,
+  `'FILLED'`, `'ORDR'`); an Arrow column stores its code (`Side.BUYS`,
   `MarketDataKind.ORDR`).
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);
   it throws only for a source failure, where the iteration reaches it. What a

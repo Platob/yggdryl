@@ -31,7 +31,7 @@ SEED = pathlib.Path(__file__).resolve().parent.parent.parent / "config" / "fix"
 def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
     base: dict[str, object] = {
         "crosscode": "G-1",
-        "side": "BUY",
+        "side": "BUYS",
         "ticker": "ACME",
         "price": decimal.Decimal("100.25"),
         "currency": "USD",
@@ -81,7 +81,7 @@ def _order_event_from_kwargs() -> graph.OrderEvent:
 
 
 def _order_from_kwargs() -> graph.Order:
-    return graph.Order(crosscode="G-1", side="BUY", price=decimal.Decimal("100.25"))
+    return graph.Order(crosscode="G-1", side="BUYS", price=decimal.Decimal("100.25"))
 
 
 def _order_event_read_price() -> object:
@@ -151,11 +151,11 @@ def _book_from_arrow_reader() -> int:
 
 
 def _book_limits() -> int:
-    return len(FOLD_BOOK.limits(Side.BUY))
+    return len(FOLD_BOOK.limits(Side.BUYS))
 
 
 def _book_depth() -> object:
-    return FOLD_BOOK.depth(Side.BUY, 10)
+    return FOLD_BOOK.depth(Side.BUYS, 10)
 
 
 def _book_imbalance() -> object:

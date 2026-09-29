@@ -2517,7 +2517,7 @@ mod typed {
         /// The codes holding the empty text as their neutral member - which is
         /// their canonical default - and the rest, which read it as absence:
         /// the identifiers, whose default is refused rather than invented, and
-        /// `side`, whose neutral member `UNKNOWN` is a spelling of its own.
+        /// `side`, whose neutral member `UNKN` is a spelling of its own.
         fn codes_by_neutral_member() -> (Vec<DataType>, Vec<DataType>) {
             codes().into_iter().partition(|code| {
                 code.default_value()

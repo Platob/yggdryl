@@ -111,7 +111,7 @@ mod residual {
             .sole_line(b"8=FIX.4.4|35=D|11=A1|54=1|44=10|38=2|15=USD|10=0|")
             .expect("one order");
         let row = original.into_row(&schema).expect("the fixed row");
-        assert_eq!(original.get_side().as_str(), "BUY");
+        assert_eq!(original.get_side().as_str(), "BUYS");
 
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         assert_eq!(restored.get_side(), original.get_side());

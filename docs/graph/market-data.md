@@ -86,7 +86,7 @@ Three enums - `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_co
 | Key | Rule |
 | --- | --- |
 | Verbs | each enum answers `ALL`, `name`, `display`, `datatype`, `nullable`, `field`, `fields`, `of_name` (any case), `fact` (what an element states, nothing if none), `record` (states a cell back: null clears it, unreadable leaves it unchanged); `EventColumn` also `description`, each taking its trait: `Event`/`Market`/`Operation` |
-| Nullability | never null: `currunix`, `curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`, `currency`, `unit`, `side` - a side stated as none is the cell `UNKNOWN` (code `0`); every other column is null where nothing is stated (empty code/serie/map, zero place, absent instant); `state` also admits null - no neutral member for an empty cell |
+| Nullability | never null: `currunix`, `curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`, `currency`, `unit`, `side` - a side stated as none is the cell `UNKN` (code `0`); every other column is null where nothing is stated (empty code/serie/map, zero place, absent instant); `state` also admits null - no neutral member for an empty cell |
 | `execunix` | when the element last executed: a market fact, so an undated leaf states it too and a text line, which is an event and no market element, states none ([Market](market.md#contract)) |
 | `isincode` | a projection of `securityids`: `fact` is the `ISIN` identifier, and `record` fills an absent `ISIN` and ignores a disagreeing one - the strict door is the [row reader](#arrow) |
 | Order | `ALL` is the canonical order `fields()` and event-native schemas use; a FIX row holds the same columns through the crate's own fields, each at its datatype, in protocol-oriented time/identity bands rather than reordered around `ALL` |
@@ -125,8 +125,8 @@ Three enums - `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_co
     let mut again = OrderEvent::at(1_700_000_000_000_000_000);
     EventColumn::CrossCode.record(&mut again, &code);
     MarketColumn::Side.record(&mut again, &side);
-    assert_eq!((again.get_crosscode(), again.get_side()), ("BUY:O-1001", Side::Buy));
-    // Nothing stated is a null, except a side: stated as none, it is UNKNOWN.
+    assert_eq!((again.get_crosscode(), again.get_side()), ("BUYS:O-1001", Side::Buy));
+    // Nothing stated is a null, except a side: stated as none, it is UNKN.
     assert_eq!(EventColumn::PrevUuid.fact(&order), None);
     assert_eq!(MarketColumn::Price.fact(&order), None);
     assert_eq!(MarketColumn::Side.fact(&OrderEvent::at(1)), Some(Scalar::from(Side::Unknown)));
@@ -364,7 +364,7 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
 | `orders`, `quotes`, `executions` | `select * exclude (alive, deltas, executions, bidlimits, asklimits) where marketdatakind = 'ORDR'`, `'QUOT'` and `'EXEC'` likewise | the category's leaves, undated and dated: the 48 flat columns |
 | `trades` | `select * exclude (...), unnest(executions) as execution where marketdatakind = 'TRAD'` | one row per execution, in the trade's held order: the trade's flat columns, then `execution.<column>` per operation-row column |
 | `books` | `select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null` | one row per book - a snapshot control states no `alive` - its entries, deltas and levels kept nested |
-| `lifecycle` | `select * exclude (...) where crosscode = '<crosscode>' order by currunix` | every leaf of one chain in event order, tied instants by arrival; bounded to the one chain the `where` kept (the ordering collects); an order's, a quote's or an execution's chain is named by the code stored under its side, `BUY:O-1001` |
+| `lifecycle` | `select * exclude (...) where crosscode = '<crosscode>' order by currunix` | every leaf of one chain in event order, tied instants by arrival; bounded to the one chain the `where` kept (the ordering collects); an order's, a quote's or an execution's chain is named by the code stored under its side, `BUYS:O-1001` |
 
 | Key | Rule |
 | --- | --- |
@@ -431,12 +431,12 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     from yggdryl import Plan, enums, graph
 
     T = 1_700_000_000_000_000_000
-    order = graph.OrderEvent(T, crosscode="O-1001", side="BUY", securityids={"ISIN": "US0378331005"})
+    order = graph.OrderEvent(T, crosscode="O-1001", side="BUYS", securityids={"ISIN": "US0378331005"})
     root = graph.OrderEvent(T + 1_000_000_000, crosscode="T-1")
     trade = graph.TradeEvent.from_parts(
         root,
         [
-            graph.ExecutionEvent(T + 1_000_000_000, crosscode="E-1", side="BUY"),
+            graph.ExecutionEvent(T + 1_000_000_000, crosscode="E-1", side="BUYS"),
             graph.ExecutionEvent(T + 1_000_000_000, crosscode="E-2", side="SELL"),
         ],
     )
@@ -453,7 +453,7 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     # The trades, one row per execution beside the trade's own columns.
     trades = graph.MarketData.apply_view("trades", stream()).read_all()
     assert trades.num_rows == 2
-    assert sorted(trades.column("execution.crosscode").to_pylist()) == ["BUY:E-1", "SELL:E-2"]
+    assert sorted(trades.column("execution.crosscode").to_pylist()) == ["BUYS:E-1", "SELL:E-2"]
 
     # A view is a plan, and its text reads back as the same plan.
     plan = graph.MarketData.plan("trades")
@@ -461,8 +461,8 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     assert str(plan).endswith("where marketdatakind = 'TRAD'")
     assert "lifecycle" in enums.MARKET_VIEWS
     # An order's chain is named by the code stored under its side.
-    chain = graph.MarketData.apply_view("lifecycle", stream(), crosscode="BUY:O-1001").read_all()
-    assert chain.column("crosscode").to_pylist() == ["BUY:O-1001"]
+    chain = graph.MarketData.apply_view("lifecycle", stream(), crosscode="BUYS:O-1001").read_all()
+    assert chain.column("crosscode").to_pylist() == ["BUYS:O-1001"]
     ```
 
 === "JavaScript"
@@ -473,11 +473,11 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
 
     const T = 1_700_000_000_000_000_000n
     const order = new graph.OrderEvent(T, {
-      crosscode: 'O-1001', side: 'BUY', securityids: { ISIN: 'US0378331005' },
+      crosscode: 'O-1001', side: 'BUYS', securityids: { ISIN: 'US0378331005' },
     })
     const root = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'T-1' })
     const trade = graph.TradeEvent.fromParts(root, [
-      new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-1', side: 'BUY' }),
+      new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-1', side: 'BUYS' }),
       new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-2', side: 'SELL' }),
     ])
     const stream = () => graph.MarketData.arrowReader([order, trade])
@@ -492,7 +492,7 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     // The trades, one row per execution beside the trade's own columns.
     const trades = graph.MarketData.applyView('trades', stream()).intoTable()
     assert.equal(trades.numRows, 2)
-    assert.deepEqual([...trades.getChild('execution.crosscode')].sort(), ['BUY:E-1', 'SELL:E-2'])
+    assert.deepEqual([...trades.getChild('execution.crosscode')].sort(), ['BUYS:E-1', 'SELL:E-2'])
 
     // A view is a plan, and its text reads back as the same plan.
     const plan = graph.MarketData.plan('trades')
@@ -500,8 +500,8 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     assert.ok(plan.toString().endsWith("where marketdatakind = 'TRAD'"))
     assert.ok(enums.marketViews.includes('lifecycle'))
     // An order's chain is named by the code stored under its side.
-    const chain = graph.MarketData.applyView('lifecycle', stream(), undefined, 'BUY:O-1001').intoTable()
-    assert.deepEqual([...chain.getChild('crosscode')], ['BUY:O-1001'])
+    const chain = graph.MarketData.applyView('lifecycle', stream(), undefined, 'BUYS:O-1001').intoTable()
+    assert.deepEqual([...chain.getChild('crosscode')], ['BUYS:O-1001'])
     ```
 
 ## Edges

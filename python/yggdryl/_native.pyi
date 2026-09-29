@@ -6368,7 +6368,8 @@ class FixCodec:
     failure raises. Chaining:
     ``lifecycle`` walks a stream of messages as one lifecycle, each placed
     among the messages of its instant by content, then stated as following
-    the live message under its cross identity - its own place unless the
+    the live message under its cross identity within its own market data
+    kind - its own place unless the
     predecessor happened at the same instant or later, where it takes the
     higher of its own and one past the predecessor's.
     Each has an Arrow twin over ``pyarrow.RecordBatchReader``:
@@ -8003,7 +8004,6 @@ class EventIterator(Iterator[MarketData]):
 
 ENTRY_ID: str
 ENTRY_REF_ID: str
-FOLLOWED_ALTIDS: tuple[str, ...]
 
 ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str

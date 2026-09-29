@@ -34,7 +34,6 @@ from __future__ import annotations
 from .._native import (
     ENTRY_ID,
     ENTRY_REF_ID,
-    FOLLOWED_ALTIDS,
     BookEvent,
     BookIterator,
     BookRef,
@@ -54,7 +53,6 @@ from .._native import (
 __all__ = [
     "ENTRY_ID",
     "ENTRY_REF_ID",
-    "FOLLOWED_ALTIDS",
     "BookEvent",
     "BookIterator",
     "BookRef",

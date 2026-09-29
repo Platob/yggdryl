@@ -4,7 +4,7 @@
 of named facts (`undefined` skips one, `null` clears it) and is finalized and
 immutable on construction. Decimals read back as exact text (`'189.5'`), the
 enum facts - `side`, `state`, `marketdatakind` - as the member's stored name
-(`'BUY'`, `'NEW'`, `'ORDR'`), instants and 64-bit hashes as `bigint`
+(`'BUYS'`, `'NEW'`, `'ORDR'`), instants and 64-bit hashes as `bigint`
 nanoseconds since the epoch, UTC. `Side` and `MarketDataKind` at the package
 root are frozen name-to-code objects.
 
@@ -23,7 +23,7 @@ assert.equal(T, 1_700_000_000_000_000_000n)
 
 const order = new graph.OrderEvent(T, {
   crosscode: 'O-1001',
-  side: 'BUY',
+  side: 'BUYS',
   price: '189.50',
   quantity: 100,
   currency: 'USD',
@@ -34,7 +34,7 @@ const order = new graph.OrderEvent(T, {
 // A dated identity is a UUIDv7: its millisecond leads.
 assert.ok(order.curruuid.startsWith('018bcfe5-6800-7'))
 // An order, a quote or an execution stores its cross code under its side: one chain per side.
-assert.equal(order.crosscode, 'BUY:O-1001')
+assert.equal(order.crosscode, 'BUYS:O-1001')
 assert.notEqual(order.crossuuid, order.curruuid, 'the cross code names a chain')
 // Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert.deepEqual(order.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
@@ -42,7 +42,7 @@ assert.equal(order.isincode, 'US0378331005')
 assert.equal(order.lastpx, null, 'a price is never a last execution')
 assert.equal(order.bidpx, null, 'nor the bid an order states')
 assert.deepEqual(order.fxrates, {}, 'nothing fills the rates')
-assert.deepEqual([order.side, order.state, order.marketdatakind], ['BUY', 'UNKNOWN', 'ORDR'])
+assert.deepEqual([order.side, order.state, order.marketdatakind], ['BUYS', 'UNKNOWN', 'ORDR'])
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -56,7 +56,7 @@ const assert = require('node:assert/strict')
 const { graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
-const order = new graph.Order({ crosscode: 'O-1001', side: 'BUY', price: '189.50' })
+const order = new graph.Order({ crosscode: 'O-1001', side: 'BUYS', price: '189.50' })
 assert.deepEqual([order.kind, order.marketdatakind], ['order', 'ORDR'])
 const event = order.at(T)
 assert.ok(event instanceof graph.OrderEvent)
@@ -73,7 +73,7 @@ const quote = new graph.QuoteEvent(T, {
   askqty: 100,
   askccy: 'USD',
 })
-assert.deepEqual([quote.side, quote.crosscode], ['UNKNOWN', 'Q-7'])
+assert.deepEqual([quote.side, quote.crosscode], ['UNKN', 'Q-7'])
 assert.deepEqual([quote.askpx, quote.askqty, quote.marketdatakind], ['189.52', '100', 'QUOT'])
 
 // A sided offer, placed in a book by its control; the scope is a fact, the rest walk-time.
@@ -95,7 +95,7 @@ const { graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const event = (unix, state) => new graph.OrderEvent(unix, {
-  crosscode: 'O-1001', state, side: 'BUY', price: '189.50', quantity: 100,
+  crosscode: 'O-1001', state, side: 'BUYS', price: '189.50', quantity: 100,
 })
 
 const placed = event(T, 'NEW')
@@ -124,8 +124,9 @@ assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `altids`), yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
-An order's, a quote's or an execution's chain is keyed by side, and every
-walked element leaves stating `creaunix`.
+An order's, a quote's or an execution's chain is keyed by side, a chain lives
+within one `marketdatakind` (an order and an execution under one cross code are
+two chains), and every walked element leaves stating `creaunix`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -133,7 +134,7 @@ const { graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const SECOND = 1_000_000_000n
-const event = (second, order, state, side = 'UNKNOWN') =>
+const event = (second, order, state, side = 'UNKN') =>
   new graph.OrderEvent(T + second * SECOND, { crosscode: order, state, side })
 const walk = (items, sorted = true) => [...new graph.EventIterator(items, sorted)].map((value) => value.asOrderEvent())
 
@@ -156,12 +157,12 @@ assert.ok(chained.slice(0, 4).every((held) => held.creaunix === T))
 
 // One identifier, two sides: two chains. A report stating no side joins the
 // one side alive under its code, and a NEW over a live NEW reads UPDATED.
-const walked = walk([event(0n, 'O-2002', 'NEW', 'BUY'), event(1n, 'O-2002', 'NEW', 'SELL'), event(2n, 'O-2002', 'NEW', 'BUY')])
+const walked = walk([event(0n, 'O-2002', 'NEW', 'BUYS'), event(1n, 'O-2002', 'NEW', 'SELL'), event(2n, 'O-2002', 'NEW', 'BUYS')])
 assert.deepEqual([walked[1].crosscode, walked[1].seqnum], ['SELL:O-2002', 0])
 assert.deepEqual([walked[2].prevuuid, walked[2].state], [walked[0].curruuid, 'UPDATED'])
-const joined = walk([event(0n, 'O-3003', 'NEW', 'BUY'), event(1n, 'O-3003', 'CANCELED')])
+const joined = walk([event(0n, 'O-3003', 'NEW', 'BUYS'), event(1n, 'O-3003', 'CANCELED')])
 assert.equal(joined[1].prevuuid, joined[0].curruuid)
-assert.deepEqual([joined[1].side, joined[1].crosscode], ['BUY', 'BUY:O-3003'])
+assert.deepEqual([joined[1].side, joined[1].crosscode], ['BUYS', 'BUYS:O-3003'])
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS = 1_000_000n
@@ -190,13 +191,13 @@ const fill = (code, side, unix = T) => new graph.ExecutionEvent(unix, {
   crosscode: code, side, lastpx: '189.50', lastqty: 100,
 })
 const root = new graph.OrderEvent(T, { crosscode: 'T-1', ticker: 'AAPL' })
-const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-BUY', 'BUY')])
-assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['BUY:E-BUY', 'SELL:E-SELL'])
+const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-BUYS', 'BUYS')])
+assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['BUYS:E-BUYS', 'SELL:E-SELL'])
 assert.equal(trade.isExecution, true)
-const again = graph.TradeEvent.fromParts(root, [fill('E-BUY', 'BUY'), fill('E-SELL', 'SELL')])
+const again = graph.TradeEvent.fromParts(root, [fill('E-BUYS', 'BUYS'), fill('E-SELL', 'SELL')])
 assert.equal(again.curruuid, trade.curruuid)
 // Each execution at the trade's instant; none at all is refused.
-assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUY', T + 1n)]), /\$\.executions\[0\]\.currunix/)
+assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUYS', T + 1n)]), /\$\.executions\[0\]\.currunix/)
 assert.throws(() => graph.TradeEvent.fromParts(root, []), /at least one execution/)
 ```
 
@@ -210,14 +211,14 @@ it as its own class.
 const assert = require('node:assert/strict')
 const { graph } = require('yggdryl')
 
-const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUY' })
+const order = new graph.OrderEvent(1_700_000_000_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' })
 const value = new graph.MarketData(order)
 assert.deepEqual([value.kind, value.marketdatakind], ['order_event', 'ORDR'])
 assert.ok(graph.MarketData.kinds().includes('trade_event'))
 assert.equal(value.isEvent, true)
 assert.ok(value.asOrderEvent().equals(order))
 assert.equal(value.asQuoteEvent(), null, 'another kind is none of this value')
-assert.deepEqual([value.crosscode, value.side], ['BUY:O-1001', 'BUY'])
+assert.deepEqual([value.crosscode, value.side], ['BUYS:O-1001', 'BUYS'])
 assert.ok(value.intoLeaf() instanceof graph.OrderEvent)
 ```
 
@@ -293,10 +294,10 @@ const { graph } = require('yggdryl')
 const T = 1_700_000_000_000_000_000n
 const SECOND = 1_000_000_000n
 const bid = (unix, code, price, quantity) => new graph.OrderEvent(unix, {
-  crosscode: code, ticker: 'AAPL', side: 'BUY', price, quantity,
+  crosscode: code, ticker: 'AAPL', side: 'BUYS', price, quantity,
 })
 const fill = new graph.ExecutionEvent(T + SECOND, {
-  crosscode: 'E-1', ticker: 'AAPL', side: 'BUY', lastpx: '189.52', lastqty: 100,
+  crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastpx: '189.52', lastqty: 100,
 })
 const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
@@ -305,7 +306,7 @@ assert.equal(books.length, 2, 'one book per touched instant')
 const last = books[1]
 assert.deepEqual([last.currunix, last.alive().length], [T + SECOND, 2], 'depth persists')
 assert.equal(last.deltas().length, 1)
-assert.deepEqual(last.executions().map((execution) => execution.crosscode), ['BUY:E-1'])
+assert.deepEqual(last.executions().map((execution) => execution.crosscode), ['BUYS:E-1'])
 
 // A 500 ms grid adds the living book at each crossed tick.
 assert.equal([...new graph.BookIterator(stream, 500)].length, 3)
@@ -334,25 +335,25 @@ const entry = (code, side, price, quantity, tradable) => new graph.OrderEvent(T,
   crosscode: code, ticker: 'AAPL', side, price, quantity, tradable,
 })
 const book = new graph.BookEvent(T, 'AAPL').withOperations([
-  entry('B-0', 'BUY', '189.49', 10, false),
-  entry('B-1', 'BUY', '189.48', 300),
-  entry('B-2', 'BUY', '189.47', 500),
+  entry('B-0', 'BUYS', '189.49', 10, false),
+  entry('B-1', 'BUYS', '189.48', 300),
+  entry('B-2', 'BUYS', '189.47', 500),
   entry('A-1', 'SELL', '189.52', 100),
-  entry('MKT', 'BUY', undefined, 50),
+  entry('MKT', 'BUYS', undefined, 50),
 ])
 
 // The level at 189.49 cannot trade: the best bid is the first that can.
-const limits = book.limits('BUY')
+const limits = book.limits('BUYS')
 assert.deepEqual(limits.map((limit) => [limit.price, limit.tradable]), [
   ['189.49', false], ['189.48', true], ['189.47', true], [null, true],
 ])
-assert.equal(book.bestPrice(Side.BUY), '189.48')
+assert.equal(book.bestPrice(Side.BUYS), '189.48')
 assert.deepEqual([book.bidpx, book.bidqty, book.askpx], ['189.48', '300', '189.52'])
 assert.equal(book.spread, '0.04')
 assert.equal(book.bboMidpoint, '189.5')
 assert.equal(book.price, book.bboMidpoint)
 assert.equal(book.isLocked || book.isCrossed, false)
-assert.equal(book.depth('BUY', 2), '310')
+assert.equal(book.depth('BUYS', 2), '310')
 assert.equal(book.alive().length, 5)
 ```
 
@@ -369,7 +370,7 @@ const T = 1_700_000_000_000_000_000n
 const order = (code, side, price) => new graph.OrderEvent(T, {
   crosscode: code, ticker: 'AAPL', side, price, quantity: 100,
 })
-const book = new graph.BookEvent(T, 'AAPL').withOperations([order('B-1', 'BUY', '189.48'), order('A-1', 'SELL', '189.52')])
+const book = new graph.BookEvent(T, 'AAPL').withOperations([order('B-1', 'BUYS', '189.48'), order('A-1', 'SELL', '189.52')])
 assert.equal(book.alive().length, 2)
 
 const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_000n, { ticker: 'AAPL' }))
@@ -389,10 +390,10 @@ const assert = require('node:assert/strict')
 const { Plan, enums, graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
-const order = new graph.OrderEvent(T, { crosscode: 'O-1001', side: 'BUY', securityids: { ISIN: 'US0378331005' } })
+const order = new graph.OrderEvent(T, { crosscode: 'O-1001', side: 'BUYS', securityids: { ISIN: 'US0378331005' } })
 const root = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'T-1' })
 const trade = graph.TradeEvent.fromParts(root, [
-  new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-1', side: 'BUY' }),
+  new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-1', side: 'BUYS' }),
   new graph.ExecutionEvent(T + 1_000_000_000n, { crosscode: 'E-2', side: 'SELL' }),
 ])
 const stream = () => graph.MarketData.arrowReader([order, trade])
@@ -404,14 +405,14 @@ assert.deepEqual([...orders.getChild('isin')], ['US0378331005'])
 
 // One row per execution, beside the trade's own columns.
 const trades = graph.MarketData.applyView('trades', stream()).intoTable()
-assert.deepEqual([...trades.getChild('execution.crosscode')].sort(), ['BUY:E-1', 'SELL:E-2'])
+assert.deepEqual([...trades.getChild('execution.crosscode')].sort(), ['BUYS:E-1', 'SELL:E-2'])
 
 // A view is a plan whose text reads back as the same plan.
 const plan = graph.MarketData.plan('trades')
 assert.ok(new Plan(plan.toString()).equals(plan))
 // A lifecycle follows the cross code as stored: side included.
-const chain = graph.MarketData.applyView('lifecycle', stream(), undefined, 'BUY:O-1001').intoTable()
-assert.deepEqual([...chain.getChild('crosscode')], ['BUY:O-1001'])
+const chain = graph.MarketData.applyView('lifecycle', stream(), undefined, 'BUYS:O-1001').intoTable()
+assert.deepEqual([...chain.getChild('crosscode')], ['BUYS:O-1001'])
 ```
 
 ## Turn a FIX capture into books
@@ -437,7 +438,7 @@ const rows = codec.bookArrowReader(codec.lifecycle(capture), 0)
 const values = [...graph.MarketData.fromArrowReader(rows)]
 assert.deepEqual(values.map((value) => value.marketdatakind), ['BOOK', 'BOOK'])
 const last = values[1].asBookEvent()
-assert.equal(last.bestPrice('BUY'), '101')
+assert.equal(last.bestPrice('BUYS'), '101')
 assert.equal(last.executions().length, 1)
 ```
 
@@ -448,10 +449,10 @@ assert.equal(last.executions().length, 1)
 - Decimals are exact text: pass and compare `'189.5'` (canonical, no trailing
   zero), never a `Number` - `{ price: 189.5 }` is refused at `$.price` (`got f64`).
   `fxrates` takes and answers `{ EUR: '1.1' }`.
-- `crosscode` answers the stored code: `'BUY:O-1001'` for a buy order, quote or
-  execution, the bare code for `'UNKNOWN'` and for a trade, a book or a snapshot
+- `crosscode` answers the stored code: `'BUYS:O-1001'` for a buy order, quote or
+  execution, the bare code for `'UNKN'` and for a trade, a book or a snapshot
   control whatever side it states. `side` is never `null`; an Arrow column stores the code
-  (`Side.BUY`, `MarketDataKind.ORDR`), a getter answers the name.
+  (`Side.BUYS`, `MarketDataKind.ORDR`), a getter answers the name.
 - `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
   order: an unsorted array is not refused, it yields broken chains (a step
   before its live element yielded as it came, `prevuuid` null); pass `false`

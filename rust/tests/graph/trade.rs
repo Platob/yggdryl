@@ -138,7 +138,11 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
             .iter()
             .map(|held| (held.get_side().as_str(), held.get_crosscode()))
             .collect::<Vec<_>>(),
-        [("BUY", "BUY:E-A"), ("BUY", "BUY:E-B"), ("SELL", "SELL:E-S")]
+        [
+            ("BUYS", "BUYS:E-A"),
+            ("BUYS", "BUYS:E-B"),
+            ("SELL", "SELL:E-S")
+        ]
     );
     assert!(
         first
@@ -199,7 +203,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .filter(|held| held.get_crosscode() == "BUY:E-1")
+            .filter(|held| held.get_crosscode() == "BUYS:E-1")
             .count(),
         1
     );
@@ -207,7 +211,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "BUY:E-1")
+            .find(|held| held.get_crosscode() == "BUYS:E-1")
             .unwrap()
             .get_price(),
         Some(Decimal::from_int(101)),
@@ -243,7 +247,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         trade
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "BUY:E-1")
+            .find(|held| held.get_crosscode() == "BUYS:E-1")
             .unwrap()
             .get_price()
     };

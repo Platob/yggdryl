@@ -1069,11 +1069,15 @@ impl FixCodec {
     ///
     /// On by default, and read by [`Self::market_data`],
     /// [`Self::market_arrow_reader`] and [`Self::book_arrow_reader`]: every
-    /// field but the ones a column types, the envelope and the identifier
-    /// maps' sources, as [`FixMsg::market_data`] states them. The map
-    /// is part of what a leaf's identity digests, so turning it off answers
-    /// other identities for any message stating such a field - and nothing
-    /// changes for a message stating none.
+    /// field but the ones a column types, the envelope, the identifier
+    /// maps' sources and what a leaf's identifier maps hold - its parties,
+    /// its `Account(1)`, its regulatory trade identifiers - as
+    /// [`FixMsg::market_data`] states them, a scalar whose key ends with one
+    /// of its message's `FIX:identifiers` lifted into the leaf's `altids`. The map and the
+    /// lifted identifiers are part of what a leaf's identity digests, so
+    /// turning it off answers other identities for any message stating such
+    /// a field, lifts nothing - and changes nothing for a message stating
+    /// none.
     #[must_use]
     pub const fn with_market_metadata(mut self, market_metadata: bool) -> Self {
         self.market_metadata = market_metadata;
@@ -1347,10 +1351,11 @@ impl FixCodec {
     /// the one split every stream door runs, this one, [`Self::parse_lines`],
     /// the text-line doors and the batch readers alike: an execution report
     /// of a fill is its order's report (`ORDR`, or `QUOT` naming a
-    /// `QuoteID(117)`) followed by the execution (`EXEC`, `FILLED`, chained
-    /// under its `ExecID(17)`); a trade (`AE`) is followed by one execution
+    /// `QuoteID(117)`, as a report of no fill is from its parse) followed
+    /// by the execution (`EXEC`, `FILLED`, chained under its `ExecID(17)`);
+    /// a trade (`AE`) is followed by one execution
     /// per side it states; a quote stating a bid and an offer and no side is
-    /// followed by its `BUY` and its `SELL` quote. Each names its source's
+    /// followed by its `BUYS` and its `SELL` quote. Each names its source's
     /// identity beside its source's sources as its own and is a row of its
     /// own; a book reads each fill and each quoted side once. The
     /// single-message doors - [`Self::parse_fix_line`] and its siblings -

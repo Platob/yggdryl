@@ -61,21 +61,6 @@ pub fn empty_fxrates() -> &'static FxRates {
     &EMPTY_FXRATES
 }
 
-/// The alternate-identifier keys a following operation carries from the
-/// one it follows: the order's own identities, never an execution's or a
-/// quote's. What [`Operation::is_followed_altid`] answers for a holder with
-/// no dictionary behind it; a FIX message reads its registry's `FIX:idmap`
-/// follow flags instead, which a test pins against this list.
-pub const FOLLOWED_ALTIDS: [&str; 7] = [
-    "ORDERID",
-    "SECONDARYORDERID",
-    "PARENTORDERID",
-    "PARENTCLORDID",
-    "OMSDEALERPARENTORDERID",
-    "EXCHANGECLIENTORDERID",
-    "TRANSVERSALKEY",
-];
-
 /// An element that stands in a market: the slim facts a book level or any
 /// plain struct answers cheaply.
 ///
@@ -108,13 +93,20 @@ pub trait Market {
     /// Sets [`Self::get_side`]; a sided element's cross code is stored under
     /// the side taken ([`Self::sided_crosscode`]).
     fn set_side(&mut self, side: Side);
+    /// The category the element is filed under - an order `ORDR`, a quote
+    /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book `BOOK` - which
+    /// its holder stamps: a lifecycle chains elements of one category only,
+    /// so an order and an execution under one cross code are two chains.
+    fn marketdatakind(&self) -> crate::MarketDataKind;
     /// Whether the element's cross code is stored under its side: whether
     /// its kind is an order, a quote or an execution
     /// ([`MarketDataKind::is_sided`](crate::MarketDataKind::is_sided)).
     /// Every other element - a trade, a book, a snapshot control, a message
     /// of any other category - keeps its cross code as given, whatever side
     /// it states.
-    fn is_sided(&self) -> bool;
+    fn is_sided(&self) -> bool {
+        self.marketdatakind().is_sided()
+    }
     /// The security identifiers the element names, one code per key.
     fn get_securityids(&self) -> &SecurityIds;
     /// Replaces the stated security identifiers.
@@ -249,8 +241,8 @@ pub trait Market {
 
     /// The cross code `code` is stored as for this element. A sided element
     /// ([`Self::is_sided`]: an order, a quote or an execution) stores it as
-    /// `"{SIDE}:{code}"` under the stored name of the side it takes -
-    /// `BUY:ORD-1` - so the two sides of one identifier are two chains, and
+    /// `"{SIDE}:{code}"` under the four-letter code of the side it takes -
+    /// `BUYS:ORD-1` - so the two sides of one identifier are two chains, and
     /// as `code` itself where it takes [`Side::Unknown`]. Idempotent: a code
     /// already carrying this side's prefix is answered as it is, and one
     /// carrying another side's has that prefix replaced. Any other element -
@@ -266,10 +258,10 @@ pub trait Market {
     ///
     /// let mut order = OrderEvent::at(1);
     /// order.set_side(Side::Buy);
-    /// assert_eq!(order.sided_crosscode("ORD-1"), "BUY:ORD-1");
-    /// assert_eq!(order.sided_crosscode("SELL:ORD-1"), "BUY:ORD-1");
+    /// assert_eq!(order.sided_crosscode("ORD-1"), "BUYS:ORD-1");
+    /// assert_eq!(order.sided_crosscode("SELL:ORD-1"), "BUYS:ORD-1");
     /// order.set_crosscode("ORD-1".to_owned());
-    /// assert_eq!(order.get_crosscode(), "BUY:ORD-1");
+    /// assert_eq!(order.get_crosscode(), "BUYS:ORD-1");
     /// order.set_side(Side::Sell);
     /// assert_eq!(order.get_crosscode(), "SELL:ORD-1");
     ///
@@ -523,14 +515,16 @@ pub trait Operation: Market {
     fn remove_altid(&mut self, key: &str) -> Result<bool>;
     /// The accounts and parties the operation names, party role to
     /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER`, `CLIENTID` - one
-    /// identifier per role. A FIX message's are its parties.
+    /// identifier per role. A FIX message's are its parties and its
+    /// `Account(1)`, under `ACCOUNT`.
     fn get_accountids(&self) -> &IdMap;
     /// Replaces [`Self::get_accountids`].
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
-    /// the map - a FIX message, whose accounts are its parties.
+    /// the map - a FIX message, whose accounts are its parties and its
+    /// `Account(1)`.
     fn set_accountids(&mut self, ids: IdMap) -> Result<()>;
     /// States one account, filling only an absent role; whether it was
     /// added.
@@ -548,10 +542,13 @@ pub trait Operation: Market {
     /// it.
     fn remove_accountid(&mut self, key: &str) -> Result<bool>;
     /// Whether an operation that follows another carries the alternate
-    /// identifier under `key`: [`FOLLOWED_ALTIDS`] unless the holder's own
-    /// dictionary says otherwise.
+    /// identifier under `key` where it states none: every key but a book
+    /// entry's [`MDENTRYREFID`](super::book::ENTRY_REF_ID), the reference one
+    /// statement reaches its predecessor by, unless the holder's own
+    /// dictionary says otherwise - a FIX message follows its `FIX:idmap`
+    /// flags.
     fn is_followed_altid(&self, key: &str) -> bool {
-        FOLLOWED_ALTIDS.contains(&key)
+        key != super::book::ENTRY_REF_ID
     }
     /// Continues [`Market::digest_market`] with the operation's facts.
     fn digest_operation(&self) -> Xxh3
@@ -855,7 +852,9 @@ fn restate_market<E: Market + ?Sized>(this: &mut E, live: &E) -> bool {
 /// statement of that chain where this one says nothing of it. This
 /// statement always leads, and nothing here is about a step. The side is
 /// this statement's own where it states one, and the chain's where it
-/// states none, for an operation as for any other market element.
+/// states none, for an operation as for any other market element; the
+/// metadata is this statement's, every key of the chain's it does not state
+/// beside it.
 fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(
         this.get_currency().clone(),
@@ -898,6 +897,19 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
         better_stated(this.get_miccode().cloned(), previous.get_miccode(), false),
         |code| this.set_miccode(code),
     );
+    let own = this.get_metadata();
+    if previous
+        .get_metadata()
+        .keys()
+        .any(|key| !own.contains_key(key))
+    {
+        let mut merged = own.clone();
+        for (key, value) in previous.get_metadata() {
+            merged.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+        this.set_metadata(Some(merged));
+        changed = true;
+    }
     changed
 }
 

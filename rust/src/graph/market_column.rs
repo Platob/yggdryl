@@ -223,7 +223,7 @@ impl MarketColumn {
 
     /// Whether a row may leave the column null: never for the currency,
     /// the unit and the side, which every market element states, if only as
-    /// nothing - `XXX`, the empty unit, `UNKNOWN`.
+    /// nothing - `XXX`, the empty unit, `UNKN`.
     #[must_use]
     pub const fn nullable(self) -> bool {
         !matches!(self, Self::Currency | Self::Unit | Self::Side)

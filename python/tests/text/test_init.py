@@ -205,8 +205,9 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     # The fifteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
     # placed by its row number, created when the object's first line was
-    # dated - and a null wherever it states nothing; the captures it matched
-    # are its own columns beside them.
+    # dated, following the line read before it at that line's instant - and
+    # a null wherever it states nothing; the captures it matched are its own
+    # columns beside them.
     def event(row: int, seqnum: int) -> dict[str, object]:
         # A record spells an identity as text, where the table holds a UUID.
         identity = str(table.column("curruuid")[row].as_py())
@@ -215,7 +216,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "creaunix": MTIME,
             "recdunix": None,
             "exprunix": None,
-            "prevunix": None,
+            "prevunix": None if row == 0 else MTIME,
             "snapunix": None,
             "curruuid": identity,
             "crossuuid": str(table.column("crossuuid")[row].as_py()),

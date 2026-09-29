@@ -22,7 +22,7 @@ def order_event(**facts: Any) -> graph.OrderEvent:
         "seqnum": 3,
         "creaunix": CLOCK - 100_000_000_000,
         "recdunix": CLOCK - 50_000_000_000,
-        "side": "BUY",
+        "side": "BUYS",
         "price": D("101"),
         "currency": "USD",
         "quantity": 5,
@@ -44,7 +44,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert isinstance(event.curruuid, Scalar) and event.curruuid.kind == "uuid"
     assert isinstance(event.crossuuid, Scalar) and event.crossuuid.kind == "uuid"
     # A sided element's cross code states its side.
-    assert event.crosscode == "BUY:O-100"
+    assert event.crosscode == "BUYS:O-100"
     assert isinstance(event.currhashcode, int) and isinstance(event.crosshashcode, int)
     assert event.srcuuids == []
     assert event.currunix == CLOCK
@@ -60,7 +60,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.currency.as_py() == "USD"
     assert event.quantity is not None and event.quantity.as_py() == 5
     assert event.unit == ""
-    assert event.side is Side.BUY
+    assert event.side is Side.BUYS
     # A US ISIN embeds its CUSIP, which the core derives beside it.
     assert event.securityids == {"CUSIP": "037833100", "ISIN": "US0378331005"}
     assert event.isincode == "US0378331005"
@@ -92,7 +92,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
 
 def test_a_side_stated_as_none_is_unknown_never_none() -> None:
     event = graph.OrderEvent(CLOCK, crosscode="O-1")
-    assert event.side is Side.UNKNOWN
+    assert event.side is Side.UNKN
     # An element stating no side keeps its cross code unprefixed.
     assert event.crosscode == "O-1"
     assert event.isincode is None and event.fxrates == {}
@@ -199,7 +199,7 @@ def test_book_states_the_control_facts() -> None:
 
 def test_an_order_follows_the_order_it_replaces() -> None:
     first = order_event(seqnum=...)
-    later = graph.OrderEvent(CLOCK + 1, crosscode="O-100", side="BUY", price=D("100"), quantity=4)
+    later = graph.OrderEvent(CLOCK + 1, crosscode="O-100", side="BUYS", price=D("100"), quantity=4)
     followed = later.with_previous(first)
     assert followed is not None
     assert followed.prevuuid == first.curruuid

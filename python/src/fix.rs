@@ -1897,7 +1897,9 @@ impl PyFixMsg {
     /// The graph market data this message expands to: an order, a quote, an
     /// execution or an initial trade report is one; a book `W` or `X` one per
     /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
-    /// empty `W` - each a `MarketData`.
+    /// empty `W` - each a `MarketData` carrying, in its `metadata`, what the
+    /// message states that no typed column reads and no identifier map of the
+    /// leaf holds, the identifiers among it lifted into the leaf's `altids`.
     fn market_data(&self) -> PyResult<Vec<PyMarketData>> {
         self.inner
             .market_data()
@@ -2122,7 +2124,7 @@ impl PyFixMsg {
     }
 
     /// The side, as the `Side` member it is: the one stated, else
-    /// `Side.UNKNOWN` - never `None`.
+    /// `Side.UNKN` - never `None`.
     #[getter]
     fn side(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         member(py, self.inner.get_side())
@@ -2354,8 +2356,8 @@ impl PyFixMsg {
 
     /// The accounts and parties the message names - each `Parties`
     /// occurrence's `PartyID` under its `PartyRole`'s name, such as
-    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT` - in key order; empty where it
-    /// names none.
+    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
+    /// `ACCOUNT` - in key order; empty where it names none.
     #[getter]
     fn accountids(&self) -> BTreeMap<String, String> {
         idmap_dict(self.inner.get_accountids())
@@ -2559,8 +2561,12 @@ impl PyFixCodec {
     /// core's one minute, and `None`, zero or a negative window remembering
     /// none; `market_metadata`
     /// is whether a market operation the codec builds carries, in its
-    /// metadata, what its message states that no typed column reads - on by
-    /// default, and part of the leaf's identity.
+    /// metadata, what its message states that no typed column reads and no
+    /// identifier map of the leaf holds - its parties, its `Account(1)` and
+    /// its regulatory trade identifiers stay the leaf's `accountids` and
+    /// `altids` - and lifts into its `altids` each scalar of it whose key
+    /// ends with an identifier its message's type declares - on by default,
+    /// and part of the leaf's identity.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -2790,7 +2796,8 @@ impl PyFixCodec {
     }
 
     /// Whether a market operation this codec builds carries its message's
-    /// unmapped fields in its metadata.
+    /// unmapped fields in its metadata, and lifts the identifiers among
+    /// them into its `altids`.
     #[getter]
     fn market_metadata(&self) -> bool {
         self.inner.market_metadata()
@@ -3189,11 +3196,13 @@ impl PyFixCodec {
     /// - on a sorted source both answer the same walk. The one walk states each message
     /// as the one after the live message it follows - the last message of
     /// its chain, under the cross identity its cross code derives, still
-    /// alive - so a chained message carries its predecessor's identity and
+    /// alive - a chain matching only within one market data kind, so an
+    /// order and an execution under one cross code are two chains - so a chained message carries its predecessor's identity and
     /// instant as `prevuuid` and `prevunix`, its place at `seqnum` - its own
     /// unless the predecessor happened at the same instant or later, where
     /// it takes the higher of its own and one past the predecessor's - the
-    /// lifecycle's creation carried forward as `creaunix`, and
+    /// lifecycle's creation carried forward as `creaunix`, every `metadata`
+    /// key of the chain it does not state, and
     /// is settled
     /// again around
     /// them; a message that arrives before the live one it would follow is

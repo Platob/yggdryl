@@ -1135,7 +1135,7 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // answers, the two wildcards and the error among them, and the
     // statistics line - is one `unknown` row, never one per plugin it named
     // and never none - and 57 more: the execution the parse splits off each
-    // execution report of a fill (A12), and the one of side `UNKNOWN` the
+    // execution report of a fill (A12), and the one of side `UNKN` the
     // trade capture, stating no `Side(54)`, splits off.
     assert_eq!(messages.len(), 94 + 57, "the corpus");
     let forward: Vec<FixMsg> = messages.to_vec();
@@ -1497,4 +1497,39 @@ fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
             .map(|held| (held.get_curruuid(), held.get_seqnum()))
             .collect::<Vec<_>>(),
     );
+}
+
+/// A message that follows another in the lifecycle takes every key of its
+/// chain's metadata it does not state, its own values standing - the
+/// bridge's namespaced keys a message's metadata holds - while its
+/// alternate identifiers stay those its fields state and its dictionary
+/// follows.
+#[test]
+fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() {
+    let codec = reader();
+    let parsed = [
+        &b"8=FIX.4.4|35=8|52=20260921-10:00:00|11=C1|37=O-1|17=E-1|150=0|39=0|55=AAPL|54=1|38=5|DESK.NAME=EQ|DESK.BOOK=B1|10=0|"[..],
+        &b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O-1|17=E-2|150=6|39=6|55=AAPL|54=1|38=5|DESK.NAME=FX|10=0|"[..],
+    ]
+    .map(|line| codec.sole_line(line).expect("a report"));
+    assert!(!parsed[1].get_metadata().contains_key("desk.book"));
+    let walked = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("a readable lifecycle");
+    let [first, second] = walked.as_slice() else {
+        panic!("two statements, not {}", walked.len())
+    };
+    assert_eq!(
+        second.get_prevuuid(),
+        Some(yggdryl::graph::Element::get_curruuid(first))
+    );
+    let metadata: Vec<_> = second
+        .get_metadata()
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(metadata, [("desk.book", "B1"), ("desk.name", "FX")]);
+    // The execution's identifier is its own, never the one it follows.
+    assert_eq!(second.get_altids().get("EXECID"), Some("E-2"));
 }

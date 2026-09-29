@@ -47,7 +47,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `state`) | `DataType::Side.scalar("BUY")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()` | `yggdryl.side(name)`, `Side.BUY` (an `IntEnum`), `MarketDataKind.from_spelling("order")` | `fields.side(name)`, `Side.BUY` (a frozen name-to-code object) |
+| a registered enum (`side`, `marketdatakind`, `state`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object) |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
@@ -180,8 +180,8 @@ string and byte leaves, the legacy `list` words - is in
   none) when non-members must fail.
 - `side`, `marketdatakind` and `state` are not text: each is an `int32`
   column of member codes (kind `enum`), which a value reads as the member -
-  Python's `IntEnum` (`Side.BUY`), JavaScript's name (`'BUY'`), Rust's variant
-  (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUY`); a
+  Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
+  (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
   `marketdatakind` code is an integer, never the text `"10"`.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
   currencies, however a feed spells it. A symbol with a tenor or a RIC

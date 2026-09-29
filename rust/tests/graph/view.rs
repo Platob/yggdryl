@@ -459,7 +459,7 @@ fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     let out = view(
         // A chain's cross code is stored under its side.
         &MarketView::Lifecycle {
-            crosscode: SmolStr::new("BUY:C-1"),
+            crosscode: SmolStr::new("BUYS:C-1"),
         },
         &[],
     );
@@ -507,7 +507,7 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
     )
     .unwrap();
     let target = MarketView::Lifecycle {
-        crosscode: SmolStr::new("BUY:C-9"),
+        crosscode: SmolStr::new("BUYS:C-9"),
     };
     let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
     let current = uuids(column(&out, "curruuid"));
@@ -539,14 +539,14 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
     let codes = texts(column(&out, "crosscode"));
     let isins = texts(column(&out, "isin"));
     for (code, isin) in codes.iter().zip(&isins) {
-        let expected = (*code == Some("BUY:O-5")).then_some(ISIN);
+        let expected = (*code == Some("BUYS:O-5")).then_some(ISIN);
         assert_eq!(*isin, expected, "{code:?}");
     }
     // A United States ISIN states its CUSIP, which the set derives; no
     // order states a WKN.
     let cusips = texts(column(&out, "cusip"));
     for (code, cusip) in codes.iter().zip(&cusips) {
-        let expected = (*code == Some("BUY:O-5")).then_some(&ISIN[2..11]);
+        let expected = (*code == Some("BUYS:O-5")).then_some(&ISIN[2..11]);
         assert_eq!(*cusip, expected, "{code:?}");
     }
     assert_eq!(column(&out, "wkn").null_count(), out.num_rows());

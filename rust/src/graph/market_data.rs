@@ -302,8 +302,8 @@ impl Market for MarketData {
     fn set_side(&mut self, side: crate::Side) {
         delegate_by_variant!(self, set_side, side);
     }
-    fn is_sided(&self) -> bool {
-        self.marketdatakind().is_sided()
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.kind().marketdatakind()
     }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         delegate_by_variant!(self, get_securityids)

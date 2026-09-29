@@ -961,6 +961,8 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
 
 An object's lines are one chain - they share the object as their cross code - so a read states when that chain began: every line whose own `creaunix` capture states none takes the earliest `currunix` the read has dated a line of its object by so far - never an instant after its own, the first line its own instant. A line the header does not date, of a handle with no time of its own, is dated by nothing and states no creation until a line that is dated; a `creaunix` capture that does not read as an instant stays refused by name. A line built by hand states what it is given.
 
+Each line likewise states, as `prevunix`, the `currunix` the read dated the line cut before it by - none for the first line of an object and none after an undated line, a `prevunix` capture winning - and no `prevuuid`, so no line's `curruuid` or `currhashcode` moves; each object read, each leaf of a folder or glob, starts again, and the [FIX text doors](../fix/arrow.md#a-column-is-the-caller-speaking-per-row) ignore a line's `prevunix`.
+
 === "Rust"
 
     ```rust

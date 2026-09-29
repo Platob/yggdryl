@@ -10,7 +10,7 @@ const { graph } = require('yggdryl')
 const CLOCK = 1_700_000_000_000_000_000n
 
 function order(clock, state = 'NEW', facts = {}) {
-  return new graph.OrderEvent(clock, { crosscode: 'O-1', side: 'BUY', price: '101', quantity: 10, state, ...facts })
+  return new graph.OrderEvent(clock, { crosscode: 'O-1', side: 'BUYS', price: '101', quantity: 10, state, ...facts })
 }
 
 test('an order chains to the live order it follows', () => {
@@ -34,18 +34,19 @@ test('an order chains to the live order it follows', () => {
 test('an execution and every other leaf walk through', () => {
   const first = order(CLOCK)
   // A millisecond later: two instants in one millisecond share an identity.
-  const execution = new graph.ExecutionEvent(CLOCK + 1_000_000n, { crosscode: 'O-1', side: 'BUY', lastpx: '101', lastqty: 10 })
+  const execution = new graph.ExecutionEvent(CLOCK + 1_000_000n, { crosscode: 'O-1', side: 'BUYS', lastpx: '101', lastqty: 10 })
   const book = new graph.BookEvent(CLOCK + 2_000_000n, 'IBM')
   const walked = [...new graph.EventIterator([first, execution, book, new graph.Order({ crosscode: 'O-1' })])]
   assert.deepEqual(walked.map((data) => data.kind), ['order_event', 'execution_event', 'book_event', 'order'])
   // A book is yielded unchanged, in place.
   assert.ok(walked[2].asBookEvent().equals(book))
   assert.ok(walked[3].asOrder().equals(new graph.Order({ crosscode: 'O-1' })))
-  // The execution follows the order it fills across kinds, keeping its own.
+  // A chain matches within one market data kind: the execution shares the
+  // order's cross code but is a chain of its own, following nothing.
   const fill = walked[1].asExecutionEvent()
   assert.equal(fill.crossuuid, first.crossuuid)
-  assert.equal(fill.prevuuid, first.curruuid)
-  // A later instant keeps its own place.
+  assert.equal(fill.prevuuid, null)
+  assert.equal(fill.creaunix, CLOCK + 1_000_000n)
   assert.equal(fill.seqnum, 0)
 })
 
@@ -67,7 +68,7 @@ test('alive and the snapshot grid', () => {
   assert.equal(live.snapshotNs, null)
   assert.equal([...live].length, 1)
   // A sided element's cross code carries its side (A17).
-  assert.deepEqual(live.alive().map((data) => data.crosscode), ['BUY:O-1'])
+  assert.deepEqual(live.alive().map((data) => data.crosscode), ['BUYS:O-1'])
   assert.ok(live.alive().every((data) => data instanceof graph.MarketData))
 })
 

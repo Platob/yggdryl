@@ -16,9 +16,11 @@ dictionary. Every message projects onto one fixed row, `fix_schema(registry)`,
 decided from the dictionary alone, so a whole capture streams as Arrow batches.
 Each message states its `msgcat` - the `MarketDataKind` its type files under
 (`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, the batches `ORDB`, `QUOB`, `TRDB`,
-...) - and the parse splits what it reports once: a filling execution report
-adds its `EXEC` message, a trade one execution per side, a two-sided quote a
-`BUY` and a `SELL` quote, a batch one message per entry.
+...) - and the parse splits what it reports once: an execution report is its
+order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
+`EXEC` message, a trade one execution per side, a two-sided quote a `BUYS` and
+a `SELL` quote, a batch one message per entry. A lifecycle chains within one
+`msgcat`, so a fill never follows its order.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -27,8 +29,10 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order (`crossuuid`,
-`prevuuid`) and learns instrument associations. Nothing chains unasked.
+there keeps its place), chains it to the live one of its order within its own `msgcat` (`crossuuid`,
+`prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
+and the ids its dictionary follows, and learns instrument associations.
+Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
 (fields, 181 messages, 737 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
@@ -205,8 +209,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   offer/ask, size/qty, bid/demand, px/price - so `AskPrice` is
   `OfferPx(133)` and `DemandQty` is `BidSize(134)`; an exact name wins, and a
   spelling reaching two fields reaches none.
-- A coded value reads as its name (`by_tag(54)` -> `BUY`; Python answers the
-  `Side.BUY` member) but emits as its wire code (`54=1`); set it with the wire
+- A coded value reads as its name (`by_tag(54)` -> `BUYS`; Python answers the
+  `Side.BUYS` member) but emits as its wire code (`54=1`); set it with the wire
   code or any spelling the code set resolves.
 - A group member needs its index on a message: `Parties[0].PartyID`;
   `Parties.PartyID` is the schema spelling and misses on a value.
@@ -221,23 +225,36 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   typed, but every other key is unmapped - it lands in `metadata` under its raw
   spelling: no code names, no groups, no `fixentries`.
 - An order's, a quote's or an execution's `crosscode` carries its side
-  (`BUY:A1`) - `msgcat` `ORDR`, `QUOT` or `EXEC`; every other message keeps
-  its code as spelled, whatever side it states. A derived execution is keyed
-  by its fill (`BUY:ExecID=E-1`). Count messages after the
-  parse, not lines: one filling report is two messages.
-- A message's parties are its `accountids` - each `PartyID(448)` under its
-  `PartyRole(452)`'s upper-cased name (`EXECUTINGTRADER`, `CUSTOMERACCOUNT`),
-  `PARTY` where no role is stated, the first party of a role standing - and
-  read-only: write the `Parties` occurrence, not the map. `Account(1)` is no
-  party and stays in `metadata`. Regulatory trade ids
-  (`NoRegulatoryTradeIDs(1907)`) are `altids` under `REGTRADEID`, `TVTIC`, ...
+  (`BUYS:A1`) - `msgcat` `ORDR`, `QUOT` or `EXEC`; every other message keeps
+  its code as spelled, whatever side it states. A derived execution is chained
+  under its `ExecID(17)` as given (`BUYS:E-1`), else
+  `TradeID=<TradeID(1003)>`. Count messages after the parse, not lines: one
+  filling report is two messages.
+- A message's parties and its `Account(1)` are its `accountids` - each
+  `PartyID(448)` under its `PartyRole(452)`'s upper-cased name
+  (`EXECUTINGTRADER`, `CUSTOMERACCOUNT`), `PARTY` where no role is stated, the
+  first party of a role standing, and the account under `ACCOUNT` - and
+  read-only: write the `Parties` occurrence or `Account(1)`, not the map.
+  Regulatory trade ids (`NoRegulatoryTradeIDs(1907)`) are `altids` under
+  `REGTRADEID`, `TVTIC`, ...
+- A graph leaf (`market_data`) carries in its `metadata` what its message
+  states that no typed column reads and none of the leaf's identifier maps
+  holds: a party, the account and a regulatory id its maps hold are left out (a
+  second party of one role stays, in `parties`). A scalar whose key ends with
+  an identifier its message's type declares (`marketorderid`, `RefOrderID(1080)`,
+  a bridge's `venue.x.parentorderid` on an execution report) is lifted into the
+  leaf's `altids`, so a leaf's `altids` can hold more than its message's.
+  `with_market_metadata(false)` / `market_metadata=False` /
+  `marketMetadata: false` turns both off and moves the leaf's identity.
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
   a RIC's `EURUSD=` - states the derived `FOREX` security identifier `EUR/USD`
   (the `forexcode` column); a pair a row states is stated, never re-derived.
 - A row header that stops matching silently changes lifecycle results: the
   line keeps its body but is dated by its file's modification time and
   carries no session context (no delivery folding); assert the matched-line
-  count beside the parsed-message count.
+  count beside the parsed-message count. The `prevunix` a text read states on
+  each line (the instant the line before it was dated by) is ignored by the FIX
+  text doors: a message's own comes from the lifecycle.
 
 ## Language references
 

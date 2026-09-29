@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::PyDict;
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
@@ -203,7 +203,7 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_unit(&self.inner).as_str()
             }
 
-            /// The side, as the `Side` member it is; `Side.UNKNOWN` where
+            /// The side, as the `Side` member it is; `Side.UNKN` where
             /// none is stated, never `None`.
             #[getter]
             fn side(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
@@ -428,7 +428,10 @@ macro_rules! common_verbs {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// This value stated as the one after `previous`, or `None` where
-            /// it cannot follow it or following changes nothing.
+            /// it cannot follow it or following changes nothing. It takes
+            /// every `metadata` key of its chain it lacks and, where it names
+            /// identifiers, every `altids` key but `MDENTRYREFID` and every
+            /// `accountids` role, its own values standing.
             fn with_previous(&self, previous: &Self) -> Option<Self> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
                     .map(Self::from_core)
@@ -809,12 +812,5 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // are held under.
     module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID)?;
     module.add("ENTRY_REF_ID", yggdryl::graph::book::ENTRY_REF_ID)?;
-    // The alternate-identifier keys an order's own identifiers may follow
-    // across a lifecycle: a tuple, so no caller can change the module
-    // constant for every importer.
-    module.add(
-        "FOLLOWED_ALTIDS",
-        PyTuple::new(module.py(), yggdryl::graph::FOLLOWED_ALTIDS)?,
-    )?;
     Ok(())
 }

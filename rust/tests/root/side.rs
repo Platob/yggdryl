@@ -15,27 +15,46 @@ fn strict() -> ArrowCastOptions {
     ArrowCastOptions::new().with_safe(false)
 }
 
-/// Every side: its wire code, its stored name and the name the
+/// Every side: its wire code, its stored four-letter code, the name it was
+/// stored under before the codes - read, never written - and the name the
 /// specification gives it, in the order of the codes.
-const SIDES: [(Option<char>, &str, &str, Side); 18] = [
-    (None, "UNKNOWN", "Unknown", Side::Unknown),
-    (Some('1'), "BUY", "Buy", Side::Buy),
-    (Some('2'), "SELL", "Sell", Side::Sell),
-    (Some('3'), "BUYMINUS", "BuyMinus", Side::BuyMinus),
-    (Some('4'), "SELLPLUS", "SellPlus", Side::SellPlus),
-    (Some('5'), "SSHORT", "SellShort", Side::SShort),
-    (Some('6'), "SSHORTEX", "SellShortExempt", Side::SShortEx),
-    (Some('7'), "UNDISC", "Undisclosed", Side::Undisc),
-    (Some('8'), "CROSS", "Cross", Side::Cross),
-    (Some('9'), "CROSSSH", "CrossShort", Side::CrossSh),
-    (Some('A'), "CROSSSHX", "CrossShortExempt", Side::CrossShX),
-    (Some('B'), "ASDEF", "AsDefined", Side::AsDef),
-    (Some('C'), "OPPOSITE", "Opposite", Side::Opposite),
-    (Some('D'), "SUBSCR", "Subscribe", Side::Subscr),
-    (Some('E'), "REDEEM", "Redeem", Side::Redeem),
-    (Some('F'), "LEND", "Lend", Side::Lend),
-    (Some('G'), "BORROW", "Borrow", Side::Borrow),
-    (Some('H'), "SELLUND", "SellUndisclosed", Side::SellUnd),
+const SIDES: [(Option<char>, &str, &str, &str, Side); 18] = [
+    (None, "UNKN", "UNKNOWN", "Unknown", Side::Unknown),
+    (Some('1'), "BUYS", "BUY", "Buy", Side::Buy),
+    (Some('2'), "SELL", "SELL", "Sell", Side::Sell),
+    (Some('3'), "BUYM", "BUYMINUS", "BuyMinus", Side::BuyMinus),
+    (Some('4'), "SELP", "SELLPLUS", "SellPlus", Side::SellPlus),
+    (Some('5'), "SSHT", "SSHORT", "SellShort", Side::SShort),
+    (
+        Some('6'),
+        "SSEX",
+        "SSHORTEX",
+        "SellShortExempt",
+        Side::SShortEx,
+    ),
+    (Some('7'), "UNDI", "UNDISC", "Undisclosed", Side::Undisc),
+    (Some('8'), "CROS", "CROSS", "Cross", Side::Cross),
+    (Some('9'), "CRSH", "CROSSSH", "CrossShort", Side::CrossSh),
+    (
+        Some('A'),
+        "CRSX",
+        "CROSSSHX",
+        "CrossShortExempt",
+        Side::CrossShX,
+    ),
+    (Some('B'), "ASDF", "ASDEF", "AsDefined", Side::AsDef),
+    (Some('C'), "OPPO", "OPPOSITE", "Opposite", Side::Opposite),
+    (Some('D'), "SUBS", "SUBSCR", "Subscribe", Side::Subscr),
+    (Some('E'), "REDM", "REDEEM", "Redeem", Side::Redeem),
+    (Some('F'), "LEND", "LEND", "Lend", Side::Lend),
+    (Some('G'), "BORR", "BORROW", "Borrow", Side::Borrow),
+    (
+        Some('H'),
+        "SELU",
+        "SELLUND",
+        "SellUndisclosed",
+        Side::SellUnd,
+    ),
 ];
 
 #[test]
@@ -52,7 +71,7 @@ fn a_code_or_a_spelling_that_names_no_side_is_refused_by_name() {
     // width bounds the spelling: a long name is refused for naming nothing.
     assert_eq!(Side::from_spelling("X"), None);
     assert_eq!(Side::from_spelling(""), None);
-    for spelling in ["X", "Z", "TOOLONGSIDE", "BUYS"] {
+    for spelling in ["X", "Z", "TOOLONGSIDE", "BUYX"] {
         let refused = Side::read(spelling).unwrap_err().to_string();
         assert!(refused.contains("side"), "{refused}");
         assert!(refused.contains(spelling), "{refused}");
@@ -74,7 +93,7 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
     assert_eq!(<Side as EnumValue>::KIND, "side");
     assert_eq!(<Side as EnumValue>::EXTENSION_NAME, "yggdryl.side");
 
-    for (index, (code, stored, _, side)) in SIDES.iter().enumerate() {
+    for (index, (code, stored, former, _, side)) in SIDES.iter().enumerate() {
         assert_eq!(*side as usize, index, "{stored}");
         assert_eq!(side.code(), i32::try_from(index).unwrap(), "{stored}");
         assert_eq!(Side::from_code(side.code()), Some(*side), "{stored}");
@@ -85,25 +104,38 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
         assert_eq!(side.as_str(), *stored);
         assert_eq!(side.to_string(), *stored);
         assert_eq!(Side::from_name(stored), Some(*side));
+        if former != stored {
+            assert_eq!(
+                Side::from_name(former),
+                None,
+                "{former} is read, never stored"
+            );
+        }
         assert!(!side.description().is_empty(), "{stored}");
         assert_eq!(Side::ALL[index], *side);
     }
     // The members order as the wire codes do, `1`..=`9` then `A`..=`H`.
-    let mut ordered: Vec<Side> = SIDES.iter().map(|(_, _, _, side)| *side).collect();
+    let mut ordered: Vec<Side> = SIDES.iter().map(|(_, _, _, _, side)| *side).collect();
     ordered.reverse();
     ordered.sort_unstable();
     assert_eq!(ordered, Side::ALL);
     // The string listing of the same vocabulary is the eighteen stored
-    // names, sorted: what a fixed-ASCII column may declare it holds.
-    let mut listed: Vec<&str> = SIDES.iter().map(|(_, stored, _, _)| *stored).collect();
+    // codes, sorted: what a fixed-ASCII column may declare it holds.
+    let mut listed: Vec<&str> = SIDES.iter().map(|(_, stored, _, _, _)| *stored).collect();
     listed.sort_unstable();
     assert_eq!(listed.as_slice(), StringEnum::SIDES);
 }
 
 #[test]
-fn three_vocabularies_reach_one_side_and_a_wire_code_never_folds() {
-    for (code, stored, name, side) in SIDES {
+fn every_vocabulary_reaches_one_side_and_a_wire_code_never_folds() {
+    for (code, stored, former, name, side) in SIDES {
         assert_eq!(Side::from_spelling(stored), Some(side), "{stored}");
+        assert_eq!(Side::from_spelling(former), Some(side), "{former}");
+        assert_eq!(
+            Side::from_spelling(&former.to_ascii_lowercase()),
+            Some(side),
+            "{former}"
+        );
         assert_eq!(Side::from_spelling(name), Some(side), "{name}");
         assert_eq!(
             Side::from_spelling(&name.to_ascii_lowercase()),
@@ -147,12 +179,12 @@ fn a_side_is_a_bid_an_ask_or_neither() {
         Side::SShortEx,
         Side::SellUnd,
     ];
-    for (_, stored, _, side) in SIDES {
+    for (_, stored, _, _, side) in SIDES {
         assert_eq!(side.is_bid(), bid.contains(&side), "{stored}");
         assert_eq!(side.is_ask(), ask.contains(&side), "{stored}");
         assert!(!(side.is_bid() && side.is_ask()), "{stored}");
     }
-    // A cross, `OPPOSITE`, `ASDEF`, `UNDISC` and a side stated as none
+    // A cross, `OPPO`, `ASDF`, `UNDI` and a side stated as none
     // take no lane.
     for side in [
         Side::Unknown,
@@ -181,15 +213,15 @@ fn a_side_stated_as_none_merges_to_the_other_and_anything_stated_stands() {
 
 #[test]
 fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
-    assert_eq!(serde_json::to_string(&Side::SShort).unwrap(), "\"SSHORT\"");
-    assert_eq!(
-        serde_json::to_string(&Side::Unknown).unwrap(),
-        "\"UNKNOWN\""
-    );
-    // Every vocabulary reads back, and so does the stored code, through a
-    // borrowed and an owned door.
+    assert_eq!(serde_json::to_string(&Side::SShort).unwrap(), "\"SSHT\"");
+    assert_eq!(serde_json::to_string(&Side::Unknown).unwrap(), "\"UNKN\"");
+    // Every vocabulary reads back - the name stored before the codes
+    // included - and so does the stored code, through a borrowed and an
+    // owned door.
     for (spelling, side) in [
+        ("\"SSHT\"", Side::SShort),
         ("\"SSHORT\"", Side::SShort),
+        ("\"UNKN\"", Side::Unknown),
         ("\"5\"", Side::SShort),
         ("5", Side::SShort),
         ("\"sell_short\"", Side::SShort),
@@ -214,17 +246,17 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
     assert_eq!(scalar, DataType::Side.scalar(Scalar::from(1_i32)).unwrap());
     assert_eq!(scalar, DataType::Side.scalar(Scalar::from(1_i64)).unwrap());
     assert_eq!(scalar, DataType::Side.scalar(Scalar::from("Buy")).unwrap());
-    assert_eq!(scalar.as_str(), Some("BUY"));
+    assert_eq!(scalar.as_str(), Some("BUYS"));
     assert_eq!(scalar.enum_code(), Some(1));
-    assert_eq!(scalar.enum_name(), Some("BUY"));
+    assert_eq!(scalar.enum_name(), Some("BUYS"));
     assert!(scalar.is_enum());
     assert!(!scalar.is_code());
     assert_eq!(Side::from_scalar(&scalar), Some(&Side::Buy));
-    assert_ne!(scalar, Scalar::from("BUY"));
+    assert_ne!(scalar, Scalar::from("BUYS"));
     assert_ne!(scalar, Scalar::from(1_i32));
     // The scalar's structural wire names the leaf and spells the name.
     let wire = serde_json::to_string(&scalar).unwrap();
-    assert_eq!(wire, r#"{"type":"side","value":"BUY"}"#);
+    assert_eq!(wire, r#"{"type":"side","value":"BUYS"}"#);
     assert_eq!(serde_json::from_str::<Scalar>(&wire).unwrap(), scalar);
     // A code of another enum leaf and a spelling that names no side are
     // refused by the value door, naming the datatype.
@@ -239,9 +271,9 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
     // integer, because its column holds its code already.
     assert_eq!(
         DataType::utf8().scalar(scalar.clone()).unwrap(),
-        Scalar::from("BUY")
+        Scalar::from("BUYS")
     );
-    assert!(DataType::Side.ascii_packed(b"BUY").is_err());
+    assert!(DataType::Side.ascii_packed(b"BUYS").is_err());
 }
 
 #[test]
@@ -334,7 +366,7 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
     let names = text.as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(
         names.iter().collect::<Vec<_>>(),
-        [Some("BUY"), Some("BUY"), Some("SELL"), Some("SSHORT")]
+        [Some("BUYS"), Some("BUYS"), Some("SELL"), Some("SSHT")]
     );
 
     let nullable = Field::new("side", DataType::Side, true);
@@ -399,24 +431,24 @@ fn a_side_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
     let row = Scalar::from_struct([("side", value.clone())]).unwrap();
     assert_eq!(
         yggdryl::into_json_scalar(&row).unwrap(),
-        r#"{"side":"BUY"}"#
+        r#"{"side":"BUYS"}"#
     );
     assert_eq!(
         yggdryl::into_toml_scalar(&row).unwrap(),
-        "\"side\" = \"BUY\"\n"
+        "\"side\" = \"BUYS\"\n"
     );
-    assert!(yggdryl::into_yaml_scalar(&row).unwrap().contains("BUY"));
+    assert!(yggdryl::into_yaml_scalar(&row).unwrap().contains("BUYS"));
     assert_eq!(
         yggdryl::into_xml_scalar(&Scalar::from_struct([("row", row)]).unwrap()).unwrap(),
-        "<row><side>BUY</side></row>"
+        "<row><side>BUYS</side></row>"
     );
     assert_eq!(
         value.into_variant().unwrap().scalar().unwrap(),
-        Scalar::from("BUY")
+        Scalar::from("BUYS")
     );
     assert_eq!(
         yggdryl::media::partition::partition_text(&value).unwrap(),
-        "BUY"
+        "BUYS"
     );
 }
 
@@ -442,9 +474,10 @@ fn a_side_filters_and_casts_by_its_member_in_an_expression() {
         arrow_array::RecordBatch::try_new(root.clone().into_arrow_schema().unwrap(), vec![column])
             .unwrap();
     for (clause, kept) in [
+        ("side = 'BUYS'", 1),
         ("side = 'BUY'", 1),
         ("side in ('1', 'SellShort')", 2),
-        ("side = side 'CROSS'", 1),
+        ("side = side 'CROS'", 1),
         ("cast('2' as side) = side", 1),
     ] {
         let filter: Filter = clause.parse().unwrap();
@@ -470,7 +503,7 @@ fn a_side_filters_and_casts_by_its_member_in_an_expression() {
 
 #[test]
 fn the_canonical_default_is_the_side_stated_as_none() {
-    // A closed vocabulary with no empty member: its default is `UNKNOWN`,
+    // A closed vocabulary with no empty member: its default is `UNKN`,
     // code zero as every enum leaf's, so a named row leaving out a required
     // side defaults at the value door rather than failing on the empty text.
     assert_eq!(
@@ -500,8 +533,8 @@ fn the_canonical_default_is_the_side_stated_as_none() {
 #[test]
 fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // A row whose line does not say a side has none, and the crate already
-    // spells "no answer" one way: `UNKNOWN` is what a value that must state
-    // a side states where none was said, as a state's `UNKNOWN` is, and
+    // spells "no answer" one way: `UNKN` is what a value that must state a
+    // side states where none was said, as a state's `UNKNOWN` is, and
     // never what a column says for an absent one.
     assert!(Side::ALL.contains(&Side::Unknown));
     assert!(Side::from_spelling("NONE").is_none());

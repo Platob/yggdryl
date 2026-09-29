@@ -108,7 +108,7 @@ const figiScalar = figi.scalar('BBG000BLNQ16')
 // An enum member crosses as its stored name in both directions: the frozen
 // objects map a name to its code, a scalar reads back the name.
 const side = DataType.from('side')
-const sideScalar = side.scalar('BUY')
+const sideScalar = side.scalar('BUYS')
 const kind = DataType.from('marketdatakind')
 const kindScalar = kind.scalar('ORDR')
 

@@ -13,11 +13,11 @@ const CLOCK = 1_700_000_000_000_000_000n
 
 // One leaf of every kind, in `MarketData.kinds()` order.
 function leaves() {
-  const order = new graph.OrderEvent(CLOCK, { crosscode: 'O-1', side: 'BUY', price: '101', quantity: 5, ticker: 'ACME' })
+  const order = new graph.OrderEvent(CLOCK, { crosscode: 'O-1', side: 'BUYS', price: '101', quantity: 5, ticker: 'ACME' })
   const quote = new graph.QuoteEvent(CLOCK, { crosscode: 'Q-1', side: 'SELL', price: '102', quantity: 3, ticker: 'ACME' })
-  const execution = new graph.ExecutionEvent(CLOCK + 1n, { crosscode: 'O-1', side: 'BUY', lastpx: '101', lastqty: 5 })
+  const execution = new graph.ExecutionEvent(CLOCK + 1n, { crosscode: 'O-1', side: 'BUYS', lastpx: '101', lastqty: 5 })
   const trade = graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK, { crosscode: 'T-1', ticker: 'ACME' }), [
-    new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUY', lastpx: '1', lastqty: 1 }),
+    new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUYS', lastpx: '1', lastqty: 1 }),
     new graph.ExecutionEvent(CLOCK, { crosscode: 'E-2', side: 'SELL', lastpx: '1', lastqty: 1 }),
   ])
   const book = new graph.BookEvent(CLOCK, 'ACME').withOperations([order, quote])
@@ -220,10 +220,10 @@ test('a lifecycle-shaped batch reads into events', () => {
   const table = new arrow.Table({
     foreign: arrow.vectorFromArray([1, 2], new arrow.Int32()),
     // A sided row states its side-prefixed cross code (A17).
-    CrossCode: arrow.vectorFromArray(['BUY:O-1', 'BUY:O-1'], new arrow.Utf8()),
+    CrossCode: arrow.vectorFromArray(['BUYS:O-1', 'BUYS:O-1'], new arrow.Utf8()),
     MarketDataKind: arrow.vectorFromArray(['ORDR', 'EXEC'], new arrow.Utf8()),
     currunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
-    side: arrow.vectorFromArray(['BUY', 'BUY'], new arrow.Utf8()),
+    side: arrow.vectorFromArray(['BUYS', 'BUYS'], new arrow.Utf8()),
     price: arrow.vectorFromArray(['101', null], new arrow.Utf8()),
     lastqty: arrow.vectorFromArray([null, '5'], new arrow.Utf8()),
     altids: arrow.vectorFromArray([new Map([['ORDERID', 'O-1']]), null], altids),
@@ -233,8 +233,8 @@ test('a lifecycle-shaped batch reads into events', () => {
   assert.ok(order instanceof graph.OrderEvent)
   assert.ok(execution instanceof graph.ExecutionEvent)
   assert.equal(order.currunix, CLOCK)
-  assert.equal(order.crosscode, 'BUY:O-1')
-  assert.equal(order.side, 'BUY')
+  assert.equal(order.crosscode, 'BUYS:O-1')
+  assert.equal(order.side, 'BUYS')
   assert.equal(order.price, '101')
   assert.deepEqual(order.altids, { ORDERID: 'O-1' })
   assert.equal(execution.lastqty, '5')
@@ -291,10 +291,10 @@ function prefixed(nested, prefix) {
 // A stream of every leaf, with an order stating an ISIN and a chain of two.
 function viewStream() {
   const identified = new graph.OrderEvent(CLOCK + 5n, {
-    crosscode: 'O-5', side: 'BUY', price: '100', ticker: 'ACME', securityids: { ISIN },
+    crosscode: 'O-5', side: 'BUYS', price: '100', ticker: 'ACME', securityids: { ISIN },
   })
-  const first = new graph.OrderEvent(CLOCK + 10n, { crosscode: 'C-1', side: 'BUY', price: '1' })
-  const second = new graph.OrderEvent(CLOCK + 20n, { crosscode: 'C-1', side: 'BUY', price: '2' }).withPrevious(first)
+  const first = new graph.OrderEvent(CLOCK + 10n, { crosscode: 'C-1', side: 'BUYS', price: '1' })
+  const second = new graph.OrderEvent(CLOCK + 20n, { crosscode: 'C-1', side: 'BUYS', price: '2' }).withPrevious(first)
   return graph.MarketData.arrowReader([second, ...leaves(), identified, first])
 }
 
@@ -373,7 +373,7 @@ test('each view keeps its own columns over a small stream', () => {
   assert.deepEqual(names(trades), [...flat, ...prefixed('executions', 'execution')])
   assert.equal(trades.numRows, 2)
   assert.deepEqual([...trades.getChild('crosscode')], ['T-1', 'T-1'])
-  assert.deepEqual([...trades.getChild('execution.crosscode')], ['BUY:E-1', 'SELL:E-2'])
+  assert.deepEqual([...trades.getChild('execution.crosscode')], ['BUYS:E-1', 'SELL:E-2'])
 
   // A book keeps its alive entries, deltas and levels nested; a snapshot
   // control, which states no alive list, is no book row.
@@ -383,9 +383,9 @@ test('each view keeps its own columns over a small stream', () => {
 
   // A lifecycle is one chain in the order it happened, and needs its code -
   // a sided chain's code carrying its side (A17).
-  const chain = viewed('lifecycle', [], 'BUY:C-1')
+  const chain = viewed('lifecycle', [], 'BUYS:C-1')
   assert.deepEqual(names(chain), flat)
-  assert.deepEqual([...chain.getChild('crosscode')], ['BUY:C-1', 'BUY:C-1'])
+  assert.deepEqual([...chain.getChild('crosscode')], ['BUYS:C-1', 'BUYS:C-1'])
   // The stream held the later element first; the view answers the chain's
   // head, which follows nothing, then the element that follows it.
   assert.equal(chain.getChild('prevuuid').get(0), null)
@@ -399,7 +399,7 @@ test('a lift reads one key of a root column and null where it is missing', () =>
   assert.deepEqual(names(table).slice(-2), ['isin', 'wkn'])
   const codes = [...table.getChild('crosscode')]
   const isins = [...table.getChild('isin')]
-  codes.forEach((code, at) => assert.equal(isins[at], code === 'BUY:O-5' ? ISIN : null, code))
+  codes.forEach((code, at) => assert.equal(isins[at], code === 'BUYS:O-5' ? ISIN : null, code))
   assert.equal(table.getChild('wkn').nullCount, table.numRows)
   // The key is read as it is stored: another case is another key.
   assert.equal(viewed('orders', ["securityids['isin'] as isin"]).getChild('isin').nullCount, 5)

@@ -45,7 +45,7 @@ const CLOCK = 1_700_000_000_000_000_000n
 function orderEvent(facts = {}) {
   return new graph.OrderEvent(CLOCK, {
     crosscode: 'G-1',
-    side: 'BUY',
+    side: 'BUYS',
     ticker: 'ACME',
     price: '100.25',
     currency: 'USD',
@@ -71,7 +71,7 @@ function count(iterable) {
 }
 
 benchmark('order event from an object', () => orderEvent())
-benchmark('order from an object', () => new graph.Order({ crosscode: 'G-1', side: 'BUY', price: '100.25' }))
+benchmark('order from an object', () => new graph.Order({ crosscode: 'G-1', side: 'BUYS', price: '100.25' }))
 benchmark('order event read price', () => ORDER_EVENT.price)
 benchmark('order event read isincode', () => ORDER_EVENT.isincode)
 benchmark('order event read fxrates', () => ORDER_EVENT.fxrates)
@@ -98,8 +98,8 @@ benchmarkStreams('book fromArrowReader', () =>
 // The book readings over the folded bid side - one limit per tick - and the
 // named views: a plan built from its spelling, and the orders view over the
 // operations' own stream.
-benchmarkStreams(`book bid limits/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.limits('BUY'))
-benchmark('book bid depth/10', () => FOLD_BOOK.depth('BUY', 10))
+benchmarkStreams(`book bid limits/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.limits('BUYS'))
+benchmark('book bid depth/10', () => FOLD_BOOK.depth('BUYS', 10))
 benchmarkStreams(`book alive/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.alive())
 benchmark('book spread', () => FOLD_BOOK.spread)
 benchmark('book imbalance/10', () => FOLD_BOOK.imbalance(10))

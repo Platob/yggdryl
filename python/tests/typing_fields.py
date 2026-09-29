@@ -83,7 +83,7 @@ ccy_default_scalar: Scalar = ccy.default_scalar()
 instrument: RicField = yggdryl.ric("instrument")
 pair: ForexField = yggdryl.forex("pair")
 side: SideField = yggdryl.side("side", nullable=False)
-side_member: Side = Side.BUY
+side_member: Side = Side.BUYS
 category: MarketDataKindField = yggdryl.marketdatakind("marketdatakind")
 category_member: MarketDataKind | None = MarketDataKind.from_spelling("ORDR")
 version: VersionField = yggdryl.version("version", nullable=False)

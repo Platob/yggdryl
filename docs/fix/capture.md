@@ -42,7 +42,7 @@ One line in, one row per message out, with the columns named as the dictionary n
     let held = row.as_sequence().expect("a row");
     let at = schema.index_of("msgtype").expect("the msgtype column");
     assert_eq!(held[at].as_str(), Some("D"));
-    assert_eq!(held[schema.index_of("side").expect("the side column")].as_str(), Some("BUY"));
+    assert_eq!(held[schema.index_of("side").expect("the side column")].as_str(), Some("BUYS"));
 
     // Typed facts belong in their columns. The residual map holds only what
     // a projected column cannot represent, keyed `tag:name`; a key no
@@ -81,7 +81,7 @@ One line in, one row per message out, with the columns named as the dictionary n
 
     # A column is read by name, never by its place in the row.
     assert row[schema.index_of("msgtype")] == "D"
-    assert row[schema.index_of("side")] == Side.BUY
+    assert row[schema.index_of("side")] == Side.BUYS
 
     # Typed facts belong in their columns; the residual map holds only what no
     # projected column represents, and a key no dictionary resolves is in the
@@ -108,7 +108,7 @@ One line in, one row per message out, with the columns named as the dictionary n
 
     // A column is read by name, never by its place in the row.
     assert.equal(row[schema.indexOf('msgtype')], 'D')
-    assert.equal(row[schema.indexOf('side')], 'BUY')
+    assert.equal(row[schema.indexOf('side')], 'BUYS')
 
     // Typed facts belong in their columns; the residual map holds only what no
     // projected column represents, and a key no dictionary resolves is in the
@@ -392,7 +392,7 @@ Data is never an error. A parse, a market projection, a [lifecycle](lifecycle.md
 
 | Aspect | Rule |
 | --- | --- |
-| Defaults | a value that will not type is null beside a [`FixAnomaly`](message.md#anomalies); a clock - `SendingTime(52)`, `TransactTime(60)` - naming no instant is left unstated, and the message is dated [as one stating none is](#every-message-is-dated); a market fact that reads as nothing is null - a size or an FX part no exact decimal reads - or the message's, for an entry clock naming no instant; a trade side no side reads is an execution of side `UNKNOWN` |
+| Defaults | a value that will not type is null beside a [`FixAnomaly`](message.md#anomalies); a clock - `SendingTime(52)`, `TransactTime(60)` - naming no instant is left unstated, and the message is dated [as one stating none is](#every-message-is-dated); a market fact that reads as nothing is null - a size or an FX part no exact decimal reads - or the message's, for an entry clock naming no instant; a trade side no side reads is an execution of side `UNKN` |
 | Left out | a line that is not a row, and a frame that builds no message, the frames after it still read; a batch row whose cell the Arrow landing refuses - a `state` code no member takes - the rest of its batch still read; a batch of another schema than the first; a [book entry that cannot stand](message.md#market-data); in a book walk, an order or a quote stating neither the bid nor the ask, an operation dated before its book, and a group the book refuses |
 | Kept as stated | an observation whose content merge is refused is walked unmerged, its clocks and provenance folded; an order link or a side the rebuild refuses leaves the message as it stated itself ([lifecycle](lifecycle.md#edges)) |
 | Deduplication | keyed by where it is raised, what went wrong and the column, tag or kind it is about - never the value or the row: logged the first time with its detail, then again as `seen N times` at the tenfold counts 10, 100, 1000; process-wide, and bounded at 4096 distinct warnings, past which one line says so and new kinds are counted in total only |
@@ -633,7 +633,7 @@ Forty scalar definitions and one Map group carry the facts no dictionary publish
 | `exprunix` | `ExprUnix` | 65007 | when the current generation stops being good, a nanosecond UTC clock: `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)`; a newer message's explicit deadline wins even where earlier, else it inherits the predecessor's; nullable |
 | `curruuid` | `CurrUuid` | 65008 | the message's identity, a `uuid`: its millisecond `currunix` leads, `seqnum` occupies UUIDv7's ordered 12-bit lane up to 4095, and `rand_b` carries a 62-bit XXH3 payload over `currhashcode` plus the whole sequence seeded by `crosshashcode`; non-null |
 | `crossuuid` | `CrossUuid` | 65009 | the identity every message of one lifecycle shares, a `uuid`: the UUIDv8 of `crosshashcode`, or the message's own `curruuid` where it names no cross code; non-null |
-| `crosscode` | `CrossCode` | 65010 | the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`, stored under the side the message takes where its `msgcat` is `ORDR`, `QUOT` or `EXEC` - `BUY:A1` - and as spelled for `UNKNOWN` and for every other category ([`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches)); empty where none |
+| `crosscode` | `CrossCode` | 65010 | the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`, stored under the side the message takes where its `msgcat` is `ORDR`, `QUOT` or `EXEC` - `BUYS:A1` - and as spelled for `UNKN` and for every other category ([`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches)); empty where none |
 | `currhashcode` | `CurrHashCode` | 65011 | the code the message's content digests to, `uint64`: the XXH3-64 of what the message states but the standard header and trailer, less `MsgType(35)` - the event's own facts, the text, the metadata, `MsgType`, the FIX fields it lifted, then the [entry tree](#nothing-is-lost-at-the-end) - never the frame a hop carried it in, never the chain it is in and never the row's columns; non-null |
 | `crosshashcode` | `CrossHashCode` | 65012 | the XXH3-64 of `crosscode` as stored, a side prefix included, zero where the message names none; non-null |
 | `prevuuid` | `PrevUuid` | 65013 | the identity of the message this one follows; stamped by the lifecycle, nullable |
@@ -1221,7 +1221,7 @@ A symbol naming no pair detects nothing, and so does a message stating a class t
 
 ### The identifier maps are read off the row
 
-The [alternate identifiers](message.md#the-identifier-maps) `Operation` answers - `get_altids()` - are rebuilt at every settle from the fields that state them: `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`, and a bridge's own. Each entry sits under the upper-cased name of the field that stated it, and no column carries them: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to the map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares. The account a message is booked to and the user who entered it - `Account(1)`, `SenderSubID(50)` - name no identifier: they are content a leaf's [metadata](message.md#what-a-leafs-metadata-holds) carries.
+The [alternate identifiers](message.md#the-identifier-maps) `Operation` answers - `get_altids()` - are rebuilt at every settle from the fields that state them: `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`, and a bridge's own. Each entry sits under the upper-cased name of the field that stated it, and no column carries them: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to the map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares. The account a message is booked to, `Account(1)`, names no identifier: it is the message's `ACCOUNT` [account](message.md#accounts-and-regulatory-trade-identifiers), which a leaf holds in its `accountids` rather than its metadata. The user who entered it, `SenderSubID(50)`, names none either.
 
 === "Rust"
 

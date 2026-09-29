@@ -257,7 +257,7 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     ]
     books = list(graph.BookIterator(operations))
     assert len(books) == 2
-    best = books[1].best_price(Side.BUY)
+    best = books[1].best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal(101)
 
     # The same operations as rows, from the messages or from their FIX rows.
@@ -291,7 +291,7 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     )
     const books = [...new graph.BookIterator(operations)]
     assert.equal(books.length, 2)
-    assert.equal(books[1].bestPrice('BUY'), '101')
+    assert.equal(books[1].bestPrice('BUYS'), '101')
 
     // The same operations as rows, from the messages or from their FIX rows.
     assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
@@ -320,7 +320,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | `include_msgtypes` | `with_include_msgtypes` | empty, which reads every type the refusals leave | the types read, naming any clearing the default refusals |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 | `default_sending_time` | `try_with_default_sending_time` | none, one UTC-now read per undated message | the [`SendingTime(52)`](capture.md#every-message-is-dated) a message stating none is dated by where neither a row cell nor the `currunix` of the line it was read out of states one; an exact nanosecond UTC instant, else refused; pin it for a reproducible read |
-| `market_metadata` | `with_market_metadata` | on | whether a leaf the codec builds - `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `book_arrow_reader` - carries in its metadata what its message states that no typed column reads, by [the one rule](message.md#what-a-leafs-metadata-holds); the map feeds the leaf's identity, so turning it off moves every leaf whose message states such a field, and `FixMsg::market_data` always carries it |
+| `market_metadata` | `with_market_metadata` | on | whether a leaf the codec builds - `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `book_arrow_reader` - carries in its metadata what its message states that no typed column reads and no identifier map of the leaf holds, and lifts into its `altids` the keys ending with an identifier its message declares, by [the one rule](message.md#what-a-leafs-metadata-holds); the map and what it lifts feed the leaf's identity, so turning it off - no metadata, nothing lifted - moves every leaf whose message states such a field, and `FixMsg::market_data` always carries it |
 | `official_time_delay_ms` | `with_official_time_delay_ms` | `DEFAULT_OFFICIAL_TIME_DELAY_MS`, one second | how far from `SendingTime(52)` an [official clock](capture.md#the-official-clock-dates-the-message) may stand and still date the message: the `TransactTime(60)` the message states, else the `TrdRegTimestamp(769)` its `TrdRegTimestampType(770)` says is about the event or a hop, nearest the sending clock; the sending clock dates the message where none stands that near, and a nonpositive delay admits only a clock equal to it |
 | `dedup_window_ms` | `with_dedup_window_ms` | `DEFAULT_DEDUP_WINDOW_MS`, one minute | how long, in milliseconds of event time, [`lifecycle`](lifecycle.md#an-identity-is-yielded-once) remembers an identity it yielded so it yields that identity once; a grid view is exempt, and a nonpositive window remembers none |
 
@@ -420,7 +420,7 @@ One column carries the frames; two more supply, per row, arguments the byte read
 | `currunix` | when the row's line was written - the text reader's `mtime` - as the carrier's precise recording instant: written to `recdunix` unless the message or another row cell states `recdunix` directly, and the [sending clock](capture.md#every-message-is-dated) of a message stating no `SendingTime(52)` that no `sendingtime` cell dates, never a fact of the message; the epoch is silence, because a line nothing dated reads as the epoch |
 | `sourceurl` | nothing: [the capture's own column](message.md#a-row-is-a-message-again) is what a reader said about the line, so it fills no message fact and is written straight into its own column of the row instead |
 | any other column named after a field | that field, where the message did not state it - a `sendingtime` column among them, which outranks the line's `currunix` and the codec's default sending time |
-| one of the other fourteen [event columns](../graph/market-data.md#columns) | nothing: they are the carrier's own facts - the [text line](../media/index.md#plain-text) each row is, as the reader stated it - so `curruuid` is each message's one source and the rest fill no message fact |
+| one of the other fourteen [event columns](../graph/market-data.md#columns) | nothing: they are the carrier's own facts - the [text line](../media/index.md#plain-text) each row is, as the reader stated it - so `curruuid` is each message's one source and the rest fill no message fact, a line's `prevunix` - the instant of the line the read cut before it - among them |
 
 A column is the caller speaking per row and a pin is the caller speaking per run, so a column outranks the pin and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the codec was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 

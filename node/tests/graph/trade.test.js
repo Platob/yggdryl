@@ -15,7 +15,7 @@ function fill(code, side, quantity, clock = CLOCK) {
 
 function trade() {
   const root = new graph.ExecutionEvent(CLOCK, { crosscode: 'T-1', ticker: 'ACME', lastpx: '101.25', lastqty: 10 })
-  return graph.TradeEvent.fromParts(root, [fill('SELL-1', 'SELL', 6), fill('BUY-1', 'BUY', 4)])
+  return graph.TradeEvent.fromParts(root, [fill('SELL-1', 'SELL', 6), fill('BUY-1', 'BUYS', 4)])
 }
 
 test('fromParts of two executions', () => {
@@ -27,16 +27,16 @@ test('fromParts of two executions', () => {
   const { executions } = made
   assert.ok(executions.every((execution) => execution instanceof graph.ExecutionEvent))
   // In canonical side order, whatever order they were handed over in.
-  assert.deepEqual(executions.map((execution) => execution.side), ['BUY', 'SELL'])
+  assert.deepEqual(executions.map((execution) => execution.side), ['BUYS', 'SELL'])
   // A sided element's cross code carries its side (A17).
-  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['BUY:BUY-1', 'SELL:SELL-1'])
+  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['BUYS:BUY-1', 'SELL:SELL-1'])
   assert.equal(made.isExecution, true)
 })
 
 test('any dated operation or MarketData roots a trade', () => {
   const root = new graph.OrderEvent(CLOCK, { crosscode: 'T-1', ticker: 'ACME' })
-  const byLeaf = graph.TradeEvent.fromParts(root, [fill('B', 'BUY', 1)])
-  const byData = graph.TradeEvent.fromParts(new graph.MarketData(root), [fill('B', 'BUY', 1)])
+  const byLeaf = graph.TradeEvent.fromParts(root, [fill('B', 'BUYS', 1)])
+  const byData = graph.TradeEvent.fromParts(new graph.MarketData(root), [fill('B', 'BUYS', 1)])
   assert.ok(byLeaf.equals(byData))
   assert.equal(byLeaf.crosscode, 'T-1')
 })
@@ -47,7 +47,7 @@ test('refusals name what was wrong', () => {
     /expected a dated operation as the trade's root, got order/,
   )
   assert.throws(
-    () => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK + 1n), [fill('B', 'BUY', 1)]),
+    () => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK + 1n), [fill('B', 'BUYS', 1)]),
     /executions\[0\]\.currunix: expected the trade timestamp/,
   )
   assert.throws(() => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK), []), /at least one execution/)
@@ -59,7 +59,7 @@ test('the verbs answer new trades', () => {
   const first = trade()
   const later = graph.TradeEvent.fromParts(
     new graph.ExecutionEvent(CLOCK + 1n, { crosscode: 'T-1', ticker: 'ACME' }),
-    [fill('BUY-1', 'BUY', 4, CLOCK + 1n)],
+    [fill('BUY-1', 'BUYS', 4, CLOCK + 1n)],
   )
   const followed = later.withPrevious(first)
   assert.equal(followed.prevuuid, first.curruuid)

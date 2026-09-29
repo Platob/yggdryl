@@ -44,7 +44,7 @@ mod dataset {
     /// How many executions the parse splits off the capture: one per
     /// execution report reporting a fill - 52 bridge rows and 4 frames - and
     /// one for the trade capture, whose one side states no `Side(54)`: an
-    /// execution of side `UNKNOWN`, said as a warning, never a lost fill.
+    /// execution of side `UNKN`, said as a warning, never a lost fill.
     const SPLIT: usize = 57;
 
     fn registry() -> Arc<FixRegistry> {
@@ -452,7 +452,7 @@ mod dataset {
         // dated by its line. Under the one instant every line shared, they
         // were two deliveries, one of them a twin the window dropped; at
         // their own instants they are seven deliveries and no twin. One more
-        // is the execution of side `UNKNOWN` the trade capture splits off.
+        // is the execution of side `UNKN` the trade capture splits off.
         assert_eq!(direct.len(), 39);
         assert_eq!(
             direct
@@ -1179,9 +1179,13 @@ mod dataset {
     }
 
     /// The typed spellings no leaf's metadata may key: each is a column, a
-    /// header or a trailer fact. `Account(1)` is none: an account is no
-    /// identifier, and the leaf's metadata carries it.
-    const TYPED: [&str; 10] = [
+    /// header or a trailer fact, the `Account(1)` the leaf's `accountids`
+    /// hold, or one of the two losing aliases of `OrderID(37)` its `altids`
+    /// lift.
+    const TYPED: [&str; 13] = [
+        "account",
+        "marketorderid",
+        "omsdealerorderid",
         "symbol",
         "side",
         "price",
@@ -1244,7 +1248,7 @@ mod dataset {
         // takes. Nothing is refused: the trade is no book input itself,
         // since a trade's fills are the executions its parse splits off -
         // and its single side states no `Side(54)`, so that execution is
-        // of side `UNKNOWN`.
+        // of side `UNKN`.
         assert!(refused.is_empty(), "{refused:?}");
         assert_eq!(operations.len(), 18);
         // The two a walk remembering nothing answers beside them each repeat
@@ -1293,7 +1297,7 @@ mod dataset {
         // being refused, and it leaves the side at the same instant, so the
         // one book of that instant applies both as deltas and holds nothing;
         // eight books come out - one of them the trade capture's, whose one
-        // execution of side `UNKNOWN` takes neither side - and the last is
+        // execution of side `UNKN` takes neither side - and the last is
         // that one.
         let books: Vec<yggdryl::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
@@ -1337,8 +1341,13 @@ mod dataset {
         // each delta's cross code, and so its identity, reads `SELL:`. It
         // moved again when an event's place left its content code - the
         // book's own and each delta's - and a delta's place became its
-        // instant's rather than its chain's.
-        assert_eq!(last.get_currhashcode(), 10_559_977_729_007_194_651);
+        // instant's rather than its chain's. It moved again when an element
+        // following another took every metadata key of its chain it does not
+        // state: a delta's identity digests the metadata it took. It moved
+        // again when a side came to be spelled by its four-letter code: the
+        // book's own side, stated as none, feeds `UNKN` where it fed
+        // `UNKNOWN`, while both deltas, `SELL`, kept their identities.
+        assert_eq!(last.get_currhashcode(), 7_372_418_038_390_061_154);
 
         // No leaf keys a typed fact.
         for operation in &operations {
@@ -2054,7 +2063,7 @@ mod pipeline {
 
         // The fill's body: symbol, side, quantities and prices, typed.
         assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
-        assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("BUY"));
+        assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("BUYS"));
         // `OrderQty(38)` and `Price(44)` are columns of their own, exact at the
         // one width this crate keeps a number at.
         assert_eq!(
