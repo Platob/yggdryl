@@ -472,7 +472,8 @@ impl PyCandleIterator {
 /// The candles `books` fold into, as a list: `CandleIterator(books,
 /// CandleOptions(interval, timezone))` drained, `interval` a
 /// `CandleOptions`, an `int` of nanoseconds or a spelling such as `"1m"`,
-/// and `timezone` the zone the buckets align to, UTC where none is given.
+/// and `timezone` the zone the buckets align to - where none is given, the
+/// zone a `CandleOptions` states, else UTC.
 #[pyfunction]
 #[pyo3(signature = (books, interval, timezone=None))]
 pub(crate) fn candles(

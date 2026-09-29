@@ -91,13 +91,13 @@ The display is vanilla ES modules with no framework, no CDN and no build step: e
 | `index.html` | the shell: the table, ticker, from, to, timezone and interval selectors and the theme toggle; the chart with its legend; the point summary; the bid and ask audit tables with the download control; a five-line script stamping the stored theme before the first paint |
 | `theme.css` | the design tokens on `:root` (`--bg`, `--fg`, `--muted`, `--panel`, `--border`, `--bid`, `--ask`, `--mid`, `--spread`, `--accent`), redefined under `prefers-color-scheme: dark` and again under `[data-theme="dark"]`; a dense layout that works at phone width, visible focus rings, `prefers-reduced-motion` honoured |
 | `theme.js` | `THEMES` (`system`, `light`, `dark`), `resolveTheme`, `applyTheme` (stamps `data-theme` on `<html>`), `toggleTheme`, the `localStorage` key `yggdryl-book-theme` behind `try`/`catch` |
-| `api.js` | one function per route - `fetchTables`, `fetchTickers`, `fetchCandles`, `fetchBook`, `fetchEvents`, `auditUrl` - each building its query string from a plain object, pure over an injectable `fetch`; `ApiError` carries the service's `error` text and status |
+| `api.js` | one function per route - `fetchTables`, `fetchTimezones`, `fetchTickers`, `fetchCandles`, `fetchBook`, `fetchEvents`, `auditUrl` - each building its query string from a plain object, pure over an injectable `fetch`; `ApiError` carries the service's `error` text and status |
 | `chart.js` | `drawCandles(canvas, candles, options)` on a 2D canvas at the device pixel ratio: the bid candles left and the ask candles right of every bucket, the mid close as a line, the spread as a lower band, the axes in the chosen zone; hover crosshair and tooltip, click and keyboard selection; `scaleLinear`, `niceTicks`, `layoutCandles`, `nearestCandle` exported pure, so the layout is tested without a DOM |
 | `audit.js` | `renderSummary` (best bid and ask, spread, mid, imbalance, the counts), `renderEvents` (a sortable table of `currunix`, `role`, `marketdatakind`, `side`, `price`, `quantity`, `state`, `crosscode`, `curruuid`, `prevuuid`), `downloadLink`; `formatInstant` and `formatDecimal` exported pure |
-| `app.js` | the state: the API base off `document.baseURI` (so `--path /book` serves the routes at `/book/api/`), the tables, the tickers of the chosen table with `from` and `to` set to the ticker's span, the candles on any selector change (debounced), the chart, and on a selected bucket the book at its end and the events of its range on each side; the download points at the whole range. `HASH_KEYS` - `table`, `ticker`, `from`, `to`, `tz`, `interval`, `at` - are read from and written to the URL hash, so a view is shareable; `INTERVALS` offers `30s`, `1m`, `5m`, `15m`, `1h`, `1d` |
+| `app.js` | the state: the API base off `document.baseURI` (so `--path /book` serves the routes at `/book/api/`), the tables, the zones `timezones` lists (the browser's own the default only where it is listed, else `UTC`), the tickers of the chosen table with `from` and `to` set to the ticker's span, the candles on any selector change (debounced, a reply to a superseded selection dropped), the chart, and on a selected bucket its last book - asked strictly before the candle's end - and the events of its range on each side; the download points at the whole range. The range is held as instants and sent as UTC `Z` text, so a zone change re-renders the inputs rather than moving the span. `HASH_KEYS` - `table`, `ticker`, `from`, `to`, `tz`, `interval`, `at` - are read from and written to the URL hash, so a view is shareable; `INTERVALS` offers `30s`, `1m`, `5m`, `15m`, `1h`, `1d` |
 | `favicon.svg` | a two-candle mark |
 
-The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears the hover; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error.
+The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears the hover, and a live readout beside the canvas states the hovered candle in text; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error.
 
 `node/book.js`, CommonJS, is the package's door to all of it:
 
@@ -105,10 +105,10 @@ The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbour
 book.assets                    // the absolute `book/` folder
 book.assetFiles                // the eight files above, in the order the command embeds them
 book.serveArguments(options)   // the argument vector of { tables, bind = '127.0.0.1:0', path = '/', capture, args }
-book.serve(options)            // spawns `yggdryl market serve` with it -> Promise<{ endpoint, process, close() }>
+book.serve(options)            // spawns `yggdryl market serve` with it -> Promise<{ endpoint, process, close() }>; `signal` cancels
 ```
 
-A table is `'name=location'`, a location or `{ name, location }`. `serve` runs `bin` - `YGGDRYL_BIN`, else `yggdryl` on the path - under `env`, resolves once the endpoint line is read from stdout, and rejects with the process's stderr when it exits first, with the spawn error when it cannot start, or with the line when it is no URL.
+A table is `'name=location'`, a location or `{ name, location }`. `serve` runs `bin` - `YGGDRYL_BIN`, else `yggdryl` on the path - under `env`, resolves once the endpoint line is read from stdout, and rejects with the process's stderr when it exits first, with the spawn error when it cannot start, with the line when it is no URL, or with an `AbortError` quoting the stderr once an aborted `signal` has ended the process - `AbortSignal.timeout(ms)` bounds the wait. Until it resolves, the process ends with its parent.
 
 ## Examples
 

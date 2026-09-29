@@ -768,3 +768,22 @@ fn serve_makes_an_absent_folder_the_table_a_capture_lands_in() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+#[cfg(feature = "iceberg")]
+#[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
+fn serve_folds_a_capture_into_a_record_leaf_and_serves_its_books() {
+    // Each leaf the help lists takes the capture and answers every reading:
+    // an Avro leaf through the row Iceberg states, a CSV leaf through the
+    // row every read declares.
+    for leaf in ["books.arrows", "books.parquet", "books.avro", "books.csv"] {
+        let root = isolated(&format!("leaf-{leaf}"));
+        std::fs::create_dir_all(&root).expect("isolated test folder");
+        let notes = capture_served(&root.join(leaf));
+        assert!(
+            notes[0].starts_with("· table books over file://"),
+            "{leaf}: {notes:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

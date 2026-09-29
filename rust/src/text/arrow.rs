@@ -14,20 +14,20 @@ use regex_automata::dfa::{
 use regex_automata::{Input, nfa::thompson, util::syntax};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::IOBase;
 use crate::arrow::BatchReader;
 use crate::graph::Event;
 use crate::media::IORecordOptions;
 use crate::temporal as iso;
 use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
-use crate::{Cursor, IOBase};
 
 use super::leading::LeadingFragment;
 use super::line::LineSource;
 use super::options::TextOptions;
 use super::reader::Lines;
 use super::transport::{
-    BoundReader, NonemptyDecodedReader, NonemptySendDecodedReader, encoded_terminator, ends_with,
-    fetched, owned_handle, transports, update_suffix,
+    borrowed_decoded, encoded_terminator, ends_with, fetched, owned_decoded, owned_handle,
+    transports, update_suffix,
 };
 use super::{TextBytes, TextLine};
 
@@ -77,20 +77,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
-    // One ask of the handle answers both: the codings the transport peels
-    // and the charset it decodes under, which the call-count pins hold to
-    // the one `media_type` read the codings always took.
-    let media_type = handle.media_type();
-    let codings = media_type.encodings().to_vec();
-    let charset = Charset::from_media_type(media_type);
-    let bytes: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
-        None => Box::new(NonemptySendDecodedReader::new(
-            Box::new(Cursor::new(handle)),
-            codings,
-            charset,
-        )),
-    };
+    let bytes = owned_decoded(handle);
 
     let lines = text_lines(bytes, source, mtime, options)?;
     super::batch::into_arrow_reader(lines, options)
@@ -169,20 +156,7 @@ fn read_owned_text_lines_at<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<TextLines> {
     options.require_framing_rowheader()?;
-    // One ask of the handle answers both: the codings the transport peels
-    // and the charset it decodes under, which the call-count pins hold to
-    // the one `media_type` read the codings always took.
-    let media_type = handle.media_type();
-    let codings = media_type.encodings().to_vec();
-    let charset = Charset::from_media_type(media_type);
-    let bytes: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
-        None => Box::new(NonemptySendDecodedReader::new(
-            Box::new(Cursor::new(handle)),
-            codings,
-            charset,
-        )),
-    };
+    let bytes = owned_decoded(handle);
     text_lines(bytes, source, mtime, options)
 }
 
@@ -203,15 +177,7 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     if !options.dedup_adjacent {
         counting.set_max_record_byte_size(Some(0));
     }
-    // One ask of the handle answers both: the codings the transport peels
-    // and the charset it decodes under, which the call-count pins hold to
-    // the one `media_type` read the codings always took.
-    let media_type = handle.media_type();
-    let codings = media_type.encodings().to_vec();
-    let charset = Charset::from_media_type(media_type);
-    let raw: Box<dyn Read + '_> =
-        Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
-    let source = NonemptyDecodedReader::new(raw, codings, charset);
+    let source = borrowed_decoded(handle)?;
     let records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
     let mut rows = 0_u64;
     for row in records {

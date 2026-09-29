@@ -503,9 +503,11 @@ assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got 
 the display's files, `serveArguments(options)` the argument vector `yggdryl
 market serve` takes, and `serve(options)` spawns the command - `bin` from
 `YGGDRYL_BIN`, else `yggdryl` on the path - resolving `{ endpoint, process,
-close() }` once it has printed its endpoint. A table is `'name=location'`, a
-location or `{ name, location }`; `capture` folds FIX bridge logs into the
-first table before serving.
+close() }` once it has printed its endpoint - or rejecting with the stderr
+of a process that exits first, and with an `AbortError` once an aborted
+`signal` (`AbortSignal.timeout(ms)`) has ended it. A table is
+`'name=location'`, a location or `{ name, location }`; `capture` folds FIX
+bridge logs into the first table before serving.
 
 ```javascript
 const assert = require('node:assert/strict')

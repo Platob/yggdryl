@@ -22,8 +22,11 @@ use clap::{Args, Subcommand};
 use yggdryl::graph::{BookEvent, BookIterator, BookService, BookServiceOptions, MarketData};
 use yggdryl::holder::Holder;
 use yggdryl::http::{ForwardedHeader, Method, Request, Response, Server, ServerOptions, Status};
+use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{TextOptions, read_text_lines};
-use yggdryl::{Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, Result, Timezone, Url};
+use yggdryl::{
+    Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, Result, Scheme, Timezone, Url,
+};
 
 use crate::{location, style};
 
@@ -441,6 +444,11 @@ fn fold(
 
 /// `books` appended to `table` as `BOOK` rows, in one append through the
 /// table's own record options - one commit on an Iceberg table.
+///
+/// Avro spells no unsigned 64-bit integer, so an Avro leaf that declares no
+/// row takes the one Iceberg states - its `uint64` codes widened to
+/// `decimal(20, 0)`, Iceberg's own types being what an Avro data file holds
+/// - and every read casts the rows back onto the row field.
 fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
     let rows = MarketData::arrow_reader(
         books
@@ -449,7 +457,10 @@ fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
         None,
         None,
     )?;
-    let options = table.record_options()?;
+    let mut options = table.record_options()?;
+    if matches!(options, RecordOptions::Avro(_)) && options.field().is_none() {
+        options.set_field(MarketData::field()?.into_scheme_compat(&Scheme::ICEBERG)?);
+    }
     table.append_arrow_reader(rows, &options)?;
     Ok(())
 }
@@ -462,7 +473,6 @@ fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
 /// `decimal(20, 0)` - and every read casts the rows back onto the row field.
 #[cfg(feature = "iceberg")]
 fn prepared(location: &str) -> Result<bool> {
-    use yggdryl::Scheme;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
 
     if !resource(location)?.is_container() {
