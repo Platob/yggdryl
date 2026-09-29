@@ -86,7 +86,7 @@ fn sheet_state_from(value: Option<String>) -> Result<SheetState> {
 
 /// One cell's position: a zero-based row and column, spelled `A1`.
 #[napi(js_name = "CellRef")]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct JsCellRef {
     pub(crate) inner: CellRef,
 }
@@ -143,7 +143,7 @@ impl JsCellRef {
 
     #[napi]
     pub fn clone(&self) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 
     #[napi(js_name = "toString")]
@@ -159,7 +159,7 @@ impl JsCellRef {
 
 /// A rectangle of cells, spelled `A1:C3`, `A:C`, `3:5` or `A3:F`.
 #[napi(js_name = "CellRange")]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct JsCellRange {
     pub(crate) inner: CellRange,
 }
@@ -251,7 +251,7 @@ impl JsCellRange {
 
     #[napi]
     pub fn clone(&self) -> Self {
-        *self
+        Self { inner: self.inner }
     }
 
     #[napi(js_name = "toString")]
@@ -806,6 +806,7 @@ impl JsSheet {
     /// The sheet's rows as one record `Serie`: the first row naming the
     /// columns unless `header` is false, each column typed by its first
     /// value, or by `field` when one is declared.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     #[napi]
     pub fn into_serie(
         &self,
@@ -814,9 +815,7 @@ impl JsSheet {
     ) -> Result<JsSerie> {
         let options = options.unwrap_or_default();
         let cast = cast_options(options.safe, options.representation.as_deref())?;
-        let field = field
-            .map(|field| crate::iceberg::field_from_input(field))
-            .transpose()?;
+        let field = field.map(crate::iceberg::field_from_input).transpose()?;
         let sheet = self.snapshot()?;
         sheet
             .into_serie(field.as_ref(), options.header.unwrap_or(true), cast)
@@ -956,7 +955,10 @@ impl JsWorkbook {
     /// `null` when no sheet has it.
     #[napi]
     pub fn sheet_kind(&self, name: String) -> Result<Option<&'static str>> {
-        Ok(self.lock()?.sheet_kind(&name).map(|kind| kind.as_str()))
+        Ok(self
+            .lock()?
+            .sheet_kind(&name)
+            .map(yggdryl::excel::SheetKind::as_str))
     }
 
     /// How many sheets the workbook holds.
@@ -1062,6 +1064,7 @@ impl JsWorkbook {
 
     /// The package as bytes: every sheet written, and every other part of
     /// an opened package kept as it was.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     #[napi]
     pub fn into_bytes(&self) -> Result<Buffer> {
         self.lock()?
@@ -1079,6 +1082,7 @@ impl JsWorkbook {
     }
 
     /// Calls the package's handle has answered so far, in `IOBase` calls.
+    #[allow(clippy::cast_precision_loss)] // A call count stays far below 2^53.
     #[napi(getter)]
     pub fn handle_reads(&self) -> Result<f64> {
         Ok(self.lock()?.handle_reads() as f64)
@@ -1098,6 +1102,9 @@ impl JsWorkbook {
 }
 
 /// The grid's bounds and the crate's defaults, for the loader.
+// Reached through NAPI's generated registration inventory rather than an
+// ordinary Rust call site, like the modules `lib.rs` allows the same way.
+#[allow(dead_code)]
 #[napi(object)]
 pub struct ExcelLimits {
     pub max_rows: u32,
@@ -1108,6 +1115,7 @@ pub struct ExcelLimits {
 }
 
 /// The grid's bounds and the crate's defaults.
+#[allow(dead_code)] // Reached through NAPI's registration inventory.
 #[napi(js_name = "_excelLimitsNative", skip_typescript)]
 pub fn excel_limits_native() -> ExcelLimits {
     ExcelLimits {

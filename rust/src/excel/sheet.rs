@@ -4,8 +4,8 @@
 //! caller opens to read `B7`, set `C3`, walk a column, window a range or
 //! lay its rows out as a [`Serie`]. It holds its cells sparsely, by row then
 //! column, so a cell costs what it holds and nothing else, and it is never
-//! on the record path: a record read streams the part through
-//! [`reader`](super::reader) and builds no cell.
+//! on the record path: a record read through [`Excel`](super::Excel)
+//! streams the part and builds no cell.
 //!
 //! Every door takes a resolved [`CellRef`] or [`CellRange`], never A1 text:
 //! `sheet.cell("B2".parse()?)` is the text spelling and `sheet.cell((1,
