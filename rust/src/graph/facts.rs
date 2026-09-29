@@ -12,24 +12,31 @@
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
-//! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `UNKNOWN`
+//! (`XXX`), no unit, a side of `UNKN`, no identifiers, a `UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
+//!
+//! Each holder also carries the [`MarketDataKind`] of the leaf that holds
+//! it, stamped by that leaf - `UNKN` until one does. The kind is what
+//! decides whether the cross code carries the side ([`MarketDataKind::is_sided`]):
+//! only an order's, a quote's and an execution's does. It is never digested:
+//! a leaf feeds its own kind where its identity needs one.
 
 use smol_str::SmolStr;
 
-use super::market::{
-    FxRates, Metadata, empty_fxrates, empty_metadata, restating_operation, sided_crosscode,
-};
+use super::market::{FxRates, Metadata, empty_fxrates, empty_metadata, restating_operation};
 use super::{Element, Event, Market, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
-use crate::{Ccy, Cfi, Decimal, Mic, Result, Side, State, TimeInForce, Unit, Uuid};
+use crate::{Ccy, Cfi, Decimal, MarketDataKind, Mic, Result, Side, State, TimeInForce, Unit, Uuid};
 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
 /// instant: what an undated entry is.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MarketFacts {
+    /// The category of the leaf holding these facts: whether the cross code
+    /// is stored under the side.
+    kind: MarketDataKind,
     curruuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
@@ -47,6 +54,7 @@ pub(crate) struct MarketFacts {
     derived: Derived,
     cficode: Option<Cfi>,
     miccode: Option<Mic>,
+    execunix: Option<i64>,
     lastpx: Option<Decimal>,
     lastqty: Option<Decimal>,
     avgpx: Option<Decimal>,
@@ -94,6 +102,7 @@ impl Default for MarketFacts {
     /// An element stating nothing.
     fn default() -> Self {
         Self {
+            kind: MarketDataKind::Unknown,
             curruuid: Uuid::default(),
             crossuuid: Uuid::default(),
             crosscode: String::new(),
@@ -109,6 +118,7 @@ impl Default for MarketFacts {
             derived: Derived::default(),
             cficode: None,
             miccode: None,
+            execunix: None,
             lastpx: None,
             lastqty: None,
             avgpx: None,
@@ -180,13 +190,33 @@ impl Derived {
 }
 
 impl MarketFacts {
-    /// Stores `crosscode` under this element's side: the one place a
-    /// holder's cross code is written.
+    /// Stores `crosscode`, under this element's side where its kind is
+    /// sided and as given where it is not: the one place a holder's cross
+    /// code is written.
     fn state_crosscode(&mut self, crosscode: String) {
-        self.crosscode = match sided_crosscode(self.side, &crosscode) {
+        self.crosscode = match self.sided_crosscode(&crosscode) {
             std::borrow::Cow::Borrowed(_) => crosscode,
             std::borrow::Cow::Owned(sided) => sided,
         };
+    }
+
+    /// Stores the held cross code under the side again, and the cross hash
+    /// and element with it, where the kind is sided and the prefix moved:
+    /// what a side taken and a sided kind stamped each run. Never strips a
+    /// prefix: an unsided kind keeps its code as given.
+    fn reprefix(&mut self) {
+        if let std::borrow::Cow::Owned(sided) = self.sided_crosscode(&self.crosscode) {
+            self.crosscode = sided;
+            self.crosshashcode = super::element::crosshash(&self.crosscode);
+            self.crossuuid = self.cross_uuid();
+        }
+    }
+
+    /// Stamps the category of the leaf that holds these facts, storing the
+    /// cross code under the side where the new kind is sided.
+    pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
+        self.kind = kind;
+        self.reprefix();
     }
 
     /// Writes one bid or ask fact, allocating the holder on the first stated
@@ -335,15 +365,15 @@ impl Market for MarketFacts {
         self.side
     }
 
-    /// A side taken re-prefixes the cross code, so setting the side after
-    /// the code converges on the code set after the side.
+    /// A side taken re-prefixes the cross code of a sided kind, so setting
+    /// the side after the code converges on the code set after the side.
     fn set_side(&mut self, side: Side) {
         self.side = side;
-        if let std::borrow::Cow::Owned(sided) = sided_crosscode(side, &self.crosscode) {
-            self.crosscode = sided;
-            self.crosshashcode = super::element::crosshash(&self.crosscode);
-            self.crossuuid = self.cross_uuid();
-        }
+        self.reprefix();
+    }
+
+    fn marketdatakind(&self) -> MarketDataKind {
+        self.kind
     }
 
     fn get_securityids(&self) -> &SecurityIds {
@@ -416,6 +446,14 @@ impl Market for MarketFacts {
 
     fn set_miccode(&mut self, code: Option<Mic>) {
         self.miccode = code;
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.execunix
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.execunix = unix;
     }
 
     fn get_lastpx(&self) -> Option<Decimal> {
@@ -578,7 +616,6 @@ pub(crate) struct MarketEventFacts {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
-    execunix: Option<i64>,
     recdunix: Option<i64>,
     exprunix: Option<i64>,
     prevunix: Option<i64>,
@@ -598,7 +635,6 @@ impl MarketEventFacts {
             state: State::unknown(),
             seqnum: 0,
             creaunix: None,
-            execunix: None,
             recdunix: None,
             exprunix: None,
             prevunix: None,
@@ -616,6 +652,13 @@ impl MarketEventFacts {
             self.market.curruuid = uuid;
         }
         self.market.crossuuid = self.cross_uuid();
+    }
+}
+
+impl MarketEventFacts {
+    /// Stamps the category of the leaf that holds these facts.
+    pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
+        self.market.set_marketdatakind(kind);
     }
 }
 
@@ -749,14 +792,6 @@ impl Event for MarketEventFacts {
         self.creaunix = unix;
     }
 
-    fn get_execunix(&self) -> Option<i64> {
-        self.execunix
-    }
-
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.execunix = unix;
-    }
-
     fn get_recdunix(&self) -> Option<i64> {
         self.recdunix
     }
@@ -809,12 +844,13 @@ impl Event for MarketEventFacts {
 
 delegate_market!(MarketEventFacts, market);
 
-/// The three facts an operation adds to the market's, as plain fields.
+/// The four facts an operation adds to the market's, as plain fields.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct OperationExtras {
     tif: Option<TimeInForce>,
     tradable: Option<bool>,
     altids: IdMap,
+    accountids: IdMap,
 }
 
 /// `impl Operation` over an [`OperationExtras`] field.
@@ -846,6 +882,19 @@ macro_rules! operation_extras {
             fn remove_altid(&mut self, key: &str) -> Result<bool> {
                 Ok(self.$($field).+.altids.remove(key).is_some())
             }
+            fn get_accountids(&self) -> &IdMap {
+                &self.$($field).+.accountids
+            }
+            fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
+                self.$($field).+.accountids = ids;
+                Ok(())
+            }
+            fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool> {
+                self.$($field).+.accountids.insert(key, value)
+            }
+            fn remove_accountid(&mut self, key: &str) -> Result<bool> {
+                Ok(self.$($field).+.accountids.remove(key).is_some())
+            }
         }
     };
 }
@@ -859,6 +908,11 @@ pub(crate) struct OperationFacts {
 }
 
 impl OperationFacts {
+    /// Stamps the category of the leaf that holds these facts.
+    pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
+        self.market.set_marketdatakind(kind);
+    }
+
     /// This entry dated at `unix`, nanoseconds since the Unix epoch: a
     /// move, finalized by the caller once the clocks are in.
     #[must_use]
@@ -991,6 +1045,11 @@ impl OperationEventFacts {
         self.event.market.is_derived_securityid(key)
     }
 
+    /// Stamps the category of the leaf that holds these facts.
+    pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
+        self.event.set_marketdatakind(kind);
+    }
+
     /// This operation as the event alone, the operation facts dropped: a
     /// move.
     #[must_use]
@@ -1098,10 +1157,36 @@ delegate_event!(
 delegate_market!(OperationEventFacts, event.market);
 operation_extras!(OperationEventFacts, operation);
 
-fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &E) {
+/// The cross code a copy of `other` takes: a sided source's without the
+/// side prefix its holder gave it - which a sided leaf built over the copy
+/// gives again, and an unsided one never states - and an unsided source's
+/// as it stands.
+fn copied_crosscode<E: Element + Market + ?Sized>(other: &E) -> &str {
+    if other.is_sided() {
+        super::market::unsided_crosscode(other.get_crosscode())
+    } else {
+        other.get_crosscode()
+    }
+}
+
+/// Brings the copy's cross hash and element in step with the code it took,
+/// where that is a sided source's base rather than the source's own code;
+/// whether it did.
+fn resync_copied<T: Element + ?Sized, E: Element + Market + ?Sized>(
+    this: &mut T,
+    other: &E,
+) -> bool {
+    let resynced = this.get_crosscode().len() != other.get_crosscode().len();
+    if resynced {
+        this.sync_cross();
+    }
+    resynced
+}
+
+fn copy_element<T: Element + ?Sized, E: Element + Market + ?Sized>(this: &mut T, other: &E) {
     this.set_curruuid(other.get_curruuid());
     this.set_crossuuid(other.get_crossuuid());
-    this.set_crosscode(other.get_crosscode().to_owned());
+    this.set_crosscode(copied_crosscode(other).to_owned());
     this.set_currhashcode(other.get_currhashcode());
     this.set_crosshashcode(other.get_crosshashcode());
     this.set_srcuuids(other.get_srcuuids().to_vec());
@@ -1112,7 +1197,6 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_state(*other.get_state());
     this.set_seqnum(other.get_seqnum());
     this.set_creaunix(other.get_creaunix());
-    this.set_execunix(other.get_execunix());
     this.set_recdunix(other.get_recdunix());
     this.set_exprunix(other.get_exprunix());
     this.set_prevunix(other.get_prevunix());
@@ -1131,6 +1215,7 @@ fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) 
     let _ = this.set_securityids(other.get_securityids().clone());
     this.set_cficode(other.get_cficode().cloned());
     this.set_miccode(other.get_miccode().cloned());
+    this.set_execunix(other.get_execunix());
     this.set_lastpx(other.get_lastpx());
     this.set_lastqty(other.get_lastqty());
     this.set_avgpx(other.get_avgpx());
@@ -1155,6 +1240,7 @@ fn copy_operation<T: Operation + ?Sized, E: Operation + ?Sized>(this: &mut T, ot
     this.set_tif(other.get_tif().cloned());
     this.set_tradable(other.get_tradable());
     let _ = this.set_altids(other.get_altids().clone());
+    let _ = this.set_accountids(other.get_accountids().clone());
 }
 
 impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {
@@ -1162,6 +1248,7 @@ impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {
         let mut this = Self::default();
         copy_element(&mut this, other);
         copy_market(&mut this, other);
+        let _ = resync_copied(&mut this, other);
         this
     }
 }
@@ -1175,8 +1262,13 @@ impl<E: Event + Market + ?Sized> From<&E> for MarketEventFacts {
         // The setters above keep a derived event coherent while it is
         // mutated. Conversion copies the exact identities the source states,
         // including an assigned identity, after every dependency is in place.
+        let resynced = resync_copied(&mut this, other);
         this.market.curruuid = other.get_curruuid();
-        this.market.crossuuid = other.get_crossuuid();
+        this.market.crossuuid = if resynced {
+            this.cross_uuid()
+        } else {
+            other.get_crossuuid()
+        };
         this
     }
 }
@@ -1187,6 +1279,7 @@ impl<E: Element + Operation + ?Sized> From<&E> for OperationFacts {
         copy_element(&mut this, other);
         copy_market(&mut this, other);
         copy_operation(&mut this, other);
+        let _ = resync_copied(&mut this, other);
         this
     }
 }
@@ -1198,8 +1291,13 @@ impl<E: Event + Operation + ?Sized> From<&E> for OperationEventFacts {
         copy_event(&mut this, other);
         copy_market(&mut this, other);
         copy_operation(&mut this, other);
+        let resynced = resync_copied(&mut this, other);
         this.event.market.curruuid = other.get_curruuid();
-        this.event.market.crossuuid = other.get_crossuuid();
+        this.event.market.crossuuid = if resynced {
+            this.cross_uuid()
+        } else {
+            other.get_crossuuid()
+        };
         this
     }
 }

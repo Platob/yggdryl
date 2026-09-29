@@ -1134,9 +1134,10 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // 94: every JSON document the capture holds - the seven Jolokia
     // answers, the two wildcards and the error among them, and the
     // statistics line - is one `unknown` row, never one per plugin it named
-    // and never none - and 56 more: the execution the parse splits off each
-    // execution report of a fill (A12).
-    assert_eq!(messages.len(), 94 + 56, "the corpus");
+    // and never none - and 57 more: the execution the parse splits off each
+    // execution report of a fill (A12), and the one of side `UNKN` the
+    // trade capture, stating no `Side(54)`, splits off.
+    assert_eq!(messages.len(), 94 + 57, "the corpus");
     let forward: Vec<FixMsg> = messages.to_vec();
     let mut backward: Vec<FixMsg> = messages.iter().rev().cloned().collect();
     backward.reverse();
@@ -1341,7 +1342,7 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
 
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::graph::{Element, Event};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::internals::fix_enrich::dated_by_transaction_whole;
     use yggdryl::text::{TextOptions, read_text_lines};
@@ -1383,11 +1384,11 @@ mod internal {
             .filter_map(Result::ok)
             .collect();
         for messages in [framed, lined] {
-            assert_eq!(messages.len(), 94 + 56);
+            assert_eq!(messages.len(), 94 + 57);
             let mut moved = 0;
             for message in messages {
-                let settled = message.clone().dated_by_transaction().expect("redated");
-                let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+                let settled = message.clone().dated_by_transaction();
+                let whole = dated_by_transaction_whole(message.clone());
                 assert_eq!(settled, whole, "{}", message.header().msgtype());
                 assert_eq!(settled.get_curruuid(), whole.get_curruuid());
                 assert_eq!(settled.get_execunix(), whole.get_execunix());
@@ -1410,8 +1411,8 @@ mod internal {
             .set(55, yggdryl::Scalar::from("EUR/USD"))
             .expect("a symbol");
         assert_eq!(message.get_by_tag(15), None, "no parse detected the pair");
-        let settled = message.clone().dated_by_transaction().expect("redated");
-        let whole = dated_by_transaction_whole(message.clone()).expect("redated whole");
+        let settled = message.clone().dated_by_transaction();
+        let whole = dated_by_transaction_whole(message.clone());
         assert_ne!(settled.get_currunix(), message.get_currunix());
         assert_eq!(settled, whole);
         assert_eq!(
@@ -1496,4 +1497,39 @@ fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
             .map(|held| (held.get_curruuid(), held.get_seqnum()))
             .collect::<Vec<_>>(),
     );
+}
+
+/// A message that follows another in the lifecycle takes every key of its
+/// chain's metadata it does not state, its own values standing - the
+/// bridge's namespaced keys a message's metadata holds - while its
+/// alternate identifiers stay those its fields state and its dictionary
+/// follows.
+#[test]
+fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() {
+    let codec = reader();
+    let parsed = [
+        &b"8=FIX.4.4|35=8|52=20260921-10:00:00|11=C1|37=O-1|17=E-1|150=0|39=0|55=AAPL|54=1|38=5|DESK.NAME=EQ|DESK.BOOK=B1|10=0|"[..],
+        &b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O-1|17=E-2|150=6|39=6|55=AAPL|54=1|38=5|DESK.NAME=FX|10=0|"[..],
+    ]
+    .map(|line| codec.sole_line(line).expect("a report"));
+    assert!(!parsed[1].get_metadata().contains_key("desk.book"));
+    let walked = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("a readable lifecycle");
+    let [first, second] = walked.as_slice() else {
+        panic!("two statements, not {}", walked.len())
+    };
+    assert_eq!(
+        second.get_prevuuid(),
+        Some(yggdryl::graph::Element::get_curruuid(first))
+    );
+    let metadata: Vec<_> = second
+        .get_metadata()
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(metadata, [("desk.book", "B1"), ("desk.name", "FX")]);
+    // The execution's identifier is its own, never the one it follows.
+    assert_eq!(second.get_altids().get("EXECID"), Some("E-2"));
 }

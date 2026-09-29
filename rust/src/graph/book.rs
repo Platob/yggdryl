@@ -14,6 +14,7 @@ use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
 use super::operation::{BookRef, ExecutionEvent, MdUpdateAction, OrderKind, QuoteKind};
 use super::{Element, Event, Market, Operation};
+use crate::warning::warned;
 use crate::xxhash::Xxh3;
 use crate::{Ccy, Decimal, Error, Limit, Result, Side, State, Unit, Uuid};
 
@@ -54,7 +55,9 @@ impl SnapshotEvent {
 
     /// A snapshot control over facts already held and the control facts a
     /// row stated beside them, its action the snapshot's, finalized.
-    pub(crate) fn from_control(event: MarketEventFacts, book: BookRef) -> Self {
+    pub(crate) fn from_control(mut event: MarketEventFacts, book: BookRef) -> Self {
+        // A snapshot control is not sided: its cross code stays as given.
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut control = Self {
             event,
             book: BookRef {
@@ -301,7 +304,7 @@ fn promote_to_quote(operation: MarketData, data: OperationEventFacts) -> MarketD
 /// entry rather than a copy of each.
 #[derive(Clone, Debug)]
 struct Ladder {
-    /// `BUY` for the bid side, `SELL` for the ask side.
+    /// `BUYS` for the bid side, `SELL` for the ask side.
     side: Side,
     levels: BTreeMap<BookPrice, Vec<Arc<MarketData>>>,
     /// Derived from `levels` and kept in step by every change, shared with
@@ -437,7 +440,7 @@ impl SideJournal {
 }
 
 impl Ladder {
-    /// An empty side: `BUY` is the bid, `SELL` the ask.
+    /// An empty side: `BUYS` is the bid, `SELL` the ask.
     fn new(side: Side) -> Self {
         let mut ladder = Self {
             side,
@@ -1162,18 +1165,23 @@ struct EventBounds {
 }
 
 impl EventBounds {
+    /// The event bounds `event` states, with no execution: that is the
+    /// market's fact, which a caller holding one sets.
     fn of<E: Event + ?Sized>(event: &E) -> Self {
         Self {
             currunix: event.get_currunix(),
             seqnum: event.get_seqnum(),
             creaunix: event.get_creaunix(),
             recdunix: event.get_recdunix(),
-            execunix: event.get_execunix(),
+            execunix: None,
         }
     }
 
     fn of_data(operation: &MarketData) -> Self {
-        Self::of(operation.operation_event())
+        Self {
+            execunix: operation.get_execunix(),
+            ..Self::of(operation.operation_event())
+        }
     }
 }
 
@@ -1226,6 +1234,7 @@ impl BookEvent {
     pub fn new(unix: i64, symbol: impl Into<String>) -> Self {
         let symbol = symbol.into();
         let mut event = MarketEventFacts::at(unix);
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         event.set_ticker((!symbol.is_empty()).then(|| SmolStr::new(&symbol)));
         event.set_crosscode(symbol);
         event.set_state(State::New);
@@ -1247,6 +1256,7 @@ impl BookEvent {
     #[must_use]
     pub(crate) fn categorized(unix: i64, key: impl Into<String>) -> Self {
         let mut event = MarketEventFacts::at(unix);
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         event.set_crosscode(key.into());
         event.set_state(State::New);
         let mut book = Self {
@@ -1300,12 +1310,14 @@ impl BookEvent {
 
     /// A book over sides already built, validated and refreshed.
     fn from_ladders(
-        event: MarketEventFacts,
+        mut event: MarketEventFacts,
         bid: Ladder,
         ask: Ladder,
         executions: Vec<ExecutionEvent>,
         snapshots: BTreeSet<SnapshotPartition>,
     ) -> Result<Self> {
+        // A book is not sided: its cross code stays as given.
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut book = Self {
             event,
             bid,
@@ -1394,7 +1406,7 @@ impl BookEvent {
     /// level's whose [`Limit::tradable`] holds, `None` for an empty side,
     /// one holding only unpriced entries, one no level of which can trade,
     /// or a side that is neither a bid nor an ask. A level that cannot trade
-    /// is skipped, never answered. What the book states as `bidpx` (`BUY`)
+    /// is skipped, never answered. What the book states as `bidpx` (`BUYS`)
     /// and `askpx` (`SELL`).
     #[must_use]
     pub fn best_price(&self, side: Side) -> Option<Decimal> {
@@ -1416,7 +1428,7 @@ impl BookEvent {
     /// entry stating nothing trades, and a level every entry of which states
     /// `false` cannot. Nothing for a
     /// side that is neither a bid nor an ask. What a book's row states
-    /// under `bidlimits` (`BUY`) and `asklimits` (`SELL`); the first priced
+    /// under `bidlimits` (`BUYS`) and `asklimits` (`SELL`); the first priced
     /// limit that can trade is [`Self::best_price`] and
     /// [`Self::best_quantity`].
     ///
@@ -1788,7 +1800,10 @@ impl BookEvent {
             next.fold_bounds(EventBounds::of_data(operation));
         }
         for control in controls {
-            next.fold_bounds(EventBounds::of(&control.event));
+            next.fold_bounds(EventBounds {
+                execunix: control.event.get_execunix(),
+                ..EventBounds::of(&control.event)
+            });
         }
         next.bid.replace_membership(bid, partitions)?;
         next.ask.replace_membership(ask, partitions)?;
@@ -1832,6 +1847,8 @@ impl BookEvent {
             false,
         )?;
         let mut bounds = EventBounds::of(event_view);
+        // When the input last executed is a market fact of the input itself.
+        bounds.execunix = input.get_execunix();
         let changed = match input {
             MarketData::ExecutionEvent(execution) => {
                 self.executions.push(execution);
@@ -2497,20 +2514,21 @@ where
             };
 
             if source_unix == Some(unix) && self.last_unix.is_some_and(|previous| unix < previous) {
+                let mut skipped = 0_usize;
                 while self
                     .peek_source()
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
                     self.take_source();
+                    skipped += 1;
                 }
-                self.pending.push_back(Err(invalid(
+                warned!(
+                    "book operations excluded: dated before the book they would fold into",
                     "$.operations",
-                    format_smolstr!(
-                        "expected a sorted operation timestamp at or after {}, got {unix}",
-                        self.last_unix.expect("checked")
-                    ),
-                )));
-                return true;
+                    "{skipped} at {unix}, after the book reached {}",
+                    self.last_unix.expect("checked")
+                );
+                continue;
             }
 
             self.ensure_snapshot(unix);
@@ -2540,6 +2558,23 @@ where
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
                     let input = self.take_source();
+                    // An order or a quote rests on a book side, and one
+                    // stating neither the bid nor the ask rests on none: it
+                    // is left out of the book, never the book out of the
+                    // walk.
+                    if matches!(input, MarketData::OrderEvent(_) | MarketData::QuoteEvent(_))
+                        && !input.get_side().is_bid()
+                        && !input.get_side().is_ask()
+                    {
+                        warned!(
+                            "book entry excluded: it states no bid or ask side",
+                            input.kind().as_str(),
+                            "{} states side {}",
+                            input.get_crosscode(),
+                            input.get_side().as_str()
+                        );
+                        continue;
+                    }
                     let symbol = input.book_crosscode().into_owned();
                     self.stated_ticker
                         .entry(symbol.clone())
@@ -2623,7 +2658,7 @@ where
                             .remove(symbol)
                             .map_or(Ok(()), |operations| book.add_operations(operations))
                         {
-                            self.pending.push_back(Err(error));
+                            excluded(&error, symbol);
                             failed.insert(symbol.clone());
                         }
                         continue;
@@ -2656,7 +2691,7 @@ where
                         self.books.insert(symbol.clone(), next);
                     }
                     Err(error) => {
-                        self.pending.push_back(Err(error));
+                        excluded(&error, symbol);
                         failed.insert(symbol.clone());
                     }
                 }
@@ -2968,7 +3003,7 @@ fn validate_propagation_bounds<'a, E, I>(
     operations: I,
 ) -> Result<()>
 where
-    E: Event + ?Sized + 'a,
+    E: Event + Market + ?Sized + 'a,
     I: IntoIterator<Item = &'a E>,
 {
     for (index, operation) in operations.into_iter().enumerate() {
@@ -3084,6 +3119,22 @@ fn book_mismatch<E: Market + ?Sized>(
             })
         }
     }
+}
+
+/// Says that the operations of one book at one instant were left out,
+/// because the book refused them as `error` says: the book stands as it was
+/// and the walk goes on. A book's refusal is always of what the operations
+/// state; the source's own failure never reaches here.
+fn excluded(error: &Error, book: &str) {
+    let at = match error {
+        Error::InvalidRecord { path, .. } => path.as_str(),
+        _ => "$.operations",
+    };
+    warned!(
+        "book update excluded: the book refused what its operations state",
+        at,
+        "{error}, on book {book}; the book stands as it was"
+    );
 }
 
 fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {

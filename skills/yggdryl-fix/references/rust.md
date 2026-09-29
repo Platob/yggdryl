@@ -187,12 +187,12 @@ assert_eq!((message.header().beginstring(), message.header().msgtype()), ("FIX.4
 assert_eq!(message.msgcat(), MarketDataKind::Order);
 assert_eq!(message.strikepx(), Some(Decimal::from_int(105)));
 // A coded value reads as its name; the wire keeps its code.
-assert_eq!(message.by_tag(54)?.as_str(), Some("BUY"));
-assert_eq!(message.get_side().as_str(), "BUY");
+assert_eq!(message.by_tag(54)?.as_str(), Some("BUYS"));
+assert_eq!(message.get_side().as_str(), "BUYS");
 assert_eq!(message.get_quantity(), Some(Decimal::from_int(100)));
 assert_eq!(message.by_name("symbol")?, Scalar::from("AAPL"));
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert_eq!(message.get_crosscode(), "BUY:A1");
+assert_eq!(message.get_crosscode(), "BUYS:A1");
 // Instants are i64 nanoseconds since the epoch, UTC.
 assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
 // The entries are the content row as a tree; the lifted 11, 38 and 44 are not in it.
@@ -403,9 +403,10 @@ assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|18=G|999
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`; a report stating no side joins the
-one side alive under its identifiers. A fill's execution, split off at the
-parse, is a chain of its own. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
+its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+report stating no side joins the one side alive under its identifiers. A fill's
+execution, split off at the parse, is a chain of its own and never restates,
+follows or ends its order. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
 each `curruuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `with_dedup_window_ms(0)` yields every restated twin too.
@@ -445,7 +446,7 @@ assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
 assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
 // The reports stated no side: they joined the buy alive under A1 and O1.
-assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "BUY:A1"));
+assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "BUYS:A1"));
 assert_eq!((fill.msgcat(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
 // Every walked message states when its chain began.
 assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
@@ -459,14 +460,19 @@ let chained: usize = codec.lifecycle_arrow_reader(rows)?.map(|batch| batch.map(|
 assert_eq!(chained, 4);
 ```
 
-## Split fills and two-sided quotes at the parse
+## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report that fills is its order's report
-(`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
-chained by its `ExecID`; a trade (`AE`) adds one sided execution per
+fill or a side twice: an execution report is its order's report (`msgcat`
+`ORDR`, its own state) - one of no fill from its parse - and one that fills
+adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
+`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+an order list, a mass order, a cross, a mass quote, a match report) adds one
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
+chained by the order the entry names and split again as its category is.
+Each split message names its source in `srcuuids`.
 
 ```rust
 use std::sync::Arc;
@@ -483,13 +489,13 @@ let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl
 assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
 assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
-// A sided message stores its cross code under its side; the fill is a chain of its own.
-assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("BUY:O-9", "BUY:ExecID=E-1"));
+// An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("BUYS:O-9", "BUYS:E-1"));
 
 let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
 let [quote, bid, ask]: [FixMsg; 3] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("three");
 assert_eq!((quote.get_side(), bid.get_side(), ask.get_side()), (Side::Unknown, Side::Buy, Side::Sell));
-assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("BUY:Q1", "SELL:Q1"));
+assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("BUYS:Q1", "SELL:Q1"));
 // Each side prices at its own level and keeps the pair its source stated.
 assert_eq!((bid.get_price(), ask.get_price()), (Some("99".parse()?), Some("101".parse()?)));
 assert_eq!((ask.get_bidpx(), ask.get_askqty()), (Some("99".parse()?), Some("8".parse()?)));
@@ -531,8 +537,9 @@ let books = BookIterator::new(leaves.into_iter(), 0)?.collect::<yggdryl::Result<
 assert_eq!(books.len(), 2);
 assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
 
-// The book door is strict: the same capture out of order is refused.
-assert!(codec.book_arrow_reader(capture.clone(), 0)?.any(|batch| batch.is_err()));
+// The book door does not sort: the same capture out of order is no error - the
+// snapshot dated before the book it would fold into is left out, with a warning.
+assert!(codec.book_arrow_reader(capture.clone(), 0)?.all(|batch| batch.is_ok()));
 // The sorted leaves as `marketdata` rows.
 let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
@@ -642,8 +649,10 @@ std::fs::remove_dir_all(&path)?;
 ## Gotchas in Rust
 
 - `FixCodec::new` takes `Arc<FixRegistry>`; clone the `Arc`, never the registry.
-- Every stream door yields `Result` items: `collect::<yggdryl::Result<Vec<_>>>()`
-  stops at the first refused line; iterate and match to skip one and go on.
+- Every stream door yields `Result` items, and only a source failure is an
+  `Err`: what a line states that cannot be read is defaulted or left out with
+  a `log` warning, so `collect::<yggdryl::Result<Vec<_>>>()` stops at a failing
+  source alone. Install a `log` backend (`env_logger`, say) to see the warnings.
 - The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:

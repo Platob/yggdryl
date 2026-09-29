@@ -42,16 +42,19 @@ that will not parse writes nothing.
 live in three holders and two extras - the facts the core's graph
 vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
-the lifecycle's ``creaunix``, ``exprunix``, ``execunix``, ``recdunix``,
+the lifecycle's ``creaunix``, ``exprunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
 ``currency``, ``quantity``, ``unit``, ``side`` - a :class:`yggdryl.Side`,
-``UNKNOWN`` where none is stated - its ``securityids`` - one code under each
+``UNKN`` where none is stated - its ``securityids`` - one code under each
 source, ISIN, CUSIP, FIGI - and the ``isincode`` read off them, its CFI and
-MIC codes, last, average, cumulative, remaining and previous values, spot
+MIC codes, the ``execunix`` clock it last executed at, last, average,
+cumulative, remaining and previous values, spot
 rate and forward points, the ``fxrates`` it states, the bid and ask it quotes
 (``bidpx``, ``bidqty``, ``bidccy``, ``askpx``, ``askqty``, ``askccy``),
-``ticker`` and ``metadata``; the operation's time in force, tradability and
-the ``altids`` it names, each under the field that stated it);
+``ticker`` and ``metadata``; the operation's time in force, tradability, the
+``altids`` it names, each under the field that stated it, and the
+``accountids`` its parties and its ``Account(1)`` are, each party under its
+role's name and the account under ``ACCOUNT``);
 :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
@@ -118,7 +121,11 @@ execution clock executed at that instant: its ``execunix`` is its
 ``currunix``. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
-it implied.
+it implied. Nothing a capture states is an error: a value that will not type is
+null beside an anomaly, a clock naming no instant is left unstated, and a line
+or frame that builds no message is left out - each with a deduplicated
+``logging`` warning under ``yggdryl.<module path>`` such as
+``yggdryl.fix.messages`` - so only a source's own failure raises.
 :meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
 batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
@@ -128,7 +135,8 @@ of messages lazily - each placed among the messages of its instant by
 content, then stated as following the live message under its cross
 identity, carrying ``prevuuid``, ``prevunix``, its place at ``seqnum`` the
 higher of its own and one past the predecessor's where that happened at
-the same instant or later, and the lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+the same instant or later, the lifecycle's ``creaunix`` and every ``metadata``
+key of the chain it does not state - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
@@ -141,12 +149,13 @@ read back by :meth:`yggdryl.graph.MarketData.from_arrow_reader`;
 enrichment remains an explicit composition.
 :meth:`FixCodec.market_data` is the sorted door: it collects a
 capture, admits what the book door admits, expands each message and answers
-the market data stably sorted by the instant a book folds them at, an
-expansion refused first; :meth:`FixCodec.market_arrow_reader` writes them as
+the market data stably sorted by the instant a book folds them at, nothing a
+message states raising; :meth:`FixCodec.market_arrow_reader` writes them as
 ``marketdata`` rows and :meth:`FixCodec.market_data_arrow_reader` reads
 them off FIX rows. Each leaf carries, in its metadata, what its message
-states that no typed column reads, unless the codec's ``market_metadata`` is
-off.
+states that no typed column reads and no identifier map of the leaf holds, and
+lifts into its ``altids`` each scalar of it whose key ends with an identifier
+its message's type declares, unless the codec's ``market_metadata`` is off.
 :meth:`FixCodec.write_arrow_reader` is the encode direction, re-emitting
 every row's wire. :meth:`FixCodec.format_messages` and
 :meth:`FixCodec.format_arrow_reader` answer the same messages under whatever

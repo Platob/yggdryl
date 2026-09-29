@@ -1968,7 +1968,7 @@ graph_root_order: yggdryl.graph.Order = yggdryl.graph.Order(crosscode="G-0")
 graph_order_event: graph.OrderEvent = graph.OrderEvent(
     1_700_000_000_000_000_000,
     crosscode="G-1",
-    side="BUY",
+    side="BUYS",
     price=decimal.Decimal("10.5"),
     quantity=100,
     currency="USD",
@@ -2068,7 +2068,7 @@ graph_book_ref_partial: bool = graph_book_ref.is_partial()
 graph_quote_event_booked: graph.QuoteEvent = graph_quote_event.with_book(graph_book_ref)
 
 graph_fill: graph.ExecutionEvent = graph.ExecutionEvent(
-    graph_order_event.currunix, crosscode="F-1", side="BUY", lastpx=10, lastqty=5
+    graph_order_event.currunix, crosscode="F-1", side="BUYS", lastpx=10, lastqty=5
 )
 graph_trade: graph.TradeEvent = graph.TradeEvent.from_parts(graph_execution_event, [graph_fill])
 graph_trade_executions: list[graph.ExecutionEvent] = graph_trade.executions
@@ -2082,9 +2082,9 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
 graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
 graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
-graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUY)
-graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUY")
-graph_book_best_quantity: Scalar | None = graph_book_with_operations.best_quantity(Side.BUY)
+graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
+graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
+graph_book_best_quantity: Scalar | None = graph_book_with_operations.best_quantity(Side.BUYS)
 graph_book_depth: Scalar | None = graph_book_with_operations.depth(Side.SELL, 1)
 graph_book_kind: MarketDataKind = graph_book.marketdatakind
 graph_book_crossed: bool = graph_book_with_operations.is_crossed
@@ -2174,7 +2174,6 @@ graph_event_iterator_alive: list[graph.MarketData] = graph_event_iterator.alive(
 
 graph_entry_id: str = graph.ENTRY_ID
 graph_entry_ref_id: str = graph.ENTRY_REF_ID
-graph_followed_altids: tuple[str, ...] = graph.FOLLOWED_ALTIDS
 
 assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.currunix, crosscode="G-1")
 assert graph_order_event_curruuid and graph_order_event_crossuuid and graph_order_event_state
@@ -2185,7 +2184,7 @@ assert graph_order_event_execunix is None and graph_order_event_recdunix is None
 assert graph_order_event_exprunix is None and graph_order_event_prevunix is None
 assert graph_order_event_snapunix is None and not graph_order_event_is_execution
 assert graph_order_event_price is not None and graph_order_event_quantity is not None
-assert graph_order_event_currency and graph_order_event_side is Side.BUY
+assert graph_order_event_currency and graph_order_event_side is Side.BUYS
 assert graph_order_event_unit == "" and graph_order_event_state is State.UNKNOWN
 assert graph_order_event_securityids == {} and graph_order_event_ticker == "IBM"
 assert graph_order_event_isincode is None and set(graph_order_event_fxrates) == {"EUR"}
@@ -2209,7 +2208,7 @@ assert not graph_order_event_after and not graph_order_event_before
 assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
 assert graph_order.at(graph_order_event.currunix) == graph_order_at
 assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
-assert graph_order_event_crosscode == "BUY:G-1"
+assert graph_order_event_crosscode == "BUYS:G-1"
 assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
 assert graph_execution.kind == "execution"
 assert graph_book_ref_skipped.action is None
@@ -2244,7 +2243,6 @@ assert graph_event_iterator_snapshot_ns is None
 assert [item.kind for item in graph_event_iterator_items] == ["order_event", "book_event"]
 assert graph_event_iterator_alive == [graph_data]
 assert graph_entry_id and graph_entry_ref_id
-assert graph_followed_altids
 
 # The typed door for a value. A typed field alias already names the width,
 # unit, scale and zone, so `.scalar(value)` is how a caller reaches an exact

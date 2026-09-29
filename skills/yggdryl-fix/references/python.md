@@ -173,12 +173,12 @@ assert (message.header().beginstring, message.header().msgtype) == ("FIX.4.4", "
 assert message.msgcat is MarketDataKind.ORDR
 assert message.strikepx is not None and message.strikepx.as_py() == Decimal(105)
 # A coded value reads as its member; the wire keeps its code.
-assert message.by_tag(54).as_py() is Side.BUY
-assert message.side is Side.BUY
+assert message.by_tag(54).as_py() is Side.BUYS
+assert message.side is Side.BUYS
 assert message.quantity is not None and message.quantity.as_py() == Decimal(100)
 assert message.by_name("symbol").as_py() == "AAPL"
 # The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert message.crosscode == "BUY:A1"
+assert message.crosscode == "BUYS:A1"
 assert message.altids == {"CLORDID": "A1"}
 # Instants are int nanoseconds since the epoch, UTC.
 assert message.currunix == 1_767_348_930_000_000_000
@@ -374,9 +374,10 @@ with tempfile.TemporaryDirectory() as directory:
 
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
-its order and side under one `crossuuid`; a report stating no side joins the
-one side alive under its identifiers. A fill's execution, split off at the
-parse, is a chain of its own. A codec pinned `sorted_lifecycle=True` reads a source already in
+its order and side under one `crossuuid`, within one market data kind (`msgcat`); a
+report stating no side joins the one side alive under its identifiers. A fill's
+execution, split off at the parse, is a chain of its own and never restates,
+follows or ends its order. A codec pinned `sorted_lifecycle=True` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
 each `curruuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `dedup_window_ms=None` yields every restated twin too.
@@ -411,7 +412,7 @@ assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 0, 0)
 assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
-assert all(held.side is Side.BUY and held.crosscode == "BUY:A1" for held in (ack, fill))
+assert all(held.side is Side.BUYS and held.crosscode == "BUYS:A1" for held in (ack, fill))
 assert (fill.msgcat, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
 assert ack.creaunix == fill.creaunix == order.currunix
@@ -425,14 +426,19 @@ chained = codec.lifecycle_arrow_reader(rows).read_all()
 assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist())) == 2
 ```
 
-## Split fills and two-sided quotes at the parse
+## Split fills, two-sided quotes and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report that fills is its order's report
-(`msgcat` `ORDR`, its own state) plus one `EXEC` message reading `FILLED`,
-chained by its `ExecID`; a trade (`AE`) adds one sided execution per
+fill or a side twice: an execution report is its order's report (`msgcat`
+`ORDR`, its own state) - one of no fill from its parse - and one that fills
+adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
+`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
 `NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUY` and a `SELL` quote. Each split message names its source in `srcuuids`.
+a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+an order list, a mass order, a cross, a mass quote, a match report) adds one
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
+chained by the order the entry names and split again as its category is.
+Each split message names its source in `srcuuids`.
 
 ```python
 from decimal import Decimal
@@ -448,13 +454,13 @@ report, execution = codec.parse_line(fill)
 assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
-# A sided message stores its cross code under its side; the fill is a chain of its own.
-assert (report.crosscode, execution.crosscode) == ("BUY:O-9", "BUY:ExecID=E-1")
+# An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+assert (report.crosscode, execution.crosscode) == ("BUYS:O-9", "BUYS:E-1")
 
 quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|"
 quote, bid, ask = codec.parse_line(quote)
-assert (quote.side, bid.side, ask.side) == (Side.UNKNOWN, Side.BUY, Side.SELL)
-assert (bid.crosscode, ask.crosscode) == ("BUY:Q1", "SELL:Q1")
+assert (quote.side, bid.side, ask.side) == (Side.UNKN, Side.BUYS, Side.SELL)
+assert (bid.crosscode, ask.crosscode) == ("BUYS:Q1", "SELL:Q1")
 # Each side prices at its own level and keeps the pair its source stated.
 assert bid.price is not None and bid.price.as_py() == Decimal(99)
 assert ask.bidpx is not None and ask.bidpx.as_py() == Decimal(99)
@@ -475,8 +481,6 @@ FIX rows already in Arrow.
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from yggdryl import MarketDataKind, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry, fix_schema
 
@@ -495,12 +499,12 @@ assert len(leaves) == 4, "one leaf per entry"
 assert leaves[-1].kind == "execution_event"
 books = list(graph.BookIterator(leaves))
 assert len(books) == 2
-best = books[1].best_price(Side.BUY)
+best = books[1].best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
 
-# The book door is strict: the same capture out of order is refused.
-with pytest.raises(ValueError):
-    codec.book_arrow_reader(capture).read_all()
+# The book door does not sort: the same capture out of order is no error - the
+# snapshot dated before the book it would fold into is left out, with a warning.
+assert codec.book_arrow_reader(capture).read_all().num_rows == 1
 # The sorted leaves as `marketdata` rows.
 assert codec.market_arrow_reader(capture).read_all().num_rows == 4
 # The same leaves off the capture's FIX rows.
@@ -610,8 +614,11 @@ with tempfile.TemporaryDirectory() as directory:
 ## Gotchas in Python
 
 - Lines are `bytes`: `parse_lines(["8=..."])` raises `TypeError`; encode first.
-- `FixMessages` streams raise at `next()`: a refused line raises `ValueError`
-  where it is met and the stream goes on past it.
+- `FixMessages` streams raise at `next()` only for a source failure - a
+  `TypeError` for an item that is not bytes, or what the iterable behind it
+  raised - and that ends the stream. What a line states that cannot be read
+  is defaulted or left out with a `logging` warning under
+  `yggdryl.<module path>` (`yggdryl.fix.messages`), logged once per kind.
 - A registry is mutable and unhashable; while a codec, message or iterator
   shares it, mutation is refused. Build the dictionary, then the codecs.
 - A hashed `FixMsg` is frozen: `set` after `hash(message)` is a `TypeError`;
@@ -622,7 +629,7 @@ with tempfile.TemporaryDirectory() as directory:
   `False` unless the source is in instant order; `default_sending_time=` takes an
   aware UTC `datetime` or a nanosecond `Scalar` - pin it for reproducible reads
   of undated frames.
-- `side`, `state` and `msgcat` answer `IntEnum` members (`Side.BUY`,
+- `side`, `state` and `msgcat` answer `IntEnum` members (`Side.BUYS`,
   `State.FILLED`, `MarketDataKind.ORDR`): compare with `is`, never with text.
 - `book_arrow_reader(messages, snapshot_millis=0)` takes no mode beyond the
   grid: books are keyed by ticker, else by `MIC:CFI`.

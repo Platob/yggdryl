@@ -146,11 +146,20 @@ mod internal {
     /// market facts gained the stated bid and ask (A20): one
     /// `Option<Box<BidAsk>>` of eight, padded to sixteen, so 672 and 832, and
     /// the operation holders 672 + 88 = 760 and 832 + 88 = 920, each padded
-    /// to sixteen. A moved number is a design answer, never a number to
-    /// re-pin from a whole run.
+    /// to sixteen. They moved again when the operation gained the accounts
+    /// its parties name: the operation's own facts from 88 bytes to 136, one
+    /// forty-eight-byte `IdMap` more, so the two operation holders are
+    /// 672 + 136 = 808 and 832 + 136 = 968, each padded to sixteen; the
+    /// market facts' kind stamp fell inside their padding. They moved again
+    /// when the execution clock left the event for the market: one
+    /// `Option<i64>` of sixteen moved from the dated holder into the market
+    /// facts, so those grew to 688 and the undated operation holder to
+    /// 688 + 136 = 824, padded to 832, while the dated holders kept 832 and
+    /// 976 - the same facts, one of them held one level down. A moved number
+    /// is a design answer, never a number to re-pin from a whole run.
     #[test]
     fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
-        assert_eq!(graph_facts::sizes(), [672, 832, 768, 928]);
+        assert_eq!(graph_facts::sizes(), [688, 832, 832, 976]);
     }
 
     /// An undated holder's identity is RFC 9562 UUIDv8 over the code it

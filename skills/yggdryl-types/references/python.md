@@ -356,7 +356,9 @@ assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 `int32` code in a column and its stored name in text. Python reads them as the
 `enum.IntEnum`s `yggdryl.Side`, `yggdryl.MarketDataKind` and `yggdryl.State`,
 and a value of the column answers the member. A side is never absent -
-`Side.UNKNOWN` (code 0) is unstated.
+`Side.UNKN` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
+`SELL`, `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are
+still read and never written.
 
 ```python
 import yggdryl
@@ -364,11 +366,12 @@ from yggdryl import DataType, MarketDataKind, Side, State
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
-assert side.scalar("BUY").as_py() is Side.BUY
-assert side.scalar("1").as_py() is side.scalar(1).as_py() is Side.BUY
-assert Side.from_spelling("Sell short") is Side.SSHORT
-assert (int(Side.BUY), str(Side.BUY), Side.BUY.fix_code) == (1, "BUY", "1")
-assert Side.BUY.is_bid() and Side.SELL.is_ask()
+assert side.scalar("BUYS").as_py() is Side.BUYS
+assert side.scalar("1").as_py() is side.scalar(1).as_py() is Side.BUYS
+assert side.scalar("BUY").as_py() is Side.BUYS, "an earlier stored name is read, never written"
+assert Side.from_spelling("Sell short") is Side.SSHT
+assert (int(Side.BUYS), str(Side.BUYS), Side.BUYS.fix_code) == (1, "BUYS", "1")
+assert Side.BUYS.is_bid() and Side.SELL.is_ask()
 assert (DataType("side").kind, DataType("side").id) == ("enum", "side")
 
 # FIX's MsgCat code set: the category every market data row is filed under.

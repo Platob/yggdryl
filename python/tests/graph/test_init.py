@@ -31,7 +31,7 @@ def test_every_native_class_is_re_exported() -> None:
         assert name in graph.__all__
         assert getattr(graph, name).__module__ == "yggdryl._native"
     assert sorted(graph.__all__) == sorted(
-        [*CLASSES, "ENTRY_ID", "ENTRY_REF_ID", "FOLLOWED_ALTIDS", "candles"]
+        [*CLASSES, "ENTRY_ID", "ENTRY_REF_ID", "candles"]
     )
     # The one convenience is a function over the walk, not a class.
     assert callable(graph.candles) and graph.candles.__doc__
@@ -60,13 +60,11 @@ def test_the_package_is_reachable_off_the_root() -> None:
     assert "graph" in yggdryl.__all__
 
 
-def test_the_three_constants_are_exported() -> None:
+def test_the_two_constants_are_exported() -> None:
     assert graph.ENTRY_ID == "MDENTRYID"
     assert graph.ENTRY_REF_ID == "MDENTRYREFID"
-    # A tuple, so no caller can change the module constant for every importer.
-    assert isinstance(graph.FOLLOWED_ALTIDS, tuple)
-    assert graph.FOLLOWED_ALTIDS
-    assert all(isinstance(name, str) for name in graph.FOLLOWED_ALTIDS)
+    # A leaf follows every identifier it lacks; no list is exported.
+    assert not hasattr(graph, "FOLLOWED_ALTIDS")
 
 
 def test_the_enum_listings_name_the_column_vocabulary() -> None:
@@ -75,7 +73,9 @@ def test_the_enum_listings_name_the_column_vocabulary() -> None:
     event = graph.OrderEvent(1, crosscode="O-1")
     for column in (*enums.EVENT_COLUMNS, *enums.MARKET_COLUMNS, *enums.OPERATION_COLUMNS):
         assert hasattr(event, column), column
-    assert len(enums.MARKET_COLUMNS) == 27 and len(enums.OPERATION_COLUMNS) == 3
+    assert len(enums.MARKET_COLUMNS) == 28 and len(enums.OPERATION_COLUMNS) == 4
+    # When an element last executed is a market fact, never an event's.
+    assert "execunix" in enums.MARKET_COLUMNS and "execunix" not in enums.EVENT_COLUMNS
     assert enums.MARKET_KINDS == graph.MarketData.kinds
     assert "book_side" not in enums.MARKET_KINDS
 

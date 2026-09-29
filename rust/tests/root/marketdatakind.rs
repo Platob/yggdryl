@@ -20,8 +20,9 @@ fn strict() -> ArrowCastOptions {
     ArrowCastOptions::new().with_safe(false)
 }
 
-/// The MsgCat code set: every member with its code and its four-letter name.
-const MEMBERS: [(MarketDataKind, i32, &str); 22] = [
+/// The MsgCat code set and the four batch categories after it: every member
+/// with its code and its four-letter name.
+const MEMBERS: [(MarketDataKind, i32, &str); 26] = [
     (MarketDataKind::Unknown, 0, "UNKN"),
     (MarketDataKind::Account, 1, "ACCT"),
     (MarketDataKind::Allocation, 2, "ALLO"),
@@ -44,11 +45,15 @@ const MEMBERS: [(MarketDataKind, i32, &str); 22] = [
     (MarketDataKind::Settlement, 19, "SETL"),
     (MarketDataKind::Stream, 20, "STRM"),
     (MarketDataKind::Trade, 21, "TRAD"),
+    (MarketDataKind::OrderBatch, 22, "ORDB"),
+    (MarketDataKind::QuoteBatch, 23, "QUOB"),
+    (MarketDataKind::ExecutionBatch, 24, "EXEB"),
+    (MarketDataKind::TradeBatch, 25, "TRDB"),
 ];
 
 #[test]
 fn a_code_or_a_spelling_that_names_no_kind_is_refused_by_name() {
-    assert_eq!(MarketDataKind::from_code(22), None);
+    assert_eq!(MarketDataKind::from_code(26), None);
     assert_eq!(MarketDataKind::from_code(-1), None);
     let refused = MarketDataKind::read_code(4_242).unwrap_err().to_string();
     assert!(refused.contains("4242"), "{refused}");
@@ -69,7 +74,7 @@ fn a_code_or_a_spelling_that_names_no_kind_is_refused_by_name() {
 
 #[test]
 fn the_members_are_the_msgcat_code_set_in_code_order() {
-    assert_eq!(MarketDataKind::ALL.len(), 22);
+    assert_eq!(MarketDataKind::ALL.len(), 26);
     assert_eq!(MarketDataKind::ALL.len(), MEMBERS.len());
     for ((member, code, name), held) in MEMBERS.into_iter().zip(MarketDataKind::ALL) {
         assert_eq!(member, *held, "{name}");
@@ -85,20 +90,122 @@ fn the_members_are_the_msgcat_code_set_in_code_order() {
     }
     // Codes unique and ascending, names unique.
     let codes: Vec<i32> = MarketDataKind::ALL.iter().map(|held| held.code()).collect();
-    assert_eq!(codes, (0..22).collect::<Vec<_>>());
+    assert_eq!(codes, (0..26).collect::<Vec<_>>());
     let mut names: Vec<&str> = MarketDataKind::ALL
         .iter()
         .map(|held| held.as_str())
         .collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), 22, "one name per member");
+    assert_eq!(names.len(), 26, "one name per member");
     let mut members = MarketDataKind::ALL.to_vec();
     members.reverse();
     members.sort_unstable();
     assert_eq!(members, MarketDataKind::ALL);
     assert_eq!(MarketDataKind::default(), MarketDataKind::Unknown);
     assert_eq!(std::mem::size_of::<MarketDataKind>(), 4);
+}
+
+/// Only an order, a quote and an execution are sided: their cross code is
+/// stored under their side. Each batch files many of one single category,
+/// which is its item; every other kind is its own item.
+#[test]
+fn only_the_three_operations_are_sided_and_each_batch_names_its_item() {
+    for (name, kind, sided, batch, item) in [
+        (
+            "ORDR",
+            MarketDataKind::Order,
+            true,
+            false,
+            MarketDataKind::Order,
+        ),
+        (
+            "QUOT",
+            MarketDataKind::Quotation,
+            true,
+            false,
+            MarketDataKind::Quotation,
+        ),
+        (
+            "EXEC",
+            MarketDataKind::Execution,
+            true,
+            false,
+            MarketDataKind::Execution,
+        ),
+        (
+            "TRAD",
+            MarketDataKind::Trade,
+            false,
+            false,
+            MarketDataKind::Trade,
+        ),
+        (
+            "BOOK",
+            MarketDataKind::Book,
+            false,
+            false,
+            MarketDataKind::Book,
+        ),
+        (
+            "UNKN",
+            MarketDataKind::Unknown,
+            false,
+            false,
+            MarketDataKind::Unknown,
+        ),
+        (
+            "ORDB",
+            MarketDataKind::OrderBatch,
+            false,
+            true,
+            MarketDataKind::Order,
+        ),
+        (
+            "QUOB",
+            MarketDataKind::QuoteBatch,
+            false,
+            true,
+            MarketDataKind::Quotation,
+        ),
+        (
+            "EXEB",
+            MarketDataKind::ExecutionBatch,
+            false,
+            true,
+            MarketDataKind::Execution,
+        ),
+        (
+            "TRDB",
+            MarketDataKind::TradeBatch,
+            false,
+            true,
+            MarketDataKind::Trade,
+        ),
+    ] {
+        assert_eq!(kind.as_str(), name);
+        assert_eq!(kind.is_sided(), sided, "{name}");
+        assert_eq!(kind.is_batch(), batch, "{name}");
+        assert_eq!(kind.item(), item, "{name}");
+    }
+    let sided: Vec<&str> = MarketDataKind::ALL
+        .iter()
+        .filter(|kind| kind.is_sided())
+        .map(|kind| kind.as_str())
+        .collect();
+    assert_eq!(sided, ["EXEC", "ORDR", "QUOT"]);
+    for spelling in [
+        "order_batch",
+        "OrderBatch",
+        "ordb",
+        "quotebatch",
+        "trade-batch",
+    ] {
+        assert!(
+            MarketDataKind::from_spelling(spelling).is_some_and(MarketDataKind::is_batch),
+            "{spelling}"
+        );
+    }
 }
 
 #[test]
@@ -205,7 +312,7 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
     assert_eq!(field.scalar(Scalar::from(10_i64)).unwrap(), order);
     assert_eq!(field.scalar(Scalar::from("ORDR")).unwrap(), order);
     assert_eq!(field.scalar(Scalar::from("order")).unwrap(), order);
-    assert!(field.scalar(Scalar::from(22_i32)).is_err());
+    assert!(field.scalar(Scalar::from(26_i32)).is_err());
     assert!(field.scalar(Scalar::from("not a kind")).is_err());
     assert!(field.scalar(Scalar::from(true)).is_err());
     // A member of another enum leaf is a value of another vocabulary.
@@ -320,7 +427,7 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
 
     let refused = Serie::from_arrow_array(
         Some(&field),
-        Arc::new(Int32Array::from(vec![10, 22])) as ArrayRef,
+        Arc::new(Int32Array::from(vec![10, 26])) as ArrayRef,
         strict(),
     )
     .unwrap_err()
@@ -328,7 +435,7 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
     assert!(refused.contains("row 1"), "{refused}");
     let safe = Serie::from_arrow_array(
         Some(&field),
-        Arc::new(Int32Array::from(vec![10, 22])) as ArrayRef,
+        Arc::new(Int32Array::from(vec![10, 26])) as ArrayRef,
         ArrowCastOptions::new().with_safe(true),
     )
     .unwrap();

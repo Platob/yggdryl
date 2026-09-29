@@ -422,6 +422,29 @@ impl Error {
         }
     }
 
+    /// Return whether this failure is the source's rather than the data's:
+    /// a reader, a store or a runtime that could not answer - [`Self::Io`],
+    /// [`Self::Remote`], [`Self::Arrow`] and an Iceberg dependency's failure.
+    /// It ends the stream it happens on; every other failure describes one
+    /// value, row or message, which a FIX parse, a market data read and a
+    /// lifecycle walk pass over with a warning and go on.
+    ///
+    /// ```
+    /// use yggdryl::Error;
+    ///
+    /// assert!(Error::Io(std::io::Error::other("cut")).is_source_failure());
+    /// assert!(!Error::absent("a row", "$.side").is_source_failure());
+    /// ```
+    #[must_use]
+    pub fn is_source_failure(&self) -> bool {
+        match self {
+            Self::Io(_) | Self::Remote { .. } | Self::Arrow(_) => true,
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg { .. } => true,
+            _ => false,
+        }
+    }
+
     /// Return whether this failure says the addressed resource is already there.
     ///
     /// Reads [`Self::Io`]'s [`std::io::ErrorKind::AlreadyExists`] for the same

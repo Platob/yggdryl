@@ -205,8 +205,10 @@ pub struct OperationElement<K: OperationKind> {
 
 impl<K: OperationKind> Default for OperationElement<K> {
     fn default() -> Self {
+        let mut data = OperationFacts::default();
+        data.set_marketdatakind(K::KIND.marketdatakind());
         Self {
-            data: OperationFacts::default(),
+            data,
             _kind: PhantomData,
         }
     }
@@ -358,6 +360,9 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_side(&mut self, side: crate::Side) {
         self.data.set_side(side);
     }
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.data.marketdatakind()
+    }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         self.data.get_securityids()
     }
@@ -384,6 +389,12 @@ impl<K: OperationKind> Market for OperationElement<K> {
     }
     fn set_miccode(&mut self, code: Option<crate::Mic>) {
         self.data.set_miccode(code);
+    }
+    fn get_execunix(&self) -> Option<i64> {
+        self.data.get_execunix()
+    }
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.data.set_execunix(unix);
     }
     fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
@@ -520,6 +531,18 @@ impl<K: OperationKind> Operation for OperationElement<K> {
     fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
         self.data.remove_altid(key)
     }
+    fn get_accountids(&self) -> &crate::idmap::IdMap {
+        self.data.get_accountids()
+    }
+    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_accountids(ids)
+    }
+    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_accountid(key, value)
+    }
+    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_accountid(key)
+    }
 }
 
 /// One dated operation: an order, a quote or an execution. `K` is
@@ -534,11 +557,7 @@ pub struct OperationEvent<K: OperationKind> {
 
 impl<K: OperationKind> Default for OperationEvent<K> {
     fn default() -> Self {
-        Self {
-            data: OperationEventFacts::default(),
-            book: None,
-            _kind: PhantomData,
-        }
+        Self::from_facts(OperationEventFacts::default())
     }
 }
 
@@ -547,16 +566,15 @@ impl<K: OperationKind> OperationEvent<K> {
     /// epoch, stating nothing else yet.
     #[must_use]
     pub fn at(unix: i64) -> Self {
-        Self {
-            data: OperationEventFacts::at(unix),
-            book: None,
-            _kind: PhantomData,
-        }
+        Self::from_facts(OperationEventFacts::at(unix))
     }
 
     /// An operation over facts already held, not yet finalized: the move a
-    /// FIX message and a decoded row make into their leaf.
-    pub(crate) fn from_facts(data: OperationEventFacts) -> Self {
+    /// FIX message and a decoded row make into their leaf. The facts are
+    /// stamped with this kind, so a cross code stated before the side is
+    /// stored under it now.
+    pub(crate) fn from_facts(mut data: OperationEventFacts) -> Self {
+        data.set_marketdatakind(K::KIND.marketdatakind());
         Self {
             data,
             book: None,
@@ -579,15 +597,6 @@ impl<K: OperationKind> OperationEvent<K> {
         Some(self)
     }
 
-    /// This event as another statement of an operation event of any kind,
-    /// through the facts both hold; its own kind and control stay.
-    pub(crate) fn restating_facts(mut self, live: &OperationEventFacts) -> Self {
-        let data = std::mem::take(&mut self.data).restating(live);
-        self.data = data;
-        self.finalize();
-        self
-    }
-
     /// Which operation this is.
     #[must_use]
     pub const fn kind(&self) -> MarketKind {
@@ -597,6 +606,7 @@ impl<K: OperationKind> OperationEvent<K> {
     /// This operation without its clocks: a move.
     #[must_use]
     pub fn into_element(self) -> OperationElement<K> {
+        // The facts carry this kind's stamp across the move.
         OperationElement {
             data: self.data.into_entry(),
             _kind: PhantomData,
@@ -653,9 +663,8 @@ impl<K: OperationKind> OperationEvent<K> {
         data: OperationEventFacts,
     ) -> OperationEvent<K2> {
         OperationEvent {
-            data,
             book: self.book,
-            _kind: PhantomData,
+            ..OperationEvent::<K2>::from_facts(data)
         }
     }
 }
@@ -780,12 +789,6 @@ impl<K: OperationKind> Event for OperationEvent<K> {
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.data.set_creaunix(unix);
     }
-    fn get_execunix(&self) -> Option<i64> {
-        self.data.get_execunix()
-    }
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.data.set_execunix(unix);
-    }
     fn get_recdunix(&self) -> Option<i64> {
         self.data.get_recdunix()
     }
@@ -858,6 +861,9 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn set_side(&mut self, side: crate::Side) {
         self.data.set_side(side);
     }
+    fn marketdatakind(&self) -> crate::MarketDataKind {
+        self.data.marketdatakind()
+    }
     fn get_securityids(&self) -> &crate::securityid::SecurityIds {
         self.data.get_securityids()
     }
@@ -884,6 +890,12 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     }
     fn set_miccode(&mut self, code: Option<crate::Mic>) {
         self.data.set_miccode(code);
+    }
+    fn get_execunix(&self) -> Option<i64> {
+        self.data.get_execunix()
+    }
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.data.set_execunix(unix);
     }
     fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
@@ -1019,6 +1031,18 @@ impl<K: OperationKind> Operation for OperationEvent<K> {
     }
     fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
         self.data.remove_altid(key)
+    }
+    fn get_accountids(&self) -> &crate::idmap::IdMap {
+        self.data.get_accountids()
+    }
+    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_accountids(ids)
+    }
+    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_accountid(key, value)
+    }
+    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_accountid(key)
     }
 }
 

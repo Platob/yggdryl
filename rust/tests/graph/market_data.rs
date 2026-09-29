@@ -213,13 +213,15 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// It moved to 944 when the dated operation facts moved from 928 to 912 -
 /// the two boxed lanes they no longer hold - the trade's executions taking
 /// it to 936, padded to 944. It moved to 960 when the market facts gained
-/// the boxed bid and ask, the dated operation facts sixteen wider.
+/// the boxed bid and ask, the dated operation facts sixteen wider. It moved
+/// to 1008 when the operation facts gained `accountids`, one `IdMap` of
+/// forty-eight.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<TradeEvent>());
     assert!(size_of::<BookEvent>() > size_of::<MarketData>());
-    assert_eq!(size_of::<MarketData>(), 960);
+    assert_eq!(size_of::<MarketData>(), 1008);
 }
 
 /// An execution follows the order it fills across kinds, through the facts

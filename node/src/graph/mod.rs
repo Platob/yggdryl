@@ -131,14 +131,6 @@ macro_rules! event_getters {
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
-            /// The latest execution instant the lifecycle reached, where
-            /// known.
-            #[napi(getter)]
-            pub fn execunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Event::get_execunix(&self.inner)
-                    .map(::napi::bindgen_prelude::BigInt::from)
-            }
-
             /// When this was recorded, where stated.
             #[napi(getter)]
             pub fn recdunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
@@ -218,7 +210,7 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The side, as the `side` member's stored name; `UNKNOWN` where
+            /// The side, as the `side` member's four-letter code; `UNKN` where
             /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {
@@ -255,6 +247,15 @@ macro_rules! market_getters {
             pub fn miccode(&self) -> Option<String> {
                 ::yggdryl::graph::Market::get_miccode(&self.inner)
                     .map(|held| held.as_str().to_owned())
+            }
+
+            /// When this last executed: the latest execution instant its
+            /// lifecycle reached, nanoseconds since the Unix epoch, UTC,
+            /// where known - a market fact, never an event's.
+            #[napi(getter)]
+            pub fn execunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
+                ::yggdryl::graph::Market::get_execunix(&self.inner)
+                    .map(::napi::bindgen_prelude::BigInt::from)
             }
 
             /// The price last traded at; `null` where none.
@@ -411,6 +412,16 @@ macro_rules! operation_getters {
             pub fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_record(::yggdryl::graph::Operation::get_altids(&self.inner))
             }
+
+            /// The accounts and parties the operation names, party role to
+            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+            /// order.
+            #[napi(getter, ts_return_type = "Record<string, string>")]
+            pub fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
+                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_accountids(
+                    &self.inner,
+                ))
+            }
         }
     };
 }
@@ -444,7 +455,10 @@ macro_rules! common_verbs {
         #[napi]
         impl $class {
             /// This value stated as the one after `previous`, or `null` where
-            /// it cannot follow it or following changes nothing.
+            /// it cannot follow it or following changes nothing. It takes
+            /// every `metadata` key of its chain it lacks and, where it names
+            /// identifiers, every `altids` key but `MDENTRYREFID` and every
+            /// `accountids` role, its own values standing.
             #[napi]
             pub fn with_previous(&self, previous: &$class) -> Option<$class> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
@@ -805,14 +819,4 @@ pub fn graph_entry_id_native() -> &'static str {
 #[napi(js_name = "_graphEntryRefIdNative", skip_typescript)]
 pub fn graph_entry_ref_id_native() -> &'static str {
     graph::book::ENTRY_REF_ID
-}
-
-/// The alternate-identifier keys an order's own identifiers may follow
-/// across a lifecycle: `graph.FOLLOWED_ALTIDS`'s native half.
-#[napi(js_name = "_graphFollowedAltidsNative", skip_typescript)]
-pub fn graph_followed_altids_native() -> Vec<String> {
-    graph::FOLLOWED_ALTIDS
-        .iter()
-        .map(|value| (*value).to_owned())
-        .collect()
 }

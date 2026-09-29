@@ -109,6 +109,26 @@
       "doc": "Trade capture and matching.",
       "name": "TRAD",
       "value": "21"
+    },
+    {
+      "doc": "Order batches: lists, mass order handling and crosses, one order per entry.",
+      "name": "ORDB",
+      "value": "22"
+    },
+    {
+      "doc": "Quote batches: mass quotes and bid lists, one quote per entry.",
+      "name": "QUOB",
+      "value": "23"
+    },
+    {
+      "doc": "Execution batches: several executions reported at once, one per entry.",
+      "name": "EXEB",
+      "value": "24"
+    },
+    {
+      "doc": "Trade batches: match reports stating several trades, one per entry.",
+      "name": "TRDB",
+      "value": "25"
     }
   ],
   "name": "msgcatcodeset"

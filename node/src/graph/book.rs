@@ -37,7 +37,7 @@ fn levels_of(levels: f64) -> Result<usize> {
 }
 
 /// The side `side` names: a spelling read through the core `Side`
-/// vocabulary, or a `Side` code - what `Side.BUY` holds - read as the code
+/// vocabulary, or a `Side` code - what `Side.BUYS` holds - read as the code
 /// a `side` column stores.
 fn side_of(side: Either<String, f64>) -> Result<CoreSide> {
     match side {

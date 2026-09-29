@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::PyDict;
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
@@ -133,13 +133,6 @@ macro_rules! event_getters {
                 ::yggdryl::graph::Event::get_creaunix(&self.inner)
             }
 
-            /// The latest execution instant the lifecycle reached, where
-            /// known.
-            #[getter]
-            fn execunix(&self) -> Option<i64> {
-                ::yggdryl::graph::Event::get_execunix(&self.inner)
-            }
-
             /// When this was recorded, where stated.
             #[getter]
             fn recdunix(&self) -> Option<i64> {
@@ -210,7 +203,7 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_unit(&self.inner).as_str()
             }
 
-            /// The side, as the `Side` member it is; `Side.UNKNOWN` where
+            /// The side, as the `Side` member it is; `Side.UNKN` where
             /// none is stated, never `None`.
             #[getter]
             fn side(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
@@ -287,6 +280,14 @@ macro_rules! market_getters {
             #[getter]
             fn miccode(&self) -> Option<$crate::scalar::PyScalar> {
                 ::yggdryl::graph::Market::get_miccode(&self.inner).map($crate::graph::code_scalar)
+            }
+
+            /// When this last executed: the latest execution instant its
+            /// lifecycle reached, nanoseconds since the Unix epoch, UTC,
+            /// where known - a market fact, never an event's.
+            #[getter]
+            fn execunix(&self) -> Option<i64> {
+                ::yggdryl::graph::Market::get_execunix(&self.inner)
             }
 
             /// The price last traded at; `None` where none.
@@ -387,6 +388,14 @@ macro_rules! operation_getters {
             fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
                 $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_altids(&self.inner))
             }
+
+            /// The accounts and parties the operation names, party role to
+            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
+            /// order.
+            #[getter]
+            fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
+                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_accountids(&self.inner))
+            }
         });
     };
 }
@@ -419,7 +428,10 @@ macro_rules! common_verbs {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// This value stated as the one after `previous`, or `None` where
-            /// it cannot follow it or following changes nothing.
+            /// it cannot follow it or following changes nothing. It takes
+            /// every `metadata` key of its chain it lacks and, where it names
+            /// identifiers, every `altids` key but `MDENTRYREFID` and every
+            /// `accountids` role, its own values standing.
             fn with_previous(&self, previous: &Self) -> Option<Self> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
                     .map(Self::from_core)
@@ -805,12 +817,5 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // are held under.
     module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID)?;
     module.add("ENTRY_REF_ID", yggdryl::graph::book::ENTRY_REF_ID)?;
-    // The alternate-identifier keys an order's own identifiers may follow
-    // across a lifecycle: a tuple, so no caller can change the module
-    // constant for every importer.
-    module.add(
-        "FOLLOWED_ALTIDS",
-        PyTuple::new(module.py(), yggdryl::graph::FOLLOWED_ALTIDS)?,
-    )?;
     Ok(())
 }

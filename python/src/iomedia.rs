@@ -2939,7 +2939,7 @@ impl PyTextOptions {
 
     /// The names of the compiled `rowheader`'s captures, in regex order.
     ///
-    /// A text read answers the sixteen event columns, then `body`, then one
+    /// A text read answers the fifteen event columns, then `body`, then one
     /// column per capture named here, so the full source field is known
     /// before any read runs.
     #[getter]

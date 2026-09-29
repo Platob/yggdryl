@@ -117,13 +117,17 @@ medium does the work before a byte is decoded.
    not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
-14. **Plain text has a fixed shape.** A text read answers the sixteen event
+14. **Plain text has a fixed shape.** A text read answers the fifteen event
     columns (`currunix` first, `state` last), then `body`, then one column per
     named `rowheader` capture - the row header is the only thing that lifts a
     column out of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
     own `creaunix` capture states none takes the earliest `currunix` the read
-    has dated a line of its object by so far; a `creaunix` capture stands. A write consumes each row's non-empty `body`.
+    has dated a line of its object by so far; a `creaunix` capture stands. Each
+    line also states, as `prevunix`, the `currunix` the read dated the line
+    before it by - none for an object's first line or after an undated one, a
+    `prevunix` capture standing, each object of a folder or glob starting
+    again - and never a `prevuuid`, so no line identity moves. A write consumes each row's non-empty `body`.
 15. **CSV is typed by its header and a sample, or by the declared `field`.**
     The first record names the columns (`header=False`: `column_1`, ...),
     a sample of `infer_row_size` records (1,024) types each column - boolean,

@@ -4,7 +4,9 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
-use yggdryl::graph::{Element, Event, EventIterator, ExecutionEvent, Operation, OrderEvent};
+use yggdryl::graph::{
+    Element, Event, EventIterator, ExecutionEvent, Market, Operation, OrderEvent,
+};
 use yggdryl::{State, Uuid};
 
 use super::element::filled;
@@ -957,12 +959,13 @@ mod naming {
     }
 }
 
-/// The walk over the one value every boundary crosses as: an execution
-/// follows the order it fills across kinds, its twin restates it and the
-/// chain grows by nothing, and a value the walk does not chain - an
-/// undated order - is yielded where it is read and changes nothing.
+/// The walk over the one value every boundary crosses as: a chain holds one
+/// market data kind, so an execution under its order's cross code is a chain
+/// of its own and never follows the order; its twin restates it and the
+/// chain grows by nothing, and a value the walk does not chain - an undated
+/// order - is yielded where it is read and changes nothing.
 #[test]
-fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through() {
+fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
     use yggdryl::graph::{MarketData, Order};
 
     let fill = executed("O-500", 20);
@@ -983,7 +986,8 @@ fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through(
         .expect("the fill keeps its kind");
     assert_eq!(
         (leaf.get_seqnum(), leaf.get_prevuuid()),
-        (0, Some(order.get_curruuid()))
+        (0, None),
+        "the fill follows no order"
     );
     let twin = walk.next().expect("the fill, logged again");
     assert_eq!(twin, second, "the chain grows by nothing");
@@ -993,9 +997,9 @@ fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through(
             third.as_order_event().unwrap().get_seqnum(),
             third.as_order_event().unwrap().get_prevuuid()
         ),
-        (0, Some(second.get_curruuid()))
+        (0, Some(order.get_curruuid()))
     );
-    assert_eq!(walk.alive().count(), 1);
+    assert_eq!(walk.alive().count(), 2, "the order's chain and the fill's");
 }
 
 /// One event of `order` at `ms` stating `state`.
@@ -1109,7 +1113,7 @@ fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_t
 
     let buy = sided("C-1", 10, Side::Buy, State::New, &[(CL_ORD_ID, "C-1")]);
     let sell = sided("C-1", 20, Side::Sell, State::New, &[(CL_ORD_ID, "C-1")]);
-    assert_eq!(buy.get_crosscode(), "BUY:C-1");
+    assert_eq!(buy.get_crosscode(), "BUYS:C-1");
     assert_eq!(sell.get_crosscode(), "SELL:C-1");
     let replaced = sided("C-1", 30, Side::Sell, State::Replaced, &[]);
     let unsided = sided("C-1", 40, Side::Unknown, State::Canceled, &[]);
@@ -1128,7 +1132,7 @@ fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_t
     let walked: Vec<OrderEvent> = EventIterator::new(vec![buy.clone(), unsided], true).collect();
     assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
     assert_eq!(walked[1].get_side(), Side::Buy);
-    assert_eq!(walked[1].get_crosscode(), "BUY:C-1");
+    assert_eq!(walked[1].get_crosscode(), "BUYS:C-1");
 
     // By a name too: a side-less element under no code of its own joins
     // the one live side going by it, a sided one only its own side.
@@ -1161,7 +1165,7 @@ fn an_execution_joins_no_chain_by_a_name() {
 
     let order = sided("O-1", 10, Side::Buy, State::New, &[(ORDER_ID, "O-1")]);
     let mut fill = ExecutionEvent::at(at(20));
-    fill.set_crosscode("ExecID=E-1".to_owned());
+    fill.set_crosscode("E-1".to_owned());
     fill.set_side(Side::Buy);
     fill.set_state(State::Filled);
     fill.insert_altid(ORDER_ID, "O-1").unwrap();
@@ -1172,4 +1176,43 @@ fn an_execution_joins_no_chain_by_a_name() {
     let fill = fill.as_execution_event().expect("the fill keeps its kind");
     assert_eq!(fill.get_prevuuid(), None);
     assert_eq!(walk.alive().count(), 1, "the order is still alive");
+}
+
+/// A live execution going by its order's name keeps the order's name
+/// record: a name is alive once per side and category, so a report stating
+/// only that name still finds the order.
+#[test]
+fn a_live_execution_keeps_its_orders_name_record() {
+    use yggdryl::Side;
+    use yggdryl::graph::{Market, MarketData};
+
+    let order = sided("O-1", 10, Side::Buy, State::New, &[(ORDER_ID, "O-1")]);
+    let mut fill = ExecutionEvent::at(at(20));
+    fill.set_crosscode("E-1".to_owned());
+    fill.set_side(Side::Buy);
+    fill.set_state(State::PartiallyFilled);
+    fill.insert_altid(ORDER_ID, "O-1").unwrap();
+    fill.finalize();
+    let report = sided(
+        "R-1",
+        30,
+        Side::Buy,
+        State::PartiallyFilled,
+        &[(ORDER_ID, "O-1")],
+    );
+    let walked: Vec<MarketData> = EventIterator::new(
+        vec![
+            MarketData::from(order),
+            MarketData::from(fill),
+            MarketData::from(report),
+        ],
+        true,
+    )
+    .collect();
+    let order = walked[0].as_order_event().expect("the order");
+    let fill = walked[1].as_execution_event().expect("the fill");
+    let report = walked[2].as_order_event().expect("the report");
+    assert_eq!(fill.get_prevuuid(), None, "the fill is a chain of its own");
+    assert_eq!(report.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(report.get_crosscode(), order.get_crosscode());
 }

@@ -313,8 +313,8 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 1 + 16 + 27 + 3 + 1 + 5);
-    assert_eq!(names.len(), 53);
+    assert_eq!(names.len(), 1 + 15 + 28 + 4 + 1 + 5);
+    assert_eq!(names.len(), 54);
     assert_eq!(names[0], "marketdatakind");
     assert_eq!(
         field.fields()[0].dtype(),
@@ -323,11 +323,14 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
     assert!(!field.fields()[0].is_nullable());
     assert_eq!(names[1], "currunix");
     assert!(
-        field.fields()[1..17].iter().all(Field::is_nullable),
+        field.fields()[1..16].iter().all(Field::is_nullable),
         "an undated leaf states no clock"
     );
-    assert_eq!(names[17], "price");
-    assert_eq!(names[21..24], ["side", "securityids", "isincode"]);
+    assert_eq!(names[16], "price");
+    assert_eq!(names[20..23], ["side", "securityids", "isincode"]);
+    // When an element last executed is a market fact, stated among the
+    // market columns rather than the event's.
+    assert_eq!(names[24..27], ["miccode", "execunix", "lastpx"]);
     assert_eq!(
         names[34..44],
         [
@@ -343,9 +346,9 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
             "metadata"
         ]
     );
-    assert_eq!(names[44..47], ["tif", "tradable", "altids"]);
+    assert_eq!(names[44..48], ["tif", "tradable", "altids", "accountids"]);
     // The one book control a row states; the rest is walk-time.
-    assert_eq!(names[47], "bookscope");
+    assert_eq!(names[48], "bookscope");
     for gone in [
         "mdupdateaction",
         "mdentrypositionno",
@@ -354,7 +357,6 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
         "spread",
         "crossed",
         "locked",
-        "accountids",
         "userids",
         "bidside",
         "askside",
@@ -365,18 +367,18 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
     ] {
         assert!(!names.contains(&gone), "{gone}");
     }
-    assert!(field.fields()[47..].iter().all(Field::is_nullable));
+    assert!(field.fields()[48..].iter().all(Field::is_nullable));
     assert_eq!(
-        names[48..],
+        names[49..],
         ["alive", "deltas", "executions", "bidlimits", "asklimits"]
     );
     // An operation row, the item of every operation list: nothing nested.
-    let item = field.fields()[48].dtype().serie_item().unwrap().clone();
+    let item = field.fields()[49].dtype().serie_item().unwrap().clone();
     let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
-    assert_eq!(item.len(), 1 + 16 + 27 + 3 + 1);
-    assert_eq!(item, names[..48]);
+    assert_eq!(item.len(), 1 + 15 + 28 + 4 + 1);
+    assert_eq!(item, names[..49]);
     // A book's two sides are its price levels, one limit each.
-    for side in &field.fields()[51..] {
+    for side in &field.fields()[52..] {
         assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
     }
 }
@@ -1302,7 +1304,7 @@ fn a_batch_stating_no_limits_columns_still_reads() {
         .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
     let batch = batch.project(&kept).unwrap();
-    assert_eq!(batch.schema().fields().len(), 1 + 16 + 27 + 3 + 1 + 3);
+    assert_eq!(batch.schema().fields().len(), 1 + 15 + 28 + 4 + 1 + 3);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected

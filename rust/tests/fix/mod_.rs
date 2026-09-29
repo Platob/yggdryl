@@ -4189,10 +4189,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 22 categories and the 61 states to the 735
+        // The crate adds MsgCat's 26 categories and the 61 states to the 735
         // published sets.
         assert_eq!(sets, 737, "code sets held");
-        assert_eq!(codes, 7_812, "code records");
+        assert_eq!(codes, 7_816, "code records");
     }
 
     #[test]

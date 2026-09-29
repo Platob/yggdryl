@@ -61,10 +61,10 @@ function wkbPoint(x, y) {
   return bytes
 }
 
-// The sixteen event columns every line batch opens with: the line as the
-// event it is, the same sixteen a FIX row parsed out of it opens with.
+// The fifteen event columns every line batch opens with: the line as the
+// event it is, the same fifteen a FIX row parsed out of it opens with.
 const EVENT_COLUMNS = [
-  'currunix', 'creaunix', 'execunix', 'recdunix',
+  'currunix', 'creaunix', 'recdunix',
   'exprunix', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
   'prevuuid', 'seqnum', 'srcuuids', 'state',
@@ -537,6 +537,12 @@ test('a row header that dates a line fills currunix rather than adding a column'
   assert.deepEqual(
     [...lines.getChild('creaunix').toArray()],
     [1_577_934_245_000_000_000n, 1_577_934_245_000_000_000n],
+  )
+  // Each line follows the line read before it, at that line's instant.
+  const prevunix = lines.getChild('prevunix')
+  assert.deepEqual(
+    [prevunix.get(0), prevunix.toArray()[1]],
+    [null, 1_577_934_245_000_000_000n],
   )
 
   // With the flag off, the same name is an ordinary trailing capture,

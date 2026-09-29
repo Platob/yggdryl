@@ -16,10 +16,12 @@ from yggdryl import DataType, Field, MarketDataKind, Scalar
 
 def test_the_members_are_the_cores_in_code_order() -> None:
     codes = [int(kind) for kind in MarketDataKind]
-    assert codes == list(range(22))
+    assert codes == list(range(26))
     assert MarketDataKind.UNKN == 0 and MarketDataKind.BOOK == 3
     assert MarketDataKind.EXEC == 8 and MarketDataKind.ORDR == 10
     assert MarketDataKind.QUOT == 14 and MarketDataKind.TRAD == 21
+    assert MarketDataKind.ORDB == 22 and MarketDataKind.QUOB == 23
+    assert MarketDataKind.EXEB == 24 and MarketDataKind.TRDB == 25
     for kind in MarketDataKind:
         assert str(kind) == kind.name
         assert f"{kind}" == kind.name
@@ -39,6 +41,7 @@ def test_a_code_or_a_word_reads_to_one_member() -> None:
     assert MarketDataKind.from_spelling("ordr") is MarketDataKind.ORDR
     assert MarketDataKind.from_spelling("quotation") is MarketDataKind.QUOT
     assert MarketDataKind.from_spelling("market_structure") is MarketDataKind.MKST
+    assert MarketDataKind.from_spelling("order_batch") is MarketDataKind.ORDB
     # A stored code is an integer, never text.
     assert MarketDataKind.from_spelling("10") is None
     assert MarketDataKind.from_spelling("not a kind") is None

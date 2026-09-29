@@ -9,7 +9,8 @@ needed. Setters do not finalize - call `finalize()` once the facts are in.
 ## Build an order event from named facts
 
 Set the facts, then `finalize` derives the identity and what the facts imply:
-the national number an ISIN embeds, the side a cross code is stored under.
+the national number an ISIN embeds, the side an order's, a quote's or an
+execution's cross code is stored under.
 
 ```rust
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
@@ -31,8 +32,8 @@ order.finalize();
 // A dated identity is a UUIDv7: its millisecond leads.
 assert_eq!(order.get_curruuid(), order.time_uuid()?);
 assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
-// A sided element stores its cross code under its side: one chain per side.
-assert_eq!(order.get_crosscode(), "BUY:O-1001");
+// An order, a quote or an execution stores its cross code under its side: one chain per side.
+assert_eq!(order.get_crosscode(), "BUYS:O-1001");
 assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert_eq!(order.get_securityids().get("CUSIP"), Some("037833100"));
@@ -148,8 +149,10 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 `EventIterator` chains a stream by cross identity (and by a live element's
 `altids`), yields a twin as a restatement rather than a successor, retires a
-chain at a terminal state and emits one `EXPIRED` at a deadline. Chains are
-keyed by side, and every walked element leaves stating `creaunix`.
+chain at a terminal state and emits one `EXPIRED` at a deadline. An order's,
+a quote's or an execution's chain is keyed by side, a chain lives within one
+`marketdatakind` (an order and an execution under one cross code are two
+chains), and every walked element leaves stating `creaunix`.
 
 ```rust
 use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
@@ -204,7 +207,7 @@ let joined: Vec<OrderEvent> = EventIterator::new(
 )
 .collect();
 assert_eq!(joined[1].get_prevuuid(), Some(joined[0].get_curruuid()));
-assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "BUY:O-3003"));
+assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "BUYS:O-3003"));
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS: i64 = 1_000_000;
@@ -224,7 +227,8 @@ assert_eq!((expired.get_currunix(), *expired.get_state()), (T + 70 * MS, State::
 ## Build a composite trade
 
 `TradeEvent::from_parts` is the one door: a root event and its sided
-executions, canonicalized so input order never changes the trade.
+executions, canonicalized so input order never changes the trade. The trade
+itself is not sided: it keeps the root's cross code, a sided root's base code.
 
 ```rust
 use yggdryl::graph::{Element, Event, ExecutionEvent, Market, OrderEvent, TradeEvent};
@@ -242,11 +246,11 @@ let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {
 let mut root = OrderEvent::at(T);
 root.set_crosscode("T-1".to_owned());
 root.set_ticker(Some("AAPL".into()));
-let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUY", Side::Buy)?])?;
+let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUYS", Side::Buy)?])?;
 let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).collect();
-assert_eq!(codes, ["BUY:E-BUY", "SELL:E-SELL"]);
+assert_eq!(codes, ["BUYS:E-BUYS", "SELL:E-SELL"]);
 assert!(trade.is_execution());
-let again = TradeEvent::from_parts(&root, vec![fill("E-BUY", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
+let again = TradeEvent::from_parts(&root, vec![fill("E-BUYS", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
 assert_eq!(again.get_curruuid(), trade.get_curruuid());
 // Each execution at the trade's instant; none at all is refused.
 let mut late = fill("E-LATE", Side::Buy)?;
@@ -281,7 +285,7 @@ assert_eq!(value.kind().as_str(), "order_event");
 assert_eq!(value.marketdatakind(), MarketDataKind::Order);
 assert!(value.is_event());
 assert_eq!(value.as_order_event(), Some(&order));
-assert_eq!(label(&value), "BUY:O-1001/BUY");
+assert_eq!(label(&value), "BUYS:O-1001/BUYS");
 assert_eq!(label(&value), label(&order));
 assert!(QuoteEvent::try_from(value.clone()).is_err(), "another kind is refused");
 assert_eq!(OrderEvent::try_from(value)?, order);
@@ -314,9 +318,9 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 53 columns: marketdatakind, 16 event, 27 market, 3 operation, bookscope, 5 nested.
+// 54 columns: marketdatakind, 15 event, 28 market, 4 operation, bookscope, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 53);
+assert_eq!(field.field_len(), 54);
 assert_eq!(field.fields()[0].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -404,7 +408,7 @@ assert_eq!(books.len(), 2, "one book per touched instant");
 let last = &books[1];
 assert_eq!((last.get_currunix(), last.alive().count()), (T + SECOND, 2), "depth persists");
 assert_eq!(last.deltas().count(), 1);
-assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["BUY:E-1"]);
+assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["BUYS:E-1"]);
 
 // A 500 ms grid adds the living book at each crossed tick.
 let gridded = BookIterator::new(stream.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
@@ -553,7 +557,7 @@ assert_eq!(rows(trades.collect::<Result<_, _>>()?), 2);
 let plan = MarketData::plan(&MarketView::read("Trades", None)?, &[])?;
 assert_eq!(plan.to_string().parse::<Plan>()?, plan);
 // A lifecycle follows the cross code as stored: side included.
-let lifecycle = MarketView::read("lifecycle", Some("BUY:O-1001"))?;
+let lifecycle = MarketView::read("lifecycle", Some("BUYS:O-1001"))?;
 assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Result<_, _>>()?), 1);
 ```
 
@@ -733,8 +737,10 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
 
 - Setters never finalize: a leaf with stale derived facts is refused when
   written to Arrow. Call `finalize()` after the last `set_*`.
-- `get_crosscode` answers the stored code: `BUY:O-1001` for a buy, the bare
-  code for `Side::Unknown`. `sided_crosscode(code)` says what a code is stored
+- `get_crosscode` answers the stored code: `BUYS:O-1001` for a buy order,
+  quote or execution, the bare code for `Side::Unknown` and for every element
+  `marketdatakind().is_sided()` answers `false` for - a trade, a book, a snapshot control -
+  whatever side it states. `sided_crosscode(code)` says what a code is stored
   as; a lifecycle view and a lookup name the stored spelling.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
@@ -742,12 +748,16 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   yielded as it came, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
-  `Result<BookEvent>`.
+  `Result<BookEvent>`. An `Err` item is a source's own failure or a value no
+  book folds; an operation dated before its book, an order or a quote stating
+  neither side and a group the book refuses are left out with a `log`
+  warning.
 - `with_previous`/`merge_with` answer `Option`: `None` means nothing moved (its
   own predecessor, an earlier event, another element), not an error.
 - `insert_securityid` fills an absent key or replaces one that was derived (a
-  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`
-  and `insert_fxrate` fill an absent key only; `set_securityids`,
-  `set_altids` and `set_fxrates` replace the whole set.
+  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`,
+  `insert_accountid` and `insert_fxrate` fill an absent key only;
+  `set_securityids`, `set_altids`, `set_accountids` and `set_fxrates` replace
+  the whole set.
 - The traits are object-safe except the verbs that take or return `Self`
   (`with_previous`, `merge_with`, `is_after` ...): `&dyn Event` reads every fact.

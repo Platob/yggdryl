@@ -26,7 +26,7 @@ const order: Order = new graph.Order({ crosscode: 'O-1', price: '101', ticker: u
 const bare: Order = new graph.Order()
 const event: OrderEvent = new graph.OrderEvent(1n, {
   crosscode: 'O-1',
-  side: 'BUY',
+  side: 'BUYS',
   bidpx: '101',
   book: new graph.BookRef({ action: '0' }),
 })
@@ -70,11 +70,10 @@ const executions: ExecutionEvent[] = book.executions()
 const books: BookEvent[] = [...new graph.BookIterator(items, 0)]
 const walked: MarketData[] = [...new graph.EventIterator(items, true, 5n)]
 const snapshotNs: bigint | null = new graph.EventIterator([]).snapshotNs
-const followedAltids: readonly string[] = graph.FOLLOWED_ALTIDS
 
 // A book reads each side's limits, best first, and its depth; and its two
 // bests.
-const limits: BookLimit[] = book.limits('BUY')
+const limits: BookLimit[] = book.limits('BUYS')
 const limitPrice: string | null = limits[0].price
 const limitQuantity: string = limits[0].quantity
 const limitUuids: string[] = limits[0].uuids
@@ -157,7 +156,6 @@ void [alive, deltas, executions]
 void books
 void walked
 void snapshotNs
-void followedAltids
 void [limitPrice, limitQuantity, limitUuids, limitTradable, depth, bestPrice, bestQuantity, locked, spread, imbalance]
 void [byNanos, byZone, interval, zone, spelling, walkedCandles, walkOptions, heldCandles]
 void [open, start, ticker, bidqty, volume, bookCount, candleField, fromObject, fromJson, sameCandle]

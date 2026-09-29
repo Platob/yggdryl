@@ -1042,6 +1042,10 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
                 column.record(event, value);
                 return true;
             }
+            if let Some(column) = super::crated::market_column_of(tag) {
+                column.record(event, value);
+                return true;
+            }
             return false;
         }
     }
@@ -1053,6 +1057,9 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
 /// an absent instant, identity or code.
 pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar> {
     if let Some(column) = super::crated::event_column_of(tag) {
+        return column.fact(event);
+    }
+    if let Some(column) = super::crated::market_column_of(tag) {
         return column.fact(event);
     }
     match tag {

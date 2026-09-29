@@ -105,7 +105,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "listid",
-    "FIX:msgcat": "ORDR",
+    "FIX:msgcat": "ORDB",
     "FIX:msgtype": "L",
     "FIX:tag": "185663",
     "description": "MsgType = L",

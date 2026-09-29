@@ -17,8 +17,9 @@ from yggdryl import DataType, Field, Scalar, Side
 def test_the_members_are_the_cores_in_code_order() -> None:
     codes = [int(side) for side in Side]
     assert codes == list(range(18))
-    assert Side.UNKNOWN == 0 and Side.BUY == 1 and Side.SELL == 2
-    assert Side.SELLUND == 17
+    assert Side.UNKN == 0 and Side.BUYS == 1 and Side.SELL == 2
+    assert Side.SELU == 17
+    assert [side.name for side in Side][:6] == ["UNKN", "BUYS", "SELL", "BUYM", "SELP", "SSHT"]
     for side in Side:
         assert str(side) == side.name
         assert f"{side}" == side.name
@@ -34,21 +35,27 @@ def test_the_stub_lists_the_native_table() -> None:
 
 
 def test_the_wire_code_and_the_two_lanes_are_the_cores() -> None:
-    assert Side.UNKNOWN.fix_code is None
-    assert Side.BUY.fix_code == "1"
-    assert Side.CROSSSHX.fix_code == "A"
-    assert Side.SELLUND.fix_code == "H"
-    assert Side.BUY.is_bid() and not Side.BUY.is_ask()
-    assert Side.SSHORTEX.is_ask() and not Side.SSHORTEX.is_bid()
-    assert not Side.CROSS.is_bid() and not Side.CROSS.is_ask()
-    assert not Side.UNKNOWN.is_bid() and not Side.UNKNOWN.is_ask()
+    assert Side.UNKN.fix_code is None
+    assert Side.BUYS.fix_code == "1"
+    assert Side.CRSX.fix_code == "A"
+    assert Side.SELU.fix_code == "H"
+    assert Side.BUYS.is_bid() and not Side.BUYS.is_ask()
+    assert Side.SSEX.is_ask() and not Side.SSEX.is_bid()
+    assert not Side.CROS.is_bid() and not Side.CROS.is_ask()
+    assert not Side.UNKN.is_bid() and not Side.UNKN.is_ask()
 
 
 def test_a_spelling_reads_to_one_member() -> None:
-    assert Side.from_spelling("1") is Side.BUY
-    assert Side.from_spelling("SellShort") is Side.SSHORT
-    assert Side.from_spelling("sshort") is Side.SSHORT
-    assert Side.from_spelling("H") is Side.SELLUND
+    assert Side.from_spelling("1") is Side.BUYS
+    assert Side.from_spelling("BUYS") is Side.BUYS
+    assert Side.from_spelling("ssht") is Side.SSHT
+    assert Side.from_spelling("SellShort") is Side.SSHT
+    # The names stored before the four-letter codes are still read, never written.
+    assert Side.from_spelling("sshort") is Side.SSHT
+    assert Side.from_spelling("BUY") is Side.BUYS
+    assert Side.from_spelling("UNKNOWN") is Side.UNKN
+    assert Side.SSHT.name == "SSHT"
+    assert Side.from_spelling("H") is Side.SELU
     assert Side.from_spelling("X") is None
 
 
@@ -56,10 +63,10 @@ def test_the_datatype_stores_the_code_and_reads_back_the_member() -> None:
     field = yggdryl.side("side", nullable=False)
     assert field.dtype == DataType("side")
     assert DataType("side").kind == "enum"
-    for given in ("BUY", "1", 1, Side.BUY):
+    for given in ("BUYS", "BUY", "1", 1, Side.BUYS):
         value = DataType("side").scalar(given)
         assert value.kind == "side"
-        assert value.as_py() is Side.BUY
+        assert value.as_py() is Side.BUYS
     with pytest.raises(ValueError):
         DataType("side").scalar(99)
     with pytest.raises(ValueError):

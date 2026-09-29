@@ -140,9 +140,9 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     // the symbol did; the price is a fact the message lifted and holds, so
     // a row that dropped its column dropped the fact, where the parse had
     // both.
-    assert_eq!(parsed.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert_eq!(parsed.by_tag(54).unwrap().as_str(), Some("BUYS"));
     assert!(!parsed.by_tag(44).unwrap().is_null());
-    assert_eq!(at(&row, &schema, "side").as_str(), Some("BUY"));
+    assert_eq!(at(&row, &schema, "side").as_str(), Some("BUYS"));
     assert!(at(&row, &schema, "price").is_null());
 }
 

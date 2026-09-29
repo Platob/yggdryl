@@ -301,7 +301,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "listid",
-    "FIX:msgcat": "ORDR",
+    "FIX:msgcat": "ORDB",
     "FIX:msgtype": "E",
     "FIX:tag": "962450",
     "description": "MsgType = E",

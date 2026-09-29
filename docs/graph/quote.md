@@ -8,8 +8,8 @@
 | --- | --- |
 | Types | `Quote = OperationElement<QuoteKind>`, `QuoteEvent = OperationEvent<QuoteKind>`: the [operation leaf contract](order.md#contract), filed under `QUOT` |
 | Side | a quote rests on the side it states; the two prices a two-sided quote states are its [bid and ask](market.md#bid-and-ask) facts, which name no side and fill no price |
-| From FIX | a quote message stating a bid and an offer and no side of its own is split at the parse into two sided quotes: `BUY` with the bid's price, quantity and FX parts, `SELL` with the offer's, each keeping both bid and ask facts and naming the source's identity among its sources, each chained on its side (`BUY:Q1`, `SELL:Q1`); a book reads each sided quote once and never the two-sided source; a one-sided quote stays one message ([FIX](../fix/message.md#market-data)) |
-| Following | the chain gives its side only to a quote stating `UNKNOWN` ([Operation](operation.md#following-and-merging)) |
+| From FIX | a quote message stating a bid and an offer and no side of its own is split at the parse into two sided quotes: `BUYS` with the bid's price, quantity and FX parts, `SELL` with the offer's, each keeping both bid and ask facts and naming the source's identity among its sources, each chained on its side (`BUYS:Q1`, `SELL:Q1`); a book reads each sided quote once and never the two-sided source; a one-sided quote stays one message; a quote batch - a mass quote, a bid list (`QUOB`) - is first split into one quote per entry, each then split the same way ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
+| Following | the chain gives its side only to a quote stating `UNKN` ([Operation](operation.md#following-and-merging)) |
 | Book entry | a dated quote with a [book control](order.md#book-control) is an entry of a [book](book.md#entries); a change or overlay stating `ORDERID` promotes it to an order |
 | Execution | `is_execution()` is always false; only an [execution](execution.md) is one - a quote's report of a fill splits one off |
 
@@ -84,7 +84,7 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
         askpx=Decimal("189.52"),
         askqty=100,
     )
-    assert (quote.side, quote.price) == (Side.UNKNOWN, None)
+    assert (quote.side, quote.price) == (Side.UNKN, None)
     assert quote.askpx is not None and quote.askpx.as_py() == Decimal("189.52")
     assert not quote.is_execution
 
@@ -126,7 +126,7 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
     const quote = new graph.QuoteEvent(T, {
       crosscode: 'Q-7', ticker: 'AAPL', bidpx: '189.48', bidqty: 300, askpx: '189.52', askqty: 100,
     })
-    assert.equal(quote.side, 'UNKNOWN')
+    assert.equal(quote.side, 'UNKN')
     assert.equal(quote.price, null)
     assert.equal(quote.askpx, '189.52')
     assert.equal(quote.isExecution, false)

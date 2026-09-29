@@ -366,7 +366,7 @@ fn an_unpriced_entry_lands_last_as_one_limit() {
     );
     assert_eq!(
         alive(&book, true).last().unwrap().get_crosscode(),
-        "BUY:B-M"
+        "BUYS:B-M"
     );
     assert_eq!(
         alive(&book, false).last().unwrap().get_crosscode(),
@@ -648,7 +648,7 @@ fn a_delete_from_reaches_an_unpriced_entry_after_every_priced_level() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:P-1", "BUY:P-2"]
+        ["BUYS:P-1", "BUYS:P-2"]
     );
     assert!(book.limits(Side::Buy).all(|limit| limit.price.is_some()));
 }
@@ -704,7 +704,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
         .into_iter()
         .map(|operation| operation.get_crosscode())
         .collect();
-    assert_eq!(identities, ["BUY:B-2", "BUY:B-X"]);
+    assert_eq!(identities, ["BUYS:B-2", "BUYS:B-X"]);
 
     let mut update = BookEvent::new(2, "IBM");
     update.add_operations([replacement]).unwrap();
@@ -714,7 +714,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:B-2", "BUY:B-X"]
+        ["BUYS:B-2", "BUYS:B-X"]
     );
 }
 
@@ -869,7 +869,7 @@ fn a_snapshot_is_the_same_book_with_every_living_order_and_nothing_else() {
             .into_iter()
             .map(|held| held.get_crosscode().to_owned())
             .collect::<Vec<_>>(),
-        ["BUY:O-1"],
+        ["BUYS:O-1"],
         "every living order, and no dead one"
     );
     assert!(
@@ -1297,7 +1297,7 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
             .iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUY:E-BUY", "SELL:E-SELL"]
+        ["BUYS:E-BUY", "SELL:E-SELL"]
     );
     let mut expected = trade.executions().to_vec();
     expected.sort_by_key(Element::get_curruuid);
@@ -1354,16 +1354,18 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     );
 }
 
+/// A quote stating neither the bid nor the ask rests on no side: it is
+/// left out of the book with a warning, and the expiration due at its
+/// instant still fires.
 #[test]
-fn a_failed_equal_time_source_does_not_consume_the_pending_expiration() {
+fn an_unsided_quote_is_left_out_and_the_pending_expiration_still_fires() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
     op_mut(&mut live).set_exprunix(Some(3));
     live.finalize();
-    let invalid = operation("quote", "IBM", "INVALID", 3, "Unknown", "101", 1, "New");
-    let mut books = BookIterator::new([live, invalid].into_iter(), 0).unwrap();
+    let unsided = operation("quote", "IBM", "UNSIDED", 3, "Unknown", "101", 1, "New");
+    let mut books = BookIterator::new([live, unsided].into_iter(), 0).unwrap();
 
     assert_eq!(alive(&books.next().unwrap().unwrap(), true).len(), 1);
-    assert!(books.next().unwrap().is_err());
     let expired = books.next().unwrap().unwrap();
     assert_eq!(expired.get_currunix(), 3);
     assert!(alive(&expired, true).is_empty());
@@ -1396,10 +1398,13 @@ fn expiring_one_snapshot_entry_keeps_the_rest_of_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:STANDING"
+        "BUYS:STANDING"
     );
 }
 
+/// A group the book refuses - here a snapshot stating one entry twice - is
+/// left out whole, with a warning: none of its raw updates lands, the book
+/// stands as it was, and the walk goes on.
 #[test]
 fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
     let initial = operation("quote", "IBM", "INITIAL", 1, "Buy", "100", 1, "New");
@@ -1415,10 +1420,9 @@ fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
     )
     .unwrap()
     .collect::<Vec<_>>();
-    assert_eq!(results.len(), 3);
-    assert!(results[0].is_ok());
-    assert!(results[1].is_err());
-    let after = results[2].as_ref().unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(Result::is_ok));
+    let after = results[1].as_ref().unwrap();
     assert_eq!(alive(after, true).len(), 1);
     assert_eq!(
         alive(after, true)
@@ -1426,7 +1430,7 @@ fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:INITIAL"
+        "BUYS:INITIAL"
     );
 }
 
@@ -1455,10 +1459,10 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     assert_eq!(alive(&books[1], true).len(), 2);
     let mut live = alive(&books[1], true).into_iter();
     let first = live.next().unwrap();
-    assert_eq!(first.get_crosscode(), "BUY:O-1");
+    assert_eq!(first.get_crosscode(), "BUYS:O-1");
     assert_eq!(first.get_price(), Some(decimal("101")));
     assert_eq!(first.get_quantity(), Some(Decimal::from_int(5)));
-    assert_eq!(live.next().unwrap().get_crosscode(), "BUY:O-OTHER");
+    assert_eq!(live.next().unwrap().get_crosscode(), "BUYS:O-OTHER");
 
     let only = BookIterator::new([snapshot_only].into_iter(), 0)
         .unwrap()
@@ -1527,12 +1531,15 @@ fn snapshotted_trade_rebases_every_child_and_preserves_execution_time() {
     let mut execunix = book
         .executions()
         .iter()
-        .map(Event::get_execunix)
+        .map(Market::get_execunix)
         .collect::<Vec<_>>();
     execunix.sort_unstable();
     assert_eq!(execunix, [Some(1), Some(2)]);
 }
 
+/// A snapshot component dated after the snapshot it stands in is never
+/// backdated: the walk leaves it out with a warning, and a direct
+/// `add_operations`, an explicit call, refuses it.
 #[test]
 fn future_snapshot_components_are_refused_instead_of_backdated() {
     let mut execution = operation(
@@ -1547,13 +1554,12 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
     );
     op_mut(&mut execution).set_snapunix(Some(2));
     execution.finalize();
-    let error = BookIterator::new([execution.clone()].into_iter(), 0)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("snapshot.executions[0].currunix"), "{error}");
+    assert!(
+        BookIterator::new([execution.clone()].into_iter(), 0)
+            .unwrap()
+            .next()
+            .is_none()
+    );
 
     op_mut(&mut execution).set_snapunix(Some(4));
     execution.finalize();
@@ -1567,13 +1573,12 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
     reset.set_snapunix(Some(2));
     reset.finalize();
     let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("PRIMARY")));
-    let error = BookIterator::new([MarketData::from(control)].into_iter(), 0)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("snapshot.controls[0].currunix"), "{error}");
+    assert!(
+        BookIterator::new([MarketData::from(control)].into_iter(), 0)
+            .unwrap()
+            .next()
+            .is_none()
+    );
 }
 
 #[test]
@@ -1606,7 +1611,7 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:PRIMARY"
+        "BUYS:PRIMARY"
     );
 }
 
@@ -1765,7 +1770,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
         .into_iter()
         .map(Element::get_crosscode)
         .collect::<Vec<_>>();
-    assert_eq!(remaining, ["BUY:O-1", "BUY:P-2"]);
+    assert_eq!(remaining, ["BUYS:O-1", "BUYS:P-2"]);
 
     let before = book.clone();
     let invalid = with_book(
@@ -1997,7 +2002,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:B-X"
+        "BUYS:B-X"
     );
 
     let merged = older.merge_with(&latest).unwrap();
@@ -2008,7 +2013,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:B-X"
+        "BUYS:B-X"
     );
     assert!(alive(&merged, false).is_empty());
 }
@@ -2034,8 +2039,11 @@ fn decimal_means_do_not_overflow_representable_results() {
     assert_eq!(book.median_quantity(), Some(Decimal::MAX));
 }
 
+/// A quote stating no side is left out of its book - the book it would
+/// have folded into still stands with what else its instant stated - and
+/// the walk goes on to the next book.
 #[test]
-fn a_failed_iterator_group_emits_only_the_error() {
+fn an_unsided_quote_leaves_its_group_and_every_later_book_standing() {
     let mut invalid = operation("quote", "IBM", "BAD", 1, "Buy", "99", 1, "New");
     invalid.set_side(Side::Unknown);
     invalid.finalize();
@@ -2050,9 +2058,11 @@ fn a_failed_iterator_group_emits_only_the_error() {
     )
     .unwrap()
     .collect::<Vec<_>>();
-    assert_eq!(results.len(), 2);
-    assert!(results[0].is_err());
-    let later = results[1].as_ref().unwrap();
+    assert!(results.iter().all(Result::is_ok));
+    let first = results[0].as_ref().unwrap();
+    assert_eq!(first.get_ticker(), Some("IBM"));
+    assert_eq!(alive(first, true).len(), 1, "the good quote alone");
+    let later = results.last().unwrap().as_ref().unwrap();
     assert_eq!(later.get_ticker(), Some("MSFT"));
     assert_eq!(
         alive(later, true)
@@ -2060,7 +2070,7 @@ fn a_failed_iterator_group_emits_only_the_error() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUY:LATER"
+        "BUYS:LATER"
     );
 }
 
@@ -2283,4 +2293,30 @@ fn a_categorized_entry_expires_in_its_own_book() {
         ]
     );
     assert!(books[1].get_ticker().is_none());
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::graph::BookIterator;
+    use yggdryl::internals::warning::count;
+
+    use super::operation;
+
+    /// What the walk leaves out it says, once per kind of refusal and then
+    /// counted: an unsided entry under its kind.
+    #[test]
+    fn what_the_walk_leaves_out_is_warned_about_under_its_kind() {
+        let unsided = operation("quote", "IBM", "UNSIDED", 1, "Unknown", "101", 1, "New");
+        let books = BookIterator::new([unsided].into_iter(), 0)
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert!(books.is_empty());
+        assert!(
+            count(
+                "yggdryl::graph::book",
+                "book entry excluded: it states no bid or ask side",
+                "quote_event",
+            ) >= 1
+        );
+    }
 }

@@ -427,7 +427,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:msgcat": "TRAD",
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "AW",
     "FIX:tag": "228230",
     "description": "MsgType = AW",

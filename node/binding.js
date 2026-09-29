@@ -4872,10 +4872,8 @@ for (const [prototype, name] of [
 
 const graphEntryId = binding._graphEntryIdNative()
 const graphEntryRefId = binding._graphEntryRefIdNative()
-const graphFollowedAltids = Object.freeze(binding._graphFollowedAltidsNative())
 delete binding._graphEntryIdNative
 delete binding._graphEntryRefIdNative
-delete binding._graphFollowedAltidsNative
 
 const graph = Object.freeze({
   BookRef,
@@ -4907,7 +4905,6 @@ const graph = Object.freeze({
   },
   ENTRY_ID: graphEntryId,
   ENTRY_REF_ID: graphEntryRefId,
-  FOLLOWED_ALTIDS: graphFollowedAltids,
 })
 
 // The graph values are reached through the namespace and nowhere else.
@@ -5932,7 +5929,7 @@ binding.yaml = yaml
 }
 
 // Which side of the market a trade took: FIX's Side(54), each member's
-// stored name under the code a `side` column stores - `UNKNOWN` at zero,
+// four-letter code under the code a `side` column stores - `UNKN` at zero,
 // then the seventeen sides in FIX's own order.
 {
   const members = binding._sideMembersNative()

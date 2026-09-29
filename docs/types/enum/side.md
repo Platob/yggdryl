@@ -1,20 +1,20 @@
 # Side
 
-Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen members - `UNKNOWN` and the seventeen sides the code set names - stored as the `int32` code of its member, a code being the position of its wire character.
+Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen members - `UNKN` and the seventeen sides the code set names - stored as the `int32` code of its member, a code being the position of its wire character.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `side`, `SideType`/`SideField`, the `Side` enum and `Scalar::Side` |
-| Validates | A member, the code of one, or a spelling one of three vocabularies names - the stored name, a FIX wire code, the specification's name - reaches one member; anything else is refused rather than stored |
+| Validates | A member, the code of one, or a spelling one of three vocabularies names - the four-letter code, a FIX wire code, the specification's name - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no side, naming the spelling |
-| Stores | `int32` under `yggdryl.side`: `UNKNOWN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H` |
-| Default | `UNKNOWN`, a side stated as none: a stated value, never an absence |
+| Stores | `int32` under `yggdryl.side`: `UNKN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H` |
+| Default | `UNKN`, a side stated as none: a stated value, never an absence |
 
-A `Side` is one byte in memory and its code in a column. What `as_str` answers and every text format writes is the crate's explicit spelling - `BUY`, `SSHORT`, `CROSSSHX` - never FIX's one-character code, which `fix_code` answers on its own.
+A `Side` is one byte in memory and its code in a column. What `as_str` answers and every text format writes is the member's fixed four-letter code - `BUYS`, `SSHT`, `CRSX` - never FIX's one-character code, which `fix_code` answers on its own; the long name is the member's `description`. The names the members were stored under before their codes (`BUY`, `SSHORT`, `ASDEF`, `UNKNOWN`, ...) are still read, case-insensitively, and never written.
 
 ## DataType
 
@@ -93,20 +93,21 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 
 ## Scalar
 
-The value is the member, whichever vocabulary named it: `BUY` for FIX's `1`, its `Buy`, the stored name itself, or its code `1`. Rust holds the `Side` member; Python the member of the `yggdryl.Side` `IntEnum`, which is the integer it stores and renders as its name; JavaScript the member's name, with `Side` mapping every name to its code ([Enums](index.md#enum-facts-in-the-bindings)).
+The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, its `Buy`, the four-letter code itself, or its code `1`. Rust holds the `Side` member; Python the member of the `yggdryl.Side` `IntEnum`, which is the integer it stores and renders as its name; JavaScript the member's name, with `Side` mapping every name to its code ([Enums](index.md#enum-facts-in-the-bindings)).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Scalar, Side};
 
-    let buy = DataType::Side.scalar("BUY")?;
+    let buy = DataType::Side.scalar("BUYS")?;
     assert_eq!(buy, Scalar::Side(Side::Buy));
     assert_eq!(buy.kind(), "side");
     assert_eq!(Side::Buy.code(), 1);
 
     // Three vocabularies and the code reach one member.
     assert_eq!(DataType::Side.scalar("1")?, buy);
+    assert_eq!(DataType::Side.scalar("BUY")?, buy);
     assert_eq!(DataType::Side.scalar("Buy")?, buy);
     assert_eq!(DataType::Side.scalar(1_i32)?, buy);
     assert_eq!(DataType::Side.scalar("SellShortExempt")?, Scalar::Side(Side::SShortEx));
@@ -125,14 +126,15 @@ The value is the member, whichever vocabulary named it: `BUY` for FIX's `1`, its
     from yggdryl import DataType, Side
 
     side = DataType("side")
-    assert side.scalar("1").as_py() is Side.BUY
-    assert side.scalar("Buy").as_py() is Side.BUY
-    assert side.scalar(1).as_py() is Side.BUY
-    assert side.scalar("SellShortExempt").as_py() is Side.SSHORTEX
+    assert side.scalar("1").as_py() is Side.BUYS
+    assert side.scalar("Buy").as_py() is Side.BUYS
+    assert side.scalar("BUY").as_py() is Side.BUYS
+    assert side.scalar(1).as_py() is Side.BUYS
+    assert side.scalar("SellShortExempt").as_py() is Side.SSEX
     assert side.scalar("1").kind == "side"
 
-    # A member is the integer it stores and reads as its name.
-    assert Side.BUY == 1 and str(Side.BUY) == "BUY"
+    # A member is the integer it stores and reads as its code.
+    assert Side.BUYS == 1 and str(Side.BUYS) == "BUYS"
 
     with pytest.raises(ValueError, match="side"):
         side.scalar("Z")
@@ -145,15 +147,15 @@ The value is the member, whichever vocabulary named it: `BUY` for FIX's `1`, its
     const { DataType, Side } = require('yggdryl')
 
     const side = new DataType('side')
-    assert.equal(side.scalar('1').asJs(), 'BUY')
-    assert.equal(side.scalar('SellShort').asJs(), 'SSHORT')
-    assert.equal(Side.BUY, 1)
+    assert.equal(side.scalar('1').asJs(), 'BUYS')
+    assert.equal(side.scalar('SellShort').asJs(), 'SSHT')
+    assert.equal(Side.BUYS, 1)
     assert.throws(() => side.scalar('Z'), /side/)
     ```
 
 ## Arrow storage
 
-`Int32` under `yggdryl.side`: one value buffer of codes, like every [enum](index.md). Text entering a `side` column is read as a spelling and an integer as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `side` column cast to text answers each member's stored name, and cast to an integer its code.
+`Int32` under `yggdryl.side`: one value buffer of codes, like every [enum](index.md). Text entering a `side` column is read as a spelling and an integer as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `side` column cast to text answers each member's four-letter code, and cast to an integer its code.
 
 === "Rust"
 
@@ -194,7 +196,7 @@ The value is the member, whichever vocabulary named it: `BUY` for FIX's `1`, its
 
     # Every vocabulary lands as the member it names.
     stored = Serie.from_arrow_array(pa.array(["Buy", "1", "SELL"]), side, safe=False)
-    assert stored.as_py() == [Side.BUY, Side.BUY, Side.SELL]
+    assert stored.as_py() == [Side.BUYS, Side.BUYS, Side.SELL]
     ```
 
 === "JavaScript"
@@ -206,35 +208,35 @@ The value is the member, whichever vocabulary named it: `BUY` for FIX's `1`, its
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
     const stored = Serie.fromArrowArray(utf8(['Buy', '1', 'SELL']), fields.side('side'))
-    assert.deepEqual([...stored.intoArrowArray()], [Side.BUY, Side.BUY, Side.SELL])
+    assert.deepEqual([...stored.intoArrowArray()], [Side.BUYS, Side.BUYS, Side.SELL])
     ```
 
 ## Three vocabularies, one member
 
-A FIX `Side(54)` wire code, the specification's own name, and the stored name all name one thing, so they all reach it. Names fold the way every other name in this crate folds - ASCII case insensitive, with `_`, `-` and spaces ignored - so `SellShort`, `sell_short` and `SELL SHORT` are one spelling. A wire code does **not** fold, because `A` and `a` are different codes in FIX. A code is the member's position, so it is the wire character's position too.
+A FIX `Side(54)` wire code, the specification's own name, and the four-letter code all name one thing, so they all reach it. Names fold the way every other name in this crate folds - ASCII case insensitive, with `_`, `-` and spaces ignored - so `SellShort`, `sell_short` and `SELL SHORT` are one spelling, and so are `SSHT` and `ssht`. A wire code does **not** fold, because `A` and `a` are different codes in FIX. A code is the member's position, so it is the wire character's position too.
 
-| Code | Wire code | Stored name | Specification's name |
-| ---: | --- | --- | --- |
-| `0` | - | `UNKNOWN` | `Unknown` |
-| `1` | `1` | `BUY` | `Buy` |
-| `2` | `2` | `SELL` | `Sell` |
-| `3` | `3` | `BUYMINUS` | `BuyMinus` |
-| `4` | `4` | `SELLPLUS` | `SellPlus` |
-| `5` | `5` | `SSHORT` | `SellShort` |
-| `6` | `6` | `SSHORTEX` | `SellShortExempt` |
-| `7` | `7` | `UNDISC` | `Undisclosed` |
-| `8` | `8` | `CROSS` | `Cross` |
-| `9` | `9` | `CROSSSH` | `CrossShort` |
-| `10` | `A` | `CROSSSHX` | `CrossShortExempt` |
-| `11` | `B` | `ASDEF` | `AsDefined` |
-| `12` | `C` | `OPPOSITE` | `Opposite` |
-| `13` | `D` | `SUBSCR` | `Subscribe` |
-| `14` | `E` | `REDEEM` | `Redeem` |
-| `15` | `F` | `LEND` | `Lend` |
-| `16` | `G` | `BORROW` | `Borrow` |
-| `17` | `H` | `SELLUND` | `SellUndisclosed` |
+| Code | Wire code | Name | Specification's name | Description |
+| ---: | --- | --- | --- | --- |
+| `0` | - | `UNKN` | `Unknown` | A side stated as none, which a merge takes the other side over. |
+| `1` | `1` | `BUYS` | `Buy` | Buy. |
+| `2` | `2` | `SELL` | `Sell` | Sell. |
+| `3` | `3` | `BUYM` | `BuyMinus` | Buy minus. |
+| `4` | `4` | `SELP` | `SellPlus` | Sell plus. |
+| `5` | `5` | `SSHT` | `SellShort` | Sell short. |
+| `6` | `6` | `SSEX` | `SellShortExempt` | Sell short exempt. |
+| `7` | `7` | `UNDI` | `Undisclosed` | Undisclosed. |
+| `8` | `8` | `CROS` | `Cross` | Cross. |
+| `9` | `9` | `CRSH` | `CrossShort` | Cross short. |
+| `10` | `A` | `CRSX` | `CrossShortExempt` | Cross short exempt. |
+| `11` | `B` | `ASDF` | `AsDefined` | As defined. |
+| `12` | `C` | `OPPO` | `Opposite` | Opposite. |
+| `13` | `D` | `SUBS` | `Subscribe` | Subscribe. |
+| `14` | `E` | `REDM` | `Redeem` | Redeem. |
+| `15` | `F` | `LEND` | `Lend` | Lend. |
+| `16` | `G` | `BORR` | `Borrow` | Borrow. |
+| `17` | `H` | `SELU` | `SellUndisclosed` | Sell undisclosed. |
 
-`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UNKNOWN`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
+`from_spelling` answers the member or nothing and `read` is the same reading as a refusal; `fix_code` is the wire character, `None` for `UNKN`, which no message carries. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these members through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
 
 === "Rust"
 
@@ -263,15 +265,15 @@ A FIX `Side(54)` wire code, the specification's own name, and the stored name al
     ```python
     from yggdryl import Side
 
-    assert Side.from_spelling("1") is Side.BUY
-    assert Side.from_spelling("sell_short") is Side.SSHORT
+    assert Side.from_spelling("1") is Side.BUYS
+    assert Side.from_spelling("sell_short") is Side.SSHT
     assert Side.from_spelling("h") is None
     assert Side.from_spelling("10") is None
-    assert Side(10) is Side.CROSSSHX
+    assert Side(10) is Side.CRSX
 
-    assert Side.BUY.fix_code == "1"
-    assert Side.CROSSSHX.fix_code == "A"
-    assert Side.UNKNOWN.fix_code is None
+    assert Side.BUYS.fix_code == "1"
+    assert Side.CRSX.fix_code == "A"
+    assert Side.UNKN.fix_code is None
     ```
 
 === "JavaScript"
@@ -282,15 +284,15 @@ A FIX `Side(54)` wire code, the specification's own name, and the stored name al
 
     // JavaScript reads a spelling through the value door.
     const side = new DataType('side')
-    assert.equal(side.scalar('sell_short').asJs(), 'SSHORT')
-    assert.equal(side.scalar('H').asJs(), 'SELLUND')
+    assert.equal(side.scalar('sell_short').asJs(), 'SSHT')
+    assert.equal(side.scalar('H').asJs(), 'SELU')
     assert.throws(() => side.scalar('h'), /side/)
-    assert.equal(Side.CROSSSHX, 10)
+    assert.equal(Side.CRSX, 10)
     ```
 
 ## Which side of a book
 
-`is_bid` and `is_ask` say which side of a book or a quote a side takes: a [book](../../graph/book.md) rests an order or a quote among its bid or its ask levels by them and refuses one whose side takes neither, and a sided FIX quote reads its side's bid or offer. `BUY` and `BUYMINUS` take the bid; `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` take the ask. Everything else takes neither: a cross is both sides at once, `OPPOSITE` means "whatever the other leg was", and `ASDEF`, `UNDISC`, the four remaining sides and `UNKNOWN` say nothing about a side of a book. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust and Python; JavaScript holds the names only.
+`is_bid` and `is_ask` say which side of a book or a quote a side takes: a [book](../../graph/book.md) rests an order or a quote among its bid or its ask levels by them and refuses one whose side takes neither, and a sided FIX quote reads its side's bid or offer. `BUYS` and `BUYM` take the bid; `SELL`, `SELP`, `SSHT`, `SSEX` and `SELU` take the ask. Everything else takes neither: a cross is both sides at once, `OPPO` means "whatever the other leg was", and `ASDF`, `UNDI`, the four remaining sides and `UNKN` say nothing about a side of a book. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust and Python; JavaScript holds the names only.
 
 === "Rust"
 
@@ -311,15 +313,15 @@ A FIX `Side(54)` wire code, the specification's own name, and the stored name al
     ```python
     from yggdryl import Side
 
-    assert Side.BUY.is_bid() and not Side.BUY.is_ask()
-    assert Side.SSHORTEX.is_ask() and not Side.SSHORTEX.is_bid()
-    assert not Side.CROSS.is_bid() and not Side.CROSS.is_ask()
-    assert not Side.UNKNOWN.is_bid() and not Side.UNKNOWN.is_ask()
+    assert Side.BUYS.is_bid() and not Side.BUYS.is_ask()
+    assert Side.SSEX.is_ask() and not Side.SSEX.is_bid()
+    assert not Side.CROS.is_bid() and not Side.CROS.is_ask()
+    assert not Side.UNKN.is_bid() and not Side.UNKN.is_ask()
     ```
 
-## `UNKNOWN` states no side
+## `UNKN` states no side
 
-`UNKNOWN` is what a value that must state a side states where none was said: a market element's side is never null, and holds `UNKNOWN` until something states one ([Market](../../graph/market.md#contract)). `merge_with` folds two statements of one side: a side stated as none takes the other, and anything stated stands. Rust only.
+`UNKN` is what a value that must state a side states where none was said: a market element's side is never null, and holds `UNKN` until something states one ([Market](../../graph/market.md#contract)). `merge_with` folds two statements of one side: a side stated as none takes the other, and anything stated stands. Rust only.
 
 ```rust
 use yggdryl::Side;
@@ -334,16 +336,16 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 ## Edges
 
 - A spelling that names no side, or an integer that is the code of none -> refused naming `side`, never stored; a column typed `side` therefore holds members only, and a value that names none leaves a nullable column null under `safe`.
-- A wire code never folds: `A` is `CROSSSHX` and `a` names no side, because they are different FIX codes and a folded lookup would answer the wrong one.
-- A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHORT`.
-- A stored code is an integer, never text: `"10"` is no spelling, because `1`-`9` are wire codes and a number read as text would answer the wrong member for one of the two vocabularies; `10` is `CROSSSHX`.
-- The default value is `UNKNOWN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
-- A market element taking a side stores its cross code prefixed with the side's stored name, `BUY:ORD-1`, so the two sides of one identifier are two chains; `UNKNOWN` prefixes nothing ([Market](../../graph/market.md#sides-and-cross-codes)).
-- In an expression a text constant meets a `side` column as the member it spells and an integer as the code it stores: `side = 'BUY'`, `side in ('1', 'SellShort')`, `cast('2' as side) = side` and `side < 3` all compare members.
-- A Hive partition over a `side` column is named by the member, `side=BUY`.
-- JSON, TOML, YAML and XML write a side as its stored name, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.
+- A wire code never folds: `A` is `CRSX` and `a` names no side, because they are different FIX codes and a folded lookup would answer the wrong one.
+- A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHT`.
+- A stored code is an integer, never text: `"10"` is no spelling, because `1`-`9` are wire codes and a number read as text would answer the wrong member for one of the two vocabularies; `10` is `CRSX`.
+- The default value is `UNKN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
+- An order, a quote or an execution taking a side stores its cross code prefixed with the side's four-letter code, `BUYS:ORD-1`, so the two sides of one identifier are two chains; `UNKN` prefixes nothing, and no other element - a trade, a book, a snapshot control - is prefixed whatever side it states ([Market](../../graph/market.md#sides-and-cross-codes)).
+- In an expression a text constant meets a `side` column as the member it spells and an integer as the code it stores: `side = 'BUYS'`, `side in ('1', 'SellShort')`, `cast('2' as side) = side` and `side < 3` all compare members.
+- A Hive partition over a `side` column is named by the member, `side=BUYS`.
+- JSON, TOML, YAML and XML write a side as its four-letter code, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.
 - `utf8` under `yggdryl.side` is a foreign field wearing the name and imports as the text it is; a side packs into no US-ASCII integer, because its column already holds its code.
-- `StringEnum::SIDES` is the listing of the eighteen stored names, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
+- `StringEnum::SIDES` is the listing of the eighteen four-letter codes, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
 
 ## Commands
 

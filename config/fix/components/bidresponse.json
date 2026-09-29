@@ -70,7 +70,7 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:msgcat": "QUOT",
+    "FIX:msgcat": "QUOB",
     "FIX:msgtype": "l",
     "FIX:tag": "1009512",
     "description": "MsgType = l (lowercase L)",
