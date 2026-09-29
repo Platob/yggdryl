@@ -356,7 +356,7 @@ fn a_tsv_name_reads_tabs_and_an_option_reads_any_other_separator() {
     assert_eq!(options.separator(), b'\t');
     assert_eq!(text(&rows(&held, &options)), [some(&["1,5", "2"])]);
 
-    for separator in [b';', b'|'] {
+    for separator in *b";|" {
         let mut bytes = b"a?b\n1,5?\"x?y\"\n".to_vec();
         for byte in &mut bytes {
             if *byte == b'?' {

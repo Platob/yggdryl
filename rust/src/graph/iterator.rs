@@ -289,7 +289,7 @@ enum Source<E, I> {
 /// past their expiration - under the identity every incarnation of one
 /// thing shares: the cross element, which is the element's own identity
 /// where it states no cross code, within the element's
-/// [`MarketDataKind`](crate::MarketDataKind) - a chain holds one category,
+/// [`MarketDataKind`] - a chain holds one category,
 /// so an order and an execution under one cross code are two chains and a
 /// fill never follows the order it filled. An element arriving under an
 /// identity a live element of its category holds - or, where its own is
