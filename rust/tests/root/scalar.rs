@@ -155,7 +155,7 @@ mod internal {
                 ),
                 17,
             ),
-            (Scalar::from(yggdryl::Version::new(1, 2, 3)), 19),
+            (Scalar::from(yggdryl::Version::new(1, 2, Some("3"))), 19),
             (
                 Scalar::from(yggdryl::Url::from_str("https://example.com/a").unwrap()),
                 20,

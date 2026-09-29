@@ -272,38 +272,46 @@ impl fmt::Write for StackText {
 }
 
 #[test]
-fn version_parse_compare_and_render_allocate_nothing() {
-    assert_eq!(std::mem::size_of::<Version>(), 4);
+fn version_allocates_only_a_patch_past_the_inline_capacity() {
     free("parsing an inline version", || {
         black_box("5.0.10".parse::<Version>().expect("a static version"));
     });
-    for text in ["5.0sp250", "005.000Sp00250", "5.0SP256", "255.255sP65535"] {
+    for text in [
+        "5.0sp250",
+        "005.000Sp00250",
+        "5.0SP256",
+        "65535.65535sP65535",
+    ] {
         free("parsing a compact FIX version", || {
             black_box(text.parse::<Version>().expect("a static FIX version"));
         });
     }
     for (text, patch) in [
-        ("1.2-rc1", 63_727),
-        ("1.2SP2_EP240", 10_898),
-        ("1.2.65536", 54_529),
-        ("1.2界", 17_090),
+        ("1.2-rc1", "-rc1"),
+        ("1.2SP2_EP240", "SP2_EP240"),
+        ("1.2.65536", "65536"),
+        ("1.2.00065536", "65536"),
+        ("1.2界", "界"),
     ] {
-        free("parsing a version with a folded suffix", || {
+        let expected = Version::new(1, 2, Some(patch));
+        free("parsing a version with a qualified patch", || {
             assert_eq!(
                 black_box(text)
                     .parse::<Version>()
-                    .expect("a folded version"),
-                Version::new(1, 2, patch)
+                    .expect("a qualified version"),
+                expected
             );
         });
     }
-    for tail_bytes in [16, 240, 241, 4096] {
-        let text = format!("1.2-{}", "x".repeat(tail_bytes - 1));
+    // The patch is one `SmolStr`: held inline up to 23 bytes, and one shared
+    // allocation past them, which a clone shares rather than copies.
+    for (patch_bytes, each) in [(16, 0), (23, 0), (24, 1), (240, 1), (4096, 1)] {
+        let text = format!("1.2-{}", "x".repeat(patch_bytes - 1));
         let expected = text.parse::<Version>().expect("a generated qualifier");
-        assert_eq!(text.len() - "1.2".len(), tail_bytes);
-        assert_ne!(expected.patch(), 0);
-        free(
-            &format!("parsing a {tail_bytes}-byte version suffix"),
+        assert_eq!(expected.patch().map(str::len), Some(patch_bytes));
+        costs(
+            &format!("parsing a {patch_bytes}-byte version patch"),
+            each,
             || {
                 assert_eq!(
                     black_box(text.as_str())
@@ -313,12 +321,23 @@ fn version_parse_compare_and_render_allocate_nothing() {
                 );
             },
         );
+        free(
+            &format!("cloning a {patch_bytes}-byte version patch"),
+            || {
+                black_box(expected.clone());
+            },
+        );
     }
 
     let left = "5.0.2".parse::<Version>().expect("a static version");
     let right = "5.0.10".parse::<Version>().expect("a static version");
     free("comparing inline versions", || {
         black_box(left.cmp(&right));
+    });
+    let qualified = "1.2-rc2".parse::<Version>().expect("a qualified version");
+    let later = "1.2-rc10".parse::<Version>().expect("a qualified version");
+    free("comparing qualified versions", || {
+        black_box(qualified.cmp(&later));
     });
 
     let mut rendered = StackText::default();

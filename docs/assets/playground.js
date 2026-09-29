@@ -350,7 +350,7 @@
   }
 
   /** Say what failed and how to put it back, rather than showing nothing. */
-  /** Numeric version results and refusals recorded by the native parser. */
+  /** Version results and refusals recorded by the native parser. */
   const renderVersions = (root, data) => {
     const view = make('div', 'ygg-pg__view')
     const cases = data.versions.map((entry) => ({
@@ -365,7 +365,7 @@
         detail([
           ['input', entry.input],
           ...(entry.ok
-            ? [['canonical text', entry.text], ['major / minor / patch', entry.parts.join(' / ')], ['native hash', entry.hash]]
+            ? [['canonical text', entry.text], ['major / minor / patch', entry.parts.map((part) => part ?? 'none').join(' / ')], ['native hash', entry.hash]]
             : [['native refusal', entry.error, false]]),
         ]),
         call(entry.call),

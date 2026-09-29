@@ -114,11 +114,11 @@ from yggdryl.media import Avro, Ipc, Media, Parquet, Text, Xmla
 
 numeric_version: Version = Version(5, 0, 2)
 parsed_version: Version = Version.from_str("255.255.65535")
-version_parts: tuple[int, int, int] = (parsed_version.major, parsed_version.minor, parsed_version.patch)
+version_parts: tuple[int, int, str | None] = (parsed_version.major, parsed_version.minor, parsed_version.patch)
 version_hash: int = numeric_version.stable_hash()
 version_compared: bool = numeric_version <= parsed_version
 version_copied: Version = numeric_version.__copy__()
-version_pickled: tuple[object, tuple[int, int, int]] = numeric_version.__reduce__()
+version_pickled: tuple[object, tuple[int, int, str | None]] = numeric_version.__reduce__()
 typed_version: VersionField = yggdryl.version("fixversion")
 typed_version_kind: Literal["version"] = typed_version.dtype.id
 

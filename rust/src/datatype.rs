@@ -182,7 +182,8 @@ pub enum DataType {
     /// One 128-bit universally unique identifier: sixteen fixed bytes,
     /// whichever RFC 9562 version wrote them.
     Uuid,
-    /// A canonical, numerically ordered software or protocol version.
+    /// A canonical software or protocol version - a sixteen-bit major and
+    /// minor and an optional text patch - ordered by its numbers, not its text.
     Version,
     /// A location - hierarchical, with a host unless `file:` - stored as its
     /// canonical text.

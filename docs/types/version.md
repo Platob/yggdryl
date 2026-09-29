@@ -1,16 +1,16 @@
 # Version
 
-Three numeric components in four bytes: the canonical, numerically ordered version a column declares.
+A sixteen-bit major and minor and an optional text patch: the canonical, naturally ordered version a column declares.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Version` and the value `Version`: `major: u8`, `minor: u8`, `patch: u16` |
-| Validates | At the value door: the major and the minor are decimal numbers under 256, and text naming no major is refused at the first bad byte |
-| Lazy | Nothing - four bytes, parsed once and held as numbers |
-| Cached | The Arrow projection of a [`Field`](field.md); the value itself needs no heap at all |
-| Refuses | Empty text, a major or minor that is not a decimal number under 256, and a fractional or out-of-range constructor argument in either binding |
+| Owns | `DataType::Version` and the value `Version`: `major: u16`, `minor: u16`, `patch: Option<SmolStr>` - `int`, `int` and `str` or `None` in Python, `number`, `number` and `string` or `null` in JavaScript |
+| Validates | At the value door: the text opens with a decimal major under 65536, a `.` followed by digits is a minor under 65536, and anything else is refused at the first bad byte; the patch is whatever the tail states |
+| Lazy | Nothing - parsed once and held as two numbers and the patch text |
+| Cached | The Arrow projection of a [`Field`](field.md); a patch of up to 23 bytes is held inline, and a longer one is one shared allocation its clones share |
+| Refuses | Empty text, text that does not open with a decimal major under 65536, a minor whose digits pass 65535, a fractional or out-of-range constructor argument in either binding, and a negative number patch |
 | Kind | `DataTypeKind::Text`, id `0x63` - in the text family's range, after the eighteen [string](text/string.md) leaves, because `as_u8` is a wire contract laid out by family |
 | Bindings | Python and JavaScript expose the same immutable native value, `Version`, and the same three accessors |
 
@@ -87,7 +87,7 @@ otherwise.
 
     // The field is where a caller's text becomes a stored value.
     let field = Field::new("release", DataType::Version, false);
-    assert_eq!(field.scalar("5.0.300")?, Scalar::from(Version::new(5, 0, 300)));
+    assert_eq!(field.scalar("5.0.300")?, Scalar::from(Version::new(5, 0, Some("300"))));
     // A required column refuses absence; a nullable one reads it as null.
     assert!(field.scalar(Scalar::Null).is_err());
     assert_eq!(
@@ -138,10 +138,13 @@ otherwise.
 
 ## Scalar
 
-`Scalar::Version(Version)` holds the numeric tuple, not the text it was read
-from. Parsing accepts one to three decimal components and rendering omits
-trailing zero ones, so `5`, `5.0` and `5.0.0` are one value with one spelling.
-Equality, hashing and ordering read the tuple.
+`Scalar::Version(Version)` holds the major and the minor as numbers and the
+patch as text, not the text the version was read from. A patch stating a number
+is held as its digits without leading zeros, and zero states no patch, so `5`,
+`5.0` and `5.0.0` are one value with one spelling and `5.0.007` is `5.0.7`. A
+constructor takes the patch as text or, in Python and JavaScript, as a
+non-negative whole number, and holds it as the parser would. Equality and
+hashing read the three parts; the order is [natural](#natural-order-not-lexicographic).
 
 === "Rust"
 
@@ -149,36 +152,53 @@ Equality, hashing and ordering read the tuple.
     use yggdryl::{DataType, Scalar, Version};
 
     let version = "005.0.00300".parse::<Version>()?;
-    assert_eq!(version, Version::new(5, 0, 300));
+    assert_eq!(version, Version::new(5, 0, Some("300")));
     assert_eq!(version.to_string(), "5.0.300");
-    assert_eq!((version.major(), version.minor(), version.patch()), (5, 0, 300));
-    assert_eq!(std::mem::size_of::<Version>(), 4);
+    assert_eq!((version.major(), version.minor(), version.patch()), (5, 0, Some("300")));
     assert_eq!("4.4.0".parse::<Version>()?.to_string(), "4.4");
-    assert_eq!("5".parse::<Version>()?, "5.0".parse::<Version>()?);
-    assert_eq!(Version::MAX, Version::new(255, 255, 65_535));
+    assert_eq!("5".parse::<Version>()?, "5.0.0".parse::<Version>()?);
+    assert_eq!("5.0.007".parse::<Version>()?.to_string(), "5.0.7");
+    // A constructed patch is held as a parsed one: digits without their leading
+    // zeros, and zero as no patch at all.
+    assert_eq!(Version::new(5, 0, Some("0300")), version);
+    assert_eq!(Version::new(5, 0, Some("0")).patch(), None);
+    assert_eq!(Version::new(u16::MAX, u16::MAX, None).to_string(), "65535.65535");
 
-    // The door reads the text once and stores the numbers.
-    assert_eq!(DataType::Version.scalar("005.000.001")?, Scalar::from(Version::new(5, 0, 1)));
+    // The door reads the text once and stores the parts.
+    assert_eq!(DataType::Version.scalar("005.000.001")?, Scalar::from(Version::new(5, 0, Some("1"))));
     assert_eq!(DataType::Version.default_value()?, Scalar::Version(Version::MIN));
     ```
 
 === "Python"
 
     ```python
+    import pytest
+
     from yggdryl import DataType, Version
 
     version = Version.from_str("005.0.00300")
-    assert version == Version(5, 0, 300)
+    assert version == Version(5, 0, 300) == Version(5, 0, "300")
     assert str(version) == "5.0.300"
-    assert (version.major, version.minor, version.patch) == (5, 0, 300)
+    assert (version.major, version.minor, version.patch) == (5, 0, "300")
+    assert repr(version) == "Version(5, 0, '300')"
     assert str(Version.from_str("4.4.0")) == "4.4"
-    assert Version.from_str("5") == Version.from_str("5.0")
+    assert Version.from_str("5") == Version.from_str("5.0.0") == Version(5)
+    assert str(Version.from_str("5.0.007")) == "5.0.7"
+    assert Version(5, 0, 0).patch is None
+    assert Version(65535, 65535).major == 65535
+
+    # Each part is checked as it is given, never narrowed.
+    for parts in ((65536,), (1, -1), (1, 2, -1)):
+        with pytest.raises(OverflowError):
+            Version(*parts)
+    with pytest.raises(TypeError, match="patch"):
+        Version(1, 2, 2.5)
 
     value = DataType("version").scalar("005.000.001")
     assert value.as_py() == Version(5, 0, 1)
     assert value.kind == "version"
     assert value.family == "text"
-    assert DataType("version").default_scalar().as_py() == Version(0, 0, 0)
+    assert DataType("version").default_scalar().as_py() == Version(0)
     ```
 
 === "JavaScript"
@@ -189,10 +209,19 @@ Equality, hashing and ordering read the tuple.
 
     const version = Version.fromStr('005.0.00300')
     assert.ok(version.equals(new Version(5, 0, 300)))
+    assert.ok(version.equals(new Version(5, 0, '300')))
     assert.equal(version.toString(), '5.0.300')
-    assert.deepEqual([version.major, version.minor, version.patch], [5, 0, 300])
+    assert.deepEqual([version.major, version.minor, version.patch], [5, 0, '300'])
     assert.equal(Version.fromStr('4.4.0').toString(), '4.4')
-    assert.ok(Version.fromStr('5').equals(new Version(5)))
+    assert.ok(Version.fromStr('5.0.0').equals(new Version(5)))
+    assert.equal(Version.fromStr('5.0.007').toString(), '5.0.7')
+    assert.equal(new Version(5, 0, 0).patch, null)
+    assert.equal(new Version(65535, 65535).major, 65535)
+
+    // Each part is checked as it is given, never narrowed.
+    assert.throws(() => new Version(65536), /major must be in 0\.\.65535/)
+    assert.throws(() => new Version(1, 0.5), /minor/)
+    assert.throws(() => new Version(1, 2, -1), /patch/)
 
     const value = DataType.from('version').scalar('005.000.001')
     assert.ok(value.asJs().equals(new Version(5, 0, 1)))
@@ -205,7 +234,8 @@ Equality, hashing and ordering read the tuple.
 `Utf8` holding the canonical spelling, under the extension name
 `yggdryl.version`, which is what keeps a version column a version column across
 a round trip. A cast into the column canonicalizes every cell on the way in, so
-`005.000.001` is stored as `5.0.1`; a numeric source is refused by name.
+`005.000.001` is stored as `5.0.1`, `5.0SP2` as `5.0.2` and `1.0rc1` as
+`1.0.rc1`; a numeric source is refused by name.
 
 === "Rust"
 
@@ -223,10 +253,13 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     assert_eq!(Field::from_arrow_field(&arrow)?, field);
 
     // The cast canonicalizes every cell on the way in.
-    let text: ArrayRef = Arc::new(StringArray::from(vec!["005.000.001"]));
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["005.000.001", "5.0SP2", "1.0rc1"]));
     let strict = ArrowCastOptions::new().with_safe(false);
     let stored = Serie::from_arrow_array(Some(&field), text, strict)?;
-    assert_eq!(stored.as_utf8().expect("the text column").value(0), Some("5.0.1"));
+    let cells = stored.as_utf8().expect("the text column");
+    assert_eq!(cells.value(0), Some("5.0.1"));
+    assert_eq!(cells.value(1), Some("5.0.2"));
+    assert_eq!(cells.value(2), Some("1.0.rc1"));
     ```
 
 === "Python"
@@ -245,8 +278,8 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     assert Field.from_arrow(arrow) == release
 
     # The cast canonicalizes every cell on the way in.
-    stored = Serie.from_arrow_array(pa.array(["005.000.001"]), release)
-    assert stored.into_arrow_array().to_pylist() == ["5.0.1"]
+    stored = Serie.from_arrow_array(pa.array(["005.000.001", "5.0SP2", "1.0rc1"]), release)
+    assert stored.into_arrow_array().to_pylist() == ["5.0.1", "5.0.2", "1.0.rc1"]
     ```
 
 === "JavaScript"
@@ -257,29 +290,44 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     const { Serie, fields } = require('yggdryl')
 
     const release = fields.version('release', { nullable: false })
-    const text = arrow.vectorFromArray(['005.000.001'], new arrow.Utf8())
+    const text = arrow.vectorFromArray(['005.000.001', '5.0SP2', '1.0rc1'], new arrow.Utf8())
 
     // The cast canonicalizes every cell on the way in.
     const stored = Serie.fromArrowArray(text, release, { safe: false })
-    assert.deepEqual(Array.from(stored.intoArrowArray()), ['5.0.1'])
+    assert.deepEqual(Array.from(stored.intoArrowArray()), ['5.0.1', '5.0.2', '1.0.rc1'])
     // A scalar crosses as the canonical spelling its column stores.
     assert.equal(Serie.fromScalars(release, ['5.0.300']).intoArrowScalar(), '5.0.300')
     ```
 
-## Numeric order, not lexicographic
+## Natural order, not lexicographic
 
-`5.0.2` is before `5.0.10` because the comparison reads three numbers, where
-the stored text does not: Arrow's string order over the same column stays
-lexicographic. Rust `Ord`, Python's comparison operators and JavaScript's
-`compare` all read the tuple.
+The major, then the minor, then the patch: no patch orders before any patch,
+and two patches compare naturally - a run of digits as the number it spells,
+leading zeros aside, every other byte as itself, and a patch that ends first
+before one that goes on. So `5.0.2 < 5.0.2.1 < 5.0.10` and
+`1.0 < 1.0-rc1 < 1.0-rc2 < 1.0-rc10`. Patches that compare equal that way,
+`rc01` and `rc1`, fall back to their bytes, which keeps the order total and in
+agreement with equality and hashing. The stored text does not order like this:
+Arrow's string order over the same column stays lexicographic. Rust `Ord`,
+Python's comparison operators and JavaScript's `compare` all read the value.
 
 === "Rust"
 
     ```rust
     use yggdryl::Version;
 
-    assert!(Version::new(5, 0, 2) < Version::new(5, 0, 10));
-    assert!(Version::new(5, 0, 300) < Version::new(5, 1, 0));
+    assert!(Version::new(5, 0, Some("2")) < Version::new(5, 0, Some("10")));
+    assert!(Version::new(5, 0, Some("300")) < Version::new(5, 1, None));
+    // No patch first, then patches in natural order.
+    let ordered = ["1.0", "1.0-rc1", "1.0-rc2", "1.0-rc10", "1.1"]
+        .into_iter()
+        .map(str::parse::<Version>)
+        .collect::<Result<Vec<_>, _>>()?;
+    assert!(ordered.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(Version::new(5, 0, Some("2")) < Version::new(5, 0, Some("2.1")));
+    assert!(Version::new(5, 0, Some("2.1")) < Version::new(5, 0, Some("10")));
+    // `rc01` and `rc1` spell one number, so their bytes break the tie.
+    assert!(Version::new(1, 0, Some("rc01")) < Version::new(1, 0, Some("rc1")));
     // The stored text does not order that way, which is why the value does.
     assert!("5.0.10" < "5.0.2");
     ```
@@ -290,8 +338,13 @@ lexicographic. Rust `Ord`, Python's comparison operators and JavaScript's
     from yggdryl import Version
 
     assert Version(5, 0, 2) < Version(5, 0, 10)
-    assert Version(5, 0, 300) < Version(5, 1, 0)
-    assert sorted([Version(5, 0, 10), Version(5, 0, 2)]) == [Version(5, 0, 2), Version(5, 0, 10)]
+    assert Version(5, 0, 300) < Version(5, 1)
+    # No patch first, then patches in natural order.
+    ordered = [Version.from_str(text) for text in ("1.0", "1.0-rc1", "1.0-rc2", "1.0-rc10", "1.1")]
+    assert sorted(reversed(ordered)) == ordered
+    assert Version(5, 0, 2) < Version(5, 0, "2.1") < Version(5, 0, 10)
+    # rc01 and rc1 spell one number, so their bytes break the tie.
+    assert Version(1, 0, "rc01") < Version(1, 0, "rc1")
     ```
 
 === "JavaScript"
@@ -301,37 +354,59 @@ lexicographic. Rust `Ord`, Python's comparison operators and JavaScript's
     const { Version } = require('yggdryl')
 
     assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, 10)), -1)
-    assert.equal(new Version(5, 0, 300).compare(new Version(5, 1, 0)), -1)
+    assert.equal(new Version(5, 0, 300).compare(new Version(5, 1)), -1)
+    // No patch first, then patches in natural order.
+    const ordered = ['1.0', '1.0-rc1', '1.0-rc2', '1.0-rc10', '1.1'].map((text) => Version.fromStr(text))
+    const sorted = [...ordered].reverse().sort((left, right) => left.compare(right))
+    assert.deepEqual(sorted.map(String), ordered.map(String))
+    assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, '2.1')), -1)
+    assert.equal(new Version(5, 0, '2.1').compare(new Version(5, 0, 10)), -1)
+    // rc01 and rc1 spell one number, so their bytes break the tie.
+    assert.equal(new Version(1, 0, 'rc01').compare(new Version(1, 0, 'rc1')), -1)
     ```
 
-## The major and minor are strict, the patch is best effort
+## The numbers are strict, the patch is best effort
 
-A tail stating a number is that number, whether it states it as `.250` or as a
-case-insensitive FIX service pack `sp250`, so `5.0SP2` is `5.0.2` with no
-separately stored qualifier. A tail stating no number - a qualifier, a fourth
-component, an extension pack - folds into the patch's sixteen bits through the
-crate's stable XXH3 rather than refusing the version. A folded patch is an
-identity rather than a quantity: the same tail always reads as the same
-version, but it orders arbitrarily against a stated patch, two unlike tails can
-fold together, and the canonical text states the fold rather than the tail.
+The text opens with a decimal major under 65536, or it is refused. A `.`
+followed by digits is the minor, held to the same bound; a `.` followed by
+anything else already starts the patch, so `1.x` is `1.0.x`. A tail stating a
+number is that number, whether it states it as `.250` or as a compact FIX
+service pack straight after the last number read - `sp` in any case, then
+digits and nothing else - so `5.0SP2` is `5.0.2`, as is `5SP2`, with no
+separately stored qualifier. Any other tail, less one separating `.`, is the patch as written: a
+qualifier, a fourth component, an extension pack, a dotted `SP2`. Nothing a
+version states past its minor is refused or lost. The canonical text writes a
+`.` before a patch opening with a letter, a digit or a `.`, and writes any other
+patch straight after the minor, so `1.0rc1` renders as `1.0.rc1` while
+`1.0-rc1` stays itself, and every canonical text parses back to its value.
 
 === "Rust"
 
     ```rust
     use yggdryl::Version;
 
-    assert_eq!("5.0SP2".parse::<Version>()?, Version::new(5, 0, 2));
-    assert_eq!("5.0sp250".parse::<Version>()?, Version::new(5, 0, 250));
+    // A tail stating a number is that number.
+    assert_eq!("5.0SP2".parse::<Version>()?, Version::new(5, 0, Some("2")));
+    assert_eq!("5.0sp00250".parse::<Version>()?.to_string(), "5.0.250");
+    assert_eq!("5.0SP0".parse::<Version>()?.patch(), None);
 
-    // A tail stating no number folds, so anything naming a major parses.
+    // Any other tail is the patch as written, so anything naming a major parses.
     let qualified = "1.0-rc1".parse::<Version>()?;
     assert_eq!((qualified.major(), qualified.minor()), (1, 0));
-    assert_eq!(qualified, "1.0-rc1".parse::<Version>()?);
-    assert_ne!(qualified, "1.0-rc2".parse::<Version>()?);
+    assert_eq!(qualified.patch(), Some("-rc1"));
+    assert_eq!(qualified.to_string(), "1.0-rc1");
+    assert_eq!("1.2.2.3".parse::<Version>()?.patch(), Some("2.3"));
+    assert_eq!("1.0.SP2".parse::<Version>()?.patch(), Some("SP2"));
+
+    // The canonical text writes a `.` before a patch opening with a letter, a
+    // digit or a dot, and nothing before any other.
+    assert_eq!("1.0rc1".parse::<Version>()?.to_string(), "1.0.rc1");
+    assert_eq!("1.2.-1".parse::<Version>()?.to_string(), "1.2-1");
 
     // The major and the minor are not best effort.
     assert!("".parse::<Version>().is_err());
-    assert!("256.0".parse::<Version>().is_err());
+    assert!("65536.0".parse::<Version>().is_err());
+    assert!("1.65536".parse::<Version>().is_err());
     ```
 
 === "Python"
@@ -341,17 +416,26 @@ fold together, and the canonical text states the fold rather than the tail.
 
     from yggdryl import Version
 
+    # A tail stating a number is that number.
     assert Version.from_str("5.0SP2") == Version(5, 0, 2)
-    assert Version.from_str("5.0sp250") == Version(5, 0, 250)
+    assert str(Version.from_str("5.0sp00250")) == "5.0.250"
+    assert Version.from_str("5.0SP0").patch is None
 
-    # A tail stating no number folds, so anything naming a major parses.
+    # Any other tail is the patch as written, so anything naming a major parses.
     qualified = Version.from_str("1.0-rc1")
-    assert (qualified.major, qualified.minor) == (1, 0)
-    assert qualified == Version.from_str("1.0-rc1")
-    assert qualified != Version.from_str("1.0-rc2")
+    assert (qualified.major, qualified.minor, qualified.patch) == (1, 0, "-rc1")
+    assert str(qualified) == "1.0-rc1"
+    assert qualified == Version(1, 0, "-rc1")
+    assert Version.from_str("1.2.2.3").patch == "2.3"
+    assert Version.from_str("1.0.SP2").patch == "SP2"
+
+    # The canonical text writes a "." before a patch opening with a letter, a
+    # digit or a dot, and nothing before any other.
+    assert str(Version.from_str("1.0rc1")) == "1.0.rc1"
+    assert str(Version.from_str("1.2.-1")) == "1.2-1"
 
     # The major and the minor are not best effort.
-    for refused in ("", "256.0", "v1"):
+    for refused in ("", "65536.0", "1.65536", "v1"):
         with pytest.raises(ValueError, match="version"):
             Version.from_str(refused)
     ```
@@ -362,45 +446,58 @@ fold together, and the canonical text states the fold rather than the tail.
     const assert = require('node:assert/strict')
     const { Version } = require('yggdryl')
 
+    // A tail stating a number is that number.
     assert.ok(Version.fromStr('5.0SP2').equals(new Version(5, 0, 2)))
-    assert.ok(Version.fromStr('5.0sp250').equals(new Version(5, 0, 250)))
+    assert.equal(Version.fromStr('5.0sp00250').toString(), '5.0.250')
+    assert.equal(Version.fromStr('5.0SP0').patch, null)
 
-    // A tail stating no number folds, so anything naming a major parses.
+    // Any other tail is the patch as written, so anything naming a major parses.
     const qualified = Version.fromStr('1.0-rc1')
-    assert.deepEqual([qualified.major, qualified.minor], [1, 0])
-    assert.ok(qualified.equals(Version.fromStr('1.0-rc1')))
-    assert.ok(!qualified.equals(Version.fromStr('1.0-rc2')))
+    assert.deepEqual([qualified.major, qualified.minor, qualified.patch], [1, 0, '-rc1'])
+    assert.equal(qualified.toString(), '1.0-rc1')
+    assert.ok(qualified.equals(new Version(1, 0, '-rc1')))
+    assert.equal(Version.fromStr('1.2.2.3').patch, '2.3')
+    assert.equal(Version.fromStr('1.0.SP2').patch, 'SP2')
+
+    // The canonical text writes a '.' before a patch opening with a letter, a
+    // digit or a dot, and nothing before any other.
+    assert.equal(Version.fromStr('1.0rc1').toString(), '1.0.rc1')
+    assert.equal(Version.fromStr('1.2.-1').toString(), '1.2-1')
 
     // The major and the minor are not best effort.
-    for (const refused of ['', '256.0', 'v1']) {
+    for (const refused of ['', '65536.0', '1.65536', 'v1']) {
       assert.throws(() => Version.fromStr(refused), /version/i)
     }
     ```
 
 | rule | behaviour |
 | --- | --- |
-| Layout | exactly four bytes: `u8` major, `u8` minor, `u16` patch; omitted parts are zero |
+| Layout | `u16` major, `u16` minor, `Option<SmolStr>` patch; an omitted minor is zero and an omitted patch is none |
 | Kind | `text`; `VersionField`, `yggdryl.version`, and `fields.version` declare this datatype |
-| Bounds | major and minor `0..=255`; patch `0..=65535` |
-| Ordering | numeric tuple: `5 < 5.0.2 < 5.0.10 < 5.1` |
-| Text | one to three decimal components; `5.0.0` renders as `5` |
-| Patch tail | `.250` and `sp250` state 250; any other tail folds to `1..=65535` via XXH3 |
+| Bounds | major and minor `0..=65535`; the patch is text of any length, held inline up to 23 bytes |
+| Ordering | major, minor, then no patch before any patch and patches in natural order: `5 < 5.0.2 < 5.0.2.1 < 5.0.10 < 5.1`, `1.0 < 1.0-rc1 < 1.0-rc2 < 1.0-rc10` |
+| Text | a strict major, a `.minor` wherever a digit follows the `.`, then the patch; `5.0.0` renders as `5` and `5.0.007` as `5.0.7` |
+| Patch tail | `.250` and a compact `sp250` state `250`, held as its digits; any other tail, less one leading `.`, is the patch as written; the canonical text writes a `.` before a patch opening with a letter, a digit or a `.` |
 | Storage | `Utf8` holding the canonical spelling, extension name `yggdryl.version` |
-| Default | `0`, the numeric minimum; a cast never writes it in place of a null |
+| Default | `0`, the minimum; a cast never writes it in place of a null |
 | Merging | only with itself: merging into text would drop the canonicalization |
-| Sorting | Arrow string order stays lexicographic; Rust `Ord`, Python comparisons, and JavaScript `compare` use numeric order |
+| Sorting | Arrow string order stays lexicographic; Rust `Ord`, Python comparisons, and JavaScript `compare` use the natural order |
 
 <div class="ygg-pg" data-playground="versions" markdown="1">
-Explore numeric parts, canonical text, hashes and rejected inputs from the
+Explore the parts, canonical text, hashes and rejected inputs from the
 native Version example corpus.
 </div>
 
 ## Edges
 
-- `005.0.000` -> the canonical `5`; a version whose major or minor exceeds `255`, or whose major is not a decimal number -> refused at the first bad byte.
-- A fourth component, an empty component, a qualifier, or a patch above `65535` -> folded into the patch, never refused.
+- `005.0.000` -> the canonical `5`, and `5.0.007` -> `5.0.7`; a version whose major or minor exceeds `65535` (`65536.0`, `1.65536`), or whose major is not a decimal number (`v1`, `.1`) -> refused at the first bad byte, the one that overflows or the first that is no digit.
+- A fourth component, a qualifier, or an extension pack -> kept as the patch text, never refused: `1.2.2.3` holds `2.3`, `1.0SP2_EP240` holds `SP2_EP240`. A number past sixteen bits is a number all the same: `1.2.65536` holds `65536`.
+- A dotted `SP` is text: `5.0.SP2` holds the patch `SP2` and is not `5.0SP2`. Only the compact service pack states a number, and a constructor takes `sp2` as written.
+- A trailing `.` states nothing: `1.` and `1.0.` are `1`. Past that separator the text is the patch, so `1.0.0.` holds `0.`.
+- No patch orders first, so `1.0` is before `1.0-rc1`: a qualifier is a patch here, not a SemVer pre-release.
+- A patch past 23 bytes costs one shared allocation, which its clones share; up to that it is held inline.
 - Empty text is no `Version`, and the datatype door reads an empty cell entering a non-text column as absence: a nullable column holds null, a required one refuses it.
-- Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
+- Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing, and so is a negative number patch; a Python patch that is not an `int`, a `str` or `None` -> `TypeError` naming `patch`, never stringified.
 - The canonical default is `0` (`Version::MIN`). A cast never writes it for a null: a required column refuses the null by path ([Required columns](cast.md#required-columns)).
 - A version merges only with itself; merged with `utf8` -> refused naming both, because the canonicalization is what the column is for.
 - An Arrow column under `yggdryl.version` over a storage that is not `Utf8` -> a foreign field wearing our name, imported as its storage.
@@ -445,14 +542,14 @@ the median of five runs of 10,000 iterations; Node reports throughput over
 | native value into `Scalar` | — | 317.9 ns/op | 38,527 ops/s |
 | `Scalar` into host `Version` | — | 82.7 ns/op | 142,733 ops/s |
 
-The Rust maximum-width parse (`255.255.65535`) measured 35.7 ns. The four-byte
-value needs no heap allocation for parsing or comparison; host wrappers and
+Parsing a patch of up to 23 bytes, comparing and rendering need no heap
+allocation, and a longer patch is one shared allocation; host wrappers and
 text or Arrow projections have their own allocation costs.
 
 Rust's native-parts case also reads all three accessors. The binding cases
 measure constructor calls. The counting-allocator test
-`version_parse_compare_and_render_allocate_nothing` checks the core allocation
-claim independently of these timings.
+`version_allocates_only_a_patch_past_the_inline_capacity` checks the core
+allocation claim independently of these timings.
 
 ```bash
 cargo bench -p yggdryl --bench types -- version --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
