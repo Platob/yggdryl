@@ -94,8 +94,8 @@ mod table {
         }
     }
 
-    /// The seven event columns FIX says more about than the graph does keep
-    /// their own wording; the other eight take the column's. `execunix` is
+    /// The eight event columns FIX says more about than the graph does keep
+    /// their own wording; the other seven take the column's. `execunix` is
     /// a market column, which states no wording, so it always says its own.
     ///
     /// Which is which is a judgement, so it is pinned rather than argued: a
@@ -123,6 +123,7 @@ mod table {
                 "currhashcode",
                 "exprunix",
                 "recdunix",
+                "seqnum",
                 "srcuuids",
                 "state",
             ]

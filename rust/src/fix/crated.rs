@@ -33,12 +33,13 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Seven of the fifteen say more than the column
-//! can - they name the FIX fields a value is read off, which is this
-//! module's to know and no other medium's - and those seven spell their own
-//! wording beside the tag. When the message executed is a market fact
-//! rather than an event's, so `execunix` takes the [`MarketColumn`]'s
-//! datatype and display the same way, and spells its FIX wording beside it.
+//! sentence, and join on it. Eight of the fifteen say more than the column
+//! can - they name the FIX fields a value is read off, or what the FIX parse
+//! does with it, which is this module's to know and no other medium's - and
+//! those eight spell their own wording beside the tag. When the message
+//! executed is a market fact rather than an event's, so `execunix` takes the
+//! [`MarketColumn`]'s datatype and display the same way, and spells its FIX
+//! wording beside it.
 //!
 //! # Why 65000, and why each is a tag and a name
 //!
@@ -180,15 +181,28 @@ pub const CURRUUID_TAG_NAME: (i32, &str) = (65_008, "curruuid");
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_009, "crossuuid");
 
 /// The tag and name carrying the message's place among the messages of its
-/// instant: 0 for the first its stream hands over there, one more for each
-/// next.
+/// instant, stored as a null at place 0: 0 for the first the parse hands
+/// over there, one more for each next, so a message split off another
+/// stands at a later place than it; the lifecycle places what it walks by
+/// content, and a message following one dated at its instant or later
+/// stands past it.
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 
 /// The tag and name carrying the cross code: the identifier every message
-/// of one lifecycle shares, as the message spells it - its `OrderID`, else
-/// its `ClOrdID`, `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the
-/// first stated - and what the cross hash code and the cross identity
-/// derive from.
+/// of one lifecycle shares, and what the cross hash code and the cross
+/// identity derive from.
+///
+/// As the message spells it - its `OrderID`, else its `ClOrdID`,
+/// `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the first stated -
+/// save for what the parse splits off: an execution split off a report
+/// chains on its `ExecID` as given, else `TradeID=<TradeID>`, else its
+/// report's code and content digest, one split off a trade on its side's
+/// order and the side's first stated identifier, and a batch entry on the
+/// order or entry it names. An order, a quote or an execution stores it
+/// after the four-letter code of the side it takes - `BUYS:ORD-1`,
+/// `SELL:ORD-1` - so the two sides of one identifier are two chains; one of
+/// side `UNKN`, and every other kind, stores it as given. A followed
+/// message carries its chain's.
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_010, "crosscode");
 
 /// The tag and name of the Map group carrying what a message stated that
@@ -210,11 +224,12 @@ pub const FIXMSG_TAG_NAME: (i32, &str) = (65_042, "fixmsg");
 /// The tag and name carrying the identities of the elements the message
 /// was read from: its provenance, never its lineage.
 ///
-/// A message parsed from a text line has that line's identity as its one
-/// source, and a message parsed from raw bytes has none. Sources travel along
-/// no chain - following and restating leave them as they are - and never
-/// feed the code the message digests to, because where a message was read
-/// from is not what it states.
+/// A message parsed from a text line names that line's identity, a message
+/// the parse split off another names that message's identity beside its
+/// sources, and a message parsed from raw bytes names none. Sources travel
+/// along no chain - following and restating leave them as they are - and
+/// never feed the code the message digests to, because where a message was
+/// read from is not what it states.
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_015, "srcuuids");
 
 /// The state the event reached: the `int32` code of a lifecycle-sorted enum,
@@ -225,11 +240,12 @@ pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_015, "srcuuids");
 /// `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`,
 /// `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`,
 /// `MassCancelResponse(531)` - else off what the message type asks for, and
-/// `UNKNOWN` where nothing states one; the furthest its chain knows once the
-/// lifecycle followed it, and a row stating one is the row's word. A column,
-/// because a monitor asking which orders are still live reads one ranked
-/// column rather than ten code sets. The intrinsic `statecodeset` names what
-/// each code stands for.
+/// `UNKNOWN` where nothing states one; `FILLED` on an execution the parse
+/// split off; the furthest its chain knows once the lifecycle followed it,
+/// and a row stating one is the row's word. A column, because a monitor
+/// asking which orders are still live reads one ranked column rather than
+/// ten code sets. The intrinsic `statecodeset` names what each code stands
+/// for.
 pub const STATE_TAG_NAME: (i32, &str) = (65_029, "state");
 
 /// The crate-owned vocabulary the `state` column reads by: every member of
@@ -267,7 +283,8 @@ pub(super) fn state_codeset() -> Option<Arc<str>> {
 pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_007, "exprunix");
 
 /// The tag and name carrying the business category of the message type, as
-/// the member of [`crate::MarketDataKind`] its code stores.
+/// the member of [`crate::MarketDataKind`] its code stores: the one
+/// [`FixMsg::msgcat`](super::FixMsg::msgcat) answers.
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_016, "msgcat");
 /// The crate-owned vocabulary registered for the MsgCat column to read by:
 /// every member of [`crate::MarketDataKind`], its stored name, the code it
@@ -308,9 +325,10 @@ pub const FIGICODE_TAG_NAME: (i32, &str) = (65_026, "figicode");
 /// decimal leaf; a row stating one is the row's word.
 pub const STRIKEPX_TAG_NAME: (i32, &str) = (65_028, "strikepx");
 
-/// The tag and name carrying when the message's execution happened, where
-/// one of its FIX facts states it, else - on an execution report stating
-/// none - when the message happened.
+/// The tag and name carrying when the message last executed, where one of
+/// its FIX facts states it, else - on a message reporting an execution that
+/// states none and follows nothing - when the message happened; the latest
+/// its chain reached once followed.
 pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_002, "execunix");
 
 /// The tag and name carrying when the message was recorded by its carrier,
@@ -715,11 +733,13 @@ const CRATED: [Crated; 41] = [
     Crated::market(
         EXECUNIX_TAG_NAME,
         MarketColumn::ExecUnix,
-        "When the message's execution happened: ExecutionTimestamp, an \
-         execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
-         trade's TransactTime, the first one stated; an execution report \
-         stating none executed at its currunix; the latest its chain \
-         reached once followed.",
+        "When the message last executed: what it states, else \
+         ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary \
+         EventTimestamp or, on a message reporting an execution, \
+         TransactTime, the first one stated; a message reporting an \
+         execution that states none and follows nothing executed at its \
+         currunix; the latest its chain reached once followed, and the \
+         earliest two statements of it know.",
     ),
     Crated::event(RECDUNIX_TAG_NAME, EventColumn::RecdUnix).saying(
         "When the message was recorded by its carrier, where the carrier \
@@ -727,9 +747,10 @@ const CRATED: [Crated; 41] = [
     ),
     Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
         .saying(
-            "When the message was created: what it states, else when the \
-             original was sent, else when it happened; the earliest its \
-             chain knows once followed.",
+            "When the message was created: what it states, else when it \
+             happened, or a resend's earlier OrigSendingTime where no \
+             SendingTime dated it; the earliest its chain knows once \
+             followed.",
         )
         .also_called(&["CreationTime"]),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
@@ -744,7 +765,13 @@ const CRATED: [Crated; 41] = [
     Crated::event(CROSSCODE_TAG_NAME, EventColumn::CrossCode).saying(
         "The identifier every message of one lifecycle shares: OrderID, \
          else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
-         first stated.",
+         first stated - an execution the parse splits off a report its \
+         ExecID, else TradeID=<TradeID>, else its report's code and content \
+         digest, one split off a trade its side's order and the side's first \
+         stated identifier, a batch entry the order or entry it names - \
+         stored after the four-letter code of its side, BUYS:ORD-1, on an \
+         order, a quote or an execution, and as given on one of side UNKN \
+         and on every other kind; its chain's once followed.",
     ),
     Crated::event(CURRHASHCODE_TAG_NAME, EventColumn::CurrHashCode).saying(
         "The XXH3-64 of what the event states and the named FIX content \
@@ -752,11 +779,19 @@ const CRATED: [Crated; 41] = [
     ),
     Crated::event(CROSSHASHCODE_TAG_NAME, EventColumn::CrossHashCode),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
-    Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum),
+    Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum).saying(
+        "The message's place among the messages of its instant, null at 0: \
+         0 for the first the parse hands over there, one more for each \
+         next, a message split off another at a later place than it; once \
+         walked, the place its content took at that instant, past a \
+         predecessor dated there or later.",
+    ),
     Crated::event(SRCUUIDS_TAG_NAME, EventColumn::SrcUuids).saying(
         "The identities of the elements this message was read from: the \
-         text line it was parsed out of, and none for one parsed from \
-         raw bytes. Provenance, never lineage: no walk moves it.",
+         text line it was parsed out of, and for a message the parse split \
+         off another that message's identity beside its sources; none for \
+         one parsed from raw bytes. Provenance, never lineage: no walk \
+         moves it.",
     ),
     Crated::own(
         MSGCAT_TAG_NAME,
@@ -764,7 +799,10 @@ const CRATED: [Crated; 41] = [
         "MsgCat",
         "The business category of the message type, as the member of the \
          marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN \
-         where it files none; a row stating one is the row's word.",
+         where it files none; an execution report its order's ORDR, or its \
+         quote's QUOT where it names a QuoteID, where it reports no fill or \
+         once the parse split its fill off as an EXEC, and a batch entry the \
+         parse split off its item's; a row stating one is the row's word.",
     )
     .reading(MSGCAT_CODESET_NAME),
     Crated::own(
@@ -848,8 +886,8 @@ const CRATED: [Crated; 41] = [
         "The normalized market MIC the message identifies: LastMkt, else \
          ExDestination, the market a bridge's instrument key names or \
          SecurityExchange, the first an ISO 10383 MIC or a Reuters \
-         mnemonic resolving to one; a bridge's \
-         INSTRUMENT[EXCHANGE] states it.",
+         mnemonic resolving to one, and XXXX for a currency pair naming \
+         none; a bridge's INSTRUMENT[EXCHANGE] states it.",
     )
     .also_called(&["instrument[exchange]"]),
     Crated::own(
@@ -866,7 +904,9 @@ const CRATED: [Crated; 41] = [
              TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, \
              AffirmStatus, MassActionResponse or MassCancelResponse that \
              states one, else what its message type asks for, UNKNOWN where \
-             none does; the furthest its chain knows once followed.",
+             none does, FILLED on an execution the parse split off; the \
+             furthest its chain knows once followed, and a row stating one \
+             is the row's word.",
         )
         .reading(STATE_CODESET_NAME),
     Crated::own(

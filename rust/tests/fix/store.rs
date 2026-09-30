@@ -3134,10 +3134,22 @@ mod committed {
     /// `AssignmentReport` and `ContraryIntentionReport` to `POSN` and the
     /// three market definitions to `MKST`; no tag and no count of the census
     /// moved.
+    /// It last moved when the crate's own descriptions caught up with the
+    /// parse that splits what a message reports: `crosscode` (65010) names
+    /// the side prefix an order's, a quote's and an execution's code is
+    /// stored under and the codes a split execution and a batch entry chain
+    /// on, `seqnum` (65014) says its own wording - a null at place 0, a split
+    /// message at a later place than its source - rather than the column's,
+    /// `srcuuids`, `msgcat` and `state` name what a split message states,
+    /// `execunix` reads `TransactTime(60)` on any message reporting an
+    /// execution, `creaunix` a resend's `OrigSendingTime(122)` only where no
+    /// `SendingTime(52)` dated it, and `miccode` states `XXXX` for a currency
+    /// pair naming no market: eight descriptions of the crate's field shard,
+    /// and no other document, tag or count of the census moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 3_264_037_823_180_760_624);
+        assert_eq!(registry.stable_hash(), 13_430_749_719_225_295_525);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
