@@ -79,6 +79,8 @@ mod forex;
 mod geospatial;
 #[path = "root/gzip.rs"]
 mod gzip;
+#[path = "root/hostname.rs"]
+mod hostname;
 #[path = "root/idmap.rs"]
 mod idmap;
 #[path = "root/int256.rs"]

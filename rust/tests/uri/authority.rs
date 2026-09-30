@@ -120,3 +120,35 @@ mod store {
         assert_eq!(Uri::from(arn.locator().unwrap()), table);
     }
 }
+
+#[test]
+fn this_machine_is_localhost_or_its_own_name_and_nothing_decorated() {
+    use yggdryl::{Authority, HOSTNAME};
+
+    for here in [
+        "localhost",
+        "LocalHost",
+        HOSTNAME.as_str(),
+        &HOSTNAME.to_ascii_uppercase(),
+    ] {
+        assert!(
+            Authority::from_str(here).unwrap().is_this_machine(),
+            "{here}"
+        );
+    }
+    // A port or a user is a service somewhere, and another spelling of the
+    // name is another machine: the safe direction for a mismatch.
+    for elsewhere in [
+        "",
+        "localhost:445",
+        "trader@localhost",
+        "127.0.0.1",
+        "server",
+        &format!("{}.example.com", HOSTNAME.as_str()),
+    ] {
+        assert!(
+            !Authority::from_str(elsewhere).unwrap().is_this_machine(),
+            "{elsewhere}"
+        );
+    }
+}

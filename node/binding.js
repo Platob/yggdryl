@@ -6035,4 +6035,9 @@ binding.yaml = yaml
   )
 }
 
+// The machine this process runs on, read once by the core: the host an
+// in-process location and a buffer's identity name.
+binding.HOSTNAME = binding._hostnameNative()
+delete binding._hostnameNative
+
 module.exports = binding

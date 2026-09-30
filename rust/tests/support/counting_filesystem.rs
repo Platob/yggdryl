@@ -24,9 +24,19 @@ pub struct CountingFileSystem {
     inner: MemoryFileSystem,
     calls: Mutex<BTreeMap<&'static str, usize>>,
     sizeless: AtomicBool,
+    name: Option<&'static str>,
 }
 
 impl CountingFileSystem {
+    /// A counting filesystem answering `name` as its type, as a binding's
+    /// filesystem names the store it speaks to (`s3`, `gcs`, `mock`).
+    pub fn named(name: &'static str) -> Self {
+        Self {
+            name: Some(name),
+            ..Self::default()
+        }
+    }
+
     /// Report every file with no size from here on, as a store that cannot
     /// size its objects does: a reader must then read a file to count it.
     pub fn set_sizeless(&self, sizeless: bool) {
@@ -89,7 +99,7 @@ pub fn counted_folder(name: &str) -> (Arc<CountingFileSystem>, FsFolder) {
 
 impl FileSystem for CountingFileSystem {
     fn type_name(&self) -> &str {
-        self.inner.type_name()
+        self.name.unwrap_or_else(|| self.inner.type_name())
     }
 
     fn equals(&self, other: &dyn FileSystem) -> bool {

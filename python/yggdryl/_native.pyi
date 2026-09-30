@@ -8290,6 +8290,9 @@ ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str
 DEFAULT_STREAM_BATCH_SIZE: int
 DEFAULT_FETCH_BYTE_SIZE: int
+# The machine this process runs on, read once: the host an in-process
+# location and a buffer's identity name.
+HOSTNAME: str
 NULL_PARTITION: str
 DEFAULT_RECORD_BATCH_ROW_SIZE: int
 AVRO_MAX_SCHEMA_DEPTH: int

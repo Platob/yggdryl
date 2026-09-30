@@ -68,6 +68,19 @@ impl Authority {
             .map_or(host_port, |(host, _)| host)
     }
 
+    /// Return whether this authority names the machine this process runs on:
+    /// `localhost` or [`HOSTNAME`](crate::HOSTNAME), ASCII case-insensitive,
+    /// with no user information and no port.
+    ///
+    /// A shorter or longer spelling of the machine's name - a bare name where
+    /// the system reports its fully qualified one - stays another machine,
+    /// which is the direction a mismatch is safe in.
+    pub fn is_this_machine(&self) -> bool {
+        let host = self.as_str();
+        host.eq_ignore_ascii_case("localhost")
+            || host.eq_ignore_ascii_case(crate::HOSTNAME.as_str())
+    }
+
     /// Return the explicit numeric port, when one was written.
     pub fn port(&self) -> Option<u16> {
         let host_port = self.host_port();

@@ -395,21 +395,68 @@ fn hex(byte: u8) -> Option<u8> {
     }
 }
 
+/// The credential-free URL a bound location reports: the filesystem's name as
+/// its scheme, and the host that name says the path lives on.
+///
+/// A `file` filesystem - `local` as Arrow names its own - is this machine,
+/// which a `file:` URL spells with no host: a named one is a share on
+/// another machine. An object store's path
+/// opens with its bucket, which a store URL spells as its host, and its root,
+/// naming no bucket, is the store's published endpoint: the store answers
+/// where it is configured to, never on this machine. Every other filesystem -
+/// one in memory, one a binding hands over - answers in this process, so its
+/// host is [`HOSTNAME`](crate::HOSTNAME). A child, a listed entry and a
+/// parent are bound through here too, so each names the host its parent does.
 fn diagnostic_url(filesystem: &dyn FileSystem, path: &str) -> Result<Url> {
-    let scheme = Scheme::from_str(filesystem.type_name()).or_else(|_| Scheme::from_str("fs"))?;
+    let scheme = match filesystem.type_name() {
+        "local" => Scheme::FILE,
+        name => Scheme::from_str(name).or_else(|_| Scheme::from_str("fs"))?,
+    };
+    let local = scheme == Scheme::FILE;
     let safe_path = mask_uri(path);
     let encoded = safe_path
+        .trim_start_matches('/')
         .split('/')
-        .map(encode_component)
+        .enumerate()
+        // A drive letter keeps its colon, which `file:///C:/x` spells as is.
+        .map(|(index, component)| encode_component(component, local && index == 0))
         .collect::<Vec<_>>()
         .join("/");
-    Url::from_str(&format!("{}://bound/{encoded}", scheme.as_str()))
+    let (host, rest) = if local {
+        ("", encoded.as_str())
+    } else if scheme.has_container() {
+        match encoded.split_once('/') {
+            Some((bucket, key)) if !bucket.is_empty() => (bucket, key),
+            None if !encoded.is_empty() => (encoded.as_str(), ""),
+            _ => (published_endpoint(&scheme), ""),
+        }
+    } else {
+        (crate::HOSTNAME.as_str(), encoded.as_str())
+    };
+    Url::from_str(&format!("{}://{host}/{rest}", scheme.as_str()))
 }
 
-fn encode_component(component: &str) -> String {
+/// The endpoint a store publishes for its whole service: what a location
+/// naming no bucket addresses.
+fn published_endpoint(scheme: &Scheme) -> &'static str {
+    if scheme.is_gs() {
+        "storage.googleapis.com"
+    } else if scheme.is_az() {
+        "blob.core.windows.net"
+    } else if scheme.is_s3_tables() {
+        "s3tables.amazonaws.com"
+    } else {
+        "s3.amazonaws.com"
+    }
+}
+
+fn encode_component(component: &str, drive: bool) -> String {
     let mut encoded = String::with_capacity(component.len());
     for byte in component.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'=' | b'+') {
+        if byte.is_ascii_alphanumeric()
+            || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'=' | b'+')
+            || (drive && byte == b':')
+        {
             encoded.push(byte as char);
         } else {
             use std::fmt::Write as _;

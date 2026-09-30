@@ -58,6 +58,29 @@ mod fs {
     const STREAMED: &[u8] = b"a1\na2\nb1\nb2c1\n";
 
     #[test]
+    fn every_listed_and_globbed_location_names_the_host_its_folder_does() {
+        let folder = logs(TREE);
+        let host = folder.url().hostname().map(str::to_owned);
+        assert_eq!(host.as_deref(), Some(yggdryl::HOSTNAME.as_str()));
+        let listed = folder.ls(true, true).collect::<Result<Vec<_>>>().unwrap();
+        let globbed = folder
+            .glob("**/*.log", false)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert!(!listed.is_empty() && !globbed.is_empty());
+        for entry in listed.iter().chain(&globbed) {
+            let url = entry.url().expect("a bound entry has a URL");
+            assert_eq!(url.hostname(), host.as_deref(), "{url}");
+            assert!(
+                url.to_string()
+                    .starts_with(&format!("memory://{}/logs/", yggdryl::HOSTNAME.as_str())),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
     fn a_folder_refuses_a_stream_that_could_never_yield_a_byte() {
         let folder = logs(TREE);
         for refused in [
