@@ -68,6 +68,13 @@ impl Authority {
             .map_or(host_port, |(host, _)| host)
     }
 
+    /// The authority naming this machine, sharing [`HOSTNAME`](crate::HOSTNAME)'s
+    /// own text: already a valid host with no escape to normalize, so a clone
+    /// of it is the whole cost.
+    pub(crate) fn this_machine() -> Self {
+        Self(crate::HOSTNAME.clone())
+    }
+
     /// Return whether this authority names the machine this process runs on:
     /// `localhost` or [`HOSTNAME`](crate::HOSTNAME), ASCII case-insensitive,
     /// with no user information and no port.

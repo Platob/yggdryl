@@ -96,6 +96,9 @@ fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
     let guard = COUNTING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The machine's name is read once per process, by whichever surface asks
+    // first; read here, outside every count, it is never any one test's cost.
+    black_box(yggdryl::HOSTNAME.len());
     ALLOCATIONS.store(0, Ordering::Relaxed);
     ARMED.set(true);
     let answer = work();
@@ -4271,11 +4274,16 @@ fn located_lines_render_and_project_one_shared_crosscode() {
 ///
 /// A text read over a buffer with no location re-opens it as a copy, staged
 /// through the memory filesystem, and that staging grows with the object:
-/// twenty-three allocations for anything under one 64 KiB window, three
-/// more for the 114 KiB that 1 024 rows are. It is measured beside the read
-/// and taken off it, because it is `main`'s and the transport's, not the
+/// eighteen allocations for anything under one 64 KiB window, three more
+/// for the 114 KiB that 1 024 rows are. It is measured beside the read and
+/// taken off it, because it is `main`'s and the transport's, not the
 /// reader's: the reader's own cost is what is left, and that is linear.
-const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
+///
+/// It last moved, by five, when the staging location's URL stopped being
+/// formatted and parsed as text: it is built from its parts, the machine's
+/// host shared rather than copied, so the count is the same on every machine
+/// whatever its name's length.
+const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 18), (1_024, 21)];
 
 /// What the read itself costs past the copy: nine, and nothing a line.
 ///
