@@ -140,7 +140,11 @@ pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_005, "prevunix");
 /// The tag and name carrying the identity of the message this one follows.
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_013, "prevuuid");
 
-/// The tag and name carrying when the message was created.
+/// The tag and name carrying when the message was created: what it states,
+/// else when it happened. Once walked, a message stating no
+/// `SendingTime(52)` that a `TransactTime(60)` stating a clock dates takes a
+/// resend's `OrigSendingTime(122)` earlier than that transaction as its
+/// creation; the parse reads no `OrigSendingTime`.
 pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_004, "creaunix");
 
 /// The tag and name carrying the grid instant a walk read the message as
@@ -181,11 +185,13 @@ pub const CURRUUID_TAG_NAME: (i32, &str) = (65_008, "curruuid");
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_009, "crossuuid");
 
 /// The tag and name carrying the message's place among the messages of its
-/// instant, stored as a null at place 0: 0 for the first the parse hands
-/// over there, one more for each next, so a message split off another
-/// stands at a later place than it; the lifecycle places what it walks by
-/// content, and a message following one dated at its instant or later
-/// stands past it.
+/// instant, stored as a null at place 0: the parse places by run - the
+/// messages it hands over at one instant one after another, with no other
+/// instant between - 0 for the first of a run and one more for each next,
+/// so a message split off another stands at a later place than it, and a
+/// stream coming back to an instant it left starts a run there at 0 again;
+/// the lifecycle places what it walks by content, and a message following
+/// one dated at its instant or later stands past it.
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 
 /// The tag and name carrying the cross code: the identifier every message
@@ -235,13 +241,14 @@ pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_015, "srcuuids");
 /// The state the event reached: the `int32` code of a lifecycle-sorted enum,
 /// so the column sorts from the first state to the terminal ones.
 ///
-/// Read, as a message is built, off the first status field that states one -
-/// `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`,
-/// `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`,
-/// `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`,
-/// `MassCancelResponse(531)` - else off what the message type asks for, and
-/// `UNKNOWN` where nothing states one; `FILLED` on an execution the parse
-/// split off; the furthest its chain knows once the lifecycle followed it,
+/// `FILLED` on an execution the parse split off, whatever the content it
+/// carries states; otherwise read, as a message is built, off the first
+/// status field that states one - `OrdStatus(39)`, `ExecType(150)`,
+/// `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`,
+/// `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`,
+/// `MassActionResponse(1375)`, `MassCancelResponse(531)` - else off what the
+/// message type asks for, and `UNKNOWN` where nothing states one; the
+/// furthest its chain knows once the lifecycle followed it,
 /// and a row stating one is the row's word. A column, because a monitor
 /// asking which orders are still live reads one ranked column rather than
 /// ten code sets. The intrinsic `statecodeset` names what each code stands
@@ -326,9 +333,10 @@ pub const FIGICODE_TAG_NAME: (i32, &str) = (65_026, "figicode");
 pub const STRIKEPX_TAG_NAME: (i32, &str) = (65_028, "strikepx");
 
 /// The tag and name carrying when the message last executed, where one of
-/// its FIX facts states it, else - on a message reporting an execution that
-/// states none and follows nothing - when the message happened; the latest
-/// its chain reached once followed.
+/// its FIX facts states it - a `TransactTime(60)` stating a day alone
+/// states none - else - on a message reporting an execution that states
+/// none and follows nothing - when the message happened; the latest its
+/// chain reached once followed.
 pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_002, "execunix");
 
 /// The tag and name carrying when the message was recorded by its carrier,
@@ -735,11 +743,12 @@ const CRATED: [Crated; 41] = [
         MarketColumn::ExecUnix,
         "When the message last executed: what it states, else \
          ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary \
-         EventTimestamp or, on a message reporting an execution, \
-         TransactTime, the first one stated; a message reporting an \
-         execution that states none and follows nothing executed at its \
-         currunix; the latest its chain reached once followed, and the \
-         earliest two statements of it know.",
+         EventTimestamp or, on a message reporting an execution, a \
+         TransactTime stating a clock, the first one stated - a day alone \
+         dates no execution; a message reporting an execution that states \
+         none and follows nothing executed at its currunix; the latest its \
+         chain reached once followed, and the earliest two statements of it \
+         know.",
     ),
     Crated::event(RECDUNIX_TAG_NAME, EventColumn::RecdUnix).saying(
         "When the message was recorded by its carrier, where the carrier \
@@ -748,9 +757,10 @@ const CRATED: [Crated; 41] = [
     Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
         .saying(
             "When the message was created: what it states, else when it \
-             happened, or a resend's earlier OrigSendingTime where no \
-             SendingTime dated it; the earliest its chain knows once \
-             followed.",
+             happened; once walked, a message that states no SendingTime \
+             and is dated by a TransactTime takes an earlier \
+             OrigSendingTime as its creation; the earliest its chain knows \
+             once followed.",
         )
         .also_called(&["CreationTime"]),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
@@ -781,10 +791,11 @@ const CRATED: [Crated; 41] = [
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
     Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum).saying(
         "The message's place among the messages of its instant, null at 0: \
-         0 for the first the parse hands over there, one more for each \
-         next, a message split off another at a later place than it; once \
-         walked, the place its content took at that instant, past a \
-         predecessor dated there or later.",
+         0 for the first of each run the parse hands over at that instant \
+         with no other instant between, one more for each next, a message \
+         split off another at a later place than it; once walked, the \
+         place its content took at that instant, past a predecessor dated \
+         there or later.",
     ),
     Crated::event(SRCUUIDS_TAG_NAME, EventColumn::SrcUuids).saying(
         "The identities of the elements this message was read from: the \
@@ -900,11 +911,11 @@ const CRATED: [Crated; 41] = [
     Crated::event(STATE_TAG_NAME, EventColumn::State)
         .saying(
             "The state the message reached, as the code of a lifecycle-sorted \
-             enum: the first of OrdStatus, ExecType, ExecAckStatus, \
-             TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, \
-             AffirmStatus, MassActionResponse or MassCancelResponse that \
-             states one, else what its message type asks for, UNKNOWN where \
-             none does, FILLED on an execution the parse split off; the \
+             enum: FILLED on an execution the parse split off; otherwise the \
+             first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, \
+             QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, \
+             MassActionResponse or MassCancelResponse that states one, else \
+             what its message type asks for, UNKNOWN where none does; the \
              furthest its chain knows once followed, and a row stating one \
              is the row's word.",
         )

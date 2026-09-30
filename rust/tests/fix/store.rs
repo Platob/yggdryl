@@ -3146,10 +3146,20 @@ mod committed {
     /// `SendingTime(52)` dated it, and `miccode` states `XXXX` for a currency
     /// pair naming no market: eight descriptions of the crate's field shard,
     /// and no other document, tag or count of the census moved.
+    /// It last moved when four of those descriptions were made to say what
+    /// the code does: `execunix` (65002) reads a `TransactTime(60)` only
+    /// where it states a clock, as the parse now does; `creaunix` (65004)
+    /// takes an earlier `OrigSendingTime(122)` only once walked, on a
+    /// message stating no `SendingTime(52)` that a `TransactTime` dates;
+    /// `seqnum` (65014) counts from 0 for each run the parse hands over at
+    /// an instant; and `state` (65029) leads with `FILLED` on a split
+    /// execution, which wins over what its content states: four
+    /// descriptions of the crate's field shard, and no other document, tag
+    /// or count of the census moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 13_430_749_719_225_295_525);
+        assert_eq!(registry.stable_hash(), 16_674_175_903_259_060_511);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

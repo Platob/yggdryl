@@ -121,7 +121,8 @@ macro_rules! event_getters {
             }
 
             /// Its place among the events of its instant: zero for the
-            /// first its stream hands over there, one more for each next.
+            /// first of each run its stream hands over at that instant, with
+            /// no other instant between, one more for each next.
             #[getter]
             fn seqnum(&self) -> u64 {
                 ::yggdryl::graph::Event::get_seqnum(&self.inner)

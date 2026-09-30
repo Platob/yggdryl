@@ -3643,6 +3643,20 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
     }
 
 
+def test_a_message_split_off_one_of_three_twins_names_its_own_report(seed: FixRegistry) -> None:
+    """Twins at one instant: each split execution names the report it came from."""
+    codec = _fixed(seed)
+    # Three identical fill reports share one identity before their places;
+    # each execution the parse splits off names its own report, never an
+    # earlier twin.
+    fill = b"8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|"
+    parsed = list(codec.parse_lines([fill, fill, fill]))
+    assert [message.seqnum for message in parsed] == [0, 1, 2, 3, 4, 5]
+    assert len({parsed[at].curruuid for at in (0, 2, 4)}) == 3
+    for report, split in ((0, 1), (2, 3), (4, 5)):
+        assert parsed[split].srcuuids == [parsed[report].curruuid]
+
+
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
     """The one walk, over any iterable, lazily."""
     codec = _fixed(seed)

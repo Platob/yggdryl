@@ -4185,6 +4185,20 @@ let committedRegistry
     assert.deepEqual(walkedPair[0].srcuuids, [])
   })
 
+  test('a message split off one of three twins names its own report', () => {
+    const codec = reading(seed(), { defaultSendingTime: SENDING })
+    // Three identical fill reports at one instant share one identity before
+    // their places; each execution the parse splits off names the report it
+    // came from, never an earlier twin.
+    const fill = '8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|'
+    const parsed = [...codec.parseLines([fill, fill, fill])]
+    assert.deepEqual(parsed.map((message) => message.seqnum), [0, 1, 2, 3, 4, 5])
+    assert.equal(new Set([0, 2, 4].map((at) => parsed[at].curruuid)).size, 3)
+    for (const [report, split] of [[0, 1], [2, 3], [4, 5]]) {
+      assert.deepEqual(parsed[split].srcuuids, [parsed[report].curruuid])
+    }
+  })
+
   test('the stream is lazy, pulls one message at a time and throws what its source throws', () => {
     const registry = seed()
     const codec = reading(registry, { defaultSendingTime: SENDING })

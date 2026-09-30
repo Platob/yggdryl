@@ -2136,7 +2136,9 @@ impl FixMsg {
     /// When the fields say the message executed. Execution time is not the
     /// message time: it is stated directly by the crate column, then by
     /// FIX's execution-specific timestamp, a regulatory execution member, a
-    /// bridge's event timestamp, or the transaction time of an actual trade.
+    /// bridge's event timestamp, or the transaction time of an actual trade
+    /// where it states a clock - a `TransactTime(60)` stating a day alone
+    /// dates no execution, as it dates no event ([`Self::transact_unix`]).
     /// Corrections and cancels do not make their transaction clock an
     /// execution clock.
     fn stated_execution_instant(&self) -> Option<i64> {
@@ -2153,6 +2155,7 @@ impl FixMsg {
                 self.reports_execution()
                     .then(|| self.execution_instant(by_tag(60)))
                     .flatten()
+                    .filter(|unix| unix.rem_euclid(NANOS_PER_DAY) != 0)
             })
     }
 

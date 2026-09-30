@@ -25,7 +25,7 @@
     "metadata": {
       "FIX:tag": "65002",
       "FIX:transient": "false",
-      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, TransactTime, the first one stated; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
       "display": "ExecUnix"
     }
   },
@@ -58,7 +58,7 @@
       ],
       "FIX:tag": "65004",
       "FIX:transient": "false",
-      "description": "When the message was created: what it states, else when it happened, or a resend's earlier OrigSendingTime where no SendingTime dated it; the earliest its chain knows once followed.",
+      "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
       "display": "CreaUnix"
     }
   },
@@ -194,7 +194,7 @@
     "metadata": {
       "FIX:tag": "65014",
       "FIX:transient": "false",
-      "description": "The message's place among the messages of its instant, null at 0: 0 for the first the parse hands over there, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
+      "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
       "display": "SeqNum"
     }
   },
@@ -390,7 +390,7 @@
       "FIX:codeset": "statecodeset",
       "FIX:tag": "65029",
       "FIX:transient": "false",
-      "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does, FILLED on an execution the parse split off; the furthest its chain knows once followed, and a row stating one is the row's word.",
+      "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
       "display": "State"
     }
   },
