@@ -400,7 +400,8 @@ impl Serve {
 /// The holder a table location names: a record leaf where a file is, a
 /// folder where a folder is - and where nothing is yet, the folder a
 /// capture makes a table of, since a write would otherwise settle the
-/// location as one file.
+/// location as one file. Served with no capture, a folder holding nothing
+/// is a table holding no book, and reading it creates nothing.
 fn resource(location: &str) -> Result<Holder> {
     if location.contains("://") {
         return location::folder(location);

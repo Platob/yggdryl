@@ -5,8 +5,9 @@
 //! store in any order, the CSV downloads in each coding read back through
 //! the CSV medium, every `400` and `404`, the headers every answer carries,
 //! the same answers over every medium a table can be and over an empty or
-//! absent one, the zones `tz` reads, and no credential a location holds in
-//! any answer.
+//! absent one - a leaf or a folder - the refusal of a folder holding leaves
+//! no encoding reads, the zones `tz` reads, and no credential a location
+//! holds in any answer.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -618,6 +619,13 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
 fn an_empty_or_absent_table_answers_the_empty_reading() {
     let absent =
         std::env::temp_dir().join(format!("yggdryl-graph-serve-absent-{}", std::process::id()));
+    let folders =
+        std::env::temp_dir().join(format!("yggdryl-graph-serve-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folders);
+    // A folder holding nothing, and one holding only a folder: neither
+    // holds a leaf, so neither states an encoding to read.
+    std::fs::create_dir_all(folders.join("empty")).unwrap();
+    std::fs::create_dir_all(folders.join("nested/year=2026")).unwrap();
     let empty = |suffix: &str| {
         Holder::Buffer(
             Buffer::new().with_media_type(
@@ -632,11 +640,26 @@ fn an_empty_or_absent_table_answers_the_empty_reading() {
             .with_table("arrows", empty("arrows"))
             .with_table("csv", empty("csv"))
             .with_table("absent", Holder::file(absent.join("books.arrows")).unwrap())
-            .with_table("absentcsv", Holder::file(absent.join("books.csv")).unwrap()),
+            .with_table("absentcsv", Holder::file(absent.join("books.csv")).unwrap())
+            .with_table("folder", Holder::folder(folders.join("empty")).unwrap())
+            .with_table("nested", Holder::folder(folders.join("nested")).unwrap())
+            .with_table(
+                "absentfolder",
+                Holder::folder(absent.join("books")).unwrap(),
+            ),
     );
     let server = Server::bind("127.0.0.1:0").unwrap();
     let endpoint = Arc::clone(&service).route(&server, "/").unwrap();
-    for table in ["arrows", "csv", "absent", "absentcsv"] {
+    let tables = [
+        "arrows",
+        "csv",
+        "absent",
+        "absentcsv",
+        "folder",
+        "nested",
+        "absentfolder",
+    ];
+    for table in tables {
         let tickers = ok_json(&get(&endpoint, "tickers", &[("table", table)]));
         assert!(items(&tickers).is_empty(), "{table}: {tickers:?}");
         let mut asked = range().to_vec();
@@ -664,7 +687,68 @@ fn an_empty_or_absent_table_answers_the_empty_reading() {
             .starts_with("expected a book at"),
             "{table}"
         );
+
+        // The readings without HTTP answer the same.
+        assert!(
+            items(&service.tickers(table).unwrap()).is_empty(),
+            "{table}"
+        );
+        assert!(
+            service
+                .book(table, "ACME", T0 + 100 * SECOND)
+                .unwrap()
+                .is_none(),
+            "{table}"
+        );
+        let mut asked = query();
+        asked.table = table.into();
+        assert!(service.candles(&asked).unwrap_err().is_absent(), "{table}");
+        assert!(
+            service
+                .events(&asked)
+                .err()
+                .is_some_and(|error| error.is_absent()),
+            "{table}"
+        );
     }
+    let _ = std::fs::remove_dir_all(&folders);
+}
+
+#[test]
+fn a_folder_holding_no_record_is_refused_by_its_encoding() {
+    let folder =
+        std::env::temp_dir().join(format!("yggdryl-graph-serve-notes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("notes.bin"), b"\x00\x01").unwrap();
+    let service = Arc::new(
+        BookService::new(BookServiceOptions::new())
+            .with_table("notes", Holder::folder(&folder).unwrap()),
+    );
+    let server = Server::bind("127.0.0.1:0").unwrap();
+    let endpoint = Arc::clone(&service).route(&server, "/").unwrap();
+
+    // What it holds is not the empty reading: no encoding reads it, and the
+    // refusal says so.
+    let error = refused(
+        &get(&endpoint, "tickers", &[("table", "notes")]),
+        Status::INTERNAL_SERVER_ERROR,
+    );
+    assert!(
+        error.starts_with("invalid record value at $: expected a record encoding"),
+        "{error}"
+    );
+    let mut asked = range().to_vec();
+    asked[0] = ("table", "notes");
+    for leaf in ["candles", "events", "audit.csv"] {
+        assert_eq!(
+            refused(&get(&endpoint, leaf, &asked), Status::INTERNAL_SERVER_ERROR),
+            error,
+            "{leaf}"
+        );
+    }
+    assert_eq!(service.tickers("notes").unwrap_err().to_string(), error);
+    let _ = std::fs::remove_dir_all(&folder);
 }
 
 #[test]
