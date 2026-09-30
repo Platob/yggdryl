@@ -259,6 +259,10 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
             return Err(refusal.unwrap_or(error));
         }
     };
+    // The package was read through a handle of its own onto the same file,
+    // and Windows refuses to resize a file while a view of it is mapped:
+    // that handle goes before this one rewrites the file.
+    drop(workbook);
     handle.write_all_bytes(&bytes)
 }
 
