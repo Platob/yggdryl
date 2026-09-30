@@ -10,3 +10,7 @@
 #[cfg(feature = "internals")]
 #[path = "zip/mod_.rs"]
 mod mod_;
+#[path = "zip/node.rs"]
+mod node;
+#[path = "zip/path.rs"]
+mod path;

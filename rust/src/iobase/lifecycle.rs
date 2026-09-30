@@ -49,6 +49,35 @@ pub fn not_empty(url: &Url) -> Error {
     ))
 }
 
+/// The refusal of `operation` on a container: one that treats the handle as
+/// one byte value - a digest, a copy, a coding transfer - and would otherwise
+/// take a container's stream of its leaves, end to end in its backend's
+/// listing order, for one.
+fn not_atomic<H: super::IOBase + ?Sized>(handle: &H, operation: &'static str) -> Error {
+    Error::NotAtomic {
+        operation,
+        kind: handle.kind().as_str(),
+        path: handle.url().map_or_else(Default::default, |url| {
+            smol_str::SmolStr::new(url.to_string())
+        }),
+    }
+}
+
+/// Refuse `operation` on a container, asked by kind before a byte is read.
+///
+/// # Errors
+///
+/// Returns [`not_atomic`] when `handle` is a container.
+pub(crate) fn reject_container<H: super::IOBase + ?Sized>(
+    handle: &H,
+    operation: &'static str,
+) -> Result<()> {
+    if handle.is_container() {
+        return Err(not_atomic(handle, operation));
+    }
+    Ok(())
+}
+
 /// Report a value too large for this platform's address space.
 pub(crate) fn oversized(size: u64) -> Error {
     Error::Io(std::io::Error::other(format!(

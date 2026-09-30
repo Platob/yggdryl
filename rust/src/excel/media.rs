@@ -339,6 +339,13 @@ impl<H: IOBase> Excel<H> {
         self.handle
     }
 
+    /// Whether this session already holds the leaf's workbook, which answers
+    /// every dimension ask with no call - and which a container's session
+    /// never holds.
+    fn warm(&self) -> bool {
+        self.opened && self.cached.get().is_some()
+    }
+
     /// The workbook, held while open, opened afresh otherwise.
     fn workbook(&self) -> Result<Held<'_>> {
         if self.opened {
@@ -394,6 +401,12 @@ impl<H: IOBase> IOMedia for Excel<H> {
     }
 
     fn row_size(&self) -> Result<u64> {
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         let workbook = self.workbook()?;
         let Some(name) = addressed(&workbook, &self.options)? else {
             return Ok(0);
@@ -406,6 +419,13 @@ impl<H: IOBase> IOMedia for Excel<H> {
     fn column_size(&self) -> Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
+        }
+        if !self.warm() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len());
         }
         let workbook = self.workbook()?;
         match addressed(&workbook, &self.options)? {
@@ -422,6 +442,9 @@ impl<H: IOBase> IOMedia for Excel<H> {
         let options = self.require_options(options)?;
         if let Some(field) = options.field() {
             return Ok(field);
+        }
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let workbook = self.workbook()?;
         match addressed(&workbook, options)? {

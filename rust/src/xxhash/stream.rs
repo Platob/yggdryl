@@ -9,7 +9,7 @@
 use std::io::{Read, Write};
 
 use crate::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
-use crate::{Digest, DigestAlgorithm, Digester, Error, Result};
+use crate::{Digest, DigestAlgorithm, Digester, Result};
 
 /// Digest a whole handle without holding it in memory.
 ///
@@ -36,7 +36,7 @@ pub(crate) fn read_range_digest<H: IOBase + ?Sized>(
     length: usize,
     algorithm: DigestAlgorithm,
 ) -> Result<Digest> {
-    reject_container(handle)?;
+    crate::iobase::reject_container(handle, "digest")?;
     let mut digester = algorithm.digester();
     let mut remaining = length;
     if remaining == 0 {
@@ -59,8 +59,14 @@ pub(crate) fn read_range_digest<H: IOBase + ?Sized>(
 /// This is the one place a handle becomes digest input, so the streaming
 /// contract - one bounded window, no whole-value read, a container refused by
 /// kind - is stated once and inherited by everything that hashes a handle.
+///
+/// Folder and recursive digests are a different question - which files, in
+/// what order, under which name - and answering one here would invent a
+/// convention no format specifies: a container streams its leaves in its
+/// backend's listing order, which is not the same tree's order on another
+/// backend, so a digest of that stream would name no value.
 pub(crate) fn feed_handle<H: IOBase + ?Sized>(handle: &H, digester: &mut Digester) -> Result<u64> {
-    reject_container(handle)?;
+    crate::iobase::reject_container(handle, "digest")?;
     let mut consumed = 0_u64;
     for chunk in handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)? {
         let chunk = chunk?;
@@ -68,24 +74,6 @@ pub(crate) fn feed_handle<H: IOBase + ?Sized>(handle: &H, digester: &mut Digeste
         consumed += chunk.len() as u64;
     }
     Ok(consumed)
-}
-
-/// Refuse a resource that holds no bytes of its own.
-///
-/// Folder and recursive digests are a different question - which files, in
-/// what order, under which name - and answering one here would invent a
-/// convention no format specifies.
-pub(crate) fn reject_container<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
-    if !handle.is_container() {
-        return Ok(());
-    }
-    Err(Error::NotAtomic {
-        operation: "digest",
-        kind: handle.kind().as_str(),
-        path: handle.url().map_or_else(Default::default, |url| {
-            smol_str::SmolStr::new(url.to_string())
-        }),
-    })
 }
 
 /// A reader that digests the bytes it passes through.

@@ -123,7 +123,9 @@ pub enum Error {
         /// The byte length offered.
         actual: usize,
     },
-    /// A whole-byte operation addressed a resource holding no bytes of its own.
+    /// A whole-byte operation - a digest, a copy, a coding transfer - addressed
+    /// a resource holding no bytes of its own, whose stream of its leaves is no
+    /// one value.
     NotAtomic {
         /// The operation needing one whole byte value, such as `digest`.
         operation: &'static str,

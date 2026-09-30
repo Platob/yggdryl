@@ -1964,6 +1964,13 @@ impl<H: IOBase> Parquet<H> {
         self.cached_column_size.take();
     }
 
+    /// Whether this session already holds the leaf's footer, which answers
+    /// every dimension ask with no call - and which a container's session
+    /// never holds.
+    fn warm(&self) -> bool {
+        self.opened && self.cached.get().is_some()
+    }
+
     /// Return opened-session footer metadata, or a fresh uncached closed read.
     fn metadata(&self) -> Result<Option<Arc<ParquetMetaData>>> {
         if !self.opened {
@@ -2092,6 +2099,12 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         match self.metadata()? {
             Some(metadata) => metadata_row_size(metadata.as_ref()),
             None => Ok(0),
@@ -2106,6 +2119,12 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         }
         let column_size = if let Some(field) = self.options.field() {
             field.field_len()
+        } else if !self.warm() && self.handle.is_container() {
+            crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len()
         } else if let Some(metadata) = self.metadata()? {
             schema_from_metadata(metadata)?.fields().len()
         } else {
@@ -2127,6 +2146,9 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         let options = self.require_record_options(options)?;
         if let Some(field) = options.field() {
             return Ok(field.clone());
+        }
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let schema = self.read_arrow_schema()?;
         Ok(field_from_arrow_schema(options.name(), schema.as_ref())?)
@@ -2228,12 +2250,16 @@ impl<H: IOBase> IOBase for Parquet<H> {
         }
         self.handle.open()?;
         self.invalidate_metadata();
-        let metadata = if self.handle.is_empty() {
-            None
-        } else {
-            Some(load_metadata(&self.handle)?)
-        };
-        let _ = self.cached.set(metadata);
+        // A container's leaves answer for it on every ask, so its session
+        // caches nothing one leaf's footer would answer.
+        if !self.handle.is_container() {
+            let metadata = if self.handle.is_empty() {
+                None
+            } else {
+                Some(load_metadata(&self.handle)?)
+            };
+            let _ = self.cached.set(metadata);
+        }
         self.opened = true;
         Ok(())
     }

@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::holder::Holder;
-use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
+use crate::{IOBase, IOFolder, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 use super::{BoundLocation, FileSystem, FsFile, FsFolder};
 
@@ -97,16 +97,34 @@ impl IOBase for FsPath {
         self.as_file().pread(offset, buffer)
     }
 
+    /// Stream the file the location names, or - when the filesystem answers
+    /// that it is a directory - the files beneath it, one after another.
+    ///
+    /// The file is asked first and the directory only on the filesystem's
+    /// own refusal, so a file costs exactly the open it always did.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
-        self.as_file().byte_stream(position, batch_size)
+        match self.as_file().byte_stream(position, batch_size) {
+            Err(error) if is_directory(&error) => self
+                .as_directory()
+                .folder_pstream_bytes(position, batch_size),
+            other => other,
+        }
     }
 
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        self.as_file().read_all_bytes()
+        match self.as_file().read_all_bytes() {
+            Err(error) if is_directory(&error) => self.as_directory().folder_read_all_bytes(),
+            other => other,
+        }
     }
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.as_file().read_range_bytes(offset, length)
+        match self.as_file().read_range_bytes(offset, length) {
+            Err(error) if is_directory(&error) => {
+                self.as_directory().folder_read_range_bytes(offset, length)
+            }
+            other => other,
+        }
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
@@ -216,9 +234,7 @@ impl IOBase for FsPath {
         match self.filesystem().delete_file(self.path()) {
             Ok(()) => Ok(()),
             Err(error) if error.is_absent() => Ok(()),
-            Err(crate::Error::Io(error)) if error.kind() == std::io::ErrorKind::IsADirectory => {
-                self.as_directory().remove(recursive)
-            }
+            Err(error) if is_directory(&error) => self.as_directory().remove(recursive),
             Err(error) => Err(error),
         }
     }
@@ -230,6 +246,12 @@ impl IOBase for FsPath {
     fn is_tabular(&self) -> bool {
         self.path_is_tabular()
     }
+}
+
+/// Whether a filesystem refused a file operation because the path is a
+/// directory - the one answer that routes a location to its container role.
+fn is_directory(error: &crate::Error) -> bool {
+    matches!(error, crate::Error::Io(error) if error.kind() == std::io::ErrorKind::IsADirectory)
 }
 
 impl std::fmt::Debug for FsPath {

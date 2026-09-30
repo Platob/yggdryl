@@ -661,4 +661,210 @@ mod text {
             assert!(error.contains("rownum"), "{error}");
         }
     }
+
+    // --- A container read leaf by leaf ---
+
+    mod containers {
+        use std::sync::Arc;
+
+        use yggdryl::fs::{FsFolder, MemoryFileSystem};
+        use yggdryl::graph::{Element as _, Event as _};
+        use yggdryl::local::{LocalFolder, LocalPath};
+        use yggdryl::text::{TextLine, TextOptions, read_text_lines};
+        use yggdryl::{Codec, IOBase, Url};
+
+        /// The instant each header below states, `10:15:30Z` plus `second`.
+        fn at(second: i64) -> i64 {
+            (1_767_348_930 + second) * 1_000_000_000
+        }
+
+        /// The leaves of every tree below, each a path under its root and its
+        /// bytes: a log without a final newline, a log beside it, a coded log
+        /// one level down, and what a text read passes over - a Parquet
+        /// leaf, a leaf with no extension, and a private log.
+        fn leaves() -> Vec<(&'static str, Vec<u8>)> {
+            vec![
+                (
+                    "a.log",
+                    b"2026-01-02T10:15:30Z a1\n2026-01-02T10:15:31Z a2".to_vec(),
+                ),
+                ("b.log", b"2026-01-02T10:15:32Z b1\n".to_vec()),
+                (
+                    "sub/c.log.gz",
+                    Codec::Gzip
+                        .dump(b"2026-01-02T10:15:33Z c1\n2026-01-02T10:15:34Z c2\n")
+                        .unwrap(),
+                ),
+                ("data.parquet", b"PAR1 no line of text PAR1".to_vec()),
+                ("README", b"2026-01-02T10:15:35Z not a text leaf\n".to_vec()),
+                (".hidden.log", b"2026-01-02T10:15:36Z private\n".to_vec()),
+            ]
+        }
+
+        /// Write every leaf of [`leaves`] beneath `root`.
+        fn plant(root: &impl IOBase) {
+            for (path, bytes) in leaves() {
+                root.child_by_path(path)
+                    .unwrap()
+                    .write_all_bytes(&bytes)
+                    .unwrap();
+            }
+        }
+
+        /// A header dating each line and a place counted from one.
+        fn options() -> TextOptions {
+            let mut options = TextOptions::new()
+                .try_with_rowheader(r"^(?<mtime>\S+) ")
+                .expect("a header");
+            options.start_rownum = Some(1);
+            options
+        }
+
+        /// Every line a read of `handle` decodes, in order.
+        fn lines(handle: &(impl IOBase + ?Sized)) -> Vec<TextLine> {
+            read_text_lines(handle, &options())
+                .expect("a settled configuration")
+                .map(|line| line.expect("a line"))
+                .collect()
+        }
+
+        /// The rows the record read of `handle` publishes under the same
+        /// options.
+        fn rows(handle: &(impl IOBase + ?Sized)) -> usize {
+            handle
+                .read_arrow_reader(&options().into())
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum()
+        }
+
+        /// What a read of the leaves in [`leaves`] states, line by line, when
+        /// `names` are the text leaves it reaches: each leaf its own object,
+        /// named by its own location, numbered from one again, and dated
+        /// after no line of the leaf before it.
+        fn assert_read_leaf_by_leaf(handle: &(impl IOBase + ?Sized), names: &[&str]) {
+            let lines = lines(handle);
+            let expected: Vec<(&str, &str, u64, Option<i64>)> = [
+                ("a.log", "a1", 1, None),
+                ("a.log", "a2", 2, Some(at(0))),
+                ("b.log", "b1", 1, None),
+                ("sub/c.log.gz", "c1", 1, None),
+                ("sub/c.log.gz", "c2", 2, Some(at(3))),
+            ]
+            .into_iter()
+            .filter(|(name, ..)| names.contains(name))
+            .collect();
+            // The unterminated `a2` ends with its leaf rather than running
+            // into `b1`, and the coded leaf reads as the lines it decodes to.
+            assert_eq!(
+                lines.iter().map(TextLine::body).collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(_, body, ..)| *body)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.get_seqnum())
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(_, _, seqnum, _)| *seqnum)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.get_prevunix())
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(.., prevunix)| *prevunix)
+                    .collect::<Vec<_>>()
+            );
+            // The cross code is the leaf's own location, one per leaf.
+            for (line, (name, ..)) in lines.iter().zip(&expected) {
+                assert!(
+                    line.get_crosscode().ends_with(&format!("/{name}")),
+                    "{} names {name}",
+                    line.get_crosscode()
+                );
+            }
+            // The record read reads the same leaves the same way.
+            assert_eq!(rows(handle), lines.len());
+        }
+
+        #[test]
+        fn a_filesystem_folder_reads_its_text_leaves_one_after_another() {
+            // A directory of a filesystem is refused a file open, so a read
+            // that opened it as one object would fail there: it lists its
+            // leaves instead, each read as the object it is.
+            let folder =
+                FsFolder::from_path(Arc::new(MemoryFileSystem::new()), "logs", None).unwrap();
+            plant(&folder);
+
+            assert_read_leaf_by_leaf(&folder, &["a.log", "b.log", "sub/c.log.gz"]);
+        }
+
+        /// A fresh local folder holding [`leaves`], named after `label`.
+        fn local(label: &str) -> LocalFolder {
+            let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+            root.push(format!(
+                "yggdryl-text-leaves-{label}-{}",
+                std::process::id()
+            ));
+            let mut folder = LocalFolder::new(&root).unwrap();
+            folder.remove(true).unwrap();
+            plant(&folder);
+            folder
+        }
+
+        #[test]
+        fn a_local_folder_reads_its_text_leaves_one_after_another() {
+            let mut folder = local("folder");
+            assert_read_leaf_by_leaf(&folder, &["a.log", "b.log", "sub/c.log.gz"]);
+            folder.remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_location_ending_in_a_slash_reads_the_text_leaves_beneath_it() {
+            let mut folder = local("slash");
+            let spelled = LocalPath::new(format!("{}/", folder.path().unwrap().display())).unwrap();
+            assert_read_leaf_by_leaf(&spelled, &["a.log", "b.log", "sub/c.log.gz"]);
+            folder.remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_one_level_pattern_reads_only_the_text_leaves_it_matches() {
+            // `*` stays in one name: the coded log one level down would match
+            // the name and is not reached, and nothing else at the top is a
+            // log.
+            let mut folder = local("glob");
+            let url = Url::from_path(folder.path().unwrap())
+                .unwrap()
+                .joinpath("*.log*")
+                .unwrap();
+            let pattern = LocalPath::from_url(url).unwrap();
+            assert_read_leaf_by_leaf(&pattern, &["a.log", "b.log"]);
+            folder.remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_recursive_pattern_reads_every_text_leaf_it_matches() {
+            // `**` spans any number of levels, none included, so the same
+            // name reaches the coded log one level down beside the two at the
+            // top.
+            let mut folder = local("deep-glob");
+            let url = Url::from_path(folder.path().unwrap())
+                .unwrap()
+                .joinpath("**")
+                .unwrap()
+                .joinpath("*.log*")
+                .unwrap();
+            let pattern = LocalPath::from_url(url).unwrap();
+            assert_read_leaf_by_leaf(&pattern, &["a.log", "b.log", "sub/c.log.gz"]);
+            folder.remove(true).unwrap();
+        }
+    }
 }

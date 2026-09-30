@@ -85,6 +85,127 @@ fn require_stored<H: IOBase + ?Sized>(handle: &H, role: &str) -> Result<()> {
     )))
 }
 
+/// Copy `source`'s bytes into `target`, replacing its contents - the body of
+/// [`IOBase::copy_into`] once the source is known to be one value.
+///
+/// Reached directly only where the caller already knows that: a reader
+/// taking an owned copy of a handle it could not reopen, which holds its
+/// bytes itself, so asking what it is would be a call answering nothing.
+///
+/// # Errors
+///
+/// Returns the first read or write failure.
+pub(crate) fn copy_value(source: &(impl IOBase + ?Sized), target: &mut dyn IOBase) -> Result<u64> {
+    if let (Some(bound), Some(target_location)) = (source.bound_location(), target.bound_location())
+    {
+        return crate::fs::copy_bound(bound, target_location);
+    }
+
+    // The generic positional contract has no atomic publish primitive.
+    // Fully consume the source into the existing memory-filesystem
+    // implementation before touching the target. Filesystem-to-filesystem
+    // copies take the bounded native path above and never use this stage.
+    let staging: std::sync::Arc<dyn crate::fs::FileSystem> =
+        std::sync::Arc::new(crate::fs::MemoryFileSystem::new());
+    let staged = crate::fs::BoundLocation::new(
+        std::sync::Arc::clone(&staging),
+        "copy-stage",
+        None::<String>,
+    )?;
+    let mut output = staging.open_output_stream(staged.path(), None)?;
+    let mut stream = if let Some(bound) = source.bound_location() {
+        let reader = bound.filesystem().open_input_stream(bound.path())?;
+        ByteStream::from_fs_reader(reader, TRANSFER_CHUNK)?
+    } else {
+        source.pstream_bytes(0, TRANSFER_CHUNK)?
+    };
+    let staged_result = (|| {
+        let mut copied = 0_u64;
+        for chunk in &mut stream {
+            let chunk = chunk?;
+            let mut written = 0;
+            while written < chunk.len() {
+                let count = output.write(&chunk[written..])?;
+                if count == 0 {
+                    return Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::WriteZero,
+                        "copy staging stream stopped",
+                    )));
+                }
+                if count > chunk.len() - written {
+                    return Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "copy staging stream over-reported a write",
+                    )));
+                }
+                written += count;
+            }
+            copied = copied.checked_add(chunk.len() as u64).ok_or_else(|| {
+                Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+            })?;
+        }
+        Ok(copied)
+    })();
+    let stage_close = output.close();
+    let copied = match staged_result {
+        Ok(copied) => stage_close.map(|()| copied)?,
+        Err(error) => {
+            let _ = stage_close;
+            return Err(error);
+        }
+    };
+    // Asked once the source is drained: a handle that learns its type from
+    // what it read - an HTTP answer's `Content-Type` - knows it only now.
+    let media_type = source.media_type().clone();
+    if let Some(target_location) = target.bound_location() {
+        crate::fs::copy_bound(&staged, target_location)?;
+        target.set_media_type(media_type);
+        return Ok(copied);
+    }
+
+    // Preserve a whole-value target if its publication fails. This branch
+    // exists for buffers and legacy positional handles; bound filesystem
+    // targets publish through a temporary object above.
+    let original = target.read_all_bytes()?;
+    let original_media_type = target.media_type().clone();
+    let publish = (|| {
+        target.truncate(0)?;
+        let mut input = staging.open_input_stream(staged.path())?;
+        let mut buffer = vec![0_u8; TRANSFER_CHUNK];
+        let result = (|| {
+            let mut offset = 0_u64;
+            loop {
+                let read = input.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                target.pwrite_all(offset, &buffer[..read])?;
+                offset = offset.checked_add(read as u64).ok_or_else(|| {
+                    Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+                })?;
+            }
+            Ok(())
+        })();
+        let close = input.close();
+        match result {
+            Ok(()) => close?,
+            Err(error) => {
+                let _ = close;
+                return Err(error);
+            }
+        }
+        target.set_media_type(media_type);
+        target.flush()
+    })();
+    if let Err(error) = publish {
+        let _ = target.write_all_bytes(&original);
+        target.set_media_type(original_media_type);
+        let _ = target.flush();
+        return Err(error);
+    }
+    Ok(copied)
+}
+
 mod bytes;
 pub(crate) mod hierarchy;
 mod lifecycle;
@@ -94,7 +215,7 @@ pub(crate) use bytes::rest_of;
 pub use bytes::{Reader, Writer};
 pub(crate) use hierarchy::{container_is_tabular, owned_handle};
 use hierarchy::{descend, no_children};
-pub(crate) use lifecycle::{coding_mime, oversized};
+pub(crate) use lifecycle::{coding_mime, oversized, reject_container};
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_onto;
@@ -151,6 +272,12 @@ pub trait IOBase: Send + IOMedia {
     /// item is a [`Result<Vec<u8>>`], so a backend failure arrives after every
     /// prefix already yielded and then the iterator stays fused. The final
     /// array may be short; an empty array is never yielded.
+    ///
+    /// A container streams its leaves: a folder, a location ending in `/` and
+    /// a glob yield the bytes of every leaf beneath them, one after another,
+    /// each leaf's content coding taken off - the stream
+    /// [`ByteStream::from_container`] describes. `position` then counts across
+    /// the leaves.
     ///
     /// # Errors
     ///
@@ -652,7 +779,9 @@ pub trait IOBase: Send + IOMedia {
     /// the bytes rather than the rows, which
     /// [`read_arrow_reader`](IOMedia::read_arrow_reader) and its
     /// siblings answer. [`Self::is_atomic`] is how a caller asks which of the
-    /// two surfaces a handle is for.
+    /// two surfaces a handle is for. A container, which is no one value,
+    /// answers the whole of its stream - its leaves' bytes, one after another
+    /// ([`Self::pstream_bytes`]) - and no positional read reaches it.
     ///
     /// # Errors
     ///
@@ -770,8 +899,10 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// Returns the backing store's read failure, or [`Error::NotAtomic`]
     /// naming the kind when this handle is a container. A folder holds no
-    /// bytes of its own, and which files a folder digest would cover in what
-    /// order is a convention no format states.
+    /// bytes of its own: its stream is its leaves' in its backend's listing
+    /// order, which the same tree lists in another order on another backend,
+    /// so which files a folder digest would cover in what order is a
+    /// convention no format states.
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
         crate::xxhash::stream::read_digest(self, algorithm)
     }
@@ -997,116 +1128,14 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns the first read or write failure.
+    /// Returns [`Error::NotAtomic`] naming the kind, before anything is read,
+    /// when this handle is a container: its stream is its leaves' end to end,
+    /// no one value. Otherwise the first read or write failure.
     fn copy_into(&self, target: &mut dyn IOBase) -> Result<u64> {
-        if let (Some(source), Some(target_location)) =
-            (self.bound_location(), target.bound_location())
-        {
-            return crate::fs::copy_bound(source, target_location);
-        }
-
-        // The generic positional contract has no atomic publish primitive.
-        // Fully consume the source into the existing memory-filesystem
-        // implementation before touching the target. Filesystem-to-filesystem
-        // copies take the bounded native path above and never use this stage.
-        let staging: std::sync::Arc<dyn crate::fs::FileSystem> =
-            std::sync::Arc::new(crate::fs::MemoryFileSystem::new());
-        let staged = crate::fs::BoundLocation::new(
-            std::sync::Arc::clone(&staging),
-            "copy-stage",
-            None::<String>,
-        )?;
-        let mut output = staging.open_output_stream(staged.path(), None)?;
-        let mut source = if let Some(bound) = self.bound_location() {
-            let reader = bound.filesystem().open_input_stream(bound.path())?;
-            ByteStream::from_fs_reader(reader, TRANSFER_CHUNK)?
-        } else {
-            self.pstream_bytes(0, TRANSFER_CHUNK)?
-        };
-        let staged_result = (|| {
-            let mut copied = 0_u64;
-            for chunk in &mut source {
-                let chunk = chunk?;
-                let mut written = 0;
-                while written < chunk.len() {
-                    let count = output.write(&chunk[written..])?;
-                    if count == 0 {
-                        return Err(Error::Io(std::io::Error::new(
-                            std::io::ErrorKind::WriteZero,
-                            "copy staging stream stopped",
-                        )));
-                    }
-                    if count > chunk.len() - written {
-                        return Err(Error::Io(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "copy staging stream over-reported a write",
-                        )));
-                    }
-                    written += count;
-                }
-                copied = copied.checked_add(chunk.len() as u64).ok_or_else(|| {
-                    Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
-                })?;
-            }
-            Ok(copied)
-        })();
-        let stage_close = output.close();
-        let copied = match staged_result {
-            Ok(copied) => stage_close.map(|()| copied)?,
-            Err(error) => {
-                let _ = stage_close;
-                return Err(error);
-            }
-        };
-        let media_type = self.media_type().clone();
-
-        if let Some(target_location) = target.bound_location() {
-            crate::fs::copy_bound(&staged, target_location)?;
-            target.set_media_type(media_type);
-            return Ok(copied);
-        }
-
-        // Preserve a whole-value target if its publication fails. This branch
-        // exists for buffers and legacy positional handles; bound filesystem
-        // targets publish through a temporary object above.
-        let original = target.read_all_bytes()?;
-        let original_media_type = target.media_type().clone();
-        let publish = (|| {
-            target.truncate(0)?;
-            let mut input = staging.open_input_stream(staged.path())?;
-            let mut buffer = vec![0_u8; TRANSFER_CHUNK];
-            let result = (|| {
-                let mut offset = 0_u64;
-                loop {
-                    let read = input.read(&mut buffer)?;
-                    if read == 0 {
-                        break;
-                    }
-                    target.pwrite_all(offset, &buffer[..read])?;
-                    offset = offset.checked_add(read as u64).ok_or_else(|| {
-                        Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
-                    })?;
-                }
-                Ok(())
-            })();
-            let close = input.close();
-            match result {
-                Ok(()) => close?,
-                Err(error) => {
-                    let _ = close;
-                    return Err(error);
-                }
-            }
-            target.set_media_type(media_type);
-            target.flush()
-        })();
-        if let Err(error) = publish {
-            let _ = target.write_all_bytes(&original);
-            target.set_media_type(original_media_type);
-            let _ = target.flush();
-            return Err(error);
-        }
-        Ok(copied)
+        // A container's stream is its leaves', end to end: writing that into
+        // one resource would be a concatenation, not a copy of a value.
+        reject_container(self, "copy")?;
+        copy_value(self, target)
     }
 
     /// Move this value into `target` when both locations expose that capability.
@@ -1132,7 +1161,8 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns the first read, encode, or write failure.
+    /// Returns [`Error::NotAtomic`] when this handle is a container, else the
+    /// first read, encode, or write failure.
     fn compress_into(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64> {
         self.compress_into_with_level(target, codec, Level::DEFAULT)
     }
@@ -1141,7 +1171,9 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns [`std::io::ErrorKind::InvalidInput`] naming the coding before
+    /// Returns [`Error::NotAtomic`] naming the kind when this handle is a
+    /// container, whose stream of leaves is no one value to encode, and
+    /// [`std::io::ErrorKind::InvalidInput`] naming the coding before
     /// anything is written when `target` presents a decoded view
     /// ([`Self::applied_codec`]): writing through it would code the value
     /// twice, and [`Self::copy_into`] is the call that stores the coded form
@@ -1153,6 +1185,8 @@ pub trait IOBase: Send + IOMedia {
         codec: Codec,
         level: Level,
     ) -> Result<u64> {
+        // A container's stream of leaves is no one value to encode.
+        reject_container(self, "compress")?;
         require_stored(target, "a target")?;
         target.truncate(0)?;
         {
@@ -1185,7 +1219,8 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns the first read, decode, or write failure.
+    /// Returns [`Error::NotAtomic`] when this handle is a container, else the
+    /// first read, decode, or write failure.
     fn decompress_into(&self, target: &mut dyn IOBase) -> Result<u64> {
         self.decompress_into_with(target, self.codec())
     }
@@ -1194,12 +1229,16 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// # Errors
     ///
-    /// Returns [`std::io::ErrorKind::InvalidInput`] naming the coding before
+    /// Returns [`Error::NotAtomic`] naming the kind when this handle is a
+    /// container, whose stream of leaves is no one value to decode, and
+    /// [`std::io::ErrorKind::InvalidInput`] naming the coding before
     /// anything is read or written when this handle or `target` presents a
     /// decoded view ([`Self::applied_codec`]): the transfer decodes stored
     /// bytes, and a view has already decoded them. Otherwise the first read,
     /// decode, or write failure.
     fn decompress_into_with(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64> {
+        // A container's stream of leaves is no one value to decode.
+        reject_container(self, "decompress")?;
         require_stored(self, "a source")?;
         require_stored(target, "a target")?;
         target.truncate(0)?;

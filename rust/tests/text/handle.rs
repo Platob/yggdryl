@@ -415,6 +415,132 @@ mod text {
     }
 
     #[test]
+    fn the_one_decode_of_a_folder_restarts_with_each_leaf_as_its_record_read_does() {
+        // The twin of the record read above, through the decode itself: the
+        // same leaves, the same framing, and the same bodies, places and cross
+        // codes, so a caller holding the lines holds what the rows state.
+        use yggdryl::graph::{Element as _, Event as _};
+        use yggdryl::local::LocalFolder;
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-framed-lines-{}", std::process::id()));
+        let mut folder = LocalFolder::new(&root).unwrap();
+        folder.remove(true).unwrap();
+        let mut first = folder.child_by_path("a.log").unwrap();
+        first.write_all_bytes(b"[A] first\ncontinued in a").unwrap();
+        let mut second = folder.child_by_path("b.log").unwrap();
+        second.write_all_bytes(b"leading in b\n[B] second").unwrap();
+
+        let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
+        options.start_rownum = Some(1);
+        let batches = collect(&folder, options.clone());
+        let free = yggdryl::text::read_text_lines(&folder, &options).unwrap();
+        let held = Text::new(folder.clone())
+            .with_options(options)
+            .read_text_lines()
+            .unwrap();
+        for lines in [free, held] {
+            let lines = lines.map(|line| line.unwrap()).collect::<Vec<_>>();
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.body().as_bytes().to_vec())
+                    .collect::<Vec<_>>(),
+                bodies(&batches)
+            );
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| Some(line.get_seqnum()))
+                    .collect::<Vec<_>>(),
+                uint64s(&batches, "seqnum")
+            );
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| Some(line.get_crosscode().to_owned()))
+                    .collect::<Vec<_>>(),
+                strings(&batches, "crosscode")
+            );
+        }
+        assert_eq!(uint64s(&batches, "seqnum"), [Some(1), Some(1), Some(2)]);
+
+        folder.remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_text_count_over_a_folder_is_the_rows_its_text_leaves_read_to() {
+        // Each leaf is counted as the object it is: `a.log`'s unterminated
+        // last line is its own rather than the start of `b.log`'s first, the
+        // coded leaf counts the lines it decodes to, and a leaf that is not
+        // text is not counted at all. The wrapper's count, the wrapper's read
+        // and the folder's own count, as a holder, are one number.
+        use yggdryl::holder::Holder;
+        use yggdryl::local::LocalFolder;
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-text-count-folder-{}", std::process::id()));
+        let mut folder = LocalFolder::new(&root).unwrap();
+        folder.remove(true).unwrap();
+        for (path, bytes) in [
+            ("a.log", b"a1\na2".to_vec()),
+            ("b.log", b"b1\nb2".to_vec()),
+            ("sub/c.log.gz", Codec::Gzip.dump(b"c1\nc2\n").unwrap()),
+            ("README", b"not\na\ntext\nleaf\n".to_vec()),
+        ] {
+            folder
+                .child_by_path(path)
+                .unwrap()
+                .write_all_bytes(&bytes)
+                .unwrap();
+        }
+
+        let text = Text::new(folder.clone());
+        let read = collect(&folder, TextOptions::new());
+        assert_eq!(
+            bodies(&read),
+            [b"a1", b"a2", b"b1", b"b2", b"c1", b"c2"].map(|body| body.to_vec())
+        );
+        assert_eq!(text.row_size().unwrap(), 6);
+        let rows: usize = text
+            .read_arrow_reader(&text.record_options().unwrap())
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(rows, 6);
+        assert_eq!(Holder::local(&root).unwrap().row_size().unwrap(), 6);
+        assert_eq!(folder.row_size().unwrap(), 6);
+
+        // Framing is the wrapper's own configuration, and it counts per leaf
+        // too: `b.log`'s leading line is a record of its own, never a
+        // continuation of `a.log`'s last.
+        for path in ["a.log", "b.log"] {
+            folder.child_by_path(path).unwrap().remove(false).unwrap();
+        }
+        folder
+            .child_by_path("a.log")
+            .unwrap()
+            .write_all_bytes(b"[A] first\ncontinued in a")
+            .unwrap();
+        folder
+            .child_by_path("b.log")
+            .unwrap()
+            .write_all_bytes(b"leading in b\n[B] second")
+            .unwrap();
+        let framed = Text::new(folder.clone()).with_options(framed(r"^\[(?<kind>[A-Z])\] "));
+        let rows: usize = framed
+            .read_arrow_reader(&framed.record_options().unwrap())
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        // `c.log.gz` has no header, so its two lines are one leading record.
+        assert_eq!(rows, 4);
+        assert_eq!(framed.row_size().unwrap(), 4);
+
+        folder.remove(true).unwrap();
+    }
+
+    #[test]
     fn generic_record_writes_use_only_the_text_body() {
         let mut target = named("out.txt", b"old");
         let mut options: RecordOptions = TextOptions::new().into();

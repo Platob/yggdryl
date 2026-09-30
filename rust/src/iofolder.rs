@@ -9,8 +9,9 @@ static DIRECTORY_MEDIA_TYPE: std::sync::LazyLock<MediaType> =
 /// A resource that holds other resources.
 ///
 /// Implement the four required members and the byte half of [`IOBase`] follows:
-/// a container reads as empty, refuses byte writes, and is created by
-/// truncating it to zero.
+/// a container holds no bytes of its own - a positional read is empty and its
+/// size is zero - streams the bytes of the leaves beneath it, refuses byte
+/// writes, and is created by truncating it to zero.
 pub trait IOFolder: IOBase {
     /// The container's location.
     fn folder_url(&self) -> &Url;
@@ -125,8 +126,70 @@ pub trait IOFolder: IOBase {
     }
 
     /// Read nothing: a container holds no bytes of its own.
+    ///
+    /// Its stream is its leaves' ([`Self::folder_pstream_bytes`]); a
+    /// positional read has no leaf to land in without listing the tree up to
+    /// the offset, and its size is zero for the same reason.
     fn folder_pread(&self) -> Result<usize> {
         Ok(0)
+    }
+
+    /// Stream the bytes of every leaf beneath the container, one after
+    /// another - [`ByteStream::from_container`](crate::ByteStream::from_container)
+    /// over this container, which says what a leaf is, in what order, and
+    /// what each contributes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`std::io::ErrorKind::InvalidInput`] when `batch_size` is
+    /// zero, or the refusal to list the container.
+    fn folder_pstream_bytes(
+        &self,
+        position: u64,
+        batch_size: usize,
+    ) -> Result<crate::ByteStream<'static>> {
+        crate::ByteStream::from_container(self, position, batch_size)
+    }
+
+    /// Read the container's stream whole: every leaf's bytes, one after
+    /// another.
+    ///
+    /// # Errors
+    ///
+    /// Returns the listing's or a leaf's read failure.
+    fn folder_read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.folder_read_range_bytes(0, usize::MAX)
+    }
+
+    /// Read at most `length` bytes of the container's stream from `offset`.
+    ///
+    /// A batch is never wider than the range, so a leaf past the last byte
+    /// asked for is never opened, and an empty range lists nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the listing's or a leaf's read failure, or
+    /// [`std::io::ErrorKind::Other`] when the bytes read cannot be held.
+    fn folder_read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        if length == 0 {
+            return Ok(Vec::new());
+        }
+        let batch_size = length.min(crate::DEFAULT_STREAM_BATCH_SIZE);
+        let mut bytes = Vec::new();
+        for chunk in self.folder_pstream_bytes(offset, batch_size)? {
+            let chunk = chunk?;
+            let taken = chunk.len().min(length - bytes.len());
+            bytes.try_reserve(taken).map_err(|error| {
+                crate::Error::Io(std::io::Error::other(format!(
+                    "cannot grow a container's read: {error}"
+                )))
+            })?;
+            bytes.extend_from_slice(&chunk[..taken]);
+            if bytes.len() == length {
+                break;
+            }
+        }
+        Ok(bytes)
     }
 
     /// Refuse a byte write, naming the container that was addressed.

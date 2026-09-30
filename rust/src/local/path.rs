@@ -222,6 +222,34 @@ impl IOBase for LocalPath {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }
 
+    /// Stream what the location resolves to: a container's leaves, one
+    /// after another, or a leaf's bytes.
+    ///
+    /// A container's stream owns what it reads, so it leaves the lock the
+    /// resolved handle lives behind; a leaf's is read positionally through
+    /// this location, which keeps the one resolution.
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
+        let container = self.with_resolved(None, |handle| {
+            handle
+                .is_container()
+                .then(|| crate::ByteStream::from_container(handle, position, batch_size))
+        })?;
+        match container {
+            Some(stream) => stream,
+            None => crate::ByteStream::from_handle(self, position, batch_size),
+        }
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.with_resolved(Ok(Vec::new()), |handle| handle.read_all_bytes())?
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.with_resolved(Ok(Vec::new()), |handle| {
+            handle.read_range_bytes(offset, length)
+        })?
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.with_resolved_mut(|handle| handle.pwrite(offset, bytes))?
     }

@@ -890,6 +890,13 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
                 return Ok(*rows);
             }
         }
+        // Past the session's cache, which only a leaf ever fills.
+        if self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         let rows = row_size(&self.handle, &self.options)?;
         if self.opened {
             let _ = self.cached_row_size.set(rows);
@@ -906,6 +913,12 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         }
         let columns = if let Some(field) = self.options.field() {
             field.field_len()
+        } else if self.handle.is_container() {
+            crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len()
         } else if self.handle.is_empty() {
             0
         } else {
@@ -937,6 +950,9 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
             if let Some(cached) = self.cached_schema.get() {
                 return Ok(cached.clone().with_name(options.name()));
             }
+        }
+        if self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let field = read_field(&self.handle, options)?;
         if self.opened && self.options.field().is_none() {
@@ -1068,9 +1084,13 @@ impl<H: IOBase> IOBase for Ipc<H> {
             return Ok(());
         }
         self.handle.open()?;
-        let (field, rows, columns) = self.fresh_metadata()?;
         self.invalidate_cached_metadata();
-        self.cache_metadata(field, rows, columns);
+        // A container's leaves answer for it on every ask, so its session
+        // caches nothing one leaf's metadata would answer.
+        if !self.handle.is_container() {
+            let (field, rows, columns) = self.fresh_metadata()?;
+            self.cache_metadata(field, rows, columns);
+        }
         self.opened = true;
         Ok(())
     }

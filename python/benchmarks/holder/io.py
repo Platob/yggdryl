@@ -34,6 +34,14 @@ MEDIA.overwrite_arrow_table(pa.table({"id": range(4096)}))
 MEDIA.open()
 # A compound name: three layers to compose and one class to answer with.
 COMPOSED = ROOT / "trades.txt.gz"
+# A folder of sixteen small leaves, streamed through one core stream the
+# iterator holds: the first chunk costs the listing and one open, the drain
+# one open per leaf.
+FOLDER = ROOT / "logs"
+FOLDER.mkdir()
+for index in range(16):
+    (FOLDER / f"part-{index:02}.log").write_bytes(b"AAPL,1\n" * 64)
+LEAVES = IOBase(FOLDER)
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -101,6 +109,16 @@ def main() -> None:
         _measure(
             "buffered page cache",
             lambda: BUFFERED.cached_pages,
+            arguments.iterations,
+        )
+        _measure(
+            "folder stream first chunk",
+            lambda: next(iter(LEAVES.pstream_bytes())),
+            arguments.iterations,
+        )
+        _measure(
+            "folder stream drain",
+            lambda: sum(map(len, LEAVES.pstream_bytes())),
             arguments.iterations,
         )
         _measure("opened media field", MEDIA.read_arrow_field, arguments.iterations)

@@ -23,7 +23,6 @@ mod boolean;
 mod budget;
 #[path = "root/bytes.rs"]
 mod bytes;
-#[cfg(feature = "internals")]
 #[path = "root/bytestream.rs"]
 mod bytestream;
 #[path = "root/cast.rs"]

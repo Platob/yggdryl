@@ -78,7 +78,16 @@ Install and cross-language conventions are in `yggdryl`.
    operation is a wasted round trip and a race.
 4. **Stream bounded chunks.** `pstream_bytes` hands out 64 KiB owned chunks
    and never asks for `size`; digests (`read_digest`) stream too. Reach for
-   `read_all_bytes` only when the whole value is the answer.
+   `read_all_bytes` only when the whole value is the answer. A folder, a path
+   ending in `/` or a glob (`logs/*.log`) streams its leaves - recursive under
+   a folder, what the pattern matches under a glob, private names (`.venv`,
+   `.config`, any dot name) and their trees left out - one after another in
+   listing order, each `.gz` leaf decoded; `read_all_bytes` drains that
+   stream, while `pread` (and a cursor's `read`) reads nothing, `size` is `0`,
+   and a digest, `copy_into` or `compress_into` refuses the container
+   (`NotAtomic`); a `codec` stated over a container spelling composes
+   nothing. Nothing separates two leaves, so read lines or records through
+   the media, which go leaf by leaf.
 5. **One scan, one stream on a coded handle.** A `pread` at a compressed
    offset rebuilds a decoder from the start: sixteen ranged reads of a gzip
    value cost sixteen decodes. Drain one `pstream_bytes`, or `open()` it

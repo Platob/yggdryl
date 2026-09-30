@@ -23,15 +23,58 @@ enum Opened {
 
 fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
     if handle.is_container() {
-        #[cfg(feature = "iceberg")]
-        if let Some(table) = crate::iceberg::located(handle)? {
-            return Ok(Opened::Table(Box::new(table)));
-        }
-        return Ok(Opened::Reader(crate::media::partition::folder_reader(
-            handle, options,
-        )?));
+        return open_container(handle, options);
     }
     Ok(Opened::Reader(crate::iobase::leaf_reader(handle, options)?))
+}
+
+/// What a handle already known to be a container opens as: the table format
+/// located in it, or the reader over its leaves.
+fn open_container(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
+    #[cfg(feature = "iceberg")]
+    if let Some(table) = crate::iceberg::located(handle)? {
+        return Ok(Opened::Table(Box::new(table)));
+    }
+    Ok(Opened::Reader(crate::media::partition::folder_reader(
+        handle, options,
+    )?))
+}
+
+/// The root field an opened resource reports under `options`: a table
+/// answers from its metadata, a reader with the schema its clauses publish.
+fn opened_field(opened: Opened, options: &RecordOptions) -> Result<crate::Field> {
+    use crate::media::IORecordOptions;
+
+    let schema = match opened {
+        // A table format states its schema in its metadata: the table
+        // answers it as the table it is, and no scan is planned to learn it.
+        #[cfg(feature = "iceberg")]
+        Opened::Table(table) => return table.read_arrow_field(options),
+        Opened::Reader(reader) => options
+            .limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
+            .schema(),
+    };
+    Ok(crate::arrow::field_from_arrow_schema(
+        options.name(),
+        schema.as_ref(),
+    )?)
+}
+
+/// A container's root field under `options`: the declared one, or the one
+/// the table located in it or its leaves report.
+///
+/// The container half of [`IOMedia::read_arrow_field`], shared with the media
+/// wrappers whose own schema read reads one leaf's bytes.
+pub(crate) fn container_field(
+    handle: &dyn IOBase,
+    options: &RecordOptions,
+) -> Result<crate::Field> {
+    use crate::media::IORecordOptions;
+
+    if let Some(field) = options.field() {
+        return Ok(field.clone());
+    }
+    opened_field(open_container(handle, options)?, options)
 }
 
 /// Record-oriented operations every [`IOBase`] handle exposes.
@@ -66,20 +109,7 @@ pub trait IOMedia: Send {
         let options = dimension_options(self)?;
         let handle = self.as_io_base();
         if handle.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(handle)? {
-                return table.row_size();
-            }
-            let encoding = options.mime_type();
-            let mut rows = 0_u64;
-            for child in handle.children_where(&[], false)? {
-                let child = child?;
-                if child.media_type().base() != &encoding {
-                    continue;
-                }
-                rows = add_rows(rows, crate::iobase::leaf_row_size(&child, &options)?)?;
-            }
-            return Ok(rows);
+            return container_row_size(handle, &options);
         }
         crate::iobase::leaf_row_size(handle, &options)
     }
@@ -214,20 +244,7 @@ pub trait IOMedia: Send {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        let schema = match open(self.as_io_base(), options)? {
-            // A table format states its schema in its metadata: the table
-            // answers it as the table it is, and no scan is planned to
-            // learn it.
-            #[cfg(feature = "iceberg")]
-            Opened::Table(table) => return table.read_arrow_field(options),
-            Opened::Reader(reader) => options
-                .limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
-                .schema(),
-        };
-        Ok(crate::arrow::field_from_arrow_schema(
-            options.name(),
-            schema.as_ref(),
-        )?)
+        opened_field(open(self.as_io_base(), options)?, options)
     }
 
     /// Read this resource's rows as one [`BatchReader`](crate::arrow::BatchReader).
@@ -302,8 +319,10 @@ pub trait IOMedia: Send {
     /// options.
     ///
     /// `options` absent is the handle's own encoding read whole: a record
-    /// encoding answers its stored schema and a document names the root its
-    /// own contents prove.
+    /// encoding answers its stored schema, a document names the root its own
+    /// contents prove, and a container - a folder, a path ending in `/`, a
+    /// glob - reads as the table its leaves hold, under the encoding
+    /// [`record_options`](Self::record_options) finds beneath it.
     ///
     /// ```
     /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
@@ -336,7 +355,10 @@ pub trait IOMedia: Send {
         }
         let reader = match options {
             Some(options) => self.read_arrow_reader(options)?,
-            None => self.read_arrow_reader(&RecordOptions::for_media_type(handle.media_type())?)?,
+            // What the resource says it holds - a container answering for the
+            // leaves beneath it - rather than a guess from a media type a
+            // container states as a directory.
+            None => self.read_arrow_reader(&self.record_options()?)?,
         };
         Ok(crate::SerieReader::from_arrow_reader(
             None,
@@ -833,7 +855,7 @@ pub trait IOMedia: Send {
 }
 
 /// Remove settings that narrow a read before computing whole-media dimensions.
-fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
+pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     use crate::media::IORecordOptions;
 
     let mut options = media.record_options()?;
@@ -843,6 +865,24 @@ fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     options.set_row_offset(None);
     options.set_max_byte_size(None);
     Ok(options)
+}
+
+/// Count a container's rows: a located table format answers from its
+/// metadata, and anything else sums the leaves holding the encoding
+/// `options` names, each counted as the leaf it is.
+///
+/// The one container count, shared by the [`IOMedia::row_size`] default and
+/// the media wrappers whose own count reads one leaf's bytes.
+pub(crate) fn container_row_size(handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+    #[cfg(feature = "iceberg")]
+    if let Some(table) = crate::iceberg::located(handle)? {
+        return table.row_size();
+    }
+    let mut rows = 0_u64;
+    for child in crate::media::partition::record_parts(handle, options.mime_type())? {
+        rows = add_rows(rows, crate::iobase::leaf_row_size(&child?, options)?)?;
+    }
+    Ok(rows)
 }
 
 /// Add one metadata row count without allowing an aggregate to wrap.

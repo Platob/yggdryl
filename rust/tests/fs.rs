@@ -19,6 +19,8 @@ mod local;
 mod location;
 #[path = "fs/memory.rs"]
 mod memory;
+#[path = "fs/path.rs"]
+mod path;
 #[path = "fs/stream.rs"]
 mod stream;
 #[path = "fs/system.rs"]

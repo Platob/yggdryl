@@ -157,6 +157,30 @@ impl ZipLeaf {
         self.archive.entry(&self.name)
     }
 
+    /// Stream the decoded member from `position`, owning what is read: a
+    /// member this handle holds decoded is copied out from there, anything
+    /// else read through the archive, which the reader holds - the stream
+    /// [`IOBase::pstream_bytes`] answers, for a reader that outlives the
+    /// handle.
+    pub(crate) fn byte_stream(
+        &self,
+        position: u64,
+        batch_size: usize,
+    ) -> Result<ByteStream<'static>> {
+        if let Some(plain) = self.materialized() {
+            let plain = usize::try_from(position)
+                .ok()
+                .and_then(|position| plain.get(position..))
+                .unwrap_or_default()
+                .to_vec();
+            return ByteStream::from_reader(std::io::Cursor::new(plain), batch_size);
+        }
+        let Some(entry) = self.get_entry()? else {
+            return ByteStream::from_reader(std::io::empty(), batch_size);
+        };
+        ByteStream::from_reader(self.archive.entry_reader(&entry, position)?, batch_size)
+    }
+
     /// Borrow the decoded member when this handle is holding one.
     const fn materialized(&self) -> Option<&Vec<u8>> {
         self.plain.as_ref()
@@ -325,10 +349,7 @@ impl IOBase for ZipLeaf {
                 .unwrap_or_default();
             return ByteStream::from_reader(std::io::Cursor::new(plain), batch_size);
         }
-        let Some(entry) = self.get_entry()? else {
-            return ByteStream::from_reader(std::io::empty(), batch_size);
-        };
-        ByteStream::from_reader(self.archive.entry_reader(&entry, position)?, batch_size)
+        self.byte_stream(position, batch_size)
     }
 
     /// Replace the member, streaming the value into the archive.

@@ -184,10 +184,7 @@ impl BoundReader {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + Send> = Box::new(stream);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader_send(reader);
-        }
+        let mut reader = Codec::decoding_send(&self.codings, stream);
         if transports(self.charset) {
             reader = Box::new(declared(self.charset, reader)?);
         }
@@ -273,10 +270,7 @@ impl NonemptySendDecodedReader {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + Send> = Box::new(source);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader_send(reader);
-        }
+        let mut reader = Codec::decoding_send(&self.codings, source);
         if transports(self.charset) {
             reader = Box::new(declared(self.charset, reader)?);
         }
@@ -340,10 +334,7 @@ impl<'source> NonemptyDecodedReader<'source> {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + 'source> = Box::new(source);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader(reader);
-        }
+        let mut reader = Codec::decoding(&self.codings, source);
         if transports(self.charset) {
             reader = Box::new(declared(self.charset, reader)?);
         }

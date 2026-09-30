@@ -440,7 +440,16 @@ impl<H: IOBase> IOMedia for Csv<H> {
         self
     }
 
+    /// Count the records of the one document this wraps, or - over a
+    /// container - of every delimited leaf beneath it, each counted as the
+    /// document it is, header and all, as the record read reads them.
     fn row_size(&self) -> Result<u64> {
+        if self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         row_size(&self.handle, &self.options)
     }
 
@@ -451,6 +460,15 @@ impl<H: IOBase> IOMedia for Csv<H> {
         if let Some(cached) = self.cached(&self.options) {
             return Ok(cached.field_len());
         }
+        // Past the session's cache, which only a leaf ever fills.
+        if self.handle.is_container() {
+            return Ok(crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len());
+        }
+
         // One read of the header and the sample answers both an empty
         // document (no columns) and a held one; while open, what it read is
         // what the field and the width are answered from until close.
@@ -475,6 +493,10 @@ impl<H: IOBase> IOMedia for Csv<H> {
         let stored = match self.cached(options) {
             Some(cached) => cached.clone().with_name(options.name()),
             None => {
+                // Past the session's cache, which only a leaf ever fills.
+                if self.handle.is_container() {
+                    return crate::iomedia::container_field(&self.handle, &options.clone().into());
+                }
                 let field = read_field(&self.handle, options)?;
                 self.cache(options, &field);
                 field

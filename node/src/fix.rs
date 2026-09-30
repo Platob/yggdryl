@@ -426,8 +426,8 @@ impl JsFixRegistry {
         dialect: Option<String>,
     ) -> Result<(Self, Vec<JsField>)> {
         // A CBlock is a file, so the location is held as whichever role it
-        // actually is: a container handle reads no bytes, and a reader handed
-        // one answers an empty vocabulary instead of a refusal.
+        // actually is: a container handle reads as its leaves end to end,
+        // which is no one vocabulary.
         let handle = located_from_input(location)?;
         let (registry, roots) = CoreFixRegistry::from_cfb_file(handle.as_io(), dialect.as_deref())
             .map_err(napi_error)?;

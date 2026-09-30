@@ -10,8 +10,10 @@ use crate::{IOBase, IOFolder, Listing};
 
 /// A local directory addressed as a container rather than as bytes.
 ///
-/// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
-/// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
+/// A directory holds no bytes of its own: [`IOBase::size`] is zero and a
+/// positional read yields nothing, while its stream is the bytes of the files
+/// beneath it, one after another ([`IOBase::pstream_bytes`]). Its purpose is
+/// the hierarchy - [`IOBase::ls`],
 /// [`IOBase::child_by_path`], and [`IOBase::parent`] - which resolve children as
 /// further [`LocalFolder`] values for subdirectories and mapped files for
 /// leaves.
@@ -333,6 +335,18 @@ impl crate::IOMedia for LocalFolder {
 impl IOBase for LocalFolder {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
+    }
+
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
+        self.folder_pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.folder_read_all_bytes()
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.folder_read_range_bytes(offset, length)
     }
 
     fn pwrite(&mut self, _offset: u64, bytes: &[u8]) -> Result<usize> {

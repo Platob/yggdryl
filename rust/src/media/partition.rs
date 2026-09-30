@@ -450,13 +450,17 @@ fn pairs_under(part: &(impl IOBase + ?Sized), root: Option<&Url>) -> Vec<(String
     }
 }
 
-/// Return the leaves beneath `folder` that hold the encoding `options` names.
+/// Return the leaves beneath `folder` that hold `encoding`.
 ///
 /// A lake usually holds more than its data files - a marker, a checksum, a
 /// committed manifest - so a leaf whose media type is not this encoding is not
-/// a part of the table and is skipped rather than handed to a decoder.
-fn record_parts(folder: &(impl IOBase + ?Sized), options: &RecordOptions) -> Result<Listing> {
-    let encoding = options.mime_type();
+/// a part of the table and is skipped rather than handed to a decoder. The one
+/// owner of that rule: the folder reader, the dimension counts and the text
+/// line decode all read a container's leaves through it.
+pub(crate) fn record_parts(
+    folder: &(impl IOBase + ?Sized),
+    encoding: crate::MimeType,
+) -> Result<Listing> {
     Ok(folder
         .children_where(&[], false)?
         .keeping(move |child| child.media_type().base() == &encoding))
@@ -740,7 +744,7 @@ pub(crate) fn folder_reader(
     folder: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<BatchReader> {
-    let mut parts = record_parts(folder, options)?;
+    let mut parts = record_parts(folder, options.mime_type())?;
     let root = folder.url().cloned();
     // A leaf whose path names a different value for a filtered column cannot
     // hold a matching row, so it is skipped before anything is decoded; a

@@ -144,14 +144,14 @@ impl IOBase for ZipPath {
         self.as_leaf().pread(offset, buffer)
     }
 
-    /// Stream the member this location resolves to.
+    /// Stream the member this location resolves to, or - at a folder - the
+    /// members beneath it, one after another.
     ///
     /// The reader owns the archive it reads through, so the stream outlives
     /// the resolution that built it.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         if self.is_folder() {
-            // A container holds no bytes, and reads as the empty one it is.
-            return crate::ByteStream::from_reader(std::io::empty(), batch_size);
+            return crate::ByteStream::from_container(&self.as_node(), position, batch_size);
         }
         self.as_leaf().pstream_bytes(position, batch_size)
     }

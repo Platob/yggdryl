@@ -641,6 +641,74 @@ class TestByteStreams:
         with pytest.raises(StopIteration):
             next(stream)
 
+    def test_a_container_streams_its_leaves_end_to_end(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "a.log").write_bytes(b"a1\na2")
+        (tmp_path / "sub" / "b.log.gz").write_bytes(stdlib_gzip.compress(b"b1\n"))
+        (tmp_path / "sub" / "c.log").write_bytes(b"c1\n")
+        (tmp_path / ".hidden").write_bytes(b"left out\n")
+
+        # A folder: every leaf beneath it in listing order, each decoded by
+        # its own coding, nothing between two leaves, dot names left out.
+        folder = IOBase(tmp_path)
+        assert b"".join(folder.pstream_bytes()) == b"a1\na2b1\nc1\n"
+        assert folder.read_bytes() == b"a1\na2b1\nc1\n"
+        assert folder.size == 0
+
+        # A position counts across leaves, and chunks are full across them.
+        assert list(folder.pstream_bytes(3, 4)) == [b"a2b1", b"\nc1\n"]
+
+        # A path ending in `/` and a glob are containers by their spelling.
+        assert b"".join(IOBase(f"{tmp_path.as_posix()}/").pstream_bytes()) == (
+            b"a1\na2b1\nc1\n"
+        )
+        assert b"".join(IOBase(tmp_path / "*.log").pstream_bytes()) == b"a1\na2"
+        assert b"".join(IOBase(tmp_path / "**" / "*.log").pstream_bytes()) == (
+            b"a1\na2c1\n"
+        )
+
+    def test_a_container_stream_outlives_its_handle_and_stays_fused(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        (tmp_path / "a.log").write_bytes(b"a")
+        (tmp_path / "b.log.gz").write_bytes(b"not gzip")
+        handle = IOBase(tmp_path)
+        stream = handle.pstream_bytes(batch_size=1)
+        del handle
+
+        # The leaf that cannot be decoded fails after what came before it,
+        # and nothing is read after the failure.
+        assert next(stream) == b"a"
+        with pytest.raises(OSError):
+            next(stream)
+        with pytest.raises(StopIteration):
+            next(stream)
+
+    def test_a_container_cursor_streams_its_leaves_from_its_position(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        (tmp_path / "a.log").write_bytes(b"a1\na2")
+        (tmp_path / "b.log").write_bytes(b"b1\n")
+        cursor = IOBase(tmp_path).cursor(2)
+
+        # One stream of the leaves from the cursor's position, which advances
+        # as each chunk is yielded.
+        assert list(cursor.stream_bytes(3)) == [b"\na2", b"b1\n"]
+        assert cursor.tell() == 8
+
+    def test_a_container_is_no_value_to_digest_or_copy(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        (tmp_path / "a.log").write_bytes(b"a")
+        folder = IOBase(tmp_path)
+        target = IOBase.from_bytes(b"kept")
+
+        with pytest.raises(ValueError, match="expected copy on a byte value"):
+            folder.copy_into(target)
+        assert target.read_bytes() == b"kept"
+
 
 class TestStructuredValues:
     """Structured values cross through the native core, including codings."""

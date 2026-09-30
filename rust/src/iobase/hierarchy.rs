@@ -190,7 +190,9 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
             }
         }
     }
+    // A value, never a container: every caller reads a container's leaves
+    // before it asks for a handle of its own.
     let mut buffer = crate::holder::Buffer::new();
-    handle.copy_into(&mut buffer)?;
+    crate::iobase::copy_value(handle, &mut buffer)?;
     Ok(Holder::buffer(buffer))
 }

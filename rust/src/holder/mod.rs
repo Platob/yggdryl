@@ -177,6 +177,28 @@ impl Holder {
         }
     }
 
+    /// Stream this handle's bytes from `position`, owning what is read.
+    ///
+    /// The owned form of [`IOBase::pstream_bytes`], for a reader that holds
+    /// many handles in turn - the leaves of a container - and cannot borrow
+    /// each from a place that outlives it. A leaf with a sequential read of
+    /// its own keeps it: a filesystem file one open, an object one `GET`, an
+    /// archive member one reader through the archive. Anything else is read
+    /// positionally, one [`IOBase::pread`] per batch.
+    pub(crate) fn into_byte_stream(
+        self,
+        position: u64,
+        batch_size: usize,
+    ) -> Result<crate::ByteStream<'static>> {
+        match self {
+            Self::FsFile(file) => file.byte_stream(position, batch_size),
+            #[cfg(feature = "s3")]
+            Self::S3File(file) => file.byte_stream(position, batch_size),
+            Self::ZipLeaf(leaf) => leaf.byte_stream(position, batch_size),
+            other => crate::ByteStream::from_reader(crate::Cursor::at(other, position), batch_size),
+        }
+    }
+
     /// Hold an in-memory buffer.
     pub const fn buffer(buffer: Buffer) -> Self {
         Self::Buffer(buffer)
@@ -230,8 +252,11 @@ impl Holder {
     ///
     /// Two properties are read here whatever the scheme: `media_type` (or
     /// `mime_type`, `content_type`) declares what the bytes are, and `codec`
-    /// (or `content_encoding`) presents them decoded. Every other property
-    /// is left to the backend, which ignores what it does not know.
+    /// (or `content_encoding`) presents them decoded - over a value, since a
+    /// location spelling a container (a glob, a trailing `/`) streams leaves
+    /// that each take off the coding their own name declares, and takes none.
+    /// Every other property is left to the backend, which ignores what it
+    /// does not know.
     ///
     /// ```
     /// use yggdryl::holder::Holder;
@@ -303,6 +328,8 @@ impl Holder {
                 url.scheme().as_str(),
             ));
         };
+        // An HTTP URL names one resource however its path is spelled.
+        let container = !url.scheme().is_http() && (url.is_glob() || url.has_trailing_slash());
         for (name, value) in &properties {
             match name.to_ascii_lowercase().replace('-', "_").as_str() {
                 "media_type" | "mime_type" | "content_type" => {
@@ -310,7 +337,9 @@ impl Holder {
                 }
                 "codec" | "content_encoding" => {
                     let codec = value.parse::<crate::Codec>()?;
-                    held = held.into_coded_with(codec, crate::Level::default());
+                    if !container {
+                        held = held.into_coded_with(codec, crate::Level::default());
+                    }
                 }
                 _ => {}
             }
@@ -396,7 +425,13 @@ impl Holder {
     ///
     /// A name is a name, not a probe: a *container* whose own name ends in a
     /// record suffix composes as that encoding, exactly as
-    /// [`Self::into_media`] would once it had looked.
+    /// [`Self::into_media`] would once it had looked. A location that spells
+    /// a container - a glob, or a path ending in `/` - composes the record
+    /// encoding its pattern names and no coding: the suffix says what each
+    /// leaf holds, so `lake/*.parquet` reads its Parquet leaves as one table,
+    /// and each leaf takes its own coding off, so `logs/*.log.gz` is text
+    /// over every leaf's decoded lines rather than one gzip decoder over
+    /// them all.
     ///
     /// ```
     /// use yggdryl::holder::{Buffer, Holder};
@@ -423,17 +458,23 @@ impl Holder {
         // Every other variant already answers from what it is, which is how a
         // directory - whose own name may end in a record suffix - stays a
         // directory here.
-        let media_type = match &self {
-            Self::LocalPath(path) => path.url().media_type(),
-            Self::FsPath(path) => path.url().media_type(),
-            other => other.media_type().clone(),
+        let url = match &self {
+            Self::LocalPath(path) => Some(path.url()),
+            Self::FsPath(path) => Some(path.url()),
+            _ => None,
         };
-        self.into_media_as(&media_type)
+        let container = url.is_some_and(|url| url.is_glob() || url.has_trailing_slash());
+        let media_type = url.map_or_else(|| self.media_type().clone(), Url::media_type);
+        self.into_media_as(&media_type, !container)
     }
 
-    /// Retain the content coding and record implementation `media_type` names.
+    /// Retain the record implementation `media_type` names and, when `coded`,
+    /// the content coding it names underneath.
+    ///
+    /// A container's coding is its leaves', each taken off as the leaf is
+    /// read, so a container composes the record implementation alone.
     #[must_use]
-    fn into_media_as(self, media_type: &MediaType) -> Self {
+    fn into_media_as(self, media_type: &MediaType, coded: bool) -> Self {
         // A handle that already retains a record implementation is already
         // composed; re-applying the coding underneath it would stack a second
         // one for the same declaration.
@@ -456,12 +497,13 @@ impl Holder {
             return self;
         }
 
-        let coded = match codec {
+        let presented = match codec {
             crate::Codec::Identity => self,
+            _ if !coded => self,
             codec => self.into_coded_with(codec, crate::Level::DEFAULT),
         };
 
-        coded.into_media_base(media_type.base())
+        presented.into_media_base(media_type.base())
     }
 
     /// Retain the record implementation one base representation names.

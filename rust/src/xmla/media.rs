@@ -308,6 +308,12 @@ impl<H: IOBase> IOMedia for Xmla<H> {
     }
 
     fn row_size(&self) -> Result<u64> {
+        if self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         row_size(&self.handle, &self.options)
     }
 
@@ -320,6 +326,15 @@ impl<H: IOBase> IOMedia for Xmla<H> {
                 return Ok(cached.field_len());
             }
         }
+        // Past the session's cache, which only a leaf ever fills.
+        if self.handle.is_container() {
+            return Ok(crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len());
+        }
+
         // One read answers both an empty document (no columns) and a held
         // one, so no size probe precedes it; while open, what it read is what
         // the field and the width are answered from until close.
@@ -349,6 +364,9 @@ impl<H: IOBase> IOMedia for Xmla<H> {
             if let Some(cached) = self.cached_schema.get() {
                 return Ok(cached.clone().with_name(options.name()));
             }
+        }
+        if self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let field = read_field(&self.handle, options)?;
         if self.opened {

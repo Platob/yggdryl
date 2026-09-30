@@ -198,6 +198,18 @@ impl IOBase for ZipNode {
         self.folder_pread()
     }
 
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
+        self.folder_pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.folder_read_all_bytes()
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.folder_read_range_bytes(offset, length)
+    }
+
     fn pwrite(&mut self, _offset: u64, bytes: &[u8]) -> Result<usize> {
         self.folder_pwrite(bytes.len())
     }

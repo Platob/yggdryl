@@ -526,7 +526,14 @@ impl<H: IOBase> IOBase for Buffered<H> {
     /// past what the cache knows, which is exactly where growth is decided.
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         let wanted_end = offset.saturating_add(length as u64);
-        let available = self.learned_size(wanted_end).saturating_sub(offset);
+        let size = self.learned_size(wanted_end);
+        // A container's size is zero and its stream is its leaves', which no
+        // page holds - asked only of a value that sized itself empty, so a
+        // leaf's read costs nothing more.
+        if size == 0 && self.handle.is_container() {
+            return self.handle.read_range_bytes(offset, length);
+        }
+        let available = size.saturating_sub(offset);
         let length = length.min(usize::try_from(available).unwrap_or(usize::MAX));
         let mut bytes = Vec::new();
         bytes

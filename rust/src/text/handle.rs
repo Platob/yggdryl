@@ -126,13 +126,28 @@ impl<H: IOBase> IOMedia for Text<H> {
         self
     }
 
+    /// Count the lines of the one object this wraps, or - over a container -
+    /// of every text leaf beneath it, each counted as the object it is, as
+    /// the record read reads them.
     fn row_size(&self) -> Result<u64> {
+        if self.handle.is_container() {
+            return crate::iomedia::container_row_size(&self.handle, &self.options.clone().into());
+        }
         super::arrow::row_size(&self.handle, &self.options)
     }
 
     fn column_size(&self) -> Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
+        }
+        // A container's rows carry the partition columns its layout spells
+        // beside the line's, as the record read of it lays them out.
+        if self.handle.is_container() {
+            return Ok(crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len());
         }
         Ok(self.options.source_field()?.field_len())
     }
@@ -143,7 +158,13 @@ impl<H: IOBase> IOMedia for Text<H> {
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let text = self.require_text_options(options)?;
-        text.field().map_or_else(|| text.source_field(), Ok)
+        if let Some(field) = text.field() {
+            return Ok(field);
+        }
+        if self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, options);
+        }
+        text.source_field()
     }
 
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {

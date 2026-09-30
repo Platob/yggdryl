@@ -204,6 +204,16 @@ fn listing_calls(criterion: &mut Criterion) {
     measured(&mut group, "partitions of the location", &calls, || {
         black_box(counted.partitions());
     });
+    // The lake's bytes are its hundred files, end to end: one stream on the
+    // handle, the listing and each file's one open the filesystem's own.
+    measured(&mut group, "stream over 100", &calls, || {
+        let drained: usize = counted
+            .pstream_bytes(0, yggdryl::DEFAULT_STREAM_BATCH_SIZE)
+            .expect("a stream")
+            .map(|chunk| chunk.expect("a chunk").len())
+            .sum();
+        black_box(drained);
+    });
     group.finish();
 }
 

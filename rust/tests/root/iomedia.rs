@@ -2533,7 +2533,7 @@ mod shape {
     use super::counting::Counting;
     use yggdryl::coding::Coding;
     use yggdryl::holder::Holder;
-    use yggdryl::{Codec, IOKind, MediaType, MimeType};
+    use yggdryl::{Codec, DataType, IOKind, MediaType, MimeType};
 
     /// A writable temporary root of this test's own.
     fn root(label: &str) -> std::path::PathBuf {
@@ -2749,6 +2749,109 @@ mod shape {
         let folder = yggdryl::local::LocalFolder::new(&lake).expect("the lake folder");
         assert_eq!(folder.row_size().expect("metadata row count"), 3);
         assert_eq!(folder.column_size().expect("metadata field width"), 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A lake of two Arrow stream leaves - two rows, then one - and a note
+    /// beside them that is no part of the table.
+    fn ipc_lake(path: &std::path::Path) -> std::path::PathBuf {
+        use std::sync::Arc;
+
+        use arrow_array::{Int64Array, RecordBatch};
+        use yggdryl::IOMedia as _;
+
+        let lake = path.join("lake");
+        for (name, values) in [("a.arrows", vec![1_i64, 2]), ("b.arrows", vec![3])] {
+            let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+                "id",
+                arrow_schema::DataType::Int64,
+                false,
+            )]));
+            let batch = RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values))])
+                .expect("an IPC fixture");
+            let mut leaf = yggdryl::local::LocalPath::new(lake.join(name)).expect("a lazy leaf");
+            let options = leaf.record_options().expect("IPC options");
+            leaf.overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .expect("a published IPC leaf");
+        }
+        std::fs::write(lake.join("notes.txt"), b"not a table row").unwrap();
+        lake
+    }
+
+    #[test]
+    fn an_ipc_wrapper_over_a_folder_answers_for_the_leaves_beneath_it() {
+        use yggdryl::IOMedia as _;
+
+        let path = root("ipc-wrapper");
+        let lake = ipc_lake(&path);
+
+        // Each leaf is its own stream: read as one run of bytes, the first
+        // stream's end would end the table at two rows.
+        let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
+        let ipc = yggdryl::ipc::Ipc::new(yggdryl::local::LocalFolder::new(&lake).unwrap());
+        assert_eq!(ipc.row_size().unwrap(), 3);
+        assert_eq!(ipc.column_size().unwrap(), 1);
+        let options = ipc.record_options().unwrap();
+        assert_eq!(
+            ipc.read_arrow_field(&options).unwrap(),
+            folder.read_arrow_field(&options).unwrap()
+        );
+        assert_eq!(ipc.row_size().unwrap(), folder.row_size().unwrap());
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_csv_wrapper_over_a_folder_answers_for_the_leaves_beneath_it() {
+        use yggdryl::IOMedia as _;
+        use yggdryl::csv::Csv;
+
+        let path = root("csv-wrapper");
+        let lake = path.join("lake");
+        std::fs::create_dir_all(&lake).unwrap();
+        std::fs::write(lake.join("a.csv"), b"id,symbol\n1,AAPL\n2,MSFT\n").unwrap();
+        std::fs::write(lake.join("b.csv"), b"id,symbol\n3,IBM\n").unwrap();
+        std::fs::write(lake.join("notes.txt"), b"not a table row").unwrap();
+
+        // Each leaf is its own document, header and all: read as one run of
+        // bytes, the second header would be a fourth record and would make
+        // `id` text.
+        let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
+        let csv = Csv::new(yggdryl::local::LocalFolder::new(&lake).unwrap());
+        assert_eq!(csv.row_size().unwrap(), 3);
+        assert_eq!(csv.column_size().unwrap(), 2);
+        let options = csv.record_options().unwrap();
+        let field = csv.read_arrow_field(&options).unwrap();
+        assert_eq!(field, folder.read_arrow_field(&options).unwrap());
+        assert_eq!(
+            field.get_field_by_path("id").map(|id| id.dtype().clone()),
+            Some(DataType::Int64),
+            "{field}"
+        );
+        assert_eq!(csv.row_size().unwrap(), folder.row_size().unwrap());
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_undeclared_read_of_a_folder_reads_the_table_beneath_it() {
+        use yggdryl::IOMedia as _;
+
+        let path = root("read-folder");
+        let lake = ipc_lake(&path);
+
+        // The folder declares a directory; what it holds is found beneath it.
+        let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
+        let rows: usize = folder
+            .read_arrow(None)
+            .unwrap()
+            .map(|serie| serie.unwrap().len())
+            .sum();
+        assert_eq!(rows, 3);
 
         let _ = std::fs::remove_dir_all(&path);
     }

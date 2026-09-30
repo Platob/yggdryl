@@ -819,6 +819,51 @@ fn a_composed_local_handle_reads_its_coded_document_through_the_coding() {
 }
 
 #[test]
+fn a_wrapper_over_a_folder_answers_for_every_document_beneath_it() {
+    // Built explicitly over a container, the wrapper reads no one leaf's
+    // bytes: its counts and its schema are those of every delimited leaf
+    // beneath it, each read as the document it is, header and all - the
+    // answer the folder gives as a holder. Read as one stream, `b.csv`'s
+    // header would be a row, and an `id` column holding the word `id` text.
+    let root = temporary("folder");
+    std::fs::create_dir_all(root.join("more")).expect("the folder is created");
+    std::fs::write(root.join("a.csv"), "id,symbol\n1,AAPL\n2,\n").expect("written");
+    std::fs::write(
+        root.join("more").join("b.csv"),
+        "id,symbol\n3,MSFT\n4,GOOG\n",
+    )
+    .expect("written");
+    std::fs::write(root.join("notes.txt"), "not,a\ntable,leaf\n").expect("written");
+    let inferred = DataType::from_str("struct<id: int64, symbol: utf8>").expect("inferred");
+
+    let holder = Holder::local(&root).expect("a location");
+    assert!(holder.is_container());
+    let options = holder.record_options().expect("the options");
+    assert!(matches!(options, RecordOptions::Csv(_)));
+    assert_eq!(holder.row_size().expect("the rows"), 4);
+    assert_eq!(holder.column_size().expect("the columns"), 2);
+    let field = holder.read_arrow_field(&options).expect("the field");
+    assert_eq!(field.dtype(), &inferred);
+
+    let folder = yggdryl::local::LocalFolder::new(&root).expect("a folder");
+    let media: [Box<dyn IOMedia>; 2] = [
+        Box::new(Csv::new(folder)),
+        Box::new(Csv::new(Holder::local(&root).expect("a location"))),
+    ];
+    for media in media {
+        assert_eq!(media.row_size().expect("the rows"), 4);
+        assert_eq!(media.column_size().expect("the columns"), 2);
+        let options = media.record_options().expect("the options");
+        assert_eq!(media.read_arrow_field(&options).expect("the field"), field);
+        assert_eq!(
+            rows_of(media.read_arrow_reader(&options).expect("a reader")),
+            four_rows()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn media_open_binds_the_csv_implementation_by_name() {
     for name in ["trades.csv", "trades.tsv", "trades.csv.zst"] {
         let mut media = Media::open(Holder::buffer(buffer(name)))

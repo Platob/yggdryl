@@ -19,10 +19,14 @@ use yggdryl::{
     StructType, Url,
 };
 
-/// What one fresh open of the workbook asks of the handle beneath the
-/// wrapper: one streamed copy of the package into a buffer of its own, and
-/// the three metadata questions that decide it cannot be reopened in place.
-const PACKAGE_READ: &str = "pstream_bytes=1 bound_location=3 media_type=1 parent=1";
+/// What a dimension read asks of the handle beneath the wrapper while no
+/// workbook is held: whether the handle is a container - whose leaves'
+/// workbooks answer instead, one by one - then one fresh open of the
+/// workbook, which is one streamed copy of the package into a buffer of its
+/// own and the three metadata questions that decide it cannot be reopened in
+/// place.
+const DIMENSION_READ: &str =
+    "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1";
 
 /// The trades table: a required `id` and a nullable `symbol`.
 fn trades() -> Field {
@@ -316,18 +320,23 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
         .unwrap();
 
     // Closed, every ask opens the package afresh.
-    costs("a closed schema", &calls, PACKAGE_READ, || {
+    costs("a closed schema", &calls, DIMENSION_READ, || {
         assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 2);
     });
-    costs("a closed schema again", &calls, PACKAGE_READ, || {
+    costs("a closed schema again", &calls, DIMENSION_READ, || {
         assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 2);
     });
 
     costs("open", &calls, "open=1", || media.open().unwrap());
     assert!(media.opened());
-    costs("the first schema while open", &calls, PACKAGE_READ, || {
-        assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 2);
-    });
+    costs(
+        "the first schema while open",
+        &calls,
+        DIMENSION_READ,
+        || {
+            assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 2);
+        },
+    );
     costs(
         "the schema, rows and width while open",
         &calls,
@@ -367,7 +376,7 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
 
     costs("close", &calls, "close=1", || media.close().unwrap());
     assert!(!media.opened());
-    costs("a schema after close", &calls, PACKAGE_READ, || {
+    costs("a schema after close", &calls, DIMENSION_READ, || {
         assert_eq!(media.read_arrow_field(&options).unwrap().field_len(), 2);
     });
 }
