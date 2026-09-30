@@ -1003,6 +1003,72 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.get_execunix(), Some(200));
 }
 
+/// A repeating group stating no occurrence states nothing: FIX's
+/// `NoPartySubIDs(802)=0` is the group absent. The message counting none,
+/// the message stating no count, and either read back from a table that
+/// stores an absent list as an empty one - PyIceberg's - and settled again
+/// from its content are one message: one tree of entries, one content code,
+/// one digest.
+#[test]
+fn a_group_stating_no_occurrence_states_nothing_parsed_or_read_back() {
+    let (registry, reader) = reader();
+    let absent = reader
+        .sole_line(b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|10=0|")
+        .unwrap();
+    let counted = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|802=0|10=0|",
+        )
+        .unwrap();
+    assert_eq!(counted.entries(), absent.entries());
+    assert_eq!(counted.get_currhashcode(), absent.get_currhashcode());
+    assert_eq!(counted.digest(), absent.digest());
+    assert_eq!(counted.into_bytes(b'|'), absent.into_bytes(b'|'));
+
+    // A row that does not record its content code is settled from what it
+    // states, so the fixed row is read without that column.
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
+        .expect("a currhashcode column");
+    let schema = StructType::from_fields(
+        fixed
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at != hashcode_at)
+            .map(|(_, column)| column.clone()),
+    )
+    .map(DataType::from)
+    .unwrap()
+    .required_field("fix");
+    let parties_at = schema.index_of("parties").expect("a parties column");
+    let DataType::Serie(party) = schema.fields()[parties_at].dtype() else {
+        panic!("parties is a repeating group");
+    };
+    let subids_at = party.index_of("partysubids").expect("a partysubids member");
+    let mut cells = absent
+        .into_row(&fixed)
+        .unwrap()
+        .as_sequence()
+        .unwrap()
+        .to_vec();
+    cells.remove(hashcode_at);
+    let written = Scalar::from_sequence(cells.clone());
+    let mut members = cells[parties_at].as_sequence().expect("the parties")[0]
+        .as_sequence()
+        .expect("one party")
+        .to_vec();
+    assert!(members[subids_at].is_null(), "the parse states no subgroup");
+    members[subids_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+    cells[parties_at] = Scalar::from_sequence([Scalar::from_sequence(members)]);
+    let read_back = Scalar::from_sequence(cells);
+    for (row, read) in [(written, "as written"), (read_back, "as read back")] {
+        let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+        assert_eq!(held.get_currhashcode(), absent.get_currhashcode(), "{read}");
+        assert_eq!(held.get_curruuid(), absent.get_curruuid(), "{read}");
+    }
+}
+
 #[test]
 fn a_data_field_that_is_not_text_is_held_as_the_decode_a_row_can_hold() {
     let (registry, reader) = reader();

@@ -1028,6 +1028,89 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
     }
 }
 
+/// `row` as a table storing a null list as an empty one - PyIceberg's -
+/// reads it back: every party stating no `NoPartySubIDs(802)` group reads
+/// back stating `[]`.
+fn with_subgroups_emptied(schema: &yggdryl::Field, row: &Scalar) -> Scalar {
+    let parties_at = schema.index_of("parties").expect("a parties column");
+    let DataType::Serie(party) = schema.fields()[parties_at].dtype() else {
+        panic!("parties is a repeating group");
+    };
+    let subids_at = party.index_of("partysubids").expect("a partysubids member");
+    let mut cells = row.as_sequence().expect("a row").to_vec();
+    if let Some(parties) = cells[parties_at].as_sequence() {
+        let parties: Vec<Scalar> = parties
+            .iter()
+            .map(|party| {
+                let mut members = party.as_sequence().expect("a party").to_vec();
+                if members[subids_at].is_null() {
+                    members[subids_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+                }
+                Scalar::from_sequence(members)
+            })
+            .collect();
+        cells[parties_at] = Scalar::from_sequence(parties);
+    }
+    Scalar::from_sequence(cells)
+}
+
+#[test]
+fn lifecycle_folds_the_same_repeat_deliveries_when_a_table_reads_an_absent_group_back_empty() {
+    // The bridge logs one execution report at two hops of one conversation:
+    // twice as the session event its row header brackets - folded before the
+    // walk, so settled again from its content - and once framed by the next
+    // session, whose row keeps the content code the parse recorded. The walk
+    // folds the three into one only where the settled code is the recorded
+    // one. A table storing a null list as an empty one reads each party's
+    // absent `NoPartySubIDs(802)` back as `[]`; a group stating no
+    // occurrence states nothing, so the walk over the rows read back folds
+    // exactly what the walk over the rows written folds.
+    let codec = codec();
+    let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
+        .with_media_type(
+            yggdryl::Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+    let mut options = yggdryl::text::TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(yggdryl::Timezone::UTC);
+    options.start_rownum = Some(1);
+    let messages: Vec<FixMsg> = yggdryl::text::read_text_lines(&source, &options)
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .filter_map(|line| codec.parse_text_line(&line).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .collect();
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let written: Vec<Scalar> = messages
+        .iter()
+        .map(|message| message.into_row(&schema).unwrap())
+        .collect();
+    let read_back: Vec<Scalar> = written
+        .iter()
+        .map(|row| with_subgroups_emptied(&schema, row))
+        .collect();
+    assert_ne!(
+        read_back, written,
+        "the capture states parties with no subgroup"
+    );
+    let walk = |rows: Vec<Scalar>| -> Vec<(yggdryl::Uuid, u64)> {
+        let batch = lay_out(&schema, &Scalar::from_sequence(rows));
+        let rows = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        codec
+            .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+            .map(|message| {
+                let message = message.expect("a walked message");
+                (message.get_curruuid(), message.get_currhashcode())
+            })
+            .collect()
+    };
+    assert_eq!(walk(read_back), walk(written));
+}
+
 #[test]
 fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);

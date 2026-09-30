@@ -461,12 +461,19 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
         assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
         // The counter describes the arrival: the group entry carries the
         // occurrences it holds, whatever length the wire claimed, so a
-        // miscount, a word and an overflow all re-emit as what came.
+        // miscount, a word and an overflow all re-emit as what came - and a
+        // group holding none states nothing, a count of zero being the
+        // group absent.
         let held = i32::try_from(held).expect("a small count");
         assert_eq!(message.by_tag(453).unwrap(), Scalar::from(held), "{wire}");
+        let group = if held == 0 {
+            String::new()
+        } else {
+            format!("453={held}|{members}")
+        };
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
-            format!("8=FIX.4.4|35=D|453={held}|{members}55=AAPL|59=0|10=0|"),
+            format!("8=FIX.4.4|35=D|{group}55=AAPL|59=0|10=0|"),
             "{wire}"
         );
     }

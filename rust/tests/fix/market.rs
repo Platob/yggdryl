@@ -2816,6 +2816,28 @@ mod internal {
     }
 
     #[test]
+    fn a_book_message_counting_no_entries_states_its_scope_empty_without_a_warning() {
+        // `NoMDEntries(268)=0` is no entry of the message - a count of zero
+        // states nothing - yet the row holding the group states the scope
+        // empty: an incremental refresh counting none changes nothing and
+        // says nothing, while one missing its group is excluded aloud. No
+        // other test raises this warning, so its count is this test's.
+        const MISSING: &str = "FIX incremental refresh excluded: it states no NoMDEntries group";
+        let before = count(SITE, MISSING, "NoMDEntries");
+        let leaves = message(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
+            .into_market_data()
+            .unwrap();
+        assert!(leaves.is_empty(), "no change");
+        assert_eq!(count(SITE, MISSING, "NoMDEntries"), before);
+        let leaves = warns(MISSING, "NoMDEntries", || {
+            message(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|10=0|")
+                .into_market_data()
+                .unwrap()
+        });
+        assert!(leaves.is_empty(), "excluded");
+    }
+
+    #[test]
     fn a_price_no_decimal_holds_is_warned_whether_it_excludes_or_is_null() {
         warns(
             "FIX book entry excluded: its MDEntryPx is no exact decimal, and a new entry cannot rest unpriced",

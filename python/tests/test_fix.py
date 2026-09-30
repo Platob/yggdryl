@@ -994,6 +994,41 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed_batch)
 
 
+def test_a_group_stating_no_occurrence_states_nothing_parsed_or_read_back(
+    seed_batch: FixRegistry,
+) -> None:
+    """A count of zero is the group absent, however the row holding it was stored.
+
+    PyIceberg reads a null list of structs back as ``[]``: a row read back and
+    settled again from its content is the message the parse wrote.
+    """
+    codec = _fixed_batch(seed_batch)
+    party = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|"
+    absent = _one(codec, party + b"10=0|")
+    counted = _one(codec, party + b"802=0|10=0|")
+    assert counted.currhashcode == absent.currhashcode
+    assert counted.digest() == absent.digest()
+    assert counted.into_text("|") == absent.into_text("|")
+
+    # A row that does not record its content code is settled from what it states.
+    wide = fix_schema(seed_batch)
+    narrow = Field(
+        "fix",
+        DataType.from_fields([column for column in wide if column.name != "currhashcode"]),
+        nullable=False,
+    )
+    written = absent.into_row(narrow).as_py()
+    parties = narrow.index_of("parties")
+    subids = narrow.field_by_path("parties").dtype.field_at(0).index_of("partysubids")
+    assert written[parties][0][subids] is None, "the parse states no subgroup"
+    read_back = copy.deepcopy(written)
+    read_back[parties][0][subids] = []
+    for row in (written, read_back):
+        held = FixMsg.from_row(narrow, row, seed_batch)
+        assert held.currhashcode == absent.currhashcode
+        assert held.curruuid == absent.curruuid
+
+
 def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry) -> None:
     """``lifecycle`` over batches: the same schema in and out, nothing reparsed."""
     codec = _fixed_batch(seed_batch)

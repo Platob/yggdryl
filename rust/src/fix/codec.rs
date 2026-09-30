@@ -2496,10 +2496,12 @@ impl FixCodec {
     ///
     /// Exact republications and flagged FIX retransmissions are removed by a
     /// delivery set over session, sequence, original time and the recorded
-    /// canonical content code. That code survives a semantic row round trip,
-    /// so this walk and [`Self::lifecycle_arrow_reader`] remove the same
-    /// deliveries. A row without a complete session header keeps the stricter
-    /// event identity, capture context, direction and sequence in its key. The
+    /// canonical content code. That code survives a semantic row round trip -
+    /// a group read back empty where the parse stated none included, since a
+    /// group holding no occurrence states nothing - so this walk and
+    /// [`Self::lifecycle_arrow_reader`] remove the same deliveries. A row
+    /// without a complete session header keeps the stricter event identity,
+    /// capture context, direction and sequence in its key. The
     /// set is bounded by the number of distinct deliveries in the finite
     /// capture. Distinct deliveries with equal business content remain
     /// distinct. Missing instrument codes may be learned from earlier messages

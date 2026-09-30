@@ -257,7 +257,7 @@ mod residual {
     }
 
     #[test]
-    fn an_empty_group_without_its_projection_stays_whole_in_the_residual() {
+    fn an_empty_group_states_nothing_with_or_without_its_projection() {
         let registry = super::committed_registry();
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         // Use the dictionary's counter scalar and the fixed schema's group so
@@ -275,14 +275,14 @@ mod residual {
         )
         .expect("an empty party group");
 
-        // The full group projection owns the counter entry, including the empty
-        // occurrence list, so no residual is needed.
+        // A group of no occurrence states nothing - a count of zero is the
+        // group absent - so the message has no entry for it and no row needs
+        // the arrival record: the full projection holds the empty occurrence
+        // list, and a projection dropping only `parties` its counter scalar.
+        assert!(message.entries().is_empty());
         let full = message.into_row(&schema).expect("the full row");
         assert!(residual_keys(&full, &schema).is_empty());
 
-        // Dropping only `parties` leaves its counter scalar. That scalar cannot
-        // represent the group shape, even at zero occurrences, so the complete
-        // counter entry remains in the arrival record.
         let narrow = StructType::from_fields(
             schema
                 .fields()
@@ -294,12 +294,13 @@ mod residual {
         .expect("the narrowed row")
         .required_field("fix");
         let row = message.into_row(&narrow).expect("the narrow row");
-        assert_eq!(residual_keys(&row, &narrow), ["453:parties"]);
-        // A group of no occurrence states its count and nothing under it.
-        assert_eq!(residual_text(&row, &narrow, "453:parties"), "0");
+        assert!(residual_keys(&row, &narrow).is_empty());
 
+        // The counter left alone still counts none, and states no group.
         let restored = FixMsg::from_row(registry, &narrow, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(0));
+        assert!(restored.entries().is_empty());
+        assert_eq!(restored.digest(), message.digest());
         assert_eq!(restored.into_row(&narrow).expect("the fixed point"), row);
     }
 

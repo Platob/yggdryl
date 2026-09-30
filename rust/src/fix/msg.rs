@@ -2834,10 +2834,11 @@ impl FixMsg {
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
         // differently - a group one reading declares whole and another
-        // states member by member is one group, and a child stating null
-        // says nothing at all - so a code taken off the row's storage would
-        // make a message read back out of a row a different message. The
-        // entries are what the message says, and they are what this feeds.
+        // states member by member is one group, and a child stating null or
+        // a group holding no occurrence says nothing at all - so a code taken
+        // off the row's storage would make a message read back out of a row
+        // a different message. The entries are what the message says, and
+        // they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
     }
@@ -3021,7 +3022,8 @@ impl FixMsg {
 
     /// The row read as a tree: one entry per child it states, a group's
     /// occurrences and a component's members nested under the entry that
-    /// heads them; nothing for a child stating null.
+    /// heads them; nothing for a child stating null or a group holding no
+    /// occurrence, which states nothing either.
     ///
     /// Derived on the first ask and kept until a write, so a consumer
     /// walking the message twice pays once and a stream that never asks
@@ -4177,25 +4179,31 @@ fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
 /// child through [`entry_of`], except the counter scalar beside the group
 /// it counts - at the root, in a component, in an occurrence alike - since
 /// a group's count is the group entry's own value and the counter child
-/// states nothing the entries do not already.
+/// states nothing the entries do not already, and a counter counting none
+/// wherever it stands: a count of zero states no group, as a group holding
+/// no occurrence does, so a row whose projection left the counter without
+/// its group reads as the row that held both.
 fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
     let counters: Vec<i32> = fields
         .iter()
         .filter(|child| child.dtype().is_nested())
         .filter_map(|child| super::schema::tag_and_counter(registry, child).1)
         .collect();
-    let counted = |child: &Field| {
-        !counters.is_empty()
+    let counted = |child: &Field, value: &Scalar| {
+        let none = value.as_i128() == Some(0);
+        (none || !counters.is_empty())
             && !child.dtype().is_nested()
             && super::schema::tag_and_counter(registry, child)
                 .0
-                .is_some_and(|tag| counters.contains(&tag))
+                .is_some_and(|tag| {
+                    counters.contains(&tag) || none && registry.get_group_by_tag(tag).is_some()
+                })
     };
     let mut entries = Vec::new();
     for entry in fields
         .iter()
         .zip(values)
-        .filter(|(child, _)| !counted(child))
+        .filter(|(child, value)| !counted(child, value))
         .filter_map(|(child, value)| entry_of(registry, child, value))
     {
         // Sized once, on the first entry, for every child there is: a level
@@ -4212,7 +4220,15 @@ fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Ve
 /// One row child as the entry it is: a scalar as one stated entry, a
 /// repeating group as its counter entry with an entry per occurrence and
 /// the occurrence's members under each, a component as an entry heading
-/// its members; nothing for a child stating null.
+/// its members; nothing for a child stating null, and nothing for a group
+/// holding no occurrence.
+///
+/// A count of zero states nothing - FIX's `NoPartySubIDs(802)=0` is the
+/// group absent - and a table may store an absent list as an empty one:
+/// PyIceberg reads a null list of structs back as `[]`. Were the empty
+/// group an entry, a row read back and settled again would feed its content
+/// code, its digest and the delivery a lifecycle folds it by differently
+/// from the parse that wrote it.
 fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<FixEntry> {
     if value.is_null() {
         return None;
@@ -4221,7 +4237,9 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let tag = tag.unwrap_or(0);
     match field.dtype() {
         DataType::Serie(item) | DataType::LargeSerie(item) => {
-            let occurrences = value.as_serie()?;
+            let occurrences = value
+                .as_serie()
+                .filter(|occurrences| !occurrences.is_empty())?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.
             let item_facts = super::schema::tag_and_counter(registry, item);
