@@ -37,5 +37,18 @@ mimalloc = { version = "0.1", default-features = false }
 # emitted where the work happens and reaches the handler the caller configured.
 pyo3-log = "0.13.4"
 
+# mimalloc compiles its five thread-locals under the initial-exec TLS model,
+# which a module opened by `dlopen` may use only where the loader keeps
+# static TLS to spare. glibc does; musl reserves none, so the 0.1.17 and
+# 0.1.18 musllinux wheels were refused at import ("initial-exec TLS
+# resolves to dynamic definition"). On musl the five take the local-dynamic
+# model - a `__tls_get_addr` call in each function that reaches them - and
+# the feature unifies with the declaration above; every other target builds
+# exactly as it did.
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1", default-features = false, features = [
+    "local_dynamic_tls",
+] }
+
 [lints]
 workspace = true
