@@ -981,12 +981,13 @@ mod roles {
         store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
         let lake = folder(&store, "lake/");
 
-        // A folder of tabular leaves is tabular; it holds no bytes of its own.
+        // A folder of tabular leaves is tabular; it holds no bytes of its own,
+        // and its whole read is the stream of the objects beneath it.
         assert!(lake.is_tabular());
         assert!(!lake.is_atomic());
         assert!(lake.is_io());
         assert_eq!(lake.size(), 0);
-        assert_eq!(lake.read_all_bytes().expect("no bytes").len(), 0);
+        assert_eq!(lake.read_all_bytes().expect("its leaves"), b"PAR1");
         // Writing bytes to a container is refused rather than silently accepted.
         let mut lake = lake;
         let error = lake.pwrite(0, b"x").expect_err("a refusal");

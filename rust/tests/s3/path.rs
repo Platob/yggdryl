@@ -104,6 +104,99 @@ mod accounting {
         assert_eq!(store.request_count(), 1, "an unshared name settles in one");
     }
 
+    /// Two objects under `logs/`, one a level deeper and one without a final
+    /// newline, beside a hidden one and one outside the prefix.
+    fn logs(store: &crate::server::FakeS3) {
+        store.put(BUCKET, "logs/.hidden", b"h\n");
+        store.put(BUCKET, "logs/a.log", b"a1\na2");
+        store.put(BUCKET, "logs/sub/b.log", b"b1\n");
+        store.put(BUCKET, "other.log", b"o\n");
+    }
+
+    /// The objects a stream from `handle` reads, and what reading them cost.
+    fn streamed(store: &crate::server::FakeS3, handle: &dyn IOBase) -> (Vec<u8>, Vec<String>) {
+        store.clear_requests();
+        let bytes = handle
+            .pstream_bytes(0, 3)
+            .expect("a stream")
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the stream")
+            .concat();
+        let asked = store
+            .requests()
+            .into_iter()
+            .map(|request| match request.key {
+                Some(key) => format!("{} {key}", request.method),
+                None => format!("{} listing", request.method),
+            })
+            .collect();
+        (bytes, asked)
+    }
+
+    #[test]
+    fn a_location_spelled_as_a_container_streams_its_objects() {
+        let store = store();
+        logs(&store);
+
+        // The slash settles the role without a probe, so the stream costs the
+        // one listing and one `GET` per object, and never a `HEAD`.
+        let (bytes, asked) = streamed(&store, &path(&store, "logs/"));
+        assert_eq!(bytes, b"a1\na2b1\n");
+        assert_eq!(
+            asked,
+            ["GET listing", "GET logs/a.log", "GET logs/sub/b.log"]
+        );
+
+        // A glob says it too: one segment matches one level and does not
+        // descend, and `**` does.
+        let (bytes, asked) = streamed(&store, &path(&store, "logs/*.log"));
+        assert_eq!(bytes, b"a1\na2");
+        assert_eq!(asked, ["GET listing", "GET logs/a.log"]);
+        let (bytes, asked) = streamed(&store, &path(&store, "logs/**/*.log"));
+        assert_eq!(bytes, b"a1\na2b1\n");
+        assert_eq!(
+            asked,
+            ["GET listing", "GET logs/a.log", "GET logs/sub/b.log"]
+        );
+
+        // Reading the whole location and a range of it read the same stream.
+        let location = path(&store, "logs/");
+        assert_eq!(
+            location.read_all_bytes().expect("a whole read"),
+            b"a1\na2b1\n"
+        );
+        assert_eq!(
+            location.read_range_bytes(3, 3).expect("a ranged read"),
+            b"a2b"
+        );
+        assert_eq!(location.size(), 0, "a prefix holds no bytes of its own");
+    }
+
+    #[test]
+    fn a_plain_name_that_turns_out_to_be_a_prefix_streams_its_objects() {
+        let store = store();
+        logs(&store);
+
+        // The name alone does not say, so one probe settles it first.
+        let (bytes, asked) = streamed(&store, &path(&store, "logs"));
+        assert_eq!(bytes, b"a1\na2b1\n");
+        assert_eq!(
+            asked,
+            [
+                "GET listing",
+                "GET listing",
+                "GET logs/a.log",
+                "GET logs/sub/b.log"
+            ]
+        );
+
+        // And a name that turns out to be an object streams that object, for
+        // the same probe.
+        let (bytes, asked) = streamed(&store, &path(&store, "logs/a.log"));
+        assert_eq!(bytes, b"a1\na2");
+        assert_eq!(asked, ["GET listing", "GET logs/a.log"]);
+    }
+
     #[test]
     fn naming_a_child_and_asking_whether_a_location_is_open_cost_nothing() {
         let store = store();

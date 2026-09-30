@@ -107,6 +107,9 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
 | `trades.log` | `Text(LocalPath)` |
 | `trades.json`, `trades` | `LocalPath` |
 | `trades.parquet.gz` | `LocalPath`: Parquet compresses internally, so the writer refuses the name |
+| `logs/` | `LocalPath`: a folder names no encoding, so its records are found beneath it |
+| `logs/*.log.gz` | `Text(LocalPath)`: a pattern's suffix names each leaf's encoding, and each leaf takes off its own coding, so none goes over the stream of them |
+| `lake/**/*.parquet` | `Parquet(LocalPath)`, reading the `.parquet` leaves the pattern matches as one table |
 
 === "Rust"
 
@@ -215,7 +218,7 @@ trait IOFile   { fn file_url(&self) -> &Url;   fn file_exists(&self) -> bool;
                  fn clear_file(&mut self) -> Result<()>;  fn delete_file(&mut self) -> Result<()>; }
 ```
 
-Everything else is pre-implemented: a folder reads nothing, refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking.
+Everything else is pre-implemented: a folder holds no bytes of its own - `pread` reads nothing and `size` is zero - [streams its leaves](#streams-and-cursors), refuses byte writes, is created by `truncate(0)` and answers `inode/directory`; a file lists nothing and refuses a child; a path answers `Directory`, `File` or `Unknown` by looking.
 
 === "Rust"
 
@@ -229,7 +232,8 @@ Everything else is pre-implemented: a folder reads nothing, refuses byte writes,
     let _ = std::fs::remove_dir_all(&path);
     let mut folder = local::LocalFolder::new(&path)?;
 
-    // A container holds no bytes: reads are empty, byte writes are refused.
+    // A container holds no bytes of its own: a positional read is empty,
+    // byte writes are refused, and an empty one streams nothing.
     let mut probe = [0_u8; 4];
     assert_eq!(folder.pread(0, &mut probe)?, 0);
     assert_eq!(folder.size(), 0);
@@ -269,7 +273,8 @@ Everything else is pre-implemented: a folder reads nothing, refuses byte writes,
     path = root / "yggdryl-docs-io-folder"
     folder = LocalFolder(path)
 
-    # A container holds no bytes: reads are empty, byte writes are refused.
+    # A container holds no bytes of its own; an empty one streams nothing, and
+    # byte writes are refused.
     assert folder.read_bytes() == b""
     assert folder.size == 0
     try:
@@ -345,7 +350,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Bytes
 
-A backend implements the methods below; every other byte operation derives from `pread` and `pwrite`. Offsets are explicit, so two readers never interfere and a footer-first container reads its index without seeking.
+A backend implements the methods below; every other byte operation derives from `pread` and `pwrite` - save a container's stream, which is [its leaves'](#streams-and-cursors). Offsets are explicit, so two readers never interfere and a footer-first container reads its index without seeking.
 
 ```text
 fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize>   // short only at end of value; 0 past it
@@ -717,6 +722,95 @@ Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`
     const first = cursor.streamBytes(2).next()
     assert.equal(first.value.toString(), '12')
     assert.equal(cursor.tell(), 3)
+    ```
+
+A container streams its leaves. A folder, a location ending in `/` and a glob such as `logs/*.log` yield the bytes of every leaf beneath them - recursively under a folder, what the pattern matches under a glob, containers left out, and so is every private name, one starting with a dot such as `.venv` or `.config`, with the whole tree beneath it - one after another in the backend's listing order, each leaf's content coding taken off, so a `.gz` leaf contributes its text. `position` counts across the leaves, `read_all_bytes` and `read_range_bytes` read the same stream, and each leaf is opened only when the stream reaches it; the listing starts when the stream is built. Nothing separates two leaves, so a line-oriented reader reads them as objects instead: [plain text](../media/index.md#plain-text) and every record read go leaf by leaf. A container still holds no positional bytes - `pread`, and so a cursor's `read`, reads nothing and `size` is zero - and a digest, a copy or a coding transfer refuses it with `NotAtomic`, because a listing order is the backend's, not the value's. A `codec` property stated over a container spelling composes nothing, since each leaf takes off the coding its own name declares.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::{Codec, DigestAlgorithm, IOBase};
+
+    let root = yggdryl::local::LocalFolder::temporary()?.path()?
+        .join(format!("yggdryl-docs-io-leaves-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("sub"))?;
+    std::fs::write(root.join("a.log"), b"a1\n")?;
+    std::fs::write(root.join("sub/b.log.gz"), Codec::Gzip.dump(b"b1\n")?)?;
+    std::fs::write(root.join(".hidden"), b"left out\n")?;
+
+    // A folder streams every leaf beneath it, each decoded by its own coding.
+    let folder = Holder::folder(&root)?;
+    assert_eq!(folder.read_all_bytes()?, b"a1\nb1\n");
+
+    // A glob streams what it matches, and a position counts across leaves.
+    let logs = Holder::local(root.join("*.log"))?;
+    let chunks = logs.pstream_bytes(1, 2)?.collect::<yggdryl::Result<Vec<_>>>()?;
+    assert_eq!(chunks, [b"1\n".to_vec()]);
+
+    // No positional bytes, and no digest of a listing's order.
+    assert_eq!(folder.size(), 0);
+    assert!(folder.read_digest(DigestAlgorithm::Xxh3).is_err());
+
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    (root / "sub").mkdir()
+    (root / "a.log").write_bytes(b"a1\n")
+    (root / "sub" / "b.log.gz").write_bytes(gzip.compress(b"b1\n"))
+    (root / ".hidden").write_bytes(b"left out\n")
+
+    # A folder streams every leaf beneath it, each decoded by its own coding.
+    folder = IOBase(root)
+    assert folder.read_bytes() == b"a1\nb1\n"
+
+    # A glob streams what it matches, and a position counts across leaves.
+    logs = IOBase(root / "*.log")
+    assert list(logs.pstream_bytes(1, 2)) == [b"1\n"]
+
+    # No positional bytes of its own.
+    assert folder.size == 0
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const zlib = require('node:zlib')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    fs.mkdirSync(path.join(root, 'sub'))
+    fs.writeFileSync(path.join(root, 'a.log'), 'a1\n')
+    fs.writeFileSync(path.join(root, 'sub', 'b.log.gz'), zlib.gzipSync('b1\n'))
+    fs.writeFileSync(path.join(root, '.hidden'), 'left out\n')
+
+    // A folder streams every leaf beneath it, each decoded by its own coding.
+    const folder = new IOBase(root)
+    assert.equal(folder.readBytes().toString(), 'a1\nb1\n')
+
+    // A glob streams what it matches, and a position counts across leaves.
+    const logs = new IOBase(path.join(root, '*.log'))
+    assert.deepEqual([...logs.pstreamBytes(1, 2)].map((part) => part.toString()), ['1\n'])
+
+    // No positional bytes of its own.
+    assert.equal(folder.size, 0)
+
+    fs.rmSync(root, { recursive: true, force: true })
     ```
 
 `tell` and `seek` move a cursor; reads and writes through it advance it, and `std::io::Read` rides the same position.
@@ -2788,7 +2882,7 @@ assert_eq!(cached.read_range_bytes(0, 16)?.len(), 16);
 assert!(calls.snapshot().is_empty());
 ```
 
-A child from `parent` or `child_by_path` is the backend's own, not another `Counted`. [ZIP](#zip) counts itself instead, through `ZipArchive::handle_reads` / `handle_writes`. Requests a backend makes to the network per call are that backend's own counter - see [Object stores](#object-stores).
+A child from `parent` or `child_by_path` is the backend's own, not another `Counted`, and so is a leaf a container's stream opens: a `Counted` folder tallies its stream as `pstream_bytes=1`, while the listing and each leaf's one sequential read land on the backend's own counter - a filesystem's `list=1`, then per file the `file_info` that tells it from a directory and one `open_input_stream`; a store's listing, which already states what each entry is, and one `GET` per object. [ZIP](#zip) counts itself instead, through `ZipArchive::handle_reads` / `handle_writes`. Requests a backend makes to the network per call are that backend's own counter - see [Object stores](#object-stores).
 
 ### Call counts performance
 
@@ -2934,10 +3028,11 @@ LocalPath::new(path).as_directory() / as_file()    // state the role before anyt
     std::fs::create_dir_all(root.join("nested"))?;
     std::fs::write(root.join("a.bin"), b"a")?;
 
-    // A container: it holds no bytes of its own, only children.
+    // A container: no bytes of its own, only children - and it streams its leaves.
     let folder = LocalFolder::new(&root)?;
     assert_eq!(folder.size(), 0);
     assert_eq!(folder.ls(false, false).count(), 2);
+    assert_eq!(folder.read_all_bytes()?, b"a");
 
     // A leaf: bytes addressed by offset.
     let leaf = LocalFile::new(root.join("a.bin"))?;
@@ -2962,10 +3057,11 @@ LocalPath::new(path).as_directory() / as_file()    // state the role before anyt
     (root / "nested").mkdir()
     (root / "a.bin").write_bytes(b"a")
 
-    # A container: it holds no bytes of its own, only children.
+    # A container: no bytes of its own, only children - and it streams its leaves.
     folder = LocalFolder(root)
     assert folder.size == 0
     assert len(list(folder.ls())) == 2
+    assert folder.read_bytes() == b"a"
 
     # A leaf: bytes addressed by offset.
     leaf = LocalFile(root / "a.bin")
@@ -3748,6 +3844,7 @@ The request count is the contract, asserted by tests.
 | an append | one `GET` and one write; no `GET` while open | the same | the same |
 | a removal | one `DELETE`, no probe | one `objects.delete` | one `DELETE` |
 | a listing, one level or a subtree | one request per 1000 entries | the same | the same |
+| the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
 A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/index.md#iceberg) scan reads each data file with one `GET`.
@@ -5768,6 +5865,7 @@ assert_eq!(root.archive().handle_reads() - quiet, 1);
 | --- | --- | --- |
 | Mount and parse the directory | 2 (3 past the 64 KiB tail) | 0 |
 | Listing, glob, `size`, `partitions`, member metadata, restart map | 0 | 0 |
+| The stream of a folder of members | each member's own whole read - 1 per stored member, empty ones included - and 0 for a member the position passes by its indexed size | 0 |
 | Positional or whole read of a stored member, warm | 1 | 0 |
 | Positional read of a compressed member, warm | 1 per encoded window it decodes | 0 |
 | First seek into a mapped member, proving its map | +1 | 0 |

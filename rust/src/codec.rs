@@ -309,6 +309,34 @@ impl Codec {
         }
     }
 
+    /// `source` under the decoder of every coding in `codings` - a media
+    /// type's encodings, in the order they were applied, so the last is
+    /// taken off first: what reading the content those encodings declare
+    /// takes.
+    pub(crate) fn decoding<'source>(
+        codings: &[MimeType],
+        source: impl Read + 'source,
+    ) -> Box<dyn Read + 'source> {
+        let mut reader: Box<dyn Read + 'source> = Box::new(source);
+        for coding in codings.iter().rev() {
+            reader = Self::from_mime_type(coding).reader(reader);
+        }
+        reader
+    }
+
+    /// [`Self::decoding`], with the `Send` every decoder already has made
+    /// visible in the type.
+    pub(crate) fn decoding_send<'source>(
+        codings: &[MimeType],
+        source: impl Read + Send + 'source,
+    ) -> Box<dyn Read + Send + 'source> {
+        let mut reader: Box<dyn Read + Send + 'source> = Box::new(source);
+        for coding in codings.iter().rev() {
+            reader = Self::from_mime_type(coding).reader_send(reader);
+        }
+        reader
+    }
+
     /// [`Self::reader`], with the `Send` every decoder already has made
     /// visible in the type, so a decoded stream can cross a thread boundary.
     pub(crate) fn reader_send<'source, R: Read + Send + 'source>(

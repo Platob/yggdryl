@@ -444,6 +444,45 @@ mod iceberg {
     }
 
     #[test]
+    fn a_table_streams_none_of_the_files_that_store_it() {
+        use yggdryl::{Error, IOBase, IOKind};
+
+        let path = root("no-bytes");
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_append(rows(&[1, 2], &["AAPL", "MSFT"], &["XNAS", "XNAS"]))
+            .unwrap();
+
+        // The folder beneath streams its metadata, manifests and data files
+        // end to end, as every folder does; the table is read as rows, and
+        // those files are its storage rather than its bytes.
+        assert!(
+            !LocalFolder::new(&path)
+                .unwrap()
+                .read_all_bytes()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(table.kind(), IOKind::Table);
+        assert!(table.pstream_bytes(0, 4096).unwrap().next().is_none());
+        assert!(table.pstream_bytes(16, 4096).unwrap().next().is_none());
+        assert!(table.read_all_bytes().unwrap().is_empty());
+        assert_eq!(table.size(), 0);
+        let refused = table.pstream_bytes(0, 0).unwrap_err();
+        assert!(
+            matches!(&refused, Error::Io(error) if error.kind() == std::io::ErrorKind::InvalidInput),
+            "{refused:?}"
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
     fn batches_changing_layout_mid_commit_each_cast_to_the_table_schema() {
         let path = root("table_layouts");
         let schema = schema();

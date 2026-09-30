@@ -217,7 +217,7 @@ impl<H: IOBase> IOBase for Hashed<H> {
         // Before the state, not after: a container's running state is live and
         // empty, and its size is zero, so it would otherwise answer the digest
         // of no bytes instead of naming the kind.
-        super::stream::reject_container(&self.handle)?;
+        crate::iobase::reject_container(&self.handle, "digest")?;
         let mut running = self.state();
         if let Some(digester) = &running.digester {
             if running.covered == self.handle.size() {

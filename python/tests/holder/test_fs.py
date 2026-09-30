@@ -1073,10 +1073,22 @@ def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
     with pytest.raises(IsADirectoryError):
         IOBase.from_fs(strict, "nonempty").delete_file()
 
+    # A directory's bytes are its files', end to end: an empty one reads as
+    # none, a populated one as what its files hold.
+    assert IOBase.from_fs(filesystem, empty.as_posix()).read_bytes() == b""
+    assert IOBase.from_fs(filesystem, empty.as_posix()).read_range_bytes(0, 1) == b""
+    leaves = tmp_path / "leaves"
+    leaves.mkdir()
+    (leaves / "a.bin").write_bytes(b"a")
+    (leaves / "b.bin").write_bytes(b"b")
+    assert IOBase.from_fs(filesystem, leaves.as_posix()).read_bytes() == b"ab"
+    assert list(IOBase.from_fs(filesystem, leaves.as_posix()).pstream_bytes()) == [
+        b"ab"
+    ]
+
+    # The raw filesystem verbs still address one file, and refuse a directory.
     for operation in (
         lambda: IOBase.from_fs(filesystem, empty.as_posix()).delete_file(),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).read_bytes(),
-        lambda: IOBase.from_fs(filesystem, empty.as_posix()).read_range_bytes(0, 1),
         lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_file(),
         lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_stream(
             compression=None

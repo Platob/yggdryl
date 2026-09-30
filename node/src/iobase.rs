@@ -211,9 +211,8 @@ fn location_target(
 /// Build a handle for the location `value` names, in the role it is.
 ///
 /// What [`folder_from_input`] is for a container, this is for a leaf: a
-/// `.cfb` is a file, and a location held as a container reads no bytes at
-/// all, so a reader handed one answers an empty document rather than a
-/// refusal.
+/// `.cfb` is a file, and a location held as a container reads as its leaves
+/// end to end, which is no one document.
 pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
     match location_target(value)? {
         Either::A(handle) => handle.rebuilt().map(|held| held.inner),
@@ -1137,10 +1136,14 @@ impl JsIOBase {
 
     /// Stream bounded byte arrays from an explicit position.
     ///
-    /// Construction performs no read. Each `next()` asks the Rust core for
-    /// exactly one bounded chunk, and the iterator keeps this native handle
-    /// alive for as long as JavaScript keeps the stream. `position` defaults
-    /// to zero and `batchSize` to 64 KiB.
+    /// Construction reads no byte: it asks the handle whether it is a
+    /// container, and a container starts its listing. Each `next()` asks the
+    /// Rust core for exactly one bounded chunk, and the iterator keeps this
+    /// native handle alive for as long as JavaScript keeps the stream.
+    /// `position` defaults to zero and `batchSize` to 64 KiB. A container - a
+    /// folder, a path ending in `/`, a glob - streams its leaves end to end,
+    /// each leaf's coding taken off, through one core stream the iterator
+    /// holds, opening each leaf as it reaches it.
     #[napi]
     pub fn pstream_bytes(
         &self,
@@ -1148,12 +1151,25 @@ impl JsIOBase {
         position: Option<f64>,
         batch_size: Option<f64>,
     ) -> Result<JsByteIterator> {
-        Ok(JsByteIterator {
-            source: ByteIteratorSource::Handle {
+        let position = position.map_or(Ok(0), |value| exact_u64(value, "position"))?;
+        let batch_size = byte_stream_batch_size(batch_size)?;
+        // A container streams its leaves: the core's one stream owns what it
+        // reads, so the iterator holds it rather than listing again per chunk.
+        let source = if reference.inner.is_container() {
+            ByteIteratorSource::Stream {
+                stream: yggdryl::ByteStream::from_container(&reference.inner, position, batch_size)
+                    .map_err(napi_error)?,
+                cursor: None,
+            }
+        } else {
+            ByteIteratorSource::Handle {
                 handle: reference,
-                position: position.map_or(Ok(0), |value| exact_u64(value, "position"))?,
-            },
-            batch_size: byte_stream_batch_size(batch_size)?,
+                position,
+            }
+        };
+        Ok(JsByteIterator {
+            source,
+            batch_size,
             done: false,
         })
     }
@@ -1925,6 +1941,12 @@ enum ByteIteratorSource {
     Cursor {
         cursor: Reference<JsIOCursor>,
     },
+    /// A container's leaves, one core stream for the iterator's life,
+    /// advancing the cursor it was opened from as chunks are yielded.
+    Stream {
+        stream: yggdryl::ByteStream<'static>,
+        cursor: Option<Reference<JsIOCursor>>,
+    },
 }
 
 #[napi]
@@ -1971,6 +1993,20 @@ impl JsByteIterator {
                             .ok_or_else(|| napi_error("byte stream position exceeds u64::MAX"))?;
                     }
                     Some(Err(_)) | None => self.done = true,
+                }
+                next
+            }
+            ByteIteratorSource::Stream { stream, cursor } => {
+                let next = stream.next();
+                match (&next, cursor) {
+                    (Some(Ok(bytes)), Some(cursor)) => {
+                        cursor.position = cursor
+                            .position
+                            .checked_add(bytes.len() as u64)
+                            .ok_or_else(|| napi_error("byte stream position exceeds u64::MAX"))?;
+                    }
+                    (Some(Ok(_)), None) => {}
+                    (Some(Err(_)) | None, _) => self.done = true,
                 }
                 next
             }
@@ -2054,7 +2090,9 @@ impl JsIOCursor {
     /// The iterator keeps this cursor and its backing handle alive. Its
     /// position advances only as chunks are yielded, so dropping a partially
     /// consumed iterator leaves the cursor immediately after the last chunk.
-    /// `batchSize` defaults to 64 KiB.
+    /// `batchSize` defaults to 64 KiB. Over a container the stream is its
+    /// leaves', end to end from the position, while a positional `read` of it
+    /// reads nothing.
     #[napi]
     // This must remain an object method: NAPI supplies `reference` for this
     // exact cursor instance so the iterator can own it after the call returns.
@@ -2064,9 +2102,25 @@ impl JsIOCursor {
         reference: Reference<JsIOCursor>,
         batch_size: Option<f64>,
     ) -> Result<JsByteIterator> {
+        let batch_size = byte_stream_batch_size(batch_size)?;
+        // A container streams its leaves from the cursor's position: one core
+        // stream the iterator holds, rather than a listing per chunk.
+        let source = if reference.handle.inner.is_container() {
+            ByteIteratorSource::Stream {
+                stream: yggdryl::ByteStream::from_container(
+                    &reference.handle.inner,
+                    reference.position,
+                    batch_size,
+                )
+                .map_err(napi_error)?,
+                cursor: Some(reference),
+            }
+        } else {
+            ByteIteratorSource::Cursor { cursor: reference }
+        };
         Ok(JsByteIterator {
-            source: ByteIteratorSource::Cursor { cursor: reference },
-            batch_size: byte_stream_batch_size(batch_size)?,
+            source,
+            batch_size,
             done: false,
         })
     }

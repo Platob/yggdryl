@@ -2394,9 +2394,16 @@ impl<H: IOBase> Table<H> {
 impl<H: IOBase> IOBase for Table<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
-    crate::delegate_iobase!(root: pread, pstream_bytes, pwrite, size, capacity, reserve,
+    crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, parent,
         child_by_path, ls);
+
+    /// Stream nothing: the files below a table - its metadata, its manifests,
+    /// its data - are its storage, not its bytes, so the root folder's stream
+    /// of them is not this handle's. The table is read as rows.
+    fn pstream_bytes(&self, _position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
+        crate::ByteStream::from_reader(std::io::empty(), batch_size)
+    }
 
     /// A table folder is a container of its own kind: [`IOKind::Table`].
     ///

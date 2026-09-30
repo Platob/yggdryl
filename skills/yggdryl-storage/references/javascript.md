@@ -132,12 +132,39 @@ day.mkdir()
 assert.equal(day.kind, 'directory')
 assert.ok(day.isDir())
 
-// A folder holds no bytes: byte writes are refused.
+// A folder holds no bytes of its own: byte writes are refused.
 assert.throws(() => day.pwrite(0, Buffer.from('x')), /got the directory/)
 
 const leaf = new IOBase(path.join(root, 'empty.bin'))
 leaf.touch()
 assert.ok(leaf.isFile())
+
+fs.rmSync(root, { recursive: true, force: true })
+```
+
+## Stream the leaves of a folder or glob
+
+A folder, a path ending in `/` or a glob streams every leaf beneath it, end to
+end in listing order, each leaf's coding taken off; `readBytes` drains the
+same stream. Lines and records read leaf by leaf through the media instead.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const zlib = require('node:zlib')
+const { IOBase } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-skill-'))
+fs.mkdirSync(path.join(root, 'sub'))
+fs.writeFileSync(path.join(root, 'a.log'), 'a1\n')
+fs.writeFileSync(path.join(root, 'sub', 'b.log.gz'), zlib.gzipSync('b1\n'))
+
+assert.equal(new IOBase(root).readBytes().toString(), 'a1\nb1\n')
+// A glob matches one level.
+const glob = new IOBase(path.join(root, '*.log'))
+assert.equal(Buffer.concat([...glob.pstreamBytes()]).toString(), 'a1\n')
 
 fs.rmSync(root, { recursive: true, force: true })
 ```

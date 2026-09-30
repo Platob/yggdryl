@@ -2284,6 +2284,13 @@ impl<H: IOBase> Avro<H> {
         self.cached_dimensions.take();
     }
 
+    /// Whether this session already holds the leaf's dimensions, which
+    /// answer every dimension ask with no call - and which a container's
+    /// session never holds.
+    fn warm(&self) -> bool {
+        self.opened && self.cached_dimensions.get().is_some()
+    }
+
     /// Return the opened-session metadata, or a fresh uncached closed answer.
     fn dimensions(&self) -> crate::Result<Option<AvroDimensions>> {
         if !self.opened {
@@ -2338,12 +2345,25 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_row_size(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            );
+        }
         Ok(self.dimensions()?.map_or(0, |dimensions| dimensions.rows))
     }
 
     fn column_size(&self) -> crate::Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
+        }
+        if !self.warm() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_field(
+                &self.handle,
+                &crate::iomedia::dimension_options(self)?,
+            )?
+            .field_len());
         }
         if self.opened {
             return Ok(self
@@ -2366,6 +2386,9 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         let options = self.require_record_options(options)?;
         if let Some(field) = options.field() {
             return Ok(field.clone());
+        }
+        if !self.warm() && self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         if self.opened {
             if let Some(dimensions) = self.dimensions()? {
@@ -2468,8 +2491,12 @@ impl<H: IOBase> IOBase for Avro<H> {
         }
         self.handle.open()?;
         self.invalidate_dimensions();
-        let dimensions = read_dimensions(&self.handle, &self.options)?;
-        let _ = self.cached_dimensions.set(dimensions);
+        // A container's leaves answer for it on every ask, so its session
+        // caches nothing one leaf's dimensions would answer.
+        if !self.handle.is_container() {
+            let dimensions = read_dimensions(&self.handle, &self.options)?;
+            let _ = self.cached_dimensions.set(dimensions);
+        }
         self.opened = true;
         Ok(())
     }

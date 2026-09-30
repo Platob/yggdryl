@@ -48,10 +48,19 @@ impl Plan {
     }
 
     /// Detect coding from bytes and format from the handle, then content.
+    ///
+    /// A container is refused by what it is: its bytes are its leaves', many
+    /// documents end to end, and the first of them says nothing about the
+    /// rest.
     pub fn detect<H: IOBase + ?Sized>(handle: &H, head: &[u8]) -> Result<Self> {
+        refuse_container(handle)?;
+        Self::detected(handle.media_type(), head)
+    }
+
+    /// [`Self::detect`] once the handle is known to be one value.
+    fn detected(declared: &MediaType, head: &[u8]) -> Result<Self> {
         let content = MediaType::from_magic_bytes(head);
         let codec = detected_codec(content.as_ref());
-        let declared = handle.media_type();
         let format = format_from_mime(declared.base())
             .or_else(|| {
                 content
@@ -118,6 +127,15 @@ fn detected_codec(content: Option<&MediaType>) -> Codec {
 
 fn format_from_mime(mime: &MimeType) -> Option<Format> {
     Format::from_mime_type(mime).ok()
+}
+
+/// Refuse a container, whose stream is its leaves' documents end to end, by
+/// the one question that says so - asked before any of its bytes are read.
+fn refuse_container<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
+    if handle.is_container() {
+        return Err(unknown_format(&MediaType::from(crate::MimeType::DIRECTORY)));
+    }
+    Ok(())
 }
 
 fn unknown_format(media_type: &MediaType) -> Error {
@@ -278,6 +296,8 @@ fn decoded_with_format<H: IOBase + ?Sized>(
     source: &H,
     format: Option<Format>,
 ) -> Result<(Box<dyn Read + '_>, Plan)> {
+    // No format - named or sniffed - reads many documents as one.
+    refuse_container(source)?;
     let mut encoded = source.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
     let mut head = Vec::with_capacity(crate::media::MAGIC_PROBE_LEN);
     {
@@ -289,7 +309,7 @@ fn decoded_with_format<H: IOBase + ?Sized>(
             format,
             detected_codec(MediaType::from_magic_bytes(&head).as_ref()),
         ),
-        None => Plan::detect(source, &head)?,
+        None => Plan::detected(source.media_type(), &head)?,
     };
     let replayed = Cursor::new(head).chain(encoded);
     let mut decompressed = plan.codec().reader(replayed);

@@ -648,6 +648,107 @@ mod positional {
     }
 
     #[test]
+    fn a_value_transfer_refuses_a_container_before_touching_the_target() {
+        use yggdryl::Error;
+        use yggdryl::local::{LocalFolder, LocalPath};
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-transfer-container-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.csv"), b"symbol\nAAPL\n").unwrap();
+        std::fs::write(
+            root.join("b.csv.gz"),
+            Codec::Gzip.dump(b"symbol\nMSFT\n").unwrap(),
+        )
+        .unwrap();
+
+        let pattern = Url::from_path(&root).unwrap().joinpath("*.csv").unwrap();
+        let sources: [(&str, Box<dyn IOBase>); 2] = [
+            ("folder", Box::new(LocalFolder::new(&root).unwrap())),
+            ("pattern", Box::new(LocalPath::from_url(pattern).unwrap())),
+        ];
+        /// One transfer of a source's value into a target.
+        type Transfer = fn(&dyn IOBase, &mut Buffer) -> yggdryl::Result<u64>;
+
+        let transfers: [(&str, Transfer); 4] = [
+            ("copy", |source, target| source.copy_into(target)),
+            ("compress", |source, target| {
+                source.compress_into(target, Codec::Gzip)
+            }),
+            ("decompress", |source, target| {
+                source.decompress_into(target)
+            }),
+            ("decompress", |source, target| {
+                source.decompress_into_with(target, Codec::Gzip)
+            }),
+        ];
+        for (name, source) in &sources {
+            // A container's stream has bytes - its leaves', end to end - and
+            // that concatenation is what no transfer of one value may take
+            // for one.
+            assert!(!source.read_all_bytes().unwrap().is_empty(), "{name}");
+            for (operation, transfer) in transfers {
+                let mut target = Buffer::from_bytes(b"kept".to_vec())
+                    .with_media_type(MediaType::from(MimeType::JSON));
+                let error = transfer(source.as_ref(), &mut target).unwrap_err();
+                assert!(
+                    matches!(
+                        &error,
+                        Error::NotAtomic { operation: refused, kind: "directory", .. }
+                            if *refused == operation
+                    ),
+                    "{name} {operation}: {error}"
+                );
+                assert!(error.to_string().contains("got a directory"), "{error}");
+                // Refused before the target was touched: its bytes and the
+                // media type it declares are what they were.
+                assert_eq!(target.as_slice(), b"kept", "{name} {operation}");
+                assert_eq!(
+                    target.media_type().base(),
+                    &MimeType::JSON,
+                    "{name} {operation}"
+                );
+            }
+        }
+
+        LocalFolder::new(&root).unwrap().remove(true).unwrap();
+    }
+
+    #[test]
+    fn a_copy_between_two_filesystem_locations_refuses_a_container_too() {
+        use std::sync::Arc;
+
+        use yggdryl::Error;
+        use yggdryl::fs::{FileSystem, FsFile, FsFolder, MemoryFileSystem};
+
+        // Both ends bound to one filesystem is the one copy the store makes
+        // itself; a container is still no value to make one of.
+        let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+        let mut leaf = FsFile::from_path(Arc::clone(&filesystem), "logs/a.csv", None).unwrap();
+        leaf.write_all_bytes(b"symbol\nAAPL\n").unwrap();
+        let mut target = FsFile::from_path(Arc::clone(&filesystem), "out.json", None).unwrap();
+        target.write_all_bytes(b"kept").unwrap();
+
+        let folder = FsFolder::from_path(Arc::clone(&filesystem), "logs", None).unwrap();
+        assert_eq!(folder.read_all_bytes().unwrap(), b"symbol\nAAPL\n");
+        let error = folder.copy_into(&mut target).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::NotAtomic {
+                    operation: "copy",
+                    kind: "directory",
+                    ..
+                }
+            ),
+            "{error}"
+        );
+        assert_eq!(target.read_all_bytes().unwrap(), b"kept");
+        assert_eq!(target.media_type().base(), &MimeType::JSON);
+    }
+
+    #[test]
     fn streaming_adapters_advance_their_own_offset() {
         let mut buffer = Buffer::new();
         {

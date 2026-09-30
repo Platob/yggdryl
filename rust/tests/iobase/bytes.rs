@@ -100,3 +100,35 @@ mod positional {
         assert!(!state.load(Ordering::SeqCst));
     }
 }
+
+#[test]
+fn a_reader_over_a_container_ends_where_its_positional_reads_do() {
+    use std::io::Read;
+
+    use yggdryl::IOBase;
+    use yggdryl::local::LocalFolder;
+
+    let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+    root.push(format!(
+        "yggdryl-iobase-bytes-reader-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.log"), b"a1\n").unwrap();
+    let folder = LocalFolder::new(&root).unwrap();
+
+    // A `Read` ends where `read` says it ends: a container's positional reads
+    // are empty, so draining a reader of one is too, although its whole read
+    // streams the leaves beneath it.
+    let mut window = [0_u8; 4];
+    assert_eq!(folder.reader_at(0).read(&mut window).unwrap(), 0);
+    let mut drained = Vec::new();
+    assert_eq!(folder.reader_at(0).read_to_end(&mut drained).unwrap(), 0);
+    assert!(drained.is_empty());
+    let mut cursor = LocalFolder::new(&root).unwrap().cursor();
+    assert_eq!(cursor.read_to_end(&mut drained).unwrap(), 0);
+    assert_eq!(folder.read_all_bytes().unwrap(), b"a1\n");
+
+    std::fs::remove_dir_all(&root).unwrap();
+}

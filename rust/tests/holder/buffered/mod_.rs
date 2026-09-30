@@ -689,3 +689,33 @@ mod counted {
         assert_eq!(buffered.cached_pages(), 0);
     }
 }
+
+#[test]
+fn a_buffered_container_reads_its_leaves_as_its_stream_does() {
+    use yggdryl::IOBase;
+    use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+    use yggdryl::local::LocalFolder;
+
+    let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+    root.push(format!("yggdryl-buffered-container-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.log"), b"a1\n").unwrap();
+    std::fs::write(root.join("b.log"), b"b1\n").unwrap();
+
+    // No page holds a container's stream, so its whole and ranged reads are
+    // the container's own, as its stream is - and no page is cached.
+    let buffered = Buffered::new(LocalFolder::new(&root).unwrap(), BufferedOptions::default());
+    assert_eq!(buffered.read_all_bytes().unwrap(), b"a1\nb1\n");
+    assert_eq!(buffered.read_range_bytes(2, 3).unwrap(), b"\nb1");
+    let streamed: Vec<u8> = buffered
+        .pstream_bytes(0, 4)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+        .concat();
+    assert_eq!(streamed, b"a1\nb1\n");
+    assert_eq!(buffered.cached_pages(), 0);
+
+    std::fs::remove_dir_all(&root).unwrap();
+}

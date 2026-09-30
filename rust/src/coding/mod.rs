@@ -233,8 +233,10 @@ impl<H: IOBase> Coding<H> {
             }
         }
 
+        // A value, never a container: the record read takes a container's
+        // leaves before it asks for this.
         let mut encoded = crate::holder::Buffer::new();
-        self.handle.copy_into(&mut encoded)?;
+        crate::iobase::copy_value(&self.handle, &mut encoded)?;
         encoded.set_media_type(encoded_media_type);
         Ok(Holder::buffer(encoded))
     }
@@ -295,10 +297,12 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     ) -> Result<crate::arrow::BatchReader> {
         use crate::media::IORecordOptions;
 
-        let owned = self.owned_presented_handle()?;
-        if owned.is_container() {
-            return crate::IOMedia::read_arrow_reader(&owned, options);
+        // A container's leaves are each read as what their own names say, so
+        // a coding over it has no one value to decode.
+        if self.handle.is_container() {
+            return crate::IOMedia::read_arrow_reader(&self.handle, options);
         }
+        let owned = self.owned_presented_handle()?;
         let reader = match options {
             crate::media::RecordOptions::Ipc(ipc) => {
                 crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?

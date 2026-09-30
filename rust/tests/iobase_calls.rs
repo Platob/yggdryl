@@ -133,13 +133,12 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// chain, so a later fill under one `ExecID` starts afresh.
     const WALKED: usize = 21;
     /// What one bounded stream over the capture costs, before a message is
-    /// built from any of it.
+    /// built from any of it - through the record dispatcher and through the
+    /// text door alike: both ask the one container question, because a
+    /// folder or a glob is read leaf by leaf through either, and this capture
+    /// is one leaf.
     const DECODE: &str =
         "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1";
-    /// The same bounded stream through the text door directly: the record
-    /// dispatcher's container probe is the only call it does not make.
-    const LINE_DECODE: &str =
-        "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 parent=1";
 
     let handle = source(CAPTURE, "file:///bridge.log");
     let calls = Arc::clone(handle.calls());
@@ -179,7 +178,7 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     costs(
         "the decoded capture composed through the FIX lifecycle",
         &calls,
-        LINE_DECODE,
+        DECODE,
         || {
             let RecordOptions::Text(options) = &options else {
                 panic!("text options")
@@ -278,11 +277,13 @@ fn draining_through_a_std_reader_is_one_call_not_one_per_doubling() {
     let calls = Arc::clone(handle.calls());
 
     // `read_to_end` grows its buffer by doubling and asks for what fits each
-    // time; both readers answer the remainder in one call instead.
+    // time; both readers answer the remainder in one call instead. Each asks
+    // first whether the handle is a container, whose positional reads - what
+    // `read` answers - are empty while its whole read streams its leaves.
     costs(
         "a reader drained to the end",
         &calls,
-        "read_all_bytes=1",
+        "read_all_bytes=1 is_container=1",
         || {
             let mut into = Vec::new();
             handle.reader_at(0).read_to_end(&mut into).expect("a read");
@@ -294,7 +295,11 @@ fn draining_through_a_std_reader_is_one_call_not_one_per_doubling() {
     let mut into = Vec::new();
     handle.cursor().read_to_end(&mut into).expect("a read");
     assert_eq!(into.len(), 4096);
-    assert_eq!(calls.snapshot().to_string(), "read_all_bytes=1", "a cursor");
+    assert_eq!(
+        calls.snapshot().to_string(),
+        "read_all_bytes=1 is_container=1",
+        "a cursor"
+    );
 }
 
 #[test]
@@ -322,12 +327,15 @@ fn a_write_is_one_call_and_a_transfer_is_one_stream() {
         handle.clear().expect("a clear");
     });
 
+    // A transfer asks once whether the source is a container, before a byte
+    // moves: a container streams its leaves end to end, which no one copy or
+    // coding of a value is.
     let source = source(&payload(4096), "file:///lake/part.bin");
     let calls = Arc::clone(source.calls());
     costs(
         "a copy",
         &calls,
-        "pstream_bytes=1 bound_location=2 media_type=1",
+        "pstream_bytes=1 bound_location=2 media_type=1 is_container=1",
         || {
             let mut destination = Buffer::new();
             source.copy_into(&mut destination).expect("a copy");
@@ -336,7 +344,7 @@ fn a_write_is_one_call_and_a_transfer_is_one_stream() {
     costs(
         "a compression",
         &calls,
-        "pstream_bytes=1 media_type=1",
+        "pstream_bytes=1 media_type=1 is_container=1",
         || {
             let mut destination = Buffer::new();
             source
@@ -456,6 +464,118 @@ fn walking_a_lake_is_one_listing_however_many_files_are_in_it() {
     costs("reading the partitions", &calls, "url=1", || {
         counted.partitions();
     });
+}
+
+/// A folder's stream of its files, as the handle wrapping the folder sees it
+/// and as the store beneath it does.
+#[test]
+fn streaming_a_folder_is_one_listing_and_one_open_per_file_it_reads() {
+    use counting_filesystem::counted_folder;
+
+    const FILES: usize = 5;
+    const LINE: &[u8] = b"AAPL,187.23\n";
+
+    let (filesystem, folder) = counted_folder("logs");
+    for file in 0..FILES {
+        folder
+            .child_by_path(&format!("part-{file}.log"))
+            .expect("a child")
+            .write_all_bytes(LINE)
+            .expect("a write");
+    }
+    let counted = Counted::new(folder);
+    let calls = Arc::clone(counted.calls());
+
+    // The wrapper is asked once: the stream owns the listing and every file
+    // it opens, so draining it never comes back through the handle.
+    let mut stream = None;
+    costs(
+        "building a folder's stream",
+        &calls,
+        "pstream_bytes=1",
+        || {
+            stream = Some(counted.pstream_bytes(0, 16).expect("a stream"));
+        },
+    );
+    costs("draining a folder's stream", &calls, "none", || {
+        let read: usize = stream
+            .take()
+            .expect("the stream")
+            .map(|chunk| chunk.expect("bytes").len())
+            .sum();
+        assert_eq!(read, FILES * LINE.len());
+    });
+    costs(
+        "a whole read of a folder",
+        &calls,
+        "read_all_bytes=1",
+        || {
+            assert_eq!(
+                counted.read_all_bytes().expect("a read"),
+                LINE.repeat(FILES)
+            );
+        },
+    );
+
+    // Beneath it, building the stream starts the listing and nothing else.
+    // Each file then costs the one `file_info` that tells a listed leaf from
+    // a container - the `fs` backend answers a listed child's kind by asking
+    // the store again - and the one open its bytes are read through.
+    let mut stream = None;
+    assert_eq!(
+        filesystem.costs(|| {
+            stream = Some(counted.pstream_bytes(0, 16).expect("a stream"));
+        }),
+        "list=1",
+        "building the stream"
+    );
+    assert_eq!(
+        filesystem.costs(|| {
+            stream.take().expect("the stream").for_each(|chunk| {
+                chunk.expect("bytes");
+            });
+        }),
+        format!("file_info={FILES} open_input_stream={FILES}"),
+        "draining the stream"
+    );
+
+    // A file wholly before the position is passed by its size - one more
+    // `file_info` - and never opened: two files skipped, three read, the
+    // first of them from inside.
+    let position = 2 * LINE.len() as u64 + 4;
+    assert_eq!(
+        filesystem.costs(|| {
+            let read: usize = counted
+                .pstream_bytes(position, 16)
+                .expect("a stream")
+                .map(|chunk| chunk.expect("bytes").len())
+                .sum();
+            assert_eq!(read, (FILES - 2) * LINE.len() - 4);
+        }),
+        format!(
+            "file_info={} list=1 open_input_file=1 open_input_stream={}",
+            FILES + 3,
+            FILES - 3
+        ),
+        "a stream from inside the third file"
+    );
+
+    // A range is streamed in batches no wider than itself, so a range inside
+    // the first file opens that file alone, and an empty range lists nothing.
+    assert_eq!(
+        filesystem.costs(|| {
+            assert_eq!(counted.read_range_bytes(0, 4).expect("a range"), &LINE[..4]);
+        }),
+        "file_info=1 list=1 open_input_stream=1",
+        "a range inside the first file"
+    );
+    assert_eq!(
+        filesystem.costs(|| {
+            assert!(counted.read_range_bytes(0, 0).expect("a range").is_empty());
+        }),
+        "none",
+        "an empty range"
+    );
 }
 
 mod records {

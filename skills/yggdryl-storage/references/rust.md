@@ -162,11 +162,38 @@ leaf.write_all_bytes(b"AAPL")?;
 leaf.flush()?;
 assert_eq!(leaf.kind(), IOKind::File);
 
-// A container holds no bytes: reads are empty, byte writes are refused.
+// A container holds no bytes of its own: byte writes are refused.
 let mut folder = LocalFolder::new(&root)?;
 assert!(folder.pwrite(0, b"x").is_err());
 
 drop(leaf);
+std::fs::remove_dir_all(&root)?;
+```
+
+## Stream the leaves of a folder or glob
+
+A folder, a path ending in `/` or a glob streams every leaf beneath it, end to
+end in listing order, each leaf's coding taken off; `read_all_bytes` drains the
+same stream. Lines and records read leaf by leaf through the media instead.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::{ByteStream, Codec, IOBase};
+
+let root = yggdryl::local::LocalFolder::temporary()?.path()?
+    .join(format!("yggdryl-skill-leaves-{}", std::process::id()));
+let _ = std::fs::remove_dir_all(&root);
+std::fs::create_dir_all(root.join("sub"))?;
+std::fs::write(root.join("a.log"), b"a1\n")?;
+std::fs::write(root.join("sub/b.log.gz"), Codec::Gzip.dump(b"b1\n")?)?;
+
+assert_eq!(Holder::folder(&root)?.read_all_bytes()?, b"a1\nb1\n");
+// A glob matches one level; the stream owns what it reads.
+let glob = Holder::local(root.join("*.log"))?;
+let stream = ByteStream::from_container(&glob, 0, 64 * 1024)?;
+drop(glob);
+assert_eq!(stream.collect::<yggdryl::Result<Vec<_>>>()?.concat(), b"a1\n");
+
 std::fs::remove_dir_all(&root)?;
 ```
 

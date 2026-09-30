@@ -301,6 +301,194 @@ mod vocabulary {
         assert!(handle.read_all_bytes().unwrap().is_empty());
     }
 
+    /// A fresh, empty temporary root of this test's own.
+    fn tree(label: &str) -> std::path::PathBuf {
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
+        root.push(format!("yggdryl-holder-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn remove(root: &std::path::Path) {
+        yggdryl::local::LocalFolder::new(root)
+            .expect("a local container")
+            .remove(true)
+            .expect("a removable tree");
+    }
+
+    fn held(url: &Url) -> Holder {
+        Holder::from_url(url, std::iter::empty::<(&str, &str)>()).unwrap()
+    }
+
+    #[test]
+    fn a_location_spelling_a_container_composes_its_leaves_media_and_no_coding() {
+        // A pattern's suffix names what each leaf holds: the record encoding
+        // its leaves are read by, and a coding each leaf takes off itself - so
+        // no coding goes over the stream of them.
+        for spelled in [
+            "file:///yggdryl-absent-composition/logs/*.log.gz",
+            "file:///yggdryl-absent-composition/logs/**/*.txt.gz",
+        ] {
+            match held(&Url::from_str(spelled).unwrap()).into_declared_media() {
+                Holder::Text(text) => {
+                    assert!(matches!(text.handle(), Holder::LocalPath(_)), "{spelled}");
+                }
+                other => panic!("{spelled}: expected text over the location, got {other:?}"),
+            }
+        }
+
+        // A location ending in a slash is a container whatever its last name
+        // says, and composes no coding either.
+        let slashed = Url::from_str("file:///yggdryl-absent-composition/logs.txt.gz/").unwrap();
+        let handle = held(&slashed).into_declared_media();
+        assert!(!matches!(handle, Holder::Coded(_)), "{handle:?}");
+        if let Holder::Text(text) = &handle {
+            assert!(matches!(text.handle(), Holder::LocalPath(_)), "{handle:?}");
+        }
+
+        // The same on a filesystem location spelled with its slash. (A
+        // filesystem path is opaque, so a `*` in one is a name, not a pattern.)
+        use std::sync::Arc;
+        use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem};
+        let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+        let location = BoundLocation::new(filesystem, "logs.txt.gz/", None::<String>).unwrap();
+        let handle = yggdryl::fs::located(location).into_declared_media();
+        assert!(!matches!(handle, Holder::Coded(_)), "{handle:?}");
+
+        // A leaf's name still composes as the value it names.
+        let url = Url::from_str("file:///yggdryl-absent-composition/trades.txt.gz").unwrap();
+        match held(&url).into_declared_media() {
+            Holder::Text(text) => assert!(matches!(text.handle(), Holder::Coded(_))),
+            other => panic!("expected text over a coding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_pattern_of_one_encoding_reads_only_the_leaves_of_that_encoding() {
+        use std::sync::Arc;
+
+        use arrow_array::{Int64Array, RecordBatch};
+        use yggdryl::IOMedia as _;
+
+        let root = tree("encoding-pattern");
+        let write = |relative: &str, values: &[i64]| {
+            let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+                "id",
+                arrow_schema::DataType::Int64,
+                false,
+            )]));
+            let batch =
+                RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values.to_vec()))])
+                    .unwrap();
+            let mut leaf = yggdryl::local::LocalPath::new(root.join(relative)).unwrap();
+            let options = leaf.record_options().unwrap();
+            leaf.overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        };
+        write("a.arrows", &[1, 2]);
+        write("day=2/b.arrows", &[3]);
+        // Private trees are left out of every walk by default, whatever they
+        // hold, as a marker and a note beside the data are by their encoding.
+        write(".venv/hidden.arrows", &[9]);
+        write(".config/hidden.arrows", &[9]);
+        std::fs::write(root.join("notes.txt"), b"not a row").unwrap();
+        std::fs::write(root.join("_SUCCESS"), b"").unwrap();
+
+        // The pattern names the encoding, so the composed reader is that
+        // encoding's, and it reads that encoding's leaves as one table.
+        let pattern = Url::from_path(&root)
+            .unwrap()
+            .joinpath("**/*.arrows")
+            .unwrap();
+        let handle = held(&pattern).into_declared_media();
+        assert!(matches!(handle, Holder::Media(_)), "{handle:?}");
+        assert_eq!(handle.row_size().unwrap(), 3);
+        let options = handle.record_options().unwrap();
+        let read: usize = handle
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 3);
+
+        // The folder, which names no encoding, finds the same one beneath it
+        // and reads the same leaves.
+        let folder = held(&Url::from_path(&root).unwrap()).into_declared_media();
+        assert_eq!(folder.row_size().unwrap(), 3);
+
+        remove(&root);
+    }
+
+    #[test]
+    fn a_pattern_of_coded_leaves_reads_each_leaf_decoded() {
+        let root = tree("coded-pattern");
+        std::fs::write(root.join("a.log.gz"), Codec::Gzip.dump(b"a1\n").unwrap()).unwrap();
+        std::fs::write(root.join("b.log.gz"), Codec::Gzip.dump(b"b1\n").unwrap()).unwrap();
+        std::fs::write(root.join("c.log"), b"c1\n").unwrap();
+
+        // Each matched leaf is decoded on its own - one gzip decoder over the
+        // two would end with the first member - and the plain leaf is not
+        // matched.
+        let pattern = Url::from_path(&root).unwrap().joinpath("*.log.gz").unwrap();
+        let handle = held(&pattern).into_declared_media();
+        assert!(!matches!(handle, Holder::Coded(_)), "{handle:?}");
+        assert_eq!(handle.read_all_bytes().unwrap(), b"a1\nb1\n");
+
+        remove(&root);
+    }
+
+    #[test]
+    fn a_coding_stated_over_a_location_ending_in_a_slash_leaves_each_leaf_its_own() {
+        use yggdryl::IOMedia as _;
+        use yggdryl::media::RecordOptions;
+        use yggdryl::text::TextOptions;
+
+        let root = tree("coded-slash");
+        let logs = root.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("a.log"), b"a1\na2\n").unwrap();
+        std::fs::write(logs.join("b.log.gz"), Codec::Gzip.dump(b"b1\n").unwrap()).unwrap();
+
+        let url = Url::from_str(&format!("{}/", Url::from_path(&logs).unwrap())).unwrap();
+        let handle = Holder::from_url(&url, [("codec", "gzip")]).unwrap();
+        // The stated coding is still parsed, and goes over no stream of
+        // leaves: each leaf takes off the coding its own name declares.
+        assert!(matches!(handle, Holder::LocalPath(_)), "{handle:?}");
+        assert!(Holder::from_url(&url, [("codec", "rot13")]).is_err());
+        assert_eq!(
+            handle.read_all_bytes().unwrap(),
+            b"a1
+a2
+b1
+"
+        );
+
+        let options = RecordOptions::from(TextOptions::default());
+        let bodies = handle
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| {
+                let batch = batch.unwrap();
+                let index = batch.schema().index_of("body").unwrap();
+                arrow_array::cast::as_string_array(batch.column(index))
+                    .iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+            .concat();
+        assert_eq!(bodies, ["a1", "a2", "b1"]);
+
+        remove(&root);
+    }
+
     #[test]
     fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
         use std::sync::Arc;

@@ -155,7 +155,7 @@ mod local {
 
             let message = directory.pwrite(0, b"nope").unwrap_err().to_string();
             assert!(message.contains("expected a file"), "{message}");
-            // Reads are empty rather than an error.
+            // Nothing is there yet, so its stream is empty rather than an error.
             assert!(directory.read_all_bytes().unwrap().is_empty());
 
             // Truncating to zero is how a directory is brought into being.
@@ -509,6 +509,110 @@ mod local {
             assert_eq!(folder.children_where(&[], false).unwrap().count(), 8);
 
             let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A container holds no bytes of its own and streams its leaves'.
+    mod streaming {
+        use yggdryl::local::LocalFolder;
+        use yggdryl::{Codec, IOBase, Url};
+
+        /// A tree of leaves under a fresh temporary root: two logs at the top -
+        /// the second without a final newline - a note, a folder holding a log
+        /// and a gzip log, and a private log.
+        fn logs(label: &str) -> std::path::PathBuf {
+            let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+            root.push(format!("yggdryl-stream-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            std::fs::write(root.join("a.log"), b"a1\na2\n").unwrap();
+            std::fs::write(root.join("b.log"), b"b1\nb2").unwrap();
+            std::fs::write(root.join("notes.txt"), b"n1\n").unwrap();
+            std::fs::write(root.join("sub").join("c.log"), b"c1\n").unwrap();
+            std::fs::write(
+                root.join("sub").join("d.log.gz"),
+                Codec::Gzip.dump(b"d1\n").unwrap(),
+            )
+            .unwrap();
+            std::fs::write(root.join(".hidden.log"), b"private\n").unwrap();
+            root
+        }
+
+        /// Every leaf beneath the tree, sorted per directory and walked depth
+        /// first, with nothing between two - `b2` runs into `n1` - the gzip
+        /// leaf as its text, and the private name left out.
+        const EVERY_LEAF: &[u8] = b"a1\na2\nb1\nb2n1\nc1\nd1\n";
+
+        fn streamed(folder: &LocalFolder, position: u64) -> Vec<u8> {
+            folder
+                .pstream_bytes(position, 4)
+                .unwrap()
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .unwrap()
+                .concat()
+        }
+
+        fn cleanup(root: &std::path::Path) {
+            LocalFolder::new(root)
+                .expect("a local container")
+                .remove(true)
+                .expect("a removable tree");
+        }
+
+        #[test]
+        fn a_folder_streams_every_leaf_beneath_it() {
+            let root = logs("folder");
+            let folder = LocalFolder::new(&root).unwrap();
+
+            assert_eq!(streamed(&folder, 0), EVERY_LEAF);
+            assert_eq!(streamed(&folder, 7), &EVERY_LEAF[7..]);
+            assert_eq!(folder.read_all_bytes().unwrap(), EVERY_LEAF);
+            // A range is the stream from its offset, bounded by its length and
+            // by the end of the last leaf.
+            assert_eq!(folder.read_range_bytes(4, 9).unwrap(), &EVERY_LEAF[4..13]);
+            assert_eq!(folder.read_range_bytes(15, 64).unwrap(), &EVERY_LEAF[15..]);
+            assert!(folder.read_range_bytes(64, 4).unwrap().is_empty());
+
+            // What it holds of its own is still nothing: no positional bytes,
+            // no size, and never one whole byte value.
+            assert_eq!(folder.pread(0, &mut [0_u8; 8]).unwrap(), 0);
+            assert_eq!(folder.size(), 0);
+            assert!(!folder.is_atomic());
+
+            cleanup(&root);
+        }
+
+        #[test]
+        fn a_folder_on_a_pattern_streams_the_leaves_it_selects() {
+            let root = logs("pattern");
+            let base = Url::from_path(&root).unwrap();
+
+            // One segment stays at one level.
+            let one = LocalFolder::from_url(base.joinpath("*.log").unwrap()).unwrap();
+            assert_eq!(streamed(&one, 0), b"a1\na2\nb1\nb2");
+            // `**` spans any number of levels, none included.
+            let every =
+                LocalFolder::from_url(base.joinpath("**").unwrap().joinpath("*.log").unwrap())
+                    .unwrap();
+            assert_eq!(streamed(&every, 0), b"a1\na2\nb1\nb2c1\n");
+            assert_eq!(every.read_range_bytes(6, 5).unwrap(), b"b1\nb2");
+            assert_eq!(every.size(), 0);
+
+            cleanup(&root);
+        }
+
+        #[test]
+        fn a_folder_that_is_not_there_streams_nothing_and_creates_nothing() {
+            let root = logs("absent");
+            let absent = root.join("absent");
+            let folder = LocalFolder::new(&absent).unwrap();
+
+            assert!(streamed(&folder, 0).is_empty());
+            assert!(folder.read_all_bytes().unwrap().is_empty());
+            assert!(folder.read_range_bytes(0, 8).unwrap().is_empty());
+            assert!(!absent.exists());
+
+            cleanup(&root);
         }
     }
 }

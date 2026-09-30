@@ -283,29 +283,24 @@ impl IOBase for S3Path {
 
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         // A stream borrows the handle it reads from, and the resolved one
-        // lives behind a lock, so a pending write is copied out and anything
-        // else is read from the store directly. Copying is what makes a write
-        // this handle has not published yet visible to a read of it.
-        let staged = {
+        // lives behind a lock, so each role answers the stream that owns what
+        // it reads: a container the objects beneath it, an object its staged
+        // write copied out - what makes a write this handle has not published
+        // yet visible to a read of it - or else the store's.
+        {
             let slot = self.resolved.lock().map_err(|_| poisoned())?;
             match slot.as_ref() {
-                Some(Resolved::Directory(_)) => {
-                    return crate::ByteStream::from_reader(std::io::empty(), batch_size);
+                Some(Resolved::Directory(folder)) => {
+                    return crate::ByteStream::from_container(folder, position, batch_size);
                 }
-                Some(Resolved::File(file)) => file.staged_from(position)?,
-                None => None,
+                Some(Resolved::File(file)) => return file.byte_stream(position, batch_size),
+                None => {}
             }
-        };
-        if let Some(bytes) = staged {
-            return crate::ByteStream::from_reader(std::io::Cursor::new(bytes), batch_size);
         }
         if self.unresolved_kind()? == IOKind::Directory {
-            return crate::ByteStream::from_reader(std::io::empty(), batch_size);
+            return crate::ByteStream::from_container(&self.as_directory()?, position, batch_size);
         }
-        let reader = self
-            .client
-            .open_resuming_reader(&self.bucket, &self.key, position, None)?;
-        crate::ByteStream::from_reader(reader, batch_size)
+        self.as_file()?.byte_stream(position, batch_size)
     }
 
     fn read_all_bytes(&self) -> Result<Vec<u8>> {

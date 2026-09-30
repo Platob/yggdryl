@@ -4244,10 +4244,14 @@ export declare class IOBase {
   /**
    * Stream bounded byte arrays from an explicit position.
    *
-   * Construction performs no read. Each `next()` asks the Rust core for
-   * exactly one bounded chunk, and the iterator keeps this native handle
-   * alive for as long as JavaScript keeps the stream. `position` defaults
-   * to zero and `batchSize` to 64 KiB.
+   * Construction reads no byte: it asks the handle whether it is a
+   * container, and a container starts its listing. Each `next()` asks the
+   * Rust core for exactly one bounded chunk, and the iterator keeps this
+   * native handle alive for as long as JavaScript keeps the stream.
+   * `position` defaults to zero and `batchSize` to 64 KiB. A container - a
+   * folder, a path ending in `/`, a glob - streams its leaves end to end,
+   * each leaf's coding taken off, through one core stream the iterator
+   * holds, opening each leaf as it reaches it.
    */
   pstreamBytes(position?: number | undefined | null, batchSize?: number | undefined | null): JsByteIterator
   /** Write `data` at `offset`, growing and zero-filling as needed. */
@@ -4486,7 +4490,9 @@ export declare class IOCursor {
    * The iterator keeps this cursor and its backing handle alive. Its
    * position advances only as chunks are yielded, so dropping a partially
    * consumed iterator leaves the cursor immediately after the last chunk.
-   * `batchSize` defaults to 64 KiB.
+   * `batchSize` defaults to 64 KiB. Over a container the stream is its
+   * leaves', end to end from the position, while a positional `read` of it
+   * reads nothing.
    */
   streamBytes(batchSize?: number | undefined | null): ByteIterator
   /** Write at the position, advancing it, returning the bytes written. */

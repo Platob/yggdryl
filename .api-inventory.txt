@@ -20,6 +20,7 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "YGGDRYL:ipc:dictionary-ids";
 ### yggdryl::root::bytestream  [rust/src/bytestream.rs]
 pub struct ByteStream<'source>
   pub fn from_reader(reader: impl Read + 'source, batch_size: usize) -> Result<Self>
+  pub fn from_container(container: &(impl IOBase + ?Sized), position: u64, batch_size: usize) -> Result<ByteStream<'static>>  (the leaves beneath a container end to end, each decoded by its own coding; what every container's pstream_bytes answers)
 
 ### yggdryl::charset  [rust/src/charset.rs]
 pub enum Charset  (#[non_exhaustive])
@@ -2522,6 +2523,9 @@ pub trait IOCursor
 
 ### yggdryl::root::iofolder  [rust/src/iofolder.rs]
 pub trait IOFolder: IOBase
+  fn folder_pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'static>>
+  fn folder_read_all_bytes(&self) -> Result<Vec<u8>>
+  fn folder_read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
   pub trait IOFile: IOBase
   pub trait IOPath: IOBase
 

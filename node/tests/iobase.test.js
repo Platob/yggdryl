@@ -672,6 +672,56 @@ test('positioned byte streams are lazy bounded iterators', () => {
   assert.throws(() => handle.pstreamBytes(0, 1.5), /batchSize/)
 })
 
+test('a container streams its leaves end to end', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.mkdirSync(path.join(root, 'sub'))
+  fs.writeFileSync(path.join(root, 'a.log'), 'a1\na2')
+  fs.writeFileSync(path.join(root, 'sub', 'b.log.gz'), zlib.gzipSync('b1\n'))
+  fs.writeFileSync(path.join(root, 'sub', 'c.log'), 'c1\n')
+  fs.writeFileSync(path.join(root, '.hidden'), 'left out\n')
+
+  // A folder: every leaf beneath it in listing order, each decoded by its
+  // own coding, nothing between two leaves, dot names left out.
+  const folder = new IOBase(root)
+  assert.equal(Buffer.concat([...folder.pstreamBytes()]).toString(), 'a1\na2b1\nc1\n')
+  assert.equal(folder.readBytes().toString(), 'a1\na2b1\nc1\n')
+  assert.equal(folder.size, 0)
+
+  // A position counts across leaves, and chunks are full across them.
+  assert.deepEqual(
+    [...folder.pstreamBytes(3, 4)].map((chunk) => chunk.toString()),
+    ['a2b1', '\nc1\n'],
+  )
+
+  // A glob is a container by its spelling.
+  const logs = new IOBase(path.join(root, '*.log'))
+  assert.equal(Buffer.concat([...logs.pstreamBytes()]).toString(), 'a1\na2')
+
+  // A leaf that cannot be decoded fails after what came before it, once.
+  fs.writeFileSync(path.join(root, 'sub', 'b.log.gz'), 'not gzip')
+  const failing = new IOBase(root).pstreamBytes(0, 5)
+  assert.equal(failing.next().value.toString(), 'a1\na2')
+  assert.throws(() => failing.next())
+  assert.deepEqual(failing.next(), { value: undefined, done: true })
+})
+
+test('a container cursor streams its leaves from its position', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(root, 'a.log'), 'a1\na2')
+  fs.writeFileSync(path.join(root, 'b.log'), 'b1\n')
+  const cursor = new IOBase(root).cursor(2)
+
+  // One stream of the leaves from the cursor's position, which advances as
+  // each chunk is yielded.
+  assert.deepEqual(
+    [...cursor.streamBytes(3)].map((chunk) => chunk.toString()),
+    ['\na2', 'b1\n'],
+  )
+  assert.equal(cursor.tell(), 8)
+})
+
 test('a byte stream throws once and then stays fused', () => {
   const refusing = memoryFs()
   refusing.fileInfo = (location) => ({

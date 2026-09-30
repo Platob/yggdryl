@@ -307,6 +307,61 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
     building.finish();
 }
 
+/// How many objects the folder corpus splits [`ROWS`] across.
+const LEAVES: usize = crate::bench_profile::corpus(100, 10);
+
+/// The same rows read as one object and as a folder of [`LEAVES`] objects,
+/// each its own chain: what reading leaf by leaf costs over one object - a
+/// listing, then an open, a transport and a decoder per leaf.
+pub(crate) fn text_leaf_benchmarks(criterion: &mut Criterion) {
+    use std::sync::Arc;
+    use yggdryl::IOBase;
+    use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, located};
+
+    let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    let at = |path: String| {
+        located(BoundLocation::new(Arc::clone(&filesystem), path, None).expect("a location"))
+    };
+    let bytes = corpus();
+    at("object/all.log".to_owned())
+        .write_all_bytes(&bytes)
+        .expect("the object writes");
+    let per_leaf = ROWS / LEAVES;
+    for leaf in 0..LEAVES {
+        let mut part = Vec::with_capacity(per_leaf * 40);
+        for row in leaf * per_leaf..(leaf + 1) * per_leaf {
+            part.extend_from_slice(format!("[INFO] id={row} message {row}\n").as_bytes());
+        }
+        at(format!("logs/part-{leaf:04}.log"))
+            .write_all_bytes(&part)
+            .expect("a leaf writes");
+    }
+    let object = at("object/all.log".to_owned());
+    let folder = at("logs".to_owned());
+    let plain = TextOptions::new();
+    assert_eq!(drain_lines(&object, &plain), ROWS);
+    assert_eq!(drain_lines(&folder, &plain), ROWS);
+
+    let mut group = criterion.benchmark_group("text_leaves");
+    group.throughput(Throughput::Bytes(bytes.len() as u64));
+    group.bench_function("object/decode", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&object), black_box(&plain)));
+    });
+    group.bench_function("folder/decode", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&folder), black_box(&plain)));
+    });
+    group.bench_function("folder/first_line", |bencher| {
+        bencher.iter(|| {
+            read_text_lines(black_box(&folder), black_box(&plain))
+                .expect("a settled configuration")
+                .next()
+                .expect("a first line")
+                .expect("a line")
+        });
+    });
+    group.finish();
+}
+
 /// Lines carrying key/value pairs, which is what an entry tree is read from.
 fn pair_corpus() -> Vec<u8> {
     let mut bytes = Vec::with_capacity(ROWS * 48);
@@ -318,7 +373,7 @@ fn pair_corpus() -> Vec<u8> {
 }
 
 /// Decode every line and count them, touching no Arrow array.
-fn drain_lines(handle: &Buffer, options: &TextOptions) -> usize {
+fn drain_lines(handle: &(impl yggdryl::IOBase + ?Sized), options: &TextOptions) -> usize {
     read_text_lines(handle, options)
         .expect("a settled configuration")
         .fold(0, |seen, line| {

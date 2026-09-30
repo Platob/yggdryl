@@ -332,12 +332,40 @@ impl S3File {
         Ok(())
     }
 
+    /// Stream from `position`, owning what is read: a staged value copied
+    /// out, anything else one resuming `GET` for the whole drain - the stream
+    /// [`IOBase::pstream_bytes`] answers, for a reader that outlives the
+    /// handle.
+    pub(crate) fn byte_stream(
+        &self,
+        position: u64,
+        batch_size: usize,
+    ) -> Result<crate::ByteStream<'static>> {
+        // Refused before the request, which a stream that can never yield a
+        // byte must not cost.
+        if batch_size == 0 {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "byte stream batch_size must be greater than zero",
+            )));
+        }
+        if let Some(bytes) = self.staged_from(position)? {
+            return crate::ByteStream::from_reader(std::io::Cursor::new(bytes), batch_size);
+        }
+        // Resuming, because this is the long transfer: a stream drained over
+        // minutes outlives more connections than one request does.
+        let reader = self
+            .client
+            .open_resuming_reader(&self.bucket, &self.key, position, None)?;
+        crate::ByteStream::from_reader(reader, batch_size)
+    }
+
     /// The staged value from `position`, when a write is waiting to publish.
     ///
     /// A caller must read what it just wrote, and a stream cannot borrow
     /// through this handle's lock, so the pending bytes are copied out. `None`
     /// says nothing is staged and the store is what to read.
-    pub(super) fn staged_from(&self, position: u64) -> Result<Option<Vec<u8>>> {
+    fn staged_from(&self, position: u64) -> Result<Option<Vec<u8>>> {
         let state = self.state()?;
         let Some(stage) = state.stage.as_ref() else {
             return Ok(None);
@@ -440,12 +468,6 @@ impl IOBase for S3File {
     /// from a single connection, which is what makes a compressed or record
     /// scan over an object cost one round trip.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
-        if batch_size == 0 {
-            return Err(Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "byte stream batch_size must be greater than zero",
-            )));
-        }
         let state = self.state()?;
         if state.stage.is_some() {
             drop(state);
@@ -454,12 +476,7 @@ impl IOBase for S3File {
             return crate::ByteStream::from_handle(self, position, batch_size);
         }
         drop(state);
-        // Resuming, because this is the long transfer: a stream drained over
-        // minutes outlives more connections than one request does.
-        let reader = self
-            .client
-            .open_resuming_reader(&self.bucket, &self.key, position, None)?;
-        crate::ByteStream::from_reader(reader, batch_size)
+        self.byte_stream(position, batch_size)
     }
 
     /// Read the whole object with one `GET`.

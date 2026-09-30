@@ -1678,6 +1678,8 @@ impl PyIOBase {
     /// The iterator is lazy and fused after its first read failure. Arrays are
     /// `batch_size` bytes except for the final short one; no empty array is
     /// yielded. The iterator keeps this handle alive for as long as it reads.
+    /// A container - a folder, a path ending in `/`, a glob - streams its
+    /// leaves end to end, each leaf's coding taken off.
     #[pyo3(signature = (position = 0, batch_size = 65536))]
     fn pstream_bytes(
         slf: &Bound<'_, Self>,
@@ -1688,6 +1690,24 @@ impl PyIOBase {
             return Err(PyValueError::new_err(
                 "batch_size must be greater than zero",
             ));
+        }
+        // A container streams its leaves: the core's one stream owns what it
+        // reads, so the iterator holds it rather than listing again per chunk.
+        {
+            let handle = slf.borrow();
+            let inner = handle.inner()?;
+            if inner.is_container() {
+                let stream = yggdryl::ByteStream::from_container(inner, position, batch_size)
+                    .map_err(crate::holder::fs::storage_error)?;
+                return Ok(PyByteIterator {
+                    source: PyByteSource::Stream {
+                        stream,
+                        cursor: None,
+                    },
+                    batch_size,
+                    done: false,
+                });
+            }
         }
         if let Some(bound) = slf.borrow().inner()?.bound_location() {
             let mut reader = match bound.filesystem().open_input_file(bound.path()) {
@@ -3569,6 +3589,9 @@ impl PyIOCursor {
     }
 
     /// Stream byte arrays from the current position, advancing as consumed.
+    ///
+    /// Over a container the stream is its leaves', end to end from the
+    /// position, while a positional `read` of it reads nothing.
     #[pyo3(signature = (batch_size = 65536))]
     fn stream_bytes(slf: &Bound<'_, Self>, batch_size: usize) -> PyResult<PyByteIterator> {
         let cursor = slf.borrow();
@@ -3578,9 +3601,31 @@ impl PyIOCursor {
                 "batch_size must be greater than zero",
             ));
         }
+        // A container streams its leaves from the cursor's position: one core
+        // stream the iterator holds, rather than a listing per chunk.
+        let stream = {
+            let handle = cursor.handle.borrow(slf.py());
+            let inner = handle.inner()?;
+            if inner.is_container() {
+                Some(
+                    yggdryl::ByteStream::from_container(inner, cursor.load(), batch_size)
+                        .map_err(crate::holder::fs::storage_error)?,
+                )
+            } else {
+                None
+            }
+        };
         drop(cursor);
+        let cursor = slf.clone().unbind();
+        let source = match stream {
+            Some(stream) => PyByteSource::Stream {
+                stream,
+                cursor: Some(cursor),
+            },
+            None => PyByteSource::Cursor(cursor),
+        };
         Ok(PyByteIterator {
-            source: PyByteSource::Cursor(slf.clone().unbind()),
+            source,
             batch_size,
             done: false,
         })
@@ -3702,6 +3747,12 @@ enum PyByteSource {
         reader: Box<dyn yggdryl::fs::RandomAccessReader>,
         cursor: Option<Py<PyIOCursor>>,
     },
+    /// A container's leaves, one core stream for the iterator's life,
+    /// advancing the cursor it was opened from as chunks are yielded.
+    Stream {
+        stream: yggdryl::ByteStream<'static>,
+        cursor: Option<Py<PyIOCursor>>,
+    },
     Empty,
 }
 
@@ -3778,6 +3829,14 @@ impl PyByteIterator {
                         Err(error)
                     }
                 }
+            }
+            PyByteSource::Stream { stream, cursor } => {
+                let next = stream.next().transpose();
+                if let (Ok(Some(bytes)), Some(cursor)) = (&next, cursor) {
+                    let cursor = cursor.borrow(py);
+                    cursor.store(cursor.load().saturating_add(bytes.len() as u64));
+                }
+                next
             }
             PyByteSource::Empty => {
                 self.done = true;

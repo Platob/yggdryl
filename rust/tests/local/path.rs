@@ -6,7 +6,7 @@ mod local {
         use yggdryl::IOBase;
         use yggdryl::holder::Holder;
         use yggdryl::local::{LocalFolder, LocalPath};
-        use yggdryl::{IOKind, MediaType, MimeType};
+        use yggdryl::{IOKind, MediaType, MimeType, Url};
 
         fn root(label: &str) -> std::path::PathBuf {
             let mut path = LocalFolder::temporary().unwrap().path().unwrap();
@@ -155,6 +155,136 @@ mod local {
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
+        }
+
+        /// A tree of leaves under `path`: two logs at the top - the second
+        /// without a final newline - a note, a folder holding a log, and a
+        /// private log.
+        fn logs(path: &std::path::Path) {
+            std::fs::create_dir_all(path.join("sub")).unwrap();
+            std::fs::write(path.join("a.log"), b"a1\na2\n").unwrap();
+            std::fs::write(path.join("b.log"), b"b1\nb2").unwrap();
+            std::fs::write(path.join("notes.txt"), b"n1\n").unwrap();
+            std::fs::write(path.join("sub").join("c.log"), b"c1\n").unwrap();
+            std::fs::write(path.join(".hidden.log"), b"private\n").unwrap();
+        }
+
+        /// What a location streams from `position`, four bytes a chunk.
+        fn streamed(location: &LocalPath, position: u64) -> Vec<u8> {
+            let chunks = location
+                .pstream_bytes(position, 4)
+                .unwrap()
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .unwrap();
+            assert!(chunks.iter().all(|chunk| !chunk.is_empty()), "{chunks:?}");
+            chunks.concat()
+        }
+
+        /// A location that resolves to a container answers its leaves' stream
+        /// through every byte read, and holds no positional bytes of its own.
+        fn streams_as_container(location: &LocalPath, content: &[u8]) {
+            assert!(location.is_container());
+            assert_eq!(streamed(location, 0), content);
+            assert_eq!(streamed(location, 3), &content[3..]);
+            assert_eq!(location.read_all_bytes().unwrap(), content);
+            assert_eq!(location.read_range_bytes(2, 7).unwrap(), &content[2..9]);
+            assert_eq!(location.read_range_bytes(9, 64).unwrap(), &content[9..]);
+            assert!(location.read_range_bytes(64, 4).unwrap().is_empty());
+            assert_eq!(location.pread(0, &mut [0_u8; 8]).unwrap(), 0);
+            assert_eq!(location.size(), 0);
+            assert!(!location.is_atomic());
+        }
+
+        #[test]
+        fn a_directory_location_streams_every_leaf_beneath_it() {
+            let path = root("stream-directory");
+            logs(&path);
+
+            // Sorted per directory and walked depth first, nothing between two
+            // leaves - `b2` runs into `n1` - and the private name left out.
+            let directory = LocalPath::new(&path).unwrap();
+            assert_eq!(directory.kind(), IOKind::Directory);
+            streams_as_container(&directory, b"a1\na2\nb1\nb2n1\nc1\n");
+
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_location_ending_in_a_slash_streams_the_leaves_beneath_it() {
+            let path = root("stream-slash");
+            logs(&path);
+
+            let spelled = LocalPath::new(format!("{}/", path.display())).unwrap();
+            streams_as_container(&spelled, b"a1\na2\nb1\nb2n1\nc1\n");
+
+            // Absent, the same spelling is a container holding nothing, and
+            // streaming it creates nothing.
+            let absent = path.join("absent");
+            let missing = LocalPath::new(format!("{}/", absent.display())).unwrap();
+            assert!(missing.is_container());
+            assert!(streamed(&missing, 0).is_empty());
+            assert!(missing.read_all_bytes().unwrap().is_empty());
+            assert!(missing.read_range_bytes(0, 4).unwrap().is_empty());
+            assert!(!absent.exists());
+
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_one_level_pattern_streams_only_the_leaves_it_matches() {
+            let path = root("stream-glob");
+            logs(&path);
+
+            // `*` stays in one name: the nested log and the note are not
+            // matched, and the private log is matched and left out.
+            let url = Url::from_path(&path).unwrap().joinpath("*.log").unwrap();
+            let pattern = LocalPath::from_url(url).unwrap();
+            streams_as_container(&pattern, b"a1\na2\nb1\nb2");
+
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
+        }
+
+        #[test]
+        fn a_recursive_pattern_streams_every_leaf_it_matches() {
+            let path = root("stream-deep-glob");
+            logs(&path);
+
+            // `**` spans any number of levels, none included.
+            let url = Url::from_path(&path)
+                .unwrap()
+                .joinpath("**")
+                .unwrap()
+                .joinpath("*.log")
+                .unwrap();
+            let pattern = LocalPath::from_url(url).unwrap();
+            streams_as_container(&pattern, b"a1\na2\nb1\nb2c1\n");
+
+            // A fixed prefix that is not there matches nothing.
+            let url = Url::from_path(path.join("absent"))
+                .unwrap()
+                .joinpath("**")
+                .unwrap()
+                .joinpath("*.log")
+                .unwrap();
+            let nowhere = LocalPath::from_url(url).unwrap();
+            assert!(streamed(&nowhere, 0).is_empty());
+            assert!(nowhere.read_all_bytes().unwrap().is_empty());
+
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
+        }
+
+        #[test]
+        fn an_absent_location_streams_nothing() {
+            let path = root("stream-absent");
+            std::fs::create_dir_all(&path).unwrap();
+
+            let missing = LocalPath::new(path.join("absent.log")).unwrap();
+            assert_eq!(missing.kind(), IOKind::Unknown);
+            assert!(streamed(&missing, 0).is_empty());
+            assert!(missing.read_range_bytes(0, 4).unwrap().is_empty());
+            assert!(!path.join("absent.log").exists());
+
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
         }
 
         #[test]

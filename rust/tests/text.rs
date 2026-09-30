@@ -24,7 +24,6 @@ mod entry;
 mod format;
 #[path = "text/handle.rs"]
 mod handle;
-#[cfg(feature = "internals")]
 #[path = "text/io.rs"]
 mod io;
 #[path = "text/leading.rs"]

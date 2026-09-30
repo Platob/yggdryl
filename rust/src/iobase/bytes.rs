@@ -411,7 +411,15 @@ impl Read for Reader<'_> {
 }
 
 /// Everything `source` holds from `offset`, in one call to it.
+///
+/// The remainder a ladder of [`IOBase::pread`] calls would read, so a
+/// container - whose positional reads are empty while its whole reads stream
+/// its leaves - answers nothing, and a [`Read`] never says end of stream to
+/// `read` and hands `read_to_end` bytes.
 pub(crate) fn rest_of(source: &dyn IOBase, offset: u64) -> std::io::Result<Vec<u8>> {
+    if source.is_container() {
+        return Ok(Vec::new());
+    }
     let rest = if offset == 0 {
         source.read_all_bytes()
     } else {

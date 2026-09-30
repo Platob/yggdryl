@@ -130,6 +130,8 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+A folder, a location ending in `/` and a glob read as the one table their leaves hold, through the same calls. A folder finds the encoding beneath it; a pattern's suffix names it, so `lake/**/*.parquet` reads as Parquet and only the `.parquet` leaves it matches are read - a marker such as `_SUCCESS` or a note beside the data is not - and `logs/*.log.gz` reads as plain text, each leaf taking off its own coding. Private names - `.venv`, `.config` and anything else starting with a dot - are left out of every walk by default, with the tree beneath them.
+
 ### Arrow batches
 
 A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current batch is alive.
@@ -1074,6 +1076,76 @@ Each line likewise states, as `prevunix`, the `currunix` the read dated the line
     assert.deepEqual(textRows.map((row) => row.id), [7n, 9n])
 
     fs.rmSync(textRoot, { recursive: true, force: true })
+    ```
+
+A folder, a location ending in `/` and a glob such as `logs/*.log` read leaf by leaf, through `read_text_lines` and `row_size` as through the record reads: every text leaf beneath them in the listing's order, each the object it is - its own cross code, time, coding and row numbers - and a leaf's last line ends with its leaf. The container's [byte stream](../holder/index.md#streams-and-cursors) runs the same leaves together; a line never reads it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Codec;
+    use yggdryl::graph::Element as _;
+    use yggdryl::holder::Holder;
+    use yggdryl::text::{TextOptions, read_text_lines};
+
+    let root = yggdryl::local::LocalFolder::temporary()?.path()?
+        .join(format!("yggdryl-docs-text-leaves-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("a.log"), b"a1\na2")?;
+    std::fs::write(root.join("b.log.gz"), Codec::Gzip.dump(b"b1\n")?)?;
+
+    let lines = read_text_lines(&Holder::folder(&root)?, &TextOptions::new())?
+        .collect::<yggdryl::Result<Vec<_>>>()?;
+    // `a2` ends with its leaf, and the gzip leaf is its own decoded object.
+    assert_eq!(lines.iter().map(|line| line.body()).collect::<Vec<_>>(), ["a1", "a2", "b1"]);
+    assert!(lines[1].get_crosscode().ends_with("a.log"));
+    assert!(lines[2].get_crosscode().ends_with("b.log.gz"));
+
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, TextOptions
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    (root / "a.log").write_bytes(b"a1\na2")
+    (root / "b.log.gz").write_bytes(gzip.compress(b"b1\n"))
+
+    lines = list(IOBase(root).read_text_lines(options=TextOptions()))
+    # `a2` ends with its leaf, and the gzip leaf is its own decoded object.
+    assert [line.body for line in lines] == ["a1", "a2", "b1"]
+    assert lines[1].crosscode.endswith("a.log")
+    assert lines[2].crosscode.endswith("b.log.gz")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const zlib = require('node:zlib')
+    const { IOBase, TextOptions } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    fs.writeFileSync(path.join(root, 'a.log'), 'a1\na2')
+    fs.writeFileSync(path.join(root, 'b.log.gz'), zlib.gzipSync('b1\n'))
+
+    const lines = [...new IOBase(root).readTextLines(new TextOptions())]
+    // `a2` ends with its leaf, and the gzip leaf is its own decoded object.
+    assert.deepEqual(lines.map((line) => line.body), ['a1', 'a2', 'b1'])
+    assert.ok(lines[1].crosscode.endsWith('a.log'))
+    assert.ok(lines[2].crosscode.endsWith('b.log.gz'))
+
+    fs.rmSync(root, { recursive: true, force: true })
     ```
 
 ## CSV

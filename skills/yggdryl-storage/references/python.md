@@ -147,7 +147,7 @@ folder = LocalPath(root / "day=2026-08-16").mkdir()
 assert isinstance(folder, LocalFolder)
 assert folder.kind == "directory"
 
-# A folder holds no bytes: reads are empty, byte writes refused.
+# A folder holds no bytes of its own: byte writes refused.
 try:
     folder.pwrite(0, b"x")
     raise AssertionError("a directory accepted bytes")
@@ -156,6 +156,29 @@ except IsADirectoryError as refused:
 
 assert type(LocalPath(root / "trades.bin").as_file()) is LocalFile
 assert isinstance(LocalFolder.temporary(), LocalFolder)
+```
+
+## Stream the leaves of a folder or glob
+
+A folder, a path ending in `/` or a glob streams every leaf beneath it, end to
+end in listing order, each leaf's coding taken off; `read_bytes` drains the
+same stream. Lines and records read leaf by leaf through the media instead.
+
+```python
+import gzip
+import pathlib
+import tempfile
+
+from yggdryl import IOBase
+
+root = pathlib.Path(tempfile.mkdtemp())
+(root / "sub").mkdir()
+(root / "a.log").write_bytes(b"a1\n")
+(root / "sub" / "b.log.gz").write_bytes(gzip.compress(b"b1\n"))
+
+assert IOBase(root).read_bytes() == b"a1\nb1\n"
+# A glob matches one level.
+assert b"".join(IOBase(root / "*.log").pstream_bytes()) == b"a1\n"
 ```
 
 ## Walk, glob, clear and remove a tree

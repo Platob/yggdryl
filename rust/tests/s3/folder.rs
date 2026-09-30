@@ -1,10 +1,158 @@
 //! `rust/src/s3/folder.rs`: one prefix, or a whole bucket, as a container -
-//! its listings, its pages, and what emptying it takes.
+//! its listings, its pages, the stream of the objects beneath it, and what
+//! emptying it takes.
 
 mod accounting {
     use yggdryl::IOBase;
 
     use crate::mod_::{BUCKET, folder, payload, store};
+    use crate::server::FakeS3;
+
+    /// Objects under `logs/` at two depths - one without a final newline, one
+    /// empty, one hidden - beside one outside the prefix.
+    fn logs(store: &FakeS3) {
+        for (key, bytes) in [
+            ("logs/.hidden", &b"h\n"[..]),
+            ("logs/a.log", b"a1\na2\n"),
+            ("logs/b.log", b"b1\nb2"),
+            ("logs/empty.log", b""),
+            ("logs/sub/c.log", b"c1\n"),
+            ("other/x.log", b"x1\n"),
+        ] {
+            store.put(BUCKET, key, bytes);
+        }
+    }
+
+    /// The methods and keys of the requests recorded since the last clear.
+    fn asked(store: &FakeS3) -> Vec<(String, Option<String>)> {
+        store
+            .requests()
+            .into_iter()
+            .map(|request| (request.method, request.key))
+            .collect()
+    }
+
+    /// One `GET` of each object in `keys`.
+    fn gets(keys: &[&str]) -> Vec<(String, Option<String>)> {
+        keys.iter()
+            .map(|key| ("GET".to_owned(), Some((*key).to_owned())))
+            .collect()
+    }
+
+    #[test]
+    fn a_prefix_streams_its_objects_for_one_listing_and_one_get_each() {
+        let store = store();
+        logs(&store);
+        let prefix = folder(&store, "logs/");
+
+        store.clear_requests();
+        let stream = prefix.pstream_bytes(0, 4).expect("a stream");
+        assert_eq!(store.request_count(), 0, "building the stream asks nothing");
+
+        // Byte order is depth-first pre-order, so `b.log` runs straight into
+        // `sub/c.log`; the empty object adds no byte and the hidden one is
+        // never fetched.
+        let chunks = stream
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the stream");
+        assert_eq!(chunks.concat(), b"a1\na2\nb1\nb2c1\n");
+        assert_eq!(
+            chunks.iter().map(Vec::len).collect::<Vec<_>>(),
+            [4, 4, 4, 2]
+        );
+        // One flat listing, then one `GET` per object, each drained whole:
+        // the listing already stated every size, so nothing asks for one.
+        let mut expected = vec![("GET".to_owned(), None)];
+        expected.extend(gets(&[
+            "logs/a.log",
+            "logs/b.log",
+            "logs/empty.log",
+            "logs/sub/c.log",
+        ]));
+        assert_eq!(asked(&store), expected);
+        assert!(
+            store
+                .requests()
+                .iter()
+                .all(|request| request.method != "HEAD"),
+            "no object is asked about before it is read"
+        );
+    }
+
+    #[test]
+    fn a_prefix_stream_passes_the_objects_before_its_position_unfetched() {
+        let store = store();
+        logs(&store);
+        let prefix = folder(&store, "logs/");
+
+        // `a.log` is six bytes: a position past it skips it by the size the
+        // listing stated, and lands two bytes into `b.log`.
+        store.clear_requests();
+        let read = prefix
+            .pstream_bytes(8, 16)
+            .expect("a stream")
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the stream")
+            .concat();
+        assert_eq!(read, b"\nb2c1\n");
+        let mut expected = vec![("GET".to_owned(), None)];
+        expected.extend(gets(&["logs/b.log", "logs/empty.log", "logs/sub/c.log"]));
+        assert_eq!(asked(&store), expected);
+        let range = store.requests()[1]
+            .headers
+            .iter()
+            .find(|(name, _)| name == "range")
+            .map(|(_, value)| value.clone());
+        assert_eq!(range.as_deref(), Some("bytes=2-"), "read from inside");
+
+        // A whole read and a ranged one are the same stream.
+        assert_eq!(
+            prefix.read_all_bytes().expect("a whole read"),
+            b"a1\na2\nb1\nb2c1\n"
+        );
+        assert_eq!(
+            prefix.read_range_bytes(4, 5).expect("a ranged read"),
+            b"2\nb1\n"
+        );
+        assert_eq!(prefix.size(), 0, "a prefix holds no bytes of its own");
+    }
+
+    #[test]
+    fn a_glob_streams_the_objects_it_matches() {
+        let store = store();
+        logs(&store);
+
+        // One segment does not descend, `**` does; the hidden object matches
+        // neither.
+        let level = folder(&store, "logs/*.log");
+        store.clear_requests();
+        assert_eq!(
+            level.read_all_bytes().expect("a whole read"),
+            b"a1\na2\nb1\nb2"
+        );
+        let mut expected = vec![("GET".to_owned(), None)];
+        expected.extend(gets(&["logs/a.log", "logs/b.log", "logs/empty.log"]));
+        assert_eq!(asked(&store), expected);
+
+        let tree = folder(&store, "logs/**/*.log");
+        store.clear_requests();
+        assert_eq!(
+            tree.read_all_bytes().expect("a whole read"),
+            b"a1\na2\nb1\nb2c1\n"
+        );
+        assert_eq!(
+            store.request_count(),
+            1 + 4,
+            "one listing and one GET per object"
+        );
+        assert!(
+            store
+                .requests()
+                .iter()
+                .all(|request| request.method == "GET"),
+            "no HEAD"
+        );
+    }
 
     #[test]
     fn a_listed_object_already_knows_its_size() {

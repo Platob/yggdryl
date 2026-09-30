@@ -97,13 +97,29 @@ fn text_lines(
     // The plan's refusals - a rename naming no column, a lifted path with no
     // name - before a byte is read.
     options.line_plan()?;
-    let options = Arc::new(options.clone());
+    Ok(object_lines(
+        bytes,
+        source,
+        mtime,
+        Arc::new(options.clone()),
+    ))
+}
+
+/// The decode of one object under options already shared: a fresh splitter
+/// and fresh per-object state, so nothing one object read carries reaches
+/// the next.
+fn object_lines(
+    bytes: Box<dyn Read + Send + 'static>,
+    source: Option<LineSource>,
+    mtime: Option<i64>,
+    options: Arc<TextOptions>,
+) -> TextLines {
     // The row errors want an owned location, which only a located read has.
     let url = source.as_ref().and_then(LineSource::url).cloned();
     let raw = RawRows::new(bytes, url, Arc::clone(&options));
     let captures_creation = options.capture_names().any(|name| name == "creaunix");
     let captures_previous = options.capture_names().any(|name| name == "prevunix");
-    Ok(TextLines {
+    TextLines {
         raw,
         source,
         mtime,
@@ -112,13 +128,33 @@ fn text_lines(
         captures_creation,
         previous: None,
         captures_previous,
-    })
+        leaves: None,
+    }
 }
 
-/// Decode one borrowed leaf into typed lines.
+/// The decode of one listed leaf, the object it is: its own location, its
+/// own modification time, and its own codings and charset through the
+/// transport. The listing handed the leaf over owned, so nothing reopens it.
+fn leaf_lines(leaf: crate::holder::Holder, options: Arc<TextOptions>) -> TextLines {
+    let source = leaf.uri().map(LineSource::narrowed);
+    let mtime = handle_mtime(&leaf, &options);
+    object_lines(owned_decoded(leaf), source, mtime, options)
+}
+
+/// Decode one borrowed handle into typed lines.
 ///
 /// The one decode entry point. Every record method routes through it, and
 /// nothing else parses a line.
+///
+/// A container - a folder, a location ending in `/`, a glob - is read leaf by
+/// leaf, exactly as the record read of it reads: every text leaf beneath it,
+/// in the listing's order, each the object it is. Each leaf's lines name that
+/// leaf as their cross code, date by its modification time, decode through
+/// its own codings and charset, and number from the start again, and nothing
+/// crosses from one leaf to the next - a last line without a terminator ends
+/// with its leaf, and no framed record, adjacent duplicate or leading fragment
+/// spans two. Whether the handle is a container is asked once, before
+/// anything is listed; a leaf's decode is unchanged.
 ///
 /// The decode is not the query: this answers every line the object holds,
 /// whatever the options' `where`, `select` and row bounds say. Those are
@@ -140,6 +176,15 @@ pub fn read_text_lines(
     options: &TextOptions,
 ) -> Result<TextLines> {
     options.require_framing_rowheader()?;
+    if handle.is_container() {
+        // The refusals every leaf would raise, raised once before a listing.
+        options.line_plan()?;
+        let leaves = crate::media::partition::record_parts(handle, crate::MimeType::PLAIN_TEXT)?;
+        let options = Arc::new(options.clone());
+        let mut lines = object_lines(Box::new(std::io::empty()), None, None, options);
+        lines.leaves = Some(leaves);
+        return Ok(lines);
+    }
     // One ask for one fact: the handle owes its identifier, and the location
     // is that identifier narrowed - asking it for both would be two calls
     // over one answer, and the narrowing is the read's, once, not each row's.
@@ -967,14 +1012,45 @@ pub struct TextLines {
     /// Whether the row header captures a `prevunix` of its own, which a line
     /// matching it states instead.
     captures_previous: bool,
+    /// The leaves of a container still to read, each the next object once
+    /// the current one is drained; `None` for one object, and once the
+    /// listing is done or a failure has been yielded.
+    leaves: Option<crate::Listing>,
 }
 
 impl Iterator for TextLines {
     type Item = Result<TextLine>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let raw = self.raw.next()?;
-        Some(raw.and_then(|row| self.convert(row)))
+        loop {
+            if let Some(raw) = self.raw.next() {
+                let line = raw.and_then(|row| self.convert(row));
+                if line.is_err() {
+                    // Fused, as one object's decode is: nothing after a
+                    // failure is read, the rest of the listing included.
+                    self.leaves = None;
+                }
+                return Some(line);
+            }
+            // This object is drained: the next leaf is the next object, and
+            // nothing of this one's state - its row count, its dates, its
+            // cross code - reaches it.
+            match self.leaves.as_mut()?.next() {
+                None => {
+                    self.leaves = None;
+                    return None;
+                }
+                Some(Err(error)) => {
+                    self.leaves = None;
+                    return Some(Err(error));
+                }
+                Some(Ok(leaf)) => {
+                    let leaves = self.leaves.take();
+                    *self = leaf_lines(leaf, Arc::clone(&self.options));
+                    self.leaves = leaves;
+                }
+            }
+        }
     }
 }
 

@@ -106,7 +106,8 @@ mod roles {
         let path = root("folder");
         let mut folder = LocalFolder::new(&path).unwrap();
 
-        // A container holds no bytes, refuses byte writes, and is created by
+        // A container holds no bytes of its own, and an absent one has no
+        // leaves to stream; it refuses byte writes and is created by
         // truncating it to zero - all of that comes from the role.
         assert_eq!(folder.size(), 0);
         assert!(folder.read_all_bytes().unwrap().is_empty());

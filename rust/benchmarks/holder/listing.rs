@@ -1,4 +1,5 @@
-//! Time to first entry beside the full drain, over synthetic wide folders.
+//! Time to first entry beside the full drain, over synthetic wide folders -
+//! of a listing, and of the stream of the leaves the listing names.
 //!
 //! A listing benchmark that only measures the drain hides the exact property
 //! the listing contract exists for: a caller that wants three entries out of a
@@ -112,6 +113,39 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             |bencher, _| {
                 let (_, folder) = fixture.get_or_init(|| deep(width));
                 bencher.iter(|| black_box(folder).ls(true, false).count());
+            },
+        );
+
+        // A container's bytes are its leaves', end to end, and the stream
+        // walks the same listing: its first byte opens one leaf, its drain
+        // every one.
+        group.bench_with_input(
+            BenchmarkId::new("first_byte/stream", width),
+            &width,
+            |bencher, _| {
+                let (_, folder) = fixture.get_or_init(|| deep(width));
+                bencher.iter(|| {
+                    black_box(folder)
+                        .pstream_bytes(0, 4)
+                        .expect("a stream")
+                        .next()
+                        .is_some()
+                });
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("drain/stream", width),
+            &width,
+            |bencher, _| {
+                let (_, folder) = fixture.get_or_init(|| deep(width));
+                bencher.iter(|| {
+                    black_box(folder)
+                        .pstream_bytes(0, yggdryl::DEFAULT_STREAM_BATCH_SIZE)
+                        .expect("a stream")
+                        .map(|chunk| chunk.expect("a chunk").len())
+                        .sum::<usize>()
+                });
             },
         );
 

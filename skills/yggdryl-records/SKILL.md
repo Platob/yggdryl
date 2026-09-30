@@ -94,7 +94,12 @@ medium does the work before a byte is decoded.
    `.csv`, `.tsv`, `.xlsx` (one worksheet of a workbook), `.txt`/`.log`, a table folder;
    `.gz`, `.zz`, `.zst` wrap the bytes. Parquet and a workbook compress
    internally, so `.parquet.gz` and `.xlsx.gz` are refused before a byte is
-   written - set `compression` on Parquet instead.
+   written - set `compression` on Parquet instead. A glob's suffix names the
+   encoding of the leaves it matches and no outer coding: `lake/**/*.parquet`
+   reads as Parquet over only its `.parquet` leaves (not `_SUCCESS`, not a
+   note beside them), `logs/*.log.gz` as plain text, each leaf decoded on its
+   own; a folder or a path ending in `/` finds the encoding beneath it. Dot
+   names - `.venv`, `.config` - and their trees are skipped by default.
 8. **Parquet and Iceberg are Cargo features in Rust** (`parquet`, `iceberg`
    implies `parquet`); the Python and Node packages carry both.
 9. **Absent is empty; never probe first.** An absent resource reads as no
@@ -127,7 +132,11 @@ medium does the work before a byte is decoded.
     line also states, as `prevunix`, the `currunix` the read dated the line
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
-    again - and never a `prevuuid`, so no line identity moves. A write consumes each row's non-empty `body`.
+    again - and never a `prevuuid`, so no line identity moves. A folder, a
+    path ending in `/` or a glob reads leaf by leaf through
+    `read_text_lines`, `row_size` and the record reads alike: every text leaf,
+    each its own cross code, time, coding and row numbers, a last line ending
+    with its leaf. A write consumes each row's non-empty `body`.
 15. **CSV is typed by its header and a sample, or by the declared `field`.**
     The first record names the columns (`header=False`: `column_1`, ...),
     a sample of `infer_row_size` records (1,024) types each column - boolean,

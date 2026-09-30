@@ -72,9 +72,9 @@ fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDic
 ///
 /// A `CBlock` and a JSON snapshot are both files, so the location is held as
 /// whichever role it actually is rather than as a container: a folder handle
-/// reads no bytes, and a reader handed one answers an empty vocabulary instead
-/// of a refusal. A handle crosses as itself rather than being rebuilt, so
-/// bytes held in memory are readable and no second mapping is opened.
+/// reads as its leaves end to end, which is no one dictionary. A handle
+/// crosses as itself rather than being rebuilt, so bytes held in memory are
+/// readable and no second mapping is opened.
 fn read_located<T>(
     location: &Bound<'_, PyAny>,
     read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T>,
