@@ -170,11 +170,11 @@ passes.
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features s3` | only when the change is under that gate |
-| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
+| the Python view redirects | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built; maturin finds the environment it installs into by `VIRTUAL_ENV` or a `.venv` in the working folder or above it, never by the interpreter running it, so the root needs the variable |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language under `docs/` and `skills/` - there is no per-page filter, so this is a pre-push check, not a loop |
-| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
+| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it in every CPython a `smoke: true` build row lists, against the wheels of manylinux and musllinux on x86_64 and aarch64, macOS x86_64 (under Rosetta 2) and arm64, and Windows x64; it smokes neither the Windows arm64 wheel, whose platform PyArrow publishes no wheel for, nor the two musllinux CPython 3.10 wheels, which uv's musl CPython 3.10 cannot import and whose extension the release reads for initial-exec thread-locals instead |
 
 The measured costs that shape the loop: an already-built harness is under a
 second (`--test root` is 946 tests in 0.6s), the first build of a
@@ -1878,7 +1878,7 @@ the same over the whole tree plus the type checker:
 
 ```bash
 V=python/.venv/bin/python
-$V -m maturin develop -m python/Cargo.toml     # in place, debug, no wheel
+VIRTUAL_ENV=python/.venv $V -m maturin develop -m python/Cargo.toml  # in place, debug, no wheel
 $V -m pytest python/tests/<file> -x -q         # the loop
 $V -m pytest python/tests                      # before pushing
 $V -m mypy --strict --config-file python/pyproject.toml \
