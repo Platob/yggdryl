@@ -4,7 +4,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::{Result, Scheme, Url};
+use crate::{Authority, Result, Scheme, Uri, UriPath, Url};
 
 use super::FileSystem;
 
@@ -414,26 +414,34 @@ fn diagnostic_url(filesystem: &dyn FileSystem, path: &str) -> Result<Url> {
     };
     let local = scheme == Scheme::FILE;
     let safe_path = mask_uri(path);
-    let encoded = safe_path
-        .trim_start_matches('/')
-        .split('/')
-        .enumerate()
+    // The path as URL text, every segment opened by its slash: written once,
+    // into a buffer sized for it, so its cost is the path's alone.
+    let mut encoded = String::with_capacity(safe_path.len() + 1);
+    for (index, component) in safe_path.trim_start_matches('/').split('/').enumerate() {
+        encoded.push('/');
         // A drive letter keeps its colon, which `file:///C:/x` spells as is.
-        .map(|(index, component)| encode_component(component, local && index == 0))
-        .collect::<Vec<_>>()
-        .join("/");
-    let (host, rest) = if local {
-        ("", encoded.as_str())
+        encode_component_into(&mut encoded, component, local && index == 0);
+    }
+    // Built from its parts rather than parsed from text, the machine's host
+    // shared rather than copied: what a location costs is the same on every
+    // machine, whatever its name's length.
+    let (authority, rest) = if local {
+        (Authority::from_str("")?, encoded.as_str())
     } else if scheme.has_container() {
-        match encoded.split_once('/') {
-            Some((bucket, key)) if !bucket.is_empty() => (bucket, key),
-            None if !encoded.is_empty() => (encoded.as_str(), ""),
-            _ => (published_endpoint(&scheme), ""),
+        let bucket = encoded[1..].split('/').next().unwrap_or_default();
+        if bucket.is_empty() {
+            (Authority::from_str(published_endpoint(&scheme))?, "/")
+        } else {
+            let key = &encoded[1 + bucket.len()..];
+            (
+                Authority::from_str(bucket)?,
+                if key.is_empty() { "/" } else { key },
+            )
         }
     } else {
-        (crate::HOSTNAME.as_str(), encoded.as_str())
+        (Authority::this_machine(), encoded.as_str())
     };
-    Url::from_str(&format!("{}://{host}/{rest}", scheme.as_str()))
+    Uri::from_parts(scheme, authority, UriPath::from_str(rest)?, None, None).and_then(Url::from_uri)
 }
 
 /// The endpoint a store publishes for its whole service: what a location
@@ -450,8 +458,7 @@ fn published_endpoint(scheme: &Scheme) -> &'static str {
     }
 }
 
-fn encode_component(component: &str, drive: bool) -> String {
-    let mut encoded = String::with_capacity(component.len());
+fn encode_component_into(encoded: &mut String, component: &str, drive: bool) {
     for byte in component.bytes() {
         if byte.is_ascii_alphanumeric()
             || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'=' | b'+')
@@ -463,5 +470,4 @@ fn encode_component(component: &str, drive: bool) -> String {
             let _ = write!(encoded, "%{byte:02X}");
         }
     }
-    encoded
 }

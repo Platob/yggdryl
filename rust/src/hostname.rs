@@ -59,15 +59,26 @@ fn host(raw: &str) -> SmolStr {
 /// The `mem:` identity of bytes held at `address` by process `pid` on this
 /// machine: `mem://<host>/<pid>/<address>`, what a buffer answers for a
 /// location it does not have.
+///
+/// Built from its parts rather than parsed from text, the host shared with
+/// [`HOSTNAME`] rather than copied, so what an identity costs is the same on
+/// every machine whatever its name's length.
 pub(crate) fn memory_identity<T>(pid: u32, address: *const T) -> crate::Url {
-    let text = format!("mem://{}/{pid}/{address:p}", HOSTNAME.as_str());
-    // The host is spelled to parse and the rest is digits, so this holds; a
-    // diagnostic accessor must still never panic, so it falls back to
-    // `localhost` rather than unwrapping.
-    crate::Url::from_str(&text).unwrap_or_else(|_| {
-        crate::Url::from_str(&format!("mem://localhost/{pid}/{address:p}"))
-            .unwrap_or_else(|_| unreachable!("a digit path under localhost parses"))
-    })
+    let path = smol_str::format_smolstr!("/{pid}/{address:p}");
+    crate::UriPath::from_str(&path)
+        .and_then(|path| {
+            crate::Uri::from_parts(
+                crate::Scheme::from_str("mem")?,
+                crate::Authority::this_machine(),
+                path,
+                None,
+                None,
+            )
+        })
+        .and_then(crate::Url::from_uri)
+        // The host is spelled to parse and the path is digits, so this holds;
+        // a diagnostic accessor still never panics.
+        .unwrap_or_else(|_| unreachable!("a digit path under this machine's host is a URL"))
 }
 
 #[cfg(feature = "internals")]

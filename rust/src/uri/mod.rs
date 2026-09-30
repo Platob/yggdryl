@@ -433,9 +433,39 @@ impl Uri {
     /// A reader that shares one identifier across its rows - a located text
     /// read sharing one `Arc<Uri>` - projects the same cross code from this
     /// without another allocation per row.
+    ///
+    /// Text a `Str` holds inline is spelled in place; longer text is written
+    /// once into a buffer of its exact length, so what rendering costs is
+    /// the same whatever the length - a host's name included.
     pub(crate) fn shared_text(&self) -> &Str {
-        self.rendered
-            .get_or_init(|| Str::from(smol_str::format_smolstr!("{self}")))
+        self.rendered.get_or_init(|| {
+            let length = self.rendered_len();
+            if length <= crate::INLINE_CAPACITY {
+                return Str::from(smol_str::format_smolstr!("{self}"));
+            }
+            let mut text = String::with_capacity(length);
+            let _ = fmt::Write::write_fmt(&mut text, format_args!("{self}"));
+            Str::from(text)
+        })
+    }
+
+    /// The length of this value's canonical rendering, counted from its
+    /// components rather than rendered.
+    fn rendered_len(&self) -> usize {
+        let authority = if self.has_authority {
+            2 + self.authority.as_str().len()
+        } else {
+            0
+        };
+        self.scheme.as_str().len()
+            + 1
+            + authority
+            + self.path.as_str().len()
+            + self.query.as_ref().map_or(0, |query| 1 + query.len())
+            + self
+                .fragment
+                .as_ref()
+                .map_or(0, |fragment| 1 + fragment.len())
     }
 
     /// Replace the path component and drop what the value rendered to.
