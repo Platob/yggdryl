@@ -94,13 +94,42 @@ pub(crate) fn chunked_from_arrays(
     };
     if chunked && arrays.is_empty() && field.is_none() {
         let empty = ArrayIntake::from_value(&value.call_method0("combine_chunks")?)?;
+        // A chunkless chunked array of an extension type is a column of its
+        // datatype, as its chunks would be.
+        let declared = empty.stated_field().cloned();
         return py
             .detach(move || {
-                let stated = ChunkedSerie::from_arrow_arrays(None, [empty.validated()?], options)?;
+                let stated = ChunkedSerie::from_arrow_arrays(
+                    declared.as_ref(),
+                    [empty.validated()?],
+                    options,
+                )?;
                 Ok::<_, yggdryl::arrow::Error>(ChunkedSerie::empty(stated.field().clone())?)
             })
             .map_err(value_error);
     }
+    // A chunked array of an extension type states it on every chunk's type,
+    // which is the field a caller who named none reads under; chunks stating
+    // two of them are two columns, never one read as either.
+    let stated = arrays.first().and_then(ArrayIntake::stated_field).cloned();
+    if field.is_none() {
+        let first = stated.as_ref().map(CoreField::dtype);
+        if let Some((at, other)) = arrays
+            .iter()
+            .enumerate()
+            .find(|(_, chunk)| chunk.stated_field().map(CoreField::dtype) != first)
+        {
+            return Err(PyValueError::new_err(format!(
+                "expected every chunk of one datatype, got {} at chunk 0 and {} at chunk {at}",
+                first.map_or_else(|| "its storage".to_owned(), ToString::to_string),
+                other.stated_field().map_or_else(
+                    || "its storage".to_owned(),
+                    |field| field.dtype().to_string()
+                ),
+            )));
+        }
+    }
+    let field = field.or(stated.as_ref());
     // Every chunk is proven and landed in one detached section: a detach per
     // chunk would wait on the GIL once per chunk under contention.
     py.detach(move || {

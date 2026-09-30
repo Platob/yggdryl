@@ -1086,15 +1086,15 @@ impl TextLines {
         if let Some(dated) = dated {
             self.created = Some(self.created.map_or(dated, |created| created.min(dated)));
         }
-        if let Some(created) = self.created {
-            if !self.captures_creation || matches!(line.creaunix(), Ok(None)) {
-                line.set_creaunix(Some(created));
-            }
+        if let Some(created) = self.created
+            && (!self.captures_creation || matches!(line.creaunix(), Ok(None)))
+        {
+            line.set_creaunix(Some(created));
         }
-        if let Some(previous) = self.previous {
-            if !self.captures_previous || matches!(line.prevunix(), Ok(None)) {
-                line.set_prevunix(Some(previous));
-            }
+        if let Some(previous) = self.previous
+            && (!self.captures_previous || matches!(line.prevunix(), Ok(None)))
+        {
+            line.set_prevunix(Some(previous));
         }
         self.previous = dated;
         Ok(line)

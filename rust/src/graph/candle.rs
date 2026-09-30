@@ -9,12 +9,12 @@ use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::market::unsided_crosscode;
+use super::market::base_crosscode;
 use super::{BookEvent, Element, Event, ExecutionEvent, Market, Operation};
 use crate::arrow::BatchReader;
 use crate::text::expected_got;
 use crate::{
-    DataType, Decimal, Error, Field, Result, Scalar, Side, StructType, TimeUnit, Timezone,
+    DataType, Decimal, Error, Field, IdType, Result, Scalar, Side, StructType, TimeUnit, Timezone,
 };
 
 /// Nanoseconds in one second: what splits an instant into the seconds a
@@ -71,14 +71,19 @@ const NAMES: [&str; 25] = [
 const BOOK_UNIX: &str = "$.book.currunix";
 
 /// The alternate identifiers an execution names the trade it reports by,
-/// each a kind of name of its own - a `TRADEID` and an `EXECID` spelled
+/// each a kind of name of its own - a `tradeid` and an `execid` spelled
 /// alike name two trades: FIX's `TradeID(1003)` and `TradeReportID(571)`,
 /// which every side a trade report's parse splits off keeps, and a trading
 /// venue's transaction identification code, which every side of one venue
 /// trade states; then `ExecID(17)`, which every statement of one fill
 /// states - a side split off a trade report states its `SideExecID(1427)`
 /// there.
-const TRADE_NAMES: [&str; 4] = ["TRADEID", "TRADEREPORTID", "TVTIC", "EXECID"];
+const TRADE_NAMES: [IdType; 4] = [
+    IdType::TradeId,
+    IdType::TradeReportId,
+    IdType::Tvtic,
+    IdType::ExecId,
+];
 
 /// The kind of name an execution stating none of [`TRADE_NAMES`] goes by:
 /// the base of its cross code, which the two sides of one identifier share.
@@ -201,17 +206,17 @@ pub struct Candle {
     /// executions states.
     ///
     /// An execution names the trade it reports by what its
-    /// [`Operation::get_altids`] state under `TRADEID`, `TRADEREPORTID`,
-    /// `TVTIC` and `EXECID` - FIX's `TradeID(1003)` and
+    /// [`Operation::get_identifiers`] state under `tradeid`, `tradereportid`,
+    /// `tvtic` and `execid` - FIX's `TradeID(1003)` and
     /// `TradeReportID(571)`, which every side a trade report's parse splits
     /// off keeps, a venue's transaction code, which every side of one venue
     /// trade states, and `ExecID(17)`, which every statement of one fill
     /// states (`SideExecID(1427)` on a side split off a trade report) - each
     /// a kind of name of its own; one stating none of them by the base of
     /// its cross code, which the two sides of one identifier share
-    /// (`BUYS:X`, `SELL:X`). Executions sharing a name report one trade, and
+    /// (`8:1:X`, `8:2:X`). Executions sharing a name report one trade, and
     /// so do the trades one execution names together, save that two trades
-    /// stating different `TRADEID`s, or different `TVTIC`s, stay two. So the
+    /// stating different `tradeid`s, or different `tvtic`s, stay two. So the
     /// two sides of a trade report and a fill delivered twice count once,
     /// even where one statement names what another does not, while fills
     /// naming nothing in common - even at one instant, price and quantity -
@@ -989,13 +994,13 @@ impl Fold {
     /// of its trade adds its last quantity, a later one what it states past
     /// the largest counted before it, any other nothing.
     fn traded(&mut self, execution: &ExecutionEvent) -> Result<()> {
-        let altids = execution.get_altids();
+        let identifiers = execution.get_identifiers();
         let mut names = [None; NAME_KINDS];
-        for (name, key) in names.iter_mut().zip(TRADE_NAMES) {
-            *name = altids.get(key);
+        for (name, kind) in names.iter_mut().zip(&TRADE_NAMES) {
+            *name = identifiers.get(kind);
         }
         if names.iter().all(Option::is_none) {
-            names[BASE_CODE] = Some(unsided_crosscode(execution.get_crosscode()));
+            names[BASE_CODE] = Some(base_crosscode(execution.get_crosscode()));
         }
         let volume = self.volume;
         let quantity = execution.get_lastqty();
@@ -1057,10 +1062,10 @@ impl Fold {
 /// let quote = |unix: i64, code: &str, side: &str, price: &str| -> yggdryl::Result<MarketData> {
 ///     let mut quote = QuoteEvent::at(unix);
 ///     quote.set_crosscode(code.to_owned());
-///     quote.set_ticker(Some("ACME".into()));
-///     quote.set_side(Side::read(side).expect("a shipped side"));
-///     quote.set_price(Some(price.parse()?));
-///     quote.set_quantity(Some(Decimal::from_int(10)));
+///     quote.set_ticker(Some("ACME".into()), true);
+///     quote.set_side(Side::read(side).expect("a shipped side"), true);
+///     quote.set_price(Some(price.parse()?), true);
+///     quote.set_quantity(Some(Decimal::from_int(10)), true);
 ///     quote.set_state(State::New);
 ///     quote.finalize();
 ///     Ok(MarketData::from(quote))
@@ -1078,7 +1083,7 @@ impl Fold {
 /// assert_eq!(candles.len(), 2);
 /// let first = &candles[0];
 /// assert_eq!((first.start, first.end), (0, 60 * second));
-/// assert_eq!(first.crosscode, "ACME");
+/// assert_eq!(first.crosscode, "3:0:ACME");
 /// let bid = first.bid.expect("two books stated a bid");
 /// assert_eq!((bid.open, bid.close), (Decimal::from_int(100), Decimal::from_int(102)));
 /// assert_eq!(first.spread.map(|spread| spread.close), Some(Decimal::from_int(-1)));

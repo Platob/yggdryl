@@ -203,10 +203,10 @@ pub(crate) fn environment_authorization(
     let mut parsed = PARSED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((held, netrc)) = parsed.as_ref() {
-        if *held == version {
-            return netrc.authorization(host);
-        }
+    if let Some((held, netrc)) = parsed.as_ref()
+        && *held == version
+    {
+        return netrc.authorization(host);
     }
     let text = std::fs::read(&version.path).ok()?;
     let netrc = Netrc::parse(&String::from_utf8_lossy(&text));

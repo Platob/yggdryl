@@ -922,10 +922,10 @@ fn decimal_over(fixed: Option<Arc<FixedType>>, document: &Scalar) -> Option<Node
     if precision > 38 {
         return None;
     }
-    if let Some(fixed) = &fixed {
-        if fixed.size == 0 || precision > max_precision_for(fixed.size) {
-            return None;
-        }
+    if let Some(fixed) = &fixed
+        && (fixed.size == 0 || precision > max_precision_for(fixed.size))
+    {
+        return None;
     }
     Some(Node::Decimal(Arc::new(DecimalType {
         precision,

@@ -12,7 +12,7 @@ use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url};
-use yggdryl::{Isin, State};
+use yggdryl::{IdSource, IdType, Isin, State};
 
 fn reader() -> FixCodec {
     super::fixed_codec(super::committed_registry())
@@ -45,7 +45,10 @@ fn text(message: &FixMsg, tag: i32) -> Option<String> {
 /// The instrument's ISIN, as the trait derives it from `SecurityID(48)`
 /// under its source and the `SecurityAltID` group.
 fn isincode(message: &FixMsg) -> Option<String> {
-    message.get_securityids().get("ISIN").map(ToOwned::to_owned)
+    message
+        .get_securityids()
+        .get(&IdType::Isin)
+        .map(ToOwned::to_owned)
 }
 
 /// The market, as the trait derives it from `SecurityExchange(207)`,
@@ -104,10 +107,14 @@ fn smarttrade_quote_and_mass_quote_ack_map_creation_time_and_quote_identifiers()
         assert_eq!(text(&message, 55).as_deref(), Some("EUR/USD"));
         assert_eq!(text(&message, 58).as_deref(), Some("MATCHED"));
         assert_eq!(
-            message.get_altids().iter().collect::<Vec<_>>(),
+            message
+                .get_identifiers()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
             [
-                ("QUOTEID", "quote-20260814-1"),
-                ("QUOTEREQID", "request-20260814-1"),
+                "fix:quoteid=quote-20260814-1",
+                "fix:quotereqid=request-20260814-1",
             ]
         );
     }
@@ -152,10 +159,14 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
     assert_eq!(quote.capture().msgctxid(), Some("9f02625007"));
     assert_eq!(quote.get_creaunix(), Some(1_786_699_797_000_000_000));
     assert_eq!(
-        quote.get_altids().iter().collect::<Vec<_>>(),
+        quote
+            .get_identifiers()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         [
-            ("QUOTEID", "quote-20260814-1"),
-            ("QUOTEREQID", "request-20260814-1"),
+            "fix:quoteid=quote-20260814-1",
+            "fix:quotereqid=request-20260814-1",
         ]
     );
     // The session event it was delivered as is the capture's, its four
@@ -194,7 +205,7 @@ fn execution_time_uses_the_first_execution_specific_statement() {
     let reader = reader();
     let direct = settled(
         &reader,
-        b"8=FIX.4.4|35=8|65002=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|65023=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
     );
     assert_eq!(direct.get_execunix(), Some(DIRECT));
 
@@ -300,12 +311,15 @@ fn an_identifier_names_the_standard_that_closes_it() {
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
     assert_eq!(text(&cusip, 22).as_deref(), Some("1"));
     assert_eq!(isincode(&cusip), None);
-    assert_eq!(cusip.get_securityids().get("CUSIP"), Some("037833100"));
+    assert_eq!(
+        cusip.get_securityids().get(&IdType::Cusip),
+        Some("037833100")
+    );
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
     assert_eq!(text(&sedol, 22).as_deref(), Some("2"));
-    assert_eq!(sedol.get_securityids().get("SEDOL"), Some("B0YBKJ7"));
+    assert_eq!(sedol.get_securityids().get(&IdType::Sedol), Some("B0YBKJ7"));
 
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
@@ -411,7 +425,10 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     // the check digit does not close is nothing at all.
     let cusip = settled(&reader, &alternate("037833100", "1"));
     assert_eq!(isincode(&cusip), None);
-    assert_eq!(cusip.get_securityids().get("CUSIP"), Some("037833100"));
+    assert_eq!(
+        cusip.get_securityids().get(&IdType::Cusip),
+        Some("037833100")
+    );
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
     assert_eq!(isincode(&masked), None);
@@ -864,7 +881,7 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     assert_eq!(isincode(&chain).as_deref(), Some("GB0002634946"));
     assert_eq!(text(&chain, 470).as_deref(), Some("GB"));
     // The other way round, from the alternate a message states instead of
-    // a primary: `secaltids` -> `securityid` -> `securityidsource`, a
+    // a primary: `securityids` -> `securityid` -> `securityidsource`, a
     // lower tag filled off a group.
     let reversed = settled(&reader, &alternate("GB0002634946", "4"));
     assert_eq!(text(&reversed, 48).as_deref(), Some("GB0002634946"));
@@ -882,11 +899,13 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
 
 #[test]
 fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not() {
-    // The row carries its stated FIX children - `SecurityID(48)` under its
-    // source, `ExDestination(100)`, `ExecType(150)` - and lifts the normalized
-    // ISIN and MIC into their dedicated code columns. Other graph answers stay
-    // derived rather than becoming columns. The ranked state is an event fact,
-    // stated at its own column so a reader sees what the walk folded.
+    // The row carries its stated FIX children - `ExDestination(100)`,
+    // `ExecType(150)` as columns, `SecurityID(48)` under its source among its
+    // entries - states the identifier they name in `securityids`, and lifts the
+    // normalized ISIN and MIC into their dedicated code columns. Other graph
+    // answers stay derived rather than becoming columns. The ranked state is
+    // an event fact, stated at its own column so a reader sees what the walk
+    // folded.
     let reader = reader();
     let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
@@ -896,15 +915,34 @@ fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not()
         let at = schema.index_of(name).expect(name);
         row.as_sequence().expect("a row")[at].clone()
     };
-    for name in ["px", "qty", "symbolticker"] {
+    for name in [
+        "px",
+        "qty",
+        "symbolticker",
+        "securityid",
+        "securityidsource",
+    ] {
         assert_eq!(schema.index_of(name), None, "{name} is no column");
     }
+    let entry = |key: &str| {
+        column(yggdryl::fix::FIXENTRIES_COLUMN)
+            .mapping_iter()
+            .find(|(held, _)| held.as_str() == Some(key))
+            .and_then(|(_, value)| value.as_str().map(str::to_owned))
+    };
     assert_eq!(
         column("state"),
         yggdryl::Scalar::State(yggdryl::State::read(&state("F")).expect("a state")),
         "the ranked state is a column of its own"
     );
-    assert_eq!(column("securityid").as_str(), Some("US0378331005"));
+    assert_eq!(entry("48:securityid").as_deref(), Some("US0378331005"));
+    assert_eq!(entry("22:securityidsource").as_deref(), Some("4"));
+    assert_eq!(
+        yggdryl::Identifiers::from_scalar(&column("securityids"))
+            .expect("the security identifiers")
+            .get_from(&IdSource::Fix, &IdType::Isin),
+        Some("US0378331005")
+    );
     assert_eq!(column("exdestination").as_str(), Some("XNAS"));
     assert_eq!(column("exectype").as_str(), Some("F"));
     assert_eq!(column("isincode").as_str(), Some("US0378331005"));
@@ -1502,8 +1540,7 @@ fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
 /// A message that follows another in the lifecycle takes every key of its
 /// chain's metadata it does not state, its own values standing - the
 /// bridge's namespaced keys a message's metadata holds - while its
-/// alternate identifiers stay those its fields state and its dictionary
-/// follows.
+/// identifiers stay those its fields state and its dictionary follows.
 #[test]
 fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() {
     let codec = reader();
@@ -1531,5 +1568,196 @@ fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() 
         .collect();
     assert_eq!(metadata, [("desk.book", "B1"), ("desk.name", "FX")]);
     // The execution's identifier is its own, never the one it follows.
-    assert_eq!(second.get_altids().get("EXECID"), Some("E-2"));
+    assert_eq!(second.get_identifiers().get(&IdType::ExecId), Some("E-2"));
+}
+
+/// The parentage a walk gives the identifiers of a chain: each base a
+/// message states takes its parents - the value it held before it last
+/// changed, back to the chain's first - from the message before it.
+mod parentage {
+    use std::sync::Arc;
+
+    use yggdryl::graph::{Element, Operation};
+    use yggdryl::{FixCodec, FixMsg, IdSource, IdType};
+
+    use super::SoleMessage;
+
+    fn word(text: &str) -> IdType {
+        text.parse().expect("a type")
+    }
+
+    /// The chain `lines` state, each walked once, in the order given.
+    fn walked(codec: &FixCodec, lines: &[&[u8]]) -> Vec<FixMsg> {
+        let messages: Vec<FixMsg> = lines
+            .iter()
+            .map(|line| codec.sole_line(line).expect("a readable line"))
+            .collect();
+        codec
+            .lifecycle(messages)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("a readable lifecycle")
+    }
+
+    /// What the message's identifiers hold under the `fix` source.
+    fn fix(message: &FixMsg, kind: &str) -> Option<String> {
+        message
+            .get_identifiers()
+            .get_from(&IdSource::Fix, &word(kind))
+            .map(ToOwned::to_owned)
+    }
+
+    /// An order replaced twice: each replacement names the client order
+    /// identifier it replaced, and it is that - FIX's `OrigClOrdID(41)` - the
+    /// chain's parent of `clordid`. The two replacements join the order's
+    /// chain through it.
+    #[test]
+    fn an_order_replaced_twice_carries_the_previous_client_order_identifier() {
+        let codec = super::reader();
+        let chain = walked(
+            &codec,
+            &[
+                b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A|55=AAPL|54=1|38=1|40=2|10=0|",
+                b"8=FIX.4.4|35=G|52=20260102-10:15:31|11=B|41=A|55=AAPL|54=1|38=1|40=2|10=0|",
+                b"8=FIX.4.4|35=G|52=20260102-10:15:32|11=C|41=B|55=AAPL|54=1|38=1|40=2|10=0|",
+            ],
+        );
+        let [first, second, third] = chain.as_slice() else {
+            panic!("three statements, not {}", chain.len())
+        };
+        assert_eq!(fix(first, "clordid").as_deref(), Some("A"));
+        assert_eq!(fix(first, "origclordid"), None, "an order's first has none");
+        assert_eq!(fix(second, "clordid").as_deref(), Some("B"));
+        assert_eq!(fix(second, "origclordid").as_deref(), Some("A"));
+        assert_eq!(fix(third, "clordid").as_deref(), Some("C"));
+        assert_eq!(fix(third, "origclordid").as_deref(), Some("B"));
+        // One chain: the replacements are joined to the first by the value
+        // their parent names, and take its cross code.
+        assert_eq!(first.get_crosscode(), "10:1:A");
+        assert_eq!(second.get_crosscode(), first.get_crosscode());
+        assert_eq!(third.get_crosscode(), first.get_crosscode());
+        assert_eq!(second.get_crossuuid(), first.get_crossuuid());
+        assert_eq!(third.get_crossuuid(), first.get_crossuuid());
+    }
+
+    /// An order whose `OrderID(37)` changes along its chain, A then B, C and
+    /// D: the last states `parentorderid` C, the value it held before it last
+    /// changed, and `origorderid` A, the value its chain first stated - and
+    /// each message before it the same, step by step.
+    #[test]
+    fn an_order_identifier_that_changes_carries_its_previous_and_its_first_value() {
+        let codec = super::reader();
+        let report = |at: u32, orderid: &str, execid: &str| {
+            format!(
+                "8=FIX.4.4|35=8|52=20260102-10:15:{:02}|11=CL1|37={orderid}|17={execid}|150=0|39=0|55=AAPL|54=1|10=0|",
+                30 + at
+            )
+        };
+        let lines = [
+            report(0, "A", "E1"),
+            report(1, "B", "E2"),
+            report(2, "C", "E3"),
+            report(3, "D", "E4"),
+        ];
+        let chain = walked(
+            &codec,
+            &lines.iter().map(|line| line.as_bytes()).collect::<Vec<_>>(),
+        );
+        assert_eq!(chain.len(), 4);
+        let held: Vec<(Option<String>, Option<String>, Option<String>)> = chain
+            .iter()
+            .map(|message| {
+                (
+                    fix(message, "orderid"),
+                    fix(message, "parentorderid"),
+                    fix(message, "origorderid"),
+                )
+            })
+            .collect();
+        let some = |text: &str| Some(text.to_owned());
+        assert_eq!(
+            held,
+            [
+                (some("A"), None, None),
+                (some("B"), some("A"), some("A")),
+                (some("C"), some("B"), some("A")),
+                (some("D"), some("C"), some("A")),
+            ]
+        );
+        // The same walk joins them into one chain, under the first's code.
+        for message in &chain {
+            assert_eq!(message.get_crosscode(), chain[0].get_crosscode());
+        }
+        // The client order identifier never moved: no parent for it.
+        for message in &chain {
+            assert_eq!(fix(message, "clordid").as_deref(), Some("CL1"));
+            assert_eq!(fix(message, "origclordid"), None);
+        }
+        // Each parent is the value the walk took from the message before it,
+        // under the source that stated it.
+        let last = chain.last().expect("a last message");
+        let sources: Vec<String> = last
+            .get_identifiers()
+            .of_kind(&word("parentorderid"))
+            .map(|id| id.key().to_string())
+            .collect();
+        assert!(
+            sources.contains(&"fix:parentorderid".to_owned()),
+            "{sources:?}"
+        );
+    }
+
+    /// A registry that states its own list for `OrderID(37)` is the one the
+    /// walk reads: three parents, the nearest the value before the last
+    /// change, the middle ones shifting one step nearer with each change,
+    /// the last the chain's first.
+    #[test]
+    fn a_registrys_own_list_of_parents_is_the_one_the_walk_reads() {
+        let mut registry = (*super::super::committed_registry()).clone();
+        let mut orderid = registry.field_by_tag(37).expect("OrderID(37)").clone();
+        orderid
+            .as_fix_mut()
+            .set_parents(["parentorderid", "grandparentorderid", "origorderid"])
+            .expect("three types");
+        registry.update(orderid).expect("the field restated");
+        let codec = super::super::fixed_codec(Arc::new(registry));
+        let report = |at: u32, orderid: &str, execid: &str| {
+            format!(
+                "8=FIX.4.4|35=8|52=20260102-10:15:{:02}|11=CL1|37={orderid}|17={execid}|150=0|39=0|55=AAPL|54=1|10=0|",
+                30 + at
+            )
+        };
+        let lines = [
+            report(0, "A", "E1"),
+            report(1, "B", "E2"),
+            report(2, "C", "E3"),
+            report(3, "D", "E4"),
+        ];
+        let chain = walked(
+            &codec,
+            &lines.iter().map(|line| line.as_bytes()).collect::<Vec<_>>(),
+        );
+        let held: Vec<[Option<String>; 4]> = chain
+            .iter()
+            .map(|message| {
+                [
+                    fix(message, "orderid"),
+                    fix(message, "parentorderid"),
+                    fix(message, "grandparentorderid"),
+                    fix(message, "origorderid"),
+                ]
+            })
+            .collect();
+        let some = |text: &str| Some(text.to_owned());
+        assert_eq!(
+            held,
+            [
+                [some("A"), None, None, None],
+                // The first change has no grandparent yet: the last of the
+                // list is the chain's first value, the one before it.
+                [some("B"), some("A"), None, some("A")],
+                [some("C"), some("B"), some("A"), some("A")],
+                [some("D"), some("C"), some("B"), some("A")],
+            ]
+        );
+    }
 }

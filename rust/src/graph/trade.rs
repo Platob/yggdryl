@@ -140,9 +140,10 @@ impl TradeEvent {
             data.set_seqnum(data.get_seqnum().max(execution.get_seqnum()));
             data.set_creaunix(earliest(data.get_creaunix(), execution.get_creaunix()));
             data.set_recdunix(earliest(data.get_recdunix(), execution.get_recdunix()));
-            data.set_execunix(latest(data.get_execunix(), execution.get_execunix()));
+            data.set_execunix(latest(data.get_execunix(), execution.get_execunix()), true);
         }
         data.fill_market();
+        data.fill_parents();
         data.sync_cross();
         let mut digest = data.digest_operation_event();
         digest.write(&(self.executions.len() as u64).to_be_bytes());

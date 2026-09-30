@@ -386,7 +386,6 @@ impl TextOptions {
     /// nobody can read. A sequence strips them one after another, each from
     /// the new left edge, so `After Enrichment --> ` comes off as
     /// `After \w+`, then `-->`, then nothing.
-    #[must_use]
     pub fn lstrip(&self) -> impl ExactSizeIterator<Item = &str> {
         self.lstrip
             .iter()
@@ -421,7 +420,6 @@ impl TextOptions {
     }
 
     /// Borrow the right-edge trimming patterns, in the order they are applied.
-    #[must_use]
     pub fn rstrip(&self) -> impl ExactSizeIterator<Item = &str> {
         self.rstrip
             .iter()

@@ -1,6 +1,6 @@
 # State
 
-What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty-one members, stored as the `int32` code of its member, the hundreds of the code its rank.
+What state one thing is in, from asked for to ended: a lifecycle-sorted enum of sixty-one members, stored as the `uint16` code of its member, the hundreds of the code its rank.
 
 ## Contract
 
@@ -11,7 +11,7 @@ What state one thing is in, from asked for to ended: a lifecycle-sorted enum of 
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no state, naming the spelling |
-| Stores | `int32` under `yggdryl.state`: the codes sort from the first state to the terminal ones in every format the column crosses |
+| Stores | `uint16` under `yggdryl.state`: the codes sort from the first state to the terminal ones in every format the column crosses |
 
 One vocabulary over two worlds. FIX names an order's state twice - `OrdStatus(39)` says where the order stands and `ExecType(150)` says what the report is - its post-trade messages name a report's, an allocation's and a confirmation's states again, and a scheduler names a job's state in ordinary English. They are the same shape: a thing is asked for, acknowledged, it works, and it ends one of three ways. A capture and the pipeline reading it need one vocabulary rather than several and a join.
 
@@ -150,20 +150,20 @@ The value is the member, whichever vocabulary named it: `PARTIALLY_FILLED` for F
 
 ## Arrow storage
 
-`Int32` under `yggdryl.state`. The column is one value buffer of codes, and because the codes sort by lifecycle a Parquet row group's bounds, an Iceberg predicate and an external `ORDER BY` already read in lifecycle order. Text entering a `state` column is read as a spelling and an integer as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `state` column cast to text answers each member's name, and cast to an integer its code.
+`UInt16` under `yggdryl.state`. The column is one value buffer of codes, and because the codes sort by lifecycle a Parquet row group's bounds, an Iceberg predicate and an external `ORDER BY` already read in lifecycle order. Text entering a `state` column is read as a spelling and an integer of any width, signed or unsigned, as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `state` column cast to text answers each member's name, and cast to an integer its code.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int32Array, StringArray};
+    use arrow_array::{Array, ArrayRef, StringArray, UInt16Array};
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let state = Field::new("state", DataType::State, false);
     let arrow = state.clone().into_arrow_field()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.state");
     assert_eq!(Field::from_arrow_field(&arrow)?, state);
 
@@ -172,7 +172,7 @@ The value is the member, whichever vocabulary named it: `PARTIALLY_FILLED` for F
     let stored = Serie::from_arrow_array(Some(&state), names, ArrowCastOptions::new())?
         .into_arrow_array()
         .expect("a column, not a run");
-    let codes = stored.as_any().downcast_ref::<Int32Array>().expect("int32 codes");
+    let codes = stored.as_any().downcast_ref::<UInt16Array>().expect("uint16 codes");
     assert_eq!(codes.values().to_vec(), [8003, 2001, 4001]);
     ```
 
@@ -185,8 +185,8 @@ The value is the member, whichever vocabulary named it: `PARTIALLY_FILLED` for F
 
     state = Field("state", "state")
     arrow_field = state.into_arrow()
-    assert arrow_field.type == pa.int32()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.state"
+    assert arrow_field.type.storage_type == pa.uint16()
+    assert arrow_field.type.extension_name == "yggdryl.state"
     assert Field.from_arrow(arrow_field) == state
 
     # Names land as members, and members sort by lifecycle.
@@ -382,7 +382,7 @@ assert_eq!(State::Filled.merge_with(State::New), State::Filled);
 - A wire code never folds: `A` is `PENDING_NEW` and `a` names no state, because they are different FIX codes and a folded lookup would answer the wrong state for one of them.
 - A name folds: `DoneForDay`, `done_for_day`, `DONE FOR DAY` and a bridge's `DoneDay` are one spelling, `DONE_FOR_DAY`.
 - A stored code is an integer, never text: `"2001"` is no spelling, `2001` is `NEW`.
-- In an expression a text constant meets a `state` column as the member it spells and an integer as the code it stores: `state = 'FILLED'`, `state in ('NEW', 'PartFill')`, `state < 8000` (every state still live) and `state >= 9000` (cancelled or failed) all compare by lifecycle; a state beside an integer column merges to the `int32` it stores.
+- In an expression a text constant meets a `state` column as the member it spells and an integer as the code it stores: `state = 'FILLED'`, `state in ('NEW', 'PartFill')`, `state < 8000` (every state still live) and `state >= 9000` (cancelled or failed) all compare by lifecycle; a state beside an integer column merges to `int32`, which holds every code.
 - A Hive partition over a `state` column is named by the member, `state=FILLED`, the spelling the column reads back.
 - The default value is `UNKNOWN`, code `0`: a stated value, not an absence.
 - JSON, TOML, YAML and XML write a state as its name, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code, and Iceberg stores it as an `int`.

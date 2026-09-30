@@ -41,20 +41,20 @@ mod columns {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "crosshashcode",
+        "srcuuids",
         "currunix",
         "creaunix",
         "recdunix",
         "exprunix",
         "prevunix",
         "snapunix",
-        "curruuid",
-        "crossuuid",
-        "crosscode",
-        "currhashcode",
-        "crosshashcode",
         "prevuuid",
         "seqnum",
-        "srcuuids",
         "state",
     ];
 
@@ -130,7 +130,7 @@ mod columns {
         // Nothing stands between the event columns and the line's own: the
         // row number is the event's place, `seqnum`, and the object the line
         // came from is the event's chain, `crosscode`.
-        assert_eq!(batch.schema().field(12).name(), "seqnum");
+        assert_eq!(batch.schema().field(13).name(), "seqnum");
         assert_eq!(batch.schema().field(15).name(), "body");
         assert_eq!(
             batch.schema().field(17).data_type(),
@@ -138,7 +138,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(12)
+                .column(13)
                 .as_any()
                 .downcast_ref::<UInt64Array>()
                 .unwrap()
@@ -179,13 +179,13 @@ mod columns {
         let source = named("rows.log", b"first\nsecond\nthird\n");
         let batch = collect(&source, TextOptions::new()).pop().unwrap();
         assert_eq!(
-            batch.schema().field(12).data_type(),
+            batch.schema().field(13).data_type(),
             &arrow_schema::DataType::UInt64
         );
-        assert!(batch.schema().field(12).is_nullable());
+        assert!(batch.schema().field(13).is_nullable());
         assert_eq!(
             batch
-                .column(12)
+                .column(13)
                 .as_any()
                 .downcast_ref::<UInt64Array>()
                 .unwrap()
@@ -201,7 +201,7 @@ mod columns {
         let batch = collect(&source, numbered).pop().unwrap();
         assert_eq!(
             batch
-                .column(12)
+                .column(13)
                 .as_any()
                 .downcast_ref::<UInt64Array>()
                 .unwrap()
@@ -271,7 +271,7 @@ mod columns {
         let first = reader.next().unwrap().unwrap();
         assert_eq!(
             first
-                .column(12)
+                .column(13)
                 .as_any()
                 .downcast_ref::<UInt64Array>()
                 .unwrap()
@@ -317,7 +317,7 @@ mod columns {
         // URL is stated under `crosscode` and nowhere beside it.
         assert_eq!(
             batch
-                .column(8)
+                .column(2)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -625,7 +625,7 @@ mod columns {
         // `currunix`, and the `mtime` capture is consumed filling it.
         assert_eq!(names, with_event(&["body", "id"]));
         assert_eq!(
-            batch.schema().field(0).data_type(),
+            batch.schema().field(6).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Nanosecond,
                 Some("UTC".into())
@@ -633,7 +633,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(0)
+                .column(6)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -656,7 +656,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(0)
+                .column(6)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -672,7 +672,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(0)
+                .column(6)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()

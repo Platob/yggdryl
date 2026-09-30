@@ -7,12 +7,11 @@ use crate::ascii::ascii_text_sized;
 use crate::{
     BBG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, FOREX_EXTENSION_NAME, ISIN_EXTENSION_NAME,
-    MIC_EXTENSION_NAME, RIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME,
-    UNIT_EXTENSION_NAME,
+    MIC_EXTENSION_NAME, RIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME, UNIT_EXTENSION_NAME,
 };
 use crate::{
     BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, UNIT_WIDTH,
 };
 use crate::{DataType, Error, Result};
 
@@ -162,7 +161,6 @@ impl DataType {
             Self::Isin => Some("isin"),
             Self::Cusip => Some("cusip"),
             Self::Sedol => Some("sedol"),
-            Self::TimeInForce => Some("timeinforce"),
             Self::Bbg => Some("bbg"),
             Self::Ric => Some("ric"),
             Self::Figi => Some("figi"),
@@ -208,26 +206,6 @@ impl DataType {
     }
 }
 
-/// The Arrow extension name one registered code rides.
-pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str> {
-    match dtype {
-        DataType::Country => Some(COUNTRY_EXTENSION_NAME),
-        DataType::Ccy => Some(CCY_EXTENSION_NAME),
-        DataType::Mic => Some(MIC_EXTENSION_NAME),
-        DataType::Cfi => Some(CFI_EXTENSION_NAME),
-        DataType::Bbg => Some(BBG_EXTENSION_NAME),
-        DataType::Ric => Some(RIC_EXTENSION_NAME),
-        DataType::Figi => Some(FIGI_EXTENSION_NAME),
-        DataType::Isin => Some(ISIN_EXTENSION_NAME),
-        DataType::Cusip => Some(CUSIP_EXTENSION_NAME),
-        DataType::Sedol => Some(SEDOL_EXTENSION_NAME),
-        DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
-        DataType::Unit => Some(UNIT_EXTENSION_NAME),
-        DataType::Forex => Some(FOREX_EXTENSION_NAME),
-        _ => None,
-    }
-}
-
 /// The code one Arrow extension name imports as.
 ///
 /// The name alone, because a code's storage is Arrow's `Utf8` and the caller
@@ -245,7 +223,6 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
         ISIN_EXTENSION_NAME => Some(DataType::Isin),
         CUSIP_EXTENSION_NAME => Some(DataType::Cusip),
         SEDOL_EXTENSION_NAME => Some(DataType::Sedol),
-        TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
         UNIT_EXTENSION_NAME => Some(DataType::Unit),
         FOREX_EXTENSION_NAME => Some(DataType::Forex),
         _ => None,
@@ -290,7 +267,6 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
         DataType::Cusip => code_text::<CUSIP_WIDTH>(bytes),
         DataType::Sedol => code_text::<SEDOL_WIDTH>(bytes),
-        DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
         DataType::Unit => code_text::<UNIT_WIDTH>(bytes),
         DataType::Forex => code_text::<FOREX_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
@@ -343,7 +319,6 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::code_extension_name;
     use crate::invalid;
     use crate::{DataType, Result};
 
@@ -357,7 +332,7 @@ mod arrow {
     ///
     /// Returns an error when the datatype is not a registered code.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        if code_extension_name(dtype).is_some() {
+        if dtype.is_code() {
             return Ok(ArrowDataType::Utf8);
         }
         Err(invalid(

@@ -45,22 +45,27 @@ vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``
 the lifecycle's ``creaunix``, ``exprunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
 ``currency``, ``quantity``, ``unit``, ``side`` - a :class:`yggdryl.Side`,
-``UNKN`` where none is stated - its ``securityids`` - one code under each
-source, ISIN, CUSIP, FIGI - and the ``isincode`` read off them, its CFI and
+``UNKN`` where none is stated - its ``securityids`` - an :class:`yggdryl.Identifiers`
+map keyed ``src:type`` of the codes it is known by, each sourced and typed ``isin``,
+``cusip``, ``figi`` - and the ``isincode`` read off them, its CFI and
 MIC codes, the ``execunix`` clock it last executed at, last, average,
 cumulative, remaining and previous values, spot
 rate and forward points, the ``fxrates`` it states, the bid and ask it quotes
 (``bidpx``, ``bidqty``, ``bidccy``, ``askpx``, ``askqty``, ``askccy``),
 ``ticker`` and ``metadata``; the operation's time in force, tradability, the
-``altids`` it names, each under the field that stated it, and the
-``accountids`` its parties and its ``Account(1)`` are, each party under its
-role's name and the account under ``ACCOUNT``);
+``identifiers`` it names, each typed by the field that stated it and carrying the
+parents its chain gave it (``origclordid``, ``parentorderid``, ``origorderid``),
+and the ``partyids`` its ``Parties`` groups and its ``Account(1)`` are, each party id
+typed by its role's name and sourced by its source's, the account typed
+``account``; a key no dictionary resolves whose name is an identifier's
+(``OMS_ClOrdID``, ``firm.x.ParentOrderID``) lands in the set its type belongs to
+and stays in ``metadata`` as it arrived);
 :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
 business category ``msgcat``, the :class:`yggdryl.MarketDataKind` member the
 message type is filed under (``MsgType.msgcat`` answers the same member for
-the definition); the option ``strikepx`` the message identifies;
+the definition); the option ``strikeprice`` the message identifies (``StrikePrice(202)``);
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,
@@ -81,7 +86,8 @@ the holder, typed as its column is; any other key reaches the row, the
 included, as the text the message stated. :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` write both the same way, and every write settles the
 identity again: the cross code from the first stated of ``OrderID``,
-``ClOrdID``, ``OrigClOrdID``, ``QuoteID``, ``QuoteReqID`` and ``MDReqID``, the
+``ClOrdID``, ``OrigClOrdID``, ``QuoteID``, ``QuoteReqID`` and ``MDReqID``,
+stored as ``{kind}:{side}:{base}`` (a buy order ``O-1`` is ``10:1:O-1``), the
 hash code over the facts and the row, the identities from both.
 :meth:`FixMsg.entries` reads the row as a tree of ``(tag, name, value,
 entries)`` tuples; :meth:`FixMsg.into_bytes` and :meth:`FixMsg.into_text`
@@ -154,7 +160,7 @@ message states raising; :meth:`FixCodec.market_arrow_reader` writes them as
 ``marketdata`` rows and :meth:`FixCodec.market_data_arrow_reader` reads
 them off FIX rows. Each leaf carries, in its metadata, what its message
 states that no typed column reads and no identifier map of the leaf holds, and
-lifts into its ``altids`` each scalar of it whose key ends with an identifier
+lifts into its ``identifiers`` each scalar of it whose key ends with an identifier
 its message's type declares, unless the codec's ``market_metadata`` is off.
 :meth:`FixCodec.write_arrow_reader` is the encode direction, re-emitting
 every row's wire. :meth:`FixCodec.format_messages` and

@@ -14,6 +14,7 @@ use crate::{DataType, Field, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
+mod extension;
 pub(crate) mod rows;
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
@@ -634,14 +635,14 @@ fn reconciled(left: &Field, right: &Field) -> Result<Field> {
     }
     let left_id = left.parquet_field_id()?;
     let right_id = right.parquet_field_id()?;
-    if let (Some(left_id), Some(right_id)) = (left_id, right_id) {
-        if left_id != right_id {
-            return Err(Error::IncompatibleSchema(format!(
-                "expected one PARQUET:field_id for the merged column {:?}, got {left_id} on the \
+    if let (Some(left_id), Some(right_id)) = (left_id, right_id)
+        && left_id != right_id
+    {
+        return Err(Error::IncompatibleSchema(format!(
+            "expected one PARQUET:field_id for the merged column {:?}, got {left_id} on the \
                  left and {right_id} on the right",
-                left.name()
-            )));
-        }
+            left.name()
+        )));
     }
     // Left's metadata and identity are kept; nullability widens, because a
     // column required on one side and nullable on the other is nullable in a

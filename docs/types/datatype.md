@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 88 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the thirteen [codes](codes/index.md), the three [enums](enum/index.md) |
+| Owns | 89 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md), the five [enums](enum/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
 | Identity | `id()`, `kind()`: 90 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `timeinforce`, `unit` and `forex`, each resolving to its own [code](codes/index.md), and `side`, `state` and `marketdatakind` to the [Side](enum/side.md), [State](enum/state.md) and [MarketDataKind](enum/marketdatakind.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `unit` and `forex`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -296,13 +296,15 @@ Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase string
 
 ## Arrow projection
 
-Rust and Python exchange a real Arrow type; Node reads Arrow JS through `toString`.
+Rust and Python exchange a real Arrow type; Node reads Arrow JS as a one-field IPC schema.
 Python crosses through the Arrow C Data Interface rather than rebuilding the value.
 
-An extension identity is field metadata, so `into_arrow` answers the storage a type is written
-over and [the field](field.md) is what carries the name back. A C schema is a field node, so
-`into_arrow_ffi` keeps the identity - under a dictionary encoding too, where the entries belong
-to the outer node and Arrow's values are a bare datatype.
+In Rust an extension identity is field metadata, so `into_arrow_datatype` answers the storage a
+type is written over and [the field](field.md) is what carries the name back. A C schema is a
+field node, so `into_arrow_datatype_ffi` keeps the identity - under a dictionary encoding too,
+where the entries belong to the outer node and Arrow's values are a bare datatype. Python's
+`into_arrow` and `from_arrow` cross that C schema, so they keep it: see
+[Extension types](#extension-types).
 
 === "Rust"
 
@@ -360,6 +362,83 @@ to the outer node and Arrow's values are a bare datatype.
     ```
 
 Every conversion re-checks parameters; whole schemas cross through [Schema](../arrow/schema.md).
+
+### Extension types
+
+A datatype Arrow cannot state alone rides an extension name, one per datatype identifier
+(`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
+`yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
+`yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
+decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
+twelve codes - thirty names in all, `DataTypeId::arrow_extension_names()`. The name over the
+storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
+other storage it is a foreign field wearing the name and reads as its storage.
+
+- Rust: each parameter-free datatype marker - `CcyType`, `StateType`, `UuidType` and the twenty
+  beside them - and the `StringType` and `BytesType` leaves that ride a document implement
+  arrow-rs's `ExtensionType`, every method answering as the field import does. The fixed decimals,
+  the URL and the URN have no marker of their own; `Field::from_arrow_field` reads them.
+- Python: `import yggdryl` registers one pyarrow extension type per `yggdryl.*` name
+  (`yggdryl.extension.YggdrylType`), so a type, a field, a column, a chunked column, a scalar, a
+  batch, a table and a stream cross into pyarrow as extension types and back as the datatype they
+  name, at any depth; `arrow.uuid` is pyarrow's own. An extension column's `to_pylist` reads the
+  column once (`YggdrylArray`), and a value of a type holding one below its top level -
+  `serie(ccy)` - is laid out by the core. pyarrow before 21 exports an extension laid out over a
+  view without its buffers, so there a view leaf (`ascii_view`, `large_utf8_view`,
+  `large_binary_view` and their kin) crosses back as its storage under the field its type states,
+  and one nested below a column's top level is refused by name.
+- JavaScript: Arrow JS has no extension types, so the name rides a field's metadata:
+  `Field.intoArrow()` and `Field.fromArrow` carry it, and so do batches and tables; a bare
+  `DataType`, a Vector and an `intoArrowScalar` value cannot.
+
+=== "Rust"
+
+    ```rust
+    use arrow_schema::extension::ExtensionType;
+    use yggdryl::{CcyType, DataType, DataTypeId, Field};
+
+    assert_eq!(DataTypeId::Ccy.arrow_extension_name(), Some(CcyType::NAME));
+    let arrow = Field::new("ccy", DataType::Ccy, true).into_arrow_field()?;
+    assert_eq!(arrow.try_extension_type::<CcyType>()?, CcyType);
+
+    // arrow-rs's typed door builds the field the crate reads back.
+    let built = arrow_schema::Field::new("ccy", arrow_schema::DataType::Utf8, true)
+        .with_extension_type(CcyType);
+    assert_eq!(Field::from_arrow_field(&built)?.dtype(), &DataType::Ccy);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field, Serie
+    from yggdryl.extension import YggdrylType
+
+    ccy = DataType("ccy").into_arrow()
+    assert isinstance(ccy, YggdrylType)
+    assert ccy.extension_name == "yggdryl.ccy"
+    assert ccy.storage_type == pa.string()
+    assert DataType.from_arrow(ccy) == DataType("ccy")
+
+    column = Serie.from_scalars(Field("ccy", "ccy"), ["EUR", "USD"]).into_arrow_array()
+    assert column.type == ccy
+    assert column.to_pylist() == ["EUR", "USD"]
+    assert Serie.from_(column).field.dtype == DataType("ccy")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field } = require('yggdryl')
+
+    const field = new Field('ccy', 'ccy', true)
+    const exported = field.intoArrow()
+
+    assert.equal(exported.metadata.get('ARROW:extension:name'), 'yggdryl.ccy')
+    assert.ok(Field.fromArrow(exported).equals(field))
+    ```
 
 ## Default values
 
@@ -671,7 +750,12 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
 - A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed. The converse holds too: a wire spelling is read by this crate's [shared ISO reader](../media/index.md#json), not a second parser of FIX's own, so `20240102-10:15:30,000` reads the instant its dotted twin reads where it was null before - FIX gains no spelling, the reader simply has one more. A bare `20240102` goes the same way now that a date is a reading of a datetime: a `LocalMktDate` is that day's midnight straight from the wire text, and the FIX layer states only what FIX leaves out, which for a `UTCDateOnly` column is the `Z` its name already says.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
-- `DataType::from_arrow(currency.into_arrow())` -> `utf8`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
+- A pyarrow dictionary whose *values* are an extension type -> its storage: Arrow carries no
+  metadata on a dictionary's values, so the identity is lost there; the core writes the extension
+  on the dictionary field itself, which round-trips.
+- pyarrow compute kernels - `pc.equal`, `pc.unique`, `dictionary_encode` - raise
+  `ArrowNotImplementedError` on an extension column; run them on its `storage`.
+- Rust `DataType::from_arrow_datatype(&DataType::Ccy.into_arrow_datatype()?)` -> `utf8`: an arrow-rs datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_datatype_ffi` all keep it, `dictionary(int32, <extension>)` included; Python's doors cross the C schema and keep it.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
 - prebuilt `ccy`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.

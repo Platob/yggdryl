@@ -61,8 +61,8 @@ use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
     BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, TIMEINFORCE_WIDTH,
-    UNIT_WIDTH, code_refusal, recognized_arrow_extension,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, UNIT_WIDTH, code_refusal,
+    recognized_arrow_extension,
 };
 use crate::{BytesType, DataType, Field, Scalar};
 
@@ -2040,7 +2040,15 @@ impl ArrayCastPlan {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
                 };
-                let mapping = folded_field_mapping(source_fields, fields.as_fields())?;
+                // A map's entries are a key and an item by position: Arrow
+                // names neither, and PyArrow, Avro and Iceberg each spell the
+                // item their own way.
+                let mapping = match struct_policy {
+                    StructPolicy::MapEntries if source_fields.len() == 2 && fields.len() == 2 => {
+                        vec![Some(0), Some(1)]
+                    }
+                    _ => folded_field_mapping(source_fields, fields.as_fields())?,
+                };
                 let mut columns = Vec::with_capacity(fields.len());
                 for (target_index, (target, source_index)) in fields.iter().zip(mapping).enumerate()
                 {
@@ -2124,21 +2132,18 @@ impl ArrayCastPlan {
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (
-                    DataType::FixedSizeSerie(_, size),
-                    ArrowDataType::FixedSizeList(_, source),
-                ) = (dtype, source_type)
+                if let (DataType::FixedSizeSerie(_, size), ArrowDataType::FixedSizeList(_, source)) =
+                    (dtype, source_type)
+                    && size != source
                 {
-                    if size != source {
-                        return Err(Error::Unsupported {
-                            kind: dtype.name(),
-                            reason: format!(
-                                "a fixed-size list of {source} items holds a different row than \
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "a fixed-size list of {source} items holds a different row than \
                                  one of {size} items, so it is a value change rather than a \
                                  layout change"
-                            ),
-                        });
-                    }
+                        ),
+                    });
                 }
                 ArrayCastKind::List {
                     field: list_child(expected)?,
@@ -2445,6 +2450,20 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
+                DataType::MarketDataType => ingest_enum_array::<crate::MarketDataType>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::TimeInForce => ingest_enum_array::<crate::TimeInForce>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
                 other => return Err(enum_refusal(other.id()).into()),
             },
             ArrayCastKind::UuidIngest => ingest_uuid_array(
@@ -2549,13 +2568,6 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::Figi => ingest_code_array::<FIGI_WIDTH>(
-                    &array,
-                    self.safe(),
-                    &self.field,
-                    exposure,
-                    budget,
-                )?,
-                DataType::TimeInForce => ingest_code_array::<TIMEINFORCE_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
@@ -4733,12 +4745,12 @@ pub(crate) mod columns {
             if len == 0 {
                 return Ok(arrow_array::new_empty_array(&arrow_type));
             }
-            if let Some(exposure) = exposure {
-                if exposure.len() != len {
-                    return Err(Error::IncompatibleSchema(
-                        "missing-field exposure mask has the wrong length".to_owned(),
-                    ));
-                }
+            if let Some(exposure) = exposure
+                && exposure.len() != len
+            {
+                return Err(Error::IncompatibleSchema(
+                    "missing-field exposure mask has the wrong length".to_owned(),
+                ));
             }
             let exposed = exposure.map_or(len, BooleanBuffer::count_set_bits);
             let hidden = len - exposed;
@@ -4746,15 +4758,16 @@ pub(crate) mod columns {
                 budget.add_null_array(field.dtype(), len)?;
                 return Ok(new_null_array(&arrow_type, len));
             }
-            if exposed != 0 && hidden != 0 {
-                if let DataType::Dictionary(dictionary) = field.dtype() {
-                    let exposure = exposure.ok_or_else(|| {
-                        Error::IncompatibleSchema(
-                            "mixed missing dictionary exposure requires a mask".to_owned(),
-                        )
-                    })?;
-                    return default_dictionary_array(field, dictionary, exposure, budget);
-                }
+            if exposed != 0
+                && hidden != 0
+                && let DataType::Dictionary(dictionary) = field.dtype()
+            {
+                let exposure = exposure.ok_or_else(|| {
+                    Error::IncompatibleSchema(
+                        "mixed missing dictionary exposure requires a mask".to_owned(),
+                    )
+                })?;
+                return default_dictionary_array(field, dictionary, exposure, budget);
             }
 
             let phase = budget.mark();

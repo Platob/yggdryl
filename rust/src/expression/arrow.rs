@@ -736,24 +736,24 @@ fn segment_array(
     array: &ArrayRef,
     segment: &FieldSegment,
 ) -> Result<ArrayRef> {
-    if let Some(name) = segment.as_name() {
-        if let Some(held) = array.as_any().downcast_ref::<StructArray>() {
-            let position = held
-                .fields()
-                .iter()
-                .position(|child| child.name().eq_ignore_ascii_case(name));
-            if let Some(position) = position {
-                let child = Arc::clone(&held.columns()[position]);
-                // A child of a null struct is null, whatever its own buffer
-                // says; the parent's mask is folded into it once.
-                let stepped = match held.nulls() {
-                    Some(nulls) if held.null_count() > 0 => {
-                        with_nulls(&child, NullBuffer::union(child.nulls(), Some(nulls)))?
-                    }
-                    _ => child,
-                };
-                return Ok(stepped);
-            }
+    if let Some(name) = segment.as_name()
+        && let Some(held) = array.as_any().downcast_ref::<StructArray>()
+    {
+        let position = held
+            .fields()
+            .iter()
+            .position(|child| child.name().eq_ignore_ascii_case(name));
+        if let Some(position) = position {
+            let child = Arc::clone(&held.columns()[position]);
+            // A child of a null struct is null, whatever its own buffer
+            // says; the parent's mask is folded into it once.
+            let stepped = match held.nulls() {
+                Some(nulls) if held.null_count() > 0 => {
+                    with_nulls(&child, NullBuffer::union(child.nulls(), Some(nulls)))?
+                }
+                _ => child,
+            };
+            return Ok(stepped);
         }
     }
     match segment {
@@ -768,10 +768,10 @@ fn segment_array(
                 arrow_schema::DataType::List(item) => Some(Arc::clone(item)),
                 _ => None,
             };
-            if let Some(item) = item {
-                if let Some(stepped) = list_run(array, *start, *end, item)? {
-                    return Ok(stepped);
-                }
+            if let Some(item) = item
+                && let Some(stepped) = list_run(array, *start, *end, item)?
+            {
+                return Ok(stepped);
             }
         }
         FieldSegment::Key(key) => {

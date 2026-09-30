@@ -593,6 +593,8 @@ enum DataTypeRef<'a> {
     // of this enum derives.
     #[serde(rename = "marketdatakind")]
     MarketDataKind {},
+    #[serde(rename = "marketdatatype")]
+    MarketDataType {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Unit {},
@@ -753,6 +755,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Side => Self::Side {},
             D::State => Self::State {},
             D::MarketDataKind => Self::MarketDataKind {},
+            D::MarketDataType => Self::MarketDataType {},
             D::TimeInForce => Self::TimeInForce {},
             D::Unit => Self::Unit {},
             D::Forex => Self::Forex {},
@@ -902,6 +905,8 @@ enum DataTypeWire {
     State {},
     #[serde(rename = "marketdatakind")]
     MarketDataKind {},
+    #[serde(rename = "marketdatatype")]
+    MarketDataType {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Unit {},
@@ -1044,6 +1049,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
             DataTypeWire::MarketDataKind {} => Self::MarketDataKind,
+            DataTypeWire::MarketDataType {} => Self::MarketDataType,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
             DataTypeWire::Unit {} => Self::Unit,
             DataTypeWire::Forex {} => Self::Forex,
@@ -1186,6 +1192,7 @@ impl DataType {
             D::Side => tag("side"),
             D::State => tag("state"),
             D::MarketDataKind => tag("marketdatakind"),
+            D::MarketDataType => tag("marketdatatype"),
             D::TimeInForce => tag("timeinforce"),
             D::Unit => tag("unit"),
             D::Forex => tag("forex"),
@@ -1471,6 +1478,7 @@ impl DataType {
             "side" => Self::Side,
             "state" => Self::State,
             "marketdatakind" => Self::MarketDataKind,
+            "marketdatatype" => Self::MarketDataType,
             "timeinforce" => Self::TimeInForce,
             "unit" => Self::Unit,
             "forex" => Self::Forex,

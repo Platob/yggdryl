@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, Mic, Ric, Sedol, Side, State,
-    TimeInForce, Unit, decimal,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic, Ric,
+    Sedol, Side, State, TimeInForce, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -224,6 +224,7 @@ pub enum Scalar {
     /// What kind of market data an element is: FIX's MsgCat code set, stored
     /// as its code.
     MarketDataKind(MarketDataKind),
+    MarketDataType(MarketDataType),
     /// How long an order stands.
     TimeInForce(TimeInForce),
     /// ISO 6166 securities identification number.
@@ -714,6 +715,8 @@ impl<'de> Deserialize<'de> for Scalar {
             State(SmolStr),
             #[serde(rename = "marketdatakind")]
             MarketDataKind(SmolStr),
+            #[serde(rename = "marketdatatype")]
+            MarketDataType(SmolStr),
             #[serde(rename = "timeinforce")]
             TimeInForce(SmolStr),
             Uuid(SmolStr),
@@ -838,7 +841,10 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::MarketDataKind(value) => crate::MarketDataKind::read(&value)
                 .map(Self::MarketDataKind)
                 .map_err(D::Error::custom),
-            StructuralWire::TimeInForce(value) => crate::TimeInForce::new(value)
+            StructuralWire::MarketDataType(value) => crate::MarketDataType::read(&value)
+                .map(Self::MarketDataType)
+                .map_err(D::Error::custom),
+            StructuralWire::TimeInForce(value) => crate::TimeInForce::read(&value)
                 .map(Self::TimeInForce)
                 .map_err(D::Error::custom),
             StructuralWire::Uuid(value) => Uuid::from_bytes(value.as_bytes())
@@ -1010,10 +1016,10 @@ impl Ord for Scalar {
         if let (Some(left), Some(right)) = (decimal_value(self), decimal_value(other)) {
             return decimal::compare(left.0, left.1, right.0, right.1);
         }
-        if let (Some(left), Some(right)) = (temporal_value(self), temporal_value(other)) {
-            if left.0 == right.0 {
-                return left.1.cmp(&right.1).then_with(|| left.2.cmp(&right.2));
-            }
+        if let (Some(left), Some(right)) = (temporal_value(self), temporal_value(other))
+            && left.0 == right.0
+        {
+            return left.1.cmp(&right.1).then_with(|| left.2.cmp(&right.2));
         }
         // Geometry and geography differ in the coordinate reference they
         // name, not in the bytes, so one WKB payload is one value under both.
@@ -1076,7 +1082,6 @@ impl Ord for Scalar {
             | Self::Ccy(_)
             | Self::Mic(_)
             | Self::Cfi(_)
-            | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
             | Self::Sedol(_)
@@ -1090,7 +1095,11 @@ impl Ord for Scalar {
             Self::MarketDataKind(left) => {
                 same_kind!(Self::MarketDataKind(right) => left.cmp(right))
             }
+            Self::MarketDataType(left) => {
+                same_kind!(Self::MarketDataType(right) => left.cmp(right))
+            }
             Self::Side(left) => same_kind!(Self::Side(right) => left.cmp(right)),
+            Self::TimeInForce(left) => same_kind!(Self::TimeInForce(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1186,7 +1195,6 @@ impl Hash for Scalar {
             | Self::Ccy(_)
             | Self::Mic(_)
             | Self::Cfi(_)
-            | Self::TimeInForce(_)
             | Self::Isin(_)
             | Self::Cusip(_)
             | Self::Sedol(_)
@@ -1197,7 +1205,9 @@ impl Hash for Scalar {
             | Self::Forex(_) => code_key(self).hash(state),
             Self::State(value) => value.hash(state),
             Self::MarketDataKind(value) => value.hash(state),
+            Self::MarketDataType(value) => value.hash(state),
             Self::Side(value) => value.hash(state),
+            Self::TimeInForce(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1276,7 +1286,6 @@ macro_rules! code_scalars {
             | $crate::Scalar::Ccy(_)
             | $crate::Scalar::Mic(_)
             | $crate::Scalar::Cfi(_)
-            | $crate::Scalar::TimeInForce(_)
             | $crate::Scalar::Isin(_)
             | $crate::Scalar::Cusip(_)
             | $crate::Scalar::Sedol(_)
@@ -1293,7 +1302,11 @@ macro_rules! code_scalars {
 /// in value position.
 macro_rules! enum_scalars {
     () => {
-        $crate::Scalar::State(_) | $crate::Scalar::MarketDataKind(_) | $crate::Scalar::Side(_)
+        $crate::Scalar::State(_)
+            | $crate::Scalar::MarketDataKind(_)
+            | $crate::Scalar::MarketDataType(_)
+            | $crate::Scalar::Side(_)
+            | $crate::Scalar::TimeInForce(_)
     };
 }
 
@@ -1404,7 +1417,6 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Ccy(_)
         | Scalar::Mic(_)
         | Scalar::Cfi(_)
-        | Scalar::TimeInForce(_)
         | Scalar::Isin(_)
         | Scalar::Cusip(_)
         | Scalar::Sedol(_)
@@ -1432,6 +1444,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         // A side ranked with the codes while it was one; as an enum it is its
         // own kind, appended so no other pair moves.
         Scalar::Side(_) => 29,
+        Scalar::MarketDataType(_) => 30,
+        Scalar::TimeInForce(_) => 31,
     }
 }
 
@@ -1499,6 +1513,7 @@ impl Scalar {
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::MarketDataKind(_) => DataTypeId::MarketDataKind,
+            Self::MarketDataType(_) => DataTypeId::MarketDataType,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
             Self::Isin(_) => DataTypeId::Isin,
             Self::Cusip(_) => DataTypeId::Cusip,
@@ -1582,6 +1597,7 @@ impl Scalar {
             Self::Side(_) => DataTypeId::Side.as_str(),
             Self::State(_) => DataTypeId::State.as_str(),
             Self::MarketDataKind(_) => DataTypeId::MarketDataKind.as_str(),
+            Self::MarketDataType(_) => DataTypeId::MarketDataType.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
             Self::Isin(_) => DataTypeId::Isin.as_str(),
             Self::Cusip(_) => DataTypeId::Cusip.as_str(),
@@ -1879,17 +1895,20 @@ impl Scalar {
         }
     }
 
-    /// The `int32` code an enum member stores, `None` for every other value.
+    /// The code an enum member stores, widened to `u16` - the widest any
+    /// leaf holds - and `None` for every other value.
     ///
     /// Each enum leaf is a variant of its own, but every question but
     /// "which one" has the same answer for all of them; this is where they
     /// are written out and [`Self::id`] is the other half.
     #[must_use]
-    pub const fn enum_code(&self) -> Option<i32> {
+    pub fn enum_code(&self) -> Option<u16> {
         match self {
             Self::State(held) => Some(held.code()),
-            Self::MarketDataKind(held) => Some(held.code()),
-            Self::Side(held) => Some(held.code()),
+            Self::MarketDataKind(held) => Some(u16::from(held.code())),
+            Self::MarketDataType(held) => Some(held.code()),
+            Self::Side(held) => Some(u16::from(held.code())),
+            Self::TimeInForce(held) => Some(u16::from(held.code())),
             _ => None,
         }
     }
@@ -1900,7 +1919,9 @@ impl Scalar {
         match self {
             Self::State(held) => Some(held.as_str()),
             Self::MarketDataKind(held) => Some(held.as_str()),
+            Self::MarketDataType(held) => Some(held.as_str()),
             Self::Side(held) => Some(held.as_str()),
+            Self::TimeInForce(held) => Some(held.as_str()),
             _ => None,
         }
     }
@@ -1925,7 +1946,6 @@ impl Scalar {
             Self::Ccy(value) => Some(value.storage()),
             Self::Mic(value) => Some(value.storage()),
             Self::Cfi(value) => Some(value.storage()),
-            Self::TimeInForce(value) => Some(value.storage()),
             Self::Isin(value) => Some(value.storage()),
             Self::Cusip(value) => Some(value.storage()),
             Self::Sedol(value) => Some(value.storage()),
@@ -2184,6 +2204,7 @@ impl Scalar {
             | Self::State(_)
             | Self::MarketDataKind(_)
             | Self::TimeInForce(_)
+            | Self::MarketDataType(_)
             | Self::Isin(_)
             | Self::Cusip(_)
             | Self::Sedol(_)

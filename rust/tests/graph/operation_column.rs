@@ -1,19 +1,35 @@
-//! `rust/src/graph/operation_column.rs`: the four columns every operation
-//! on the market is stated in beside the market's twenty-eight, each
+//! `rust/src/graph/operation_column.rs`: the five columns every operation
+//! on the market is stated in beside the market's thirty-four, each
 //! stating back exactly the fact it read.
 
 use yggdryl::graph::{Operation, OperationColumn, OrderEvent};
-use yggdryl::idmap::IdMap;
-use yggdryl::{DataType, Scalar, TimeInForce};
+use yggdryl::{DataType, IdSource, IdType, Identifier, Identifiers, Scalar, TimeInForce};
+
+/// One identifier of a plain holder: a value of `kind` from `fix`.
+fn identifier(kind: IdType, value: &str) -> Identifier {
+    Identifier::new(IdSource::Fix, kind, value).unwrap()
+}
+
+/// One party: a value of `role` from `base`.
+fn party(role: IdType, value: &str) -> Identifier {
+    Identifier::new(IdSource::Base, role, value).unwrap()
+}
 
 #[test]
 fn operation_columns_round_trip_every_fact() {
     let mut source = OrderEvent::at(10);
-    source.set_tif(TimeInForce::from_spelling("DAY"));
-    source.set_tradable(Some(true));
-    source.insert_altid("ORDERID", "O-1").unwrap();
-    source.insert_altid("CLORDID", "C-1").unwrap();
-    source.insert_accountid("CUSTOMERACCOUNT", "ACC-1").unwrap();
+    source.set_ordqty(Some(yggdryl::Decimal::from_int(100)), true);
+    source.set_timeinforce(TimeInForce::from_spelling("DAY"), true);
+    source.set_tradable(Some(true), true);
+    source
+        .insert_identifier(identifier(IdType::OrderId, "O-1"))
+        .unwrap();
+    source
+        .insert_identifier(identifier(IdType::ClOrdId, "C-1"))
+        .unwrap();
+    source
+        .insert_partyid(party(IdType::CustomerAccount, "ACC-1"))
+        .unwrap();
 
     let row: Vec<Scalar> = OperationColumn::ALL
         .into_iter()
@@ -31,13 +47,20 @@ fn operation_columns_round_trip_every_fact() {
         column.record(&mut restored, value);
     }
 
-    assert_eq!(restored.get_tif().map(TimeInForce::as_str), Some("0"));
-    assert_eq!(restored.get_tradable(), Some(true));
-    assert_eq!(restored.get_altids(), source.get_altids());
-    assert_eq!(restored.get_altids().get("ORDERID"), Some("O-1"));
-    assert_eq!(restored.get_accountids(), source.get_accountids());
+    assert_eq!(restored.get_ordqty(), Some(yggdryl::Decimal::from_int(100)));
     assert_eq!(
-        restored.get_accountids().get("CUSTOMERACCOUNT"),
+        restored.get_timeinforce().map(|held| held.as_str()),
+        Some("DAY")
+    );
+    assert_eq!(restored.get_tradable(), Some(true));
+    assert_eq!(restored.get_identifiers(), source.get_identifiers());
+    assert_eq!(
+        restored.get_identifiers().get(&IdType::OrderId),
+        Some("O-1")
+    );
+    assert_eq!(restored.get_partyids(), source.get_partyids());
+    assert_eq!(
+        restored.get_partyids().get(&IdType::CustomerAccount),
         Some("ACC-1")
     );
 }
@@ -45,17 +68,20 @@ fn operation_columns_round_trip_every_fact() {
 #[test]
 fn a_null_clears_and_nothing_stated_is_none() {
     let mut operation = OrderEvent::at(7);
-    operation.set_tradable(Some(false));
-    operation.insert_altid("ORDERID", "O-1").unwrap();
+    operation.set_tradable(Some(false), true);
+    operation.set_ordqty(Some(yggdryl::Decimal::from_int(5)), true);
     operation
-        .insert_accountid("CUSTOMERACCOUNT", "ACC-1")
+        .insert_identifier(identifier(IdType::OrderId, "O-1"))
+        .unwrap();
+    operation
+        .insert_partyid(party(IdType::CustomerAccount, "ACC-1"))
         .unwrap();
     for column in OperationColumn::ALL {
         column.record(&mut operation, &Scalar::Null);
     }
     assert_eq!(operation.get_tradable(), None);
-    assert!(operation.get_altids().is_empty());
-    assert!(operation.get_accountids().is_empty());
+    assert!(operation.get_identifiers().is_empty());
+    assert!(operation.get_partyids().is_empty());
     for column in OperationColumn::ALL {
         assert_eq!(column.fact(&operation), None, "{}", column.name());
         assert!(column.nullable(), "{}", column.name());
@@ -65,40 +91,63 @@ fn a_null_clears_and_nothing_stated_is_none() {
 #[test]
 fn operation_column_schema_has_one_owner_and_order() {
     let fields = OperationColumn::fields().unwrap();
-    assert_eq!(fields.len(), 4);
+    assert_eq!(fields.len(), 5);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
-        ["tif", "tradable", "altids", "accountids"]
+        [
+            "ordqty",
+            "timeinforce",
+            "tradable",
+            "identifiers",
+            "partyids"
+        ]
     );
+    // What it ordered: the crate's decimal.
+    assert_eq!(OperationColumn::OrdQty.datatype(), DataType::Decimal);
     assert_eq!(
         OperationColumn::TimeInForce.datatype(),
         DataType::TimeInForce
     );
     assert_eq!(
-        OperationColumn::AltIds.datatype(),
-        IdMap::dtype(),
-        "the alternate identifiers are a sorted utf8 map"
+        OperationColumn::Identifiers.datatype(),
+        Identifiers::dtype("identifier"),
+        "the identifiers are a sorted map from the key src:type to the source, type, value row"
     );
-    // The accounts an operation names are an operation fact, a sorted utf8
-    // map keyed by role; a user is none, and neither is a lane: a book
+    assert_eq!(OperationColumn::Identifiers.name(), "identifiers");
+    assert_eq!(OperationColumn::Identifiers.display(), "Identifiers");
+    // The parties an operation names - its accounts, traders, firms and
+    // users - are an operation fact, a serie of identifiers whose type is
+    // the role; the old account map is none, and neither is a lane: a book
     // states its price levels under `bidlimits` and `asklimits`.
     assert_eq!(
-        OperationColumn::of_name("accountids"),
-        Some(OperationColumn::AccountIds)
+        OperationColumn::of_name("partyids"),
+        Some(OperationColumn::PartyIds)
     );
-    assert_eq!(OperationColumn::AccountIds.datatype(), IdMap::dtype());
-    assert_eq!(OperationColumn::AccountIds.display(), "Account IDs");
+    assert_eq!(
+        OperationColumn::PartyIds.datatype(),
+        Identifiers::dtype("partyid")
+    );
+    assert_eq!(OperationColumn::PartyIds.name(), "partyids");
+    assert_eq!(OperationColumn::PartyIds.display(), "Party IDs");
+    assert_eq!(OperationColumn::of_name("parties"), None);
+    assert_eq!(OperationColumn::of_name("altids"), None);
+    assert_eq!(OperationColumn::of_name("accountids"), None);
     assert_eq!(OperationColumn::of_name("userids"), None);
     assert_eq!(OperationColumn::of_name("bid"), None);
     assert_eq!(OperationColumn::of_name("ask"), None);
     // The category is the row's `marketdatakind`, never an operation's.
     assert_eq!(OperationColumn::of_name("MarketOperationID"), None);
+    // The column is named as FIX's `TimeInForce(59)` is; the old short name
+    // reaches nothing.
     assert_eq!(
-        OperationColumn::of_name("tif"),
+        OperationColumn::of_name("timeinforce"),
         Some(OperationColumn::TimeInForce)
     );
-    assert_eq!(OperationColumn::of_name("timeinforce"), None);
+    assert_eq!(OperationColumn::of_name("tif"), None);
     assert_eq!(OperationColumn::of_name("bidpx"), None);
-    assert_eq!(OperationColumn::of_name("identifiers"), None);
+    assert_eq!(
+        OperationColumn::of_name("identifiers"),
+        Some(OperationColumn::Identifiers)
+    );
     assert_eq!(OperationColumn::TimeInForce.display(), "Time In Force");
 }

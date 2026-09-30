@@ -176,7 +176,8 @@ fn is_valid_dictionary_key(key: &DataType) -> bool {
 }
 
 // ------------------------------------------------------------------------
-// The enum leaves: a closed set of members, each stored as its `int32` code.
+// The enum leaves: a closed set of members, each stored as its code at the
+// leaf's own width - `uint8`, or `uint16` where the codes pass 255.
 // ------------------------------------------------------------------------
 
 /// Declares one leaf of the Enum family from its member table: the variant,
@@ -186,14 +187,16 @@ fn is_valid_dictionary_key(key: &DataType) -> bool {
 /// `as_str`, `description`, `from_code`, `from_name`, `read`, `read_code`,
 /// `Display` and `Serialize` as the name, `Deserialize` from a code or a
 /// spelling, [`Value`](crate::Value), [`EnumValue`](crate::EnumValue), and
-/// the conversions to a [`Scalar`](crate::Scalar) and an `i32`. The leaf
-/// states its `repr`, its `kind` (the refusal word and the datatype's name)
+/// the conversions to a [`Scalar`](crate::Scalar) and to its code. The leaf
+/// states its `repr` - `u8`, or `u16` where its codes pass 255, which is
+/// also the width a column stores ([`EnumRepr`]) - its `kind` (the refusal
+/// word and the datatype's name)
 /// and its extension name, and writes `from_spelling` itself, because the
 /// spellings a leaf accepts are its own.
 macro_rules! enum_leaf {
     (
         $(#[$outer:meta])*
-        $vis:vis enum $name:ident: $repr:ty, kind = $kind:literal, extension = $extension:path {
+        $vis:vis enum $name:ident: $repr:ty, kind = $kind:literal, extension = $extension:path, aliases = $aliases:path {
             $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
         }
     ) => {
@@ -208,10 +211,10 @@ macro_rules! enum_leaf {
             /// Every member, in code order.
             pub const ALL: &'static [Self] = &[$(Self::$variant,)+];
 
-            /// The `int32` a column stores for this member.
+            /// The code a column stores for this member, at the leaf's width.
             #[must_use]
-            pub const fn code(self) -> i32 {
-                self as i32
+            pub const fn code(self) -> $repr {
+                self as $repr
             }
 
             /// The stored name.
@@ -232,7 +235,7 @@ macro_rules! enum_leaf {
 
             /// The member one stored code names, or `None` where none does.
             #[must_use]
-            pub const fn from_code(code: i32) -> Option<Self> {
+            pub const fn from_code(code: $repr) -> Option<Self> {
                 match code {
                     $($code => Some(Self::$variant),)+
                     _ => None,
@@ -247,6 +250,25 @@ macro_rules! enum_leaf {
                     $($spelling => Some(Self::$variant),)+
                     _ => None,
                 }
+            }
+
+            /// The member the words of `spelling` name, once no exact
+            /// vocabulary names it: `Part-Filled`, `partial fill`,
+            /// `ORDER FILLED` and `partfilled` read as the member whose own
+            /// names make the same words, each read as the word it
+            /// abbreviates or inflects and the words that say nothing
+            /// dropped. A set of words two members make names neither, and
+            /// a word no name uses names nothing. A spelling read is kept,
+            /// so a column repeating it reads it once.
+            fn from_pattern(spelling: &str) -> Option<Self> {
+                static PATTERNS: ::std::sync::LazyLock<$crate::enums::Patterns<$name>> =
+                    ::std::sync::LazyLock::new(|| {
+                        $crate::enums::Patterns::new(
+                            $name::ALL.iter().map(|member| (member.as_str(), *member)),
+                            $aliases(),
+                        )
+                    });
+                PATTERNS.read(spelling)
             }
 
             /// The member one spelling names, refused where none does.
@@ -274,7 +296,7 @@ macro_rules! enum_leaf {
             ///
             /// Returns an error naming the code.
             pub fn read_code(code: i64) -> $crate::Result<Self> {
-                i32::try_from(code)
+                <$repr>::try_from(code)
                     .ok()
                     .and_then(Self::from_code)
                     .ok_or_else(|| $crate::Error::InvalidDataType {
@@ -344,8 +366,9 @@ macro_rules! enum_leaf {
             const ALL: &'static [Self] = <$name>::ALL;
             const KIND: &'static str = $kind;
             const EXTENSION_NAME: &'static str = $extension;
+            type Repr = $repr;
 
-            fn code(self) -> i32 {
+            fn code(self) -> $repr {
                 <$name>::code(self)
             }
 
@@ -357,7 +380,7 @@ macro_rules! enum_leaf {
                 <$name>::description(self)
             }
 
-            fn from_code(code: i32) -> Option<Self> {
+            fn from_code(code: $repr) -> Option<Self> {
                 <$name>::from_code(code)
             }
 
@@ -376,16 +399,16 @@ macro_rules! enum_leaf {
             }
         }
 
-        impl From<$name> for i32 {
+        impl From<$name> for $repr {
             fn from(value: $name) -> Self {
                 value.code()
             }
         }
 
-        impl TryFrom<i32> for $name {
+        impl TryFrom<$repr> for $name {
             type Error = $crate::Error;
 
-            fn try_from(code: i32) -> $crate::Result<Self> {
+            fn try_from(code: $repr) -> $crate::Result<Self> {
                 Self::read_code(i64::from(code))
             }
         }
@@ -394,9 +417,36 @@ macro_rules! enum_leaf {
 
 pub(crate) use enum_leaf;
 
+/// The width an enum leaf's codes are held and stored at: `u8` for a leaf
+/// whose codes fit a byte, `u16` for one whose codes pass 255. The one owner
+/// of the Arrow storage an enum column has, so a writer, a reader and a cast
+/// read the width off the leaf rather than assuming one.
+pub trait EnumRepr:
+    arrow_buffer::ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + TryFrom<i64> + 'static
+{
+    /// The Arrow primitive type a column of this width stores its codes as.
+    type Primitive: arrow_array::ArrowPrimitiveType<Native = Self>;
+    /// The Arrow type a column of this width stores its codes as.
+    const ARROW: arrow_schema::DataType;
+    /// The bytes one stored code takes.
+    const BYTES: usize;
+}
+
+impl EnumRepr for u8 {
+    type Primitive = arrow_array::types::UInt8Type;
+    const ARROW: arrow_schema::DataType = arrow_schema::DataType::UInt8;
+    const BYTES: usize = 1;
+}
+
+impl EnumRepr for u16 {
+    type Primitive = arrow_array::types::UInt16Type;
+    const ARROW: arrow_schema::DataType = arrow_schema::DataType::UInt16;
+    const BYTES: usize = 2;
+}
+
 impl DataType {
     /// Whether this is one of the enum leaves: a closed set of members stored
-    /// as the `int32` code of each.
+    /// as the code of each, at the leaf's width.
     ///
     /// ```
     /// use yggdryl::DataType;
@@ -423,7 +473,13 @@ pub(crate) fn read_enum_code(id: DataTypeId, code: i64) -> Result<crate::Scalar>
         DataTypeId::MarketDataKind => {
             crate::MarketDataKind::read_code(code).map(crate::Value::into_scalar)
         }
+        DataTypeId::MarketDataType => {
+            crate::MarketDataType::read_code(code).map(crate::Value::into_scalar)
+        }
         DataTypeId::Side => crate::Side::read_code(code).map(crate::Value::into_scalar),
+        DataTypeId::TimeInForce => {
+            crate::TimeInForce::read_code(code).map(crate::Value::into_scalar)
+        }
         _ => Err(enum_refusal(id)),
     }
 }
@@ -442,31 +498,29 @@ pub(crate) fn read_enum_spelling(id: DataTypeId, spelling: &str) -> Result<crate
         DataTypeId::MarketDataKind => {
             crate::MarketDataKind::read(spelling).map(crate::Value::into_scalar)
         }
+        DataTypeId::MarketDataType => {
+            crate::MarketDataType::read(spelling).map(crate::Value::into_scalar)
+        }
         DataTypeId::Side => crate::Side::read(spelling).map(crate::Value::into_scalar),
+        DataTypeId::TimeInForce => {
+            crate::TimeInForce::read(spelling).map(crate::Value::into_scalar)
+        }
         _ => Err(enum_refusal(id)),
-    }
-}
-
-/// The Arrow extension name one enum leaf's `Int32` codes ride under.
-pub(crate) const fn enum_extension_name(id: DataTypeId) -> Option<&'static str> {
-    match id {
-        DataTypeId::State => Some(crate::STATE_EXTENSION_NAME),
-        DataTypeId::MarketDataKind => Some(crate::MARKETDATAKIND_EXTENSION_NAME),
-        DataTypeId::Side => Some(crate::SIDE_EXTENSION_NAME),
-        _ => None,
     }
 }
 
 /// The enum leaf one Arrow extension name imports as.
 ///
-/// The name alone, because every enum leaf's storage is Arrow's `Int32` and
-/// the caller has already checked it: a `yggdryl.state` over anything else
-/// stays the storage it is rather than silently becoming a state.
+/// The name alone; the caller checks the storage is the leaf's own width, so
+/// a `yggdryl.state` over anything else stays the storage it is rather than
+/// silently becoming a state.
 pub(crate) fn enum_for_extension(name: &str) -> Option<DataType> {
     match name {
         crate::STATE_EXTENSION_NAME => Some(DataType::State),
         crate::MARKETDATAKIND_EXTENSION_NAME => Some(DataType::MarketDataKind),
+        crate::MARKETDATATYPE_EXTENSION_NAME => Some(DataType::MarketDataType),
         crate::SIDE_EXTENSION_NAME => Some(DataType::Side),
+        crate::TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
         _ => None,
     }
 }
@@ -486,7 +540,7 @@ pub(crate) fn enum_refusal(id: DataTypeId) -> crate::Error {
 pub(crate) mod casts {
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, StringArray};
+    use arrow_array::{Array, ArrayRef, Int64Array, PrimitiveArray, StringArray};
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
     use arrow_schema::DataType as ArrowDataType;
 
@@ -494,7 +548,7 @@ pub(crate) mod casts {
     use crate::budget::MaterializationBudget;
     use crate::cast::columns::is_exposed;
     use crate::cast::{arrow_cast_exposed, downcast, named_cell};
-    use crate::{DataType, EnumValue, Field};
+    use crate::{DataType, EnumRepr, EnumValue, Field};
 
     /// Validates every exposed, non-null value entering an enum leaf and
     /// stores the code of its member.
@@ -511,19 +565,25 @@ pub(crate) mod casts {
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
         if array.data_type().is_integer() {
+            // Every width, signed or unsigned, is read as the code it holds.
+            // A value past `i64` - a `u64` above its range - is no code any
+            // member takes, so it lands as the leaf's own refusal rather
+            // than the kernel's overflow.
             let codes = arrow_cast_exposed(
                 array,
                 &ArrowDataType::Int64,
-                safe,
+                true,
                 exposure,
                 &Field::new(field.name(), DataType::Int64, true),
                 budget,
             )?;
             let codes = downcast::<Int64Array>(codes.as_ref())?;
             return enum_storage::<E>(field, codes.len(), safe, exposure, budget, |index| {
-                codes
-                    .is_valid(index)
-                    .then(|| E::read_code(codes.value(index)))
+                if codes.is_valid(index) {
+                    Some(E::read_code(codes.value(index)))
+                } else {
+                    array.is_valid(index).then(|| E::read_code(i64::MAX))
+                }
             });
         }
         let text = if array.data_type() == &ArrowDataType::Utf8 {
@@ -544,7 +604,8 @@ pub(crate) mod casts {
         })
     }
 
-    /// Builds the `int32` codes of an enum column from one reading per row.
+    /// Builds the codes of an enum column, at the leaf's width, from one
+    /// reading per row.
     fn enum_storage<E: EnumValue>(
         field: &Field,
         rows: usize,
@@ -554,7 +615,7 @@ pub(crate) mod casts {
         cell: impl Fn(usize) -> Option<crate::Result<E>>,
     ) -> Result<ArrayRef> {
         budget.add_array(field.dtype(), rows)?;
-        let mut codes = vec![0_i32; rows];
+        let mut codes = vec![<E::Repr>::default(); rows];
         let mut validity = BooleanBufferBuilder::new(rows);
         for (index, code) in codes.iter_mut().enumerate() {
             let member = match is_exposed(exposure, index).then(|| cell(index)).flatten() {
@@ -568,10 +629,12 @@ pub(crate) mod casts {
             }
             validity.append(member.is_some());
         }
-        Ok(Arc::new(Int32Array::new(
-            codes.into(),
-            Some(NullBuffer::new(validity.finish())),
-        )))
+        Ok(Arc::new(
+            PrimitiveArray::<<E::Repr as EnumRepr>::Primitive>::new(
+                codes.into(),
+                Some(NullBuffer::new(validity.finish())),
+            ),
+        ))
     }
 }
 
@@ -690,5 +753,344 @@ mod arrow {
                 DataType::from_arrow_datatype_owned_at_depth(values, depth)?,
             )
         }
+    }
+}
+
+// ------------------------------------------------------------------------
+// Spelling patterns: a member read off the words a spelling is made of.
+// ------------------------------------------------------------------------
+
+pub(crate) use patterns::Patterns;
+
+mod patterns {
+    //! What every enum leaf reads a spelling by once its exact vocabularies -
+    //! the stored name, a wire code, a standard's name folded - name nothing:
+    //! the words the spelling is made of. `Part-Filled`, `partial fill`,
+    //! `filled partially`, `ORDER FILLED` and `partfilled` are one set of
+    //! words - `{fill, partial}` once each word is read as the one it
+    //! abbreviates or inflects and the words that say nothing (`order`,
+    //! `status`, `fully`) are dropped - and that set is the one a member's
+    //! own names make. One reading or none: a set two members make is
+    //! ambiguous and reads as neither, and a word the vocabulary does not
+    //! know makes the whole spelling unread rather than half read.
+    //!
+    //! A spelling read this way is kept, so a column repeating it pays the
+    //! words once: at most [`CACHE_CAPACITY`] spellings per leaf, because a
+    //! column's distinct spellings are few and text from outside must not
+    //! grow the process without bound. A spelling that reads as nothing is
+    //! never kept.
+
+    use std::collections::{HashMap, HashSet};
+    use std::sync::RwLock;
+
+    use smol_str::SmolStr;
+
+    /// How many spellings one leaf keeps the reading of.
+    pub(crate) const CACHE_CAPACITY: usize = 1_024;
+
+    /// Each word a spelling may use and the one word it stands for: an
+    /// abbreviation, an inflection or a synonym read as its stem, so two
+    /// spellings of one thing make one set of words.
+    const WORDS: &[(&str, &str)] = &[
+        ("ack", "ack"),
+        ("acked", "ack"),
+        ("acknowledge", "ack"),
+        ("acknowledged", "ack"),
+        ("acknowledgement", "ack"),
+        ("accept", "accept"),
+        ("accepted", "accept"),
+        ("acpt", "accept"),
+        ("amend", "amend"),
+        ("amended", "amend"),
+        ("amendment", "amend"),
+        ("bought", "buy"),
+        ("buy", "buy"),
+        ("buys", "buy"),
+        ("calc", "calculate"),
+        ("calculate", "calculate"),
+        ("calculated", "calculate"),
+        ("canc", "cancel"),
+        ("cancel", "cancel"),
+        ("canceled", "cancel"),
+        ("cancellation", "cancel"),
+        ("cancelled", "cancel"),
+        ("cncl", "cancel"),
+        ("cxl", "cancel"),
+        ("cxld", "cancel"),
+        ("complete", "complete"),
+        ("completed", "complete"),
+        ("corr", "correct"),
+        ("correct", "correct"),
+        ("corrected", "correct"),
+        ("correction", "correct"),
+        ("exec", "execute"),
+        ("execute", "execute"),
+        ("executed", "execute"),
+        ("execution", "execute"),
+        ("exempt", "exempt"),
+        ("exp", "expire"),
+        ("expire", "expire"),
+        ("expired", "expire"),
+        ("expiry", "expire"),
+        ("fail", "fail"),
+        ("failed", "fail"),
+        ("failure", "fail"),
+        ("fill", "fill"),
+        ("filled", "fill"),
+        ("fills", "fill"),
+        ("fld", "fill"),
+        ("new", "new"),
+        ("part", "partial"),
+        ("partial", "partial"),
+        ("partially", "partial"),
+        ("prtl", "partial"),
+        ("pend", "pending"),
+        ("pending", "pending"),
+        ("pnd", "pending"),
+        ("rej", "reject"),
+        ("reject", "reject"),
+        ("rejected", "reject"),
+        ("rejection", "reject"),
+        ("rjct", "reject"),
+        ("repl", "replace"),
+        ("replace", "replace"),
+        ("replaced", "replace"),
+        ("replacement", "replace"),
+        ("sell", "sell"),
+        ("sells", "sell"),
+        ("sold", "sell"),
+        ("short", "short"),
+        ("stop", "stop"),
+        ("stopped", "stop"),
+        ("susp", "suspend"),
+        ("suspend", "suspend"),
+        ("suspended", "suspend"),
+        ("trade", "trade"),
+        ("traded", "trade"),
+        ("trades", "trade"),
+        ("trd", "trade"),
+        ("trig", "trigger"),
+        ("trigger", "trigger"),
+        ("triggered", "trigger"),
+    ];
+
+    /// The words that say nothing about which member a spelling names: an
+    /// order filled is filled, a fully filled order is filled.
+    const NOISE: &[&str] = &[
+        "a",
+        "an",
+        "been",
+        "by",
+        "completely",
+        "for",
+        "fully",
+        "has",
+        "is",
+        "now",
+        "of",
+        "ord",
+        "order",
+        "orders",
+        "state",
+        "status",
+        "the",
+        "was",
+    ];
+
+    /// The members of one leaf by the set of words each of its names makes,
+    /// and the spellings already read.
+    pub(crate) struct Patterns<E: 'static> {
+        /// Each set of words, sorted and joined by a space, and the one
+        /// member it names - `None` where two members make it.
+        members: HashMap<Box<str>, Option<E>>,
+        /// The words a run of letters may be cut into: every word of
+        /// [`WORDS`] and [`NOISE`], and every word of a stored name.
+        vocabulary: HashSet<Box<str>>,
+        /// Spellings read, and the member each read as.
+        cache: RwLock<HashMap<SmolStr, E>>,
+    }
+
+    impl<E: Copy + Eq> Patterns<E> {
+        /// Builds the patterns of one leaf from its members' stored names
+        /// and the other names each member goes by. The words of a name
+        /// written with its word breaks - `PARTIALLY_FILLED`,
+        /// `GoodTillCancel` - are the vocabulary; a name folded into one run
+        /// of lower-case letters - `partfill` - is cut into that vocabulary.
+        pub(crate) fn new(
+            stored: impl IntoIterator<Item = (&'static str, E)>,
+            aliases: impl IntoIterator<Item = (&'static str, E)>,
+        ) -> Self {
+            let stored: Vec<(&'static str, E)> = stored.into_iter().chain(aliases).collect();
+            let mut vocabulary: HashSet<Box<str>> = WORDS
+                .iter()
+                .map(|(word, _)| *word)
+                .chain(NOISE.iter().copied())
+                .filter(|word| word.len() > 1)
+                .map(Box::from)
+                .collect();
+            let broken = |name: &str| {
+                name.bytes()
+                    .any(|byte| byte.is_ascii_uppercase() || !byte.is_ascii_alphanumeric())
+            };
+            for (name, _) in stored.iter().filter(|(name, _)| broken(name)) {
+                for word in words(name) {
+                    if word.len() > 1 {
+                        vocabulary.insert(word.into_boxed_str());
+                    }
+                }
+            }
+            let mut patterns = Self {
+                members: HashMap::new(),
+                vocabulary,
+                cache: RwLock::new(HashMap::new()),
+            };
+            for (name, member) in stored {
+                let Some(key) = patterns.key(name, true) else {
+                    continue;
+                };
+                patterns
+                    .members
+                    .entry(key.into_boxed_str())
+                    .and_modify(|held| {
+                        if *held != Some(member) {
+                            *held = None;
+                        }
+                    })
+                    .or_insert(Some(member));
+            }
+            patterns
+        }
+
+        /// The member `spelling`'s words name, or `None` where they name
+        /// none or two.
+        pub(crate) fn read(&self, spelling: &str) -> Option<E> {
+            let spelling = spelling.trim();
+            if let Some(held) = self
+                .cache
+                .read()
+                .ok()
+                .and_then(|cache| cache.get(spelling).copied())
+            {
+                return Some(held);
+            }
+            let key = self.key(spelling, false)?;
+            let member = (*self.members.get(key.as_str())?)?;
+            if let Ok(mut cache) = self.cache.write()
+                && cache.len() < CACHE_CAPACITY
+            {
+                cache.insert(SmolStr::new(spelling), member);
+            }
+            Some(member)
+        }
+
+        /// The set of words `spelling` makes, sorted and joined by a space:
+        /// each word read as the one it stands for, the noise dropped. A
+        /// run of letters no known word spells is cut into known words; one
+        /// that cannot be cut is kept as it is where `trusted` - a member's
+        /// own name - and makes the spelling unread otherwise.
+        fn key(&self, spelling: &str, trusted: bool) -> Option<String> {
+            let mut held: Vec<&str> = Vec::new();
+            let spelled = words(spelling);
+            for word in &spelled {
+                if self.vocabulary.contains(word.as_str()) || stem(word).is_some() {
+                    push_word(&mut held, word);
+                    continue;
+                }
+                match self.segment(word) {
+                    Some(parts) => {
+                        for part in parts {
+                            push_word(&mut held, part);
+                        }
+                    }
+                    // A member's own name is its own word where no known
+                    // words spell it: `GTHX` is a time in force's name.
+                    None if trusted => held.push(word),
+                    None => return None,
+                }
+            }
+            held.sort_unstable();
+            held.dedup();
+            (!held.is_empty()).then(|| held.join(" "))
+        }
+
+        /// `run` cut into the fewest words of the vocabulary, or `None`
+        /// where no cut spells it.
+        fn segment<'run>(&self, run: &'run str) -> Option<Vec<&'run str>> {
+            let length = run.len();
+            // best[i]: the fewest words spelling run[..i], and where the
+            // last of them starts.
+            let mut best: Vec<Option<(usize, usize)>> = vec![None; length + 1];
+            best[0] = Some((0, 0));
+            for end in 1..=length {
+                for start in 0..end {
+                    let Some((count, _)) = best[start] else {
+                        continue;
+                    };
+                    let Some(word) = run.get(start..end) else {
+                        continue;
+                    };
+                    if word.len() > 1
+                        && self.vocabulary.contains(word)
+                        && best[end].is_none_or(|(held, _)| count + 1 < held)
+                    {
+                        best[end] = Some((count + 1, start));
+                    }
+                }
+            }
+            best[length]?;
+            let mut parts = Vec::new();
+            let mut end = length;
+            while end > 0 {
+                let (_, start) = best[end]?;
+                parts.push(run.get(start..end)?);
+                end = start;
+            }
+            parts.reverse();
+            Some(parts)
+        }
+    }
+
+    /// Pushes the word `word` stands for, unless it says nothing.
+    fn push_word<'word>(held: &mut Vec<&'word str>, word: &'word str) {
+        if NOISE.contains(&word) {
+            return;
+        }
+        held.push(stem(word).unwrap_or(word));
+    }
+
+    /// The word `word` stands for in [`WORDS`].
+    fn stem(word: &str) -> Option<&'static str> {
+        WORDS
+            .iter()
+            .find(|(spelled, _)| *spelled == word)
+            .map(|(_, stem)| *stem)
+    }
+
+    /// The words of `spelling`, lower-cased: split at every character that
+    /// is not a letter or a digit, and where a lower-case letter meets an
+    /// upper-case one - `PartiallyFilled` is two words, `PARTIALLY_FILLED`
+    /// two, `partfilled` one run a later cut reads.
+    fn words(spelling: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        let mut previous_lower = false;
+        for character in spelling.chars() {
+            if !character.is_ascii_alphanumeric() {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+                previous_lower = false;
+                continue;
+            }
+            if character.is_ascii_uppercase() && previous_lower && !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            previous_lower = character.is_ascii_lowercase() || character.is_ascii_digit();
+            current.push(character.to_ascii_lowercase());
+        }
+        if !current.is_empty() {
+            words.push(current);
+        }
+        words
     }
 }

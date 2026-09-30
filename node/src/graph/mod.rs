@@ -15,28 +15,25 @@
 //!
 //! Facts cross as the plain values the rest of the addon uses: a UUID as its
 //! hyphenated text, an instant and a hash as a `bigint`, `seqnum` as a
-//! `number`, a decimal as its text, a code as the text it is, an identifier
-//! map as a `Record<string, string>`, the enum facts - `state`, `side`,
+//! `number`, a decimal as its text, a code as the text it is, a set of
+//! identifiers as `Identifiers`, the enum facts - `state`, `side`,
 //! `marketdatakind` - as the member's stored name.
 //!
 //! The fact getters and the verbs every leaf shares are written once, as the
 //! macros below, each emitting its own `#[napi] impl` block for the class it
 //! is applied to; NAPI merges every block of one class into its prototype.
 
-use std::collections::BTreeMap;
-
 use napi::bindgen_prelude::{
-    BigInt, ClassInstance, Either, Either10, FromNapiValue, Null, Result, Unknown,
+    BigInt, ClassInstance, Either, Either11, FromNapiValue, Null, Result, Unknown,
 };
 use napi_derive::napi;
 use yggdryl::graph::{
-    Event, EventColumn, MarketColumn, MarketData as CoreMarketData, Operation, OperationColumn,
-    OperationEvent, OperationKind as CoreOperationKind,
+    ElementColumn, Event, EventColumn, MarketColumn, MarketData as CoreMarketData, Operation,
+    OperationColumn, OperationEvent, OperationKind as CoreOperationKind,
 };
-use yggdryl::idmap::IdMap as CoreIdMap;
-use yggdryl::securityid::SecurityIds as CoreSecurityIds;
-use yggdryl::{Decimal, Scalar, graph};
+use yggdryl::{Decimal, Identifiers, Scalar, graph};
 
+use crate::fix::JsFixMsg;
 use crate::text::codec::JsScalar;
 use crate::{exact_i64, napi_error};
 
@@ -59,7 +56,11 @@ macro_rules! element_getters {
             }
 
             /// The cross code: the identifier every statement of one element
-            /// shares, empty where it names none.
+            /// shares, stored as `{kind}:{side}:{base}` - the
+            /// `MarketDataKind` code, the `Side` code of a sided kind (`0`
+            /// for any other) and the identifier itself, so a buy order
+            /// `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+            /// it names none.
             #[napi(getter)]
             pub fn crosscode(&self) -> String {
                 ::yggdryl::graph::Element::get_crosscode(&self.inner).to_owned()
@@ -202,11 +203,44 @@ macro_rules! market_getters {
                 $crate::graph::decimal_text(::yggdryl::graph::Market::get_quantity(&self.inner))
             }
 
+            /// The stop price the order triggers at, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn stoppx(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_stoppx(&self.inner))
+            }
+
+            /// The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn displayqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_displayqty(&self.inner))
+            }
+
+            /// The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn hiddenqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_hiddenqty(&self.inner))
+            }
+
+            /// How much was canceled, as decimal text; `null` where none.
+            #[napi(getter)]
+            pub fn cxlqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Market::get_cxlqty(&self.inner))
+            }
+
             /// The unit the quantity is counted in, as spelled; empty where
             /// none.
             #[napi(getter)]
             pub fn unit(&self) -> String {
                 ::yggdryl::graph::Market::get_unit(&self.inner)
+                    .as_str()
+                    .to_owned()
+            }
+
+            /// The type of its kind this is, as the `marketdatatype` member's
+            /// stored name; `UNKN` where none, never `null`.
+            #[napi(getter)]
+            pub fn marketdatatype(&self) -> String {
+                ::yggdryl::graph::Market::get_marketdatatype(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -220,13 +254,14 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The instrument's identifiers, one code under each source -
-            /// `ISIN`, `CUSIP`, `FIGI` - in source order.
-            #[napi(getter, ts_return_type = "Record<string, string>")]
-            pub fn securityids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::securityids_record(::yggdryl::graph::Market::get_securityids(
-                    &self.inner,
-                ))
+            /// The instrument's security identifiers, each a source, a type
+            /// and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+            /// map keyed `src:type`, in key order.
+            #[napi(getter, ts_return_type = "Identifiers")]
+            pub fn securityids(&self) -> $crate::identifier::JsIdentifiers {
+                $crate::identifier::JsIdentifiers::from_core(
+                    ::yggdryl::graph::Market::get_securityids(&self.inner),
+                )
             }
 
             /// The instrument's ISIN, borrowed from `securityids`; `null`
@@ -393,12 +428,19 @@ macro_rules! operation_getters {
     ($class:ident) => {
         #[napi]
         impl $class {
-            /// How long this stands, as the stored code; `null` where
+            /// How long this stands, as the `timeinforce` member's stored
+            /// name; `null` where unstated.
+            #[napi(getter)]
+            pub fn timeinforce(&self) -> Option<String> {
+                ::yggdryl::graph::Operation::get_timeinforce(&self.inner)
+                    .map(|held| held.as_str().to_owned())
+            }
+
+            /// The quantity the order asked for, as decimal text; `null` where
             /// unstated.
             #[napi(getter)]
-            pub fn tif(&self) -> Option<String> {
-                ::yggdryl::graph::Operation::get_tif(&self.inner)
-                    .map(|held| held.as_str().to_owned())
+            pub fn ordqty(&self) -> Option<String> {
+                $crate::graph::decimal_text(::yggdryl::graph::Operation::get_ordqty(&self.inner))
             }
 
             /// Whether the instrument trades, or `null` where the market said
@@ -408,20 +450,25 @@ macro_rules! operation_getters {
                 ::yggdryl::graph::Operation::get_tradable(&self.inner)
             }
 
-            /// The names the operation goes by, in key order.
-            #[napi(getter, ts_return_type = "Record<string, string>")]
-            pub fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_altids(&self.inner))
+            /// The names the operation goes by - `fix:clordid`,
+            /// `fix:orderid` - with the parents a chain gave them
+            /// (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+            /// a map keyed `src:type`, in key order.
+            #[napi(getter, ts_return_type = "Identifiers")]
+            pub fn identifiers(&self) -> $crate::identifier::JsIdentifiers {
+                $crate::identifier::JsIdentifiers::from_core(
+                    ::yggdryl::graph::Operation::get_identifiers(&self.inner),
+                )
             }
 
-            /// The accounts and parties the operation names, party role to
-            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-            /// order.
-            #[napi(getter, ts_return_type = "Record<string, string>")]
-            pub fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_record(::yggdryl::graph::Operation::get_accountids(
-                    &self.inner,
-                ))
+            /// The parties the operation names, each typed by its role -
+            /// `executingtrader`, `clientid` - from its source, a map keyed
+            /// `src:type`.
+            #[napi(getter, ts_return_type = "Identifiers")]
+            pub fn partyids(&self) -> $crate::identifier::JsIdentifiers {
+                $crate::identifier::JsIdentifiers::from_core(
+                    ::yggdryl::graph::Operation::get_partyids(&self.inner),
+                )
             }
         }
     };
@@ -458,8 +505,10 @@ macro_rules! common_verbs {
             /// This value stated as the one after `previous`, or `null` where
             /// it cannot follow it or following changes nothing. It takes
             /// every `metadata` key of its chain it lacks and, where it names
-            /// identifiers, every `altids` key but `MDENTRYREFID` and every
-            /// `accountids` role, its own values standing.
+            /// identifiers, every `identifiers` type but `mdentryrefid` and every
+            /// party id, its own values standing, and the parents each
+            /// identifier it states takes from its chain (`orderid` A then B
+            /// is `parentorderid` A).
             #[napi]
             pub fn with_previous(&self, previous: &$class) -> Option<$class> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
@@ -597,7 +646,7 @@ pub use trade::JsTradeEvent;
 
 /// Any value a market stream carries: a `MarketData` or one of its nine
 /// leaves, read back to the native value it holds by [`market_data_of`].
-pub(crate) type AnyMarketData<'a> = Either10<
+pub(crate) type AnyMarketData<'a> = Either11<
     ClassInstance<'a, JsMarketData>,
     ClassInstance<'a, JsOrder>,
     ClassInstance<'a, JsQuote>,
@@ -608,22 +657,24 @@ pub(crate) type AnyMarketData<'a> = Either10<
     ClassInstance<'a, JsTradeEvent>,
     ClassInstance<'a, JsBookEvent>,
     ClassInstance<'a, JsSnapshotEvent>,
+    ClassInstance<'a, JsFixMsg>,
 >;
 
-/// The `MarketData` `item` is - a `MarketData` itself or any leaf, wrapped
-/// through the core's own `From`.
+/// The `MarketData` `item` is - a `MarketData` itself, any leaf or a
+/// `FixMsg` held whole, wrapped through the core's own `From`.
 pub(crate) fn market_data_of(item: &AnyMarketData<'_>) -> CoreMarketData {
     match item {
-        Either10::A(data) => data.inner.clone(),
-        Either10::B(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::C(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::D(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::E(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::F(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::G(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::H(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::I(leaf) => CoreMarketData::from(leaf.inner.clone()),
-        Either10::J(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::A(data) => data.inner.clone(),
+        Either11::B(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::C(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::D(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::E(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::F(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::G(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::H(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::I(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::J(leaf) => CoreMarketData::from(leaf.inner.clone()),
+        Either11::K(message) => CoreMarketData::from(message.as_core().clone()),
     }
 }
 
@@ -633,7 +684,11 @@ pub(crate) fn market_data_from(value: Unknown<'_>) -> Result<CoreMarketData> {
     let kind = value.get_type()?.to_string().to_lowercase();
     AnyMarketData::from_unknown(value)
         .map(|item| market_data_of(&item))
-        .map_err(|_| napi_error(format!("expected MarketData or a market leaf, got {kind}")))
+        .map_err(|_| {
+            napi_error(format!(
+                "expected MarketData, a market leaf or a FixMsg, got {kind}"
+            ))
+        })
 }
 
 /// One instant or grid step a caller stated, as a `bigint` or a whole
@@ -670,39 +725,10 @@ pub(crate) fn optional<T>(value: Option<Either<T, Null>>) -> Option<T> {
     })
 }
 
-/// An identifier map - the names an operation goes by - as the record
-/// JavaScript reads, each value under the key that stated it, in key order.
-pub(crate) fn idmap_record(ids: &CoreIdMap) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
-}
-
-/// The identifiers an instrument is stated under, one code under each
-/// source - `ISIN`, `CUSIP`, `FIGI` - in source order.
-pub(crate) fn securityids_record(ids: &CoreSecurityIds) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|id| (id.sectype().as_str().to_owned(), id.code().to_owned()))
-        .collect()
-}
-
-/// The event columns an undated element states: the facts
-/// [`yggdryl::graph::Element`] answers that `finalize` keeps, and no clock,
-/// state or chain.
-const ELEMENT_COLUMNS: [EventColumn; 2] = [EventColumn::CrossCode, EventColumn::SrcUuids];
-
-/// The identity columns `finalize` derives from the stated facts, so no
-/// caller states one: a value given would be overwritten, never kept.
-const DERIVED_COLUMNS: [EventColumn; 4] = [
-    EventColumn::CurrUuid,
-    EventColumn::CrossUuid,
-    EventColumn::CurrHashCode,
-    EventColumn::CrossHashCode,
-];
-
 /// One named fact, resolved to the column that states it.
 #[derive(Clone, Copy)]
 enum Fact {
+    Element(ElementColumn),
     Event(EventColumn),
     Market(MarketColumn),
     Operation(OperationColumn),
@@ -712,40 +738,69 @@ impl Fact {
     /// The column `name` is - folded, as the column enums read it - or an
     /// error naming the unknown fact.
     fn of_name(owner: &str, name: &str) -> Result<Self> {
-        EventColumn::of_name(name)
-            .map(Self::Event)
+        ElementColumn::of_name(name)
+            .map(Self::Element)
+            .or_else(|| EventColumn::of_name(name).map(Self::Event))
             .or_else(|| MarketColumn::of_name(name).map(Self::Market))
             .or_else(|| OperationColumn::of_name(name).map(Self::Operation))
             .ok_or_else(|| napi_error(format!("{owner} states no fact {name:?}")))
     }
 
-    /// The refusal of a fact the leaf does not take from a caller: a
-    /// derived identity, which `finalize` computes; `currunix` on an event,
-    /// stated once as the constructor's first argument; and on an undated
-    /// element every clock, state and chain fact.
+    /// Whether the column is one of the three identifier maps, which an
+    /// array of `Identifier` objects states as the map they make.
+    const fn is_identifier_map(self) -> bool {
+        matches!(
+            self,
+            Self::Market(MarketColumn::SecurityIds)
+                | Self::Operation(OperationColumn::Identifiers | OperationColumn::PartyIds)
+        )
+    }
+
+    /// The map `value` states where this is an identifier map - a map of
+    /// identifier rows or a sequence of them, as `Identifiers::from_scalar`
+    /// reads it, refusing a row that is no identifier, a key that is not
+    /// its row's `src:type` and two values under one key - `None` for
+    /// any other column, whose value crosses as it is.
+    fn identifier_map_of(self, value: &Scalar) -> Result<Option<Scalar>> {
+        if !self.is_identifier_map() {
+            return Ok(None);
+        }
+        Identifiers::from_scalar(value)
+            .map(|ids| Some(ids.into_scalar()))
+            .map_err(napi_error)
+    }
+
+    /// The refusal of a fact the leaf does not take from a caller: an
+    /// identity, which `finalize` derives; the category, which the leaf is;
+    /// `currunix` on an event, stated once as the constructor's first
+    /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
         owner: &str,
         name: &str,
         undated: bool,
     ) -> std::result::Result<(), String> {
-        let Self::Event(column) = self else {
-            return Ok(());
-        };
-        if DERIVED_COLUMNS.contains(&column) {
-            Err(format!(
-                "{owner} states no fact {name:?}: an identity is derived, never stated"
-            ))
-        } else if undated && !ELEMENT_COLUMNS.contains(&column) {
-            Err(format!(
+        match self {
+            Self::Element(_)
+                if !matches!(
+                    self,
+                    Self::Element(ElementColumn::CrossCode | ElementColumn::SrcUuids)
+                ) =>
+            {
+                Err(format!(
+                    "{owner} states no fact {name:?}: an identity is derived, never stated"
+                ))
+            }
+            Self::Market(MarketColumn::MarketDataKind) => Err(format!(
+                "{owner} states no fact {name:?}: the category is the leaf's own"
+            )),
+            Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
-            ))
-        } else if column == EventColumn::CurrUnix {
-            Err(format!(
+            )),
+            Self::Event(EventColumn::CurrUnix) => Err(format!(
                 "{owner} states currunix once, as its first argument"
-            ))
-        } else {
-            Ok(())
+            )),
+            Self::Element(_) | Self::Operation(_) | Self::Market(_) | Self::Event(_) => Ok(()),
         }
     }
 
@@ -753,6 +808,7 @@ impl Fact {
     /// crosses unchecked - and stated through the column's own `record`.
     fn state<E: Event + Operation>(self, leaf: &mut E, value: &Scalar) -> Result<()> {
         let field = match self {
+            Self::Element(column) => column.field(),
             Self::Event(column) => column.field(),
             Self::Market(column) => column.field(),
             Self::Operation(column) => column.field(),
@@ -761,9 +817,13 @@ impl Fact {
         let checked = if matches!(value, Scalar::Null) {
             Scalar::Null
         } else {
-            field.scalar(value.clone()).map_err(napi_error)?
+            let stated = self
+                .identifier_map_of(value)?
+                .unwrap_or_else(|| value.clone());
+            field.scalar(stated).map_err(napi_error)?
         };
         match self {
+            Self::Element(column) => column.record(leaf, &checked),
             Self::Event(column) => column.record(leaf, &checked),
             Self::Market(column) => column.record(leaf, &checked),
             Self::Operation(column) => column.record(leaf, &checked),
@@ -808,16 +868,16 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
     Ok(leaf)
 }
 
-/// The alternate-identifier key an entry's own `MDEntryID(278)` is held
-/// under: `graph.ENTRY_ID`'s native half.
+/// The identifier type an entry's own `MDEntryID(278)` is held under:
+/// `graph.ENTRY_ID`'s native half.
 #[napi(js_name = "_graphEntryIdNative", skip_typescript)]
 pub fn graph_entry_id_native() -> &'static str {
-    graph::book::ENTRY_ID
+    graph::book::ENTRY_ID.as_str()
 }
 
-/// The alternate-identifier key an entry's `MDEntryRefID(280)` is held
-/// under: `graph.ENTRY_REF_ID`'s native half.
+/// The identifier type an entry's `MDEntryRefID(280)` is held under:
+/// `graph.ENTRY_REF_ID`'s native half.
 #[napi(js_name = "_graphEntryRefIdNative", skip_typescript)]
 pub fn graph_entry_ref_id_native() -> &'static str {
-    graph::book::ENTRY_REF_ID
+    graph::book::ENTRY_REF_ID.as_str()
 }

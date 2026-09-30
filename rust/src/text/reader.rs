@@ -97,10 +97,10 @@ impl<R: Read> Lines<R> {
         let open = self.filled - self.cursor;
         let grows = size > self.page.len();
         if !grows && Arc::get_mut(&mut self.page).is_some() {
-            if self.cursor > 0 {
-                if let Some(page) = Arc::get_mut(&mut self.page) {
-                    page.copy_within(self.cursor..self.filled, 0);
-                }
+            if self.cursor > 0
+                && let Some(page) = Arc::get_mut(&mut self.page)
+            {
+                page.copy_within(self.cursor..self.filled, 0);
             }
         } else {
             let mut page = vec![0; size];

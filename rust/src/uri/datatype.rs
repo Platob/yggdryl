@@ -180,14 +180,6 @@ impl UriType {
         Ok(())
     }
 
-    /// The Arrow extension name preserving this leaf over its Utf8 storage.
-    pub(crate) const fn extension_name(self) -> &'static str {
-        match self {
-            Self::Url => URL_EXTENSION_NAME,
-            Self::Urn => URN_EXTENSION_NAME,
-        }
-    }
-
     /// The Arrow storage every leaf lays out: its canonical text.
     pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
         arrow_schema::DataType::Utf8

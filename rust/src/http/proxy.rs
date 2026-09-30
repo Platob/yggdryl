@@ -106,15 +106,15 @@ fn entry_matches(entry: &str, host: &str, address: Option<IpAddr>, port: Option<
 /// brackets and the `/bits` after them: `[fd00::]/8:443` is `[fd00::]/8`
 /// at port 443.
 fn split_port(entry: &str) -> (&str, Option<u16>) {
-    if entry.starts_with('[') {
-        if let Some(close) = entry.find(']') {
-            let tail = &entry[close + 1..];
-            let (network, port) = match tail.rsplit_once(':') {
-                Some((bits, port)) => (close + 1 + bits.len(), port.parse().ok()),
-                None => (entry.len(), None),
-            };
-            return (&entry[..network], port);
-        }
+    if entry.starts_with('[')
+        && let Some(close) = entry.find(']')
+    {
+        let tail = &entry[close + 1..];
+        let (network, port) = match tail.rsplit_once(':') {
+            Some((bits, port)) => (close + 1 + bits.len(), port.parse().ok()),
+            None => (entry.len(), None),
+        };
+        return (&entry[..network], port);
     }
     match entry.rsplit_once(':') {
         Some((pattern, port)) if !pattern.contains(':') => match port.parse() {

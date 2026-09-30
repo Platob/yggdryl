@@ -480,14 +480,13 @@ impl DiffEngine {
                 }
                 if let (Some(left_algorithm), Some(right_algorithm)) =
                     (left.algorithm(), right.algorithm())
+                    && left_algorithm != right_algorithm
                 {
-                    if left_algorithm != right_algorithm {
-                        self.pending.push_back(changed_display(
-                            &property_path(&path, "algorithm"),
-                            left_algorithm,
-                            right_algorithm,
-                        ));
-                    }
+                    self.pending.push_back(changed_display(
+                        &property_path(&path, "algorithm"),
+                        left_algorithm,
+                        right_algorithm,
+                    ));
                 }
             }
             _ if left.id() != right.id() => self.pending.push_back(changed_display(

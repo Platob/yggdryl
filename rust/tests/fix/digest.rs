@@ -273,107 +273,123 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Forty-one definitions, in the fixed row's band order: the event and
-    // capture facts, the execution and recording clocks, the session event a
-    // bridge delivered the message as, where a bridge says it came from,
-    // MsgCat, the option strike, three normalized identifiers
-    // - ISIN, Bloomberg, FIGI - whose standard FIX representation is
-    // contextual, and the identifiers and instruments a bridge names in
-    // words of its own; CUSIP and SEDOL are members of the
-    // security identifiers and the names a message goes by are its
-    // alternate identifiers, so neither has a crate definition. CFI already
-    // has its own standard tag, so it adds no crate definition.
+    // Forty-eight definitions, in the fixed row's order: the element's and
+    // the event's facts, the market's and the operation's the crate tags -
+    // the category, the normalized ISIN and MIC, the execution clock, the
+    // metadata and the columns the row derives from FIX fields stated under
+    // other names - then the message's own: the session event a bridge
+    // delivered it as, where a bridge says it came from, three normalized
+    // identifiers - forex, Bloomberg, FIGI - and the capture's source. A
+    // market column FIX already names alike - price, side, CFICode, the
+    // strike - has no crate definition, and a bridge's own identifiers are
+    // read off its keys, so they have none either.
     assert_eq!(
         names,
         [
-            "currunix",
-            "execunix",
-            "recdunix",
-            "creaunix",
-            "prevunix",
-            "snapunix",
-            "exprunix",
             "curruuid",
             "crossuuid",
             "crosscode",
             "currhashcode",
             "crosshashcode",
+            "srcuuids",
+            "currunix",
+            "creaunix",
+            "recdunix",
+            "exprunix",
+            "prevunix",
+            "snapunix",
             "prevuuid",
             "seqnum",
-            "srcuuids",
-            "msgcat",
+            "state",
+            "marketdatakind",
+            "marketdatatype",
+            "hiddenqty",
+            "unit",
+            "securityids",
+            "isincode",
+            "miccode",
+            "execunix",
+            "prevpx",
+            "prevqty",
+            "spotrate",
+            "forwardpoints",
+            "bidqty",
+            "bidccy",
+            "askpx",
+            "askqty",
+            "askccy",
+            "fxrates",
+            "ticker",
+            "metadata",
+            "ordqty",
+            "tradable",
+            "identifiers",
+            "partyids",
             "msgpluginid",
             "msgoriginator",
             "msgctxid",
             "msgsessionid",
             "msgsesseventid",
             "conversationid",
-            "isincode",
             "forexcode",
             "bloombergcode",
             "figicode",
-            "miccode",
-            "strikepx",
-            "state",
-            "metadata",
             "sourceurl",
-            "omsdealeraccount",
-            "omsuserid",
-            "parentorderid",
-            "parentclordid",
-            "omsdealerparentorderid",
-            "exchangeclientorderid",
-            "transversalkey",
-            "ultraderclordid",
-            "omsinstrumentid",
-            "ullinkinstrumentid",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
     assert_eq!(
         displays,
         [
-            Some("CurrUnix"),
-            Some("ExecUnix"),
-            Some("RecdUnix"),
-            Some("CreaUnix"),
-            Some("PrevUnix"),
-            Some("SnapUnix"),
-            Some("ExprUnix"),
-            Some("CurrUuid"),
-            Some("CrossUuid"),
-            Some("CrossCode"),
-            Some("CurrHashCode"),
-            Some("CrossHashCode"),
-            Some("PrevUuid"),
-            Some("SeqNum"),
-            Some("SrcUuids"),
-            Some("MsgCat"),
-            Some("MsgPluginId"),
-            Some("MsgOriginator"),
-            Some("MsgCtxId"),
-            Some("MsgSessionId"),
-            Some("MsgSessEventId"),
-            Some("ConversationId"),
-            Some("IsinCode"),
-            Some("ForexCode"),
-            Some("BloombergCode"),
-            Some("FIGICode"),
-            Some("MicCode"),
-            Some("StrikePx"),
+            Some("Current UUID"),
+            Some("Cross UUID"),
+            Some("Cross Code"),
+            Some("Current Hash Code"),
+            Some("Cross Hash Code"),
+            Some("Source UUIDs"),
+            Some("Current Time"),
+            Some("Creation Time"),
+            Some("Recording Time"),
+            Some("Expiry Time"),
+            Some("Previous Time"),
+            Some("Snapshot Time"),
+            Some("Previous UUID"),
+            Some("Sequence Number"),
             Some("State"),
+            Some("Market Data Kind"),
+            Some("Market Data Type"),
+            Some("Hidden Quantity"),
+            Some("Unit"),
+            Some("Security IDs"),
+            Some("ISIN Code"),
+            Some("MIC Code"),
+            Some("Execution Time"),
+            Some("Previous Price"),
+            Some("Previous Quantity"),
+            Some("Spot Rate"),
+            Some("Forward Points"),
+            Some("Bid Quantity"),
+            Some("Bid Currency"),
+            Some("Ask Price"),
+            Some("Ask Quantity"),
+            Some("Ask Currency"),
+            Some("FX Rates"),
+            Some("Ticker"),
             Some("Metadata"),
-            Some("SourceUrl"),
-            Some("OmsDealerAccount"),
-            Some("OmsUserId"),
-            Some("ParentOrderId"),
-            Some("ParentClOrdId"),
-            Some("OmsDealerParentOrderId"),
-            Some("ExchangeClientOrderId"),
-            Some("TransversalKey"),
-            Some("UlTraderClOrdId"),
-            Some("OmsInstrumentId"),
-            Some("UllinkInstrumentId"),
+            Some("Order Quantity"),
+            Some("Tradable"),
+            Some("Identifiers"),
+            Some("Party IDs"),
+            Some("Message Plugin ID"),
+            Some("Message Originator"),
+            Some("Message Context ID"),
+            Some("Message Session ID"),
+            Some("Message Session Event ID"),
+            Some("Conversation ID"),
+            Some("Forex Code"),
+            Some("Bloomberg Code"),
+            Some("FIGI Code"),
+            Some("Source URL"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -404,16 +420,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     for (_, name) in [
         yggdryl::MSGORIGINATOR_TAG_NAME,
         yggdryl::CONVERSATIONID_TAG_NAME,
-        yggdryl::OMSDEALERACCOUNT_TAG_NAME,
-        yggdryl::OMSUSERID_TAG_NAME,
-        yggdryl::PARENTORDERID_TAG_NAME,
-        yggdryl::PARENTCLORDID_TAG_NAME,
-        yggdryl::OMSDEALERPARENTORDERID_TAG_NAME,
-        yggdryl::EXCHANGECLIENTORDERID_TAG_NAME,
-        yggdryl::TRANSVERSALKEY_TAG_NAME,
-        yggdryl::ULTRADERCLORDID_TAG_NAME,
-        yggdryl::OMSINSTRUMENTID_TAG_NAME,
-        yggdryl::ULLINKINSTRUMENTID_TAG_NAME,
     ] {
         assert_eq!(typed(name), &DataType::utf8(), "{name}");
         assert!(field(name).is_nullable(), "{name}");
@@ -493,43 +499,37 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_010);
-    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_021, "msgsesseventid"));
-    assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_028, "strikepx"));
+    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_003);
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_044, "msgsesseventid"));
     assert_eq!(
         [
-            yggdryl::OMSINSTRUMENTID_TAG_NAME,
-            yggdryl::ULLINKINSTRUMENTID_TAG_NAME,
+            yggdryl::FIGICODE_TAG_NAME,
+            yggdryl::SOURCEURL_TAG_NAME,
             yggdryl::FOREXCODE_TAG_NAME
         ],
         [
-            (65_040, "omsinstrumentid"),
-            (65_041, "ullinkinstrumentid"),
-            (65_024, "forexcode")
+            (65_048, "figicode"),
+            (65_049, "sourceurl"),
+            (65_046, "forexcode")
         ]
     );
     assert_eq!(
         [
             yggdryl::MSGORIGINATOR_TAG_NAME,
             yggdryl::CONVERSATIONID_TAG_NAME,
-            yggdryl::TRANSVERSALKEY_TAG_NAME
         ],
-        [
-            (65_018, "msgoriginator"),
-            (65_022, "conversationid"),
-            (65_038, "transversalkey")
-        ]
+        [(65_041, "msgoriginator"), (65_045, "conversationid")]
     );
     assert_eq!(
         [
             yggdryl::CURRHASHCODE_TAG_NAME,
             yggdryl::CROSSHASHCODE_TAG_NAME
         ],
-        [(65_011, "currhashcode"), (65_012, "crosshashcode")]
+        [(65_004, "currhashcode"), (65_005, "crosshashcode")]
     );
     assert_eq!(
         [yggdryl::PREVUNIX_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
-        [(65_005, "prevunix"), (65_013, "prevuuid")]
+        [(65_011, "prevunix"), (65_013, "prevuuid")]
     );
     assert_eq!(
         [
@@ -541,12 +541,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::EXPRUNIX_TAG_NAME
         ],
         [
-            (65_010, "crosscode"),
-            (65_030, "metadata"),
-            (65_042, "fixmsg"),
-            (65_015, "srcuuids"),
-            (65_029, "state"),
-            (65_007, "exprunix")
+            (65_003, "crosscode"),
+            (65_035, "metadata"),
+            (65_050, "fixmsg"),
+            (65_006, "srcuuids"),
+            (65_015, "state"),
+            (65_010, "exprunix")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:
@@ -579,6 +579,20 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         "bridgesessionid",
         "sendersessionid",
         "refrecdunix",
+        // The strike is the dictionary's own `StrikePrice(202)`, and a
+        // bridge's own keys are read off their names, so no registry holds
+        // a field for any of them.
+        "strikepx",
+        "omsdealeraccount",
+        "omsuserid",
+        "parentorderid",
+        "parentclordid",
+        "omsdealerparentorderid",
+        "exchangeclientorderid",
+        "transversalkey",
+        "ultraderclordid",
+        "omsinstrumentid",
+        "ullinkinstrumentid",
     ] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }
@@ -633,9 +647,13 @@ fn every_registry_registers_the_crates_fields_without_warning() {
     let (registry, warnings) = super::warned::during_all(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     for field in held {
-        assert!(
-            registry.get_field_by_name(field.name()).is_some(),
-            "{} is every registry's",
+        let tag = field.as_fix().tag().unwrap().unwrap();
+        // A derived column is the fixed row's, and no registry files it.
+        assert_eq!(
+            registry.get_field_by_tag(tag).is_some()
+                || registry.get_field_by_counter(tag).is_some(),
+            !yggdryl::is_derived_tag(tag),
+            "{} is every registry's unless the row derives it",
             field.name()
         );
     }
@@ -781,7 +799,7 @@ fn the_line_a_message_was_read_from_is_its_one_source() {
     assert!(streamed.get_srcuuids().is_empty());
     // The wire never carries it.
     let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
-    assert!(!wire.contains("65015="), "{wire}");
+    assert!(!wire.contains("65006="), "{wire}");
     assert_eq!(wire, String::from_utf8(raw.into_bytes(b'|')).unwrap());
     // The row does, and reads it back.
     let at =

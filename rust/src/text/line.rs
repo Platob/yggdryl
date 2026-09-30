@@ -1232,6 +1232,23 @@ impl TextLine {
         self.stated.crosscode.as_ref()
     }
 
+    /// What the line states under one of the element columns, as the
+    /// column's cell, or nothing where it states no fact: an element fact
+    /// reads no capture, so there is nothing to refuse.
+    #[must_use]
+    pub fn element_fact(&self, column: crate::graph::ElementColumn) -> Option<Scalar> {
+        match column {
+            // The generic element projection starts from `&str`, which would
+            // allocate a new long string value for every row. This line owns
+            // the shared value already, so its Arrow cell is a cheap clone.
+            crate::graph::ElementColumn::CrossCode => self
+                .crosscode_value()
+                .filter(|code| !code.is_empty())
+                .map(|code| Scalar::Utf8String(code.clone())),
+            _ => column.fact(self),
+        }
+    }
+
     /// What the line states under one of the event columns, as the
     /// column's cell, or nothing where it states no fact.
     ///
@@ -1248,15 +1265,6 @@ impl TextLine {
     pub fn event_fact(&self, column: crate::graph::EventColumn) -> Result<Option<Scalar>> {
         use crate::graph::EventColumn;
         match column {
-            // The generic event projection starts from `&str`, which would
-            // allocate a new long string value for every row. This line owns
-            // the shared value already, so its Arrow cell is a cheap clone.
-            EventColumn::CrossCode => {
-                return Ok(self
-                    .crosscode_value()
-                    .filter(|code| !code.is_empty())
-                    .map(|code| Scalar::Utf8String(code.clone())));
-            }
             // The instant is the `mtime` capture where one reads as an
             // instant, else the handle's, whatever the column flag says; the
             // reading is asked to refuse a capture that does not read only
@@ -1290,7 +1298,7 @@ impl TextLine {
             EventColumn::PrevUuid => {
                 self.prevuuid()?;
             }
-            _ => {}
+            EventColumn::CurrUnix => {}
         }
         Ok(column.fact(self))
     }

@@ -8,19 +8,21 @@ description: Models and streams market data with yggdryl's graph layer in Rust, 
 The graph layer is market data as **elements that name each other by
 identity**, never by reference. Four Rust traits say what an element answers -
 `Element` (identity, cross code, digest, sources), `Event` (instant, state,
-place at its instant, clocks), `Market` (twenty-eight facts: price, quantity, currency,
-unit, side, security ids and the `isincode` they hold, classification, market,
+place at its instant, clocks), `Market` (thirty-four facts: the `marketdatatype` of its kind, price, stop price,
+quantity and its shown and hidden parts, currency, unit, side, the security's identifiers `securityids` and the `isincode` they hold, classification, market,
 the `execunix` it last executed at, last-trade, progress, FX parts, the stated bid and ask - `bidpx`, `bidqty`,
 `bidccy`, `askpx`, `askqty`, `askccy` - the `fxrates`, ticker, metadata) and
-`Operation` (four more: time in force, whether it trades, the `altids`, the
-`accountids` the parties and account it names) - and
+`Operation` (five more: the `ordqty` it asked for, the `TimeInForce` member it stands for, whether it trades, the `identifiers`, the
+`partyids` it names - the account included) - and
 typed leaves answer them: `Order`/`OrderEvent`, `Quote`/`QuoteEvent`,
 `Execution`/`ExecutionEvent`, the composite `TradeEvent`, and the book types
 `BookEvent` and `SnapshotEvent`. `MarketData` is the one value over every
-leaf, and the lifted **`marketdata` Arrow row** (54 columns, led by the
-`marketdatakind` its leaf stands under) is how any of them crosses a boundary.
+leaf, and the lifted **`marketdata` Arrow row** (60 columns: the element,
+event, market and operation columns every generated row opens with, then the
+book - [Row schemas](https://platob.github.io/yggdryl/graph/schemas/)) is how
+any of them crosses a boundary.
 
-Hold five facts:
+Hold these facts:
 
 - **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `currunix`,
   `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`, and the market's
@@ -31,28 +33,67 @@ Hold five facts:
   millisecond + place for a dated leaf (UUIDv8 of content otherwise),
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null, and it keys the chain.** `Side` and
-  `MarketDataKind` are `int32` enums; an element stating no side holds
-  `UNKN` (code 0). An order, a quote or an execution stores its cross code
-  under its side - `BUYS:O-1001` - so the two sides of one identifier are two
-  chains (`MarketDataKind::is_sided`, Rust-only); `UNKN` keeps the bare
-  code, and so does every trade, book and snapshot control whatever side it
-  states.
+  `MarketDataKind` are `uint8` enums; an element stating no side holds
+  `UNKN` (code 0). A cross code is stored as `{kind}:{side}:{base}` - a buy
+  order `O-1001` is `10:1:O-1001` - so the two sides of one identifier are two
+  chains (`MarketDataKind::is_sided`, Rust-only); `UNKN` stores side `0`, and
+  so does every trade, book and snapshot control whatever side it states
+  (`21:0:T-1`, `3:0:AAPL`).
 - **Chains are walked, not rebuilt.** An event names only its predecessor
   (`prevuuid`); `seqnum` is its place among the events of its instant, which
   orders the identities of one millisecond, and a step keeps its own unless
   its predecessor shares or passes its instant. A follower takes what its
-  chain states and it does not - every `metadata` key, every `altids` key but
-  `MDENTRYREFID` (a book entry's reference to its predecessor, which names one
-  step) and every `accountids` role, its own values standing - and its
-  identity digests what it took. A FIX lifecycle message takes the `metadata`
-  keys and only the ids its dictionary follows, no account. `EventIterator`
-  joins a stream by cross identity and by the `altids` a live element went by,
+  chain states and it does not - every `metadata` key, every `identifiers` key but
+  `mdentryrefid` (a book entry's reference to its predecessor, which names one
+  step) and every `partyids` source and role, its own values standing, each
+  identifier a follower states anew keeping its own value - and its identity
+  digests what it took. Parents move along a chain: a
+  changed `orderid` leaves its previous value as `parentorderid` and the
+  chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
+  (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
+  only the ids its dictionary follows. `EventIterator` joins a stream by cross
+  identity and by the type and value of an `identifiers` identifier a live element
+  went by (or the parent identifier it replaced, joined under its base),
   within one `marketdatakind` (an order and an execution under one cross code
   are two chains, so a fill never restates, follows or ends its order),
   folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
-  as of its tick: dated at it (`currunix` = `snapunix`), so its `curruuid`
-  is the tick's own while content, `seqnum`, `prevuuid` and `crossuuid` are
-  the live element's; it advances nothing.
+  as of its tick: dated at it (`currunix` = the tick), its `snapunix` the
+  instant the element it copies was stated at (never the tick, never a
+  predecessor's, and in no digest), so its `curruuid` is the tick's own
+  while content, `seqnum`, `prevuuid` and `crossuuid` are the live
+  element's; it advances nothing. `srcuuids` is provenance only - the line a
+  message was read from and the message a parse split it off - and travels
+  along no chain.
+- **A ticker of an identifier's shape names it.** `US0378331005`, a
+  `BBG` FIGI, a CUSIP, a SEDOL, a detailed CFI code, `AAPL.OQ`, `HOLN SW
+  Equity` or an instrument key `CH0012214059_XSWX_CHF` derive the identifier
+  (and the key's market and currency) where none is stated; a currency pair
+  with no unit takes the currency dealt as its unit.
+- **Identifiers are typed maps.** `securityids`, `identifiers` and `partyids` are
+  each an `Identifiers` map keyed `src:type` of `Identifier { src, type, value }`
+  (`yggdryl::Identifier`, Python `from yggdryl import Identifier`, JavaScript
+  `require('yggdryl').Identifier`): one value per source and type, sorted by
+  that key, displayed `base:isin=US0378331005`, every word lower case; `key` is
+  `src:type`. `base` is no source stated, `derived` what the crate derived (an
+  ISIN's CUSIP, a ticker's shape, a FX pair). Build one with `Identifier(src,
+  type, value)` - the value is checked by its type, so `Identifier("base",
+  "isin", code)` closes on its check digit - or `Identifier.from_key(key, value)`,
+  which reads a full `src:type` key or the identifier name a bridge's own
+  spelling ends with (`OMS_InstrumentID` is `oms:instrumentid`); Rust takes the
+  `IdSource` and `IdType` enums. Parentage is a relation between types, never a
+  field of a value: when an `orderid` changes along a chain, a follower keeps
+  the value it held as `parentorderid` and the chain's first as `origorderid`
+  (a `clordid` keeps only `origclordid`), and one stating only a parent takes
+  its base from it.
+- **A setter fills, or overwrites when told.** Every Rust `Market` and
+  `Operation` setter takes a trailing `overwrite: bool`: `false` lands only
+  where the fact is unstated, `true` states it. A change carries what it
+  implies - a buyer's price and quantity are its bid, a side moves the quote
+  and a sided cross code, `leavesqty` is the quantity, an order's `ordqty`,
+  `cumqty` and `leavesqty` fill one another by its state (`LeavesQty = OrderQty
+  - CumQty` while it works, `0` once done, the rest `cxlqty` when canceled) -
+  and the binding constructors run the same fills. Every fill is a column, so
+  a row read back answers it unchanged; never recompute one by hand.
 - **Books are folded, not replayed by hand.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant; read books back from
   `marketdata` rows, never by re-applying their deltas. Sorted books fold on
@@ -68,13 +109,16 @@ Hold five facts:
 | an undated leaf, dated later | `Order::new()`, `order.at(unix)`, `event.into_element()` | `graph.Order(**facts)`, `.at(unix)`, `.into_element()` | `new graph.Order(facts)`, `.at(unix)`, `.intoElement()` |
 | a two-sided quote | `set_bidpx`, `set_askpx`, `set_bidqty` ... | `graph.QuoteEvent(unix, bidpx=..., askpx=...)` | `new graph.QuoteEvent(unix, { bidpx, askpx })` |
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
-| security identifiers | `insert_securityid(SecurityId::new(..)?)?` (Rust-only verbs) | `securityids={"ISIN": ...}` at build | `securityids: { ISIN: ... }` at build |
+| an identifier | `Identifier::new(IdSource::Base, IdType::Isin, value)?`, `Identifiers` | `Identifier(src, type, value)`, `Identifiers([...])` | `new Identifier(src, type, value)`, `new Identifiers([...])` |
+| security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("base", "isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('base', 'isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
+| read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
 | merge two statements of one event | `event.merge_with(&other)` | `event.merge_with(other)` | `event.mergeWith(other)` |
 | walk a stream into chains | `EventIterator::new(items, sorted)`, `.with_snapshot_ns(ns)` | `graph.EventIterator(items, sorted=True, snapshot_ns=None)` | `new graph.EventIterator(items, sorted, snapshotNs)` (sorted defaults to `true`) |
 | any leaf as one value | `MarketData::from(leaf)`, `kind()`, `marketdatakind()`, `as_order_event()`, `TryFrom` | `graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.as_order_event()`, `.into_leaf()` | `new graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.asOrderEvent()`, `.intoLeaf()` |
+| a FIX message held whole | `MarketData::from(msg)` (kind `fix`, its `msgcat`), `as_fix()`, `FixMsg::try_from(value)?`; written and folded as the leaves it splits into | `graph.MarketData(msg)`, `.as_fix()` | `new graph.MarketData(msg)`, `.asFix()` |
 | the `marketdata` row schema | `MarketData::field()?` | `graph.MarketData.field()` | `graph.MarketData.field()` |
 | leaves to Arrow batches | `MarketData::arrow_reader(values, None, None)?` | `graph.MarketData.arrow_reader(values)` | `graph.MarketData.arrowReader(values)` |
 | Arrow batches to leaves | `MarketData::from_arrow_reader(reader)?` | `graph.MarketData.from_arrow_reader(source)` | `graph.MarketData.fromArrowReader(reader)` |
@@ -108,8 +152,8 @@ Hold five facts:
    null, a snapshot control where it is.
 3. Views are `Plan`s run by the expression engine: `apply_view` binds once
    against the reader's schema and streams; `plan()` shows the text. Add a
-   nested fact as a column with a lift (`securityids['ISIN'] as isin`) instead
-   of post-processing rows. The `lifecycle` view collects (it orders).
+   nested fact as a column with a lift (`identifiers['fix:clordid'].value as clordid`,
+   a map read by its `src:type` key) instead of post-processing rows. The `lifecycle` view collects (it orders).
 4. Feed `BookIterator` a **sorted** stream (by `snapunix`, else `currunix`); it
    leaves an operation dated before its book out with a warning, so an unsorted
    stream loses operations without an error. `FixCodec.market_data` is the
@@ -127,10 +171,10 @@ Hold five facts:
    spread and the crossed and locked readings read the first level that trades.
 7. Join and chain by identity: `crossuuid` is one chain whatever identifier an
    event used; a later event joins a live one of its side and its
-   `marketdatakind` through an `altids`
-   pair (`ORDERID`, `CLORDID`, `MDENTRYID`...), and one stating no side joins
-   the single side alive under its code. Name identifiers there, upper-cased,
-   rather than inventing a column.
+   `marketdatakind` through the type and value of an `identifiers` identifier
+   (`orderid`, `clordid`, `mdentryid`..., whatever its source), and one stating
+   no side joins the single side alive under its code. Name identifiers there,
+   as `Identifier`s, rather than inventing a column.
 8. Leaves are immutable in the bindings: `with_previous`, `merge_with`,
    `restating`, `with_book`, `with_operations` answer a new value; only
    `with_previous` and `merge_with` answer `None`/`null` when nothing moved.
@@ -155,8 +199,8 @@ Hold five facts:
     each `{open, high, low, close}` over the books that stated one, `bidqty`/
     `askqty` the last book's touch, `volume` what traded - each trade counted
     once within the bucket, at the largest `lastqty` any of its executions
-    states (never the order's `quantity`), a trade named by the `TRADEID`,
-    `TRADEREPORTID`, `TVTIC` and `EXECID` altids its executions state, else
+    states (never the order's `quantity`), a trade named by the `tradeid`,
+    `tradereportid`, `tvtic` and `execid` identifiers its executions state, else
     by the cross code's base, so a trade's two sides and a fill delivered
     twice count once, and one stated again in the next bucket adds only what
     it states past what was counted - and an empty bucket yields no candle.
@@ -166,9 +210,9 @@ Hold five facts:
 - A millisecond or second timestamp where nanoseconds are expected lands in
   1970: `graph.OrderEvent(1_700_000_000_000, ...)` is 28 minutes after the
   epoch. Multiply to nanoseconds first.
-- `crosscode` answers the stored code: a buy order, quote or execution set to
-  `O-1` reads `BUYS:O-1`, and the lifecycle view and any lookup name it that
-  way. A trade built on that order reads `O-1`: it is not sided.
+- `crosscode` answers the stored code: a buy order set to `O-1` reads
+  `10:1:O-1`, and the lifecycle view and any lookup name it that way. A trade
+  built on that order reads `21:0:O-1`: it is not sided.
 - Python enum facts are `IntEnum` members (`order.side is Side.BUYS`); JavaScript
   getters answer the name (`'BUYS'`) while an Arrow column stores the code
   (`Side.BUYS === 1`). Compare against the one you hold.
@@ -194,8 +238,13 @@ Hold five facts:
 - A trade is built only through `TradeEvent.from_parts`: at least one
   execution, each on any side - `UNKN` included - at the root's instant,
   one ticker, distinct cross codes.
-- A lift key is matched exactly and stored upper case:
-  `securityids['ISIN']`, never `securityids['isin']` (that reads null).
+- A lift names an identifier by its key, and keys are lower case:
+  `identifiers['fix:clordid'].value`, never `['FIX:ClOrdID']` (that reads null).
+  `securityids['base:isin'].value` reads the ISIN a leaf took without a source.
+- An identifier map is no dict: compare `str(id)` / `id.toString()`, or read
+  `get(type)` - a stated source before a derived one - and `get_from(src,
+  type)`. An `Identifier` is its source, type and value: `key` is `src:type`,
+  and `Identifier.from_key("fix:clordid", value)` reads a full key.
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a
@@ -204,11 +253,11 @@ Hold five facts:
 - `fxrates` maps a target currency to the rate an amount in the element's
   `currency` is divided by; nothing fills it, and a merge unions the targets.
 - A leaf read from a FIX message keeps its parties and `Account(1)` in
-  `accountids`, not `metadata`, and its `altids` can hold more than the
+  `partyids`, not `metadata`, and its `identifiers` can hold more than the
   message's: an identifier-like `metadata` key (`marketorderid`) is lifted into
-  it (`MARKETORDERID`); see the `yggdryl-fix` skill.
+  it (`base:marketorderid`); see the `yggdryl-fix` skill.
 - The lifecycle view needs its chain: `apply_view("lifecycle", source,
-  crosscode="BUYS:O-1")`; every other view refuses a `crosscode`.
+  crosscode="10:1:O-1")`; every other view refuses a `crosscode`.
 - Rust's `Limit` value type, the column enums' verbs (`EventColumn::fact`,
   `record`) and the `insert_`/`remove_`/`derive_` identifier verbs are
   Rust-only; the bindings answer a limit as a struct `Scalar` (Python) or a
@@ -256,15 +305,17 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Graph overview and traits: https://platob.github.io/yggdryl/graph/
 - Element (identity, cross code, sources): https://platob.github.io/yggdryl/graph/element/
 - Event (instants, following, merging, the walk): https://platob.github.io/yggdryl/graph/event/
-- Market facts and security identifiers: https://platob.github.io/yggdryl/graph/market/
-- Operation facts and identifier maps: https://platob.github.io/yggdryl/graph/operation/
+- Market facts, fill or overwrite, order quantities, security identifiers: https://platob.github.io/yggdryl/graph/market/
+- `Identifier` and `Identifiers`, the `IdType`/`IdSource` vocabularies, parentage, FIX party naming: https://platob.github.io/yggdryl/graph/identifier/
+- The three row schemas, column by column: https://platob.github.io/yggdryl/graph/schemas/
+- Operation facts, identifiers and party ids: https://platob.github.io/yggdryl/graph/operation/
 - Order, quote, execution leaves and book control: https://platob.github.io/yggdryl/graph/order/
 - Trade: https://platob.github.io/yggdryl/graph/trade/
 - Book, limits, snapshots, the fold: https://platob.github.io/yggdryl/graph/book/
 - `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
 - Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
 - The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
-- `Side` and `MarketDataKind`: https://platob.github.io/yggdryl/types/enum/
+- `Side`, `MarketDataKind`, `MarketDataType` and `TimeInForce`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting
   `marketdata` batches), `yggdryl-arrow` (`BatchReader`, casts),

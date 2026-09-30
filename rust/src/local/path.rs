@@ -309,10 +309,10 @@ impl IOBase for LocalPath {
     }
 
     fn set_media_type(&mut self, media_type: MediaType) {
-        if let Ok(mut resolved) = self.resolved.lock() {
-            if let Some(resolved) = resolved.as_mut() {
-                resolved.as_io_mut().set_media_type(media_type.clone());
-            }
+        if let Ok(mut resolved) = self.resolved.lock()
+            && let Some(resolved) = resolved.as_mut()
+        {
+            resolved.as_io_mut().set_media_type(media_type.clone());
         }
         self.declared = Some(media_type);
     }

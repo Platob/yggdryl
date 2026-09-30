@@ -403,12 +403,11 @@ impl Session {
                 })
             })
             .or_else(|| self.environment_authorization(url));
-        if let Some(authorization) = authorization {
-            if request.authorization().is_some()
-                || !headers.contains_key(authorization.header_name())
-            {
-                headers.insert(authorization.header_name(), &authorization.header_value())?;
-            }
+        if let Some(authorization) = authorization
+            && (request.authorization().is_some()
+                || !headers.contains_key(authorization.header_name()))
+        {
+            headers.insert(authorization.header_name(), &authorization.header_value())?;
         }
         if self.inner.options.cookies() && !headers.contains_key("cookie") {
             let cookie = self.jar()?.header_for(url, self.now_ns());
@@ -451,10 +450,10 @@ impl Session {
             headers.remove(authorization.header_name());
         }
         headers.remove("cookie");
-        if self.inner.options.cookies() {
-            if let Some(cookie) = self.jar()?.header_for(url, self.now_ns()) {
-                headers.insert("cookie", &cookie)?;
-            }
+        if self.inner.options.cookies()
+            && let Some(cookie) = self.jar()?.header_for(url, self.now_ns())
+        {
+            headers.insert("cookie", &cookie)?;
         }
         // The new host's own `.netrc` entry is its credential, as it would
         // be for a request sent there first.

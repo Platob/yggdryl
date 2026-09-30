@@ -68,10 +68,10 @@ impl SingleByte {
     /// Decode a complete buffer, replacing unassigned bytes rather than
     /// refusing them.
     pub(crate) fn decode_lossy<'input>(&self, input: &'input [u8]) -> Cow<'input, str> {
-        if ascii_len(input) == input.len() {
-            if let Ok(borrowed) = text(input) {
-                return Cow::Borrowed(borrowed);
-            }
+        if ascii_len(input) == input.len()
+            && let Ok(borrowed) = text(input)
+        {
+            return Cow::Borrowed(borrowed);
         }
         let mut target = String::new();
         match self.decode_into::<true>(input, &mut target) {
@@ -197,10 +197,10 @@ impl SingleByte {
     /// answer: this is the borrow [`Self::decode`], [`Self::decode_lossy`]
     /// and [`Self::encode`] all take at their first line.
     pub(crate) fn transcribe<'input>(&self, input: &'input [u8]) -> Cow<'input, str> {
-        if let Ok(borrowed) = text(input) {
-            if ascii_len(input) == input.len() {
-                return Cow::Borrowed(borrowed);
-            }
+        if let Ok(borrowed) = text(input)
+            && ascii_len(input) == input.len()
+        {
+            return Cow::Borrowed(borrowed);
         }
         let mut target = String::new();
         match self.transcribe_sink(input, &mut target) {

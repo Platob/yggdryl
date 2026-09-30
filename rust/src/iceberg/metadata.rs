@@ -931,10 +931,10 @@ impl TableMetadata {
         {
             schemas.push(schema_from_json("row", entry)?);
         }
-        if schemas.is_empty() {
-            if let Some(schema) = document.get_key_str("schema") {
-                schemas.push(schema_from_json("row", schema)?);
-            }
+        if schemas.is_empty()
+            && let Some(schema) = document.get_key_str("schema")
+        {
+            schemas.push(schema_from_json("row", schema)?);
         }
         if schemas.is_empty() {
             return Err(invalid(SmolStr::new_static(
@@ -2212,13 +2212,13 @@ impl TableMetadata {
                 )));
             }
         }
-        if let Some(highest) = sorted.last().copied() {
-            if self.last_column_id < highest {
-                return Err(invalid(format_smolstr!(
-                    "expected a last-column-id of at least {highest}, got {}",
-                    self.last_column_id
-                )));
-            }
+        if let Some(highest) = sorted.last().copied()
+            && self.last_column_id < highest
+        {
+            return Err(invalid(format_smolstr!(
+                "expected a last-column-id of at least {highest}, got {}",
+                self.last_column_id
+            )));
         }
         self.default_spec()?;
         for spec in &self.partition_specs {
@@ -2242,13 +2242,13 @@ impl TableMetadata {
                 self.sort_orders.len()
             )));
         }
-        if let Some(current) = self.current_snapshot_id {
-            if self.snapshot_by_id(current).is_none() {
-                return Err(invalid(format_smolstr!(
-                    "expected a snapshot with id {current}, got {} snapshots",
-                    self.snapshots.len()
-                )));
-            }
+        if let Some(current) = self.current_snapshot_id
+            && self.snapshot_by_id(current).is_none()
+        {
+            return Err(invalid(format_smolstr!(
+                "expected a snapshot with id {current}, got {} snapshots",
+                self.snapshots.len()
+            )));
         }
         for (name, reference) in &self.refs {
             if let Err(error) = reference.validate() {

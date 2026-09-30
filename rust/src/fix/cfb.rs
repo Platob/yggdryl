@@ -999,17 +999,17 @@ impl<'doc> Parse<'doc> {
             let spelling = SmolStr::new(spelled(&self.vocabulary[at].field));
             let named = format_smolstr!("{tag}");
             let field = &mut self.vocabulary[at].field;
-            if spelling != named {
-                if let Err(error) = field.set_display(spelling.as_str()) {
-                    warnings.push((
-                        position,
-                        format_smolstr!(
-                            "tag {tag} spelling {:?}: {error}",
-                            elide_to(&spelling, ERROR_TEXT_LIMIT)
-                        ),
-                        "the tag is named by its decimal and keeps no display",
-                    ));
-                }
+            if spelling != named
+                && let Err(error) = field.set_display(spelling.as_str())
+            {
+                warnings.push((
+                    position,
+                    format_smolstr!(
+                        "tag {tag} spelling {:?}: {error}",
+                        elide_to(&spelling, ERROR_TEXT_LIMIT)
+                    ),
+                    "the tag is named by its decimal and keeps no display",
+                ));
             }
             field.set_name(named);
             // Two tags sharing a spelling name each other, so a reader holding
@@ -1193,17 +1193,17 @@ impl<'doc> Parse<'doc> {
         // The file's own spelling first: `set_metadata` replaces the whole
         // snapshot, so anything written into the `FIX:` namespace before it
         // would be replaced away.
-        if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase()) {
-            if let Err(error) = field.set_metadata([("display", alt.as_str())]) {
-                self.dropped(
-                    &self.refused_by(
-                        format_args!("tag {tag} spelling {:?}", elide_to(&alt, ERROR_TEXT_LIMIT)),
-                        &error,
-                    ),
-                    "the declaration is dropped",
-                );
-                return Ok(());
-            }
+        if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase())
+            && let Err(error) = field.set_metadata([("display", alt.as_str())])
+        {
+            self.dropped(
+                &self.refused_by(
+                    format_args!("tag {tag} spelling {:?}", elide_to(&alt, ERROR_TEXT_LIMIT)),
+                    &error,
+                ),
+                "the declaration is dropped",
+            );
+            return Ok(());
         }
         if let Err(error) = field
             .as_fix_mut()
@@ -1216,19 +1216,19 @@ impl<'doc> Parse<'doc> {
             );
             return Ok(());
         }
-        if let Some(described) = described {
-            if let Err(error) = field.as_fix_mut().set_description(described) {
-                self.dropped(
-                    &self.refused_by(
-                        format_args!(
-                            "tag {tag} description {:?}",
-                            elide_to(described, ERROR_TEXT_LIMIT)
-                        ),
-                        &error,
+        if let Some(described) = described
+            && let Err(error) = field.as_fix_mut().set_description(described)
+        {
+            self.dropped(
+                &self.refused_by(
+                    format_args!(
+                        "tag {tag} description {:?}",
+                        elide_to(described, ERROR_TEXT_LIMIT)
                     ),
-                    "the tag keeps no description",
-                );
-            }
+                    &error,
+                ),
+                "the tag keeps no description",
+            );
         }
         self.positions.insert(tag, self.vocabulary.len());
         self.vocabulary.push(Declared {
@@ -1565,10 +1565,10 @@ impl<'doc> Parse<'doc> {
         let value = super::msgtype::wire_value(spelling);
         let described = described.map(single_line).filter(|held| !held.is_empty());
         if let Some(at) = self.values.get(value).copied() {
-            if self.msgtypes[at].description().is_none() {
-                if let Some(described) = described {
-                    self.msgtypes[at] = self.msgtypes[at].clone().with_description(described);
-                }
+            if self.msgtypes[at].description().is_none()
+                && let Some(described) = described
+            {
+                self.msgtypes[at] = self.msgtypes[at].clone().with_description(described);
             }
             self.alias_msgtype(at, spelling);
             return Some(at);
@@ -2105,11 +2105,11 @@ impl<'doc> Parse<'doc> {
                 return None;
             }
         };
-        if let Some(position) = self.positions.get(&tag).copied() {
-            if let Err(error) = self.vocabulary[position].field.set_dtype(DataType::Int32) {
-                dropping(self, &error);
-                return None;
-            }
+        if let Some(position) = self.positions.get(&tag).copied()
+            && let Err(error) = self.vocabulary[position].field.set_dtype(DataType::Int32)
+        {
+            dropping(self, &error);
+            return None;
         }
         let (group_name, group_display, occurrence_name, occurrence_display) =
             super::component::group_names(&counter, declared);
@@ -2768,17 +2768,17 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) 
                     .or_else(|| tag.and_then(|tag| registry.get_field_by_tag(tag))),
                 (None, _) => None,
             };
-            if let Some(known) = known {
-                if field.dtype() == known.dtype() {
-                    // Maps and message codes can follow the grammar. Resolve
-                    // its earlier clone against the completed vocabulary.
-                    let name = field.name().to_owned();
-                    let nullable = field.is_nullable();
-                    field = known.clone();
-                    field.set_name(name);
-                    field.set_nullable(nullable);
-                    field.as_fix_mut().set_field_ref(known.name())?;
-                }
+            if let Some(known) = known
+                && field.dtype() == known.dtype()
+            {
+                // Maps and message codes can follow the grammar. Resolve
+                // its earlier clone against the completed vocabulary.
+                let name = field.name().to_owned();
+                let nullable = field.is_nullable();
+                field = known.clone();
+                field.set_name(name);
+                field.set_nullable(nullable);
+                field.as_fix_mut().set_field_ref(known.name())?;
             }
         }
     }

@@ -324,8 +324,11 @@ mod limits {
 
             match dtype {
                 DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
-                DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
-                DataType::Int16 | DataType::UInt16 | DataType::Float16 => {
+                // An enum member is the code of its leaf, at the leaf's width.
+                DataType::Int8 | DataType::UInt8 | crate::enum8_dtypes!() => {
+                    self.add_fixed_rows(rows, 1)?;
+                }
+                DataType::Int16 | DataType::UInt16 | DataType::Float16 | crate::enum16_dtypes!() => {
                     self.add_fixed_rows(rows, 2)?;
                 }
                 DataType::Int32
@@ -334,11 +337,7 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. }
-                // An enum member is the `int32` code of its leaf.
-                | DataType::State
-                | DataType::MarketDataKind
-                | DataType::Side => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -355,7 +354,6 @@ mod limits {
                 | DataType::Bbg
                 | DataType::Ric
                 | DataType::Figi
-                | DataType::TimeInForce
                 | DataType::Unit
                 | DataType::Forex => {
                     self.add_offsets(rows, 4)?;
@@ -452,8 +450,11 @@ mod limits {
             match dtype {
                 DataType::Null => {}
                 DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
-                DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
-                DataType::Int16 | DataType::UInt16 | DataType::Float16 => {
+                // An enum member is the code of its leaf, at the leaf's width.
+                DataType::Int8 | DataType::UInt8 | crate::enum8_dtypes!() => {
+                    self.add_fixed_rows(rows, 1)?;
+                }
+                DataType::Int16 | DataType::UInt16 | DataType::Float16 | crate::enum16_dtypes!() => {
                     self.add_fixed_rows(rows, 2)?;
                 }
                 DataType::Int32
@@ -462,11 +463,7 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. }
-                // An enum member is the `int32` code of its leaf.
-                | DataType::State
-                | DataType::MarketDataKind
-                | DataType::Side => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -483,7 +480,6 @@ mod limits {
                 | DataType::Bbg
                 | DataType::Ric
                 | DataType::Figi
-                | DataType::TimeInForce
                 | DataType::Unit
                 | DataType::Forex => {
                     self.add_offsets(rows, 4)?;
@@ -725,11 +721,10 @@ mod limits {
         dtype: &DataType,
         fields: &'a crate::UnionFields,
     ) -> Result<(i8, &'a Field)> {
-        if let Ok(Some(selected)) = dtype.default_union_type_id() {
-            if let Some((type_id, field)) = fields.iter().find(|(type_id, _)| *type_id == selected)
-            {
-                return Ok((type_id, field));
-            }
+        if let Ok(Some(selected)) = dtype.default_union_type_id()
+            && let Some((type_id, field)) = fields.iter().find(|(type_id, _)| *type_id == selected)
+        {
+            return Ok((type_id, field));
         }
 
         let mut first_error = None;
@@ -911,11 +906,11 @@ where
         if start == end {
             return Ok(());
         }
-        if let Some(previous) = ranges.last_mut() {
-            if previous.1 == start {
-                previous.1 = end;
-                return Ok(());
-            }
+        if let Some(previous) = ranges.last_mut()
+            && previous.1 == start
+        {
+            previous.1 = end;
+            return Ok(());
         }
         ranges.push((start, end));
         Ok(())

@@ -1672,7 +1672,7 @@ mod avro {
         #[test]
         fn every_flat_type_round_trips_through_the_resolved_writers() {
             let rows = 2_000;
-            let nullable = |row: usize| row % 5 != 0;
+            let nullable = |row: usize| !row.is_multiple_of(5);
             let columns: Vec<(ArrowField, ArrayRef)> = vec![
                 (
                     ArrowField::new("int", ArrowType::Int32, true),

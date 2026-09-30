@@ -1,7 +1,7 @@
-//! `rust/src/graph/column.rs`: the fifteen columns every event schema opens
-//! with, each stating back exactly the fact it read.
+//! `rust/src/graph/column.rs`: the nine columns an event adds to its
+//! element's, each stating back exactly the fact it read.
 
-use yggdryl::graph::{Element, Event, EventColumn, OrderEvent};
+use yggdryl::graph::{Event, EventColumn, OrderEvent};
 use yggdryl::{Scalar, State, Uuid};
 
 #[test]
@@ -12,20 +12,14 @@ fn every_column_states_back_what_it_read() {
     event.set_exprunix(Some(1_800_000_000_000_000_000));
     event.set_prevunix(Some(1_650_000_000_000_000_000));
     event.set_snapunix(Some(1_700_000_000_000_000_001));
-    event.set_curruuid(Uuid::from_v8(1));
-    event.set_crossuuid(Uuid::from_v8(2));
-    event.set_crosscode("O-1".to_owned());
-    event.set_currhashcode(3);
-    event.set_crosshashcode(4);
     event.set_prevuuid(Some(Uuid::from_v8(5)));
     event.set_seqnum(6);
-    event.set_srcuuids(vec![Uuid::from_v8(9)]);
     event.set_state(State::read("Filled").expect("a state"));
     let mut again = OrderEvent::default();
     for column in EventColumn::ALL {
         let fact = column.fact(&event).expect("every fact is stated");
-        let dtype = column.datatype().expect("a datatype");
-        dtype
+        column
+            .datatype()
             .required_field(column.name())
             .scalar(fact.clone())
             .expect("the fact fits the column");
@@ -37,14 +31,8 @@ fn every_column_states_back_what_it_read() {
     assert_eq!(again.get_exprunix(), event.get_exprunix());
     assert_eq!(again.get_prevunix(), event.get_prevunix());
     assert_eq!(again.get_snapunix(), event.get_snapunix());
-    assert_eq!(again.get_curruuid(), event.get_curruuid());
-    assert_eq!(again.get_crossuuid(), event.get_crossuuid());
-    assert_eq!(again.get_crosscode(), "O-1");
-    assert_eq!(again.get_currhashcode(), 3);
-    assert_eq!(again.get_crosshashcode(), 4);
     assert_eq!(again.get_prevuuid(), Some(Uuid::from_v8(5)));
     assert_eq!(again.get_seqnum(), 6);
-    assert_eq!(again.get_srcuuids(), event.get_srcuuids());
     assert_eq!(again.get_state(), event.get_state());
 }
 
@@ -52,73 +40,63 @@ fn every_column_states_back_what_it_read() {
 fn a_null_clears_and_nothing_stated_is_none() {
     let mut event = OrderEvent::at(7);
     event.set_seqnum(3);
-    event.set_crosscode("X".to_owned());
     event.set_recdunix(Some(5));
     EventColumn::SeqNum.record(&mut event, &Scalar::Null);
-    EventColumn::CrossCode.record(&mut event, &Scalar::Null);
     EventColumn::State.record(&mut event, &Scalar::Null);
     EventColumn::RecdUnix.record(&mut event, &Scalar::Null);
     assert_eq!(event.get_seqnum(), 0);
-    assert_eq!(event.get_crosscode(), "");
     assert_eq!(event.get_state(), &State::unknown());
     assert_eq!(event.get_recdunix(), None);
     assert_eq!(EventColumn::SeqNum.fact(&event), None);
-    assert_eq!(EventColumn::CrossCode.fact(&event), None);
     assert_eq!(
         EventColumn::State.fact(&event),
         Some(Scalar::State(State::unknown())),
         "the state is never absent"
     );
+    // A null instant is silence: the instant is never absent.
+    EventColumn::CurrUnix.record(&mut event, &Scalar::Null);
+    assert_eq!(event.get_currunix(), 7);
+}
+
+#[test]
+fn the_columns_are_the_event_trait_s_in_one_order() {
     let names: Vec<&str> = EventColumn::ALL
         .iter()
         .map(|column| column.name())
         .collect();
-    assert_eq!(EventColumn::ALL.len(), 15);
     assert_eq!(
         names,
         [
-            "currunix",
-            "creaunix",
-            "recdunix",
-            "exprunix",
-            "prevunix",
-            "snapunix",
-            "curruuid",
-            "crossuuid",
-            "crosscode",
-            "currhashcode",
-            "crosshashcode",
-            "prevuuid",
-            "seqnum",
-            "srcuuids",
-            "state",
+            "currunix", "creaunix", "recdunix", "exprunix", "prevunix", "snapunix", "prevuuid",
+            "seqnum", "state",
         ]
     );
+    let nullable: Vec<&str> = EventColumn::ALL
+        .into_iter()
+        .filter(|column| !column.nullable())
+        .map(EventColumn::name)
+        .collect();
+    assert_eq!(nullable, ["currunix"], "only the instant is never absent");
     assert_eq!(EventColumn::of_name("no such"), None);
+    // An identity, a code and a source are the element's facts, a column of
+    // its own.
+    for element in [
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "srcuuids",
+    ] {
+        assert_eq!(EventColumn::of_name(element), None, "{element}");
+    }
     // The merge reference is chosen from `recdunix` alone, so no column
     // persists a separate reference recording clock any more.
     assert_eq!(EventColumn::of_name("refrecdunix"), None);
     // The names an element went by left the event: a book control is typed
-    // on the operation and the names it goes by are its alternate
+    // on the operation and the names it goes by are its
     // identifiers, an operation column.
     assert_eq!(EventColumn::of_name("identifiers"), None);
     // When an element last executed is a market fact, a market column: a
     // text line or any other event that is no market element states none.
     assert_eq!(EventColumn::of_name("execunix"), None);
-}
-
-#[test]
-fn a_column_of_identities_records_like_the_run_of_them() -> yggdryl::Result<()> {
-    let column = Scalar::from(yggdryl::Serie::from_scalars(
-        yggdryl::Field::new("item", yggdryl::DataType::Uuid, false),
-        [
-            Scalar::Uuid(Uuid::from_v8(7)),
-            Scalar::Uuid(Uuid::from_v8(8)),
-        ],
-    )?);
-    assert_eq!(column.as_sequence(), None, "the fixture holds a column");
-    let mut event = OrderEvent::default();
-    EventColumn::SrcUuids.record(&mut event, &column);
-    assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7), Uuid::from_v8(8)]);
-    Ok(())
 }

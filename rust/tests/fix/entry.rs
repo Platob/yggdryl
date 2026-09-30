@@ -11,12 +11,15 @@ mod residual {
     use std::sync::Arc;
 
     use super::SoleMessage;
-    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::graph::{Element, Event, Market, Operation};
     use yggdryl::{DataType, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|38=100|59=0|9999=x|10=0|";
     const PARTIES: &[u8] =
         b"8=FIX.4.4|35=D|11=A1|453=2|448=P1|447=D|452=1|448=P2|447=D|452=11|10=0|";
+    /// Two regulatory trade identifiers: a group the fixed row projects.
+    const REGULATORY: &[u8] =
+        b"8=FIX.4.4|35=D|11=A1|1907=2|1903=UTI-1|1906=0|1903=TVT-1|1906=5|10=0|";
 
     fn reader() -> (Arc<FixRegistry>, yggdryl::FixCodec, Field) {
         let registry = super::committed_registry();
@@ -245,14 +248,39 @@ mod residual {
     fn a_fully_represented_group_leaves_no_arrival_entry() {
         let (registry, codec, schema) = reader();
         let row = codec
-            .sole_line(PARTIES)
+            .sole_line(REGULATORY)
             .expect("one order")
             .into_row(&schema)
             .expect("the fixed row");
 
         assert!(residual_keys(&row, &schema).is_empty());
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
+        assert_eq!(
+            restored
+                .by_tag(1907)
+                .expect("NoRegulatoryTradeIDs")
+                .as_i128(),
+            Some(2)
+        );
+        assert_eq!(restored.into_row(&schema).expect("the fixed point"), row);
+    }
+
+    /// The fixed row projects no party group: what a message states of it is
+    /// one entry of the residual map, beside the `partyids` it names, and
+    /// the row reads back to the message it was - its occurrences, its wire
+    /// and its parties.
+    #[test]
+    fn a_party_group_among_the_entries_reads_back_whole() {
+        let (registry, codec, schema) = reader();
+        let message = codec.sole_line(PARTIES).expect("one order");
+        let row = message.into_row(&schema).expect("the fixed row");
+        assert_eq!(residual_keys(&row, &schema), ["453:parties"]);
+
+        let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(2));
+        let wire = |held: &FixMsg| String::from_utf8(held.into_bytes(b'|')).expect("a text wire");
+        assert_eq!(wire(&restored), wire(&message));
+        assert_eq!(restored.get_partyids(), message.get_partyids());
         assert_eq!(restored.into_row(&schema).expect("the fixed point"), row);
     }
 
@@ -261,10 +289,16 @@ mod residual {
         let registry = super::committed_registry();
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         // Use the dictionary's counter scalar and the fixed schema's group so
-        // both sides carry the production metadata for tag 453.
-        let count = registry.field_by_tag(453).expect("NoPartyIDs").clone();
-        let parties = schema.fields()[schema.index_of("parties").expect("Parties")].clone();
-        let source = StructType::from_fields([count, parties])
+        // both sides carry the production metadata for tag 1907.
+        let count = registry
+            .field_by_tag(1907)
+            .expect("NoRegulatoryTradeIDs")
+            .clone();
+        let groups = schema.fields()[schema
+            .index_of("regulatorytradeids")
+            .expect("RegulatoryTradeIDs")]
+        .clone();
+        let source = StructType::from_fields([count, groups])
             .map(DataType::from)
             .expect("the source root")
             .required_field("fix");
@@ -273,34 +307,40 @@ mod residual {
             source,
             Scalar::from_sequence([Scalar::from(0_i32), Scalar::from_sequence([])]),
         )
-        .expect("an empty party group");
+        .expect("an empty regulatory group");
 
         // The full group projection owns the counter entry, including the empty
         // occurrence list, so no residual is needed.
         let full = message.into_row(&schema).expect("the full row");
         assert!(residual_keys(&full, &schema).is_empty());
 
-        // Dropping only `parties` leaves its counter scalar. That scalar cannot
+        // Dropping only `regulatorytradeids` leaves its counter scalar. That scalar cannot
         // represent the group shape, even at zero occurrences, so the complete
         // counter entry remains in the arrival record.
         let narrow = StructType::from_fields(
             schema
                 .fields()
                 .iter()
-                .filter(|field| field.name() != "parties")
+                .filter(|field| field.name() != "regulatorytradeids")
                 .cloned(),
         )
         .map(DataType::from)
         .expect("the narrowed row")
         .required_field("fix");
         let row = message.into_row(&narrow).expect("the narrow row");
-        assert_eq!(residual_keys(&row, &narrow), ["453:parties"]);
+        assert_eq!(residual_keys(&row, &narrow), ["1907:regulatorytradeids"]);
         // A group of no occurrence states its count and nothing under it.
-        assert_eq!(residual_text(&row, &narrow, "453:parties"), "0");
+        assert_eq!(residual_text(&row, &narrow, "1907:regulatorytradeids"), "0");
 
         let restored =
             FixMsg::from_row(Arc::clone(&registry), &narrow, &row).expect("the row reads");
-        assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(0));
+        assert_eq!(
+            restored
+                .by_tag(1907)
+                .expect("NoRegulatoryTradeIDs")
+                .as_i128(),
+            Some(0)
+        );
         assert_eq!(restored.into_row(&narrow).expect("the fixed point"), row);
 
         // Dropping only the counter column leaves the empty list, and a list
@@ -308,7 +348,10 @@ mod residual {
         // storing a null list as an empty one reads an absent group back as -
         // so the count stays in the record and the row read back states the
         // group again.
-        let counter = registry.field_by_tag(453).expect("NoPartyIDs").name();
+        let counter = registry
+            .field_by_tag(1907)
+            .expect("NoRegulatoryTradeIDs")
+            .name();
         let uncounted = StructType::from_fields(
             schema
                 .fields()
@@ -320,8 +363,11 @@ mod residual {
         .expect("the uncounted row")
         .required_field("fix");
         let row = message.into_row(&uncounted).expect("the uncounted row");
-        assert_eq!(residual_keys(&row, &uncounted), ["453:parties"]);
-        assert_eq!(residual_text(&row, &uncounted, "453:parties"), "0");
+        assert_eq!(residual_keys(&row, &uncounted), ["1907:regulatorytradeids"]);
+        assert_eq!(
+            residual_text(&row, &uncounted, "1907:regulatorytradeids"),
+            "0"
+        );
         let restored = FixMsg::from_row(registry, &uncounted, &row).expect("the row reads");
         assert_eq!(restored.entries(), message.entries());
         assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
@@ -334,12 +380,13 @@ mod residual {
         let message = codec
             .sole_line(b"8=FIX.4.4|35=D|11=A1|453=1|448=P1|447=D|452=1|802=0|10=0|")
             .expect("one order");
-        // The fixed row, its party item holding `partysubids` without the
+        // The fixed row holding the dictionary's party group in place of the
+        // `partyids` identifiers, its item holding `partysubids` without the
         // counter beside it: the empty list states no count of its own, so
         // the party cannot be represented whole and the group stays whole in
         // the record, the count included.
-        let parties_at = schema.index_of("parties").expect("Parties");
-        let parties = &schema.fields()[parties_at];
+        let parties_at = schema.index_of("partyids").expect("the partyids column");
+        let parties = registry.field_by_counter(453).expect("Parties");
         let DataType::Serie(party) = parties.dtype() else {
             panic!("parties is a repeating group");
         };
@@ -424,19 +471,27 @@ mod residual {
     #[test]
     fn a_lossy_group_fit_keeps_the_whole_counter_entry() {
         let registry = super::committed_registry();
-        let party_id = registry.field_by_tag(448).expect("PartyID").clone();
-        let party_source = registry.field_by_tag(447).expect("PartyIDSource").clone();
-        let mut party_role = registry.field_by_tag(452).expect("PartyRole").clone();
-        party_role
+        let trade_id = registry
+            .field_by_tag(1903)
+            .expect("RegulatoryTradeID")
+            .clone();
+        let mut trade_id_type = registry
+            .field_by_tag(1906)
+            .expect("RegulatoryTradeIDType")
+            .clone();
+        trade_id_type
             .set_dtype(DataType::utf8())
-            .expect("the malformed source spelling");
-        let party = StructType::from_fields([party_id, party_source, party_role])
+            .expect("the malformed type spelling");
+        let occurrence = StructType::from_fields([trade_id, trade_id_type])
             .map(DataType::from)
-            .expect("a party occurrence")
-            .required_field("party");
-        let mut parties = DataType::serie(party).nullable_field("parties");
-        parties.as_fix_mut().set_counter(453).expect("NoPartyIDs");
-        let root = StructType::from_fields([parties])
+            .expect("a regulatory occurrence")
+            .required_field("regulatorytradeid");
+        let mut groups = DataType::serie(occurrence).nullable_field("regulatorytradeids");
+        groups
+            .as_fix_mut()
+            .set_counter(1907)
+            .expect("NoRegulatoryTradeIDs");
+        let root = StructType::from_fields([groups])
             .map(DataType::from)
             .expect("a group message")
             .required_field("fix");
@@ -444,18 +499,18 @@ mod residual {
             Arc::clone(&registry),
             root,
             Scalar::from_sequence([Scalar::from_sequence([Scalar::from_sequence([
-                Scalar::from("P1"),
-                Scalar::from("D"),
-                Scalar::from("not-a-role"),
+                Scalar::from("UTI-1"),
+                Scalar::from("not-a-type"),
             ])])]),
         )
-        .expect("a malformed party source");
+        .expect("a malformed regulatory type");
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         let row = message.into_row(&schema).expect("the fixed row");
 
-        // The source group accepts its text role, but the fixed PartyRole column
-        // is integer. Its null fitted descendant leaves the entire group residual.
-        assert_eq!(residual_keys(&row, &schema), ["453:parties"]);
+        // The source group accepts its text type, but the fixed
+        // RegulatoryTradeIDType column is integer. Its null fitted descendant
+        // leaves the entire group residual.
+        assert_eq!(residual_keys(&row, &schema), ["1907:regulatorytradeids"]);
         let mut restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         let rebuilt = restored.into_row(&schema).expect("the fixed point");
         for ((column, before), after) in schema

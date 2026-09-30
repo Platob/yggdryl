@@ -32,7 +32,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     npm test --prefix node
     ```
 
-CI runs the rest on the pushed branch: both feature lanes, the 1.85 and 1.94 MSRVs, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages. Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
+CI runs the rest on the pushed branch: both feature lanes, the 1.94 MSRV, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages. Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
 
 ## Where things go
 
@@ -53,7 +53,7 @@ test file at the matching path.
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
-| `rust/src/graph/`, `rust/src/limit.rs` | [Graph](graph/index.md) |
+| `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 

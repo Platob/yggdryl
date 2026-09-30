@@ -526,14 +526,16 @@ pub enum Serie {
     Cfi(Arc<Utf8StringSerie>),
     /// A column of `Isin` values, stored as their UTF-8 text.
     Isin(Arc<Utf8StringSerie>),
-    /// A column of `Side` values, stored as their `int32` codes.
-    Side(Arc<Int32Serie>),
-    /// A column of `State` values, stored as their `int32` codes.
-    State(Arc<Int32Serie>),
-    /// A column of `MarketDataKind` values, stored as their `int32` codes.
-    MarketDataKind(Arc<Int32Serie>),
-    /// A column of `TimeInForce` values, stored as their UTF-8 text.
-    TimeInForce(Arc<Utf8StringSerie>),
+    /// A column of `Side` values, stored as their `uint8` codes.
+    Side(Arc<UInt8Serie>),
+    /// A column of `State` values, stored as their `uint16` codes.
+    State(Arc<UInt16Serie>),
+    /// A column of `MarketDataKind` values, stored as their `uint8` codes.
+    MarketDataKind(Arc<UInt8Serie>),
+    /// A column of `MarketDataType` values, stored as their `uint16` codes.
+    MarketDataType(Arc<UInt16Serie>),
+    /// A column of `TimeInForce` values, stored as their `uint8` codes.
+    TimeInForce(Arc<UInt8Serie>),
     /// A column of `Version` values, stored as their UTF-8 text.
     Version(Arc<Utf8StringSerie>),
     /// A column of `Url` values, stored as their UTF-8 text.
@@ -662,6 +664,7 @@ macro_rules! column {
             Serie::Side($column) => $answer,
             Serie::State($column) => $answer,
             Serie::MarketDataKind($column) => $answer,
+            Serie::MarketDataType($column) => $answer,
             Serie::TimeInForce($column) => $answer,
             Serie::Version($column) => $answer,
             Serie::Url($column) => $answer,
@@ -904,6 +907,10 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
+            Serie::MarketDataType(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
             Serie::TimeInForce(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
@@ -1137,30 +1144,19 @@ impl Leaf for Int16Serie {
 
 impl Leaf for Int32Serie {
     fn root(self) -> Serie {
-        match SerieValue::field(&self).dtype() {
-            DataType::State => Serie::State(Arc::new(self)),
-            DataType::MarketDataKind => Serie::MarketDataKind(Arc::new(self)),
-            DataType::Side => Serie::Side(Arc::new(self)),
-            _ => Serie::Int32(Arc::new(self)),
-        }
+        Serie::Int32(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Int32(held)
-            | Serie::State(held)
-            | Serie::MarketDataKind(held)
-            | Serie::Side(held) => Some(held.as_ref()),
+            Serie::Int32(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Int32(held)
-            | Serie::State(held)
-            | Serie::MarketDataKind(held)
-            | Serie::Side(held) => Some(Arc::make_mut(held)),
+            Serie::Int32(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -1188,19 +1184,30 @@ impl Leaf for Int64Serie {
 
 impl Leaf for UInt8Serie {
     fn root(self) -> Serie {
-        Serie::UInt8(Arc::new(self))
+        match SerieValue::field(&self).dtype() {
+            DataType::MarketDataKind => Serie::MarketDataKind(Arc::new(self)),
+            DataType::Side => Serie::Side(Arc::new(self)),
+            DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
+            _ => Serie::UInt8(Arc::new(self)),
+        }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::UInt8(held) => Some(held.as_ref()),
+            Serie::UInt8(held)
+            | Serie::MarketDataKind(held)
+            | Serie::Side(held)
+            | Serie::TimeInForce(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::UInt8(held) => Some(Arc::make_mut(held)),
+            Serie::UInt8(held)
+            | Serie::MarketDataKind(held)
+            | Serie::Side(held)
+            | Serie::TimeInForce(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -1208,19 +1215,27 @@ impl Leaf for UInt8Serie {
 
 impl Leaf for UInt16Serie {
     fn root(self) -> Serie {
-        Serie::UInt16(Arc::new(self))
+        match SerieValue::field(&self).dtype() {
+            DataType::State => Serie::State(Arc::new(self)),
+            DataType::MarketDataType => Serie::MarketDataType(Arc::new(self)),
+            _ => Serie::UInt16(Arc::new(self)),
+        }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::UInt16(held) => Some(held.as_ref()),
+            Serie::UInt16(held) | Serie::State(held) | Serie::MarketDataType(held) => {
+                Some(held.as_ref())
+            }
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::UInt16(held) => Some(Arc::make_mut(held)),
+            Serie::UInt16(held) | Serie::State(held) | Serie::MarketDataType(held) => {
+                Some(Arc::make_mut(held))
+            }
             _ => None,
         }
     }
@@ -1374,7 +1389,6 @@ impl Leaf for Utf8StringSerie {
             DataType::Mic => Serie::Mic(Arc::new(self)),
             DataType::Cfi => Serie::Cfi(Arc::new(self)),
             DataType::Isin => Serie::Isin(Arc::new(self)),
-            DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
             DataType::Version => Serie::Version(Arc::new(self)),
             DataType::Url => Serie::Url(Arc::new(self)),
             DataType::Urn => Serie::Urn(Arc::new(self)),
@@ -1400,7 +1414,6 @@ impl Leaf for Utf8StringSerie {
             | Serie::Mic(held)
             | Serie::Cfi(held)
             | Serie::Isin(held)
-            | Serie::TimeInForce(held)
             | Serie::Version(held)
             | Serie::Url(held)
             | Serie::Urn(held)
@@ -1426,7 +1439,6 @@ impl Leaf for Utf8StringSerie {
             | Serie::Mic(held)
             | Serie::Cfi(held)
             | Serie::Isin(held)
-            | Serie::TimeInForce(held)
             | Serie::Version(held)
             | Serie::Url(held)
             | Serie::Urn(held)
@@ -2947,6 +2959,9 @@ impl Serie {
             (Self::Side(mine), Self::Side(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::State(mine), Self::State(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::MarketDataKind(mine), Self::MarketDataKind(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::MarketDataType(mine), Self::MarketDataType(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::TimeInForce(mine), Self::TimeInForce(theirs)) => {

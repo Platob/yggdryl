@@ -98,10 +98,10 @@ impl Dialect<'_> {
         if memchr::memchr3(self.separator, b'\n', b'\r', cell).is_some() {
             return true;
         }
-        if let Some(quote) = self.quote {
-            if memchr::memchr(quote, cell).is_some() {
-                return true;
-            }
+        if let Some(quote) = self.quote
+            && memchr::memchr(quote, cell).is_some()
+        {
+            return true;
         }
         if cell
             .first()

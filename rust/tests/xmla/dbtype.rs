@@ -217,6 +217,7 @@ fn every_datatype() -> Vec<DataType> {
         DataType::State,
         DataType::MarketDataKind,
         DataType::TimeInForce,
+        DataType::MarketDataType,
         DataType::Isin,
         DataType::Cusip,
         DataType::Sedol,
@@ -957,6 +958,7 @@ fn every_registered_code_is_wstr() {
         (DataType::State, DbType::Wstr),
         (DataType::MarketDataKind, DbType::Wstr),
         (DataType::TimeInForce, DbType::Wstr),
+        (DataType::MarketDataType, DbType::Wstr),
         (DataType::Unit, DbType::Wstr),
         (DataType::Forex, DbType::Wstr),
     ]);

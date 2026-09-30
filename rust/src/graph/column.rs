@@ -1,50 +1,50 @@
-//! The columns a graph event is stated in: one per fact the traits answer.
+//! The columns a graph event is stated in: one per fact [`Event`] adds to
+//! its element's.
 //!
-//! Every generated schema of an event - a [text line](crate::text::TextLine)
-//! read into a batch, a FIX message parsed out of it, a message the
-//! lifecycle chained - states these fifteen under one name and one datatype
-//! each, so the three join on them without a mapping: a message's
-//! `srcuuids` are the `curruuid` of the lines it was read from, and a
-//! chained message's `prevuuid` is the `curruuid` of the message before it. The names are the traits' own: what
-//! [`Element`](super::Element) and [`Event`] read and write under
+//! Every generated schema of an event states these nine right after the
+//! six [`ElementColumn`](super::ElementColumn)s, under one name and one
+//! datatype each - a [text line](crate::text::TextLine) read into a batch, a
+//! FIX message parsed out of it, a message the lifecycle chained, a
+//! `marketdata` row - so the rows join on them without a mapping: a chained
+//! message's `prevuuid` is the `curruuid` of the message before it. The
+//! names are the trait's own: what [`Event`] reads and writes under
 //! `get_`/`set_` is what a column is called.
 
-use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
+use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone};
 
 use super::Event;
 
-/// One column of the fifteen every graph event is stated in.
+/// One column of the nine every graph event adds to its element's.
 ///
-/// [`Self::ALL`] is the canonical order [`Self::fields`] and event-native
-/// schemas use: **when** it happened - the instant, then the instants it is
-/// read against - then **which**
-/// event it is - its identity, the chain's, the codes, what it follows, its
-/// place, what it was read from - and last the state it reached.
+/// [`Self::ALL`] is the canonical order [`Self::fields`] and every
+/// generated schema use: **when** it happened - the instant, then the
+/// instants it is read against - then what it **follows** and where it
+/// stands among the events of its instant, and last the **state** it
+/// reached.
 ///
 /// ```
-/// use yggdryl::graph::{EventColumn, OrderEvent, Element, Event};
-/// use yggdryl::{Scalar, Uuid};
+/// use yggdryl::graph::{Event, EventColumn, OrderEvent};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
-/// assert_eq!(fields.len(), 15);
+/// assert_eq!(fields.len(), 9);
 /// assert_eq!(fields[0].name(), "currunix");
-/// assert_eq!(fields[6].name(), "curruuid");
-/// assert_eq!(fields[14].name(), "state");
-/// // When a market event executed is a market fact, not an event's.
+/// assert_eq!(fields[6].name(), "prevuuid");
+/// assert_eq!(fields[8].name(), "state");
+/// // An identity is an element's fact, and when a market event executed a
+/// // market fact: neither is an event's.
+/// assert_eq!(EventColumn::of_name("curruuid"), None);
 /// assert_eq!(EventColumn::of_name("execunix"), None);
 /// // What an event states under a column, and the same fact stated back.
-/// let mut event = OrderEvent::at(1_700_000_000_000_000_000);
-/// event.set_srcuuids(vec![Uuid::from_v8(7)]);
-/// let sources = EventColumn::SrcUuids.fact(&event).expect("a source");
+/// let event = OrderEvent::at(1_700_000_000_000_000_000);
+/// let instant = EventColumn::CurrUnix.fact(&event).expect("an instant");
 /// let mut again = OrderEvent::default();
-/// EventColumn::SrcUuids.record(&mut again, &sources);
-/// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
-/// // Nothing stated is a null: an empty list, an empty code, no instant.
+/// EventColumn::CurrUnix.record(&mut again, &instant);
+/// assert_eq!(again.get_currunix(), 1_700_000_000_000_000_000);
+/// // Nothing stated is a null: no predecessor, no earlier instant.
 /// assert_eq!(EventColumn::PrevUuid.fact(&event), None);
-/// assert_eq!(EventColumn::CrossCode.fact(&event), None);
 /// assert_eq!(EventColumn::PrevUnix.fact(&event), None);
-/// assert_eq!(EventColumn::of_name("SrcUuids"), Some(EventColumn::SrcUuids));
+/// assert_eq!(EventColumn::of_name("PrevUnix"), Some(EventColumn::PrevUnix));
 /// # Ok(())
 /// # }
 /// ```
@@ -62,25 +62,12 @@ pub enum EventColumn {
     PrevUnix,
     /// The grid instant a walk read it as the snapshot of, where one did.
     SnapUnix,
-    /// The event's identity; never absent.
-    CurrUuid,
-    /// The identity every event of one chain shares; the event's own where
-    /// it names no cross code, so never absent.
-    CrossUuid,
-    /// The code naming the chain, as the event spells it; empty where none.
-    CrossCode,
-    /// The XXH3-64 the event's content digests to; never absent.
-    CurrHashCode,
-    /// The XXH3-64 of the cross code, zero where none; never absent.
-    CrossHashCode,
     /// The identity of the event this one follows, where it follows one.
     PrevUuid,
     /// Where the event stands in what it was read from, null at 0: a text
     /// line's row number under `start_rownum`, a parsed or walked event's
     /// place among the events of its instant.
     SeqNum,
-    /// The identities this event was read from: provenance, never its chain.
-    SrcUuids,
     /// The state the event reached, the code of a lifecycle-sorted enum:
     /// `UNKNOWN` where nothing states one, so never absent on a row an
     /// event wrote; null only where a row states none, because a state has
@@ -90,25 +77,19 @@ pub enum EventColumn {
 
 impl EventColumn {
     /// Every column, in canonical event order.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 9] = [
         Self::CurrUnix,
         Self::CreaUnix,
         Self::RecdUnix,
         Self::ExprUnix,
         Self::PrevUnix,
         Self::SnapUnix,
-        Self::CurrUuid,
-        Self::CrossUuid,
-        Self::CrossCode,
-        Self::CurrHashCode,
-        Self::CrossHashCode,
         Self::PrevUuid,
         Self::SeqNum,
-        Self::SrcUuids,
         Self::State,
     ];
 
-    /// The column's name: the fact's, as the traits spell it.
+    /// The column's name: the fact's, as the trait spells it.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -118,14 +99,8 @@ impl EventColumn {
             Self::ExprUnix => "exprunix",
             Self::PrevUnix => "prevunix",
             Self::SnapUnix => "snapunix",
-            Self::CurrUuid => "curruuid",
-            Self::CrossUuid => "crossuuid",
-            Self::CrossCode => "crosscode",
-            Self::CurrHashCode => "currhashcode",
-            Self::CrossHashCode => "crosshashcode",
             Self::PrevUuid => "prevuuid",
             Self::SeqNum => "seqnum",
-            Self::SrcUuids => "srcuuids",
             Self::State => "state",
         }
     }
@@ -134,20 +109,14 @@ impl EventColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::CurrUnix => "CurrUnix",
-            Self::CreaUnix => "CreaUnix",
-            Self::RecdUnix => "RecdUnix",
-            Self::ExprUnix => "ExprUnix",
-            Self::PrevUnix => "PrevUnix",
-            Self::SnapUnix => "SnapUnix",
-            Self::CurrUuid => "CurrUuid",
-            Self::CrossUuid => "CrossUuid",
-            Self::CrossCode => "CrossCode",
-            Self::CurrHashCode => "CurrHashCode",
-            Self::CrossHashCode => "CrossHashCode",
-            Self::PrevUuid => "PrevUuid",
-            Self::SeqNum => "SeqNum",
-            Self::SrcUuids => "SrcUuids",
+            Self::CurrUnix => "Current Time",
+            Self::CreaUnix => "Creation Time",
+            Self::RecdUnix => "Recording Time",
+            Self::ExprUnix => "Expiry Time",
+            Self::PrevUnix => "Previous Time",
+            Self::SnapUnix => "Snapshot Time",
+            Self::PrevUuid => "Previous UUID",
+            Self::SeqNum => "Sequence Number",
             Self::State => "State",
         }
     }
@@ -170,25 +139,9 @@ impl EventColumn {
             Self::SnapUnix => {
                 "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
             }
-            Self::CurrUuid => {
-                "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
-            }
-            Self::CrossUuid => {
-                "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
-            }
-            Self::CrossCode => {
-                "The code every event of one chain shares, as the event spells it; empty where none."
-            }
-            Self::CurrHashCode => "The XXH3-64 of what the event states.",
-            Self::CrossHashCode => {
-                "The XXH3-64 of the cross code; zero where the event names none."
-            }
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
             Self::SeqNum => {
                 "Where the event stands in what it was read from, null at 0: a text line's row number under start_rownum, a parsed or walked event's place among the events of its instant."
-            }
-            Self::SrcUuids => {
-                "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."
             }
             Self::State => {
                 "The state the event reached, as the code of a lifecycle-sorted enum; UNKNOWN where nothing states one, the furthest its chain knows once followed."
@@ -196,54 +149,36 @@ impl EventColumn {
         }
     }
 
-    /// The one datatype the column is built and read at.
-    ///
-    /// The clocks are nanoseconds UTC, the identities the crate's own
-    /// [`Uuid`], the codes `uint64`, the series `serie<uuid>` with the item
-    /// named by the fact, the names a sorted `map<utf8, utf8>`, the state a
-    /// [`State`] code.
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the names' map does not
-    /// build, which is a defect in this module rather than anything a
-    /// caller did.
-    pub fn datatype(self) -> Result<DataType> {
-        let clock = || DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        };
-        Ok(match self {
+    /// The one datatype the column is built and read at: the clocks
+    /// nanoseconds UTC, the predecessor the crate's own
+    /// [`Uuid`](crate::Uuid), the place `uint64`, the state a [`State`]
+    /// code.
+    #[must_use]
+    pub fn datatype(self) -> DataType {
+        match self {
             Self::CurrUnix
             | Self::CreaUnix
             | Self::RecdUnix
             | Self::ExprUnix
             | Self::PrevUnix
-            | Self::SnapUnix => clock(),
-            Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
-            Self::CrossCode => DataType::utf8(),
-            Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
-            Self::SrcUuids => DataType::serie(DataType::Uuid.required_field("srcuuid")),
+            | Self::SnapUnix => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+            Self::PrevUuid => DataType::Uuid,
+            Self::SeqNum => DataType::UInt64,
             Self::State => DataType::State,
-        })
+        }
     }
 
-    /// Whether the column may hold a null: the facts the traits answer as
-    /// an option or as nothing - an empty code, serie or map, a place of
-    /// zero - may, and so may the state, which an event always answers -
-    /// `UNKNOWN` where nothing states one - but a row may leave unstated,
-    /// a state having no neutral member for an empty cell to read as; the
-    /// instant, the identities and the codes are never absent.
+    /// Whether the column may hold a null: the facts the trait answers as
+    /// an option, or a place of zero, may, and so may the state, which an
+    /// event always answers - `UNKNOWN` where nothing states one - but a row
+    /// may leave unstated, a state having no neutral member for an empty
+    /// cell to read as; the instant is never absent.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        !matches!(
-            self,
-            Self::CurrUnix
-                | Self::CurrUuid
-                | Self::CrossUuid
-                | Self::CurrHashCode
-                | Self::CrossHashCode
-        )
+        !matches!(self, Self::CurrUnix)
     }
 
     /// The column as a field: its name, datatype and nullability, with
@@ -251,9 +186,9 @@ impl EventColumn {
     ///
     /// # Errors
     ///
-    /// Returns [`Self::datatype`]'s refusal.
+    /// Returns an error when the display or the description cannot be set.
     pub fn field(self) -> Result<Field> {
-        let mut field = Field::new(self.name(), self.datatype()?, self.nullable());
+        let mut field = Field::new(self.name(), self.datatype(), self.nullable());
         field.set_display(self.display())?;
         field.set_description(self.description())?;
         Ok(field)
@@ -263,7 +198,7 @@ impl EventColumn {
     ///
     /// # Errors
     ///
-    /// Returns [`Self::datatype`]'s refusal.
+    /// Returns [`Self::field`]'s refusal.
     pub fn fields() -> Result<Vec<Field>> {
         Self::ALL.into_iter().map(Self::field).collect()
     }
@@ -278,7 +213,7 @@ impl EventColumn {
 
     /// What an event states under this column, as the raw value the
     /// column's datatype types, or nothing where it states no fact: an
-    /// absent instant, identity or place, an empty code, serie or map.
+    /// absent instant, predecessor or place.
     pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar> {
         let instant =
             |unix: i64| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok();
@@ -289,22 +224,13 @@ impl EventColumn {
             Self::ExprUnix => event.get_exprunix().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
-            Self::CurrUuid => Some(Scalar::Uuid(event.get_curruuid())),
-            Self::CrossUuid => Some(Scalar::Uuid(event.get_crossuuid())),
-            Self::CrossCode => {
-                let code = event.get_crosscode();
-                (!code.is_empty()).then(|| Scalar::from(code))
-            }
-            Self::CurrHashCode => Some(Scalar::from(event.get_currhashcode())),
-            Self::CrossHashCode => Some(Scalar::from(event.get_crosshashcode())),
             Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
             Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
-            Self::SrcUuids => uuids_fact(event.get_srcuuids()),
             Self::State => Some(Scalar::State(*event.get_state())),
         }
     }
 
-    /// Records what one cell states on the event, through the traits: a
+    /// Records what one cell states on the event, through the trait: a
     /// null clears the fact, and a value the fact's type refuses is
     /// silence.
     pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar) {
@@ -320,70 +246,15 @@ impl EventColumn {
             Self::ExprUnix => event.set_exprunix(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),
             Self::SnapUnix => event.set_snapunix(instant()),
-            Self::CurrUuid => {
-                if let Scalar::Uuid(uuid) = value {
-                    event.set_curruuid(*uuid);
-                }
-            }
-            Self::CrossUuid => {
-                if let Scalar::Uuid(uuid) = value {
-                    event.set_crossuuid(*uuid);
-                }
-            }
-            Self::CrossCode => event.set_crosscode(
-                value
-                    .as_str()
-                    .filter(|held| !held.is_empty())
-                    .map(str::to_owned)
-                    .unwrap_or_default(),
-            ),
-            Self::CurrHashCode => {
-                if let Some(code) = value.as_u64() {
-                    event.set_currhashcode(code);
-                }
-            }
-            Self::CrossHashCode => {
-                if let Some(code) = value.as_u64() {
-                    event.set_crosshashcode(code);
-                }
-            }
             Self::PrevUuid => event.set_prevuuid(match value {
                 Scalar::Uuid(uuid) => Some(*uuid),
                 _ => None,
             }),
             Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
-            Self::SrcUuids => event.set_srcuuids(uuids_of(value)),
             Self::State => event.set_state(match value {
                 Scalar::State(state) => *state,
-                other => other
-                    .as_i128()
-                    .and_then(|code| i32::try_from(code).ok())
-                    .and_then(State::from_code)
-                    .or_else(|| other.as_str().and_then(State::from_spelling))
-                    .unwrap_or_default(),
+                other => <State as crate::EnumValue>::from_scalar_value(other).unwrap_or_default(),
             }),
         }
     }
-}
-
-/// One run of identities as the raw value its `serie<uuid>` column types,
-/// or nothing where the serie is empty.
-fn uuids_fact(uuids: &[Uuid]) -> Option<Scalar> {
-    (!uuids.is_empty()).then(|| Scalar::from_sequence(uuids.iter().copied().map(Scalar::Uuid)))
-}
-
-/// The identities one `serie<uuid>` cell states, every other item passed
-/// over; none for a cell stating no serie.
-fn uuids_of(value: &Scalar) -> Vec<Uuid> {
-    value
-        .as_serie()
-        .map(|held| {
-            held.iter()
-                .filter_map(|item| match item.as_ref() {
-                    Scalar::Uuid(uuid) => Some(*uuid),
-                    _ => None,
-                })
-                .collect()
-        })
-        .unwrap_or_default()
 }

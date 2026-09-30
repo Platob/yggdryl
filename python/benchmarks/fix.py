@@ -267,7 +267,7 @@ assert PARSED.msgcat is MarketDataKind.ORDR
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the names the message goes by are
 # on the message the parse answered rather than behind a pass of its own.
-assert PARSED.altids == {"CLORDID": "ORDER-000000"}
+assert [str(id) for id in PARSED.identifiers] == ["fix:clordid=ORDER-000000"]
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 WALKED = next(iter(CODEC.lifecycle([PARSED])))
 
@@ -324,8 +324,8 @@ def _identifier_values() -> object:
     return ORDER_TYPE.identifier_values(PARSED)
 
 
-def _altids_map() -> object:
-    return PARSED.altids
+def _identifiers_set() -> object:
+    return PARSED.identifiers
 
 
 def _market_data() -> object:
@@ -487,7 +487,7 @@ def main() -> None:
         _measure("FixMsg.msgcat", _message_msgcat, args.iterations)
         _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
-        _measure("altids native map crossing", _altids_map, args.iterations)
+        _measure("identifiers native set crossing", _identifiers_set, args.iterations)
         _measure("message market data", _market_data, args.iterations)
         _measure("message header holder", _header_facts, args.iterations)
         _measure("message entries", _message_entries, args.iterations)

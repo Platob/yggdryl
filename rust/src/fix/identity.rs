@@ -6,9 +6,9 @@ use smol_str::SmolStr;
 use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
-use crate::securityid::{SecType, SecurityId};
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, Isin, Mic, Result, Scalar, TimeUnit, Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Isin, Mic, Result, Scalar, TimeUnit,
+    Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -366,7 +366,7 @@ impl FixCapture {
 pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 
 /// Every root tag a typed market column reads, one line per tag naming the
-/// column it feeds: the reads of `FixMsg::derive_market`,
+/// column it feeds: the reads of `FixMsg::state_market`,
 /// `FixMsg::reports_execution`, `FixMsg::stated_securityids` and
 /// [`FixMsg::classification`](super::FixMsg::classification), mirrored here
 /// so a leaf's metadata can carry every row child *outside* them. A read
@@ -375,10 +375,10 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// What is typed on its own is not repeated: a lifted tag - the cross tags
 /// among them - a header tag and the crate's own columns answer
 /// [`is_typed_tag`], every crate tag - the instrument views and the
-/// instrument keys a rule folds into `secaltids` included - is the
+/// instrument keys a rule folds into `securityids` included - is the
 /// [envelope's](super::digest), and an identifier map's sources are the
 /// registry's. A group listed here, by its counter, is read whole.
-pub(super) const MARKET_TAGS: [i32; 39] = [
+pub(super) const MARKET_TAGS: [i32; 46] = [
     54,              // Side: side
     132,             // BidPx: bidpx, and a bid quote's price
     133,             // OfferPx: askpx, and an ask quote's price
@@ -387,7 +387,7 @@ pub(super) const MARKET_TAGS: [i32; 39] = [
     15,              // Currency: currency
     120,             // SettlCurrency: currency, where 15 states none
     996,             // UnitOfMeasure: unit
-    TIMEINFORCE_TAG, // TimeInForce(59): tif
+    TIMEINFORCE_TAG, // TimeInForce(59): timeinforce
     461,             // CFICode: cficode, the classification of record
     201,             // PutOrCall: cficode, a listed option's group
     55,              // Symbol: ticker
@@ -418,6 +418,13 @@ pub(super) const MARKET_TAGS: [i32; 39] = [
     60,              // TransactTime: execunix, and currunix within the delay
     768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
     140,             // PrevClosePx: prevpx
+    99,              // StopPx: stoppx
+    1138,            // DisplayQty: displayqty, and hiddenqty below the quantity
+    111,             // MaxFloor: displayqty, where 1138 states none
+    84,              // CxlQty: cxlqty
+    40,              // OrdType: marketdatatype
+    537,             // QuoteType: marketdatatype
+    828,             // TrdType: marketdatatype
 ];
 
 /// Every tag a book entry's own facts are read from, at any depth of its
@@ -435,7 +442,7 @@ pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     1027, // MDEntryForwardPoints: forwardpoints
     272,  // MDEntryDate: currunix, creaunix or execunix
     273,  // MDEntryTime: currunix, creaunix or execunix
-    37,   // OrderID: an order rather than a quote, and the ORDERID identifier
+    37,   // OrderID: an order rather than a quote, and the orderid identifier
     55,   // Symbol: ticker, and the book scope
     54,   // Side: a trade entry's side
     290,  // MDEntryPositionNo: the control's position, and crosscode
@@ -943,11 +950,10 @@ pub(super) fn is_capture_tag(tag: i32) -> bool {
 /// or one of the FIX fields the message lifted.
 ///
 /// The capture's own columns are none of them: a message states nothing
-/// about the reading it arrived through. Nor is a crate field that stays
-/// content: the row holds it as it arrived.
+/// about the reading it arrived through.
 pub(super) fn is_typed_tag(tag: i32) -> bool {
     !is_capture_tag(tag)
-        && ((super::is_crate_tag(tag) && !super::crated::is_unprojected_tag(tag))
+        && (super::is_crate_tag(tag)
             || HEADER_TAGS.contains(&tag)
             || LIFTED_TAGS.contains(&tag)
             || tag == TEXT_TAG)
@@ -1006,43 +1012,52 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
     match tag {
         tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
             event,
-            "ISIN",
+            &IdType::Isin,
             Isin::from_scalar(value)
-                .map(|code| code.as_str().to_owned())
-                .or_else(|| value.as_str().map(str::to_owned)),
+                .map(Isin::as_str)
+                .or_else(|| value.as_str()),
         ),
         tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => record_securityid(
             event,
-            "BLOOMBERG",
+            &IdType::Bloomberg,
             Bbg::from_scalar(value)
-                .map(|code| code.as_str().to_owned())
-                .or_else(|| value.as_str().map(str::to_owned)),
+                .map(Bbg::as_str)
+                .or_else(|| value.as_str()),
         ),
         tag if tag == super::FIGICODE_TAG_NAME.0 => record_securityid(
             event,
-            "FIGI",
+            &IdType::Figi,
             Figi::from_scalar(value)
-                .map(|code| code.as_str().to_owned())
-                .or_else(|| value.as_str().map(str::to_owned)),
+                .map(Figi::as_str)
+                .or_else(|| value.as_str()),
         ),
         tag if tag == super::FOREXCODE_TAG_NAME.0 => record_securityid(
             event,
-            "FOREX",
+            &IdType::Forex,
             Forex::from_scalar(value)
-                .map(|code| code.as_str().to_owned())
-                .or_else(|| value.as_str().map(str::to_owned)),
+                .map(Forex::as_str)
+                .or_else(|| value.as_str()),
         ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             Mic::from_scalar(value)
                 .cloned()
                 .or_else(|| value.as_str().and_then(|value| Mic::new(value).ok())),
+            true,
         ),
         _ => {
+            if let Some(column) = super::crated::element_column_of(tag) {
+                column.record(event, value);
+                return true;
+            }
             if let Some(column) = super::crated::event_column_of(tag) {
                 column.record(event, value);
                 return true;
             }
             if let Some(column) = super::crated::market_column_of(tag) {
+                column.record(event, value);
+                return true;
+            }
+            if let Some(column) = super::crated::operation_column_of(tag) {
                 column.record(event, value);
                 return true;
             }
@@ -1056,31 +1071,37 @@ pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Sc
 /// column's field types, or nothing where it states no fact: an empty name,
 /// an absent instant, identity or code.
 pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar> {
+    if let Some(column) = super::crated::element_column_of(tag) {
+        return column.fact(event);
+    }
     if let Some(column) = super::crated::event_column_of(tag) {
         return column.fact(event);
     }
     if let Some(column) = super::crated::market_column_of(tag) {
         return column.fact(event);
     }
+    if let Some(column) = super::crated::operation_column_of(tag) {
+        return column.fact(event);
+    }
     match tag {
         tag if tag == super::ISINCODE_TAG_NAME.0 => event
             .get_securityids()
-            .get("ISIN")
+            .get(&IdType::Isin)
             .and_then(|code| Isin::new(code).ok())
             .map(Scalar::Isin),
         tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
             .get_securityids()
-            .get("BLOOMBERG")
+            .get(&IdType::Bloomberg)
             .and_then(|code| Bbg::new(code).ok())
             .map(Scalar::Bbg),
         tag if tag == super::FIGICODE_TAG_NAME.0 => event
             .get_securityids()
-            .get("FIGI")
+            .get(&IdType::Figi)
             .and_then(|code| Figi::new(code).ok())
             .map(Scalar::Figi),
         tag if tag == super::FOREXCODE_TAG_NAME.0 => event
             .get_securityids()
-            .get("FOREX")
+            .get(&IdType::Forex)
             .and_then(|code| Forex::new(code).ok())
             .map(Scalar::Forex),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.get_miccode().cloned().map(Scalar::Mic),
@@ -1088,29 +1109,13 @@ pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar
     }
 }
 
-/// The exact clock the two FIX clocks a row types are held under.
 /// Records one crated identifier column onto the security identifiers: a
-/// stated code replaces the entry under its key, a null removes it.
-fn record_securityid(event: &mut OperationEventFacts, key: &str, code: Option<String>) {
-    let key = SecType::read(key).expect("a known security-identifier source");
-    let mut ids = event.get_securityids().clone();
-    match code
-        .as_deref()
-        .map(str::trim)
-        .filter(|code| !code.is_empty())
-    {
-        Some(code) => {
-            if let Ok(id) = SecurityId::new(key, code) {
-                ids.set(id);
-            }
-        }
-        None => {
-            ids.remove(&key);
-        }
-    }
-    let _ = event.set_securityids(ids);
+/// stated code replaces the entries of its type, a null removes them.
+fn record_securityid(event: &mut OperationEventFacts, kind: &IdType, code: Option<&str>) {
+    event.restate_securityid(kind, code);
 }
 
+/// The exact clock the two FIX clocks a row types are held under.
 pub(super) fn required_dtype(tag: i32) -> Option<DataType> {
     matches!(tag, 52 | 60).then_some(CLOCK_DATATYPE)
 }
@@ -1127,10 +1132,10 @@ pub(super) fn refused(
 }
 
 pub(super) fn validate_field(field: &Field, tag: i32) -> Result<()> {
-    if let Some(expected) = required_dtype(tag) {
-        if field.dtype() != &expected || field.as_fix().counter()?.is_some() {
-            return Err(refused(field.name(), expected, field.dtype()));
-        }
+    if let Some(expected) = required_dtype(tag)
+        && (field.dtype() != &expected || field.as_fix().counter()?.is_some())
+    {
+        return Err(refused(field.name(), expected, field.dtype()));
     }
     Ok(())
 }

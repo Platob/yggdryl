@@ -22,7 +22,8 @@ fn unwrap(item: AnyMarketData<'static>) -> CoreMarketData {
 
 /// A walk that chains each operation event to the live element it follows
 /// within its own market data kind (an order and an execution under one
-/// cross code are two chains) and yields it enriched, pulling its items lazily from the caller's
+/// base are two chains: their stored cross codes carry the kind) and yields
+/// it enriched, pulling its items lazily from the caller's
 /// iterable: any leaf or `MarketData`, the dated operations and trades
 /// walking and every other variant yielded unchanged, in place. Yields
 /// `MarketData`.

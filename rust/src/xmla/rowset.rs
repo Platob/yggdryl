@@ -1337,24 +1337,21 @@ fn write_nested<W: Write>(
 /// the offset alone, never the bracketed zone name the crate's own form adds -
 /// and every other leaf as the XML codec spells it.
 fn write_leaf<W: Write>(writer: &mut W, value: &Scalar, field: &Field) -> Result<()> {
-    if let Scalar::DateTime64(instant) = value {
-        if !instant.timezone().is_naive() {
-            let text = crate::temporal::format_timestamp(
-                instant.count(),
-                instant.unit(),
-                &instant.timezone(),
-            )
-            .ok_or_else(|| {
-                invalid(format_smolstr!(
-                    "column `{}` holds the datetime count {}, which has no ISO 8601 spelling",
-                    field.name(),
-                    instant.count()
-                ))
-            })?;
-            let offset_only = text.split('[').next().unwrap_or(&text);
-            crate::xml::write_element_text(writer, offset_only)?;
-            return Ok(());
-        }
+    if let Scalar::DateTime64(instant) = value
+        && !instant.timezone().is_naive()
+    {
+        let text =
+            crate::temporal::format_timestamp(instant.count(), instant.unit(), &instant.timezone())
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "column `{}` holds the datetime count {}, which has no ISO 8601 spelling",
+                        field.name(),
+                        instant.count()
+                    ))
+                })?;
+        let offset_only = text.split('[').next().unwrap_or(&text);
+        crate::xml::write_element_text(writer, offset_only)?;
+        return Ok(());
     }
     crate::xml::write_leaf_text(writer, value, field.name())
 }
@@ -1383,13 +1380,13 @@ fn read_value(element: &Element<'_>, field: &Field, column: &Column) -> Result<S
             // A struct's cell holds elements: text of its own, past the
             // whitespace a document is laid out with, is a value no child
             // reads.
-            if let Some(text) = element.text() {
-                if !text.trim().is_empty() {
-                    return Err(invalid(format_smolstr!(
-                        "`{}` holds the text {text:?}, and a struct column holds elements",
-                        field.name()
-                    )));
-                }
+            if let Some(text) = element.text()
+                && !text.trim().is_empty()
+            {
+                return Err(invalid(format_smolstr!(
+                    "`{}` holds the text {text:?}, and a struct column holds elements",
+                    field.name()
+                )));
             }
             let mut entries: Vec<(SmolStr, Scalar)> = Vec::new();
             // A sequence column's elements, one item each, in document order:

@@ -1,28 +1,40 @@
-//! The twenty-eight columns every market element is stated in.
+//! The thirty-four columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
-//! operation's row, a book's - states the same columns and a reader joins
-//! them without a mapping.
+//! operation's row, a book's, a FIX message's - states the same columns
+//! right after its element's and its event's, and a reader joins them
+//! without a mapping.
 
 use smol_str::SmolStr;
 
 use super::{FxRates, Market};
-use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::{
-    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeInForce,
-    TimeUnit, Timezone, Unit,
+    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeUnit,
+    Timezone, Unit,
 };
+use crate::{IdSource, IdType, Identifier, Identifiers};
 
 /// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MarketColumn {
+    /// The category the element is filed under, which its holder stamps.
+    MarketDataKind,
+    /// The type of its kind the element is: its order, quote, trade or book
+    /// entry type.
+    MarketDataType,
     /// The price the element is about.
     Price,
+    /// The price a stop order triggers at.
+    StopPx,
     /// The currency it is priced in.
     Currency,
     /// The quantity it is about.
     Quantity,
+    /// The part of the quantity shown to the market: an iceberg's peak.
+    DisplayQty,
+    /// The part of the quantity kept from the market: an iceberg's reserve.
+    HiddenQty,
     /// The unit the quantity is counted in.
     Unit,
     /// The side it takes.
@@ -48,6 +60,8 @@ pub enum MarketColumn {
     CumQty,
     /// How much is left to trade.
     LeavesQty,
+    /// How much was canceled.
+    CxlQty,
     /// The price the step before it settled on.
     PrevPx,
     /// The quantity the step before it settled on.
@@ -77,11 +91,18 @@ pub enum MarketColumn {
 }
 
 impl MarketColumn {
-    /// Every market column in canonical row order.
-    pub const ALL: [Self; 28] = [
+    /// Every market column in canonical row order: the category and the
+    /// type first, then what the element is about - its prices, then its
+    /// quantities - the instrument, the execution and the quote.
+    pub const ALL: [Self; 34] = [
+        Self::MarketDataKind,
+        Self::MarketDataType,
         Self::Price,
+        Self::StopPx,
         Self::Currency,
         Self::Quantity,
+        Self::DisplayQty,
+        Self::HiddenQty,
         Self::Unit,
         Self::Side,
         Self::SecurityIds,
@@ -94,6 +115,7 @@ impl MarketColumn {
         Self::AvgPx,
         Self::CumQty,
         Self::LeavesQty,
+        Self::CxlQty,
         Self::PrevPx,
         Self::PrevQty,
         Self::SpotRate,
@@ -113,9 +135,14 @@ impl MarketColumn {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
+            Self::MarketDataKind => "marketdatakind",
+            Self::MarketDataType => "marketdatatype",
             Self::Price => "price",
+            Self::StopPx => "stoppx",
             Self::Currency => "currency",
             Self::Quantity => "quantity",
+            Self::DisplayQty => "displayqty",
+            Self::HiddenQty => "hiddenqty",
             Self::Unit => "unit",
             Self::Side => "side",
             Self::SecurityIds => "securityids",
@@ -128,6 +155,7 @@ impl MarketColumn {
             Self::AvgPx => "avgpx",
             Self::CumQty => "cumqty",
             Self::LeavesQty => "leavesqty",
+            Self::CxlQty => "cxlqty",
             Self::PrevPx => "prevpx",
             Self::PrevQty => "prevqty",
             Self::SpotRate => "spotrate",
@@ -148,21 +176,27 @@ impl MarketColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
+            Self::MarketDataKind => "Market Data Kind",
+            Self::MarketDataType => "Market Data Type",
             Self::Price => "Price",
+            Self::StopPx => "Stop Price",
             Self::Currency => "Currency",
             Self::Quantity => "Quantity",
+            Self::DisplayQty => "Display Quantity",
+            Self::HiddenQty => "Hidden Quantity",
             Self::Unit => "Unit",
             Self::Side => "Side",
             Self::SecurityIds => "Security IDs",
-            Self::IsinCode => "ISIN",
-            Self::CfiCode => "CFI",
-            Self::MicCode => "MIC",
-            Self::ExecUnix => "ExecUnix",
+            Self::IsinCode => "ISIN Code",
+            Self::CfiCode => "CFI Code",
+            Self::MicCode => "MIC Code",
+            Self::ExecUnix => "Execution Time",
             Self::LastPx => "Last Price",
             Self::LastQty => "Last Quantity",
             Self::AvgPx => "Average Price",
             Self::CumQty => "Cumulative Quantity",
             Self::LeavesQty => "Leaves Quantity",
+            Self::CxlQty => "Canceled Quantity",
             Self::PrevPx => "Previous Price",
             Self::PrevQty => "Previous Quantity",
             Self::SpotRate => "Spot Rate",
@@ -179,7 +213,9 @@ impl MarketColumn {
         }
     }
 
-    /// The one datatype the column is built and read at: the crate's
+    /// The one datatype the column is built and read at: the
+    /// [`MarketDataKind`](crate::MarketDataKind) code for the category and the
+    /// [`MarketDataType`](crate::MarketDataType) code for the type, the crate's
     /// decimal for every price and quantity, each code's own leaf, the
     /// execution clock at nanoseconds UTC, a sorted
     /// `map<utf8, utf8>` for the identifiers and the metadata, a sorted
@@ -188,8 +224,14 @@ impl MarketColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
+            Self::MarketDataKind => DataType::MarketDataKind,
+            Self::MarketDataType => DataType::MarketDataType,
             Self::Price
+            | Self::StopPx
             | Self::Quantity
+            | Self::DisplayQty
+            | Self::HiddenQty
+            | Self::CxlQty
             | Self::LastPx
             | Self::LastQty
             | Self::AvgPx
@@ -206,7 +248,7 @@ impl MarketColumn {
             Self::Currency | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
-            Self::SecurityIds => SecurityIds::dtype(),
+            Self::SecurityIds => Identifiers::dtype("securityid"),
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
             Self::MicCode => DataType::Mic,
@@ -221,12 +263,16 @@ impl MarketColumn {
         }
     }
 
-    /// Whether a row may leave the column null: never for the currency,
-    /// the unit and the side, which every market element states, if only as
-    /// nothing - `XXX`, the empty unit, `UNKN`.
+    /// Whether a row may leave the column null: never for the category,
+    /// the type, the currency, the unit and the side, which every market
+    /// element states, if only as nothing - `UNKN`, `UNKN`, `XXX`, the empty
+    /// unit, `UNKN`.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        !matches!(self, Self::Currency | Self::Unit | Self::Side)
+        !matches!(
+            self,
+            Self::MarketDataKind | Self::MarketDataType | Self::Currency | Self::Unit | Self::Side
+        )
     }
 
     /// The column as a field, named, typed and displayed.
@@ -261,14 +307,20 @@ impl MarketColumn {
     /// states none.
     pub fn fact<E: Market + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
+            Self::MarketDataKind => Some(Scalar::MarketDataKind(element.marketdatakind())),
+            Self::MarketDataType => Some(Scalar::MarketDataType(element.get_marketdatatype())),
             Self::Price => element.get_price().map(Scalar::from),
+            Self::StopPx => element.get_stoppx().map(Scalar::from),
+            Self::DisplayQty => element.get_displayqty().map(Scalar::from),
+            Self::HiddenQty => element.get_hiddenqty().map(Scalar::from),
+            Self::CxlQty => element.get_cxlqty().map(Scalar::from),
             Self::Currency => Some(element.get_currency().clone().into()),
             Self::Quantity => element.get_quantity().map(Scalar::from),
             Self::Unit => Some(element.get_unit().clone().into()),
             Self::Side => Some(element.get_side().into()),
             Self::SecurityIds => {
                 let ids = element.get_securityids();
-                (!ids.is_empty()).then(|| ids.to_scalar())
+                (!ids.is_empty()).then(|| ids.into_scalar())
             }
             Self::IsinCode => element
                 .get_isincode()
@@ -322,28 +374,36 @@ impl MarketColumn {
     /// fact, and an incompatible value is ignored. The ISIN is a projection
     /// of the security identifiers: a cell fills an absent `ISIN` and a
     /// disagreeing one is ignored, as a null is - the strict door is the
-    /// Arrow reader.
+    /// Arrow reader. The category is the holder's own, which [`Market`]
+    /// states no setter for - an order is filed `ORDR` because it is an
+    /// order - so a cell of it records nothing.
     pub fn record<E: Market + ?Sized>(self, element: &mut E, value: &Scalar) {
         let decimal = || Decimal::from_scalar(value);
         match self {
+            Self::MarketDataKind => {}
+            Self::MarketDataType => element.set_marketdatatype(
+                <crate::MarketDataType as crate::EnumValue>::from_scalar_value(value)
+                    .unwrap_or_default(),
+                true,
+            ),
             Self::Price => match value {
-                Scalar::Null => element.set_price(None),
+                Scalar::Null => element.set_price(None, true),
                 _ => {
                     if let Some(held) = decimal() {
-                        element.set_price(Some(held));
+                        element.set_price(Some(held), true);
                     }
                 }
             },
             Self::Currency => {
                 if let Some(held) = currency_of(value) {
-                    element.set_currency(held);
+                    element.set_currency(held, true);
                 }
             }
             Self::Quantity => match value {
-                Scalar::Null => element.set_quantity(None),
+                Scalar::Null => element.set_quantity(None, true),
                 _ => {
                     if let Some(held) = decimal() {
-                        element.set_quantity(Some(held));
+                        element.set_quantity(Some(held), true);
                     }
                 }
             },
@@ -354,27 +414,20 @@ impl MarketColumn {
                     other => other.as_str().and_then(|text| Unit::new(text).ok()),
                 };
                 if let Some(unit) = unit {
-                    element.set_unit(unit);
+                    element.set_unit(unit, true);
                 }
             }
             Self::Side => {
-                if let Some(held) = match value {
-                    Scalar::Side(held) => Some(*held),
-                    other => other
-                        .as_i128()
-                        .and_then(|code| i32::try_from(code).ok())
-                        .and_then(Side::from_code)
-                        .or_else(|| other.as_str().and_then(Side::from_spelling)),
-                } {
-                    element.set_side(held);
+                if let Some(held) = <Side as crate::EnumValue>::from_scalar_value(value) {
+                    element.set_side(held, true);
                 }
             }
             Self::SecurityIds => {
                 if let Some(ids) = match value {
-                    Scalar::Null => Some(SecurityIds::default()),
-                    other => SecurityIds::from_scalar(other).ok(),
+                    Scalar::Null => Some(Identifiers::new()),
+                    other => Identifiers::from_scalar(other).ok(),
                 } {
-                    let _ = element.set_securityids(ids);
+                    let _ = element.set_securityids(ids, true);
                 }
             }
             Self::IsinCode => {
@@ -382,44 +435,51 @@ impl MarketColumn {
                     Scalar::Isin(held) => Some(held.clone()),
                     other => other.as_str().and_then(|text| Isin::new(text).ok()),
                 };
-                if let Some(code) = code {
-                    if element.get_isincode().is_none() {
-                        if let Ok(id) = SecType::read("ISIN")
-                            .and_then(|key| SecurityId::new(key, code.as_str()))
-                        {
-                            let _ = element.insert_securityid(id);
-                        }
-                    }
+                if let Some(code) = code
+                    && element.get_isincode().is_none()
+                    && let Ok(id) = Identifier::new(IdSource::Base, IdType::Isin, code.as_str())
+                {
+                    let _ = element.insert_securityid(id);
                 }
             }
-            Self::CfiCode => element.set_cficode(match value {
-                Scalar::Cfi(held) => Some(held.clone()),
-                Scalar::Null => None,
-                other => other.as_str().and_then(|text| Cfi::new(text).ok()),
-            }),
-            Self::MicCode => element.set_miccode(match value {
-                Scalar::Mic(held) => Some(held.clone()),
-                Scalar::Null => None,
-                other => other.as_str().and_then(|text| Mic::new(text).ok()),
-            }),
+            Self::CfiCode => element.set_cficode(
+                match value {
+                    Scalar::Cfi(held) => Some(held.clone()),
+                    Scalar::Null => None,
+                    other => other.as_str().and_then(|text| Cfi::new(text).ok()),
+                },
+                true,
+            ),
+            Self::MicCode => element.set_miccode(
+                match value {
+                    Scalar::Mic(held) => Some(held.clone()),
+                    Scalar::Null => None,
+                    other => other.as_str().and_then(|text| Mic::new(text).ok()),
+                },
+                true,
+            ),
             Self::ExecUnix => {
-                element.set_execunix(value.temporal_count_at(TimeUnit::Nanosecond));
+                element.set_execunix(value.temporal_count_at(TimeUnit::Nanosecond), true);
             }
-            Self::LastPx => element.set_lastpx(decimal()),
-            Self::LastQty => element.set_lastqty(decimal()),
-            Self::AvgPx => element.set_avgpx(decimal()),
-            Self::CumQty => element.set_cumqty(decimal()),
-            Self::LeavesQty => element.set_leavesqty(decimal()),
-            Self::PrevPx => element.set_prevpx(decimal()),
-            Self::PrevQty => element.set_prevqty(decimal()),
-            Self::SpotRate => element.set_spotrate(decimal()),
-            Self::ForwardPoints => element.set_forwardpoints(decimal()),
-            Self::BidPx => element.set_bidpx(decimal()),
-            Self::BidQty => element.set_bidqty(decimal()),
-            Self::BidCcy => element.set_bidccy(currency_of(value)),
-            Self::AskPx => element.set_askpx(decimal()),
-            Self::AskQty => element.set_askqty(decimal()),
-            Self::AskCcy => element.set_askccy(currency_of(value)),
+            Self::StopPx => element.set_stoppx(decimal(), true),
+            Self::DisplayQty => element.set_displayqty(decimal(), true),
+            Self::HiddenQty => element.set_hiddenqty(decimal(), true),
+            Self::CxlQty => element.set_cxlqty(decimal(), true),
+            Self::LastPx => element.set_lastpx(decimal(), true),
+            Self::LastQty => element.set_lastqty(decimal(), true),
+            Self::AvgPx => element.set_avgpx(decimal(), true),
+            Self::CumQty => element.set_cumqty(decimal(), true),
+            Self::LeavesQty => element.set_leavesqty(decimal(), true),
+            Self::PrevPx => element.set_prevpx(decimal(), true),
+            Self::PrevQty => element.set_prevqty(decimal(), true),
+            Self::SpotRate => element.set_spotrate(decimal(), true),
+            Self::ForwardPoints => element.set_forwardpoints(decimal(), true),
+            Self::BidPx => element.set_bidpx(decimal(), true),
+            Self::BidQty => element.set_bidqty(decimal(), true),
+            Self::BidCcy => element.set_bidccy(currency_of(value), true),
+            Self::AskPx => element.set_askpx(decimal(), true),
+            Self::AskQty => element.set_askqty(decimal(), true),
+            Self::AskCcy => element.set_askccy(currency_of(value), true),
             Self::FxRates => element.set_fxrates(
                 value
                     .as_mapping()
@@ -432,16 +492,20 @@ impl MarketColumn {
                             .collect::<FxRates>()
                     })
                     .unwrap_or_default(),
+                true,
             ),
-            Self::Ticker => element.set_ticker(value.as_str().map(SmolStr::new)),
-            Self::Metadata => element.set_metadata(value.as_mapping().map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|(key, value)| {
-                        Some((SmolStr::new(key.as_str()?), SmolStr::new(value.as_str()?)))
-                    })
-                    .collect()
-            })),
+            Self::Ticker => element.set_ticker(value.as_str().map(SmolStr::new), true),
+            Self::Metadata => element.set_metadata(
+                value.as_mapping().map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(|(key, value)| {
+                            Some((SmolStr::new(key.as_str()?), SmolStr::new(value.as_str()?)))
+                        })
+                        .collect()
+                }),
+                true,
+            ),
         }
     }
 }
@@ -465,14 +529,5 @@ pub(super) fn currency_of(value: &Scalar) -> Option<Ccy> {
     match value {
         Scalar::Ccy(held) => Some(held.clone()),
         other => other.as_str().and_then(|text| Ccy::new(text).ok()),
-    }
-}
-
-/// The time in force a cell states, as the code or as any spelling the
-/// code set reads.
-pub(super) fn tif_of(value: &Scalar) -> Option<TimeInForce> {
-    match value {
-        Scalar::TimeInForce(held) => Some(held.clone()),
-        other => other.as_str().and_then(TimeInForce::from_spelling),
     }
 }

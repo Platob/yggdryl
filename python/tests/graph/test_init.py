@@ -61,19 +61,24 @@ def test_the_package_is_reachable_off_the_root() -> None:
 
 
 def test_the_two_constants_are_exported() -> None:
-    assert graph.ENTRY_ID == "MDENTRYID"
-    assert graph.ENTRY_REF_ID == "MDENTRYREFID"
+    assert graph.ENTRY_ID == "mdentryid"
+    assert graph.ENTRY_REF_ID == "mdentryrefid"
     # A leaf follows every identifier it lacks; no list is exported.
-    assert not hasattr(graph, "FOLLOWED_ALTIDS")
+    assert not hasattr(graph, "FOLLOWED_IDENTIFIERS")
 
 
 def test_the_enum_listings_name_the_column_vocabulary() -> None:
     # A named fact is a column name: every one the three listings spell is
     # a keyword an operation event is built from.
     event = graph.OrderEvent(1, crosscode="O-1")
-    for column in (*enums.EVENT_COLUMNS, *enums.MARKET_COLUMNS, *enums.OPERATION_COLUMNS):
+    for column in (
+        *enums.ELEMENT_COLUMNS,
+        *enums.EVENT_COLUMNS,
+        *enums.MARKET_COLUMNS,
+        *enums.OPERATION_COLUMNS,
+    ):
         assert hasattr(event, column), column
-    assert len(enums.MARKET_COLUMNS) == 28 and len(enums.OPERATION_COLUMNS) == 4
+    assert len(enums.MARKET_COLUMNS) == 34 and len(enums.OPERATION_COLUMNS) == 5
     # When an element last executed is a market fact, never an event's.
     assert "execunix" in enums.MARKET_COLUMNS and "execunix" not in enums.EVENT_COLUMNS
     assert enums.MARKET_KINDS == graph.MarketData.kinds

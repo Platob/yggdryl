@@ -170,8 +170,8 @@ The value is the code as written: case is kept rather than folded, and a space s
 
     rid = Field("rid", "ric")
     arrow_field = rid.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.ric"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.ric"
     assert Field.from_arrow(arrow_field) == rid
     ```
 
@@ -307,7 +307,7 @@ An Arrow cast into the column is held to the canonical spelling: under the defau
 - No vocabulary: `StringEnum::from_logical_name("ric")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
 - A `ric` and a [`bbg`](bbg.md) of the same bytes are two values: the identity leads, then the text.
-- `SecurityIDSource(22)=5` is the `RIC` source key in a [FIX capture](index.md#fix-message-definitions), and its code is validated by `Ric::new`: a code with an inner space, which a source with no rule of its own would hold, is refused. A RIC is one more security identifier under its own key, `ids.get("RIC")`, and no crate column of its own.
+- `SecurityIDSource(22)=5` is the `ric` security identifier type in a [FIX capture](index.md#fix-message-definitions), and its code is validated by `Ric::new`: a code with an inner space, which a source with no rule of its own would hold, is refused. A RIC is one more [security identifier](../../graph/identifier.md) of its own type, `ids.get(&IdType::Ric)`, and no crate column of its own.
 
 ## Commands
 

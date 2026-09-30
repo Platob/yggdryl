@@ -741,10 +741,10 @@ fn read_window(transfer: &mut Transfer, delivered: u64, buffer: &mut [u8]) -> io
 /// `Content-Range`, which answers a range the caller asked for, else the
 /// whole body from its first byte.
 pub(crate) fn window_of(answer: &Answer) -> (u64, Option<u64>) {
-    if answer.status == Status::PARTIAL_CONTENT {
-        if let Ok(Some(ContentRange::Bytes { start, end, .. })) = answer.headers.content_range() {
-            return (start, Some(end));
-        }
+    if answer.status == Status::PARTIAL_CONTENT
+        && let Ok(Some(ContentRange::Bytes { start, end, .. })) = answer.headers.content_range()
+    {
+        return (start, Some(end));
     }
     (0, None)
 }
@@ -890,10 +890,10 @@ fn refusal(answer: &Answer, url: &Url) -> Error {
 /// The `If-Range` validator the first answer offers: a strong `ETag`, else
 /// `Last-Modified` as written.
 fn validator_of(headers: &Headers) -> Option<String> {
-    if let Ok(Some(etag)) = headers.etag() {
-        if !etag.is_weak() {
-            return Some(etag.to_string());
-        }
+    if let Ok(Some(etag)) = headers.etag()
+        && !etag.is_weak()
+    {
+        return Some(etag.to_string());
     }
     headers.get("last-modified").map(str::to_owned)
 }
@@ -907,10 +907,10 @@ fn carries_refusal(error: &io::Error) -> bool {
 /// The crate error an I/O error carries, or the I/O error as one.
 pub(crate) fn io_into_error(error: io::Error) -> Error {
     if error.get_ref().is_some_and(|inner| inner.is::<Error>()) {
-        if let Some(inner) = error.into_inner() {
-            if let Ok(inner) = inner.downcast::<Error>() {
-                return *inner;
-            }
+        if let Some(inner) = error.into_inner()
+            && let Ok(inner) = inner.downcast::<Error>()
+        {
+            return *inner;
         }
         return Error::Io(io::Error::other("an HTTP stream failure lost its cause"));
     }

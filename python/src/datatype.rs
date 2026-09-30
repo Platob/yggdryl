@@ -6,8 +6,8 @@ use std::num::IntErrorKind;
 use arrow_array::ffi_stream::FFI_ArrowArrayStream;
 use arrow_array::{Array, ArrayRef, RecordBatch, ffi::FFI_ArrowArray, make_array};
 use arrow_data::ArrayData;
-use arrow_pyarrow::{FromPyArrow, PyArrowType};
-use arrow_schema::{ArrowError, DataType as ArrowDataType, ffi::FFI_ArrowSchema};
+use arrow_pyarrow::FromPyArrow;
+use arrow_schema::{ArrowError, Field as ArrowField, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::intern;
@@ -33,7 +33,7 @@ use yggdryl::ArrowCastOptions;
 
 /// The `pyarrow` classes the Arrow crossings name, each imported once.
 ///
-/// Nine fixed class handles, filled on first use and never keyed by an
+/// Ten fixed class handles, filled on first use and never keyed by an
 /// input: not a binding-side data cache, only the lookup a
 /// `py.import("pyarrow")` and a `getattr` would otherwise repeat per call -
 /// the shape `arrow-pyarrow` keeps for its own crossings.
@@ -62,6 +62,25 @@ pub(crate) mod pyarrow {
         schema = "Schema";
         field = "Field";
         data_type = "DataType";
+        base_extension_type = "BaseExtensionType";
+    }
+
+    /// `value` as this pyarrow's C Data Interface exports it intact:
+    /// `yggdryl.extension._exportable`, which on pyarrow before 21 hands a
+    /// batch, a table or a stream over with each extension column laid out
+    /// over a view as its storage, the extension in the field's metadata,
+    /// and refuses one nested deeper by name. Every other value, and every
+    /// value on pyarrow 21 and later, is `value` itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal of an extension over a view below a column's top
+    /// level, which pyarrow before 21 exports without its buffers.
+    pub(crate) fn exportable<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        static EXPORTABLE: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
+        EXPORTABLE
+            .import(value.py(), "yggdryl.extension", "_exportable")?
+            .call1((value,))
     }
 }
 
@@ -128,8 +147,9 @@ pub(crate) fn core_field_to_pyarrow<'py>(
 pub(crate) enum ArrayIntake {
     /// A native column's own buffers, proven where they landed.
     Native(ArrayRef),
-    /// Buffers a foreign producer described, proven by nothing yet.
-    Foreign(ArrayData),
+    /// Buffers a foreign producer described, proven by nothing yet, beside
+    /// the extension field its type stated, where it stated one.
+    Foreign(ArrayData, Option<Box<yggdryl::Field>>),
 }
 
 impl ArrayIntake {
@@ -148,7 +168,26 @@ impl ArrayIntake {
                 .map(Self::Native)
                 .map_err(value_error);
         }
-        ArrayData::from_pyarrow_bound(value).map(Self::Foreign)
+        let stated = stated_extension(value)?;
+        // An extension array crosses as its storage - the same buffers -
+        // under the field its type states: pyarrow before 21 exports one
+        // laid out over a view without its variadic buffers.
+        let storage = match stated {
+            Some(_) => value.getattr_opt(intern!(value.py(), "storage"))?,
+            None => None,
+        };
+        let source = pyarrow::exportable(storage.as_ref().unwrap_or(value))?;
+        ArrayData::from_pyarrow_bound(&source).map(|data| Self::Foreign(data, stated.map(Box::new)))
+    }
+
+    /// The field the producer's type states where it is an extension type -
+    /// `pa.uuid()`, a registered `yggdryl.ccy` - which the Arrow array
+    /// capsule alone does not carry to a reader that takes no field.
+    pub(crate) fn stated_field(&self) -> Option<&yggdryl::Field> {
+        match self {
+            Self::Native(_) => None,
+            Self::Foreign(_, field) => field.as_deref(),
+        }
     }
 
     /// The array, once a foreign producer's buffers are proven: every
@@ -162,12 +201,30 @@ impl ArrayIntake {
     pub(crate) fn validated(self) -> Result<ArrayRef, ArrowError> {
         match self {
             Self::Native(array) => Ok(array),
-            Self::Foreign(data) => {
+            Self::Foreign(data, _) => {
                 data.validate_full()?;
                 Ok(make_array(data))
             }
         }
     }
+}
+
+/// The extension field a foreign array's type states, named `item` as a
+/// column read with no field is: a pyarrow extension type read through its
+/// own schema, so the column lands as the datatype it names. `None` for an
+/// array whose type is no extension type.
+fn stated_extension(value: &Bound<'_, PyAny>) -> PyResult<Option<yggdryl::Field>> {
+    let py = value.py();
+    let Some(dtype) = value.getattr_opt(intern!(py, "type"))? else {
+        return Ok(None);
+    };
+    if !dtype.is_instance(pyarrow::base_extension_type(py)?)? {
+        return Ok(None);
+    }
+    let field = ArrowField::from_pyarrow_bound(&dtype)?.with_name("item");
+    yggdryl::Field::from_arrow_field(&field)
+        .map(Some)
+        .map_err(value_error)
 }
 
 /// One record batch that crossed into the binding, and whether it still owes
@@ -195,7 +252,7 @@ impl BatchIntake {
                 .map(Self::Native)
                 .map_err(value_error);
         }
-        RecordBatch::from_pyarrow_bound(value).map(Self::Foreign)
+        RecordBatch::from_pyarrow_bound(&pyarrow::exportable(value)?).map(Self::Foreign)
     }
 
     /// [`Self::validated`] off the GIL, for a caller with nothing else to
@@ -297,7 +354,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     // through the core once rather than letting Python's storage shape
     // silently bypass padding, a bound, a charset, parsing, or
     // canonicalization.
-    if needs_core_value_rules(dtype) || is_parsed_text(dtype) || is_fixed_decimal(dtype) {
+    if takes_core_value_rules(dtype) {
         return core_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
@@ -308,7 +365,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
 ///
 /// These read back as one spelling per value, which is a rule Arrow's plain
 /// string layout does not carry, so the core owns their intake.
-pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
+fn is_parsed_text(dtype: &CoreDataType) -> bool {
     matches!(
         dtype,
         CoreDataType::Uuid
@@ -321,12 +378,54 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
     )
 }
 
+/// Whether a value entering `dtype` takes the core's value rules rather than
+/// pyarrow's scalar intake: a parsed text, a fixed decimal, a string, code
+/// or enum rule, or an extension below the top level pyarrow builds nothing
+/// of.
+pub(crate) fn takes_core_value_rules(dtype: &CoreDataType) -> bool {
+    needs_core_value_rules(dtype)
+        || is_parsed_text(dtype)
+        || is_fixed_decimal(dtype)
+        || holds_extension(dtype)
+}
+
+/// Whether a datatype's Arrow projection names an extension type below its
+/// top level - a `serie(ccy)`'s item, a struct's `side` - whose values
+/// pyarrow builds no array of from Python values, and whose value rules are
+/// the core's.
+fn holds_extension(dtype: &CoreDataType) -> bool {
+    fn below(field: &ArrowField) -> bool {
+        use arrow_schema::DataType as Arrow;
+        match field.data_type() {
+            Arrow::List(item)
+            | Arrow::LargeList(item)
+            | Arrow::ListView(item)
+            | Arrow::LargeListView(item)
+            | Arrow::FixedSizeList(item, _)
+            | Arrow::Map(item, _) => names(item),
+            Arrow::Struct(fields) => fields.iter().any(|child| names(child)),
+            Arrow::Union(fields, _) => fields.iter().any(|(_, child)| names(child)),
+            Arrow::RunEndEncoded(_, values) => names(values),
+            _ => false,
+        }
+    }
+    fn names(field: &ArrowField) -> bool {
+        field
+            .metadata()
+            .contains_key(arrow_schema::extension::EXTENSION_TYPE_NAME_KEY)
+            || below(field)
+    }
+    yggdryl::Field::new("value", dtype.clone(), true)
+        .into_arrow_field()
+        .is_ok_and(|field| below(&field))
+}
+
 /// Whether a datatype is one of the fixed-scale decimal leaves.
 ///
 /// A `decimal` column restates every exact number at scale eighteen and
 /// refuses a nineteenth digit; `PyArrow`'s own decimal intake would round it,
 /// so the core owns the value rule.
-pub(crate) fn is_fixed_decimal(dtype: &CoreDataType) -> bool {
+fn is_fixed_decimal(dtype: &CoreDataType) -> bool {
     matches!(dtype, CoreDataType::Decimal | CoreDataType::BigDecimal)
 }
 
@@ -336,7 +435,7 @@ pub(crate) fn is_fixed_decimal(dtype: &CoreDataType) -> bool {
 /// Plain UTF-8 text is what Arrow's own string layouts already guarantee;
 /// a charset, a bound, a fixed width, a code's vocabulary or an enum's
 /// members are not.
-pub(crate) fn needs_core_value_rules(dtype: &CoreDataType) -> bool {
+fn needs_core_value_rules(dtype: &CoreDataType) -> bool {
     dtype.is_code()
         || dtype.is_enum()
         || dtype
@@ -368,11 +467,14 @@ pub(crate) fn core_arrow_scalar<'py>(
         .require_arrow_array()
         .map_err(value_error)?
     } else {
-        yggdryl::Serie::from_scalars(field, [from_py(value)?])
+        yggdryl::Serie::from_scalars(field.clone(), [crate::scalar::from_py_cell(dtype, value)?])
             .and_then(|serie| serie.require_arrow_array())
             .map_err(value_error)?
     };
-    arrow_array_to_pyarrow(py, &array, None)?.get_item(0)
+    // Under the field, so the scalar is of the datatype's extension type
+    // where pyarrow knows one - `pa.uuid()`, a registered `yggdryl.ccy` -
+    // rather than of its storage.
+    arrow_array_to_pyarrow(py, &array, Some(&field))?.get_item(0)
 }
 
 pub(crate) fn arrow_scalar_to_pyarrow_type<'py>(
@@ -453,13 +555,23 @@ pub(crate) fn core_dtype_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDa
         return core_dtype_from_pyhint(value);
     }
 
-    match ArrowDataType::from_pyarrow_bound(value) {
-        Ok(value) => return CoreDataType::try_from(value).map_err(value_error),
+    match core_dtype_from_arrow(value) {
+        Ok(dtype) => return Ok(dtype),
         Err(error) if !error.is_instance_of::<PyTypeError>(value.py()) => return Err(error),
         Err(_) => {}
     }
 
     core_dtype_from_pyhint(value)
+}
+
+/// The datatype an Arrow schema names, its root read as a field so the
+/// extension the root carries is the datatype's own: `pa.uuid()` is a uuid
+/// and a registered `yggdryl.ccy` a currency, never their storage.
+pub(crate) fn core_dtype_from_arrow(value: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
+    let field = ArrowField::from_pyarrow_bound(value)?;
+    yggdryl::Field::from_arrow_field(&field)
+        .map(|field| field.dtype().clone())
+        .map_err(value_error)
 }
 
 fn core_dtype_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
@@ -686,6 +798,7 @@ impl PyDataType {
             "ric" => CoreDataType::Ric,
             "forex" => CoreDataType::Forex,
             "marketdatakind" => CoreDataType::MarketDataKind,
+            "marketdatatype" => CoreDataType::MarketDataType,
             "uuid" => CoreDataType::uuid(),
             "decimal" => CoreDataType::Decimal,
             "bigdecimal" => CoreDataType::BigDecimal,
@@ -1002,6 +1115,15 @@ impl PyDataType {
     #[pyo3(name = "PARSE_RECURSION_LIMIT")]
     const PARSE_RECURSION_LIMIT: usize = CoreDataType::PARSE_RECURSION_LIMIT;
 
+    /// Every Arrow extension name a datatype rides under, as the core lists
+    /// them: the names `yggdryl` registers its pyarrow extension types for,
+    /// beside the canonical and community names it reads.
+    #[classattr]
+    #[pyo3(name = "ARROW_EXTENSION_NAMES")]
+    fn arrow_extension_names() -> Vec<&'static str> {
+        yggdryl::DataTypeId::arrow_extension_names().collect()
+    }
+
     #[staticmethod]
     fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let names = PyDict::new(py);
@@ -1119,11 +1241,8 @@ impl PyDataType {
     }
 
     #[staticmethod]
-    fn from_arrow(value: PyArrowType<ArrowDataType>) -> PyResult<Self> {
-        let PyArrowType(value) = value;
-        CoreDataType::try_from(value)
-            .map(Self::from_inner)
-            .map_err(value_error)
+    fn from_arrow(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        core_dtype_from_arrow(value).map(Self::from_inner)
     }
 
     /// Builds a native Struct directly from native child fields.

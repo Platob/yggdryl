@@ -31,6 +31,7 @@
 
 use std::sync::Arc;
 
+use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::group_plan::GroupPlan;
@@ -151,6 +152,7 @@ impl<'key> Key<'key> {
 /// A plain field overwhelmingly arrives once. Keep that scalar in the slot;
 /// the second arrival promotes it to the ordinary amortized vector used for
 /// repetitions and indexed gaps.
+#[derive(Clone)]
 enum SlotValues {
     Empty,
     One(Scalar),
@@ -243,8 +245,14 @@ struct Slot {
     /// field's `FIX:names`; `None` where the canonical name or the tag did,
     /// or nothing has yet. An alias fills a field only where neither the
     /// canonical name nor the tag arrived, the first alias in `FIX:names`
-    /// order wins over a later one, and a loser is its own unmapped child.
+    /// order wins over a later one, and a loser stating another value is
+    /// kept in the metadata.
     filler: Option<(SmolStr, usize)>,
+    /// The aliases that lost while stating what the slot held, so stated
+    /// nothing more - kept until a spelling ranking above displaces that
+    /// value, when each states another value too and is kept like any
+    /// alias that lost. Empty for all but a slot two spellings reached.
+    agreeing: Vec<SmolStr>,
 }
 
 /// One member of one occurrence: a value, or a group nested inside it.
@@ -262,6 +270,7 @@ impl Slot {
             known,
             values: SlotValues::Empty,
             filler: None,
+            agreeing: Vec::new(),
             group: true,
             occurrences: Vec::new(),
         }
@@ -666,6 +675,14 @@ fn lookup(registry: &FixRegistry, memo: &Memo, key: &str) -> Lookup {
     })
 }
 
+/// The tag a key a message keeps in its metadata states a value of: the
+/// field a dotted key composes into, or the field an alias that lost to it
+/// names; `None` for a key the dictionary explains no tag for.
+pub(super) fn metadata_tag(registry: &FixRegistry, key: &str) -> Option<i32> {
+    let lookup = lookup(registry, registry.memo(), key);
+    lookup.composed.or(lookup.field).map(|(tag, _)| tag)
+}
+
 /// A key as a child is named: [`folded_name`], from bytes.
 pub(super) fn folded_key(key: &[u8]) -> SmolStr {
     folded_name(&String::from_utf8_lossy(key))
@@ -910,10 +927,10 @@ impl<'registry> Builder<'registry> {
             let Some(column) = plan.tag_index(tag) else {
                 break;
             };
-            if plan.delimiter() == Some(tag) {
-                if let Some(values) = current.take() {
-                    rows.push(plan.row(values));
-                }
+            if plan.delimiter() == Some(tag)
+                && let Some(values) = current.take()
+            {
+                rows.push(plan.row(values));
             }
             let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
             let text = String::from_utf8_lossy(raw);
@@ -1506,54 +1523,108 @@ impl<'registry> Builder<'registry> {
         let known = source.is_some();
         // Which spelling stands: the canonical name or the tag over any
         // alias, the earlier alias in `FIX:names` over a later one, and two
-        // arrivals of one spelling both, as a repeated tag stays two.
-        let demoted = {
+        // arrivals of one spelling both, as a repeated tag stays two. What
+        // lost is answered beside whether it states what stands: one fact
+        // stated twice is one fact.
+        // Whether the newcomer is an alias that lost stating what stands,
+        // which states nothing more.
+        let mut agreed = false;
+        let demoted: SmallVec<[(SmolStr, SlotValues); 2]> = {
             let slot = self.slot_for(field.clone(), tag, known);
             let empty = matches!(slot.values, SlotValues::Empty);
             match (empty, slot.filler.as_ref(), alias.as_ref()) {
                 (true, _, _) => {
                     slot.filler = alias.clone();
                     slot.values.push(value);
-                    None
+                    SmallVec::new()
                 }
                 (false, None, None) | (false, Some(_), Some(_))
                     if slot.filler.as_ref().map(|held| held.1)
                         == alias.as_ref().map(|held| held.1) =>
                 {
                     slot.values.push(value);
-                    None
+                    SmallVec::new()
                 }
                 // The slot holds an alias and the canonical name, or an
-                // earlier alias, arrives: the newcomer takes the slot and
-                // the old value keeps its own spelling.
+                // earlier alias, arrives: the newcomer takes the slot, and
+                // the old value - with every alias that agreed with it -
+                // lost, standing only where it is what the newcomer states.
                 (false, Some((spelling, rank)), newer)
                     if newer.is_none_or(|(_, new_rank)| *new_rank < *rank) =>
                 {
                     let spelling = spelling.clone();
                     let held = std::mem::replace(&mut slot.values, SlotValues::One(value));
                     slot.filler = alias.clone();
-                    Some((spelling, held))
+                    let same = held
+                        .as_slice()
+                        .iter()
+                        .all(|held| slot.values.as_slice().contains(held));
+                    if same {
+                        slot.agreeing.push(spelling);
+                        SmallVec::new()
+                    } else {
+                        std::iter::once(spelling)
+                            .chain(std::mem::take(&mut slot.agreeing))
+                            .map(|spelling| (spelling, held.clone()))
+                            .collect()
+                    }
                 }
                 // The slot is already the canonical's or an earlier alias's:
-                // the newcomer is its own child.
-                (false, _, Some((spelling, _))) => Some((spelling.clone(), SlotValues::One(value))),
+                // the newcomer is a spelling that lost.
+                (false, _, Some((spelling, _))) => {
+                    if slot.values.as_slice().contains(&value) {
+                        slot.agreeing.push(spelling.clone());
+                        agreed = true;
+                        SmallVec::new()
+                    } else {
+                        SmallVec::from_elem((spelling.clone(), SlotValues::One(value)), 1)
+                    }
+                }
                 (false, _, None) => {
                     slot.values.push(value);
-                    None
+                    SmallVec::new()
                 }
             }
         };
-        match demoted.zip(source) {
+        match source {
+            _ if agreed => self.record(unresolved(0)),
             None => self.record(if known { tag } else { unresolved(tag) }),
-            Some(((spelling, values), declared)) => {
+            _ if demoted.is_empty() => self.record(if known { tag } else { unresolved(tag) }),
+            Some(declared) => {
                 self.record(unresolved(0));
-                // Its own spelling would resolve back to the field it did
-                // not fill, so the child says what it is: an alias that lost,
-                // which the tag resolution leaves where it stands.
-                let own = self.alias_field(spelling, declared);
-                let own = self.slot_for(own, 0, false);
-                for held in values.as_slice() {
-                    own.values.push(held.clone());
+                // The text a value holds, borrowed: a reason is the one
+                // string an anomaly builds.
+                let spelled = |value: Option<&Scalar>| {
+                    value
+                        .and_then(crate::string::str_from_value)
+                        .and_then(Result::ok)
+                        .unwrap_or_default()
+                };
+                let stands = spelled(
+                    self.slot_for(field.clone(), tag, known)
+                        .values
+                        .as_slice()
+                        .first(),
+                );
+                for (spelling, values) in demoted {
+                    self.anomalies.push(super::FixAnomaly::new(
+                        spelling.clone(),
+                        format!(
+                            "states {:?} where {} holds {:?}, kept in the metadata",
+                            spelled(values.as_slice().first()).as_str(),
+                            declared.name(),
+                            stands.as_str(),
+                        ),
+                    ));
+                    // Its own spelling would resolve back to the field it
+                    // did not fill, so the child says what it is: an alias
+                    // that lost, which the message keeps in its metadata
+                    // rather than on the wire ([`super::FixMsg::get_metadata`]).
+                    let own = self.alias_field(spelling, declared);
+                    let own = self.slot_for(own, 0, false);
+                    for held in values.as_slice() {
+                        own.values.push(held.clone());
+                    }
                 }
             }
         }
@@ -1842,9 +1913,36 @@ impl<'registry> Builder<'registry> {
         }
         if nested_counter {
             slot.nested(at, stated(&leaf_field), leaf_tag, true);
-        } else {
-            slot.occurrences[at].push(Member::Value(leaf_field, value));
+            return;
         }
+        // A member an occurrence already holds - two spellings of it, or one
+        // stated twice - is one fact where the values agree; where they do
+        // not, the first stands and the other is kept in the metadata
+        // under its path, as a flat alias that lost is.
+        let held = slot.occurrences[at].iter().find_map(|member| match member {
+            Member::Value(field, held) if field.name() == leaf_field.name() => Some(held.clone()),
+            _ => None,
+        });
+        let Some(held) = held else {
+            slot.occurrences[at].push(Member::Value(leaf_field, value));
+            return;
+        };
+        if held == value {
+            return;
+        }
+        let path = folded_name(&format!("{group}[{occurrence}].{member}"));
+        self.anomalies.push(super::FixAnomaly::new(
+            path.clone(),
+            format!(
+                "states {text:?} where {} holds another value, kept in the metadata",
+                leaf_field.name()
+            ),
+        ));
+        let own = match source {
+            Some(declared) => self.alias_field(path, declared),
+            None => DataType::utf8().nullable_field(path),
+        };
+        self.slot_for(own, 0, false).values.push(Scalar::from(text));
     }
 
     /// The slot one field builds into, created on first use.
@@ -1877,6 +1975,7 @@ impl<'registry> Builder<'registry> {
                     group: false,
                     occurrences: Vec::new(),
                     filler: None,
+                    agreeing: Vec::new(),
                 });
                 self.slots.last_mut().expect("just pushed")
             }
@@ -1963,6 +2062,7 @@ impl<'registry> Builder<'registry> {
                 group: false,
                 occurrences: Vec::new(),
                 filler: None,
+                agreeing: Vec::new(),
             });
         }
         // Each slot's place is read once, as a rank - the standard header in
@@ -2558,12 +2658,11 @@ fn typed_translation(
     // dictionary names none, so a dialect's own code reaches the explicit
     // value through the name its dictionary gives it.
     let dtype = field.dtype();
-    if dtype.is_enum() {
-        if let Some(member) =
+    if dtype.is_enum()
+        && let Some(member) =
             named(spelling).and_then(|name| crate::enums::read_enum_spelling(dtype.id(), name).ok())
-        {
-            return Ok(member);
-        }
+    {
+        return Ok(member);
     }
     // Every wire value is text, and the generic value contract does not
     // read text as a number, an instant or a flag. Two of those it can

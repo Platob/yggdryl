@@ -68,10 +68,10 @@ impl DataType {
         let mut captures = Vec::new();
         let mut pending = vec![&hir];
         while let Some(node) = pending.pop() {
-            if let HirKind::Capture(capture) = node.kind() {
-                if let Some(name) = capture.name.as_deref() {
-                    captures.push((capture.index, name, capture.sub.as_ref()));
-                }
+            if let HirKind::Capture(capture) = node.kind()
+                && let Some(name) = capture.name.as_deref()
+            {
+                captures.push((capture.index, name, capture.sub.as_ref()));
             }
             pending.extend(node.kind().subs().iter().rev());
         }
@@ -132,15 +132,17 @@ fn inferred_capture(capture: &Hir, unicode_digits: &Class) -> Result<DataType> {
 
     let expression =
         Regex::new(&format!(r"\A(?:{capture})\z")).map_err(|error| regex_error(&error))?;
-    if allowed(capture, unicode_digits, temporal_byte) && contains_digit(capture, unicode_digits) {
-        if let Some(dtype) = temporal_dtype(capture, &expression) {
-            return Ok(dtype);
-        }
+    if allowed(capture, unicode_digits, temporal_byte)
+        && contains_digit(capture, unicode_digits)
+        && let Some(dtype) = temporal_dtype(capture, &expression)
+    {
+        return Ok(dtype);
     }
-    if allowed(capture, unicode_digits, numeric_byte) && contains_digit(capture, unicode_digits) {
-        if let Some(dtype) = numeric_dtype(&expression)? {
-            return Ok(dtype);
-        }
+    if allowed(capture, unicode_digits, numeric_byte)
+        && contains_digit(capture, unicode_digits)
+        && let Some(dtype) = numeric_dtype(&expression)?
+    {
+        return Ok(dtype);
     }
     text_dtype()
 }
@@ -395,21 +397,21 @@ fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
             for separator in ['T', ' '] {
                 for zone in ZONES {
                     let value = format!("2024-02-01{separator}12:34:56{fraction}{zone}");
-                    if expression.is_match(value.as_bytes()) {
-                        if let Some(dtype) = resolved_dtype(&value, |unit| {
+                    if expression.is_match(value.as_bytes())
+                        && let Some(dtype) = resolved_dtype(&value, |unit| {
                             DataType::datetime64(unit, Timezone::UTC).ok()
-                        }) {
-                            return Some(dtype);
-                        }
+                        })
+                    {
+                        return Some(dtype);
                     }
                 }
                 let value = format!("2024-02-01{separator}12:34:56{fraction}");
-                if expression.is_match(value.as_bytes()) {
-                    if let Some(dtype) = resolved_dtype(&value, |unit| {
+                if expression.is_match(value.as_bytes())
+                    && let Some(dtype) = resolved_dtype(&value, |unit| {
                         DataType::datetime64(unit, Timezone::NAIVE).ok()
-                    }) {
-                        return Some(dtype);
-                    }
+                    })
+                {
+                    return Some(dtype);
                 }
             }
         }
@@ -417,20 +419,20 @@ fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
 
     if calendar {
         let date = "2024-02-01";
-        if expression.is_match(date.as_bytes()) {
-            if let Some(dtype) = temporal_scalar_dtype(date, DataType::date32()) {
-                return Some(dtype);
-            }
+        if expression.is_match(date.as_bytes())
+            && let Some(dtype) = temporal_scalar_dtype(date, DataType::date32())
+        {
+            return Some(dtype);
         }
     }
 
     if clock {
         for fraction in &fractions {
             let value = format!("12:34:56{fraction}");
-            if expression.is_match(value.as_bytes()) {
-                if let Some(dtype) = resolved_dtype(&value, |unit| DataType::time(unit).ok()) {
-                    return Some(dtype);
-                }
+            if expression.is_match(value.as_bytes())
+                && let Some(dtype) = resolved_dtype(&value, |unit| DataType::time(unit).ok())
+            {
+                return Some(dtype);
             }
         }
     }

@@ -134,10 +134,8 @@ pub(crate) mod casts {
                 }
             }
             let mut limbs = [0_u64; 4];
-            for (limb, chunk) in limbs.iter_mut().zip(raw.chunks_exact(8)) {
-                let mut bytes = [0_u8; 8];
-                bytes.copy_from_slice(chunk);
-                *limb = u64::from_le_bytes(bytes);
+            for (limb, chunk) in limbs.iter_mut().zip(raw.as_chunks::<8>().0) {
+                *limb = u64::from_le_bytes(*chunk);
             }
 
             let mut bytes = [0_u8; 78];

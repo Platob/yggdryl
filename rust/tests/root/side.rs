@@ -60,12 +60,12 @@ const SIDES: [(Option<char>, &str, &str, &str, Side); 18] = [
 #[test]
 fn a_code_or_a_spelling_that_names_no_side_is_refused_by_name() {
     assert_eq!(Side::from_code(18), None);
-    assert_eq!(Side::from_code(-1), None);
+    assert!(Side::read_code(-1).is_err());
     let refused = Side::read_code(4_242).unwrap_err().to_string();
     assert!(refused.contains("4242"), "{refused}");
     assert!(refused.contains("side"), "{refused}");
     assert!(Side::read_code(i64::from(i32::MAX) + 1).is_err());
-    assert!(Side::try_from(18_i32).is_err());
+    assert!(Side::try_from(18_u8).is_err());
 
     // A spelling that names no side is refused naming the datatype, and no
     // width bounds the spelling: a long name is refused for naming nothing.
@@ -95,11 +95,11 @@ fn a_side_is_one_byte_whose_code_is_the_position_of_its_wire_character() {
 
     for (index, (code, stored, former, _, side)) in SIDES.iter().enumerate() {
         assert_eq!(*side as usize, index, "{stored}");
-        assert_eq!(side.code(), i32::try_from(index).unwrap(), "{stored}");
+        assert_eq!(side.code(), u8::try_from(index).unwrap(), "{stored}");
         assert_eq!(Side::from_code(side.code()), Some(*side), "{stored}");
         assert_eq!(Side::read_code(i64::from(side.code())).unwrap(), *side);
         assert_eq!(Side::try_from(side.code()).unwrap(), *side);
-        assert_eq!(i32::from(*side), side.code());
+        assert_eq!(u8::from(*side), side.code());
         assert_eq!(side.fix_code(), *code, "{stored}");
         assert_eq!(side.as_str(), *stored);
         assert_eq!(side.to_string(), *stored);
@@ -304,10 +304,10 @@ fn a_side_is_a_datatype_of_the_enum_family() {
 }
 
 #[test]
-fn a_column_is_int32_codes_under_the_side_extension() {
+fn a_column_is_uint8_codes_under_the_side_extension() {
     let field = Field::new("side", DataType::Side, true);
     let arrow = field.clone().into_arrow_field().unwrap();
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
     assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
@@ -320,7 +320,10 @@ fn a_column_is_int32_codes_under_the_side_extension() {
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
     assert!(matches!(serie, Serie::Side(_)));
     let array = serie.require_arrow_array().unwrap();
-    let codes = array.as_any().downcast_ref::<Int32Array>().unwrap();
+    let codes = array
+        .as_any()
+        .downcast_ref::<arrow_array::UInt8Array>()
+        .unwrap();
     assert_eq!(codes.values().as_ref(), [1, 0, 17]);
     assert!(codes.is_null(1));
     let back = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default()).unwrap();
@@ -355,7 +358,10 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
     )
     .unwrap();
     let codes = landed.require_arrow_array().unwrap();
-    let codes = codes.as_any().downcast_ref::<Int32Array>().unwrap();
+    let codes = codes
+        .as_any()
+        .downcast_ref::<arrow_array::UInt8Array>()
+        .unwrap();
     assert_eq!(codes.values().as_ref(), [1, 1, 2, 5]);
     assert_eq!(landed.scalar(3).unwrap(), Scalar::Side(Side::SShort));
     let text = landed
@@ -410,7 +416,8 @@ fn a_side_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         let value = Scalar::Side(side);
         let bytes = value.into_value_bytes();
         assert_eq!(bytes[1], DataTypeId::Side.as_u8());
-        assert_eq!(bytes[2..], side.code().to_le_bytes());
+        // The canonical four bytes, whatever width a column stores.
+        assert_eq!(bytes[2..], i32::from(side.code()).to_le_bytes());
         assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
         // A digest reads the code under the leaf's tag: a member's name is
         // free to change, and a state or an integer of the same code is
@@ -422,7 +429,7 @@ fn a_side_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         );
         assert_ne!(
             value.digest(DigestAlgorithm::Xxh3),
-            Scalar::State(yggdryl::State::from_code(side.code()).unwrap_or_default())
+            Scalar::State(yggdryl::State::from_code(u16::from(side.code())).unwrap_or_default())
                 .digest(DigestAlgorithm::Xxh3),
             "{side}"
         );

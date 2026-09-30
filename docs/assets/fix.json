@@ -96,16 +96,16 @@
     ]
   },
   "kpi": {
-    "fields": 6281,
+    "fields": 6271,
     "groups": 581,
-    "enumFields": 2028,
-    "codesets": 737,
-    "codes": 7816,
-    "aliases": 47,
+    "enumFields": 2029,
+    "codesets": 738,
+    "codes": 7934,
+    "aliases": 55,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 133,
+    "columns": 152,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 28,
@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1939
+        1929
       ],
       [
         "decimal128(38,18)",
@@ -183,10 +183,6 @@
         1
       ],
       [
-        "decimal",
-        1
-      ],
-      [
         "figi",
         1
       ],
@@ -204,6 +200,10 @@
       ],
       [
         "marketdatakind",
+        1
+      ],
+      [
+        "marketdatatype",
         1
       ],
       [
@@ -232,6 +232,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "omsdealeraccount"
+          ],
           "FIX:tag": "1",
           "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
           "display": "Account"
@@ -359,9 +362,15 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "CLORDID",
-              "map": "altids"
+              "key": "clordid",
+              "map": "identifiers"
             }
+          ],
+          "FIX:names": [
+            "ultraderclordid"
+          ],
+          "FIX:parents": [
+            "origclordid"
           ],
           "FIX:tag": "11",
           "description": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field.",
@@ -442,8 +451,8 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "EXECID",
-              "map": "altids"
+              "key": "execid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "17",
@@ -713,8 +722,8 @@
           "FIX:idmap": [
             {
               "follow": true,
-              "key": "ORDERID",
-              "map": "altids"
+              "key": "orderid",
+              "map": "identifiers"
             }
           ],
           "FIX:names": [
@@ -775,9 +784,12 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "ORIGCLORDID",
-              "map": "altids"
+              "key": "origclordid",
+              "map": "identifiers"
             }
+          ],
+          "FIX:names": [
+            "parentclordid"
           ],
           "FIX:tag": "41",
           "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
@@ -1157,6 +1169,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:parents": [
+            "parentallocid"
+          ],
           "FIX:tag": "70",
           "description": "Unique identifier for allocation message.",
           "display": "AllocID"
@@ -1745,8 +1760,8 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "QUOTEID",
-              "map": "altids"
+              "key": "quoteid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "117",
@@ -1931,8 +1946,8 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "QUOTEREQID",
-              "map": "altids"
+              "key": "quotereqid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "131",
@@ -2782,8 +2797,8 @@
           "FIX:idmap": [
             {
               "follow": true,
-              "key": "SECONDARYORDERID",
-              "map": "altids"
+              "key": "secondaryorderid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "198",
@@ -3597,8 +3612,8 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "MDREQID",
-              "map": "altids"
+              "key": "mdreqid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "262",
@@ -6961,6 +6976,15 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryclordid",
+              "map": "identifiers"
+            }
+          ],
+          "FIX:names": [
+            "exchangeclientorderid"
+          ],
           "FIX:tag": "526",
           "description": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system.",
           "display": "SecondaryClOrdID"
@@ -6973,6 +6997,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryexecid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "527",
           "description": "Assigned by the party which accepts the order. Can be used to provide the ExecID (17) used by an exchange or executing system.",
           "display": "SecondaryExecID"
@@ -7240,6 +7270,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:parents": [
+            "origcrossid"
+          ],
           "FIX:tag": "548",
           "description": "Identifier for a cross order. Must be unique during a given trading day. Recommend that firms use the order date as part of the CrossID for Good Till Cancel (GT) orders.",
           "display": "CrossID"
@@ -7278,6 +7311,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "parentcrossid"
+          ],
           "FIX:tag": "551",
           "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
           "display": "OrigCrossID"
@@ -7303,6 +7339,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "omsuserid"
+          ],
           "FIX:tag": "553",
           "description": "Userid or username.",
           "display": "Username"
@@ -10369,6 +10408,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryallocid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "793",
           "description": "Secondary allocation identifier. Unlike the AllocID (70), this can be shared across a number of allocation instruction or allocation report messages, thereby making it possible to pass an identifier for an original allocation message on multiple messages (e.g. from one party to a second to a third, across cancel and replace messages etc.).",
           "display": "SecondaryAllocID"
@@ -11470,8 +11515,8 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "TRDMATCHID",
-              "map": "altids"
+              "key": "trdmatchid",
+              "map": "identifiers"
             }
           ],
           "FIX:tag": "880",
@@ -12858,6 +12903,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryindividualallocid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "989",
           "description": "Will allow the intermediary to specify an allocation ID generated by their system.",
           "display": "SecondaryIndividualAllocID"
@@ -13026,9 +13077,12 @@
         "metadata": {
           "FIX:idmap": [
             {
-              "key": "TRADEID",
-              "map": "altids"
+              "key": "tradeid",
+              "map": "identifiers"
             }
+          ],
+          "FIX:parents": [
+            "origtradeid"
           ],
           "FIX:tag": "1003",
           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
@@ -13483,6 +13537,15 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondarytradeid",
+              "map": "identifiers"
+            }
+          ],
+          "FIX:parents": [
+            "origsecondarytradeid"
+          ],
           "FIX:tag": "1040",
           "description": "Used to carry an internal trade entity ID which may or may not be reported to the firm",
           "display": "SecondaryTradeID"
@@ -13507,6 +13570,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryfirmtradeid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "1042",
           "description": "Used to carry an internal firm assigned ID which may or may not be reported to the exchange or central counterpary",
           "display": "SecondaryFirmTradeID"
@@ -14576,6 +14645,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "parenttradeid"
+          ],
           "FIX:tag": "1126",
           "description": "Used to preserve original trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
           "display": "OrigTradeID"
@@ -14588,6 +14660,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "parentsecondarytradeid"
+          ],
           "FIX:tag": "1127",
           "description": "Used to preserve original secondary trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
           "display": "OrigSecondaryTradeID"
@@ -20443,6 +20518,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "origallocid"
+          ],
           "FIX:tag": "1593",
           "description": "Contains the IndividualAllocId (tag 467) value of the allocation that is being offset as a result of a new allocation. This would be an optional field that would only be populated in the case of an allocation of an allocation (as well as any subsequent allocations). This wouldn’t be populated for an initial allocation since an allocation id is not supplied on default (initial) allocations.",
           "display": "ParentAllocID"
@@ -22427,6 +22505,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "secondaryquoteid",
+              "map": "identifiers"
+            }
+          ],
           "FIX:tag": "1751",
           "description": "Assigned by the party which accepts the quote. Can be used to provide the quote identifier assigned by an exchange, marketplace or executing system.",
           "display": "SecondaryQuoteID"
@@ -78913,121 +78997,13 @@
       },
       {
         "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
+          "type": "uuid"
         },
         "metadata": {
           "FIX:tag": "65001",
           "FIX:transient": "false",
-          "description": "When the event happened: the settled instant, UTC.",
-          "display": "CurrUnix"
-        },
-        "name": "currunix",
-        "nullable": false
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65002",
-          "FIX:transient": "false",
-          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
-          "display": "ExecUnix"
-        },
-        "name": "execunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65003",
-          "FIX:transient": "false",
-          "description": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know.",
-          "display": "RecdUnix"
-        },
-        "name": "recdunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:names": [
-            "CreationTime"
-          ],
-          "FIX:tag": "65004",
-          "FIX:transient": "false",
-          "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
-          "display": "CreaUnix"
-        },
-        "name": "creaunix",
-        "nullable": false
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65005",
-          "FIX:transient": "false",
-          "description": "When the event this one follows happened, where it follows one.",
-          "display": "PrevUnix"
-        },
-        "name": "prevunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65006",
-          "FIX:transient": "false",
-          "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
-          "display": "SnapUnix"
-        },
-        "name": "snapunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "FIX:tag": "65007",
-          "FIX:transient": "false",
-          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
-          "display": "ExprUnix"
-        },
-        "name": "exprunix",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "uuid"
-        },
-        "metadata": {
-          "FIX:tag": "65008",
-          "FIX:transient": "false",
-          "description": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
-          "display": "CurrUuid"
+          "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
+          "display": "Current UUID"
         },
         "name": "curruuid",
         "nullable": false
@@ -79037,10 +79013,10 @@
           "type": "uuid"
         },
         "metadata": {
-          "FIX:tag": "65009",
+          "FIX:tag": "65002",
           "FIX:transient": "false",
-          "description": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none.",
-          "display": "CrossUuid"
+          "description": "The identity every element of one chain shares, derived from the code they share; the element's own where it names none.",
+          "display": "Cross UUID"
         },
         "name": "crossuuid",
         "nullable": false
@@ -79050,10 +79026,10 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65010",
+          "FIX:tag": "65003",
           "FIX:transient": "false",
-          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the four-letter code of its side, BUYS:ORD-1, on an order, a quote or an execution, and as given on one of side UNKN and on every other kind; its chain's once followed.",
-          "display": "CrossCode"
+          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed.",
+          "display": "Cross Code"
         },
         "name": "crosscode",
         "nullable": true
@@ -79063,10 +79039,10 @@
           "type": "uint64"
         },
         "metadata": {
-          "FIX:tag": "65011",
+          "FIX:tag": "65004",
           "FIX:transient": "false",
           "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-          "display": "CurrHashCode"
+          "display": "Current Hash Code"
         },
         "name": "currhashcode",
         "nullable": false
@@ -79076,39 +79052,13 @@
           "type": "uint64"
         },
         "metadata": {
-          "FIX:tag": "65012",
+          "FIX:tag": "65005",
           "FIX:transient": "false",
-          "description": "The XXH3-64 of the cross code; zero where the event names none.",
-          "display": "CrossHashCode"
+          "description": "The XXH3-64 of the cross code; zero where the element names none.",
+          "display": "Cross Hash Code"
         },
         "name": "crosshashcode",
         "nullable": false
-      },
-      {
-        "dtype": {
-          "type": "uuid"
-        },
-        "metadata": {
-          "FIX:tag": "65013",
-          "FIX:transient": "false",
-          "description": "The identity of the event this one follows, where it follows one.",
-          "display": "PrevUuid"
-        },
-        "name": "prevuuid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "uint64"
-        },
-        "metadata": {
-          "FIX:tag": "65014",
-          "FIX:transient": "false",
-          "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
-          "display": "SeqNum"
-        },
-        "name": "seqnum",
-        "nullable": true
       },
       {
         "dtype": {
@@ -79123,12 +79073,145 @@
           "type": "serie"
         },
         "metadata": {
-          "FIX:tag": "65015",
+          "FIX:tag": "65006",
           "FIX:transient": "false",
           "description": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
-          "display": "SrcUuids"
+          "display": "Source UUIDs"
         },
         "name": "srcuuids",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65007",
+          "FIX:transient": "false",
+          "description": "When the event happened: the settled instant, UTC.",
+          "display": "Current Time"
+        },
+        "name": "currunix",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:names": [
+            "CreationTime"
+          ],
+          "FIX:tag": "65008",
+          "FIX:transient": "false",
+          "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
+          "display": "Creation Time"
+        },
+        "name": "creaunix",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65009",
+          "FIX:transient": "false",
+          "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
+          "display": "Recording Time"
+        },
+        "name": "recdunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65010",
+          "FIX:transient": "false",
+          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
+          "display": "Expiry Time"
+        },
+        "name": "exprunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65011",
+          "FIX:transient": "false",
+          "description": "When the event this one follows happened, where it follows one.",
+          "display": "Previous Time"
+        },
+        "name": "prevunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65012",
+          "FIX:transient": "false",
+          "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
+          "display": "Snapshot Time"
+        },
+        "name": "snapunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "uuid"
+        },
+        "metadata": {
+          "FIX:tag": "65013",
+          "FIX:transient": "false",
+          "description": "The identity of the event this one follows, where it follows one.",
+          "display": "Previous UUID"
+        },
+        "name": "prevuuid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "uint64"
+        },
+        "metadata": {
+          "FIX:tag": "65014",
+          "FIX:transient": "false",
+          "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
+          "display": "Sequence Number"
+        },
+        "name": "seqnum",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "state"
+        },
+        "metadata": {
+          "FIX:codeset": "statecodeset",
+          "FIX:tag": "65015",
+          "FIX:transient": "false",
+          "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
+          "display": "State"
+        },
+        "name": "state",
         "nullable": true
       },
       {
@@ -79139,82 +79222,23 @@
           "FIX:codeset": "msgcatcodeset",
           "FIX:tag": "65016",
           "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
-          "display": "MsgCat"
+          "display": "Market Data Kind"
         },
-        "name": "msgcat",
+        "name": "marketdatakind",
         "nullable": true
       },
       {
         "dtype": {
-          "type": "string"
+          "type": "marketdatatype"
         },
         "metadata": {
+          "FIX:codeset": "marketdatatypecodeset",
           "FIX:tag": "65017",
-          "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
-          "display": "MsgPluginId"
-        },
-        "name": "msgpluginid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65018",
-          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
-          "display": "MsgOriginator"
-        },
-        "name": "msgoriginator",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65019",
-          "description": "The message context a bridge handled the message in, as its own log names it.",
-          "display": "MsgCtxId"
-        },
-        "name": "msgctxid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65020",
-          "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
-          "display": "MsgSessionId"
-        },
-        "name": "msgsessionid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65021",
           "FIX:transient": "false",
-          "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
-          "display": "MsgSessEventId"
+          "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word.",
+          "display": "Market Data Type"
         },
-        "name": "msgsesseventid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65022",
-          "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
-          "display": "ConversationId"
-        },
-        "name": "conversationid",
+        "name": "marketdatatype",
         "nullable": true
       },
       {
@@ -79222,47 +79246,11 @@
           "type": "isin"
         },
         "metadata": {
-          "FIX:tag": "65023",
+          "FIX:tag": "65021",
           "description": "The normalized ISIN the message identifies.",
-          "display": "IsinCode"
+          "display": "ISIN Code"
         },
         "name": "isincode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "forex"
-        },
-        "metadata": {
-          "FIX:tag": "65024",
-          "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written.",
-          "display": "ForexCode"
-        },
-        "name": "forexcode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "bbg"
-        },
-        "metadata": {
-          "FIX:tag": "65025",
-          "description": "The normalized Bloomberg identifier the message identifies.",
-          "display": "BloombergCode"
-        },
-        "name": "bloombergcode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "figi"
-        },
-        "metadata": {
-          "FIX:tag": "65026",
-          "description": "The normalized FIGI the message identifies.",
-          "display": "FIGICode"
-        },
-        "name": "figicode",
         "nullable": true
       },
       {
@@ -79273,187 +79261,26 @@
           "FIX:names": [
             "instrument[exchange]"
           ],
-          "FIX:tag": "65027",
+          "FIX:tag": "65022",
           "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it.",
-          "display": "MicCode"
+          "display": "MIC Code"
         },
         "name": "miccode",
         "nullable": true
       },
       {
         "dtype": {
-          "type": "decimal"
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:tag": "65028",
-          "description": "The option strike price the message identifies: StrikePrice, as the decimal leaf; a row stating one is the row's word.",
-          "display": "StrikePx"
-        },
-        "name": "strikepx",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "state"
-        },
-        "metadata": {
-          "FIX:codeset": "statecodeset",
-          "FIX:tag": "65029",
+          "FIX:tag": "65023",
           "FIX:transient": "false",
-          "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
-          "display": "State"
+          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+          "display": "Execution Time"
         },
-        "name": "state",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "url"
-        },
-        "metadata": {
-          "FIX:tag": "65031",
-          "FIX:transient": "false",
-          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
-          "display": "SourceUrl"
-        },
-        "name": "sourceurl",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65032",
-          "description": "The account an OMS dealer books the order to, as the bridge stated it.",
-          "display": "OmsDealerAccount"
-        },
-        "name": "omsdealeraccount",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:tag": "65033",
-          "description": "The OMS user who entered the order, as the bridge stated it.",
-          "display": "OmsUserId"
-        },
-        "name": "omsuserid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "follow": true,
-              "key": "PARENTORDERID",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65034",
-          "description": "The parent order's identifier, as the bridge stated it.",
-          "display": "ParentOrderId"
-        },
-        "name": "parentorderid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "follow": true,
-              "key": "PARENTCLORDID",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65035",
-          "description": "The parent order's client identifier, as the bridge stated it.",
-          "display": "ParentClOrdId"
-        },
-        "name": "parentclordid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "follow": true,
-              "key": "OMSDEALERPARENTORDERID",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65036",
-          "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
-          "display": "OmsDealerParentOrderId"
-        },
-        "name": "omsdealerparentorderid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "follow": true,
-              "key": "EXCHANGECLIENTORDERID",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65037",
-          "description": "The exchange's client order identifier, as the bridge stated it.",
-          "display": "ExchangeClientOrderId"
-        },
-        "name": "exchangeclientorderid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "follow": true,
-              "key": "TRANSVERSALKEY",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65038",
-          "description": "The key a bridge threads one order through every system with, as it stated it.",
-          "display": "TransversalKey"
-        },
-        "name": "transversalkey",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "string"
-        },
-        "metadata": {
-          "FIX:idmap": [
-            {
-              "key": "ULTRADERCLORDID",
-              "map": "altids"
-            }
-          ],
-          "FIX:tag": "65039",
-          "description": "A trading screen's own client order identifier, as the bridge stated it.",
-          "display": "UlTraderClOrdId"
-        },
-        "name": "ultraderclordid",
+        "name": "execunix",
         "nullable": true
       },
       {
@@ -79462,10 +79289,10 @@
         },
         "metadata": {
           "FIX:tag": "65040",
-          "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
-          "display": "OmsInstrumentId"
+          "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
+          "display": "Message Plugin ID"
         },
-        "name": "omsinstrumentid",
+        "name": "msgpluginid",
         "nullable": true
       },
       {
@@ -79473,14 +79300,109 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:names": [
-            "ullink.instrumentid"
-          ],
           "FIX:tag": "65041",
-          "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
-          "display": "UllinkInstrumentId"
+          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+          "display": "Message Originator"
         },
-        "name": "ullinkinstrumentid",
+        "name": "msgoriginator",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65042",
+          "description": "The message context a bridge handled the message in, as its own log names it.",
+          "display": "Message Context ID"
+        },
+        "name": "msgctxid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65043",
+          "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
+          "display": "Message Session ID"
+        },
+        "name": "msgsessionid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65044",
+          "FIX:transient": "false",
+          "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
+          "display": "Message Session Event ID"
+        },
+        "name": "msgsesseventid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65045",
+          "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
+          "display": "Conversation ID"
+        },
+        "name": "conversationid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "forex"
+        },
+        "metadata": {
+          "FIX:tag": "65046",
+          "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written.",
+          "display": "Forex Code"
+        },
+        "name": "forexcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "bbg"
+        },
+        "metadata": {
+          "FIX:tag": "65047",
+          "description": "The normalized Bloomberg identifier the message identifies.",
+          "display": "Bloomberg Code"
+        },
+        "name": "bloombergcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "figi"
+        },
+        "metadata": {
+          "FIX:tag": "65048",
+          "description": "The normalized FIGI the message identifies.",
+          "display": "FIGI Code"
+        },
+        "name": "figicode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "url"
+        },
+        "metadata": {
+          "FIX:tag": "65049",
+          "FIX:transient": "false",
+          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
+          "display": "Source URL"
+        },
+        "name": "sourceurl",
         "nullable": true
       }
     ],
@@ -238739,8 +238661,8 @@
           "type": "map"
         },
         "metadata": {
-          "FIX:counter": "65030",
-          "FIX:tag": "65030",
+          "FIX:counter": "65035",
+          "FIX:tag": "65035",
           "description": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order.",
           "display": "Metadata"
         },
@@ -262366,6 +262288,601 @@
         }
       ],
       "name": "marketconditioncodeset"
+    },
+    {
+      "codes": [
+        {
+          "doc": "No type stated.",
+          "name": "UNKN",
+          "value": "0"
+        },
+        {
+          "doc": "Market order.",
+          "name": "ORDMKT",
+          "value": "101"
+        },
+        {
+          "doc": "Limit order.",
+          "name": "ORDLIMIT",
+          "value": "102"
+        },
+        {
+          "doc": "Stop, or stop loss, order.",
+          "name": "ORDSTOP",
+          "value": "103"
+        },
+        {
+          "doc": "Stop limit order.",
+          "name": "ORDSTOPLIMIT",
+          "value": "104"
+        },
+        {
+          "doc": "Market on close order.",
+          "name": "ORDMOC",
+          "value": "105"
+        },
+        {
+          "doc": "With or without order.",
+          "name": "ORDWOW",
+          "value": "106"
+        },
+        {
+          "doc": "Limit or better order.",
+          "name": "ORDLOB",
+          "value": "107"
+        },
+        {
+          "doc": "Limit with or without order.",
+          "name": "ORDLWOW",
+          "value": "108"
+        },
+        {
+          "doc": "On basis order.",
+          "name": "ORDBASIS",
+          "value": "109"
+        },
+        {
+          "doc": "On close order.",
+          "name": "ORDONCLOSE",
+          "value": "110"
+        },
+        {
+          "doc": "Limit on close order.",
+          "name": "ORDLOC",
+          "value": "111"
+        },
+        {
+          "doc": "Forex market order.",
+          "name": "ORDFXMKT",
+          "value": "112"
+        },
+        {
+          "doc": "Previously quoted order.",
+          "name": "ORDPREVQUOTED",
+          "value": "113"
+        },
+        {
+          "doc": "Previously indicated order.",
+          "name": "ORDPREVINDIC",
+          "value": "114"
+        },
+        {
+          "doc": "Forex limit order.",
+          "name": "ORDFXLIMIT",
+          "value": "115"
+        },
+        {
+          "doc": "Forex swap order.",
+          "name": "ORDFXSWAP",
+          "value": "116"
+        },
+        {
+          "doc": "Forex previously quoted order.",
+          "name": "ORDFXPREVQUOTED",
+          "value": "117"
+        },
+        {
+          "doc": "Funari order: a limit day order whose unexecuted part becomes a market on close order.",
+          "name": "ORDFUNARI",
+          "value": "118"
+        },
+        {
+          "doc": "Market if touched order.",
+          "name": "ORDMIT",
+          "value": "119"
+        },
+        {
+          "doc": "Market order whose unexecuted part stands as a limit order.",
+          "name": "ORDMKTLIMIT",
+          "value": "120"
+        },
+        {
+          "doc": "Order at the previous fund valuation point.",
+          "name": "ORDPREVFUND",
+          "value": "121"
+        },
+        {
+          "doc": "Order at the next fund valuation point.",
+          "name": "ORDNEXTFUND",
+          "value": "122"
+        },
+        {
+          "doc": "Pegged order.",
+          "name": "ORDPEGGED",
+          "value": "123"
+        },
+        {
+          "doc": "Counter-order selection.",
+          "name": "ORDCOUNTER",
+          "value": "124"
+        },
+        {
+          "doc": "Stop on bid or offer order.",
+          "name": "ORDSTOPBO",
+          "value": "125"
+        },
+        {
+          "doc": "Stop limit on bid or offer order.",
+          "name": "ORDSTOPLIMITBO",
+          "value": "126"
+        },
+        {
+          "doc": "Market order within a price band.",
+          "name": "ORDMKTBAND",
+          "value": "127"
+        },
+        {
+          "doc": "An order type no member names.",
+          "name": "ORDOTHER",
+          "value": "199"
+        },
+        {
+          "doc": "Indicative quote.",
+          "name": "QUOINDIC",
+          "value": "200"
+        },
+        {
+          "doc": "Tradeable quote.",
+          "name": "QUOTRAD",
+          "value": "201"
+        },
+        {
+          "doc": "Restricted tradeable quote.",
+          "name": "QUORESTR",
+          "value": "202"
+        },
+        {
+          "doc": "Counter quote.",
+          "name": "QUOCOUNTER",
+          "value": "203"
+        },
+        {
+          "doc": "Initially tradeable quote.",
+          "name": "QUOINIT",
+          "value": "204"
+        },
+        {
+          "doc": "A quote type no member names.",
+          "name": "QUOOTHER",
+          "value": "299"
+        },
+        {
+          "doc": "Regular trade.",
+          "name": "TRDREG",
+          "value": "300"
+        },
+        {
+          "doc": "Block trade.",
+          "name": "TRDBLOCK",
+          "value": "301"
+        },
+        {
+          "doc": "Exchange for physical.",
+          "name": "TRDEFP",
+          "value": "302"
+        },
+        {
+          "doc": "Transfer.",
+          "name": "TRDTRANSFER",
+          "value": "303"
+        },
+        {
+          "doc": "Late trade.",
+          "name": "TRDLATE",
+          "value": "304"
+        },
+        {
+          "doc": "T trade.",
+          "name": "TRDT",
+          "value": "305"
+        },
+        {
+          "doc": "Weighted average price trade.",
+          "name": "TRDWAP",
+          "value": "306"
+        },
+        {
+          "doc": "Bunched trade.",
+          "name": "TRDBUNCHED",
+          "value": "307"
+        },
+        {
+          "doc": "Late bunched trade.",
+          "name": "TRDLATEBUNCHED",
+          "value": "308"
+        },
+        {
+          "doc": "Prior reference price trade.",
+          "name": "TRDPRIORREF",
+          "value": "309"
+        },
+        {
+          "doc": "After hours trade.",
+          "name": "TRDAFTERHOURS",
+          "value": "310"
+        },
+        {
+          "doc": "Exchange for risk.",
+          "name": "TRDEFR",
+          "value": "311"
+        },
+        {
+          "doc": "Exchange for swap.",
+          "name": "TRDEFS",
+          "value": "312"
+        },
+        {
+          "doc": "Trading at settlement.",
+          "name": "TRDTAS",
+          "value": "315"
+        },
+        {
+          "doc": "All or none trade.",
+          "name": "TRDAON",
+          "value": "316"
+        },
+        {
+          "doc": "Error trade.",
+          "name": "TRDERROR",
+          "value": "324"
+        },
+        {
+          "doc": "Large trade.",
+          "name": "TRDLARGE",
+          "value": "338"
+        },
+        {
+          "doc": "Option exercise.",
+          "name": "TRDEXERCISE",
+          "value": "345"
+        },
+        {
+          "doc": "Portfolio trade.",
+          "name": "TRDPORTFOLIO",
+          "value": "350"
+        },
+        {
+          "doc": "Volume weighted average trade.",
+          "name": "TRDVWAP",
+          "value": "351"
+        },
+        {
+          "doc": "Over the counter trade.",
+          "name": "TRDOTC",
+          "value": "354"
+        },
+        {
+          "doc": "Opening trade.",
+          "name": "TRDOPENING",
+          "value": "356"
+        },
+        {
+          "doc": "Netted trade.",
+          "name": "TRDNETTED",
+          "value": "357"
+        },
+        {
+          "doc": "Dark trade.",
+          "name": "TRDDARK",
+          "value": "362"
+        },
+        {
+          "doc": "Technical trade.",
+          "name": "TRDTECHNICAL",
+          "value": "363"
+        },
+        {
+          "doc": "Benchmark trade.",
+          "name": "TRDBENCHMARK",
+          "value": "364"
+        },
+        {
+          "doc": "Package trade.",
+          "name": "TRDPACKAGE",
+          "value": "365"
+        },
+        {
+          "doc": "Roll trade.",
+          "name": "TRDROLL",
+          "value": "366"
+        },
+        {
+          "doc": "Closing price trade.",
+          "name": "TRDCLOSING",
+          "value": "367"
+        },
+        {
+          "doc": "A trade type no member names.",
+          "name": "TRDOTHER",
+          "value": "399"
+        },
+        {
+          "doc": "Book bid entry.",
+          "name": "BOOKBID",
+          "value": "400"
+        },
+        {
+          "doc": "Book offer entry.",
+          "name": "BOOKOFFER",
+          "value": "401"
+        },
+        {
+          "doc": "Book trade entry.",
+          "name": "BOOKTRADE",
+          "value": "402"
+        },
+        {
+          "doc": "Index value entry.",
+          "name": "BOOKINDEX",
+          "value": "403"
+        },
+        {
+          "doc": "Opening price entry.",
+          "name": "BOOKOPEN",
+          "value": "404"
+        },
+        {
+          "doc": "Closing price entry.",
+          "name": "BOOKCLOSE",
+          "value": "405"
+        },
+        {
+          "doc": "Settlement price entry.",
+          "name": "BOOKSETTLE",
+          "value": "406"
+        },
+        {
+          "doc": "Session high price entry.",
+          "name": "BOOKHIGH",
+          "value": "407"
+        },
+        {
+          "doc": "Session low price entry.",
+          "name": "BOOKLOW",
+          "value": "408"
+        },
+        {
+          "doc": "Volume weighted average price entry.",
+          "name": "BOOKVWAP",
+          "value": "409"
+        },
+        {
+          "doc": "Imbalance entry.",
+          "name": "BOOKIMBALANCE",
+          "value": "410"
+        },
+        {
+          "doc": "Trade volume entry.",
+          "name": "BOOKVOLUME",
+          "value": "411"
+        },
+        {
+          "doc": "Open interest entry.",
+          "name": "BOOKOI",
+          "value": "412"
+        },
+        {
+          "doc": "Mid price entry.",
+          "name": "BOOKMID",
+          "value": "417"
+        },
+        {
+          "doc": "Empty book entry.",
+          "name": "BOOKEMPTY",
+          "value": "418"
+        },
+        {
+          "doc": "A book entry type no member names.",
+          "name": "BOOKOTHER",
+          "value": "499"
+        },
+        {
+          "doc": "Trade report submitted.",
+          "name": "TRPTSUBMIT",
+          "value": "500"
+        },
+        {
+          "doc": "Trade report alleged by the counterparty.",
+          "name": "TRPTALLEGED",
+          "value": "501"
+        },
+        {
+          "doc": "Trade report accepted.",
+          "name": "TRPTACCEPT",
+          "value": "502"
+        },
+        {
+          "doc": "Trade report declined.",
+          "name": "TRPTDECLINE",
+          "value": "503"
+        },
+        {
+          "doc": "Trade report addendum.",
+          "name": "TRPTADDENDUM",
+          "value": "504"
+        },
+        {
+          "doc": "Trade report replacing an earlier one: no, was.",
+          "name": "TRPTNOWAS",
+          "value": "505"
+        },
+        {
+          "doc": "Trade report canceled.",
+          "name": "TRPTCANCEL",
+          "value": "506"
+        },
+        {
+          "doc": "Locked-in trade broken.",
+          "name": "TRPTBREAK",
+          "value": "507"
+        },
+        {
+          "doc": "Trade report defaulted.",
+          "name": "TRPTDEFAULTED",
+          "value": "508"
+        },
+        {
+          "doc": "Trade report with an invalid give-up agreement.",
+          "name": "TRPTINVALIDCMTA",
+          "value": "509"
+        },
+        {
+          "doc": "Trade report pended.",
+          "name": "TRPTPENDED",
+          "value": "510"
+        },
+        {
+          "doc": "New trade report alleged.",
+          "name": "TRPTALLEGEDNEW",
+          "value": "511"
+        },
+        {
+          "doc": "Trade report addendum alleged.",
+          "name": "TRPTALLEGEDADD",
+          "value": "512"
+        },
+        {
+          "doc": "Replacing trade report alleged.",
+          "name": "TRPTALLEGEDNOWAS",
+          "value": "513"
+        },
+        {
+          "doc": "Trade report cancel alleged.",
+          "name": "TRPTALLEGEDCANCEL",
+          "value": "514"
+        },
+        {
+          "doc": "Trade break alleged.",
+          "name": "TRPTALLEGEDBREAK",
+          "value": "515"
+        },
+        {
+          "doc": "A trade report type no member names.",
+          "name": "TRPTOTHER",
+          "value": "599"
+        },
+        {
+          "doc": "Quote requested by hand.",
+          "name": "QRQMANUAL",
+          "value": "601"
+        },
+        {
+          "doc": "Quote requested automatically.",
+          "name": "QRQAUTO",
+          "value": "602"
+        },
+        {
+          "doc": "A quote request type no member names.",
+          "name": "QRQOTHER",
+          "value": "699"
+        },
+        {
+          "doc": "Cancel the orders for a security.",
+          "name": "MCXSECURITY",
+          "value": "701"
+        },
+        {
+          "doc": "Cancel the orders for an underlying security.",
+          "name": "MCXUNDERLYING",
+          "value": "702"
+        },
+        {
+          "doc": "Cancel the orders for a product.",
+          "name": "MCXPRODUCT",
+          "value": "703"
+        },
+        {
+          "doc": "Cancel the orders for a CFI code.",
+          "name": "MCXCFI",
+          "value": "704"
+        },
+        {
+          "doc": "Cancel the orders for a security type.",
+          "name": "MCXSECTYPE",
+          "value": "705"
+        },
+        {
+          "doc": "Cancel the orders for a trading session.",
+          "name": "MCXSESSION",
+          "value": "706"
+        },
+        {
+          "doc": "Cancel all orders.",
+          "name": "MCXALL",
+          "value": "707"
+        },
+        {
+          "doc": "Cancel the orders for a market.",
+          "name": "MCXMARKET",
+          "value": "708"
+        },
+        {
+          "doc": "Cancel the orders for a market segment.",
+          "name": "MCXSEGMENT",
+          "value": "709"
+        },
+        {
+          "doc": "Cancel the orders for a security group.",
+          "name": "MCXGROUP",
+          "value": "710"
+        },
+        {
+          "doc": "Cancel the orders for a securities issuer.",
+          "name": "MCXISSUER",
+          "value": "711"
+        },
+        {
+          "doc": "Cancel the orders for the issuer of an underlying security.",
+          "name": "MCXUNDISSUER",
+          "value": "712"
+        },
+        {
+          "doc": "A mass cancel request type no member names.",
+          "name": "MCXOTHER",
+          "value": "799"
+        },
+        {
+          "doc": "Market data requested as one snapshot.",
+          "name": "MDRSNAPSHOT",
+          "value": "800"
+        },
+        {
+          "doc": "Market data requested as a snapshot and its updates.",
+          "name": "MDRSUBSCRIBE",
+          "value": "801"
+        },
+        {
+          "doc": "A market data subscription withdrawn.",
+          "name": "MDRUNSUBSCRIBE",
+          "value": "802"
+        },
+        {
+          "doc": "A market data request type no member names.",
+          "name": "MDROTHER",
+          "value": "899"
+        }
+      ],
+      "name": "marketdatatypecodeset"
     },
     {
       "codes": [
@@ -291376,53 +291893,382 @@
   "row": {
     "columns": [
       {
-        "c": "currunix",
+        "c": "curruuid",
         "t": 65001,
-        "n": "CurrUnix",
+        "n": "Current UUID",
+        "y": "uuid",
+        "x": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
+      },
+      {
+        "c": "crossuuid",
+        "t": 65002,
+        "n": "Cross UUID",
+        "y": "uuid",
+        "x": "The identity every element of one chain shares, derived from the code they share; the element's own where it names none."
+      },
+      {
+        "c": "crosscode",
+        "t": 65003,
+        "n": "Cross Code",
+        "y": "utf8",
+        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed."
+      },
+      {
+        "c": "currhashcode",
+        "t": 65004,
+        "n": "Current Hash Code",
+        "y": "uint64",
+        "x": "The XXH3-64 of what the event states and the named FIX content behind it."
+      },
+      {
+        "c": "crosshashcode",
+        "t": 65005,
+        "n": "Cross Hash Code",
+        "y": "uint64",
+        "x": "The XXH3-64 of the cross code; zero where the element names none."
+      },
+      {
+        "c": "srcuuids",
+        "t": 65006,
+        "n": "Source UUIDs",
+        "y": "serie(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
+        "x": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
+      },
+      {
+        "c": "currunix",
+        "t": 65007,
+        "n": "Current Time",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the event happened: the settled instant, UTC."
       },
       {
-        "c": "execunix",
-        "t": 65002,
-        "n": "ExecUnix",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know."
-      },
-      {
-        "c": "recdunix",
-        "t": 65003,
-        "n": "RecdUnix",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know."
-      },
-      {
         "c": "creaunix",
-        "t": 65004,
-        "n": "CreaUnix",
+        "t": 65008,
+        "n": "Creation Time",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed."
       },
       {
+        "c": "recdunix",
+        "t": 65009,
+        "n": "Recording Time",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know."
+      },
+      {
+        "c": "exprunix",
+        "t": 65010,
+        "n": "Expiry Time",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried."
+      },
+      {
         "c": "prevunix",
-        "t": 65005,
-        "n": "PrevUnix",
+        "t": 65011,
+        "n": "Previous Time",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the event this one follows happened, where it follows one."
       },
       {
         "c": "snapunix",
-        "t": 65006,
-        "n": "SnapUnix",
+        "t": 65012,
+        "n": "Snapshot Time",
         "y": "datetime64(ns,\"UTC\")",
         "x": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
       },
       {
-        "c": "exprunix",
-        "t": 65007,
-        "n": "ExprUnix",
+        "c": "prevuuid",
+        "t": 65013,
+        "n": "Previous UUID",
+        "y": "uuid",
+        "x": "The identity of the event this one follows, where it follows one."
+      },
+      {
+        "c": "seqnum",
+        "t": 65014,
+        "n": "Sequence Number",
+        "y": "uint64",
+        "x": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later."
+      },
+      {
+        "c": "state",
+        "t": 65015,
+        "n": "State",
+        "y": "state",
+        "x": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word."
+      },
+      {
+        "c": "marketdatakind",
+        "t": 65016,
+        "n": "Market Data Kind",
+        "y": "marketdatakind",
+        "x": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word."
+      },
+      {
+        "c": "marketdatatype",
+        "t": 65017,
+        "n": "Market Data Type",
+        "y": "marketdatatype",
+        "x": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word."
+      },
+      {
+        "c": "price",
+        "t": 44,
+        "n": "Price",
+        "y": "decimal128(38,18)",
+        "x": "Price per unit of quantity (e.g. per share)"
+      },
+      {
+        "c": "stoppx",
+        "t": 99,
+        "n": "StopPx",
+        "y": "decimal128(38,18)",
+        "x": "Price per unit of quantity (e.g. per share)"
+      },
+      {
+        "c": "currency",
+        "t": 15,
+        "n": "Currency",
+        "y": "ccy",
+        "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
+      },
+      {
+        "c": "quantity",
+        "t": 53,
+        "n": "Quantity",
+        "y": "decimal128(38,18)",
+        "x": "Overall/total quantity (e.g. number of shares)"
+      },
+      {
+        "c": "displayqty",
+        "t": 1138,
+        "n": "DisplayQty",
+        "y": "decimal128(38,18)",
+        "x": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity."
+      },
+      {
+        "c": "hiddenqty",
+        "t": 65018,
+        "n": "Hidden Quantity",
+        "y": "decimal",
+        "x": "The part of the quantity an iceberg keeps from the market: the quantity past DisplayQty, else past MaxFloor, where it shows less than all of it. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "unit",
+        "t": 65019,
+        "n": "Unit",
+        "y": "unit",
+        "x": "The unit the quantity is counted in: UnitOfMeasure, the empty unit where none is stated. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "side",
+        "t": 54,
+        "n": "Side",
+        "y": "side",
+        "x": "Side of order (see Volume : \"Glossary\" for value definitions)"
+      },
+      {
+        "c": "securityids",
+        "t": 65020,
+        "n": "Security IDs",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"securityid\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "isincode",
+        "t": 65021,
+        "n": "ISIN Code",
+        "y": "isin",
+        "x": "The normalized ISIN the message identifies."
+      },
+      {
+        "c": "cficode",
+        "t": 461,
+        "n": "CFICode",
+        "y": "utf8",
+        "x": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments."
+      },
+      {
+        "c": "miccode",
+        "t": 65022,
+        "n": "MIC Code",
+        "y": "mic",
+        "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it."
+      },
+      {
+        "c": "execunix",
+        "t": 65023,
+        "n": "Execution Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried."
+        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know."
+      },
+      {
+        "c": "lastpx",
+        "t": 31,
+        "n": "LastPx",
+        "y": "decimal128(38,18)",
+        "x": "Price of this (last) fill."
+      },
+      {
+        "c": "lastqty",
+        "t": 32,
+        "n": "LastQty",
+        "y": "decimal128(38,18)",
+        "x": "Quantity (e.g. shares) bought/sold on this (last) fill."
+      },
+      {
+        "c": "avgpx",
+        "t": 6,
+        "n": "AvgPx",
+        "y": "decimal128(38,18)",
+        "x": "Calculated average price of all fills on this order."
+      },
+      {
+        "c": "cumqty",
+        "t": 14,
+        "n": "CumQty",
+        "y": "decimal128(38,18)",
+        "x": "Total quantity (e.g. number of shares) filled."
+      },
+      {
+        "c": "leavesqty",
+        "t": 151,
+        "n": "LeavesQty",
+        "y": "decimal128(38,18)",
+        "x": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14)."
+      },
+      {
+        "c": "cxlqty",
+        "t": 84,
+        "n": "CxlQty",
+        "y": "decimal128(38,18)",
+        "x": "Total quantity canceled for this order."
+      },
+      {
+        "c": "prevpx",
+        "t": 65024,
+        "n": "Previous Price",
+        "y": "decimal",
+        "x": "The price the step before the message settled on: PrevClosePx, the one its lifecycle moved from once followed. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "prevqty",
+        "t": 65025,
+        "n": "Previous Quantity",
+        "y": "decimal",
+        "x": "The quantity the step before the message settled on, which only a lifecycle states. Derived; a row stating one is the row's word."
+      },
+      {
+        "c": "spotrate",
+        "t": 65026,
+        "n": "Spot Rate",
+        "y": "decimal",
+        "x": "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "forwardpoints",
+        "t": 65027,
+        "n": "Forward Points",
+        "y": "decimal",
+        "x": "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "bidpx",
+        "t": 132,
+        "n": "BidPx",
+        "y": "decimal128(38,18)",
+        "x": "Bid price/rate"
+      },
+      {
+        "c": "bidqty",
+        "t": 65028,
+        "n": "Bid Quantity",
+        "y": "decimal",
+        "x": "The quantity bid: BidSize. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "bidccy",
+        "t": 65029,
+        "n": "Bid Currency",
+        "y": "ccy",
+        "x": "The currency the bid is stated in: a bridge's bid currency, else the message's own where it states a bid. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "askpx",
+        "t": 65030,
+        "n": "Ask Price",
+        "y": "decimal",
+        "x": "The ask price: OfferPx. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "askqty",
+        "t": 65031,
+        "n": "Ask Quantity",
+        "y": "decimal",
+        "x": "The quantity offered: OfferSize. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "askccy",
+        "t": 65032,
+        "n": "Ask Currency",
+        "y": "ccy",
+        "x": "The currency the ask is stated in: a bridge's ask currency, else the message's own where it states an ask. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "fxrates",
+        "t": 65033,
+        "n": "FX Rates",
+        "y": "map(field(\"entries\",struct(field(\"key\",ccy,nullable=false,metadata={}),field(\"value\",decimal,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The FX rates the message states, target currency to the rate an amount is divided by, which no FIX field fills. Derived; a row stating one is the row's word."
+      },
+      {
+        "c": "ticker",
+        "t": 65034,
+        "n": "Ticker",
+        "y": "utf8",
+        "x": "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "metadata",
+        "t": 65035,
+        "n": "Metadata",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order."
+      },
+      {
+        "c": "ordqty",
+        "t": 65036,
+        "n": "Order Quantity",
+        "y": "decimal",
+        "x": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "timeinforce",
+        "t": 59,
+        "n": "TimeInForce",
+        "y": "utf8",
+        "x": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders."
+      },
+      {
+        "c": "tradable",
+        "t": 65037,
+        "n": "Tradable",
+        "y": "boolean",
+        "x": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word."
+      },
+      {
+        "c": "identifiers",
+        "t": 65038,
+        "n": "Identifiers",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"identifier\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
+      },
+      {
+        "c": "partyids",
+        "t": 65039,
+        "n": "Party IDs",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"partyid\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "sendingtime",
@@ -291481,62 +292327,6 @@
         "x": "Date of order expiration (last day the order can trade), always expressed in terms of the local market date. The time at which the order expires is determined by the local market's business practices"
       },
       {
-        "c": "curruuid",
-        "t": 65008,
-        "n": "CurrUuid",
-        "y": "uuid",
-        "x": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
-      },
-      {
-        "c": "crossuuid",
-        "t": 65009,
-        "n": "CrossUuid",
-        "y": "uuid",
-        "x": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
-      },
-      {
-        "c": "crosscode",
-        "t": 65010,
-        "n": "CrossCode",
-        "y": "utf8",
-        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the four-letter code of its side, BUYS:ORD-1, on an order, a quote or an execution, and as given on one of side UNKN and on every other kind; its chain's once followed."
-      },
-      {
-        "c": "currhashcode",
-        "t": 65011,
-        "n": "CurrHashCode",
-        "y": "uint64",
-        "x": "The XXH3-64 of what the event states and the named FIX content behind it."
-      },
-      {
-        "c": "crosshashcode",
-        "t": 65012,
-        "n": "CrossHashCode",
-        "y": "uint64",
-        "x": "The XXH3-64 of the cross code; zero where the event names none."
-      },
-      {
-        "c": "prevuuid",
-        "t": 65013,
-        "n": "PrevUuid",
-        "y": "uuid",
-        "x": "The identity of the event this one follows, where it follows one."
-      },
-      {
-        "c": "seqnum",
-        "t": 65014,
-        "n": "SeqNum",
-        "y": "uint64",
-        "x": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later."
-      },
-      {
-        "c": "srcuuids",
-        "t": 65015,
-        "n": "SrcUuids",
-        "y": "serie(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
-        "x": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
-      },
-      {
         "c": "beginstring",
         "t": 8,
         "n": "BeginString",
@@ -291549,13 +292339,6 @@
         "n": "MsgType",
         "y": "utf8",
         "x": "Defines message type ALWAYS THIRD FIELD IN MESSAGE. (Always unencrypted)"
-      },
-      {
-        "c": "msgcat",
-        "t": 65016,
-        "n": "MsgCat",
-        "y": "marketdatakind",
-        "x": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word."
       },
       {
         "c": "msgseqnum",
@@ -291594,43 +292377,43 @@
       },
       {
         "c": "msgpluginid",
-        "t": 65017,
-        "n": "MsgPluginId",
+        "t": 65040,
+        "n": "Message Plugin ID",
         "y": "utf8",
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
         "c": "msgoriginator",
-        "t": 65018,
-        "n": "MsgOriginator",
+        "t": 65041,
+        "n": "Message Originator",
         "y": "utf8",
         "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
       },
       {
         "c": "msgctxid",
-        "t": 65019,
-        "n": "MsgCtxId",
+        "t": 65042,
+        "n": "Message Context ID",
         "y": "utf8",
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
         "c": "msgsessionid",
-        "t": 65020,
-        "n": "MsgSessionId",
+        "t": 65043,
+        "n": "Message Session ID",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
       },
       {
         "c": "msgsesseventid",
-        "t": 65021,
-        "n": "MsgSessEventId",
+        "t": 65044,
+        "n": "Message Session Event ID",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "conversationid",
-        "t": 65022,
-        "n": "ConversationId",
+        "t": 65045,
+        "n": "Conversation ID",
         "y": "utf8",
         "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
       },
@@ -291642,60 +292425,32 @@
         "x": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)"
       },
       {
-        "c": "securityid",
-        "t": 48,
-        "n": "SecurityID",
-        "y": "utf8",
-        "x": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource."
-      },
-      {
-        "c": "securityidsource",
-        "t": 22,
-        "n": "SecurityIDSource",
-        "y": "utf8",
-        "x": "Identifies class or source of the SecurityID(48) value."
-      },
-      {
-        "c": "isincode",
-        "t": 65023,
-        "n": "IsinCode",
-        "y": "isin",
-        "x": "The normalized ISIN the message identifies."
-      },
-      {
         "c": "forexcode",
-        "t": 65024,
-        "n": "ForexCode",
+        "t": 65046,
+        "n": "Forex Code",
         "y": "forex",
         "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written."
       },
       {
         "c": "bloombergcode",
-        "t": 65025,
-        "n": "BloombergCode",
+        "t": 65047,
+        "n": "Bloomberg Code",
         "y": "bbg",
         "x": "The normalized Bloomberg identifier the message identifies."
       },
       {
         "c": "figicode",
-        "t": 65026,
-        "n": "FIGICode",
+        "t": 65048,
+        "n": "FIGI Code",
         "y": "figi",
         "x": "The normalized FIGI the message identifies."
       },
       {
-        "c": "miccode",
-        "t": 65027,
-        "n": "MicCode",
-        "y": "mic",
-        "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it."
-      },
-      {
-        "c": "strikepx",
-        "t": 65028,
-        "n": "StrikePx",
-        "y": "decimal",
-        "x": "The option strike price the message identifies: StrikePrice, as the decimal leaf; a row stating one is the row's word."
+        "c": "strikeprice",
+        "t": 202,
+        "n": "StrikePrice",
+        "y": "decimal128(38,18)",
+        "x": "Strike Price for an Option."
       },
       {
         "c": "securitytype",
@@ -291731,13 +292486,6 @@
         "n": "LastMkt",
         "y": "mic",
         "x": "Market of execution for last fill, or an indication of the market where an order was routed"
-      },
-      {
-        "c": "cficode",
-        "t": 461,
-        "n": "CFICode",
-        "y": "utf8",
-        "x": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments."
       },
       {
         "c": "maturitydate",
@@ -291859,18 +292607,18 @@
         "x": "Message reference for Quote Response"
       },
       {
-        "c": "side",
-        "t": 54,
-        "n": "Side",
-        "y": "side",
-        "x": "Side of order (see Volume : \"Glossary\" for value definitions)"
+        "c": "orderqty",
+        "t": 38,
+        "n": "OrderQty",
+        "y": "decimal128(38,18)",
+        "x": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments."
       },
       {
-        "c": "price",
-        "t": 44,
-        "n": "Price",
+        "c": "maxfloor",
+        "t": 111,
+        "n": "MaxFloor",
         "y": "decimal128(38,18)",
-        "x": "Price per unit of quantity (e.g. per share)"
+        "x": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity."
       },
       {
         "c": "prevclosepx",
@@ -291880,67 +292628,11 @@
         "x": "Previous closing price of security."
       },
       {
-        "c": "lastpx",
-        "t": 31,
-        "n": "LastPx",
-        "y": "decimal128(38,18)",
-        "x": "Price of this (last) fill."
-      },
-      {
-        "c": "avgpx",
-        "t": 6,
-        "n": "AvgPx",
-        "y": "decimal128(38,18)",
-        "x": "Calculated average price of all fills on this order."
-      },
-      {
-        "c": "orderqty",
-        "t": 38,
-        "n": "OrderQty",
-        "y": "decimal128(38,18)",
-        "x": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments."
-      },
-      {
-        "c": "quantity",
-        "t": 53,
-        "n": "Quantity",
-        "y": "decimal128(38,18)",
-        "x": "Overall/total quantity (e.g. number of shares)"
-      },
-      {
-        "c": "lastqty",
-        "t": 32,
-        "n": "LastQty",
-        "y": "decimal128(38,18)",
-        "x": "Quantity (e.g. shares) bought/sold on this (last) fill."
-      },
-      {
-        "c": "cumqty",
-        "t": 14,
-        "n": "CumQty",
-        "y": "decimal128(38,18)",
-        "x": "Total quantity (e.g. number of shares) filled."
-      },
-      {
-        "c": "leavesqty",
-        "t": 151,
-        "n": "LeavesQty",
-        "y": "decimal128(38,18)",
-        "x": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14)."
-      },
-      {
         "c": "unitofmeasure",
         "t": 996,
         "n": "UnitOfMeasure",
         "y": "utf8",
         "x": "The unit of measure of the underlying commodity upon which the contract is based. Two groups of units of measure enumerations are supported."
-      },
-      {
-        "c": "currency",
-        "t": 15,
-        "n": "Currency",
-        "y": "ccy",
-        "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
       },
       {
         "c": "settlcurrency",
@@ -291964,25 +292656,18 @@
         "x": "Order type."
       },
       {
-        "c": "timeinforce",
-        "t": 59,
-        "n": "TimeInForce",
-        "y": "utf8",
-        "x": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders."
+        "c": "quotetype",
+        "t": 537,
+        "n": "QuoteType",
+        "y": "int32",
+        "x": "Identifies the type of quote."
       },
       {
-        "c": "bidpx",
-        "t": 132,
-        "n": "BidPx",
-        "y": "decimal128(38,18)",
-        "x": "Bid price/rate"
-      },
-      {
-        "c": "bidsize",
-        "t": 134,
-        "n": "BidSize",
-        "y": "decimal128(38,18)",
-        "x": "Quantity of bid"
+        "c": "trdtype",
+        "t": 828,
+        "n": "TrdType",
+        "y": "int32",
+        "x": "Type of trade assigned to a trade. SecondaryTrdType(855) and TertiaryTrdType(2896) may be used in addition to TrdType(828) to assign up to three different trade types to a single trade."
       },
       {
         "c": "offerpx",
@@ -291990,6 +292675,13 @@
         "n": "OfferPx",
         "y": "decimal128(38,18)",
         "x": "Offer price/rate"
+      },
+      {
+        "c": "bidsize",
+        "t": 134,
+        "n": "BidSize",
+        "y": "decimal128(38,18)",
+        "x": "Quantity of bid"
       },
       {
         "c": "offersize",
@@ -292039,13 +292731,6 @@
         "n": "OfferForwardPoints",
         "y": "decimal128(38,18)",
         "x": "Offer F/X forward points added to spot rate. May be a negative value."
-      },
-      {
-        "c": "state",
-        "t": 65029,
-        "n": "State",
-        "y": "state",
-        "x": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word."
       },
       {
         "c": "ordstatus",
@@ -292102,34 +292787,6 @@
         "n": "Text",
         "y": "utf8",
         "x": "Free format text string"
-      },
-      {
-        "c": "nopartyids",
-        "t": 453,
-        "n": "NoPartyIDs",
-        "y": "int32",
-        "x": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries"
-      },
-      {
-        "c": "parties",
-        "t": 209321,
-        "n": "Parties",
-        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
-        "x": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole"
-      },
-      {
-        "c": "nosecurityaltid",
-        "t": 454,
-        "n": "NoSecurityAltID",
-        "y": "int32",
-        "x": "Number of SecurityAltID (455) entries."
-      },
-      {
-        "c": "secaltids",
-        "t": 617267,
-        "n": "SecAltIDs",
-        "y": "serie(field(\"secaltid\",struct(field(\"securityaltid\",utf8,nullable=true,metadata={\"FIX:field\":\"securityaltid\",\"FIX:tag\":\"455\",\"description\":\"Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.\",\"display\":\"SecurityAltID\"}),field(\"securityaltidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"securityidsourcecodeset\",\"FIX:field\":\"securityaltidsource\",\"FIX:tag\":\"456\",\"description\":\"Identifies class or source of the SecurityAltID(455) value.\",\"display\":\"SecurityAltIDSource\"}),field(\"symbolpositionnumber\",int32,nullable=true,metadata={\"FIX:field\":\"symbolpositionnumber\",\"FIX:tag\":\"2957\",\"description\":\"Reference to the first or second currency or digital asset in Symbol(55) for FX-style trading.\",\"display\":\"SymbolPositionNumber\"})),nullable=false,metadata={\"FIX:component\":\"secaltid\",\"display\":\"SecAltID\"}))",
-        "x": ""
       },
       {
         "c": "notrdregtimestamps",
@@ -292291,13 +292948,6 @@
         "n": "CheckSum",
         "y": "utf8",
         "x": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)"
-      },
-      {
-        "c": "metadata",
-        "t": 65030,
-        "n": "Metadata",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order."
       },
       {
         "c": "fixentries",
@@ -292492,22 +293142,20 @@
       "event": {
         "currunix": "1706790896123000000",
         "creaunix": "1706790896123000000",
-        "recdunix": null,
+        "recdunix": "1706790896000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-41fb-7000-993a-621156739b4f",
-        "crossuuid": "00000000-0000-8000-a75d-0f4d91735431",
-        "crosscode": "BUYS:ORDER-1",
-        "currhashcode": "13110299088800911465",
-        "crosshashcode": "12059812202995209265",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "ORDLIMIT",
         "price": "10.5",
+        "stoppx": null,
         "currency": "XXX",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -292518,14 +293166,15 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
-        "bidqty": null,
+        "bidpx": "10.5",
+        "bidqty": "100",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -292533,12 +293182,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {
-          "CLORDID": "ORDER-1"
-        },
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -292821,22 +293469,20 @@
       "event": {
         "currunix": "1706790897900000000",
         "creaunix": "1706790897900000000",
-        "recdunix": null,
+        "recdunix": "1706790897880000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-48ec-7000-8d0c-a07b021d8bb6",
-        "crossuuid": "00000000-0000-8000-bbaf-345203e142f1",
-        "crosscode": "BUYS:O-9",
-        "currhashcode": "5378760152938368424",
-        "crosshashcode": "18135771751301333745",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "FILLED",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
-        "quantity": "100",
+        "quantity": "0",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -292849,12 +293495,13 @@
         "avgpx": "10.5",
         "cumqty": "100",
         "leavesqty": "0",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
         "bidpx": null,
-        "bidqty": null,
+        "bidqty": "0",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -292862,13 +293509,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {
-          "EXECID": "E-1",
-          "ORDERID": "O-9"
-        },
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293265,18 +293910,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-a19e-40d52961a9a3",
-        "crossuuid": "00000000-0000-8000-b1b0-83adcaefdf00",
-        "crosscode": "BUYS:ORDER-2",
-        "currhashcode": "1207741893478968415",
-        "crosshashcode": "3580506486216843008",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": "41.25",
+        "stoppx": null,
         "currency": "XXX",
         "quantity": "50",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -293287,14 +293930,15 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "50",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
-        "bidqty": null,
+        "bidpx": "41.25",
+        "bidqty": "50",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -293302,15 +293946,11 @@
         "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "50",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {
-          "CLORDID": "ORDER-2"
-        },
-        "accountids": {
-          "CONTRAFIRM": "VENUE",
-          "EXECUTINGFIRM": "BUYSIDE"
-        }
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -294562,7 +295202,7 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"ORDERID\",\"follow\":true}]",
+                          "FIX:idmap": "[{\"map\":\"identifiers\",\"key\":\"orderid\",\"follow\":true}]",
                           "FIX:names": "[\"marketorderid\",\"omsdealerorderid\"]",
                           "FIX:tag": "37",
                           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
@@ -294576,7 +295216,7 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"SECONDARYORDERID\",\"follow\":true}]",
+                          "FIX:idmap": "[{\"map\":\"identifiers\",\"key\":\"secondaryorderid\",\"follow\":true}]",
                           "FIX:tag": "198",
                           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
                           "display": "SecondaryOrderID"
@@ -294601,7 +295241,8 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"TRADEID\"}]",
+                          "FIX:idmap": "[{\"map\":\"identifiers\",\"key\":\"tradeid\"}]",
+                          "FIX:parents": "[\"origtradeid\"]",
                           "FIX:tag": "1003",
                           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
                           "display": "TradeID"
@@ -296370,18 +297011,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9f73-332d3af7a125",
-        "crossuuid": "018cc9ab-d1d0-7000-9f73-332d3af7a125",
-        "crosscode": "",
-        "currhashcode": "17523662957170514800",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -296394,6 +297033,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -296407,10 +297047,11 @@
         "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296671,18 +297312,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-8678-be1abfe6048d",
-        "crossuuid": "018cc9ab-d1d0-7000-8678-be1abfe6048d",
-        "crosscode": "",
-        "currhashcode": "10310309123954033459",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "ACTIVE",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -296695,6 +297334,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -296708,10 +297348,11 @@
         "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296902,22 +297543,20 @@
       "event": {
         "currunix": "1706788800000000000",
         "creaunix": "1706788800000000000",
-        "recdunix": null,
+        "recdunix": "1706788800000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d648a-4600-7000-8b40-66739dec72d8",
-        "crossuuid": "018d648a-4600-7000-8b40-66739dec72d8",
-        "crosscode": "",
-        "currhashcode": "10413030065979387376",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -296930,6 +297569,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -296943,10 +297583,11 @@
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297070,22 +297711,20 @@
       "event": {
         "currunix": "1706790901000000000",
         "creaunix": "1706790901000000000",
-        "recdunix": null,
+        "recdunix": "1706790901000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-5508-7000-b41a-39bbacdcf895",
-        "crossuuid": "018d64aa-5508-7000-b41a-39bbacdcf895",
-        "crosscode": "",
-        "currhashcode": "3491125381250579226",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -297098,6 +297737,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -297111,10 +297751,11 @@
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.2",
@@ -297272,18 +297913,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b09a-4fa052d06f7d",
-        "crossuuid": "018cc9ab-d1d0-7000-b09a-4fa052d06f7d",
-        "crosscode": "",
-        "currhashcode": "621776734740611496",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "REJECTED",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -297296,6 +297935,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -297309,10 +297949,11 @@
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297534,18 +298175,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b852-23e6510aefa2",
-        "crossuuid": "00000000-0000-8000-bbaf-345203e142f1",
-        "crosscode": "BUYS:O-9",
-        "currhashcode": "10713160174996091655",
-        "crosshashcode": "18135771751301333745",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_REPLACE",
+        "marketdatatype": "ORDLIMIT",
         "price": "10.75",
+        "stoppx": null,
         "currency": "XXX",
-        "quantity": "150",
+        "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -297558,11 +298197,12 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
+        "bidpx": "10.75",
         "bidqty": null,
         "bidccy": null,
         "askpx": null,
@@ -297571,14 +298211,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "150",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {
-          "CLORDID": "ORDER-3",
-          "ORDERID": "O-9",
-          "ORIGCLORDID": "ORDER-1"
-        },
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297809,18 +298446,6 @@
           "v": "D"
         },
         {
-          "t": 48,
-          "n": "SecurityID",
-          "y": "utf8",
-          "v": "US0378331005"
-        },
-        {
-          "t": 22,
-          "n": "SecurityIDSource",
-          "y": "utf8",
-          "v": "4"
-        },
-        {
           "t": 207,
           "n": "SecurityExchange",
           "y": "mic",
@@ -297852,24 +298477,19 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9346-6c2b68676ec2",
-        "crossuuid": "018cc9ab-d1d0-7000-9346-6c2b68676ec2",
-        "crosscode": "",
-        "currhashcode": "13552154220923851102",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": "10.5",
+        "stoppx": null,
         "currency": "USD",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
-        "securityids": {
-          "CUSIP": "037833100",
-          "ISIN": "US0378331005"
-        },
+        "securityids": {},
         "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
@@ -297877,25 +298497,27 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidccy": null,
+        "bidpx": "10.5",
+        "bidqty": "100",
+        "bidccy": "USD",
         "askpx": null,
         "askqty": null,
         "askccy": null,
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298124,18 +298746,6 @@
           "v": "D"
         },
         {
-          "t": 48,
-          "n": "SecurityID",
-          "y": "utf8",
-          "v": "BBG000BLNQ16"
-        },
-        {
-          "t": 22,
-          "n": "SecurityIDSource",
-          "y": "utf8",
-          "v": "S"
-        },
-        {
           "t": 54,
           "n": "Side",
           "y": "side",
@@ -298155,23 +298765,19 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-ba13-62c28261aed5",
-        "crossuuid": "018cc9ab-d1d0-7000-ba13-62c28261aed5",
-        "crosscode": "",
-        "currhashcode": "12331861608334279394",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "USD",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
-        "securityids": {
-          "FIGI": "BBG000BLNQ16"
-        },
+        "securityids": {},
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -298179,25 +298785,27 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
         "bidpx": null,
-        "bidqty": null,
-        "bidccy": null,
+        "bidqty": "100",
+        "bidccy": "USD",
         "askpx": null,
         "askqty": null,
         "askccy": null,
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298525,18 +299133,6 @@
           "v": "BRN"
         },
         {
-          "t": 48,
-          "n": "SecurityID",
-          "y": "utf8",
-          "v": "GB00BN7SWP63"
-        },
-        {
-          "t": 22,
-          "n": "SecurityIDSource",
-          "y": "utf8",
-          "v": "4"
-        },
-        {
           "t": 207,
           "n": "SecurityExchange",
           "y": "mic",
@@ -298550,24 +299146,19 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-bd1a-ae6ea1401792",
-        "crossuuid": "018cc9ab-d1d0-7000-bd1a-ae6ea1401792",
-        "crosscode": "",
-        "currhashcode": "9508047574604048576",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "GBP",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
-        "securityids": {
-          "ISIN": "GB00BN7SWP63",
-          "SEDOL": "BN7SWP6"
-        },
+        "securityids": {},
         "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
@@ -298577,6 +299168,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -298590,10 +299182,11 @@
         "fxrates": {},
         "ticker": "BRN",
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298877,18 +299470,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-a49e-cc3206aa7a11",
-        "crossuuid": "018cc9ab-d1d0-7000-a49e-cc3206aa7a11",
-        "crosscode": "",
-        "currhashcode": "7827010843618924439",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": "41.25",
+        "stoppx": null,
         "currency": "XXX",
-        "quantity": "1200",
+        "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -298901,11 +299492,12 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
+        "bidpx": "41.25",
         "bidqty": null,
         "bidccy": null,
         "askpx": null,
@@ -298914,12 +299506,11 @@
         "fxrates": {},
         "ticker": "TTF",
         "metadata": {},
-        "tif": null,
+        "ordqty": "1200",
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {
-          "EXECUTINGFIRM": "BUYSIDE"
-        }
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299102,18 +299693,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-afd3-728e65562ae8",
-        "crossuuid": "00000000-0000-8000-9ffb-d002f6b598f0",
-        "crosscode": "BUYS:ORDER-4",
-        "currhashcode": "15032505517709339035",
-        "crosshashcode": "6916350363905136880",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -299124,14 +299713,15 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
         "bidpx": null,
-        "bidqty": null,
+        "bidqty": "100",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -299139,12 +299729,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {
-          "CLORDID": "ORDER-4"
-        },
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299316,18 +299905,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b373-1ed026a7a884",
-        "crossuuid": "018cc9ab-d1d0-7000-b373-1ed026a7a884",
-        "crosscode": "",
-        "currhashcode": "9977071730694894400",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -299338,14 +299925,15 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
         "bidpx": null,
-        "bidqty": null,
+        "bidqty": "100",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -299353,10 +299941,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299519,18 +300108,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-90da-4a1063c11872",
-        "crossuuid": "018cc9ab-d1d0-7000-90da-4a1063c11872",
-        "crosscode": "",
-        "currhashcode": "673087660265449703",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -299543,6 +300130,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -299556,10 +300144,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": null,
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299627,6 +300216,7 @@
                 "type": "string"
               },
               "metadata": {
+                "FIX:names": "[\"omsdealeraccount\"]",
                 "FIX:tag": "1",
                 "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
                 "display": "Account"
@@ -299745,18 +300335,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9ee1-5a354c36c3e0",
-        "crossuuid": "018cc9ab-d1d0-7000-9ee1-5a354c36c3e0",
-        "crosscode": "",
-        "currhashcode": "17560637370415423699",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "UNKNOWN",
+        "marketdatatype": "UNKN",
         "price": null,
+        "stoppx": null,
         "currency": "XXX",
         "quantity": null,
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "UNKN",
         "securityids": {},
@@ -299769,6 +300357,7 @@
         "avgpx": null,
         "cumqty": null,
         "leavesqty": null,
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
@@ -299782,13 +300371,11 @@
         "fxrates": {},
         "ticker": null,
         "metadata": {},
-        "tif": null,
+        "ordqty": null,
+        "timeinforce": null,
         "tradable": null,
-        "altids": {},
-        "accountids": {
-          "ACCOUNT": "ACCT-000117",
-          "CLIENTID": "MCFP2"
-        }
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299977,18 +300564,16 @@
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-8c62-b1d81100e2e5",
-        "crossuuid": "018cc9ab-d1d0-7000-8c62-b1d81100e2e5",
-        "crosscode": "",
-        "currhashcode": "3048250757477032301",
-        "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
-        "srcuuids": [],
         "state": "PENDING_NEW",
+        "marketdatatype": "UNKN",
         "price": "10.5",
+        "stoppx": null,
         "currency": "XXX",
         "quantity": "100",
+        "displayqty": null,
+        "hiddenqty": null,
         "unit": "",
         "side": "BUYS",
         "securityids": {},
@@ -299999,14 +300584,15 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": null,
-        "leavesqty": null,
+        "cumqty": "0",
+        "leavesqty": "100",
+        "cxlqty": null,
         "prevpx": null,
         "prevqty": null,
         "spotrate": null,
         "forwardpoints": null,
-        "bidpx": null,
-        "bidqty": null,
+        "bidpx": "10.5",
+        "bidqty": "100",
         "bidccy": null,
         "askpx": null,
         "askqty": null,
@@ -300014,10 +300600,11 @@
         "fxrates": {},
         "ticker": "AAPL",
         "metadata": {},
-        "tif": "0",
+        "ordqty": "100",
+        "timeinforce": "DAY",
         "tradable": null,
-        "altids": {},
-        "accountids": {}
+        "identifiers": {},
+        "partyids": {}
       },
       "header": {
         "beginstring": "FIX.4.4",

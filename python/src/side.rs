@@ -11,7 +11,7 @@ use yggdryl::Side;
 /// no member and decides no side of its own.
 #[pyfunction]
 #[allow(clippy::type_complexity)]
-pub(crate) fn side_members() -> Vec<(&'static str, i32, &'static str, Option<char>, [bool; 2])> {
+pub(crate) fn side_members() -> Vec<(&'static str, u8, &'static str, Option<char>, [bool; 2])> {
     Side::ALL
         .iter()
         .map(|side| {
@@ -29,6 +29,6 @@ pub(crate) fn side_members() -> Vec<(&'static str, i32, &'static str, Option<cha
 /// The code of the side one spelling names - a four-letter code, a FIX wire
 /// code or the specification's name - or `None` where none does.
 #[pyfunction]
-pub(crate) fn side_from_spelling(spelling: &str) -> Option<i32> {
+pub(crate) fn side_from_spelling(spelling: &str) -> Option<u8> {
     Side::from_spelling(spelling).map(Side::code)
 }

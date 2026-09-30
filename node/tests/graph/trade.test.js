@@ -20,7 +20,8 @@ function trade() {
 
 test('fromParts of two executions', () => {
   const made = trade()
-  assert.equal(made.crosscode, 'T-1')
+  // A trade is no sided kind: its stored cross code is `21:0:{base}`.
+  assert.equal(made.crosscode, '21:0:T-1')
   assert.equal(made.currunix, CLOCK)
   assert.equal(made.ticker, 'ACME')
   assert.equal(made.lastqty, '10')
@@ -28,8 +29,8 @@ test('fromParts of two executions', () => {
   assert.ok(executions.every((execution) => execution instanceof graph.ExecutionEvent))
   // In canonical side order, whatever order they were handed over in.
   assert.deepEqual(executions.map((execution) => execution.side), ['BUYS', 'SELL'])
-  // A sided element's cross code carries its side (A17).
-  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['BUYS:BUY-1', 'SELL:SELL-1'])
+  // The stored cross code is the kind, the side, then the base.
+  assert.deepEqual(executions.map((execution) => execution.crosscode).sort(), ['8:1:BUY-1', '8:2:SELL-1'])
   assert.equal(made.isExecution, true)
 })
 
@@ -38,7 +39,7 @@ test('any dated operation or MarketData roots a trade', () => {
   const byLeaf = graph.TradeEvent.fromParts(root, [fill('B', 'BUYS', 1)])
   const byData = graph.TradeEvent.fromParts(new graph.MarketData(root), [fill('B', 'BUYS', 1)])
   assert.ok(byLeaf.equals(byData))
-  assert.equal(byLeaf.crosscode, 'T-1')
+  assert.equal(byLeaf.crosscode, '21:0:T-1')
 })
 
 test('refusals name what was wrong', () => {
@@ -78,5 +79,5 @@ test('equals, stableHash, toString, clone and toJSON round trip', () => {
   assert.equal(twin.stableHash(), made.stableHash())
   assert.ok(twin.executions.every((execution, at) => execution.equals(made.executions[at])))
   assert.ok(made.clone().equals(made))
-  assert.equal(made.toString(), `TradeEvent(${made.curruuid}, currunix=${CLOCK}, crosscode="T-1")`)
+  assert.equal(made.toString(), `TradeEvent(${made.curruuid}, currunix=${CLOCK}, crosscode="21:0:T-1")`)
 })

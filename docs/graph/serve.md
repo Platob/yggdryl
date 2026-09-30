@@ -61,7 +61,7 @@ No answer carries what authenticates a location: a table's `url` and the text of
 | --- | --- | --- |
 | `tables` | - | `[{"name","url"}]`, each location without its user information and its query, `url` null for a location that has none |
 | `timezones` | - | `["UTC", ...]`: `UTC`, then every zone this build has rules for (`Timezone::registered()`) by name - the place zones `tz` reads, which reads their aliases and fixed offsets besides. A display offers these rather than its runtime's own list, which names zones this build has no rules for |
-| `tickers` | `table` | `[{"ticker","crosscode","from","to","books"}]` ordered by ticker, `from` the whole second the first book stands in and `to` the whole second after the last, both UTC, so `[from, to)` holds every book and a display passes them straight back as a range - the first or the last instant `i64` nanoseconds hold where that second lies past them, `1677-09-21T00:12:43.145224192Z` and `2262-04-11T23:47:16.854775807Z`; a book stating no ticker is not listed, since no query can name it, and an empty or absent table lists none. One projected scan, `select ticker, crosscode, currunix where marketdatakind = 'BOOK'` |
+| `tickers` | `table` | `[{"ticker","crosscode","from","to","books"}]` ordered by ticker, `crosscode` the books' stored cross code (`3:0:HOLN`), `from` the whole second the first book stands in and `to` the whole second after the last, both UTC, so `[from, to)` holds every book and a display passes them straight back as a range - the first or the last instant `i64` nanoseconds hold where that second lies past them, `1677-09-21T00:12:43.145224192Z` and `2262-04-11T23:47:16.854775807Z`; a book stating no ticker is not listed, since no query can name it, and an empty or absent table lists none. One projected scan, `select ticker, crosscode, currunix where marketdatakind = 'BOOK'` |
 | `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, `interval` the effective spelling, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books,executions,volume}` with each reading `{open,high,low,close}` or null - [`Candle`](candle.md) cell for cell, the books folded by [`CandleIterator`](candle.md#the-fold) under `interval` aligned to `tz`. A candle's `volume` counts a trade once over it and the candle just before it ([volume](candle.md#volume)): a trade stated again only after a candle that did not name it counts again, so the volumes of candles further apart need not add up to what traded. A known ticker with no book in range answers `"candles": []`; an unknown one is `404` |
 | `book` | `table`, `ticker`, `at`, `tz` | the last book at or before `at`: `{currunix,ticker,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,alive,deltas,executions,bidlimits,asklimits}` - `imbalance` over the first level, `alive`, `deltas` and `executions` the counts of its entries (the entries are `events`), each side `[{price,quantity,uuids,tradable}]` best first ([`Limit`](book.md#limits)); none there yet is `404` (`expected a book at "books/ACME at or before <instant>", got nothing`) |
 | `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`: for every book of the ticker in `[from, to)`, in instant order, one row per alive entry (role `alive`), per delta applied since the book before (`delta`) and per execution at its instant (`execution`), each an object keyed by the fifty-one names of `BookService::events_field()` - `bookunix`, `role`, then `marketdatakind` and every flat column of the [`marketdata` row](market-data.md#columns), the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` left out - at most `limit` rows, `truncated` saying whether more were kept back. The bound is pushed into the read: one projected scan of the range's `currunix` finds the instant by which its earliest `limit + 1` books stand, and only the books up to it are read and built - that count doubled while they state no more than `limit` rows on `side` and the range holds more - so a request holds at most `limit + 1` books and instants whatever its range, a table stored in no instant order included |
@@ -135,10 +135,10 @@ Two minutes of `ACME` quotes folded into books and written as `marketdata` rows 
     let quote = |unix: i64, code: &str, side: Side, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
         let mut quote = QuoteEvent::at(unix);
         quote.set_crosscode(code.to_owned());
-        quote.set_ticker(Some("ACME".into()));
-        quote.set_side(side);
-        quote.set_price(Some(price.parse()?));
-        quote.set_quantity(Some(Decimal::from_int(quantity)));
+        quote.set_ticker(Some("ACME".into()), true);
+        quote.set_side(side, true);
+        quote.set_price(Some(price.parse()?), true);
+        quote.set_quantity(Some(Decimal::from_int(quantity)), true);
         quote.set_state(State::New);
         quote.finalize();
         Ok(MarketData::from(quote))
@@ -276,12 +276,12 @@ curl 'http://127.0.0.1:34385/api/tickers?table=books'
 ```
 
 ```json
-[{"books":1,"crosscode":"1605","from":"2026-08-14T01:03:17.000000000Z","ticker":"1605","to":"2026-08-14T01:03:18.000000000Z"},
- {"books":1,"crosscode":"2454","from":"2026-08-14T21:59:46.000000000Z","ticker":"2454","to":"2026-08-14T21:59:47.000000000Z"},
- {"books":2,"crosscode":"ABBN.S","from":"2026-08-14T12:46:39.000000000Z","ticker":"ABBN.S","to":"2026-08-14T12:46:40.000000000Z"},
- {"books":1,"crosscode":"EXAMPLECO.S","from":"2026-08-14T12:46:58.000000000Z","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59.000000000Z"},
- {"books":2,"crosscode":"HOLN","from":"2026-08-14T12:46:39.000000000Z","ticker":"HOLN","to":"2026-08-14T12:46:41.000000000Z"},
- {"books":1,"crosscode":"XAU/USD","from":"2026-08-14T14:52:55.000000000Z","ticker":"XAU/USD","to":"2026-08-14T14:52:56.000000000Z"}]
+[{"books":1,"crosscode":"3:0:1605","from":"2026-08-14T01:03:17.000000000Z","ticker":"1605","to":"2026-08-14T01:03:18.000000000Z"},
+ {"books":1,"crosscode":"3:0:2454","from":"2026-08-14T21:59:46.000000000Z","ticker":"2454","to":"2026-08-14T21:59:47.000000000Z"},
+ {"books":2,"crosscode":"3:0:ABBN.S","from":"2026-08-14T12:46:39.000000000Z","ticker":"ABBN.S","to":"2026-08-14T12:46:40.000000000Z"},
+ {"books":1,"crosscode":"3:0:EXAMPLECO.S","from":"2026-08-14T12:46:58.000000000Z","ticker":"EXAMPLECO.S","to":"2026-08-14T12:46:59.000000000Z"},
+ {"books":2,"crosscode":"3:0:HOLN","from":"2026-08-14T12:46:39.000000000Z","ticker":"HOLN","to":"2026-08-14T12:46:41.000000000Z"},
+ {"books":1,"crosscode":"3:0:XAU/USD","from":"2026-08-14T14:52:55.000000000Z","ticker":"XAU/USD","to":"2026-08-14T14:52:56.000000000Z"}]
 ```
 
 Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, and one execution that traded `235` - its last quantity, out of an order of `300` ([volume](candle.md#volume)):
@@ -307,7 +307,7 @@ curl 'http://127.0.0.1:34385/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
 ```json
 {"alive":1,"asklimits":[],"askqty":null,"bestask":null,"bestbid":"72.3",
  "bidlimits":[{"price":"72.3","quantity":"50","tradable":true,"uuids":["01a0004f-6b94-7000-bc8d-e2a462f4367e"]}],
- "bidqty":"50","crosscode":"HOLN","currunix":"2026-08-14T14:46:40.020000000+02:00[Europe/Zurich]","deltas":1,"executions":0,
+ "bidqty":"50","crosscode":"3:0:HOLN","currunix":"2026-08-14T14:46:40.020000000+02:00[Europe/Zurich]","deltas":1,"executions":0,
  "imbalance":"1","iscrossed":false,"islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
 

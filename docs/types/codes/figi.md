@@ -155,8 +155,8 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
     sid = Field("figi", "figi")
     arrow_field = sid.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.figi"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.figi"
     assert Field.from_arrow(arrow_field) == sid
     ```
 
@@ -210,7 +210,7 @@ for refused in [
 - No default value: the empty text names no security, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("figi")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- The crate tag `figicode(65026)` carries the normalized column in a [FIX capture](index.md#fix-message-definitions); `SecurityIDSource(22)=S` and `SecurityAltIDSource(456)=S` lift a valid FIGI.
+- The crate tag `figicode(65048)` carries the normalized column in a [FIX capture](index.md#fix-message-definitions); `SecurityIDSource(22)=S` and `SecurityAltIDSource(456)=S` lift a valid FIGI.
 
 ## Commands
 

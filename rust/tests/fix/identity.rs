@@ -10,7 +10,7 @@ use super::sequence;
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::Market;
-    use yggdryl::{Cfi, FixMsg, Isin, Scalar};
+    use yggdryl::{Cfi, FixMsg, IdSource, IdType, Isin, Scalar};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -44,7 +44,7 @@ mod categories {
         let cases = [
             (
                 b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|".as_slice(),
-                65_023,
+                65_021,
                 "US0378331005",
             ),
             (
@@ -54,12 +54,12 @@ mod categories {
             ),
             (
                 b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|".as_slice(),
-                65_025,
+                65_047,
                 "AAPL US Equity",
             ),
             (
                 b"8=FIX.4.4|35=D|11=M|207=XNAS|10=0|".as_slice(),
-                65_027,
+                65_022,
                 "XNAS",
             ),
         ];
@@ -84,7 +84,7 @@ mod categories {
         let mut learned = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=L|10=0|")
             .expect("a message without a raw CFI");
-        learned.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
+        learned.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")), true);
         assert_eq!(
             learned.get_cficode().map(|value| value.as_str()),
             Some("ESVUFR")
@@ -122,16 +122,33 @@ mod categories {
             primary_id.as_ref().and_then(Scalar::as_str),
             Some("037833100")
         );
-        assert_eq!(primary.get_securityids().get("CUSIP"), Some("037833100"));
-        assert_eq!(primary.get_securityids().get("1"), Some("037833100"));
+        assert_eq!(
+            primary
+                .get_securityids()
+                .get_from(&IdSource::Fix, &IdType::Cusip),
+            Some("037833100")
+        );
+        // A type is a name, never the wire code that named it.
+        assert_eq!(
+            primary
+                .get_securityids()
+                .get(&"1".parse::<IdType>().unwrap()),
+            None
+        );
 
         let alternates = codec
             .parse_fix_line(
                 b"8=FIX.4.4|35=D|11=A|454=2|455=037833100|456=1|455=B0YBKJ7|456=2|10=0|",
             )
             .expect("CUSIP and SEDOL alternate identifiers");
-        assert_eq!(alternates.get_securityids().get("CUSIP"), Some("037833100"));
-        assert_eq!(alternates.get_securityids().get("SEDOL"), Some("B0YBKJ7"));
+        assert_eq!(
+            alternates.get_securityids().get(&IdType::Cusip),
+            Some("037833100")
+        );
+        assert_eq!(
+            alternates.get_securityids().get(&IdType::Sedol),
+            Some("B0YBKJ7")
+        );
         let values = super::sequence(
             alternates
                 .by_name("secaltids")
@@ -161,8 +178,14 @@ mod categories {
         let isin = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|")
             .expect("an ISIN carrying an embedded CUSIP");
-        assert_eq!(isin.get_securityids().get("ISIN"), Some("US0378331005"));
-        assert_eq!(isin.get_securityids().get("CUSIP"), Some("037833100"));
+        assert_eq!(
+            isin.get_securityids().get(&IdType::Isin),
+            Some("US0378331005")
+        );
+        assert_eq!(
+            isin.get_securityids().get(&IdType::Cusip),
+            Some("037833100")
+        );
         let wire = String::from_utf8(isin.into_bytes(b'|')).expect("ASCII");
         assert!(
             !wire.contains("455="),
@@ -194,16 +217,20 @@ mod categories {
         let row = explicit.into_row(&schema).expect("a fixed row");
         let rebuilt =
             FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("a rebuilt row");
-        assert_eq!(rebuilt.get_securityids().get("ISIN"), Some("US0378331005"));
         assert_eq!(
-            rebuilt.get_securityids().get("CUSIP"),
+            rebuilt.get_securityids().get(&IdType::Isin),
+            Some("US0378331005")
+        );
+        assert_eq!(
+            rebuilt.get_securityids().get(&IdType::Cusip),
             Some("037833100"),
             "the national number the ISIN carries is derived again on the way back"
         );
 
-        // The first row learns Bloomberg from the ordinary FIX pair. Removing
-        // that pair simulates a later fixed row that carries only the normalized
-        // fact; reconstruction must keep the stated code.
+        // The first row learns Bloomberg from the ordinary FIX pair, which the
+        // fixed row keeps among its entries. Removing that pair simulates a
+        // later fixed row that carries only the normalized fact;
+        // reconstruction must keep the stated code.
         let parsed = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|")
             .expect("a message with a Bloomberg source pair");
@@ -213,15 +240,27 @@ mod categories {
             .as_sequence()
             .expect("a row")
             .to_vec();
-        for tag in [22, 48] {
-            columns[yggdryl::fix_column_of(&schema, tag).expect("a raw identifier column")] =
-                Scalar::Null;
-        }
+        let entries = schema
+            .index_of(yggdryl::fix::FIXENTRIES_COLUMN)
+            .expect("the entries column");
+        let kept = columns[entries]
+            .mapping_iter()
+            .filter(|(key, _)| {
+                !matches!(key.as_str(), Some("22:securityidsource" | "48:securityid"))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            kept.len() + 2,
+            columns[entries].mapping_iter().len(),
+            "the pair is among the entries"
+        );
+        columns[entries] = Scalar::from_mapping(kept).expect("the entries left");
         let stored = Scalar::from_sequence(columns);
         let rebuilt =
             FixMsg::from_row(Arc::clone(&registry), &schema, &stored).expect("a rebuilt row");
         assert_eq!(
-            rebuilt.get_securityids().get("BLOOMBERG"),
+            rebuilt.get_securityids().get(&IdType::Bloomberg),
             Some("AAPL US Equity")
         );
         let bloomberg_at = yggdryl::fix_column_of(&schema, yggdryl::BLOOMBERGCODE_TAG_NAME.0)
@@ -243,7 +282,9 @@ mod identifiers {
 
     use super::SoleMessage;
     use yggdryl::graph::Operation;
-    use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
+    use yggdryl::{
+        DataType, Error, Field, FixMsg, FixRegistry, IdType, Scalar, StructType, fix_schema,
+    };
 
     fn tagged(name: &str, tag: i32) -> Field {
         let mut field = DataType::utf8().nullable_field(name);
@@ -722,12 +763,11 @@ mod identifiers {
         let line = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|";
         let read = codec.sole_line(line).unwrap();
         assert_eq!(
-            read.get_altids().iter().collect::<Vec<_>>(),
-            [
-                ("CLORDID", "C-001"),
-                ("EXECID", "E-09"),
-                ("ORDERID", "O-01")
-            ]
+            read.get_identifiers()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["fix:clordid=C-001", "fix:execid=E-09", "fix:orderid=O-01"]
         );
         // Filling them is not an arrival: the identifiers are the event's own
         // fact, so the wire is the line's own pairs beside what the dictionary
@@ -742,7 +782,7 @@ mod identifiers {
         let schema = fix_schema(&registry, "fix").unwrap();
         let row = read.into_row(&schema).unwrap();
         let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-        assert_eq!(rebuilt.get_altids(), read.get_altids());
+        assert_eq!(rebuilt.get_identifiers(), read.get_identifiers());
         let array = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
             .unwrap()
             .require_arrow_array()
@@ -766,11 +806,15 @@ mod identifiers {
         let codec = super::fixed_codec(super::committed_registry());
         let named = codec.sole_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|").unwrap();
         assert_eq!(
-            named.get_altids().iter().collect::<Vec<_>>(),
-            [("CLORDID", "C-1")]
+            named
+                .get_identifiers()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["fix:clordid=C-1"]
         );
         let unnamed = codec.sole_line(b"8=FIX.4.4|35=ZZ|10=0|").unwrap();
-        assert!(unnamed.get_altids().is_empty());
+        assert!(unnamed.get_identifiers().is_empty());
     }
 
     /// An identifier inside a repeating group's occurrence is that occurrence's,
@@ -785,13 +829,16 @@ mod identifiers {
             )
             .unwrap();
         assert_eq!(
-            nested.get_altids().get("CLORDID"),
+            nested.get_identifiers().get(&IdType::ClOrdId),
             None,
             "the occurrence's ClOrdID names the occurrence"
         );
         // ListID(66) has no source in the crate's identifier table today, so
-        // the list goes by no alternate identifier until the dictionary's
+        // the list goes by no identifier until the dictionary's
         // `FIX:idmap` names one.
-        assert_eq!(nested.get_altids().get("LISTID"), None);
+        assert_eq!(
+            nested.get_identifiers().get(&"listid".parse().unwrap()),
+            None
+        );
     }
 }

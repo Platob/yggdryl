@@ -2132,10 +2132,10 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        if self.caches() {
-            if let Some(column_size) = self.cached_column_size.get() {
-                return Ok(*column_size);
-            }
+        if self.caches()
+            && let Some(column_size) = self.cached_column_size.get()
+        {
+            return Ok(*column_size);
         }
         let column_size = if let Some(field) = self.options.field() {
             field.field_len()

@@ -534,12 +534,11 @@ fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestM
         .collect();
     // A header that is not JSON at all is left for the official parser to
     // report, so a malformed manifest fails the way it always has.
-    if let Some(schema) = metadata.get_mut("schema") {
-        if let Ok(document) = crate::json::from_bytes(schema) {
-            if let Some(bridged) = super::official::bridged_schema(&document)? {
-                *schema = crate::json::into_bytes(&bridged)?;
-            }
-        }
+    if let Some(schema) = metadata.get_mut("schema")
+        && let Ok(document) = crate::json::from_bytes(schema)
+        && let Some(bridged) = super::official::bridged_schema(&document)?
+    {
+        *schema = crate::json::into_bytes(&bridged)?;
     }
     OfficialManifestMetadata::parse(&metadata).map_err(Error::from_iceberg)
 }

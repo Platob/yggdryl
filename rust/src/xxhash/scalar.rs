@@ -86,10 +86,9 @@ impl Scalar {
                 ));
             }
             held @ crate::enum_scalars!() => {
+                // The canonical four bytes, whatever width a column holds.
                 return Some(ValueBytes::inline(
-                    &held
-                        .enum_code()
-                        .expect("an enum member stores its code")
+                    &i32::from(held.enum_code().expect("an enum member stores its code"))
                         .to_le_bytes(),
                 ));
             }
@@ -355,9 +354,7 @@ impl Scalar {
             held @ crate::enum_scalars!() => {
                 write_tag(sink, held.id());
                 sink.write(
-                    &held
-                        .enum_code()
-                        .expect("an enum member stores its code")
+                    &i32::from(held.enum_code().expect("an enum member stores its code"))
                         .to_le_bytes(),
                 );
             }

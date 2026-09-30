@@ -4,7 +4,7 @@
 use crate::MarketDataKind;
 
 /// Which leaf a [`MarketData`](super::MarketData) value is: an undated
-/// operation, or one of the six dated leaves.
+/// operation, one of the six dated leaves, or a FIX message held whole.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum MarketKind {
@@ -26,11 +26,14 @@ pub enum MarketKind {
     BookEvent,
     /// A full-snapshot control: [`SnapshotEvent`](super::SnapshotEvent).
     SnapshotEvent,
+    /// A FIX message held whole: [`FixMsg`](crate::FixMsg), the category
+    /// it is filed under its own `msgcat`.
+    Fix,
 }
 
 impl MarketKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Order,
         Self::Quote,
         Self::Execution,
@@ -40,6 +43,7 @@ impl MarketKind {
         Self::TradeEvent,
         Self::BookEvent,
         Self::SnapshotEvent,
+        Self::Fix,
     ];
 
     /// The stored spelling.
@@ -55,6 +59,7 @@ impl MarketKind {
             Self::TradeEvent => "trade_event",
             Self::BookEvent => "book_event",
             Self::SnapshotEvent => "snapshot_event",
+            Self::Fix => "fix",
         }
     }
 
@@ -70,7 +75,9 @@ impl MarketKind {
     /// The market data category this leaf stands under, the member its
     /// `marketdatakind` column states: an order `ORDR`, a quote `QUOT`, an
     /// execution `EXEC`, a trade `TRAD`, and a book and a snapshot
-    /// control `BOOK`.
+    /// control `BOOK`. A FIX message states its own - the category its
+    /// dictionary files it under ([`FixMsg::msgcat`](crate::FixMsg::msgcat)) -
+    /// so the kind alone answers `UNKN` for it.
     ///
     /// ```
     /// use yggdryl::MarketDataKind;
@@ -87,10 +94,12 @@ impl MarketKind {
             Self::Execution | Self::ExecutionEvent => MarketDataKind::Execution,
             Self::TradeEvent => MarketDataKind::Trade,
             Self::BookEvent | Self::SnapshotEvent => MarketDataKind::Book,
+            Self::Fix => MarketDataKind::Unknown,
         }
     }
 
-    /// Whether the kind is one of the six dated leaves.
+    /// Whether the kind is dated: one of the six dated leaves, or a FIX
+    /// message.
     #[must_use]
     pub const fn is_event(self) -> bool {
         matches!(
@@ -101,6 +110,7 @@ impl MarketKind {
                 | Self::TradeEvent
                 | Self::BookEvent
                 | Self::SnapshotEvent
+                | Self::Fix
         )
     }
 }

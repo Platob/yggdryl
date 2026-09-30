@@ -249,18 +249,18 @@ impl<R: Read> Tokenizer<R> {
                 self.start += 1;
             }
         }
-        if let Some(quote) = self.dialect.quote {
-            if self.peek()? == Some(quote) {
-                quoted = true;
-                let opened = self.line;
-                self.start += 1;
-                self.quoted_content(quote, opened)?;
-                // The blanks after a closing quote are the cell's framing,
-                // as the ones before the opening one were.
-                if self.dialect.trim {
-                    while self.peek()?.is_some_and(|byte| self.is_blank(byte)) {
-                        self.start += 1;
-                    }
+        if let Some(quote) = self.dialect.quote
+            && self.peek()? == Some(quote)
+        {
+            quoted = true;
+            let opened = self.line;
+            self.start += 1;
+            self.quoted_content(quote, opened)?;
+            // The blanks after a closing quote are the cell's framing,
+            // as the ones before the opening one were.
+            if self.dialect.trim {
+                while self.peek()?.is_some_and(|byte| self.is_blank(byte)) {
+                    self.start += 1;
                 }
             }
         }

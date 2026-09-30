@@ -33,7 +33,7 @@ fn schema() -> Scalar {
 
 /// One representative row per index.
 fn row(index: usize) -> Scalar {
-    let score = if index % 3 == 0 {
+    let score = if index.is_multiple_of(3) {
         Scalar::Null
     } else {
         Scalar::from(index as f64 * 0.25)
@@ -48,7 +48,7 @@ fn row(index: usize) -> Scalar {
         ),
         (
             Scalar::from("nested"),
-            Scalar::from_mapping([(Scalar::from("flag"), Scalar::from(index % 2 == 0))])
+            Scalar::from_mapping([(Scalar::from("flag"), Scalar::from(index.is_multiple_of(2)))])
                 .expect("unique keys"),
         ),
     ])

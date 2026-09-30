@@ -667,12 +667,11 @@ fn converted(registry: &FixRegistry, known: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
-    if !matches!(value, crate::string_scalars!(_)) {
-        if let Ok(typed) = known.scalar(value.clone()) {
-            if !typed.is_null() {
-                return typed;
-            }
-        }
+    if !matches!(value, crate::string_scalars!(_))
+        && let Ok(typed) = known.scalar(value.clone())
+        && !typed.is_null()
+    {
+        return typed;
     }
     match wire_text(value) {
         Some(text) => typed_spelling_remembered(registry, known, &text),
@@ -701,10 +700,10 @@ impl<'msg> Restater<'msg> {
         if child.get_metadata(super::field::ALIAS_OF).is_some() {
             return None;
         }
-        if let Some(tag) = tag_and_counter(self.registry, child).0 {
-            if let Some(known) = self.msg.known_by_tag(tag) {
-                return Some(known);
-            }
+        if let Some(tag) = tag_and_counter(self.registry, child).0
+            && let Some(known) = self.msg.known_by_tag(tag)
+        {
+            return Some(known);
         }
         if let Some(known) = self.msg.known_by_name(child.name()) {
             return Some(known);
@@ -764,10 +763,6 @@ impl<'msg> Restater<'msg> {
             When::Any => true,
             When::Equals(text) => wire_text(value).is_some_and(|held| held == text),
             When::Contains(text) => wire_text(value).is_some_and(|held| held.contains(text)),
-            When::FitsSource(source) => wire_text(value).is_some_and(|held| {
-                crate::securityid::SecType::read(source)
-                    .is_ok_and(|kind| held.chars().count() <= kind.max_code_width())
-            }),
         }
     }
 
@@ -822,31 +817,30 @@ impl<'msg> Restater<'msg> {
         ruled: &mut Vec<(&'msg Field, &'values Scalar)>,
     ) -> bool {
         for (field, value) in fields.iter().zip(values) {
-            if tag_and_counter(self.registry, field).1.is_some() {
-                if let (Some(members), Some(rows)) =
+            if tag_and_counter(self.registry, field).1.is_some()
+                && let (Some(members), Some(rows)) =
                     (super::schema::item_fields(field), value.as_serie())
-                {
-                    // The Serie as `pack_group` would rebuild it: a Serie and
-                    // not a map, its item nullable exactly where an
-                    // occurrence is null, and every member nullable.
-                    let (DataType::Serie(item) | DataType::LargeSerie(item)) = field.dtype() else {
-                        return false;
-                    };
-                    if item.is_nullable() != (rows.null_count() != 0) {
-                        return false;
-                    }
-                    // A member level returns before it would push a ruled
-                    // child, so each occurrence's list stays empty.
-                    let canonical = rows.iter().all(|row| {
-                        row.as_sequence().is_none_or(|values| {
-                            self.canonical_level(members, values, true, &mut Vec::new())
-                        })
-                    });
-                    if !canonical {
-                        return false;
-                    }
-                    continue;
+            {
+                // The Serie as `pack_group` would rebuild it: a Serie and
+                // not a map, its item nullable exactly where an
+                // occurrence is null, and every member nullable.
+                let (DataType::Serie(item) | DataType::LargeSerie(item)) = field.dtype() else {
+                    return false;
+                };
+                if item.is_nullable() != (rows.null_count() != 0) {
+                    return false;
                 }
+                // A member level returns before it would push a ruled
+                // child, so each occurrence's list stays empty.
+                let canonical = rows.iter().all(|row| {
+                    row.as_sequence().is_none_or(|values| {
+                        self.canonical_level(members, values, true, &mut Vec::new())
+                    })
+                });
+                if !canonical {
+                    return false;
+                }
+                continue;
             }
             if field.dtype().is_nested() {
                 continue;
@@ -1047,11 +1041,11 @@ impl<'msg> Restater<'msg> {
                 // kept: what it said now lives under what replaced it, and
                 // a second copy under the retired name would be a second
                 // owner of one fact.
-                if let Child::Flat(field, value) = &mut level.children[at] {
-                    if field.as_fix().deprecated().is_some() {
-                        *value = Scalar::Null;
-                        break;
-                    }
+                if let Child::Flat(field, value) = &mut level.children[at]
+                    && field.as_fix().deprecated().is_some()
+                {
+                    *value = Scalar::Null;
+                    break;
                 }
                 if level.value_at(at) == Some(&before) {
                     break;
@@ -1075,7 +1069,7 @@ impl<'msg> Restater<'msg> {
         let mut named: Vec<SmolStr> = rule.msgtypes.iter().copied().map(SmolStr::new).collect();
         named.extend(rule.within.map(SmolStr::new));
         match rule.when {
-            When::Any | When::FitsSource(_) => {}
+            When::Any => {}
             When::Equals(text) | When::Contains(text) => named.push(SmolStr::new(text)),
         }
         let mut writes = Vec::with_capacity(rule.fills.len());
@@ -1327,139 +1321,6 @@ fn carries_rules(registry: &FixRegistry, known: &Field) -> bool {
     )
 }
 
-/// Synchronizes one keyed occurrence of a root repeating group.
-///
-/// The same unpacker and packer the restating pass uses preserve every
-/// unrelated occurrence and optional member. `value` replaces the one
-/// occurrence whose `selector_tag` equals `selector`, removing duplicates;
-/// `None` removes every matching occurrence. The group's counter is written
-/// from the resulting length.
-pub(super) fn sync_group_occurrence(
-    msg: &mut FixMsg,
-    group: &str,
-    selector_tag: i32,
-    selector: &str,
-    value_tag: i32,
-    value: Option<&str>,
-) -> Result<()> {
-    let registry = Arc::clone(msg.registry());
-    let Some(definition) = registry
-        .get_definition(crate::FixCategory::Groups, group)
-        .cloned()
-    else {
-        return Ok(());
-    };
-    let Some(counter_tag) = definition.as_fix().counter()? else {
-        return Ok(());
-    };
-    let Some(selector_known) = registry.get_field_by_tag(selector_tag) else {
-        return Ok(());
-    };
-    let Some(value_known) = registry.get_field_by_tag(value_tag) else {
-        return Ok(());
-    };
-    let Some(counter_field) = registry.get_field_by_tag(counter_tag).map(stated_field) else {
-        return Ok(());
-    };
-    let selector = typed_spelling_remembered(&registry, selector_known, selector);
-    if selector.is_null() {
-        return Ok(());
-    }
-    let value = value.map(|held| typed_spelling_remembered(&registry, value_known, held));
-    let (selector_field, value_field) = (stated_field(selector_known), stated_field(value_known));
-    if value.as_ref().is_some_and(Scalar::is_null) {
-        return Ok(());
-    }
-
-    let root = msg.as_field().clone();
-    let Some(children) = root.dtype().as_fields() else {
-        return Ok(());
-    };
-    let Some(values) = msg.as_value().as_sequence() else {
-        return Ok(());
-    };
-    let mut level = Level::unpack(children, values);
-    let at = match level.position_of_group(counter_tag, definition.name()) {
-        Some(at) => at,
-        None if value.is_none() => return Ok(()),
-        None => {
-            level
-                .children
-                .push(Child::Group(stated_field(&definition), Vec::new()));
-            level.children.len() - 1
-        }
-    };
-    if let Child::Flat(declared, held) = &level.children[at] {
-        if !held.is_null() {
-            return Ok(());
-        }
-        level.children[at] = Child::Group(declared.clone(), Vec::new());
-    }
-    let Child::Group(_, occurrences) = &mut level.children[at] else {
-        return Ok(());
-    };
-
-    let mut matched = false;
-    occurrences.retain_mut(|occurrence| {
-        let is_match = occurrence.as_ref().is_some_and(|held| {
-            held.position_of_field(Some(selector_tag), selector_field.name())
-                .and_then(|at| held.value_at(at))
-                == Some(&selector)
-        });
-        if !is_match {
-            return true;
-        }
-        let Some(value) = value.as_ref() else {
-            return false;
-        };
-        if matched {
-            return false;
-        }
-        matched = true;
-        let target = occurrence.get_or_insert_with(Level::default);
-        let at = target.position_of_field(Some(value_tag), value_field.name());
-        target.write_field(FieldWrite {
-            at,
-            field: value_field.clone(),
-            value: value.clone(),
-        });
-        true
-    });
-    if let Some(value) = value.filter(|_| !matched) {
-        let mut occurrence = Level::default();
-        occurrence.write_field(FieldWrite {
-            at: None,
-            field: value_field,
-            value,
-        });
-        occurrence.write_field(FieldWrite {
-            at: None,
-            field: selector_field,
-            value: selector,
-        });
-        occurrences.push(Some(occurrence));
-    }
-    let Ok(count) = i64::try_from(occurrences.len()) else {
-        return Ok(());
-    };
-    let counter = counter_field.scalar(Scalar::from(count))?;
-    let counter_at = level.position_of_field(Some(counter_tag), counter_field.name());
-    level.write_field(FieldWrite {
-        at: counter_at,
-        field: counter_field,
-        value: counter,
-    });
-
-    let (fields, values) = level.pack()?;
-    let root = Field::new_with_metadata(
-        root.name(),
-        DataType::from(StructType::from_checked_fields(fields)?),
-        root.is_nullable(),
-        root.as_metadata().clone(),
-    );
-    msg.replace_content(root, values)
-}
-
 /// Folds an older observation's FIX content into the selected reference.
 ///
 /// The reference is the conflict base. Missing lifted and scalar facts are
@@ -1502,10 +1363,8 @@ pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()
             .get_by_tag(tag)
             .as_ref()
             .is_none_or(Scalar::is_null);
-        if missing {
-            if let Some(value) = other.get_by_tag(tag).filter(|value| !value.is_null()) {
-                reference.set_unsettled(tag, value)?;
-            }
+        if missing && let Some(value) = other.get_by_tag(tag).filter(|value| !value.is_null()) {
+            reference.set_unsettled(tag, value)?;
         }
     }
     reference.settle();
@@ -1524,69 +1383,18 @@ pub(super) fn same_content(left: &FixMsg, right: &FixMsg) -> bool {
             .all(|tag| left.get_by_tag(tag) == right.get_by_tag(tag))
 }
 
-/// Carries order-link spellings from the exact lifecycle predecessor without
-/// overwriting anything the current message stated.
+/// Carries the predecessor's `ClOrdID(11)` onto a message stating none,
+/// answering whether it did. The order's own parents travel in its
+/// identifiers, which the lifecycle follows by their `FIX:parents`, so no
+/// field is written for them.
 pub(super) fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> Result<bool> {
-    let previous_order = previous.lifted().orderid().map(str::to_owned);
-    let current_order = current.lifted().orderid().map(str::to_owned);
-    let previous_clord = previous.lifted().clordid().map(str::to_owned);
-    let current_clord = current.lifted().clordid().map(str::to_owned);
-    let parent_missing = current
-        .get_by_name("parentorderid")
-        .as_ref()
-        .is_none_or(|value| value.is_null() || value.as_str() == Some(""));
-    let inherit_parent = parent_missing
-        && matches!(
-            (previous_order.as_deref(), current_order.as_deref()),
-            (Some(previous), Some(current)) if previous != current
-        );
-    let inherit_clord = current_clord.is_none()
-        && previous_clord
-            .as_deref()
-            .is_some_and(|previous| current_clord.as_deref() != Some(previous));
-    if !inherit_parent && !inherit_clord {
+    if current.lifted().clordid().is_some() {
         return Ok(false);
     }
-
-    if inherit_parent {
-        let root = current.as_field().clone();
-        let Some(values) = current.as_value().as_sequence() else {
-            return Ok(false);
-        };
-        let mut level = Level::unpack(root.fields(), values);
-        let value = Scalar::from(previous_order.as_deref().expect("checked above"));
-        match level
-            .children
-            .iter()
-            .position(|child| crate::folds_equal(child.name(), "parentorderid"))
-        {
-            Some(at) => {
-                if let Child::Flat(field, held) = &mut level.children[at] {
-                    if held.is_null() || held.as_str() == Some("") {
-                        *held = field.scalar(value)?;
-                    }
-                }
-            }
-            None => level.children.push(Child::Flat(
-                DataType::utf8().nullable_field("parentorderid"),
-                value,
-            )),
-        }
-        let (fields, values) = level.pack()?;
-        let root = Field::new_with_metadata(
-            root.name(),
-            DataType::from(StructType::from_checked_fields(fields)?),
-            root.is_nullable(),
-            root.as_metadata().clone(),
-        );
-        current.replace_content(root, values)?;
-    }
-    if inherit_clord {
-        current.set_unsettled(
-            11,
-            Scalar::from(previous_clord.as_deref().expect("checked above")),
-        )?;
-    }
+    let Some(previous_clord) = previous.lifted().clordid().map(str::to_owned) else {
+        return Ok(false);
+    };
+    current.set_unsettled(11, Scalar::from(previous_clord))?;
     current.settle();
     Ok(true)
 }

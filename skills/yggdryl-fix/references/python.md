@@ -171,15 +171,16 @@ message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AA
 assert (message.header().beginstring, message.header().msgtype) == ("FIX.4.4", "D")
 # The category its type files under, and the option strike it identifies.
 assert message.msgcat is MarketDataKind.ORDR
-assert message.strikepx is not None and message.strikepx.as_py() == Decimal(105)
+assert message.strikeprice is not None and message.strikeprice.as_py() == Decimal(105)
 # A coded value reads as its member; the wire keeps its code.
 assert message.by_tag(54).as_py() is Side.BUYS
 assert message.side is Side.BUYS
 assert message.quantity is not None and message.quantity.as_py() == Decimal(100)
 assert message.by_name("symbol").as_py() == "AAPL"
 # The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert message.crosscode == "BUYS:A1"
-assert message.altids == {"CLORDID": "A1"}
+assert message.crosscode == "10:1:A1"
+# The names it goes by are identifiers: a source, a type and a value.
+assert str(message.identifiers) == "[fix:clordid=A1]"
 # Instants are int nanoseconds since the epoch, UTC.
 assert message.currunix == 1_767_348_930_000_000_000
 # The entries are the content row as (tag, name, value, children) tuples.
@@ -208,7 +209,7 @@ registry = FixRegistry.from_fields([msgtype, clordid, symbol])
 root = Field("NewOrderSingle", DataType.from_fields([msgtype, clordid, symbol]), nullable=False)
 message = FixMsg(root, {"MsgType": "D", "ClOrdID": "A1", "Symbol": "AAPL"}, registry)
 assert message.header().msgtype == "D"
-assert message.crosscode == "A1"
+assert message.crosscode == "10:0:A1"
 
 before = message.currhashcode
 message.set("Symbol", "MSFT")
@@ -251,7 +252,7 @@ assert again.digest() == message.digest()
 
 `parse_text_arrow_reader` takes a table, batch or reader with a payload column
 (`body` by default) and answers a `pyarrow.RecordBatchReader` of FIX rows, one
-per message, the capture's own columns leading; parsing is pooled across
+per message, the capture's own columns following the shared ones; parsing is pooled across
 `threads`.
 
 ```python
@@ -276,8 +277,10 @@ capture = pa.table(
 
 codec = FixCodec(registry, threads=4, batch_row_size=10_000)
 read = codec.parse_text_arrow_reader(capture)
-# The schema is decided before a row is read: the capture leads, `fixentries` closes.
-assert read.schema.names[:3] == ["url", "rownum", "body"]
+# The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
+assert read.schema.names[0] == "curruuid"
+at = read.schema.names.index("url")
+assert read.schema.names[at - 1 : at + 3] == ["partyids", "url", "rownum", "body"]
 assert read.schema.names[-1] == "fixentries"
 
 held = read.read_all()
@@ -412,7 +415,7 @@ assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 0, 0)
 assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
-assert all(held.side is Side.BUYS and held.crosscode == "BUYS:A1" for held in (ack, fill))
+assert all(held.side is Side.BUYS and held.crosscode == "10:1:A1" for held in (ack, fill))
 assert (fill.msgcat, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
 assert ack.creaunix == fill.creaunix == order.currunix
@@ -424,6 +427,45 @@ rows = codec.arrow_reader(fix_schema(registry), codec.parse_lines(lines))
 chained = codec.lifecycle_arrow_reader(rows).read_all()
 # Two chains: the order's, and its fill's execution.
 assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist())) == 2
+```
+
+## Follow a replace chain's parents
+
+A message that states an identifier again under another value is a step in
+its chain: `lifecycle` keeps the value before it as the type's parent
+(`orderid` leaves `parentorderid` and the chain's first as `origorderid`,
+`clordid` leaves `origclordid`), and joins a replace to its order by that
+parent too. `registry.parents_of("orderid")` lists them, nearest first, from
+the `FIX:parents` a field states.
+
+```python
+from pathlib import Path
+
+from yggdryl.fix import FixCodec, FixRegistry
+
+KINDS = ("orderid", "parentorderid", "origorderid", "clordid", "origclordid")
+reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+lines = [
+    b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=10|44=100|52=20260921-10:00:00|10=0|",
+    b"8=FIX.4.4|35=8|11=C1|37=O1|150=0|39=0|55=AAPL|52=20260921-10:00:01|10=0|",
+    b"8=FIX.4.4|35=G|11=C2|41=C1|37=O2|55=AAPL|54=1|38=10|44=101|52=20260921-10:00:02|10=0|",
+    b"8=FIX.4.4|35=G|11=C3|41=C2|37=O3|55=AAPL|54=1|38=10|44=102|52=20260921-10:00:03|10=0|",
+]
+chained = list(reader.lifecycle(reader.parse_lines(lines)))
+
+
+def held(message):
+    # What a message holds under each type, "-" where it holds none.
+    return tuple(message.identifiers.get_from("fix", kind) or "-" for kind in KINDS)
+
+
+assert held(chained[0]) == ("-", "-", "-", "C1", "-")
+assert held(chained[1]) == ("O1", "-", "-", "C1", "-")
+# Each replace names the value before it and the chain's first.
+assert held(chained[2]) == ("O2", "O1", "O1", "C2", "C1")
+assert held(chained[3]) == ("O3", "O2", "O1", "C3", "C2")
+# One chain: the replaces joined the order by the parent they state.
+assert all(message.crossuuid == chained[0].crossuuid for message in chained)
 ```
 
 ## Split fills, two-sided quotes and batches at the parse
@@ -455,12 +497,12 @@ assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FI
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
 # An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
-assert (report.crosscode, execution.crosscode) == ("BUYS:O-9", "BUYS:E-1")
+assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
 quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|"
 quote, bid, ask = codec.parse_line(quote)
 assert (quote.side, bid.side, ask.side) == (Side.UNKN, Side.BUYS, Side.SELL)
-assert (bid.crosscode, ask.crosscode) == ("BUYS:Q1", "SELL:Q1")
+assert (bid.crosscode, ask.crosscode) == ("14:1:Q1", "14:2:Q1")
 # Each side prices at its own level and keeps the pair its source stated.
 assert bid.price is not None and bid.price.as_py() == Decimal(99)
 assert ask.bidpx is not None and ask.bidpx.as_py() == Decimal(99)

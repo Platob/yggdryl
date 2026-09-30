@@ -61,7 +61,7 @@ use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
-use crate::graph::EventColumn;
+use crate::graph::{ElementColumn, EventColumn};
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
 use crate::warning::warned;
@@ -832,15 +832,19 @@ impl Columns {
         };
         let payload_at = payload_column_of(carrier, payload, named(payload))?;
         let reached = |held: &Field| codec.fill_target(held.name()).map(|(_, tag)| tag);
-        // A carrier's event columns are the carrier's own facts - the line
-        // each row is, dated, identified and placed as the text reader
-        // states it - and fill nothing on the message: its `curruuid` is
-        // the message's source, and the rest say nothing about the message.
+        // A carrier's element and event columns are the carrier's own facts
+        // - the line each row is, identified, dated and placed as the text
+        // reader states it - and fill nothing on the message: its
+        // `curruuid` is the message's source, and the rest say nothing
+        // about the message.
         let fills = fields
             .iter()
             .enumerate()
             .filter(|(_, held)| !is_parameter(held.name(), payload))
-            .filter(|(_, held)| EventColumn::of_name(held.name()).is_none())
+            .filter(|(_, held)| {
+                ElementColumn::of_name(held.name()).is_none()
+                    && EventColumn::of_name(held.name()).is_none()
+            })
             .filter_map(|(at, held)| {
                 let (field, tag) = codec.fill_target(held.name())?;
                 // The capture's own column fills no field: it is the
@@ -869,7 +873,7 @@ impl Columns {
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
             mtime: named(EventColumn::CurrUnix.name()),
-            source: named(EventColumn::CurrUuid.name()),
+            source: named(ElementColumn::CurrUuid.name()),
             fills,
             carried,
         })
@@ -1268,12 +1272,12 @@ impl Iterator for BatchRows {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some((batch, at)) = &mut self.held {
-                if *at < batch.records.len() {
-                    let row = *at;
-                    *at += 1;
-                    return Some(Ok((Arc::clone(batch), row)));
-                }
+            if let Some((batch, at)) = &mut self.held
+                && *at < batch.records.len()
+            {
+                let row = *at;
+                *at += 1;
+                return Some(Ok((Arc::clone(batch), row)));
             }
             if let Some(batch) = self.pending.next() {
                 self.held = Some((Arc::new(batch), 0));
@@ -1322,12 +1326,12 @@ impl Iterator for StructRows {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some((batch, at)) = &mut self.held {
-                if *at < batch.len() {
-                    let row = *at;
-                    *at += 1;
-                    return Some(Ok((Arc::clone(batch), row)));
-                }
+            if let Some((batch, at)) = &mut self.held
+                && *at < batch.len()
+            {
+                let row = *at;
+                *at += 1;
+                return Some(Ok((Arc::clone(batch), row)));
             }
             if let Some(records) = self.pending.next() {
                 self.held = Some((Arc::new(records), 0));

@@ -8,13 +8,13 @@ use std::vec;
 
 use super::Element;
 use super::element::InstantSequence;
-use super::market::unsided_crosscode;
-use crate::idmap::IdMap;
+use super::market::base_crosscode;
+use crate::{IdType, Identifiers};
 use crate::{MarketDataKind, Side, State, Uuid};
 
 mod sealed {
     use super::super::{Element, Event, Market, MarketData, Operation};
-    use crate::idmap::IdMap;
+    use crate::{IdType, Identifiers};
     use crate::{MarketDataKind, Side, State};
 
     /// [`Walked::walked_made`] over an event's own facts.
@@ -53,6 +53,8 @@ mod sealed {
         fn walked_set_execunix(&mut self, unix: Option<i64>);
         /// [`Event::set_recdunix`].
         fn walked_set_recdunix(&mut self, unix: Option<i64>);
+        /// [`Event::get_snapunix`].
+        fn walked_snapunix(&self) -> Option<i64>;
         /// [`Event::set_snapunix`].
         fn walked_set_snapunix(&mut self, unix: Option<i64>);
         /// [`Event::set_seqnum`], restating only where the place moves.
@@ -62,9 +64,11 @@ mod sealed {
         /// expiration a walk emitted - an `EXPIRED` event following the
         /// live one, dated at its own deadline.
         fn walked_made(&self) -> bool;
-        /// [`Operation::get_altids`]; `None` for an element the walk does
+        /// [`Operation::get_identifiers`]; `None` for an element the walk does
         /// not chain.
-        fn walked_altids(&self) -> Option<&IdMap>;
+        fn walked_identifiers(&self) -> Option<&Identifiers>;
+        /// [`Operation::parent_of`]: the base a parent type names.
+        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType>;
         /// [`Event::restating`].
         fn walked_restating(self, live: &Self) -> Self;
         /// [`super::super::market::fill_execution`].
@@ -114,10 +118,13 @@ mod sealed {
             self.get_exprunix()
         }
         fn walked_set_execunix(&mut self, unix: Option<i64>) {
-            self.set_execunix(unix);
+            self.set_execunix(unix, true);
         }
         fn walked_set_recdunix(&mut self, unix: Option<i64>) {
             self.set_recdunix(unix);
+        }
+        fn walked_snapunix(&self) -> Option<i64> {
+            self.get_snapunix()
         }
         fn walked_set_snapunix(&mut self, unix: Option<i64>) {
             self.set_snapunix(unix);
@@ -130,8 +137,11 @@ mod sealed {
         fn walked_made(&self) -> bool {
             made(self)
         }
-        fn walked_altids(&self) -> Option<&IdMap> {
-            Some(self.get_altids())
+        fn walked_identifiers(&self) -> Option<&Identifiers> {
+            Some(self.get_identifiers())
+        }
+        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType> {
+            self.parent_of(kind).map(|(base, _)| base)
         }
         fn walked_restating(self, live: &Self) -> Self {
             self.restating(live)
@@ -195,7 +205,7 @@ mod sealed {
         }
         fn walked_set_execunix(&mut self, unix: Option<i64>) {
             if let Some(operation) = self.as_event_operation_mut() {
-                operation.set_execunix(unix);
+                operation.set_execunix(unix, true);
             }
         }
         fn walked_set_recdunix(&mut self, unix: Option<i64>) {
@@ -203,26 +213,34 @@ mod sealed {
                 operation.set_recdunix(unix);
             }
         }
+        fn walked_snapunix(&self) -> Option<i64> {
+            self.as_event().and_then(|event| event.get_snapunix())
+        }
         fn walked_set_snapunix(&mut self, unix: Option<i64>) {
             if let Some(operation) = self.as_event_operation_mut() {
                 operation.set_snapunix(unix);
             }
         }
         fn walked_set_seqnum(&mut self, seqnum: u64) {
-            if let Some(operation) = self.as_event_operation_mut() {
-                if operation.get_seqnum() != seqnum {
-                    operation.set_seqnum(seqnum);
-                }
+            if let Some(operation) = self.as_event_operation_mut()
+                && operation.get_seqnum() != seqnum
+            {
+                operation.set_seqnum(seqnum);
             }
         }
         fn walked_made(&self) -> bool {
             self.as_event_operation().is_some_and(made)
         }
-        fn walked_altids(&self) -> Option<&IdMap> {
+        fn walked_identifiers(&self) -> Option<&Identifiers> {
             match self.as_event_operation() {
-                Some(operation) => Some(operation.get_altids()),
+                Some(operation) => Some(operation.get_identifiers()),
                 None => None,
             }
+        }
+        fn walked_parent_of(&self, kind: &IdType) -> Option<IdType> {
+            self.as_event_operation()?
+                .parent_of(kind)
+                .map(|(base, _)| base)
         }
         /// Restates through the leaf's own [`Event::restating`]: a chain
         /// holds one category, so the live element is the same walked
@@ -393,7 +411,7 @@ enum Source<E, I> {
 /// let first = walk.next().expect("the earliest");
 /// assert_eq!((first.get_currunix(), first.get_seqnum(), first.get_prevuuid()), (10, 0, None));
 /// let other = walk.next().expect("the other order's");
-/// assert_eq!((other.get_crosscode(), other.get_seqnum()), ("O-900", 0));
+/// assert_eq!((other.get_crosscode(), other.get_seqnum()), ("10:0:O-900", 0));
 /// let second = walk.next().expect("the partial fill");
 /// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_curruuid())));
 /// let filled = walk.next().expect("the fill");
@@ -404,7 +422,7 @@ enum Source<E, I> {
 /// assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
 /// let mut alive = walk.alive().map(|held| (held.get_crosscode().to_owned(), held.get_currunix())).collect::<Vec<_>>();
 /// alive.sort();
-/// assert_eq!(alive, [("O-100".to_owned(), 40), ("O-900".to_owned(), 15)]);
+/// assert_eq!(alive, [("10:0:O-100".to_owned(), 40), ("10:0:O-900".to_owned(), 15)]);
 /// assert!(walk.next().is_none());
 ///
 /// // The same event read twice - a message logged at two hops - is one
@@ -433,15 +451,15 @@ pub struct EventIterator<E, I> {
     /// side joins the one side a name is alive on. Two levels, so a name is
     /// looked up by the borrowed scheme and name an element states and never
     /// by a copy of them.
-    named: HashMap<String, HashMap<String, Vec<(Side, Chain)>>>,
+    named: HashMap<IdType, HashMap<String, Vec<(Side, Chain)>>>,
     /// The live identities of each base cross code - the code without the
-    /// side prefix [`Market::sided_crosscode`](super::Market::sided_crosscode)
-    /// gives it - so an element stating no side joins the one side its code
-    /// is alive on.
+    /// prefix [`Market::stored_crosscode`](super::Market::stored_crosscode)
+    /// gives it - of the sided elements stating a side, so an element
+    /// stating no side joins the one side its code is alive on.
     bases: HashMap<String, Vec<Chain>>,
     /// The names each live identity is known by, so retiring it forgets
     /// exactly those.
-    names_of: HashMap<Chain, Vec<(String, String)>>,
+    names_of: HashMap<Chain, Vec<(IdType, String)>>,
     /// The one current finite deadline of each live identity, ordered so a
     /// deadline is retired before anything arriving at the same instant.
     expirations: BTreeSet<(i64, Chain)>,
@@ -578,12 +596,17 @@ where
         }
         if is_alive(element) {
             let side = element.walked_side();
-            for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
+            for (scheme, name) in element
+                .walked_identifiers()
+                .into_iter()
+                .flat_map(Identifiers::iter)
+                .map(|id| (id.kind(), id.value()))
+            {
                 // Looked up borrowed first, as the bases are: a chain settled
                 // again under the names it already goes by allocates nothing.
                 let names = match self.named.get_mut(scheme) {
                     Some(names) => names,
-                    None => self.named.entry(scheme.to_owned()).or_default(),
+                    None => self.named.entry(scheme.clone()).or_default(),
                 };
                 let slots = match names.get_mut(name) {
                     Some(slots) => slots,
@@ -605,12 +628,10 @@ where
                 }
                 if let Some(held) = held {
                     let still = slots.iter().any(|(_, other)| *other == held);
-                    if !still {
-                        if let Some(known) = self.names_of.get_mut(&held) {
-                            known.retain(|(held_scheme, held_name)| {
-                                held_scheme.as_str() != scheme || held_name.as_str() != name
-                            });
-                        }
+                    if !still && let Some(known) = self.names_of.get_mut(&held) {
+                        known.retain(|(held_scheme, held_name)| {
+                            held_scheme != scheme || held_name.as_str() != name
+                        });
                     }
                 }
                 let known = self.names_of.entry(identity).or_default();
@@ -618,14 +639,13 @@ where
                     .iter()
                     .any(|(held_scheme, held_name)| held_scheme == scheme && held_name == name)
                 {
-                    known.push((scheme.to_owned(), name.to_owned()));
+                    known.push((scheme.clone(), name.to_owned()));
                 }
             }
-            let code = element.get_crosscode();
-            let base = unsided_crosscode(code);
-            // Only a sided element's prefix is one the holder gave it: an
-            // unsided code that reads `BUYS:...` is its own name.
-            if base.len() != code.len() && element.walked_sided() {
+            let base = base_crosscode(element.get_crosscode());
+            // Only a sided element stating a side is a side its base is
+            // alive on.
+            if element.walked_sided() && element.walked_side() != Side::Unknown {
                 // Looked up borrowed first: a chain settled again under its
                 // base allocates nothing.
                 match self.bases.get_mut(base) {
@@ -671,14 +691,14 @@ where
                 self.named.remove(&scheme);
             }
         }
-        let code = live.element.get_crosscode();
-        let base = unsided_crosscode(code);
-        if base.len() != code.len() && live.element.walked_sided() {
-            if let Some(held) = self.bases.get_mut(base) {
-                held.retain(|held| *held != identity);
-                if held.is_empty() {
-                    self.bases.remove(base);
-                }
+        let base = base_crosscode(live.element.get_crosscode());
+        if live.element.walked_sided()
+            && live.element.walked_side() != Side::Unknown
+            && let Some(held) = self.bases.get_mut(base)
+        {
+            held.retain(|held| *held != identity);
+            if held.is_empty() {
+                self.bases.remove(base);
             }
         }
         Some(live)
@@ -729,11 +749,17 @@ where
             if let Some(live) = self.alive.get(&identity) {
                 // The live event as of the grid instant: dated at it, so it
                 // derives that instant's identity, and standing under its
-                // chain's cross element whatever that identity derives.
+                // chain's cross element whatever that identity derives. Its
+                // snapshot instant is the one its content was stated at -
+                // the live event's own, or the one a view it is kept - never
+                // the tick, which is its instant, nor a predecessor's.
                 let mut snapshot = live.element.clone();
                 let cross = snapshot.get_crossuuid();
+                let original = snapshot
+                    .walked_snapunix()
+                    .or_else(|| snapshot.walked_currunix());
                 snapshot.walked_set_currunix(unix);
-                snapshot.walked_set_snapunix(Some(unix));
+                snapshot.walked_set_snapunix(original);
                 snapshot.finalize();
                 snapshot.set_crossuuid(cross);
                 return Some(snapshot);
@@ -861,16 +887,31 @@ where
         let side = element.walked_side();
         let alive = |identity: &Chain| identity.1 == kind && self.alive.contains_key(identity);
         if side == Side::Unknown {
-            let code = element.get_crosscode();
-            if let Some(held) = (!code.is_empty()).then(|| self.bases.get(code)).flatten() {
+            let base = base_crosscode(element.get_crosscode());
+            if let Some(held) = (!base.is_empty()).then(|| self.bases.get(base)).flatten() {
                 let mut live = held.iter().filter(|identity| alive(identity));
                 if let (Some(identity), None) = (live.next(), live.next()) {
                     return *identity;
                 }
             }
         }
-        for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
-            let Some(slots) = self.named.get(scheme).and_then(|names| names.get(name)) else {
+        // An element names a live chain by any of its identifiers' values,
+        // and a parent identifier - a value its base held before - by its
+        // value under that base too.
+        // Read as they are walked: an element names any number of them.
+        let names = element
+            .walked_identifiers()
+            .into_iter()
+            .flat_map(Identifiers::iter)
+            .flat_map(|id| {
+                std::iter::once((id.kind().clone(), id.value())).chain(
+                    element
+                        .walked_parent_of(id.kind())
+                        .map(|base| (base, id.value())),
+                )
+            });
+        for (scheme, name) in names {
+            let Some(slots) = self.named.get(&scheme).and_then(|names| names.get(name)) else {
                 continue;
             };
             if side == Side::Unknown {
@@ -909,11 +950,11 @@ where
             }
 
             // The exact boundary is read after every source event at it.
-            if let Some(unix) = self.after_group.take() {
-                if self.next_snapshot == Some(unix) {
-                    self.open_snapshot(unix);
-                    continue;
-                }
+            if let Some(unix) = self.after_group.take()
+                && self.next_snapshot == Some(unix)
+            {
+                self.open_snapshot(unix);
+                continue;
             }
 
             // An element stating no instant is read where it stands.
@@ -1094,7 +1135,7 @@ pub mod internals {
     /// side it is alive on.
     pub fn named_identity<E, I>(
         walk: &EventIterator<E, I>,
-        scheme: &str,
+        scheme: &crate::IdType,
         name: &str,
     ) -> Option<Uuid> {
         walk.named

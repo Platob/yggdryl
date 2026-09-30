@@ -65,76 +65,95 @@ fn metadata(row: &Scalar, schema: &Field) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// The `parties` occurrences out of a fixed row.
+/// The `regulatorytradeids` occurrences out of a fixed row.
 ///
-/// The group is reached by its name and not by tag 453, which is the
+/// The group is reached by its name and not by tag 1907, which is the
 /// counter's column: a Serie group and its counter are two columns.
 fn group<'row>(row: &'row Scalar, schema: &Field) -> &'row [Scalar] {
-    let at = schema.index_of("parties").expect("a parties column");
+    let at = schema
+        .index_of("regulatorytradeids")
+        .expect("a regulatorytradeids column");
     row.as_sequence().expect("a row")[at]
         .as_sequence()
-        .expect("the parties")
+        .expect("the regulatory trade identifiers")
 }
 
 #[test]
 fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields() {
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
+    // `SecurityID(48)`, `SecurityIDSource(22)`, `Parties(453)` and
+    // `SecAltIDGrp(454)` are no columns: the prefix's `secaltids` and
+    // `parties` state what they name, and a message stating them keeps them
+    // among its entries.
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat, two optional event clocks, the session event and four
-    // normalized identifiers - ISIN, the currency pair, Bloomberg, FIGI -
-    // join the existing
-    // standard CFI column; the identifiers map and the CUSIP and SEDOL
-    // columns are retired, their tags never reused; the six FX parts of a
-    // price - 194, 195, 188 to 191 - are columns of their own; a bridge's
-    // originating plugin and conversation join the message band; the option
-    // strike joins the instrument band.
-    assert_eq!(tags.len(), 128);
-    // The row is read in bands rather than by tag number: when it happened,
-    // which event it is, which message carried it, which instrument it is
-    // about, which order it belongs to, what it states, how it went, the
-    // groups kept whole, and last the frame.
+    assert_eq!(tags.len(), 149);
+    for tag in [22, 48, 453, 454] {
+        assert!(!tags.contains(&tag), "{tag} is no column");
+    }
+    // The row opens as every generated schema does: the element's, the
+    // event's, the market's and the operation's facts, the crate's own tag
+    // or - for a market or an operation column FIX already names alike -
+    // that field's.
+    let shared = 6 + 9 + 34 + 5;
     assert_eq!(
         &tags[..15],
-        [
-            yggdryl::CURRUNIX_TAG_NAME.0,
-            yggdryl::EXECUNIX_TAG_NAME.0,
-            yggdryl::RECDUNIX_TAG_NAME.0,
-            yggdryl::CREAUNIX_TAG_NAME.0,
-            yggdryl::PREVUNIX_TAG_NAME.0,
-            yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::EXPRUNIX_TAG_NAME.0,
-            52,
-            122,
-            60,
-            64,
-            75,
-            126,
-            62,
-            432,
-        ],
-        "when it happened, and the clocks a message stops being good at"
-    );
-    assert_eq!(
-        &tags[15..23],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
             yggdryl::CROSSCODE_TAG_NAME.0,
             yggdryl::CURRHASHCODE_TAG_NAME.0,
             yggdryl::CROSSHASHCODE_TAG_NAME.0,
+            yggdryl::SRCUUIDS_TAG_NAME.0,
+            yggdryl::CURRUNIX_TAG_NAME.0,
+            yggdryl::CREAUNIX_TAG_NAME.0,
+            yggdryl::RECDUNIX_TAG_NAME.0,
+            yggdryl::EXPRUNIX_TAG_NAME.0,
+            yggdryl::PREVUNIX_TAG_NAME.0,
+            yggdryl::SNAPUNIX_TAG_NAME.0,
             yggdryl::PREVUUID_TAG_NAME.0,
             yggdryl::SEQNUM_TAG_NAME.0,
-            yggdryl::SRCUUIDS_TAG_NAME.0,
+            yggdryl::STATE_TAG_NAME.0,
         ],
-        "which event"
+        "the element, then the event"
     );
     assert_eq!(
-        &tags[23..37],
+        &tags[15..25],
+        [
+            yggdryl::MARKETDATAKIND_TAG_NAME.0,
+            yggdryl::MARKETDATATYPE_TAG_NAME.0,
+            44,
+            99,
+            15,
+            53,
+            1138,
+            yggdryl::HIDDENQTY_TAG_NAME.0,
+            yggdryl::UNIT_TAG_NAME.0,
+            54,
+        ],
+        "the market's category and type, prices and quantities, FIX's own fields where FIX names them alike"
+    );
+    assert_eq!(
+        &tags[49..shared],
+        [
+            yggdryl::ORDQTY_TAG_NAME.0,
+            59,
+            yggdryl::TRADABLE_TAG_NAME.0,
+            yggdryl::IDENTIFIERS_TAG_NAME.0,
+            yggdryl::PARTYIDS_TAG_NAME.0,
+        ],
+        "the operation, TimeInForce(59) under its own name"
+    );
+    assert_eq!(
+        &tags[shared..shared + 8],
+        [52, 122, 60, 64, 75, 126, 62, 432],
+        "then the clocks FIX states"
+    );
+    assert_eq!(
+        &tags[shared + 8..shared + 21],
         [
             8,
             35,
-            yggdryl::MSGCAT_TAG_NAME.0,
             34,
             49,
             56,
@@ -174,19 +193,31 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             );
         }
     }
-    // The keys that are no field close the tagged row: the residual record
-    // is a map, its own count, and no counter column stands beside it.
-    assert_eq!(tags.last(), Some(&yggdryl::METADATA_TAG_NAME.0));
+    // The frame closes the tagged row.
+    assert_eq!(tags.last(), Some(&10));
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 133);
+    // The two identifier fields and the two groups, each group beside its
+    // counter's column, are six columns no row holds.
+    assert_eq!(schema.fields().len(), 152);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
-    // The frame closes the row: the trailer, then the keys that are no
-    // field, then the residual record.
+    let expected: Vec<&str> = yggdryl::graph::ElementColumn::ALL
+        .map(yggdryl::graph::ElementColumn::name)
+        .into_iter()
+        .chain(yggdryl::graph::EventColumn::ALL.map(yggdryl::graph::EventColumn::name))
+        .chain(yggdryl::graph::MarketColumn::ALL.map(yggdryl::graph::MarketColumn::name))
+        .chain(yggdryl::graph::OperationColumn::ALL.map(yggdryl::graph::OperationColumn::name))
+        .collect();
     assert_eq!(
-        &names[names.len() - 4..],
-        ["signature", "checksum", "metadata", "fixentries"]
+        names[..shared],
+        expected[..],
+        "the shared columns open the row"
+    );
+    // The frame closes the row: the trailer, then the residual record.
+    assert_eq!(
+        &names[names.len() - 3..],
+        ["signature", "checksum", "fixentries"]
     );
     for tag in [
         yggdryl::EXECUNIX_TAG_NAME.0,
@@ -230,29 +261,38 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // A column is spelled by the dictionary's folded name and found by the
     // tag its field carries: 32 is `LastShares` in 4.2 and `LastQty` in a
     // newest one, and the column is the dictionary's one `lastqty` in both.
-    // The crate's own clocks lead the row, then its identities, then the
-    // standard header - a table is read by time and joined by identity.
-    // The row reads the way a message reads: when it happened first, then
-    // which event it is, then which message and session, and the header
-    // after them. Each column is found by its name rather than by an offset,
-    // so a band that gains one does not move this assertion.
+    // The row opens as every generated schema does - the element's facts,
+    // the event's, the market's, the operation's - and the message's own
+    // columns follow: its clocks, then which message and session, the
+    // header first. Each column is found by its name rather than by an
+    // offset, so a band that gains one does not move this assertion.
     let at = |name: &str| {
         schema
             .index_of(name)
             .unwrap_or_else(|| panic!("a {name} column"))
     };
-    for pair in ["currunix", "creaunix", "prevunix", "snapunix"].windows(2) {
+    for pair in [
+        "curruuid",
+        "srcuuids",
+        "currunix",
+        "creaunix",
+        "prevunix",
+        "snapunix",
+        "state",
+        "marketdatakind",
+        "price",
+        "partyids",
+        "sendingtime",
+        "beginstring",
+    ]
+    .windows(2)
+    {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
-    assert!(at("snapunix") < at("curruuid"), "the clocks open the row");
-    assert!(
-        at("curruuid") < at("beginstring"),
-        "the event before the header"
-    );
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(
         &names[header..header + 4],
-        ["beginstring", "msgtype", "msgcat", "msgseqnum"]
+        ["beginstring", "msgtype", "msgseqnum", "sendercompid"]
     );
     assert_eq!(schema.index_of("msgtype"), Some(header + 1));
     assert_eq!(column_of(&schema, 35), header + 1);
@@ -285,21 +325,24 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(yggdryl::CURRHASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
-    // identity is the folded name, while renderers receive the FIX-style
+    // identity is the folded name, while renderers receive the readable
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::CURRUNIX_TAG_NAME.0, "CurrUnix"),
-        (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
-        (yggdryl::MSGPLUGINID_TAG_NAME.0, "MsgPluginId"),
-        (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
-        (yggdryl::MSGSESSEVENTID_TAG_NAME.0, "MsgSessEventId"),
-        (yggdryl::CURRHASHCODE_TAG_NAME.0, "CurrHashCode"),
-        (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
-        (yggdryl::CROSSCODE_TAG_NAME.0, "CrossCode"),
-        (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
-        (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
+        (yggdryl::CURRUNIX_TAG_NAME.0, "Current Time"),
+        (yggdryl::MSGCTXID_TAG_NAME.0, "Message Context ID"),
+        (yggdryl::MSGPLUGINID_TAG_NAME.0, "Message Plugin ID"),
+        (yggdryl::MSGSESSIONID_TAG_NAME.0, "Message Session ID"),
+        (
+            yggdryl::MSGSESSEVENTID_TAG_NAME.0,
+            "Message Session Event ID",
+        ),
+        (yggdryl::CURRHASHCODE_TAG_NAME.0, "Current Hash Code"),
+        (yggdryl::CROSSHASHCODE_TAG_NAME.0, "Cross Hash Code"),
+        (yggdryl::CROSSCODE_TAG_NAME.0, "Cross Code"),
+        (yggdryl::PREVUNIX_TAG_NAME.0, "Previous Time"),
+        (yggdryl::PREVUUID_TAG_NAME.0, "Previous UUID"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::EXPRUNIX_TAG_NAME.0, "ExprUnix"),
+        (yggdryl::EXPRUNIX_TAG_NAME.0, "Expiry Time"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -318,12 +361,12 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "currunix",
-            "creaunix",
             "curruuid",
             "crossuuid",
             "currhashcode",
             "crosshashcode",
+            "currunix",
+            "creaunix",
             "beginstring",
         ]
     );
@@ -470,9 +513,11 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
             .unwrap(),
         1
     );
+    // The body follows the row's columns: `TimeInForce(59)` is the
+    // operation's `timeinforce`, so it leads the instrument band.
     assert_eq!(
         encoded,
-        b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|59=0|10=0|\n"
+        b"8=FIX.4.4|35=D|11=UUID-ORDER-1|59=0|55=AAPL|10=0|\n"
     );
 }
 
@@ -734,6 +779,90 @@ fn a_residual_key_that_is_no_resolved_field_is_refused_by_name() {
         .expect_err("a key that is no resolved field");
         assert!(error.to_string().contains("fixentries"), "{key}: {error}");
     }
+}
+/// The identifier columns are sorted maps from the key `src:type` to the
+/// identifier's `struct<src, type, value>`, one per set a market element
+/// states: its `securityids`, its `identifiers` and its `partyids`, the last
+/// of the columns every generated schema opens with. A message's cell is its
+/// set's own map - each key the one its row spells, the keys in the order
+/// they are spelled - and reads back to the set it was.
+#[test]
+fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
+    use yggdryl::graph::Operation;
+    use yggdryl::{Identifier, Identifiers};
+
+    let (registry, codec) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    for (name, item) in [
+        ("securityids", "securityid"),
+        ("identifiers", "identifier"),
+        ("partyids", "partyid"),
+    ] {
+        let column = &schema.fields()[schema.index_of(name).expect(name)];
+        assert_eq!(column.dtype(), &Identifiers::dtype(item), "{name}");
+        assert!(column.is_nullable(), "{name}");
+    }
+    let message = codec
+        .sole_line(
+            b"8=FIX.4.4|35=D|11=A1|55=AAPL|48=US0378331005|22=4|54=1|38=1|40=2|1=ACC|\
+              OMSUSERID=trader1|ParentOrderID=P1|10=0|",
+        )
+        .unwrap();
+    let row = message.into_row(&schema).unwrap();
+    for (name, expected) in [
+        ("securityids", message.get_securityids().clone()),
+        ("identifiers", message.get_identifiers().clone()),
+        ("partyids", message.get_partyids().clone()),
+    ] {
+        let cell = &row.as_sequence().expect("a row")[schema.index_of(name).unwrap()];
+        let entries = cell.as_mapping().expect(name);
+        assert!(!entries.is_empty(), "{name} states something");
+        assert_eq!(entries.len(), expected.len(), "{name}");
+        let mut previous: Option<&str> = None;
+        for (key, value) in entries {
+            let key = key.as_str().expect("a text key");
+            // Each key is the `src:type` of the row it names, in key order.
+            assert_eq!(
+                Identifier::from_scalar(value)
+                    .expect("an identifier row")
+                    .key(),
+                key,
+                "{name}"
+            );
+            assert!(
+                previous.is_none_or(|before| before < key),
+                "{name}: {previous:?} {key}"
+            );
+            previous = Some(key);
+        }
+        assert_eq!(
+            &Identifiers::from_scalar(cell).expect(name),
+            &expected,
+            "{name}"
+        );
+    }
+    // What the fields do not state of its sets and a row does stands: the
+    // message a row is read back as holds the identifier its map states.
+    let at = schema.index_of("identifiers").unwrap();
+    let mut cells = row.as_sequence().unwrap().to_vec();
+    let mut held = Identifiers::from_scalar(&cells[at]).unwrap();
+    held.insert(
+        Identifier::new(yggdryl::IdSource::Base, "foreignid".parse().unwrap(), "F-1").unwrap(),
+    );
+    cells[at] = held.into_scalar();
+    let restored = yggdryl::FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &Scalar::from_sequence(cells),
+    )
+    .unwrap();
+    assert_eq!(
+        restored
+            .get_identifiers()
+            .get_from(&yggdryl::IdSource::Base, &"foreignid".parse().unwrap()),
+        Some("F-1")
+    );
+    assert_eq!(restored.get_identifiers(), &held);
 }
 
 /// The two documents a datatype writes name it the same way.
@@ -1044,8 +1173,8 @@ fn a_market_wider_than_a_mic_is_read_as_none() {
 /// A bridge packs an occurrence into one value and a venue writes a member
 /// the dictionary does not declare, so a group arrives one member short or
 /// one member long often enough to matter. Nulling the whole group over it
-/// would throw away the parties that did read, and refusing would throw away
-/// the capture, so the row keeps what reads and says the rest is absent.
+/// would throw away the identifiers that did read, and refusing would throw
+/// away the capture, so the row keeps what reads and says the rest is absent.
 #[test]
 fn a_group_keeps_the_members_that_read() {
     let (registry, reader) = reader();
@@ -1054,30 +1183,32 @@ fn a_group_keeps_the_members_that_read() {
     // A packed occurrence stating only the identifier: the members it never
     // wrote are null and the identifier it did write is kept.
     let packed = reader
-        .sole_line(b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
+        .sole_line(b"MSGTYPE=D|1907=2|1907[0]=1903=TVT-1|1907[1]=1903=UTI-1")
         .unwrap()
         .into_row(&schema)
         .unwrap();
     let occurrences = group(&packed, &schema);
     let identifiers: Vec<Option<&str>> = occurrences
         .iter()
-        .map(|party| party.as_sequence().expect("a party")[0].as_str())
+        .map(|occurrence| occurrence.as_sequence().expect("an occurrence")[0].as_str())
         .collect();
-    assert_eq!(identifiers, [Some("BUYSIDE"), Some("VENUE")]);
+    assert_eq!(identifiers, [Some("TVT-1"), Some("UTI-1")]);
     assert!(occurrences[0].as_sequence().unwrap()[1].is_null());
     // The counter column is the group's own tag and still counts them.
-    assert_eq!(at(&packed, &schema, 453).as_i128(), Some(2));
+    assert_eq!(at(&packed, &schema, 1907).as_i128(), Some(2));
 
     // And one member the row cannot read costs that member alone: the
     // occurrence around it and the occurrences beside it stay.
     let marked = reader
-        .sole_line(b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
+        .sole_line(b"MSGTYPE=ZMIN|#1907=1|#1907[0]=REGULATORYTRADEID=UTI-1REGULATORYTRADEIDTYPE=0")
         .unwrap()
         .into_row(&schema)
         .unwrap();
-    let members = group(&marked, &schema)[0].as_sequence().expect("a party");
-    assert_eq!(members[0].as_str(), Some("BUYSIDE"));
-    assert_eq!(members[2].as_i128(), Some(1));
+    let members = group(&marked, &schema)[0]
+        .as_sequence()
+        .expect("an occurrence");
+    assert_eq!(members[0].as_str(), Some("UTI-1"));
+    assert_eq!(members[3].as_i128(), Some(0));
 }
 
 /// The regulatory identifiers are one typed Serie column beside their FIX
@@ -1215,7 +1346,7 @@ fn a_group_column_beside_a_null_counter_counts_its_occurrences() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=US0378331005|456=4|10=0|")
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|1907=1|1903=UTI-1|1906=0|10=0|")
         .unwrap();
     let mut cells = order
         .into_row(&schema)
@@ -1223,15 +1354,17 @@ fn a_group_column_beside_a_null_counter_counts_its_occurrences() {
         .as_sequence()
         .unwrap()
         .to_vec();
-    cells[column_of(&schema, 454)] = Scalar::Null;
+    cells[column_of(&schema, 1907)] = Scalar::Null;
     let row = Scalar::from_sequence(cells);
-    let at = schema.index_of("secaltids").expect("a secaltids column");
+    let at = schema
+        .index_of("regulatorytradeids")
+        .expect("a regulatorytradeids column");
     let column = super::with_column_at(&row, at, &super::item_of(&schema.fields()[at]));
 
     let run = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &column).unwrap();
-    assert_eq!(run.by_tag(454).unwrap().as_i128(), Some(1));
-    assert_eq!(held.by_tag(454).unwrap().as_i128(), Some(1));
+    assert_eq!(run.by_tag(1907).unwrap().as_i128(), Some(1));
+    assert_eq!(held.by_tag(1907).unwrap().as_i128(), Some(1));
 }
 
 /// A message holding a group as a column whose occurrences state their
@@ -1242,10 +1375,12 @@ fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let parsed = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=US0378331005|456=4|10=0|")
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|1907=1|1903=UTI-1|1905=SRC|1906=0|10=0|")
         .unwrap();
     let (mut root, row) = super::restatable(&registry, &parsed, &[35, 52]);
-    let at = root.index_of("secaltids").expect("the group's column");
+    let at = root
+        .index_of("regulatorytradeids")
+        .expect("the group's column");
     let declared = super::item_of(&root.fields()[at]);
     let mut item = declared.clone();
     item.set_dtype(
@@ -1254,17 +1389,25 @@ fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        item.fields()
+    let names = |field: &Field| {
+        field
+            .fields()
             .iter()
-            .map(|member| member.name())
-            .collect::<Vec<_>>(),
-        [
-            "symbolpositionnumber",
-            "securityaltidsource",
-            "securityaltid"
-        ],
+            .map(|member| member.name().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        names(&item).last().map(String::as_str),
+        Some("regulatorytradeid"),
         "the message states its members in another order than the fixed row"
+    );
+    assert_ne!(
+        names(&item),
+        names(&super::item_of(
+            &schema.fields()[schema
+                .index_of("regulatorytradeids")
+                .expect("a regulatorytradeids column")]
+        ))
     );
     let mut group = root.fields()[at].clone();
     group.set_dtype(DataType::serie(item.clone())).unwrap();
@@ -1294,22 +1437,24 @@ fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
         super::with_column_at(&reordered, at, &item),
     )
     .unwrap();
-    assert!(super::holds_column(&message, "secaltids"));
+    assert!(super::holds_column(&message, "regulatorytradeids"));
 
     let row = message.into_row(&schema).unwrap();
     let cells = row.as_sequence().unwrap();
-    let group = schema.index_of("secaltids").expect("a secaltids column");
+    let group = schema
+        .index_of("regulatorytradeids")
+        .expect("a regulatorytradeids column");
     let declared = super::item_of(&schema.fields()[group]);
     let occurrences = cells[group].sequence_rows().expect("the fixed group");
     assert_eq!(occurrences.len(), 1);
     let members = occurrences[0].sequence_rows().expect("one occurrence");
     let member = |name: &str| members[declared.index_of(name).expect(name)].as_str();
-    assert_eq!(member("securityaltid"), Some("US0378331005"));
-    assert_eq!(member("securityaltidsource"), Some("4"));
+    assert_eq!(member("regulatorytradeid"), Some("UTI-1"));
+    assert_eq!(member("regulatorytradeidsource"), Some("SRC"));
     assert!(
         residual(&row, &schema)
             .iter()
-            .all(|(key, _)| !key.starts_with("454:")),
+            .all(|(key, _)| !key.starts_with("1907:")),
         "the fixed group is not duplicated in fixentries"
     );
     assert_eq!(row, run.into_row(&schema).unwrap());
@@ -1356,4 +1501,143 @@ mod group_member_order {
             Err(Error::InvalidRecord { .. })
         ));
     }
+}
+
+/// An iceberg stop order states its terms in FIX's own fields, and the
+/// fixed row opens with them under the names every market row states them
+/// by: `stoppx`, `displayqty` and `cxlqty` are FIX's own fields, named
+/// alike, as `timeinforce` is `TimeInForce(59)`, and `marketdatatype`,
+/// `hiddenqty` and `ticker` are derived from the fields FIX states them in,
+/// while `OrdType(40)` and `Symbol(55)` stay columns of their own beside
+/// them. The message is recorded when it was sent, where no carrier says
+/// otherwise. A row read back is the message.
+#[test]
+fn an_iceberg_stop_order_states_its_terms_in_the_shared_columns() {
+    use yggdryl::{Decimal, FixMsg, MarketDataType};
+
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let message = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|40=4|44=100|99=98|38=10|1138=4|59=0|10=0|",
+        )
+        .unwrap();
+    assert_eq!(message.get_stoppx(), Some(Decimal::from_int(98)));
+    assert_eq!(message.get_displayqty(), Some(Decimal::from_int(4)));
+    assert_eq!(message.get_hiddenqty(), Some(Decimal::from_int(6)));
+    assert_eq!(message.get_marketdatatype(), MarketDataType::OrdStopLimit);
+    assert_eq!(message.get_ticker(), Some("AAPL"));
+    assert_eq!(message.get_recdunix(), Some(message.header().sendingtime()));
+
+    let row = message.clone().into_row(&schema).unwrap();
+    let cell =
+        |name: &str| row.as_sequence().expect("a row")[schema.index_of(name).expect(name)].clone();
+    assert_eq!(
+        Decimal::from_scalar(&cell("stoppx")),
+        Some(Decimal::from_int(98))
+    );
+    assert_eq!(
+        Decimal::from_scalar(&cell("displayqty")),
+        Some(Decimal::from_int(4))
+    );
+    assert_eq!(
+        Decimal::from_scalar(&cell("hiddenqty")),
+        Some(Decimal::from_int(6))
+    );
+    assert_eq!(
+        cell("marketdatatype"),
+        yggdryl::Scalar::MarketDataType(MarketDataType::OrdStopLimit)
+    );
+    assert_eq!(
+        cell("ordtype").as_str(),
+        Some("4"),
+        "FIX's own column stays"
+    );
+    assert_eq!(cell("ticker").as_str(), Some("AAPL"));
+    assert_eq!(
+        cell("symbol").as_str(),
+        Some("AAPL"),
+        "FIX's own column stays"
+    );
+    assert!(!cell("timeinforce").is_null());
+    assert_eq!(cell("recdunix"), cell("sendingtime"));
+    let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(again.into_row(&schema).unwrap(), row);
+
+    // FIX 4.4's `MaxFloor(111)` states the peak where `DisplayQty(1138)` is
+    // not - the newest specification's name for it - and the row's
+    // `displayqty` reads it so.
+    let floor = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=C2|55=AAPL|54=1|40=2|44=100|38=10|111=3|10=0|")
+        .unwrap();
+    assert_eq!(floor.get_displayqty(), Some(Decimal::from_int(3)));
+    assert_eq!(floor.get_hiddenqty(), Some(Decimal::from_int(7)));
+    let row = floor.into_row(&schema).unwrap();
+    assert_eq!(
+        Decimal::from_scalar(&row.as_sequence().unwrap()[schema.index_of("displayqty").unwrap()]),
+        Some(Decimal::from_int(3))
+    );
+
+    // A report states what it canceled.
+    let canceled = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|11=C3|37=O3|39=4|150=4|55=AAPL|54=1|38=10|84=6|14=4|151=0|10=0|",
+        )
+        .unwrap();
+    assert_eq!(canceled.get_cxlqty(), Some(Decimal::from_int(6)));
+}
+
+/// What the setters fill off a message's fields - what is left of the order
+/// and so its quantity, the canceled rest, the quote - is a column of the
+/// fixed row, and the row read back is the message.
+#[test]
+fn a_reports_filled_quantities_are_columns_and_read_back() {
+    use yggdryl::{Decimal, FixMsg};
+
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let decimal = |row: &Scalar, name: &str| {
+        Decimal::from_scalar(&row.as_sequence().expect("a row")[schema.index_of(name).expect(name)])
+    };
+    let int = |value: i64| Some(Decimal::from_int(value));
+
+    // Part filled: `LeavesQty(151)` is what was ordered less what traded.
+    let working = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|37=O1|17=E1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10|10=0|",
+        )
+        .unwrap();
+    assert_eq!(working.get_leavesqty(), int(60));
+    let row = working.clone().into_row(&schema).unwrap();
+    assert_eq!(decimal(&row, "ordqty"), int(100));
+    assert_eq!(
+        decimal(&row, "quantity"),
+        None,
+        "Quantity(53) is FIX's own and unstated"
+    );
+    assert_eq!(
+        decimal(&row, "leavesqty"),
+        int(60),
+        "LeavesQty(151), which the enrichment states"
+    );
+    let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(again.get_leavesqty(), int(60));
+    assert_eq!(again.get_quantity(), int(60));
+    assert_eq!(again.into_row(&schema).unwrap(), row);
+
+    // Canceled: nothing left, the rest canceled.
+    let canceled = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=O2|17=E2|39=4|150=4|55=AAPL|54=1|38=100|14=40|10=0|")
+        .unwrap();
+    assert_eq!(
+        (canceled.get_leavesqty(), canceled.get_cxlqty()),
+        (int(0), int(60))
+    );
+    let row = canceled.clone().into_row(&schema).unwrap();
+    let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(
+        (again.get_leavesqty(), again.get_cxlqty()),
+        (int(0), int(60))
+    );
+    assert_eq!(again.into_row(&schema).unwrap(), row);
 }

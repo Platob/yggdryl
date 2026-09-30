@@ -1,123 +1,15 @@
 [
   {
-    "name": "currunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": false,
-    "metadata": {
-      "FIX:tag": "65001",
-      "FIX:transient": "false",
-      "description": "When the event happened: the settled instant, UTC.",
-      "display": "CurrUnix"
-    }
-  },
-  {
-    "name": "execunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65002",
-      "FIX:transient": "false",
-      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
-      "display": "ExecUnix"
-    }
-  },
-  {
-    "name": "recdunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65003",
-      "FIX:transient": "false",
-      "description": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know.",
-      "display": "RecdUnix"
-    }
-  },
-  {
-    "name": "creaunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": false,
-    "metadata": {
-      "FIX:names": [
-        "CreationTime"
-      ],
-      "FIX:tag": "65004",
-      "FIX:transient": "false",
-      "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
-      "display": "CreaUnix"
-    }
-  },
-  {
-    "name": "prevunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65005",
-      "FIX:transient": "false",
-      "description": "When the event this one follows happened, where it follows one.",
-      "display": "PrevUnix"
-    }
-  },
-  {
-    "name": "snapunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65006",
-      "FIX:transient": "false",
-      "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
-      "display": "SnapUnix"
-    }
-  },
-  {
-    "name": "exprunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65007",
-      "FIX:transient": "false",
-      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
-      "display": "ExprUnix"
-    }
-  },
-  {
     "name": "curruuid",
     "dtype": {
       "type": "uuid"
     },
     "nullable": false,
     "metadata": {
-      "FIX:tag": "65008",
+      "FIX:tag": "65001",
       "FIX:transient": "false",
-      "description": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
-      "display": "CurrUuid"
+      "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
+      "display": "Current UUID"
     }
   },
   {
@@ -127,10 +19,10 @@
     },
     "nullable": false,
     "metadata": {
-      "FIX:tag": "65009",
+      "FIX:tag": "65002",
       "FIX:transient": "false",
-      "description": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none.",
-      "display": "CrossUuid"
+      "description": "The identity every element of one chain shares, derived from the code they share; the element's own where it names none.",
+      "display": "Cross UUID"
     }
   },
   {
@@ -140,10 +32,10 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65010",
+      "FIX:tag": "65003",
       "FIX:transient": "false",
-      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the four-letter code of its side, BUYS:ORD-1, on an order, a quote or an execution, and as given on one of side UNKN and on every other kind; its chain's once followed.",
-      "display": "CrossCode"
+      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed.",
+      "display": "Cross Code"
     }
   },
   {
@@ -153,10 +45,10 @@
     },
     "nullable": false,
     "metadata": {
-      "FIX:tag": "65011",
+      "FIX:tag": "65004",
       "FIX:transient": "false",
       "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-      "display": "CurrHashCode"
+      "display": "Current Hash Code"
     }
   },
   {
@@ -166,36 +58,10 @@
     },
     "nullable": false,
     "metadata": {
-      "FIX:tag": "65012",
+      "FIX:tag": "65005",
       "FIX:transient": "false",
-      "description": "The XXH3-64 of the cross code; zero where the event names none.",
-      "display": "CrossHashCode"
-    }
-  },
-  {
-    "name": "prevuuid",
-    "dtype": {
-      "type": "uuid"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65013",
-      "FIX:transient": "false",
-      "description": "The identity of the event this one follows, where it follows one.",
-      "display": "PrevUuid"
-    }
-  },
-  {
-    "name": "seqnum",
-    "dtype": {
-      "type": "uint64"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65014",
-      "FIX:transient": "false",
-      "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
-      "display": "SeqNum"
+      "description": "The XXH3-64 of the cross code; zero where the element names none.",
+      "display": "Cross Hash Code"
     }
   },
   {
@@ -213,14 +79,147 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65015",
+      "FIX:tag": "65006",
       "FIX:transient": "false",
       "description": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
-      "display": "SrcUuids"
+      "display": "Source UUIDs"
     }
   },
   {
-    "name": "msgcat",
+    "name": "currunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": false,
+    "metadata": {
+      "FIX:tag": "65007",
+      "FIX:transient": "false",
+      "description": "When the event happened: the settled instant, UTC.",
+      "display": "Current Time"
+    }
+  },
+  {
+    "name": "creaunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": false,
+    "metadata": {
+      "FIX:names": [
+        "CreationTime"
+      ],
+      "FIX:tag": "65008",
+      "FIX:transient": "false",
+      "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
+      "display": "Creation Time"
+    }
+  },
+  {
+    "name": "recdunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65009",
+      "FIX:transient": "false",
+      "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
+      "display": "Recording Time"
+    }
+  },
+  {
+    "name": "exprunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65010",
+      "FIX:transient": "false",
+      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
+      "display": "Expiry Time"
+    }
+  },
+  {
+    "name": "prevunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65011",
+      "FIX:transient": "false",
+      "description": "When the event this one follows happened, where it follows one.",
+      "display": "Previous Time"
+    }
+  },
+  {
+    "name": "snapunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65012",
+      "FIX:transient": "false",
+      "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
+      "display": "Snapshot Time"
+    }
+  },
+  {
+    "name": "prevuuid",
+    "dtype": {
+      "type": "uuid"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65013",
+      "FIX:transient": "false",
+      "description": "The identity of the event this one follows, where it follows one.",
+      "display": "Previous UUID"
+    }
+  },
+  {
+    "name": "seqnum",
+    "dtype": {
+      "type": "uint64"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65014",
+      "FIX:transient": "false",
+      "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
+      "display": "Sequence Number"
+    }
+  },
+  {
+    "name": "state",
+    "dtype": {
+      "type": "state"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:codeset": "statecodeset",
+      "FIX:tag": "65015",
+      "FIX:transient": "false",
+      "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
+      "display": "State"
+    }
+  },
+  {
+    "name": "marketdatakind",
     "dtype": {
       "type": "marketdatakind"
     },
@@ -229,80 +228,21 @@
       "FIX:codeset": "msgcatcodeset",
       "FIX:tag": "65016",
       "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
-      "display": "MsgCat"
+      "display": "Market Data Kind"
     }
   },
   {
-    "name": "msgpluginid",
+    "name": "marketdatatype",
     "dtype": {
-      "type": "string"
+      "type": "marketdatatype"
     },
     "nullable": true,
     "metadata": {
+      "FIX:codeset": "marketdatatypecodeset",
       "FIX:tag": "65017",
-      "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
-      "display": "MsgPluginId"
-    }
-  },
-  {
-    "name": "msgoriginator",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65018",
-      "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
-      "display": "MsgOriginator"
-    }
-  },
-  {
-    "name": "msgctxid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65019",
-      "description": "The message context a bridge handled the message in, as its own log names it.",
-      "display": "MsgCtxId"
-    }
-  },
-  {
-    "name": "msgsessionid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65020",
-      "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
-      "display": "MsgSessionId"
-    }
-  },
-  {
-    "name": "msgsesseventid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65021",
       "FIX:transient": "false",
-      "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
-      "display": "MsgSessEventId"
-    }
-  },
-  {
-    "name": "conversationid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65022",
-      "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
-      "display": "ConversationId"
+      "description": "The type of its kind the message is, as the member of the marketdatatype enum: its order type from OrdType, its quote type from QuoteType, its trade type from TrdType, its book entry type from MDEntryType - the field its kind names first, each value read through the dictionary's FIX:marketdatatype where it maps one - UNKN where none is stated; a row stating one is the row's word.",
+      "display": "Market Data Type"
     }
   },
   {
@@ -312,45 +252,9 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65023",
+      "FIX:tag": "65021",
       "description": "The normalized ISIN the message identifies.",
-      "display": "IsinCode"
-    }
-  },
-  {
-    "name": "forexcode",
-    "dtype": {
-      "type": "forex"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65024",
-      "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written.",
-      "display": "ForexCode"
-    }
-  },
-  {
-    "name": "bloombergcode",
-    "dtype": {
-      "type": "bbg"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65025",
-      "description": "The normalized Bloomberg identifier the message identifies.",
-      "display": "BloombergCode"
-    }
-  },
-  {
-    "name": "figicode",
-    "dtype": {
-      "type": "figi"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65026",
-      "description": "The normalized FIGI the message identifies.",
-      "display": "FIGICode"
+      "display": "ISIN Code"
     }
   },
   {
@@ -363,35 +267,133 @@
       "FIX:names": [
         "instrument[exchange]"
       ],
-      "FIX:tag": "65027",
+      "FIX:tag": "65022",
       "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it.",
-      "display": "MicCode"
+      "display": "MIC Code"
     }
   },
   {
-    "name": "strikepx",
+    "name": "execunix",
     "dtype": {
-      "type": "decimal"
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65028",
-      "description": "The option strike price the message identifies: StrikePrice, as the decimal leaf; a row stating one is the row's word.",
-      "display": "StrikePx"
-    }
-  },
-  {
-    "name": "state",
-    "dtype": {
-      "type": "state"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:codeset": "statecodeset",
-      "FIX:tag": "65029",
+      "FIX:tag": "65023",
       "FIX:transient": "false",
-      "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
-      "display": "State"
+      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+      "display": "Execution Time"
+    }
+  },
+  {
+    "name": "msgpluginid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65040",
+      "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived.",
+      "display": "Message Plugin ID"
+    }
+  },
+  {
+    "name": "msgoriginator",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65041",
+      "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+      "display": "Message Originator"
+    }
+  },
+  {
+    "name": "msgctxid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65042",
+      "description": "The message context a bridge handled the message in, as its own log names it.",
+      "display": "Message Context ID"
+    }
+  },
+  {
+    "name": "msgsessionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65043",
+      "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
+      "display": "Message Session ID"
+    }
+  },
+  {
+    "name": "msgsesseventid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65044",
+      "FIX:transient": "false",
+      "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
+      "display": "Message Session Event ID"
+    }
+  },
+  {
+    "name": "conversationid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65045",
+      "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
+      "display": "Conversation ID"
+    }
+  },
+  {
+    "name": "forexcode",
+    "dtype": {
+      "type": "forex"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65046",
+      "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids(); detected off Symbol(55) where the message states no other class; row-stated when written.",
+      "display": "Forex Code"
+    }
+  },
+  {
+    "name": "bloombergcode",
+    "dtype": {
+      "type": "bbg"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65047",
+      "description": "The normalized Bloomberg identifier the message identifies.",
+      "display": "Bloomberg Code"
+    }
+  },
+  {
+    "name": "figicode",
+    "dtype": {
+      "type": "figi"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65048",
+      "description": "The normalized FIGI the message identifies.",
+      "display": "FIGI Code"
     }
   },
   {
@@ -401,174 +403,10 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65031",
+      "FIX:tag": "65049",
       "FIX:transient": "false",
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
-      "display": "SourceUrl"
-    }
-  },
-  {
-    "name": "omsdealeraccount",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65032",
-      "description": "The account an OMS dealer books the order to, as the bridge stated it.",
-      "display": "OmsDealerAccount"
-    }
-  },
-  {
-    "name": "omsuserid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65033",
-      "description": "The OMS user who entered the order, as the bridge stated it.",
-      "display": "OmsUserId"
-    }
-  },
-  {
-    "name": "parentorderid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "PARENTORDERID",
-          "follow": true
-        }
-      ],
-      "FIX:tag": "65034",
-      "description": "The parent order's identifier, as the bridge stated it.",
-      "display": "ParentOrderId"
-    }
-  },
-  {
-    "name": "parentclordid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "PARENTCLORDID",
-          "follow": true
-        }
-      ],
-      "FIX:tag": "65035",
-      "description": "The parent order's client identifier, as the bridge stated it.",
-      "display": "ParentClOrdId"
-    }
-  },
-  {
-    "name": "omsdealerparentorderid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "OMSDEALERPARENTORDERID",
-          "follow": true
-        }
-      ],
-      "FIX:tag": "65036",
-      "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
-      "display": "OmsDealerParentOrderId"
-    }
-  },
-  {
-    "name": "exchangeclientorderid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "EXCHANGECLIENTORDERID",
-          "follow": true
-        }
-      ],
-      "FIX:tag": "65037",
-      "description": "The exchange's client order identifier, as the bridge stated it.",
-      "display": "ExchangeClientOrderId"
-    }
-  },
-  {
-    "name": "transversalkey",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "TRANSVERSALKEY",
-          "follow": true
-        }
-      ],
-      "FIX:tag": "65038",
-      "description": "The key a bridge threads one order through every system with, as it stated it.",
-      "display": "TransversalKey"
-    }
-  },
-  {
-    "name": "ultraderclordid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:idmap": [
-        {
-          "map": "altids",
-          "key": "ULTRADERCLORDID"
-        }
-      ],
-      "FIX:tag": "65039",
-      "description": "A trading screen's own client order identifier, as the bridge stated it.",
-      "display": "UlTraderClOrdId"
-    }
-  },
-  {
-    "name": "omsinstrumentid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65040",
-      "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
-      "display": "OmsInstrumentId"
-    }
-  },
-  {
-    "name": "ullinkinstrumentid",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:names": [
-        "ullink.instrumentid"
-      ],
-      "FIX:tag": "65041",
-      "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
-      "display": "UllinkInstrumentId"
+      "display": "Source URL"
     }
   }
 ]

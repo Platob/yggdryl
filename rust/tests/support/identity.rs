@@ -524,28 +524,28 @@ fn sts(script: &mut Script, request: &Request, action: &str) -> Response {
             if request.header("authorization").is_none() {
                 return Response::sts_error(403, "MissingAuthenticationToken", "unsigned");
             }
-            if let Some(code) = &script.token_code {
-                if request.query("TokenCode") != Some(code) {
-                    return Response::sts_error(
-                        403,
-                        "AccessDenied",
-                        "MultiFactorAuthentication failed with invalid MFA one time pass code.",
-                    );
-                }
+            if let Some(code) = &script.token_code
+                && request.query("TokenCode") != Some(code)
+            {
+                return Response::sts_error(
+                    403,
+                    "AccessDenied",
+                    "MultiFactorAuthentication failed with invalid MFA one time pass code.",
+                );
             }
         }
         "AssumeRoleWithWebIdentity" => {
             if request.header("authorization").is_some() {
                 return Response::sts_error(400, "InvalidAction", "a signed web identity exchange");
             }
-            if let Some(token) = &script.web_identity_token {
-                if request.query("WebIdentityToken") != Some(token) {
-                    return Response::sts_error(
-                        400,
-                        "InvalidIdentityToken",
-                        "the token is not the one the role trusts",
-                    );
-                }
+            if let Some(token) = &script.web_identity_token
+                && request.query("WebIdentityToken") != Some(token)
+            {
+                return Response::sts_error(
+                    400,
+                    "InvalidIdentityToken",
+                    "the token is not the one the role trusts",
+                );
             }
         }
         other => return Response::sts_error(400, "InvalidAction", other),
@@ -588,13 +588,13 @@ fn oidc_token(script: &mut Script, request: &Request) -> Response {
         }
         Some("refresh_token") => {
             let presented = request.json("refreshToken");
-            if let Some(required) = &script.sso_refresh_token {
-                if presented.as_deref() != Some(required) {
-                    return Response::json(
-                        400,
-                        serde_json::json!({"error": "invalid_grant", "error_description": "unknown refresh token"}),
-                    );
-                }
+            if let Some(required) = &script.sso_refresh_token
+                && presented.as_deref() != Some(required)
+            {
+                return Response::json(
+                    400,
+                    serde_json::json!({"error": "invalid_grant", "error_description": "unknown refresh token"}),
+                );
             }
             if request.json("clientId").is_none() || request.json("clientSecret").is_none() {
                 return Response::json(400, serde_json::json!({"error": "invalid_client"}));
@@ -636,10 +636,10 @@ fn portal(script: &Script, request: &Request) -> Response {
 }
 
 fn container(script: &Script, request: &Request) -> Response {
-    if let Some(required) = &script.container_authorization {
-        if request.header("authorization") != Some(required.as_str()) {
-            return Response::json(401, serde_json::json!({"Code": "Unauthorized"}));
-        }
+    if let Some(required) = &script.container_authorization
+        && request.header("authorization") != Some(required.as_str())
+    {
+        return Response::json(401, serde_json::json!({"Code": "Unauthorized"}));
     }
     Response::json(
         200,

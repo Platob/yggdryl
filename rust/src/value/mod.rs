@@ -214,10 +214,11 @@ pub trait CodeValue: Value {
 }
 
 /// What every leaf of the Enum family answers: a closed set of members, each
-/// stored as the `int32` code that stands for it.
+/// stored as the code that stands for it, at the leaf's own width
+/// ([`EnumRepr`](crate::EnumRepr): `u8`, or `u16` where the codes pass 255).
 ///
-/// A member is its code on every wire that stores it - Arrow's `Int32`,
-/// Iceberg's `int`, the value stream, a digest - and its stored name in
+/// A member is its code on every wire that stores it - Arrow's `UInt8` or
+/// `UInt16`, Iceberg's `int`, the value stream, a digest - and its stored name in
 /// every text a person reads, so the two readings are one door each:
 /// [`Self::read_code`] over an integer and [`Self::read`] over a spelling,
 /// the spellings each leaf accepts being its own (`from_spelling`) and the
@@ -228,17 +229,19 @@ pub trait EnumValue: Value + Copy + Default {
     const ALL: &'static [Self];
     /// The datatype's name, which every refusal names: `state`, `side`.
     const KIND: &'static str;
-    /// The Arrow extension name the `Int32` codes ride under.
+    /// The Arrow extension name the codes ride under.
     const EXTENSION_NAME: &'static str;
+    /// The width the codes are held and stored at.
+    type Repr: crate::EnumRepr;
 
-    /// The `int32` a column stores for this member.
-    fn code(self) -> i32;
+    /// The code a column stores for this member.
+    fn code(self) -> Self::Repr;
     /// The stored name.
     fn as_str(self) -> &'static str;
     /// What this member means, in a sentence.
     fn description(self) -> &'static str;
     /// The member one stored code names, or `None` where none does.
-    fn from_code(code: i32) -> Option<Self>;
+    fn from_code(code: Self::Repr) -> Option<Self>;
     /// The member one spelling names, refused where none does.
     ///
     /// # Errors
@@ -251,6 +254,18 @@ pub trait EnumValue: Value + Copy + Default {
     ///
     /// Returns an error naming the code under [`Self::KIND`].
     fn read_code(code: i64) -> Result<Self>;
+
+    /// The member one value states: the member itself, the code an integer
+    /// holds, or a spelling text holds; `None` where it names none.
+    fn from_scalar_value(value: &crate::Scalar) -> Option<Self> {
+        Self::from_scalar(value).copied().or_else(|| {
+            value
+                .as_i128()
+                .and_then(|code| i64::try_from(code).ok())
+                .and_then(|code| Self::read_code(code).ok())
+                .or_else(|| value.as_str().and_then(|text| Self::read(text).ok()))
+        })
+    }
 }
 
 /// What every nested value answers: its direct children, counted and walked.

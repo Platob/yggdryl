@@ -26,20 +26,20 @@ mod text {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "crosshashcode",
+        "srcuuids",
         "currunix",
         "creaunix",
         "recdunix",
         "exprunix",
         "prevunix",
         "snapunix",
-        "curruuid",
-        "crossuuid",
-        "crosscode",
-        "currhashcode",
-        "crosshashcode",
         "prevuuid",
         "seqnum",
-        "srcuuids",
         "state",
     ];
 
@@ -513,12 +513,21 @@ mod text {
                     field.name()
                 );
             }
-            // And the fifteen a line opens with carry the spelling their own
+            // And the fifteen a line opens with carry the display their own
             // column states, so a line's row and a message's row name one fact
             // one way.
-            for name in EVENT_COLUMNS {
+            let displays = yggdryl::graph::ElementColumn::ALL
+                .iter()
+                .map(|column| (column.name(), column.display()))
+                .chain(
+                    yggdryl::graph::EventColumn::ALL
+                        .iter()
+                        .map(|column| (column.name(), column.display())),
+                );
+            for (name, expected) in displays {
+                assert!(EVENT_COLUMNS.contains(&name), "{name}");
                 let display = schema.field_with_name(name).unwrap().metadata()["display"].clone();
-                assert!(display.eq_ignore_ascii_case(name), "{name} shows {display}");
+                assert_eq!(display, expected, "{name}");
             }
             // A column that cannot be null never is, whatever the line left
             // unsaid: this row states no level and no `k`.

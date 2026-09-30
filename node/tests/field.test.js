@@ -183,6 +183,46 @@ test('an Apache Arrow JS field crosses as a one-field IPC schema', () => {
   assert.throws(() => Field.fromArrow(new arrow.Utf8()), /Apache Arrow JS Field/)
 })
 
+test('a field crosses into an Apache Arrow JS field carrying its extension', () => {
+  const arrow = require('apache-arrow')
+  for (const spelled of [
+    'ccy',
+    'isin',
+    'state',
+    'side',
+    'timeinforce',
+    'marketdatakind',
+    'marketdatatype',
+    'decimal',
+    'bigdecimal',
+    'version',
+    'url',
+    'urn',
+    'timezone',
+    'mimetype',
+    'mediatype',
+    'uuid',
+    'fixed_ascii(4)',
+    'sized_binary(16)',
+  ]) {
+    const field = new Field('x', spelled, true)
+    const exported = field.intoArrow()
+    assert.ok(exported instanceof arrow.Field, spelled)
+    assert.equal(exported.name, 'x')
+    assert.equal(exported.nullable, true)
+    assert.ok(exported.metadata.get('ARROW:extension:name'), spelled)
+    assert.ok(Field.fromArrow(exported).equals(field), spelled)
+  }
+  // A datatype Arrow states alone carries no name.
+  const plain = new Field('px', 'float64', false).intoArrow()
+  assert.equal(plain.metadata.get('ARROW:extension:name'), undefined)
+  assert.equal(plain.nullable, false)
+  // The caller's own metadata crosses beside it.
+  const noted = new Field('ccy', 'ccy', true, { source: 'feed' }).intoArrow()
+  assert.equal(noted.metadata.get('source'), 'feed')
+  assert.equal(noted.metadata.get('ARROW:extension:name'), 'yggdryl.ccy')
+})
+
 test('field metadata provides deterministic Map-like operations', () => {
   const field = new Field('price', 'decimal(18, 6)', false)
 

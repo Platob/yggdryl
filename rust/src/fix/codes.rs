@@ -75,9 +75,10 @@ use crate::{Error, Field, Result, Scalar};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
 
-/// Leaves ordinary dictionary vocabularies mutable while pinning the two
-/// code sets the crate fixes: MsgCat's generic graph identifiers and the
-/// state codes a `state` column stores.
+/// Leaves ordinary dictionary vocabularies mutable while pinning the three
+/// code sets the crate fixes: MsgCat's generic graph identifiers, the state
+/// codes a `state` column stores and the market data type codes a
+/// `marketdatatype` column stores.
 fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
     let (canonical, expected, changed) = if folds_equal(key, super::crated::MSGCAT_CODESET_NAME) {
         (
@@ -90,6 +91,12 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
             super::crated::state_codeset(),
             "the fixed state codes",
             "a changed or removed state code set",
+        )
+    } else if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
+        (
+            super::crated::marketdatatype_codeset(),
+            "the fixed market data type codes",
+            "a changed or removed market data type code set",
         )
     } else {
         return Ok(());
@@ -105,6 +112,25 @@ fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
 /// category even when the ordinary vocabulary merge would discard that
 /// conflicting spelling and leave the stored document unchanged.
 fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
+    if folds_equal(key, super::crated::MARKETDATATYPE_CODESET_NAME) {
+        let canonical = codes.iter().all(|code| {
+            crate::MarketDataType::from_name(code.name()).is_some_and(|mdtype| {
+                code.value() == mdtype.code().to_string()
+                    && code.aliases().is_empty()
+                    && code.description() == Some(mdtype.description())
+                    && code.group().is_none()
+            })
+        });
+        return if canonical {
+            Ok(())
+        } else {
+            Err(Error::conflict(
+                "the fixed market data type codes",
+                "a changed or removed market data type code set",
+                key,
+            ))
+        };
+    }
     if folds_equal(key, super::crated::STATE_CODESET_NAME) {
         let canonical = codes.iter().all(|code| {
             crate::State::from_name(code.name()).is_some_and(|state| {

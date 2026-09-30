@@ -26,8 +26,8 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, Mic, Ric, Sedol, Side, State,
-    TimeInForce, Unit,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Forex, Isin, MarketDataKind, MarketDataType, Mic, Ric,
+    Sedol, Side, State, TimeInForce, Unit,
 };
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
@@ -122,18 +122,48 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
         .map_err(|error| PyOverflowError::new_err(error.to_string()))
 }
 
-/// One `pyarrow.Scalar` as the one-row array of its own type.
-pub(crate) fn pyarrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
+/// One `pyarrow.Scalar` as the one-row pyarrow array of its own type, an
+/// extension type included at any depth.
+pub(crate) fn pyarrow_scalar_as_array<'py>(
+    value: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
     ensure_pyarrow_instance(value, "Scalar")?;
     let py = value.py();
-    let values = PyList::new(py, [value])?;
+    let pyarrow = py.import("pyarrow")?;
+    let dtype = value.getattr("type")?;
+    // pyarrow builds no array from an extension scalar: its storage value is
+    // laid out under the storage type and wrapped as the extension again.
+    let extension = dtype.is_instance(crate::datatype::pyarrow::base_extension_type(py)?)?;
+    let (item, storage) = if extension {
+        (value.getattr("value")?, dtype.getattr("storage_type")?)
+    } else {
+        (value.clone(), dtype.clone())
+    };
     let kwargs = PyDict::new(py);
-    kwargs.set_item("type", value.getattr("type")?)?;
-    let array = py
-        .import("pyarrow")?
+    kwargs.set_item("type", storage)?;
+    // pyarrow builds no array of a type holding an extension below its top
+    // level from scalars - `list<yggdryl.ccy>` - and repeats one instead.
+    let array = match pyarrow
         .getattr("array")?
-        .call((values,), Some(&kwargs))?;
-    arrow_array_from_pyarrow(&array)
+        .call((PyList::new(py, [&item])?,), Some(&kwargs))
+    {
+        Ok(array) => array,
+        Err(error) => pyarrow
+            .getattr("repeat")?
+            .call1((item, 1))
+            .map_err(|_| error)?,
+    };
+    if extension {
+        return pyarrow
+            .getattr("ExtensionArray")?
+            .call_method1("from_storage", (dtype, array));
+    }
+    Ok(array)
+}
+
+/// One `pyarrow.Scalar` as the one-row array of its own type.
+pub(crate) fn pyarrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
+    arrow_array_from_pyarrow(&pyarrow_scalar_as_array(value)?)
 }
 
 fn ensure_pyarrow_instance(value: &Bound<'_, PyAny>, class: &str) -> PyResult<()> {
@@ -382,10 +412,20 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "marketdatakind",
             Some(PyString::new(py, kind.as_str()).into_any().unbind()),
         ),
+        Scalar::MarketDataType(member) => tagged_pickle_state(
+            py,
+            "marketdatatype",
+            Some(PyString::new(py, member.as_str()).into_any().unbind()),
+        ),
         Scalar::Side(side) => tagged_pickle_state(
             py,
             "side",
             Some(PyString::new(py, side.as_str()).into_any().unbind()),
+        ),
+        Scalar::TimeInForce(member) => tagged_pickle_state(
+            py,
+            "timeinforce",
+            Some(PyString::new(py, member.as_str()).into_any().unbind()),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
@@ -747,7 +787,10 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "marketdatakind" => MarketDataKind::read(&payload()?.extract::<String>()?)
             .map(Scalar::MarketDataKind)
             .map_err(value_error),
-        "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
+        "marketdatatype" => MarketDataType::read(&payload()?.extract::<String>()?)
+            .map(Scalar::MarketDataType)
+            .map_err(value_error),
+        "timeinforce" => TimeInForce::read(&payload()?.extract::<String>()?)
             .map(Scalar::TimeInForce)
             .map_err(value_error),
         "unit" => Unit::new(payload()?.extract::<String>()?)
@@ -1882,6 +1925,22 @@ impl RowPlan {
     }
 }
 
+/// The member of the Python enum - `State`, `MarketDataKind`,
+/// `MarketDataType`, `Side`, `TimeInForce` - one enum value's code names.
+fn enum_member(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    let class = match value {
+        Scalar::State(_) => classes::state(py)?,
+        Scalar::MarketDataKind(_) => classes::marketdatakind(py)?,
+        Scalar::MarketDataType(_) => classes::marketdatatype(py)?,
+        Scalar::Side(_) => classes::side(py)?,
+        Scalar::TimeInForce(_) => classes::timeinforce(py)?,
+        other => {
+            return Err(value_error(format!("{} is no enum member", other.kind())));
+        }
+    };
+    Ok(class.call1((value.enum_code(),))?.unbind())
+}
+
 /// Convert one core value into the Python object that names it.
 ///
 /// # Errors
@@ -1930,13 +1989,8 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         )
         .into_any()
         .unbind()),
-        // An enum member crosses as the member of its Python enum - `State`,
-        // `MarketDataKind`, `Side` - its code names.
-        Scalar::State(state) => Ok(classes::state(py)?.call1((state.code(),))?.unbind()),
-        Scalar::MarketDataKind(kind) => {
-            Ok(classes::marketdatakind(py)?.call1((kind.code(),))?.unbind())
-        }
-        Scalar::Side(side) => Ok(classes::side(py)?.call1((side.code(),))?.unbind()),
+        // An enum member crosses as the member of its Python enum.
+        member if member.enum_code().is_some() => enum_member(py, member),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => {
             let inner = value.clone();
@@ -2784,6 +2838,15 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, crate::version::PyVersion>>() {
         return Some(Scalar::Version(value.inner.clone()));
     }
+    // An identifier crosses as its three-text row and a map of them as the
+    // sorted map from each key `src:type` to its row, the shapes an
+    // identifier column holds.
+    if let Ok(value) = value.extract::<PyRef<'_, crate::identifier::PyIdentifier>>() {
+        return Some(value.inner.clone().into_scalar());
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::identifier::PyIdentifiers>>() {
+        return Some(value.inner.into_scalar());
+    }
     if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());
     }
@@ -3447,7 +3510,9 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
         for (native, dtype) in [
             (classes::state(py)?, CoreDataType::State),
             (classes::marketdatakind(py)?, CoreDataType::MarketDataKind),
+            (classes::marketdatatype(py)?, CoreDataType::MarketDataType),
             (classes::side(py)?, CoreDataType::Side),
+            (classes::timeinforce(py)?, CoreDataType::TimeInForce),
         ] {
             if class.is(native) {
                 return Ok(ClassKind::Member(dtype));
@@ -3557,7 +3622,9 @@ mod classes {
         enumeration = "enum", "Enum";
         state = "yggdryl.state", "State";
         marketdatakind = "yggdryl.marketdatakind", "MarketDataKind";
+        marketdatatype = "yggdryl.marketdatatype", "MarketDataType";
         side = "yggdryl.side", "Side";
+        timeinforce = "yggdryl.timeinforce", "TimeInForce";
         decimal = "decimal", "Decimal";
         datetime = "datetime", "datetime";
         date = "datetime", "date";

@@ -28,11 +28,12 @@ component carries its four-character `FIX:msgcat` metadata, and the builtin
 `EXEC=8`, `ORDR=10`, `QUOT=14`, `TRAD=21`, `ORDB=22`, and so on); the
 [filing](#a-message-type-is-filed-under-one-category) says which types each
 holds. The normalized
-instrument columns are `isincode(65023)`, `forexcode(65024)`,
-`bloombergcode(65025)`, `figicode(65026)` and `miccode(65027)` - the first
+instrument columns are `isincode(65021)`, `forexcode(65046)`,
+`bloombergcode(65047)`, `figicode(65048)` and `miccode(65022)` - the first
 four views of the message's security identifiers, the last its market -
-beside the strike `strikepx(65028)`; CFI remains standard `CFICode(461)`,
-and a CUSIP or a SEDOL is one more security identifier under its own key.
+beside the strike, the dictionary's own `StrikePrice(202)`; CFI remains standard `CFICode(461)`,
+and a CUSIP or a SEDOL is one more security identifier of its own type,
+in the message's `securityids`.
 
 The protocol view exposes the category beside the message type: Rust
 `field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
@@ -471,14 +472,14 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 and groups are the three registry categories, a message being a component that
 carries `FIX:msgtype`.
 
-The crate's `metadata(65030)` is also a group: a nullable, sorted-key
+The crate's `metadata(65035)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
 [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
 a bridge wrote, and a row from every key no dictionary resolved, while
 ordinary Serie/LargeSerie groups keep their existing counter rules; the names
-a message goes by are its [alternate identifiers](message.md#the-identifier-maps).
+a message goes by are its [identifiers](message.md#the-identifier-maps).
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
@@ -504,10 +505,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let metadata = registry.field_by_counter(65_030)?;
+    let metadata = registry.field_by_counter(65_035)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_030));
-    assert!(registry.get_field_by_tag(65_030).is_none(), "a Map group is no scalar");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_035));
+    assert!(registry.get_field_by_tag(65_035).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -526,10 +527,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    metadata = registry.field_by_counter(65_030)
+    metadata = registry.field_by_counter(65_035)
     assert metadata.name == "metadata"
-    assert metadata.fix.counter == 65_030
-    assert registry.get_field_by_tag(65_030) is None, "a Map group is no scalar"
+    assert metadata.fix.counter == 65_035
+    assert registry.get_field_by_tag(65_035) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -549,10 +550,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const metadata = registry.fieldByCounter(65030)
+    const metadata = registry.fieldByCounter(65035)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.counter, 65030)
-    assert.equal(registry.getFieldByTag(65030), null, 'a Map group is no scalar')
+    assert.equal(metadata.fix.counter, 65035)
+    assert.equal(registry.getFieldByTag(65035), null, 'a Map group is no scalar')
     ```
 
 ## Edges

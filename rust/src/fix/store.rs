@@ -332,26 +332,24 @@ impl Resolver<'_> {
 /// to a document already compact it changes nothing, which is what lets one
 /// fold hand a document on to the resolver without asking which it was given.
 pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
-    if !root {
-        if let Some((category, name)) = reference(&field) {
-            let name = name.to_owned();
-            let mut placeholder = DataType::Null.nullable_field(field.name());
-            placeholder.set_nullable(field.is_nullable());
-            match category {
-                FixCategory::Fields => {
-                    placeholder.as_fix_mut().set_field_ref(&name)?;
-                    // The tag beside the name: a reader resolves the
-                    // reference by the field's identity, the pair, and
-                    // never by a spelling alone.
-                    if let Some(tag) = field.as_fix().tag()? {
-                        placeholder.as_fix_mut().set_tag(tag)?;
-                    }
+    if !root && let Some((category, name)) = reference(&field) {
+        let name = name.to_owned();
+        let mut placeholder = DataType::Null.nullable_field(field.name());
+        placeholder.set_nullable(field.is_nullable());
+        match category {
+            FixCategory::Fields => {
+                placeholder.as_fix_mut().set_field_ref(&name)?;
+                // The tag beside the name: a reader resolves the
+                // reference by the field's identity, the pair, and
+                // never by a spelling alone.
+                if let Some(tag) = field.as_fix().tag()? {
+                    placeholder.as_fix_mut().set_tag(tag)?;
                 }
-                FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
-                FixCategory::Components => placeholder.as_fix_mut().set_component(&name)?,
             }
-            return Ok(placeholder);
+            FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
+            FixCategory::Components => placeholder.as_fix_mut().set_component(&name)?,
         }
+        return Ok(placeholder);
     }
     let dtype = match field.dtype() {
         DataType::Struct(children) => Some(DataType::from(StructType::from_fields(
@@ -727,6 +725,9 @@ impl FixRegistry {
             }
         }
         registry.seed_clocks()?;
+        // What the fields' names imply of one another is stated before the
+        // definitions resolve, so every member copy carries it.
+        registry.state_parents();
         registry.load_definitions(raw, Some(handle))?;
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();

@@ -307,6 +307,9 @@ pub enum DataType {
     /// What kind of market data an element is: FIX's MsgCat code set, stored
     /// as the `int32` code of its member.
     MarketDataKind,
+    /// What type of its kind a market element is - an order, quote, trade
+    /// or book entry type - stored as the `int32` code of its member.
+    MarketDataType,
     /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
     Forex,
 }
@@ -425,6 +428,7 @@ impl DataType {
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::MarketDataKind => DataTypeId::MarketDataKind,
+            Self::MarketDataType => DataTypeId::MarketDataType,
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Unit => DataTypeId::Unit,
             Self::Decimal => DataTypeId::Decimal,
@@ -803,6 +807,7 @@ enum Shape<'a> {
     BigDecimal,
     Ric,
     MarketDataKind,
+    MarketDataType,
     Forex,
 }
 
@@ -881,6 +886,7 @@ impl<'a> Shape<'a> {
             D::Decimal => Self::Decimal,
             D::BigDecimal => Self::BigDecimal,
             D::MarketDataKind => Self::MarketDataKind,
+            D::MarketDataType => Self::MarketDataType,
             D::Forex => Self::Forex,
         }
     }
@@ -927,17 +933,33 @@ macro_rules! bytes_dtypes {
 }
 
 /// The enum leaves as one pattern over [`DataType`]: a closed set of members
-/// stored as the `int32` code of each. A match that must cover every datatype
+/// stored as the code of each. A match that must cover every datatype
 /// spells them through this rather than a guard, which counts for nothing
 /// towards exhaustiveness.
 macro_rules! enum_dtypes {
     () => {
-        $crate::DataType::State | $crate::DataType::MarketDataKind | $crate::DataType::Side
+        $crate::enum8_dtypes!() | $crate::enum16_dtypes!()
+    };
+}
+
+/// The enum leaves whose codes fit one byte, stored as Arrow `UInt8`.
+macro_rules! enum8_dtypes {
+    () => {
+        $crate::DataType::MarketDataKind | $crate::DataType::Side | $crate::DataType::TimeInForce
+    };
+}
+
+/// The enum leaves whose codes pass 255, stored as Arrow `UInt16`.
+macro_rules! enum16_dtypes {
+    () => {
+        $crate::DataType::State | $crate::DataType::MarketDataType
     };
 }
 
 pub(crate) use bytes_dtypes;
 pub(crate) use enum_dtypes;
+pub(crate) use enum8_dtypes;
+pub(crate) use enum16_dtypes;
 pub(crate) use string_dtypes;
 
 impl PartialOrd for DataType {
@@ -1026,6 +1048,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Ric => 71,
         DataType::Forex => 72,
         DataType::MarketDataKind => 73,
+        DataType::MarketDataType => 74,
     }
 }
 
@@ -1307,11 +1330,11 @@ mod arrow {
                 | R::Bbg
                 | R::Ric
                 | R::Figi
-                | R::TimeInForce
                 | R::Unit
                 | R::Forex => code::code_arrow_storage(self)?,
                 // An enum member is the code of its leaf.
-                R::State | R::MarketDataKind | R::Side => ArrowDataType::Int32,
+                R::MarketDataKind | R::Side | R::TimeInForce => <u8 as crate::EnumRepr>::ARROW,
+                R::State | R::MarketDataType => <u16 as crate::EnumRepr>::ARROW,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
@@ -1606,50 +1629,31 @@ mod arrow {
         /// case, not an edge one.
         #[must_use]
         pub fn arrow_extension(&self) -> Option<(&'static str, String)> {
-            match self {
-                Self::Dictionary(dictionary) => dictionary.value().arrow_extension(),
-                Self::Variant => Some((crate::VARIANT_EXTENSION_NAME, String::new())),
-                Self::Geometry(geospatial) | Self::Geography(geospatial) => Some((
-                    crate::GEOARROW_WKB_EXTENSION_NAME,
-                    geospatial.geoarrow_json(),
-                )),
-                // A charset, a length bound, and which of the two view layouts
-                // this is: three facts Arrow has nowhere to put, so they ride
-                // here when the string declares any of them; plain UTF-8 is
-                // Arrow's own.
+            if let Self::Dictionary(dictionary) = self {
+                return dictionary.value().arrow_extension();
+            }
+            let name = self.id().arrow_extension_name()?;
+            let document = match self {
+                // Which crs and which edges a geometry or a geography reads by.
+                Self::Geometry(geospatial) | Self::Geography(geospatial) => {
+                    geospatial.geoarrow_json()
+                }
+                // A charset, a length bound, and which of the two view
+                // layouts this is: three facts Arrow has nowhere to put.
                 crate::string_dtypes!() => self
                     .string_parameters()
-                    .filter(|parameters| string::needs_extension(*parameters))
-                    .map(|parameters| (crate::STRING_EXTENSION_NAME, parameters.extension_json())),
-                // A maximum on a variable layout is the one fact about bytes
-                // Arrow has nowhere to put; the four layouts and a fixed width
-                // are its own.
+                    .map(|parameters| parameters.extension_json())
+                    .unwrap_or_default(),
+                // A maximum, or the second view width.
                 crate::bytes_dtypes!() => self
                     .bytes_parameters()
-                    .filter(|parameters| bytes::needs_extension(*parameters))
-                    .map(|parameters| (crate::BYTES_EXTENSION_NAME, parameters.extension_json())),
-                // A fixed scale is the one fact about a decimal Arrow has
-                // nowhere to put: without the name the storage reads back as
-                // the parameterized `decimal128(38, 18)`.
-                Self::Decimal => Some((crate::DECIMAL_EXTENSION_NAME, String::new())),
-                Self::BigDecimal => Some((crate::BIGDECIMAL_EXTENSION_NAME, String::new())),
-                // Every identifier is Arrow's own sixteen bytes.
-                Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
-                Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),
-                Self::Url => Some((UriType::Url.extension_name(), String::new())),
-                Self::Urn => Some((UriType::Urn.extension_name(), String::new())),
-                Self::Timezone => Some((crate::TIMEZONE_EXTENSION_NAME, String::new())),
-                Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
-                Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
-                // An enum leaf's codes are bare integers without the name that
-                // says which member each stands for.
-                held if held.is_enum() => {
-                    crate::enums::enum_extension_name(held.id()).map(|name| (name, String::new()))
-                }
-                // A code carries its own name, so the identity survives Arrow:
-                // three bytes under `yggdryl.ccy` read back a currency.
-                code => crate::code_extension_name(code).map(|name| (name, String::new())),
-            }
+                    .map(|parameters| parameters.extension_json())
+                    .unwrap_or_default(),
+                // Every other name says the whole of it: a fixed scale, a
+                // code's registry, an enum's members, a text's rule.
+                _ => String::new(),
+            };
+            Some((name, document))
         }
 
         /// Projects this Struct datatype as an Arrow schema.

@@ -101,7 +101,7 @@ mod xxhash {
                 Scalar::State(yggdryl::State::New),
                 Scalar::Side(Side::new("BUY").unwrap()),
                 Scalar::MarketDataKind(yggdryl::MarketDataKind::Order),
-                Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
+                Scalar::TimeInForce(TimeInForce::GoodTillCancel),
                 Scalar::from(Codec::Gzip),
                 Scalar::from(Codec::Zstd),
                 Scalar::from(DataTypeId::Int128),

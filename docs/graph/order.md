@@ -8,6 +8,7 @@
 | --- | --- |
 | Types | `OperationElement<K>` and `OperationEvent<K>` in `graph::operation`, `K` one of the sealed `OrderKind`, `QuoteKind`, `ExecutionKind`; the kind is `K::KIND`, a [`MarketKind`](market-data.md#marketdata) filed under its [`marketdatakind`](../types/enum/marketdatakind.md) - `ORDR`, `QUOT`, `EXEC` - and `is_execution()` reads the kind, never the state |
 | Construction | `Order::new()` states nothing, `OrderEvent::at(unix)` only an instant; `at` and `into_element` move between the two, `into_element` dropping the event clocks and the book control and keeping `execunix`, a [market fact](market.md#contract) |
+| Order facts | what it ordered is [`ordqty`](operation.md#order-quantity), FIX's `OrderQty(38)`, and how it is priced its `marketdatatype` - `ORDLIMIT`, `ORDMKT`, `ORDPEGGED` - a [`MarketDataType`](../types/enum/marketdatatype.md) a FIX order reads off `OrdType(40)`; both are columns of the [`marketdata` row](schemas.md#the-marketdata-row), and there is no `ordtype` fact |
 | From another event | `OperationEvent::<K>::from(&event)` copies every fact the event states, its identities included, with no book control and no finalize |
 | `finalize` | digests the leaf's `marketdatakind` code, so one entry as an order and as a quote are two operations; an element takes UUIDv8 over its code, an event also digests its [book scope](#book-control) and takes its [event identity](event.md#identity) |
 | From FIX | one message is one leaf: an order message is an `OrderEvent`; an execution report of no fill is its order's report - `ORDR`, its own state - and one that reports a fill is split at the parse into that report and the [execution](execution.md#contract) it reports; an order batch - a list, a mass order, a cross, a mass cancel report (`ORDB`) - is split at the parse into one order message per entry ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
@@ -23,7 +24,7 @@ A market-data entry carries its book control beside its facts.
 | On the event | `book()`, `set_book(Option<BookRef>)`, `with_book(BookRef)`; `action()` and `scope()` read through it; `is_full_snapshot()` is `action() == Some(MdUpdateAction::Snapshot)`, which every FIX `W` carries |
 | `BookRef` | `action`, `scope`, `position` (`MDEntryPositionNo(290)`), `entry_px`, `entry_size`, each optional; `is_stated()` when any is set; a control stating nothing is no control |
 | Walk-time facts | only the `scope` is a row column (`bookscope`) and feeds the digest; the action, the position and the price and size the entry stated steer the [book](book.md#entries) and are gone once it placed the entry |
-| Entry identifiers | not in the control: an entry's own and referenced identifiers are the `MDENTRYID` and `MDENTRYREFID` alternate identifiers (`graph::book::ENTRY_ID`, `ENTRY_REF_ID`) |
+| Entry identifiers | not in the control: an entry's own and referenced identifiers are the `mdentryid` and `mdentryrefid` identifiers (`graph::book::ENTRY_ID`, `ENTRY_REF_ID`, both `IdType`s) |
 | `MdUpdateAction` | FIX `MDUpdateAction(279)` - `New` (0), `Change`, `Delete`, `DeleteThru`, `DeleteFrom`, `Overlay` - plus `Snapshot` (6); `as_str` answers the code or `snapshot`, `read` the code, the folded name or `SNAPSHOT` (else `None`); `is_range_delete` for 3 and 4, `is_partial` for 1 and 5 |
 
 How a book applies each action is the [book's](book.md#entries).
@@ -41,8 +42,8 @@ How a book applies each action is the [book's](book.md#entries).
     // An undated order: its identity is its content, UUIDv8 over its code.
     let mut order = Order::new();
     order.set_crosscode("O-1001".to_owned());
-    order.set_side(Side::Buy);
-    order.set_price(Some("189.50".parse()?));
+    order.set_side(Side::Buy, true);
+    order.set_price(Some("189.50".parse()?), true);
     order.finalize();
     assert_eq!(order.kind(), MarketKind::Order);
     assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);

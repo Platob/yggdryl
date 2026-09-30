@@ -64,12 +64,12 @@ def test_a_value_pickles_as_itself() -> None:
 
 def test_arrow_storage_is_the_widths_under_the_leafs_own_extension_name() -> None:
     fixed = Field("px", "decimal").into_arrow()
-    assert fixed.type == pa.decimal128(38, 18)
-    assert fixed.metadata[b"ARROW:extension:name"] == b"yggdryl.decimal"
+    assert fixed.type.storage_type == pa.decimal128(38, 18)
+    assert fixed.type.extension_name == "yggdryl.decimal"
     wide = Field("n", "bigdecimal").into_arrow()
-    assert wide.type == pa.decimal256(76, 18)
-    assert wide.metadata[b"ARROW:extension:name"] == b"yggdryl.bigdecimal"
-    assert DataType("decimal").into_arrow() == pa.decimal128(38, 18)
+    assert wide.type.storage_type == pa.decimal256(76, 18)
+    assert wide.type.extension_name == "yggdryl.bigdecimal"
+    assert DataType("decimal").into_arrow().storage_type == pa.decimal128(38, 18)
 
 
 @scalar

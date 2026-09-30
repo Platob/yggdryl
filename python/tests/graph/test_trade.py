@@ -27,7 +27,7 @@ def trade() -> graph.TradeEvent:
 
 def test_from_parts_of_two_executions() -> None:
     made = trade()
-    assert made.crosscode == "T-1" and made.currunix == CLOCK
+    assert made.crosscode == "21:0:T-1" and made.currunix == CLOCK
     assert made.ticker == "ACME"
     assert made.lastqty is not None and made.lastqty.as_py() == 10
     executions = made.executions
@@ -35,7 +35,7 @@ def test_from_parts_of_two_executions() -> None:
     # In canonical side order, whatever order they were handed over in.
     assert [execution.side for execution in executions] == [Side.BUYS, Side.SELL]
     # A sided execution's cross code states its side.
-    assert sorted(execution.crosscode for execution in executions) == ["BUYS:BUY-1", "SELL:SELL-1"]
+    assert sorted(execution.crosscode for execution in executions) == ["8:1:BUY-1", "8:2:SELL-1"]
     assert made.is_execution
     assert made.marketdatakind is MarketDataKind.TRAD
     assert made.side is Side.UNKN
@@ -46,7 +46,7 @@ def test_any_dated_operation_or_market_data_roots_a_trade() -> None:
     by_leaf = graph.TradeEvent.from_parts(root, [fill("B", "BUYS", 1)])
     by_data = graph.TradeEvent.from_parts(graph.MarketData(root), [fill("B", "BUYS", 1)])
     assert by_leaf == by_data
-    assert by_leaf.crosscode == "T-1"
+    assert by_leaf.crosscode == "21:0:T-1"
 
 
 def test_refusals_name_what_was_wrong() -> None:
@@ -85,6 +85,6 @@ def test_equality_hash_repr_copy_pickle() -> None:
     assert twin.executions == made.executions
     assert copy.copy(made) == made and copy.deepcopy(made) == made
     assert repr(made) == (
-        f'TradeEvent({made.curruuid.as_py()}, currunix={CLOCK}, crosscode="T-1")'
+        f'TradeEvent({made.curruuid.as_py()}, currunix={CLOCK}, crosscode="21:0:T-1")'
     )
     assert made != object()

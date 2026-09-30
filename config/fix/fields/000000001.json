@@ -209,8 +209,8 @@
     "metadata": {
       "FIX:idmap": [
         {
-          "map": "altids",
-          "key": "QUOTEID"
+          "map": "identifiers",
+          "key": "quoteid"
         }
       ],
       "FIX:tag": "117",
@@ -395,8 +395,8 @@
     "metadata": {
       "FIX:idmap": [
         {
-          "map": "altids",
-          "key": "QUOTEREQID"
+          "map": "identifiers",
+          "key": "quotereqid"
         }
       ],
       "FIX:tag": "131",
@@ -1245,8 +1245,8 @@
     "metadata": {
       "FIX:idmap": [
         {
-          "map": "altids",
-          "key": "SECONDARYORDERID",
+          "map": "identifiers",
+          "key": "secondaryorderid",
           "follow": true
         }
       ],

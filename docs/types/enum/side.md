@@ -1,6 +1,6 @@
 # Side
 
-Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen members - `UNKN` and the seventeen sides the code set names - stored as the `int32` code of its member, a code being the position of its wire character.
+Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen members - `UNKN` and the seventeen sides the code set names - stored as the `uint8` code of its member, a code being the position of its wire character.
 
 ## Contract
 
@@ -11,7 +11,7 @@ Which side of the market a trade took: FIX `Side(54)` as an enum of eighteen mem
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no side, naming the spelling |
-| Stores | `int32` under `yggdryl.side`: `UNKN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H` |
+| Stores | `uint8` under `yggdryl.side`: `UNKN` at `0`, then `1` to `17` in FIX's own order, wire codes `1`-`9` then `A`-`H` |
 | Default | `UNKN`, a side stated as none: a stated value, never an absence |
 
 A `Side` is one byte in memory and its code in a column. What `as_str` answers and every text format writes is the member's fixed four-letter code - `BUYS`, `SSHT`, `CRSX` - never FIX's one-character code, which `fix_code` answers on its own; the long name is the member's `description`. The names the members were stored under before their codes (`BUY`, `SSHORT`, `ASDEF`, `UNKNOWN`, ...) are still read, case-insensitively, and never written.
@@ -155,20 +155,20 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 
 ## Arrow storage
 
-`Int32` under `yggdryl.side`: one value buffer of codes, like every [enum](index.md). Text entering a `side` column is read as a spelling and an integer as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `side` column cast to text answers each member's four-letter code, and cast to an integer its code.
+`UInt8` under `yggdryl.side`: one value buffer of codes, like every [enum](index.md). Text entering a `side` column is read as a spelling and an integer of any width, signed or unsigned, as a code, each refused - or null under `safe` in a nullable column - where it names no member; a `side` column cast to text answers each member's four-letter code, and cast to an integer its code.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int32Array, StringArray};
+    use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let side = Field::new("side", DataType::Side, false);
     let arrow = side.clone().into_arrow_field()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
     assert_eq!(Field::from_arrow_field(&arrow)?, side);
 
@@ -177,7 +177,7 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
     let stored = Serie::from_arrow_array(Some(&side), spelled, ArrowCastOptions::new())?
         .into_arrow_array()
         .expect("a column, not a run");
-    let codes = stored.as_any().downcast_ref::<Int32Array>().expect("int32 codes");
+    let codes = stored.as_any().downcast_ref::<UInt8Array>().expect("uint8 codes");
     assert_eq!(codes.values().to_vec(), [1, 1, 2, 5]);
     ```
 
@@ -190,8 +190,8 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 
     side = Field("side", "side")
     arrow_field = side.into_arrow()
-    assert arrow_field.type == pa.int32()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.side"
+    assert arrow_field.type.storage_type == pa.uint8()
+    assert arrow_field.type.extension_name == "yggdryl.side"
     assert Field.from_arrow(arrow_field) == side
 
     # Every vocabulary lands as the member it names.
@@ -340,7 +340,7 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 - A name folds: `SellShort`, `sell_short` and `SELL SHORT` are one spelling, `SSHT`.
 - A stored code is an integer, never text: `"10"` is no spelling, because `1`-`9` are wire codes and a number read as text would answer the wrong member for one of the two vocabularies; `10` is `CRSX`.
 - The default value is `UNKN`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it.
-- An order, a quote or an execution taking a side stores its cross code prefixed with the side's four-letter code, `BUYS:ORD-1`, so the two sides of one identifier are two chains; `UNKN` prefixes nothing, and no other element - a trade, a book, a snapshot control - is prefixed whatever side it states ([Market](../../graph/market.md#sides-and-cross-codes)).
+- An order, a quote or an execution taking a side states its numeric code in its stored cross code `{kind}:{side}:{base}` - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - so the two sides of one identifier are two chains; `UNKN` states `0` there, and no other element - a trade, a book, a snapshot control - states a side but `0` whatever side it takes ([Market](../../graph/market.md#sides-and-cross-codes)).
 - In an expression a text constant meets a `side` column as the member it spells and an integer as the code it stores: `side = 'BUYS'`, `side in ('1', 'SellShort')`, `cast('2' as side) = side` and `side < 3` all compare members.
 - A Hive partition over a `side` column is named by the member, `side=BUYS`.
 - JSON, TOML, YAML and XML write a side as its four-letter code, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.

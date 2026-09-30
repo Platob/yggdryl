@@ -57,7 +57,7 @@ use crate::iomedia::{
 };
 use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
-    pyarrow_scalar_into_array,
+    pyarrow_scalar_as_array,
 };
 use crate::{cast_options, compare, normalize_index, value_error};
 
@@ -649,9 +649,7 @@ fn pyarrow_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
         return array_of(value).map(Some);
     }
     if value.is_instance(pyarrow::scalar(py)?)? {
-        let array = pyarrow_scalar_into_array(value)?;
-        let serie =
-            Serie::from_arrow_array(None, array, ArrowCastOptions::new()).map_err(value_error)?;
+        let serie = held_array(&pyarrow_scalar_as_array(value)?)?;
         // A pinned row is a value, so its column is named as one.
         let field = serie.require_field().map_err(value_error)?.clone();
         let serie = serie
@@ -680,11 +678,23 @@ fn batch_of(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
 /// about itself, named `item`, and its buffers, shared - proven and landed
 /// off the GIL.
 fn array_of(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
+    held_array(value).map(Columnar::Held)
+}
+
+/// One foreign array as the column it is - of the extension type its type
+/// states, else of its own layout - proven and landed off the GIL.
+fn held_array(value: &Bound<'_, PyAny>) -> PyResult<Serie> {
     let intake = ArrayIntake::from_value(value)?;
+    let stated = intake.stated_field().cloned();
     value
         .py()
-        .detach(move || Serie::from_arrow_array(None, intake.validated()?, ArrowCastOptions::new()))
-        .map(Columnar::Held)
+        .detach(move || {
+            Serie::from_arrow_array(
+                stated.as_ref(),
+                intake.validated()?,
+                ArrowCastOptions::new(),
+            )
+        })
         .map_err(value_error)
 }
 
@@ -753,7 +763,7 @@ impl PySerie {
     ) -> PyResult<Py<PyAny>> {
         let options = cast_options(safe, representation)?;
         let array = ArrayIntake::from_value(array)?;
-        let field = field_of(field)?;
+        let field = field_of(field)?.or_else(|| array.stated_field().cloned());
         let serie = py
             .detach(move || Serie::from_arrow_array(field.as_ref(), array.validated()?, options))
             .map_err(value_error)?;

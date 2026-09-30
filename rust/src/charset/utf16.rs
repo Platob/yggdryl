@@ -40,11 +40,14 @@ pub(super) fn decode_into<const BIG: bool, const LOSSY: bool>(
     // bytes in and four out, so half again the input bounds every case.
     target.reserve(input.len() + input.len() / 2);
 
-    let units = input.chunks_exact(2);
-    let remainder = units.remainder();
+    let (units, remainder) = input.as_chunks::<2>();
     let mut buffer = [0_u8; 4];
     let mut position = 0;
-    for scalar in char::decode_utf16(units.map(|pair| unit::<BIG>(pair[0], pair[1]))) {
+    for scalar in char::decode_utf16(
+        units
+            .iter()
+            .map(|&[first, second]| unit::<BIG>(first, second)),
+    ) {
         match scalar {
             Ok(scalar) => {
                 target.push_scalar(scalar, scalar.encode_utf8(&mut buffer).as_bytes());

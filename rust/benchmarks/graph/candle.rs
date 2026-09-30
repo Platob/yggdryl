@@ -6,7 +6,7 @@ use yggdryl::graph::{
     BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market,
     MarketData, Ohlc, Operation, QuoteEvent,
 };
-use yggdryl::{Decimal, Side, State, Timezone};
+use yggdryl::{Decimal, IdSource, IdType, Identifier, Side, State, Timezone};
 
 /// Nanoseconds in one second.
 const SECOND: i64 = 1_000_000_000;
@@ -19,10 +19,10 @@ fn entry(unix: i64, side: &str, price: i64) -> MarketData {
     let name = if side == "Buy" { "B" } else { "A" };
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(name.to_owned());
-    event.set_ticker(Some(SmolStr::new("BENCH")));
-    event.set_side(Side::read(side).expect("a shipped side"));
-    event.set_price(Some(Decimal::from_int(price)));
-    event.set_quantity(Some(Decimal::from_int(10)));
+    event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_side(Side::read(side).expect("a shipped side"), true);
+    event.set_price(Some(Decimal::from_int(price)), true);
+    event.set_quantity(Some(Decimal::from_int(10)), true);
     event.set_state(State::read("New").expect("the shipped new state"));
     event.finalize();
     MarketData::from(event)
@@ -51,12 +51,19 @@ fn books(count: usize) -> Vec<BookEvent> {
 fn fill(unix: i64, index: usize) -> MarketData {
     let mut event = ExecutionEvent::at(unix);
     event.set_crosscode(format!("F-{index}"));
-    event.set_ticker(Some(SmolStr::new("BENCH")));
-    event.set_side(Side::read("Buy").expect("a shipped side"));
-    event.set_lastqty(Some(Decimal::from_int(10)));
+    event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_side(Side::read("Buy").expect("a shipped side"), true);
+    event.set_lastqty(Some(Decimal::from_int(10)), true);
     event.set_state(State::read("Filled").expect("the shipped filled state"));
     event
-        .insert_altid("EXECID", &format!("BENCH-EXECUTION-IDENTIFIER-{index:08}"))
+        .insert_identifier(
+            Identifier::new(
+                IdSource::Fix,
+                IdType::ExecId,
+                &format!("BENCH-EXECUTION-IDENTIFIER-{index:08}"),
+            )
+            .expect("an identifier"),
+        )
         .expect("an identifier the map holds");
     event.finalize();
     MarketData::from(event)
@@ -83,7 +90,7 @@ fn candles(count: usize) -> Vec<Candle> {
         .map(|index| {
             let start = i64::try_from(index).expect("a bench corpus") * SECOND;
             Candle {
-                crosscode: SmolStr::new_static("BENCH"),
+                crosscode: SmolStr::new_static("3:0:BENCH"),
                 ticker: Some(SmolStr::new_static("BENCH")),
                 start,
                 end: start + SECOND,

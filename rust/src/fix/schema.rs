@@ -20,10 +20,13 @@
 //!
 //! # What is in it
 //!
-//! The standard header and trailer, because every message has them; the
+//! First the columns every generated schema of the crate opens with - the
+//! element's, the event's, the market's and the operation's facts, under
+//! the names a text line's batch and a `marketdata` row state them by - then
+//! the standard header and trailer, because every message has them; the
 //! fields a financial consumer actually reads, because they are what a table
-//! is queried by; the four repeating groups worth persisting whole; the five
-//! facts this crate derives; and then, last, everything else.
+//! is queried by; the four repeating groups worth persisting whole; and then,
+//! last, everything else.
 //!
 //! # Values not represented by columns stay at the end
 //!
@@ -97,17 +100,17 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 /// from reads.
 ///
 /// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
-/// like the rest, each exact and stated once. What a message is *about* is
-/// what [`get_price`](crate::graph::Market::get_price) and
-/// [`get_quantity`](crate::graph::Market::get_quantity) read off them, and no
-/// column of this crate's restates either, because a row carrying both
-/// would carry one fact twice.
-pub const BODY_TAGS: [i32; 56] = [
+/// like the rest, each exact and stated once: `Price(44)` and `Quantity(53)`
+/// are the row's `price` and `quantity`, the market columns FIX names alike,
+/// and what a message is *about* is what
+/// [`get_price`](crate::graph::Market::get_price) and
+/// [`get_quantity`](crate::graph::Market::get_quantity) read off them.
+pub const BODY_TAGS: [i32; 54] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
     1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693,
     // The instrument, and what the market says about trading it.
-    55, 48, 22, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
+    55, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
     54, 40, 59, 854, 15, 120, // The quote's bid and offer, which carry no side of their own.
     132, 133, 134, 135, 188, 189, 190,
     191, // What was done, and the FX parts of the last price.
@@ -118,11 +121,13 @@ pub const BODY_TAGS: [i32; 56] = [
 
 /// The repeating groups persisted whole rather than lifted flat.
 ///
-/// A group is the one shape a scalar column cannot hold, and these four are
-/// the ones a consumer actually reads back: who was on the trade, what the
-/// instrument's other identifiers were, which regulatory identifiers the
-/// trade carries, and when each regulatory clock ran.
-pub const GROUP_TAGS: [i32; 4] = [453, 454, 768, 1907];
+/// A group is the one shape a scalar column cannot hold, and these two are
+/// the ones a consumer actually reads back: which regulatory identifiers the
+/// trade carries, and when each regulatory clock ran. Who was on the trade
+/// and what the instrument's other identifiers were are the prefix's
+/// `parties` and `secaltids`, so `Parties(453)` and `SecAltIDGrp(454)` are
+/// no columns: a message stating them keeps them in `fixentries` as sent.
+pub const GROUP_TAGS: [i32; 2] = [768, 1907];
 
 /// The column holding the residual record: a sorted `map<utf8, utf8>` from
 /// each field's `tag:name` to what it stated, as
@@ -135,47 +140,47 @@ pub const FIXENTRIES_COLUMN: &str = "fixentries";
 
 /// One row's columns, in order, as tags.
 ///
-/// Ordered the way a reader thinks about a message rather than the way a
-/// wire writes one, in nine bands: **when** it happened, **which** event it
-/// is, **what message** carried it and over which session, **which
-/// instrument** it is about, **which order** it belongs to, **what values**
-/// it states, **how it went**, the **groups** kept whole, and last the
-/// **frame** - the standard header and trailer fields nothing above claimed,
-/// then the arrival record that closes the row.
+/// Opened by the columns every generated schema of the crate opens with, in
+/// the order of the traits that answer them - the six
+/// [`ElementColumn`](crate::graph::ElementColumn)s, the nine
+/// [`EventColumn`](crate::graph::EventColumn)s, the thirty-four
+/// [`MarketColumn`](crate::graph::MarketColumn)s and the five
+/// [`OperationColumn`](crate::graph::OperationColumn)s - under the names
+/// those columns have, so a FIX row, a text line's batch and a `marketdata`
+/// row share their first columns and join on them without a mapping. A
+/// market column a dictionary field already carries under its own name -
+/// `Price(44)`, `StopPx(99)`, `Currency(15)`, `Quantity(53)`,
+/// `DisplayQty(1138)`, `Side(54)`, `CFICode(461)`, `LastPx(31)`,
+/// `LastQty(32)`, `AvgPx(6)`, `CumQty(14)`, `LeavesQty(151)`, `CxlQty(84)`
+/// and `BidPx(132)`, and the operation's `TimeInForce(59)` - is that field,
+/// holding what the message states there; every other one is the crate's
+/// own, and the ones FIX states under a name of its own are derived from
+/// those fields and stated again - `ticker` beside `Symbol(55)`, `askpx`
+/// beside `OfferPx(133)`, `ordqty` beside `OrderQty(38)`.
 ///
-/// A table is read by time, joined by identity and grouped by instrument, so
-/// those three come first and in that order; a consumer scanning columns left
-/// to right meets each band whole instead of meeting a clock, an identifier
-/// and a price interleaved by tag number. Within a band the order is the one
-/// the band's own subject implies: the instant a thing happened before the
-/// instants it derives, the identity before what it descends from, the price
-/// before the bid and offer that quote it.
+/// Then the message's own, in seven bands: the **clocks** FIX states,
+/// **which message** carried it and over which session, **which
+/// instrument** it is about, **which order** it belongs to, the **values**
+/// the prefix did not already state, **how it went**, the **groups** kept
+/// whole, and last the **frame** - the standard header and trailer fields
+/// nothing above claimed. The capture's own columns, where a row carries
+/// them, stand between the prefix and those bands
+/// ([`fix_schema_carrying`](super::fix_schema_carrying)), and the arrival
+/// record closes the row.
 ///
 /// Every band is a list of tags this crate names, and what no band names
 /// still lands in the row: the standard header, trailer and body lists close
 /// it, then any crate column a band left out. A tag named twice takes its
 /// first place, so moving a column between bands is one edit and never a
 /// duplicate.
-///
-/// This is the shape a capture lands in: projected, typed message columns
-/// followed by the residual arrival record. Rebuilding combines both, so a
-/// narrow projection chooses only its columns without losing the rest of the
-/// message. Capture columns remain separate in front through
-/// [`fix_schema_carrying`](super::fix_schema_carrying).
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        CONVERSATIONID_TAG_NAME as CONVERSATIONID, CREAUNIX_TAG_NAME as CREAUNIX,
-        CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
-        CROSSUUID_TAG_NAME as CROSSUUID, CURRHASHCODE_TAG_NAME as HASHCODE,
-        CURRUNIX_TAG_NAME as UNIX, CURRUUID_TAG_NAME as CURRUUID, EXECUNIX_TAG_NAME as EXECUNIX,
-        EXPRUNIX_TAG_NAME as EXPRUNIX, METADATA_TAG_NAME as METADATA,
+        BLOOMBERGCODE_TAG_NAME as BLOOMBERGCODE, CONVERSATIONID_TAG_NAME as CONVERSATIONID,
+        FIGICODE_TAG_NAME as FIGICODE, FOREXCODE_TAG_NAME as FOREXCODE,
         MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
         MSGORIGINATOR_TAG_NAME as MSGORIGINATOR, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
         MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
-        RECDUNIX_TAG_NAME as RECDUNIX, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
-        SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let mut tags: Vec<i32> = Vec::with_capacity(
@@ -188,32 +193,12 @@ pub fn fix_schema_tags() -> Vec<i32> {
             }
         }
     };
-    // When it happened: the settled instant, the execution and recording where
-    // known, then the instants that instant is read against - created,
-    // followed, snapped, expiring - and the clocks the protocol states.
-    band(
-        &mut tags,
-        &[
-            UNIX.0, EXECUNIX.0, RECDUNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, EXPRUNIX.0, 52,
-            122, 60, 64, 75, 126, 62, 432,
-        ],
-    );
-    // Which event: its own identity, the chain it stands in, what it
-    // follows and what it was read from. A join reads these and
-    // nothing else.
-    band(
-        &mut tags,
-        &[
-            CURRUUID.0,
-            CROSSUUID.0,
-            CROSSCODE.0,
-            HASHCODE.0,
-            CROSSHASHCODE.0,
-            PREVUUID.0,
-            SEQNUM.0,
-            SRCUUIDS.0,
-        ],
-    );
+    band(&mut tags, &shared_tags());
+    // The clocks FIX states: when it was sent and first sent, when the
+    // transaction it reports happened, and the settlement, expiry and
+    // validity FIX dates it by - the instants the event columns above were
+    // read off.
+    band(&mut tags, &[52, 122, 60, 64, 75, 126, 62, 432]);
     // Which message, over which session: what the frame says it is, who sent
     // it to whom, which bridge handled it and which of its plugins it came
     // from, the session event it delivered the message as and the
@@ -227,7 +212,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &[
             8,
             35,
-            super::MSGCAT_TAG_NAME.0,
             34,
             49,
             56,
@@ -241,27 +225,24 @@ pub fn fix_schema_tags() -> Vec<i32> {
             CONVERSATIONID.0,
         ],
     );
-    // Which instrument: what the venue calls it and the ticker that settled
-    // to, the identifiers this crate resolved for it, then what the market
-    // said about trading it and the answer those add up to.
+    // Which instrument: what the venue calls it, the identifiers this crate
+    // resolved for it beside the ones the prefix states, then what the
+    // market said about trading it. `SecurityID(48)` and
+    // `SecurityIDSource(22)` are no columns: the prefix's `securityids` states
+    // the identifier they name, and `fixentries` keeps them as sent.
     band(
         &mut tags,
         &[
             55,
-            48,
-            22,
-            super::ISINCODE_TAG_NAME.0,
-            super::FOREXCODE_TAG_NAME.0,
-            super::BLOOMBERGCODE_TAG_NAME.0,
-            super::FIGICODE_TAG_NAME.0,
-            super::MICCODE_TAG_NAME.0,
-            super::STRIKEPX_TAG_NAME.0,
+            FOREXCODE.0,
+            BLOOMBERGCODE.0,
+            FIGICODE.0,
+            202,
             167,
             762,
             207,
             100,
             30,
-            461,
             541,
             460,
             326,
@@ -274,28 +255,23 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &mut tags,
         &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 262, 693],
     );
-    // What it states: the side it takes, then one ladder of prices and one
-    // of quantities, each from the number the message is about down through
-    // the ones it was read off - what it moved from, its last executed price and quantity,
-    // where it has got to - then what those are counted and denominated in,
-    // how the order was written, and last the quote's bid and offer.
-    //
-    // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
-    // and `Quantity(53)` are columns like the rest of the ladder, and what a
-    // message is *about* is what [`Market::get_price`] reads off them
-    // rather than a column restating one of them.
+    // The values the prefix does not state under FIX's own name, as FIX
+    // states them: the order's quantity and the peak it shows, what a price
+    // moved from, the unit and the settlement currency, how the order was
+    // written - the quantity type, the order, quote and trade types the
+    // prefix's `marketdatatype` reads - then the quote's
+    // offer and sizes and the FX parts of the last, bid and offer prices.
     band(
         &mut tags,
         &[
-            54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
-            194, 195, 188, 189, 190, 191,
+            38, 111, 140, 996, 120, 854, 40, 537, 828, 59, 133, 134, 135, 194, 195, 188, 189, 190,
+            191,
         ],
     );
-    // How it went: the ranked state the message reached - read off
-    // `OrdStatus` and `ExecType`, the furthest its chain knows once walked -
-    // then the protocol's own statuses and reasons, and whatever the venue
-    // said in words.
-    band(&mut tags, &[STATE.0, 39, 150, 297, 301, 368, 103, 102, 58]);
+    // How it went: the protocol's own statuses and reasons, and whatever the
+    // venue said in words - the ranked state the prefix states was read off
+    // them.
+    band(&mut tags, &[39, 150, 297, 301, 368, 103, 102, 58]);
     // The groups kept whole, which no scalar column can hold.
     band(&mut tags, &GROUP_TAGS);
     // The frame: every standard header, body and trailer field no band above
@@ -311,18 +287,84 @@ pub fn fix_schema_tags() -> Vec<i32> {
     let rest: Vec<i32> = crated
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
-        .filter(|tag| {
-            *tag != METADATA.0
-                && !super::identity::is_capture_tag(*tag)
-                && !super::crated::is_unprojected_tag(*tag)
-        })
+        .filter(|tag| !super::identity::is_capture_tag(*tag))
         .collect();
     band(&mut tags, &rest);
-    // Last, what the message carried outside its fields: the bridge's own
-    // keys and every key no dictionary resolved. The residual record closes
-    // the row after it.
-    band(&mut tags, &[METADATA.0]);
     tags
+}
+
+/// The tags of the columns every generated schema opens with, in order:
+/// the element's, the event's, the market's and the operation's facts,
+/// each under the crate's own tag or, for a market column FIX already
+/// names alike, under that field's.
+fn shared_tags() -> Vec<i32> {
+    use super::crated::tag_named;
+    use crate::graph::{ElementColumn, EventColumn, MarketColumn, OperationColumn};
+    let market =
+        |column: MarketColumn| tag_named(column.name()).or_else(|| dictionary_market_tag(column));
+    ElementColumn::ALL
+        .into_iter()
+        .filter_map(|column| tag_named(column.name()))
+        .chain(
+            EventColumn::ALL
+                .into_iter()
+                .filter_map(|column| tag_named(column.name())),
+        )
+        .chain(MarketColumn::ALL.into_iter().filter_map(market))
+        .chain(OperationColumn::ALL.into_iter().filter_map(|column| {
+            tag_named(column.name()).or_else(|| dictionary_operation_tag(column))
+        }))
+        .collect()
+}
+
+/// The dictionary field that carries an operation column under the
+/// column's own name, where one does - `TimeInForce(59)` - as
+/// [`dictionary_market_tag`] answers for the market's.
+const fn dictionary_operation_tag(column: crate::graph::OperationColumn) -> Option<i32> {
+    match column {
+        crate::graph::OperationColumn::TimeInForce => Some(59),
+        _ => None,
+    }
+}
+
+/// The dictionary field that carries a market column under the column's
+/// own name, where one does: the crate never tags a second column of that
+/// name, and the row states the field there.
+const fn dictionary_market_tag(column: crate::graph::MarketColumn) -> Option<i32> {
+    use crate::graph::MarketColumn;
+    match column {
+        MarketColumn::Price => Some(44),
+        MarketColumn::StopPx => Some(99),
+        MarketColumn::DisplayQty => Some(1138),
+        MarketColumn::CxlQty => Some(84),
+        MarketColumn::Currency => Some(15),
+        MarketColumn::Quantity => Some(53),
+        MarketColumn::Side => Some(54),
+        MarketColumn::CfiCode => Some(461),
+        MarketColumn::LastPx => Some(31),
+        MarketColumn::LastQty => Some(32),
+        MarketColumn::AvgPx => Some(6),
+        MarketColumn::CumQty => Some(14),
+        MarketColumn::LeavesQty => Some(151),
+        MarketColumn::BidPx => Some(132),
+        _ => None,
+    }
+}
+
+/// How many of a row's first columns are the ones every generated schema
+/// opens with: the element, event, market and operation columns, by name.
+fn shared_prefix_len(row: &Field) -> usize {
+    use crate::graph::{ElementColumn, EventColumn, MarketColumn, OperationColumn};
+    row.fields()
+        .iter()
+        .take_while(|column| {
+            let name = column.name();
+            ElementColumn::of_name(name).is_some()
+                || EventColumn::of_name(name).is_some()
+                || MarketColumn::of_name(name).is_some()
+                || OperationColumn::of_name(name).is_some()
+        })
+        .count()
 }
 
 /// The columns every row states: `BeginString`, which the builder fills
@@ -413,7 +455,7 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
         schema.as_metadata().clone(),
     );
     root.as_fix_mut().set_tag(tag)?;
-    root.set_display("FixMsg")?;
+    root.set_display("FIX Message")?;
     root.set_description(
         "The fixed row every message answers as: the crate's own columns, the standard header, \
          the fields a financial consumer reads, the groups persisted whole, the trailer, and the \
@@ -454,20 +496,18 @@ pub(super) fn rooted(
         if super::is_crate_tag(tag)
             && registry.get_field_by_tag(tag).is_none()
             && registry.get_group_by_tag(tag).is_none()
-        {
-            if let Some(held) = super::fix_crate_fields()
+            && let Some(held) = super::fix_crate_fields()
                 .unwrap_or_default()
                 .iter()
                 .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+        {
+            let mut held = held.clone();
+            held.set_nullable(!is_required(tag));
+            if !fields
+                .iter()
+                .any(|known| crate::folds_equal(known.name(), held.name()))
             {
-                let mut held = held.clone();
-                held.set_nullable(!is_required(tag));
-                if !fields
-                    .iter()
-                    .any(|known| crate::folds_equal(known.name(), held.name()))
-                {
-                    fields.push(held);
-                }
+                fields.push(held);
             }
         }
         // A native Map group owns its counter; no scalar has to precede it.
@@ -488,14 +528,18 @@ pub(super) fn rooted(
     Ok(schema)
 }
 
-/// The fixed schema behind a capture's own columns.
+/// The fixed schema with a capture's own columns beside it.
 ///
 /// A capture is read from somewhere, and where it was read from is what a
 /// monitor orders and joins on: the object's URL, the line number in it, the
 /// clock the line was stamped with, the thread that wrote it. None of that is
-/// FIX and all of it leads the row. A bulk configuration produces one output
-/// row per configuration it named, repeating these source values for each
-/// message, and no row at all where it named none.
+/// FIX, and all of it stands right after the columns every generated schema
+/// opens with - the element's, the event's, the market's and the
+/// operation's - so a parsed row opens as the line's batch and the
+/// `marketdata` row do, and the reading's own columns come before the
+/// message's. A bulk configuration produces one output row per configuration
+/// it named, repeating these source values for each message, and no row at
+/// all where it named none.
 ///
 /// A carried column whose name a FIX column already takes - under the fold
 /// every name here resolves by, so `sessionId` and `sessionid` are one name -
@@ -536,12 +580,15 @@ pub(super) fn rooted(
 /// let read = fix_schema(&registry, "fix")?;
 /// let held = fix_schema_carrying(&capture, &read)?;
 ///
-/// // The capture leads, and the fixed columns follow it.
-/// assert_eq!(held.fields()[0].name(), "url");
+/// // The shared columns open the row, the capture follows them, and the
+/// // message's own columns follow it.
+/// assert_eq!(held.fields()[0].name(), "curruuid");
+/// let after = read.index_of("partyids").expect("the shared columns") + 1;
+/// assert_eq!(held.fields()[after].name(), "url");
 /// assert_eq!(held.index_of("msgtype"), read.index_of("msgtype").map(|at| at + 3));
-/// // And it leads it nullable: only a pass holding the source row can
-/// // state where a line came from.
-/// assert!(held.fields()[0].is_nullable());
+/// // Nullable: only a pass holding the source row can state where a line
+/// // came from.
+/// assert!(held.fields()[after].is_nullable());
 /// # Ok(())
 /// # }
 /// ```
@@ -551,19 +598,26 @@ pub(super) fn rooted(
 /// Returns the schema grammar's refusal when the two halves do not make one
 /// struct.
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
-    let mut fields: Vec<Field> = carried(carrier, read)
-        .into_iter()
-        .filter_map(|at| carrier.fields().get(at).cloned())
-        .map(|mut held| {
-            held.set_nullable(true);
-            held
-        })
+    let (shared, own) = read.fields().split_at(shared_prefix_len(read));
+    let fields: Vec<Field> = shared
+        .iter()
+        .cloned()
+        .chain(
+            carried(carrier, read)
+                .into_iter()
+                .filter_map(|at| carrier.fields().get(at).cloned())
+                .map(|mut held| {
+                    held.set_nullable(true);
+                    held
+                }),
+        )
+        .chain(own.iter().cloned())
         .collect();
-    fields.extend(read.fields().iter().cloned());
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(read.name()))
 }
 
-/// Where each of a capture's own columns sits, in the order they lead the row.
+/// Where each of a capture's own columns sits, in the order they stand in
+/// the row.
 ///
 /// The one rule for which of them survive the FIX columns' claim on a name,
 /// so a reader filling the row by position and the schema it fills are the
@@ -1314,17 +1368,16 @@ fn push_child(
             .iter()
             .any(|held| crate::folds_equal(held.name(), name))
     };
-    if let Some(counter) = field.as_fix().counter().ok().flatten() {
-        if let Some(scalar) = registry.get_scalar_by_tag(counter) {
-            if !taken(fields, scalar.name()) {
-                let count = value.as_serie().map_or(0, crate::Serie::len);
-                let count = super::build::typed_spelling(registry, scalar, &count.to_string());
-                let mut scalar = scalar.clone();
-                scalar.set_nullable(count.is_null());
-                fields.push(scalar);
-                values.push(count);
-            }
-        }
+    if let Some(counter) = field.as_fix().counter().ok().flatten()
+        && let Some(scalar) = registry.get_scalar_by_tag(counter)
+        && !taken(fields, scalar.name())
+    {
+        let count = value.as_serie().map_or(0, crate::Serie::len);
+        let count = super::build::typed_spelling(registry, scalar, &count.to_string());
+        let mut scalar = scalar.clone();
+        scalar.set_nullable(count.is_null());
+        fields.push(scalar);
+        values.push(count);
     }
     if taken(fields, field.name()) {
         return;
@@ -1561,10 +1614,10 @@ fn ordered_group_union(
                     "member {name} is absent from its group schema"
                 )));
             };
-            if let Some(before) = previous {
-                if before != index {
-                    edges.push((before, index));
-                }
+            if let Some(before) = previous
+                && before != index
+            {
+                edges.push((before, index));
             }
             previous = Some(index);
         }
@@ -1867,20 +1920,21 @@ fn child_from_entry(
     entry: &super::FixEntry,
     declared: Option<&Field>,
 ) -> Result<(Field, crate::Scalar)> {
-    if declared.is_none() && entry.tag() == 0 {
-        if let Some(lost_to) = alias_lost_to(registry, entry.name()) {
-            // The builder's demoted alias, rebuilt as it built one: a row
-            // carries no metadata, and without the mark the name would
-            // reach the field it did not fill and fold into it again.
-            let mut field = DataType::utf8().nullable_field(entry.held_name().clone());
-            // A plain key and value: the one refusal a metadata insert has
-            // is a shape no spelling here takes.
-            let _ = field.insert_metadata(super::field::ALIAS_OF, lost_to.name());
-            let value = entry
-                .value()
-                .map_or(crate::Scalar::Null, crate::Scalar::from);
-            return Ok((field, value));
-        }
+    if declared.is_none()
+        && entry.tag() == 0
+        && let Some(lost_to) = alias_lost_to(registry, entry.name())
+    {
+        // The builder's demoted alias, rebuilt as it built one: a row
+        // carries no metadata, and without the mark the name would
+        // reach the field it did not fill and fold into it again.
+        let mut field = DataType::utf8().nullable_field(entry.held_name().clone());
+        // A plain key and value: the one refusal a metadata insert has
+        // is a shape no spelling here takes.
+        let _ = field.insert_metadata(super::field::ALIAS_OF, lost_to.name());
+        let value = entry
+            .value()
+            .map_or(crate::Scalar::Null, crate::Scalar::from);
+        return Ok((field, value));
     }
     // A declared nested member is what the level declares; a declared
     // scalar is the dictionary's own field, as the builder states one,
@@ -1967,16 +2021,16 @@ fn child_from_entry(
             let value = entry.value().map_or(crate::Scalar::Null, |text| {
                 super::build::typed_spelling_remembered(registry, known, text)
             });
-            if value.is_null() {
-                if let Some(text) = entry.value() {
-                    let field = Field::new_with_metadata(
-                        entry.held_name().clone(),
-                        DataType::utf8(),
-                        true,
-                        known.as_metadata().clone(),
-                    );
-                    return Ok((field, crate::Scalar::from(text)));
-                }
+            if value.is_null()
+                && let Some(text) = entry.value()
+            {
+                let field = Field::new_with_metadata(
+                    entry.held_name().clone(),
+                    DataType::utf8(),
+                    true,
+                    known.as_metadata().clone(),
+                );
+                return Ok((field, crate::Scalar::from(text)));
             }
             let mut field = known.clone();
             field.set_nullable(value.is_null());
@@ -2175,11 +2229,32 @@ impl super::FixMsg {
         if !residual.is_empty() {
             let (fields, held) = content_from_entries(&registry, &residual)?;
             for (field, value) in fields.into_iter().zip(held) {
-                if members
+                if let Some(at) = members
                     .iter()
-                    .any(|known| crate::folds_equal(known.name(), field.name()))
+                    .position(|known| crate::folds_equal(known.name(), field.name()))
                 {
-                    continue;
+                    // A column the message lifts into a fact - `parties`,
+                    // `secaltids` - may share its name with the dictionary
+                    // group the fact is read from. The group is content and
+                    // keeps its name; the column is read by its tag and never
+                    // kept as a child, so it steps aside under `tag:name`,
+                    // which no dictionary name spells.
+                    let (column, entry) = (
+                        tag_and_counter(&registry, &members[at]),
+                        tag_and_counter(&registry, &field),
+                    );
+                    let lifted = column.0.is_some_and(|tag| {
+                        super::is_crate_tag(tag) && super::identity::is_typed_tag(tag)
+                    });
+                    if !lifted || column == entry {
+                        continue;
+                    }
+                    let renamed = format!(
+                        "{}:{}",
+                        column.0.expect("a lifted column's tag"),
+                        members[at].name()
+                    );
+                    members[at].set_name(renamed);
                 }
                 members.push(field);
                 values.push(value);
@@ -2207,11 +2282,10 @@ impl super::FixMsg {
                 let stated = super::entry::wire_text_under(&registry, field, value);
                 if let Some(at) = owners.iter().copied().find(|at| {
                     super::entry::wire_text_under(&registry, &members[*at], &values[*at]) == stated
-                }) {
-                    if let Some(first) = owners.first().copied() {
-                        members.swap(first, at);
-                        values.swap(first, at);
-                    }
+                }) && let Some(first) = owners.first().copied()
+                {
+                    members.swap(first, at);
+                    values.swap(first, at);
                 }
             }
         }
@@ -2739,15 +2813,15 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
         Ok(held) => return Ok(held),
         Err(refusal) => refusal,
     };
-    if let Some(value) = retry {
-        if let Some(held) = refit(column, value) {
-            crate::warning::warned!(
-                "FIX column kept what reads and nulled the rest",
-                column.name(),
-                "{refusal}"
-            );
-            return Ok(held);
-        }
+    if let Some(value) = retry
+        && let Some(held) = refit(column, value)
+    {
+        crate::warning::warned!(
+            "FIX column kept what reads and nulled the rest",
+            column.name(),
+            "{refusal}"
+        );
+        return Ok(held);
     }
     // The null is asked of the column rather than assumed, so a column that
     // refuses one answers with the refusal the value earned.

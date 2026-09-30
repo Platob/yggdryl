@@ -54,6 +54,7 @@ from yggdryl import (
     SerieReader,
     Side,
     State,
+    TimeInForce,
     StringField,
     Term,
     TextLine,
@@ -89,6 +90,7 @@ from yggdryl._native import (
     FixDirection,
     FixEntryTuple,
     FixMessages,
+    FixParentSource,
     IOCursor,
     IcebergNames,
     Listing,
@@ -1400,7 +1402,18 @@ fix_field.fix.names = ["Qty", "Quantity"]
 fix_field.fix.description = "Quantity ordered."
 fix_tag: int | None = fix_field.fix.tag
 fix_tags: list[int] = fix_field.fix.tags
+fix_field.fix.timeinforces = [("G", TimeInForce.GTC), ("I", 4), ("F", "fok")]
+fix_timeinforces: list[tuple[str, TimeInForce]] = fix_field.fix.timeinforces
+fix_field.fix.timeinforces = []
+tif_member: TimeInForce | None = TimeInForce.from_spelling("GoodTillCancel")
+tif_wire: TimeInForce = TimeInForce.from_fix("1")
+tif_code: str | None = TimeInForce.GTC.fix_code
+tif_description: str = TimeInForce.GTC.description
+tif_field: yggdryl.TimeInForceField = yggdryl.timeinforce("tif", nullable=False)
 fix_names: list[str] = fix_field.fix.names
+fix_field.fix.parents = ["ParentOrderID", "origorderid"]
+fix_parents: list[str] = fix_field.fix.parents
+fix_field.fix.parents = []
 fix_description: str | None = fix_field.fix.description
 fix_field.fix.branches = ["cme", "Bloomberg"]
 fix_field.fix.add_branch("ice")
@@ -1439,6 +1452,13 @@ fix_vendor.fix.branches = ["cme"]
 fix_vendor_id: int | None = fix_vendor.fix.id
 
 fix_registry: fix.FixRegistry = fix.FixRegistry()
+fix_registry_tif: TimeInForce | None = fix_registry.timeinforce_of(59, "1")
+fix_registry_tif_sources: list[tuple[int, str, TimeInForce]] = fix_registry.timeinforce_sources()
+fix_registry_parent_sources: list[FixParentSource] = fix_registry.parent_sources()
+fix_registry_parents: list[str] = fix_registry.parents_of("orderid")
+fix_registry_parent_of: tuple[str, int] | None = fix_registry.parent_of("origorderid")
+assert fix_parents == ["parentorderid", "origorderid"] and fix_registry_parents == ["parentorderid", "origorderid"]
+assert fix_registry_parent_of == ("orderid", 1) and isinstance(fix_registry_parent_sources, list)
 fix_registry_from_fields: fix.FixRegistry = fix.FixRegistry.from_fields([fix_field])
 fix_registry_loaded: fix.FixRegistry = fix.FixRegistry.from_handle(
     Path("config") / "fix"
@@ -1512,7 +1532,7 @@ fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
 fix_message_msgcat: MarketDataKind = fix_message.msgcat
-fix_message_strikepx: Scalar | None = fix_message.strikepx
+fix_message_strikeprice: Scalar | None = fix_message.strikeprice
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
@@ -1529,7 +1549,7 @@ fix_message_currency: Scalar = fix_message.currency
 fix_message_quantity: Scalar | None = fix_message.quantity
 fix_message_unit: str = fix_message.unit
 fix_message_side: Side = fix_message.side
-fix_message_securityids: dict[str, str] = fix_message.securityids
+fix_message_securityids: yggdryl.Identifiers = fix_message.securityids
 fix_message_isincode: str | None = fix_message.isincode
 fix_message_fxrates: dict[str, Scalar] = fix_message.fxrates
 fix_message_bidpx: Scalar | None = fix_message.bidpx
@@ -1550,9 +1570,10 @@ fix_message_prevqty: Scalar | None = fix_message.prevqty
 fix_message_spotrate: Scalar | None = fix_message.spotrate
 fix_message_forwardpoints: Scalar | None = fix_message.forwardpoints
 fix_message_ticker: str | None = fix_message.ticker
-fix_message_tif: str | None = fix_message.tif
+fix_message_tif: TimeInForce | None = fix_message.timeinforce
 fix_message_tradable: bool | None = fix_message.tradable
-fix_message_altids: dict[str, str] = fix_message.altids
+fix_message_identifiers: yggdryl.Identifiers = fix_message.identifiers
+fix_message_partyids: yggdryl.Identifiers = fix_message.partyids
 fix_message_entries: list[FixEntryTuple] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
 fix_message_wire_text: str = fix_message.into_text("|")
@@ -1604,19 +1625,20 @@ fix_event_cumqty: Scalar | None = fix_message_event.cumqty
 fix_event_leavesqty: Scalar | None = fix_message_event.leavesqty
 fix_event_prevpx: Scalar | None = fix_message_event.prevpx
 fix_event_prevqty: Scalar | None = fix_message_event.prevqty
-fix_event_tif: str | None = fix_message_event.tif
+fix_event_tif: TimeInForce | None = fix_message_event.timeinforce
 fix_event_tradable: bool | None = fix_message_event.tradable
 fix_event_ticker: str | None = fix_message_event.ticker
 fix_event_currency: Scalar = fix_message_event.currency
 fix_event_unit: str = fix_message_event.unit
 fix_event_side: Side = fix_message_event.side
-fix_event_securityids: dict[str, str] = fix_message_event.securityids
+fix_event_securityids: yggdryl.Identifiers = fix_message_event.securityids
 fix_event_cficode: Scalar | None = fix_message_event.cficode
 fix_event_miccode: Scalar | None = fix_message_event.miccode
 fix_event_spotrate: Scalar | None = fix_message_event.spotrate
 fix_event_forwardpoints: Scalar | None = fix_message_event.forwardpoints
 fix_event_metadata: dict[str, str] = fix_message_event.metadata
-fix_event_altids: dict[str, str] = fix_message_event.altids
+fix_event_identifiers: yggdryl.Identifiers = fix_message_event.identifiers
+fix_event_partyids: yggdryl.Identifiers = fix_message_event.partyids
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1858,8 +1880,9 @@ assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
 assert isinstance(fix_message_msgcat, MarketDataKind)
-assert fix_message_strikepx is None or isinstance(fix_message_strikepx, Scalar)
-assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_altids, dict)
+assert fix_message_strikeprice is None or isinstance(fix_message_strikeprice, Scalar)
+assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, yggdryl.Identifiers)
+assert isinstance(fix_message_partyids, yggdryl.Identifiers)
 assert fix_message_isincode is None or isinstance(fix_message_isincode, str)
 assert isinstance(fix_message_fxrates, dict)
 assert fix_message_bidpx is None or isinstance(fix_message_bidpx, Scalar)
@@ -1868,7 +1891,7 @@ assert fix_message_bidccy is None or isinstance(fix_message_bidccy, Scalar)
 assert fix_message_askpx is None or isinstance(fix_message_askpx, Scalar)
 assert fix_message_askqty is None or isinstance(fix_message_askqty, Scalar)
 assert fix_message_askccy is None or isinstance(fix_message_askccy, Scalar)
-assert isinstance(fix_message_securityids, dict) and isinstance(fix_message_unit, str)
+assert isinstance(fix_message_securityids, yggdryl.Identifiers) and isinstance(fix_message_unit, str)
 assert fix_message_cficode is None or fix_message_cficode
 assert fix_message_miccode is None or fix_message_miccode
 assert fix_message_lastpx is None or isinstance(fix_message_lastpx, Scalar)
@@ -1928,8 +1951,8 @@ assert fix_event_cficode is None or fix_event_cficode
 assert fix_event_miccode is None or fix_event_miccode
 assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
 assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
-assert isinstance(fix_event_securityids, dict) and isinstance(fix_event_metadata, dict)
-assert isinstance(fix_event_altids, dict)
+assert isinstance(fix_event_securityids, yggdryl.Identifiers) and isinstance(fix_event_metadata, dict)
+assert isinstance(fix_event_identifiers, yggdryl.Identifiers) and isinstance(fix_event_partyids, yggdryl.Identifiers)
 assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, State) and isinstance(fix_event_side, Side)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)
@@ -2002,7 +2025,7 @@ graph_order_event_currency: Scalar = graph_order_event.currency
 graph_order_event_quantity: Scalar | None = graph_order_event.quantity
 graph_order_event_unit: str = graph_order_event.unit
 graph_order_event_side: Side = graph_order_event.side
-graph_order_event_securityids: dict[str, str] = graph_order_event.securityids
+graph_order_event_securityids: yggdryl.Identifiers = graph_order_event.securityids
 graph_order_event_isincode: str | None = graph_order_event.isincode
 graph_order_event_fxrates: dict[str, Scalar] = graph_order_event.fxrates
 graph_order_event_bidpx: Scalar | None = graph_order_event.bidpx
@@ -2025,9 +2048,10 @@ graph_order_event_spotrate: Scalar | None = graph_order_event.spotrate
 graph_order_event_forwardpoints: Scalar | None = graph_order_event.forwardpoints
 graph_order_event_ticker: str | None = graph_order_event.ticker
 graph_order_event_metadata: dict[str, str] = graph_order_event.metadata
-graph_order_event_tif: str | None = graph_order_event.tif
+graph_order_event_tif: TimeInForce | None = graph_order_event.timeinforce
 graph_order_event_tradable: bool | None = graph_order_event.tradable
-graph_order_event_altids: dict[str, str] = graph_order_event.altids
+graph_order_event_identifiers: yggdryl.Identifiers = graph_order_event.identifiers
+graph_order_event_partyids: yggdryl.Identifiers = graph_order_event.partyids
 graph_order_event_kind: Literal["order"] = graph_order_event.kind
 graph_order_event_book: graph.BookRef | None = graph_order_event.book
 graph_order_event_action: str | None = graph_order_event.action
@@ -2106,6 +2130,8 @@ graph_data_book: graph.BookRef | None = graph_data.book
 graph_data_order_event: graph.OrderEvent | None = graph_data.as_order_event()
 graph_data_book_event: graph.BookEvent | None = graph_data.as_book_event()
 graph_data_leaf: MarketLeaf = graph_data.into_leaf()
+graph_data_fix: fix.FixMsg | None = graph_data.as_fix()
+graph_data_of_fix: graph.MarketData = graph.MarketData(fix_message)
 graph_data_curruuid: Scalar = graph_data.curruuid
 graph_data_price: Scalar | None = graph_data.price
 graph_data_with_previous: graph.MarketData | None = graph_data.with_previous(graph_data)
@@ -2118,11 +2144,11 @@ graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reade
 )
 graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
 graph_view_names: tuple[str, ...] = MARKET_VIEWS
-graph_view_plan: Plan = graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])
+graph_view_plan: Plan = graph.MarketData.plan("orders", ["identifiers['fix:clordid'].value as clordid"])
 graph_view_plan_path: Plan = graph.MarketData.plan(
-    "trades", (yggdryl.FieldPath("securityids['ISIN'] as isin"),)
+    "trades", (yggdryl.FieldPath("identifiers['fix:orderid'].value as orderid"),)
 )
-graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="C-1")
+graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="10:1:C-1")
 graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
     "books", graph.MarketData.arrow_reader([graph_book_with_operations])
 )
@@ -2186,7 +2212,7 @@ assert graph_order_event_snapunix is None and not graph_order_event_is_execution
 assert graph_order_event_price is not None and graph_order_event_quantity is not None
 assert graph_order_event_currency and graph_order_event_side is Side.BUYS
 assert graph_order_event_unit == "" and graph_order_event_state is State.UNKNOWN
-assert graph_order_event_securityids == {} and graph_order_event_ticker == "IBM"
+assert not graph_order_event_securityids and graph_order_event_ticker == "IBM"
 assert graph_order_event_isincode is None and set(graph_order_event_fxrates) == {"EUR"}
 assert graph_order_event_bidpx is not None and graph_order_event_bidqty is not None
 assert graph_order_event_bidccy is None and graph_order_event_askpx is None
@@ -2199,7 +2225,7 @@ assert graph_order_event_leavesqty is None and graph_order_event_prevpx is None
 assert graph_order_event_prevqty is None and graph_order_event_spotrate is None
 assert graph_order_event_forwardpoints is None and graph_order_event_metadata == {}
 assert graph_order_event_tif is None
-assert graph_order_event_tradable is None and graph_order_event_altids == {}
+assert graph_order_event_tradable is None and not graph_order_event_identifiers and not graph_order_event_partyids
 assert graph_order_event_book is None and graph_order_event_action is None
 assert graph_order_event_scope == "" and not graph_order_event_is_full_snapshot
 assert graph_order_event_with_previous is None and graph_order_event_merged is None
@@ -2208,7 +2234,7 @@ assert not graph_order_event_after and not graph_order_event_before
 assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
 assert graph_order.at(graph_order_event.currunix) == graph_order_at
 assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
-assert graph_order_event_crosscode == "BUYS:G-1"
+assert graph_order_event_crosscode == "10:1:G-1"
 assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
 assert graph_execution.kind == "execution"
 assert graph_book_ref_skipped.action is None
@@ -2445,3 +2471,21 @@ def _http_server_usage(folder: LocalFolder) -> None:
 typed_record_options = RecordOptions("text/csv", separator=";", header=True)
 typed_text_options = TextOptions(rowheader="^(?<level>[A-Z]+) ", autotype=True)
 typed_absent_options = TextOptions(rowheader=...)
+
+identifier: yggdryl.Identifier = yggdryl.Identifier("fix", "orderid", "O-1")
+identifier_security: yggdryl.Identifier = yggdryl.Identifier("base", "isin", "US0378331005")
+identifier_keyed: yggdryl.Identifier | None = yggdryl.Identifier.from_key("ullink.InstrumentId", "dbi;X")
+identifier_parts: tuple[str, str, str, str] = (
+    identifier.src,
+    identifier.type,
+    identifier.value,
+    identifier.key,
+)
+identifiers: yggdryl.Identifiers = yggdryl.Identifiers([identifier, identifier_security])
+identifiers_value: str | None = identifiers.get("isin")
+identifiers_from: str | None = identifiers.get_from("fix", "orderid")
+identifiers_of_kind: list[yggdryl.Identifier] = identifiers.of_kind("isin")
+identifiers_listed: list[yggdryl.Identifier] = list(identifiers)
+assert identifiers_value == "US0378331005" and identifiers_from == "O-1" and len(identifiers_listed) == 2
+assert identifier_keyed is not None and identifier_keyed.src == "ullink" and identifier_parts[1] == "orderid"
+assert identifier_parts[3] == "fix:orderid"

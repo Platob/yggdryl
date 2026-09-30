@@ -700,7 +700,7 @@ impl Writer {
 
 /// One `FIX:` property whose stored value is a canonical document.
 ///
-/// Four properties hold one - two arrays of entries and two bare lists -
+/// Five properties hold one - two arrays of entries and three bare lists -
 /// and this is what names one of them to the pair a store crosses:
 /// [`Self::value_of`] reads the document as the JSON it is,
 /// [`Self::text_of`] restates that JSON as the canonical text.
@@ -712,6 +712,8 @@ pub(super) enum Kind {
     IdMap,
     /// [`FixField::names`](super::FixField::names), under `FIX:names`.
     Names,
+    /// [`FixField::parents`](super::FixField::parents), under `FIX:parents`.
+    Parents,
     /// [`FixField::tags`](super::FixField::tags), under `FIX:tags`.
     Tags,
 }
@@ -729,7 +731,13 @@ enum Shape {
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 4] = [Self::Directions, Self::IdMap, Self::Names, Self::Tags];
+    pub(super) const ALL: [Self; 5] = [
+        Self::Directions,
+        Self::IdMap,
+        Self::Names,
+        Self::Parents,
+        Self::Tags,
+    ];
 
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
@@ -737,6 +745,7 @@ impl Kind {
             Self::Directions => "FIX:directions",
             Self::IdMap => "FIX:idmap",
             Self::Names => "FIX:names",
+            Self::Parents => "FIX:parents",
             Self::Tags => "FIX:tags",
         }
     }
@@ -752,6 +761,7 @@ impl Kind {
             Self::Directions => "fix directions",
             Self::IdMap => "fix idmap",
             Self::Names => "fix names",
+            Self::Parents => "fix parents",
             Self::Tags => "fix tags",
         }
     }
@@ -766,7 +776,7 @@ impl Kind {
         match self {
             Self::Directions => Shape::Entries(&super::directions::KEYS),
             Self::IdMap => Shape::Entries(&super::idmap::KEYS),
-            Self::Names => Shape::Words,
+            Self::Names | Self::Parents => Shape::Words,
             Self::Tags => Shape::Tags,
         }
     }

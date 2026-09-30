@@ -19,7 +19,7 @@ fn strict() -> ArrowCastOptions {
 #[test]
 fn a_code_or_a_spelling_that_names_no_state_is_refused_by_name() {
     assert_eq!(State::from_code(1), None);
-    assert_eq!(State::from_code(-1), None);
+    assert!(State::read_code(-1).is_err());
     let refused = State::read_code(4_242).unwrap_err().to_string();
     assert!(refused.contains("4242"), "{refused}");
     let refused = State::read_code(i64::from(i32::MAX) + 1)
@@ -42,7 +42,7 @@ fn a_code_or_a_spelling_that_names_no_state_is_refused_by_name() {
 #[test]
 fn the_codes_sort_as_the_members_rank_and_the_hundreds_are_the_rank() {
     // Declared in code order, each code unique and each name unique.
-    let codes: Vec<i32> = State::ALL.iter().map(|state| state.code()).collect();
+    let codes: Vec<u16> = State::ALL.iter().map(|state| state.code()).collect();
     let mut sorted = codes.clone();
     sorted.sort_unstable();
     sorted.dedup();
@@ -78,7 +78,7 @@ fn the_codes_sort_as_the_members_rank_and_the_hundreds_are_the_rank() {
             .iter()
             .filter(|other| other.rank() == state.rank() && other.code() < state.code())
             .count();
-        assert_eq!(usize::try_from(place).unwrap(), before, "{state}");
+        assert_eq!(usize::from(place), before, "{state}");
     }
     assert_eq!(State::default(), State::Unknown);
     assert_eq!(State::unknown().code(), 0);
@@ -406,10 +406,10 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
 }
 
 #[test]
-fn a_column_is_int32_codes_under_the_state_extension() {
+fn a_column_is_uint16_codes_under_the_state_extension() {
     let field = Field::new("state", DataType::State, true);
     let arrow = field.clone().into_arrow_field().unwrap();
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.state");
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
     assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
@@ -421,7 +421,10 @@ fn a_column_is_int32_codes_under_the_state_extension() {
     ];
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
     let array = serie.require_arrow_array().unwrap();
-    let codes = array.as_any().downcast_ref::<Int32Array>().unwrap();
+    let codes = array
+        .as_any()
+        .downcast_ref::<arrow_array::UInt16Array>()
+        .unwrap();
     assert_eq!(codes.values().as_ref(), [2001, 0, 9502]);
     assert!(codes.is_null(1));
     let back = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default()).unwrap();
@@ -525,7 +528,8 @@ fn a_state_crosses_the_value_stream_and_the_structured_codecs_as_itself() {
         let value = Scalar::State(state);
         let bytes = value.into_value_bytes();
         assert_eq!(bytes[1], DataTypeId::State.as_u8());
-        assert_eq!(bytes[2..], state.code().to_le_bytes());
+        // The canonical four bytes, whatever width a column stores.
+        assert_eq!(bytes[2..], i32::from(state.code()).to_le_bytes());
         assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
         // A digest reads the code, so a member's name is free to change.
         assert_ne!(

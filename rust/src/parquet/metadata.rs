@@ -147,10 +147,10 @@ impl FileStatistics {
         let mut total = None;
         for group in &self.row_groups {
             for column in &group.columns {
-                if column.path == path {
-                    if let Some(count) = column.null_count {
-                        total = Some(total.unwrap_or(0) + count);
-                    }
+                if column.path == path
+                    && let Some(count) = column.null_count
+                {
+                    total = Some(total.unwrap_or(0) + count);
                 }
             }
         }

@@ -54,6 +54,12 @@ const CODESET: &str = "codeset";
 const DIRECTIONS: &str = "directions";
 /// The identifier-map keys this field's value states.
 const IDMAP: &str = "idmap";
+/// The identifier types holding the parents of the identifier this field
+/// states, nearest first.
+const PARENTS: &str = "parents";
+/// The market data types a field's values type an element as.
+const MARKETDATATYPE: &str = "marketdatatype";
+const TIMEINFORCE: &str = "timeinforce";
 const COUNTER: &str = "counter";
 /// Whether this field travels from one message of a chain to the next.
 const TRANSIENT: &str = "transient";
@@ -433,17 +439,17 @@ impl<'field> FixField<'field> {
     /// An absent property yields nothing.
     ///
     /// ```
-    /// use yggdryl::DataType;
     /// use yggdryl::fix::{FixIdMapKind, FixIdSource};
+    /// use yggdryl::{DataType, IdType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = DataType::utf8().nullable_field("orderid");
     /// order.as_fix_mut().set_tag(37)?;
-    /// let source = FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true);
+    /// let source = FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true);
     /// order.as_fix_mut().set_idmap(&[source.clone()])?;
     /// assert_eq!(
     ///     order.get_metadata("FIX:idmap"),
-    ///     Some(r#"[{"map":"altids","key":"ORDERID","follow":true}]"#)
+    ///     Some(r#"[{"map":"identifiers","key":"orderid","follow":true}]"#)
     /// );
     /// assert_eq!(order.as_fix().idmap().collect::<yggdryl::Result<Vec<_>>>()?, [source]);
     /// # Ok(())
@@ -451,6 +457,136 @@ impl<'field> FixField<'field> {
     /// ```
     pub fn idmap(&self) -> FixIdSources<'field> {
         FixIdSources::over(self.get(IDMAP))
+    }
+
+    /// The identifier types holding the parents of the identifier this
+    /// field states, nearest first, as its `FIX:parents` states them:
+    /// `ClOrdID(11)`'s is `origclordid` alone, FIX's `OrigClOrdID(41)`. A
+    /// field stating none has the parents its identifier type has by name
+    /// ([`IdType::parents`](crate::IdType::parents)), and a registry answers
+    /// either ([`FixRegistry::parents_of`](super::FixRegistry::parents_of)).
+    ///
+    /// The iterator borrows the stored array and allocates nothing; a stored
+    /// text that is not the JSON array of words
+    /// [`FixFieldMut::set_parents`] writes yields nothing, the refusal
+    /// belonging to the write.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut orderid = DataType::utf8().nullable_field("orderid");
+    /// orderid.as_fix_mut().set_tag(37)?;
+    /// orderid.as_fix_mut().set_parents(["ParentOrderID", "origorderid"])?;
+    /// assert_eq!(orderid.get_metadata("FIX:parents"), Some(r#"["parentorderid","origorderid"]"#));
+    /// assert_eq!(orderid.as_fix().parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn parents(&self) -> Words<'field> {
+        Words::over(self.get(PARENTS).and_then(word_list).unwrap_or_default())
+    }
+
+    /// Holds the stored parents to what [`FixFieldMut::set_parents`]
+    /// writes, which is what a registry asks before it takes a field.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:parents` key when the stored
+    /// text is not the compact JSON array of identifier types the setter
+    /// writes - each folded, each once.
+    pub(super) fn validate_parents(&self) -> Result<()> {
+        let Some(stored) = self.get(PARENTS) else {
+            return Ok(());
+        };
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(PARENTS, "a JSON array of identifier types", stored))?;
+        let folded = Words::over(body).all(|word| {
+            word.parse::<crate::IdType>()
+                .is_ok_and(|kind| kind.as_str() == word)
+        });
+        if !folded || repeated_word(Words::over(body)).is_some() {
+            return Err(self.invalid(PARENTS, "each identifier type once, folded", stored));
+        }
+        Ok(())
+    }
+
+    /// The market data types this field's values type an element as, as its
+    /// `FIX:marketdatatype` states them: each `value=MEMBER` word a wire
+    /// value and the [`MarketDataType`](crate::MarketDataType) member it
+    /// reads as. A word that names no member is passed over.
+    ///
+    /// A registry reads these before the crate's own table
+    /// ([`FixRegistry::marketdatatype_of`](crate::FixRegistry::marketdatatype_of)),
+    /// so a venue's own order type - or any field of its own - types an
+    /// element as the member it chooses.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, MarketDataType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut ordtype = DataType::utf8().nullable_field("ordtype");
+    /// ordtype.as_fix_mut().set_tag(40)?;
+    /// ordtype
+    ///     .as_fix_mut()
+    ///     .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
+    /// assert_eq!(ordtype.get_metadata("FIX:marketdatatype"), Some(r#"["Z=ORDPEGGED"]"#));
+    /// assert_eq!(
+    ///     ordtype.as_fix().marketdatatypes().collect::<Vec<_>>(),
+    ///     [("Z", MarketDataType::OrdPegged)]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn marketdatatypes(
+        &self,
+    ) -> impl Iterator<Item = (&'field str, crate::MarketDataType)> + use<'field> {
+        self.members(MARKETDATATYPE)
+    }
+
+    /// The time in force each wire value of this field stands for, under
+    /// `FIX:timeinforce`: `value=MEMBER` words, each the value and the
+    /// [`TimeInForce`](crate::TimeInForce) member it reads as. A word that
+    /// names no member is passed over.
+    ///
+    /// A registry reads these before the crate's own reading of
+    /// `TimeInForce(59)`
+    /// ([`FixRegistry::timeinforce_of`](crate::FixRegistry::timeinforce_of)),
+    /// so a venue's own value - or a field of its own - stands for the member
+    /// it chooses.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, TimeInForce};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut tif = DataType::utf8().nullable_field("timeinforce");
+    /// tif.as_fix_mut().set_tag(59)?;
+    /// tif.as_fix_mut()
+    ///     .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])?;
+    /// assert_eq!(tif.get_metadata("FIX:timeinforce"), Some(r#"["G=GTC"]"#));
+    /// assert_eq!(
+    ///     tif.as_fix().timeinforces().collect::<Vec<_>>(),
+    ///     [("G", TimeInForce::GoodTillCancel)]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn timeinforces(
+        &self,
+    ) -> impl Iterator<Item = (&'field str, crate::TimeInForce)> + use<'field> {
+        self.members(TIMEINFORCE)
+    }
+
+    /// The `value=MEMBER` words one enum property states, each read under
+    /// the enum's own spellings; a word naming no member is passed over.
+    fn members<E: crate::EnumValue>(
+        &self,
+        key: &str,
+    ) -> impl Iterator<Item = (&'field str, E)> + use<'field, E> {
+        Words::over(self.get(key).and_then(word_list).unwrap_or_default()).filter_map(|word| {
+            let (wire, member) = word.split_once('=')?;
+            Some((wire, E::read(member).ok()?))
+        })
     }
 
     /// Name the full key a stored value failed under, and what it should be.
@@ -934,14 +1070,74 @@ impl FixFieldMut<'_> {
         self.store(DIRECTIONS, rendered)
     }
 
+    /// States the market data types this field's values type an element as:
+    /// each wire value and the member it reads as, written as the
+    /// `value=MEMBER` words [`FixField::marketdatatypes`] reads. An empty
+    /// list removes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a wire value is empty, holds a `=` or a
+    /// character a word cannot, or is stated twice; the field is unchanged.
+    pub fn set_marketdatatypes(&mut self, types: &[(&str, crate::MarketDataType)]) -> Result<()> {
+        self.set_members(MARKETDATATYPE, types)
+    }
+
+    /// States the time in force this field's values stand for: each wire
+    /// value and the member it reads as, written as the `value=MEMBER` words
+    /// [`FixField::timeinforces`] reads. An empty list removes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a wire value is empty, holds a `=` or a
+    /// character a word cannot, or is stated twice; the field is unchanged.
+    pub fn set_timeinforces(&mut self, values: &[(&str, crate::TimeInForce)]) -> Result<()> {
+        self.set_members(TIMEINFORCE, values)
+    }
+
+    /// Writes one enum property's `value=MEMBER` words, refusing a wire
+    /// value no word can hold or one stated twice.
+    fn set_members<E: crate::EnumValue>(&mut self, key: &str, types: &[(&str, E)]) -> Result<()> {
+        if types.is_empty() {
+            self.remove(key);
+            return Ok(());
+        }
+        let words: Vec<String> = types
+            .iter()
+            .map(|(wire, member)| format!("{wire}={}", member.as_str()))
+            .collect();
+        if let Some((wire, _)) = types
+            .iter()
+            .find(|(wire, _)| wire.is_empty() || wire.contains('=') || !is_word(wire))
+        {
+            return Err(self.rejected(
+                key,
+                format_smolstr!("expected a wire value without `=`, a quote or a control character, got {wire:?}"),
+            ));
+        }
+        if let Some((wire, _)) = types
+            .iter()
+            .enumerate()
+            .find(|(at, (wire, _))| types[..*at].iter().any(|(held, _)| held == wire))
+            .map(|(_, pair)| pair)
+        {
+            return Err(self.rejected(
+                key,
+                format_smolstr!("expected each wire value once, got {wire:?} twice"),
+            ));
+        }
+        let rendered = Writer::list_of_words(words.iter().map(String::as_str))?;
+        self.store(key, rendered)
+    }
+
     /// Writes the identifier-map keys this field's value states; an empty
     /// list removes the property.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when a source states a key that is not one
-    /// to 32 upper-case letters or digits, a follow flag on a map that is not
-    /// `altids`, a role that is not a code of letters and digits, or one key
+    /// Returns [`Error::Parse`] when a source states a follow flag on a map
+    /// that is not `identifiers`, a role that is not a code of letters and
+    /// digits, or one key
     /// of one map twice;
     /// either leaves the field unchanged.
     pub fn set_idmap(&mut self, sources: &[FixIdSource]) -> Result<()> {
@@ -951,6 +1147,50 @@ impl FixFieldMut<'_> {
         }
         let rendered = FixIdSources::render(sources)?;
         self.store(IDMAP, rendered)
+    }
+
+    /// States the identifier types holding the parents of the identifier
+    /// this field states, nearest first: `FIX:parents`, each type folded as
+    /// [`IdType`](crate::IdType) folds it. Empty input removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] for a spelling no identifier type
+    /// folds from or a type listed twice, leaving the field unchanged.
+    pub fn set_parents<I, S>(&mut self, parents: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<crate::IdType> = Vec::new();
+        for spelled in parents {
+            let kind = spelled.as_ref().parse::<crate::IdType>().map_err(|error| {
+                self.rejected(
+                    PARENTS,
+                    format_smolstr!("expected an identifier type, got {error}"),
+                )
+            })?;
+            if held.contains(&kind) {
+                return Err(self.rejected(
+                    PARENTS,
+                    format_smolstr!("expected each identifier type once, got {kind} twice"),
+                ));
+            }
+            held.push(kind);
+        }
+        if held.is_empty() {
+            self.remove(PARENTS);
+            return Ok(());
+        }
+        self.store(
+            PARENTS,
+            Writer::list_of_words(held.iter().map(crate::IdType::as_str))?,
+        )
+    }
+
+    /// Removes the field's stated parents, answering what it held.
+    pub fn remove_parents(&mut self) -> Option<String> {
+        self.remove(PARENTS)
     }
 
     /// Removes the direction rules, answering what they held.

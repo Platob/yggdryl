@@ -278,17 +278,17 @@ impl Iterator for YamlParser<'_> {
                     return Some(value);
                 }
                 Event::Scalar(value, style, anchor, tag) => {
-                    if !self.in_document {
-                        if let Err(error) = self.start_document(position) {
-                            return self.fail(error);
-                        }
+                    if !self.in_document
+                        && let Err(error) = self.start_document(position)
+                    {
+                        return self.fail(error);
                     }
                     let custom = custom_tag(tag.as_deref());
                     let tag_position = tag_position(tag.as_deref(), position);
-                    if custom.is_some() {
-                        if let Err(error) = self.observe_tagged_scalar_depth(position) {
-                            return self.fail(error);
-                        }
+                    if custom.is_some()
+                        && let Err(error) = self.observe_tagged_scalar_depth(position)
+                    {
+                        return self.fail(error);
                     }
                     if let Err(error) =
                         self.observe_nodes(1 + usize::from(custom.is_some()), position)
@@ -303,10 +303,10 @@ impl Iterator for YamlParser<'_> {
                     )
                 }
                 Event::SequenceStart(anchor, tag) => {
-                    if !self.in_document {
-                        if let Err(error) = self.start_document(position) {
-                            return self.fail(error);
-                        }
+                    if !self.in_document
+                        && let Err(error) = self.start_document(position)
+                    {
+                        return self.fail(error);
                     }
                     let tag_position = tag_position(tag.as_deref(), position);
                     let tag = container_tag(tag.as_deref(), "seq", position);
@@ -331,10 +331,10 @@ impl Iterator for YamlParser<'_> {
                     }
                 }
                 Event::MappingStart(anchor, tag) => {
-                    if !self.in_document {
-                        if let Err(error) = self.start_document(position) {
-                            return self.fail(error);
-                        }
+                    if !self.in_document
+                        && let Err(error) = self.start_document(position)
+                    {
+                        return self.fail(error);
                     }
                     let tag_position = tag_position(tag.as_deref(), position);
                     let tag = container_tag(tag.as_deref(), "map", position);
@@ -884,11 +884,11 @@ impl<R: Read> Iterator for Utf8Chars<R> {
             self.record_error(self.limit, "input byte limit exceeded", true);
             return None;
         }
-        if length > 1 {
-            if let Err(error) = self.reader.read_exact(&mut encoded[1..length]) {
-                self.record_error(bytes, error.to_string(), false);
-                return None;
-            }
+        if length > 1
+            && let Err(error) = self.reader.read_exact(&mut encoded[1..length])
+        {
+            self.record_error(bytes, error.to_string(), false);
+            return None;
         }
         let character = match std::str::from_utf8(&encoded[..length]) {
             Ok(value) => value.chars().next(),

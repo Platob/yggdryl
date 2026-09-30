@@ -61,13 +61,13 @@ function wkbPoint(x, y) {
   return bytes
 }
 
-// The fifteen event columns every line batch opens with: the line as the
+// The fifteen identity and event columns every line batch opens with: the line as the
 // event it is, the same fifteen a FIX row parsed out of it opens with.
 const EVENT_COLUMNS = [
+  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'srcuuids',
   'currunix', 'creaunix', 'recdunix',
   'exprunix', 'prevunix', 'snapunix',
-  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
-  'prevuuid', 'seqnum', 'srcuuids', 'state',
+  'prevuuid', 'seqnum', 'state',
 ]
 
 test('a handle names its own encoding and round-trips Arrow batches', () => {

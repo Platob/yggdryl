@@ -459,10 +459,11 @@ fn collect_entries(
         let mut entry = TextEntry::new(key, value).with_marked(span.marked);
         // Whether the value nests is asked only where a level is left to
         // read it at: the question scans the value for an `=`.
-        if levels > 1 && span.nested(bytes) {
-            if let Some(nested) = read_entries_at(entry.value_bytes(), levels - 1) {
-                entry.set_entries(Some(nested));
-            }
+        if levels > 1
+            && span.nested(bytes)
+            && let Some(nested) = read_entries_at(entry.value_bytes(), levels - 1)
+        {
+            entry.set_entries(Some(nested));
         }
         // Sized on the first push from the `=` signs the bytes hold, which is
         // where the pairs are and so an upper bound on how many there are: one

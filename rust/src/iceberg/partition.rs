@@ -845,26 +845,26 @@ impl PartitionTransform {
         // the last second of a day before 1970 into the next day - and a
         // write keys every instant of one UTC day together, so one row would
         // label the whole day.
-        if self.transform == Transform::Day {
-            if let DataType::DateTime64 { unit, .. } = self.source.dtype() {
-                let count = super::value::single_value(&value, self.source.dtype())
-                    .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
-                    .map(i64::from_le_bytes)
-                    .ok_or_else(|| {
-                        invalid(format_smolstr!(
-                            "expected a timestamp scalar for the day transform, got {}",
-                            value.kind()
-                        ))
-                    })?;
-                let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
-                let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
+        if self.transform == Transform::Day
+            && let DataType::DateTime64 { unit, .. } = self.source.dtype()
+        {
+            let count = super::value::single_value(&value, self.source.dtype())
+                .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
+                .map(i64::from_le_bytes)
+                .ok_or_else(|| {
                     invalid(format_smolstr!(
-                        "expected a day number fitting i32, got {}",
-                        count.div_euclid(per_day)
+                        "expected a timestamp scalar for the day transform, got {}",
+                        value.kind()
                     ))
                 })?;
-                return Ok(Scalar::date32(days));
-            }
+            let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
+            let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a day number fitting i32, got {}",
+                    count.div_euclid(per_day)
+                ))
+            })?;
+            return Ok(Scalar::date32(days));
         }
 
         self.official_value(value)
@@ -1016,10 +1016,10 @@ pub(super) fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr
             if child.parquet_field_id().ok().flatten() == Some(source_id) {
                 return Some(child);
             }
-            if matches!(child.dtype(), DataType::Struct(_)) {
-                if let Some(found) = find(child, source_id, path) {
-                    return Some(found);
-                }
+            if matches!(child.dtype(), DataType::Struct(_))
+                && let Some(found) = find(child, source_id, path)
+            {
+                return Some(found);
             }
             path.pop();
         }

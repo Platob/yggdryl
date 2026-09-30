@@ -164,8 +164,9 @@ fn one_set_is_named_once_however_many_fields_read_by_it() {
     other.as_fix_mut().set_codeset("unitcodeset").unwrap();
     registry.insert(other).unwrap();
 
-    // The set named here, beside the crate's MsgCat and state sets.
-    assert_eq!(registry.codesets().len(), 3);
+    // The set named here, beside the crate's MsgCat, state and market data
+    // type sets.
+    assert_eq!(registry.codesets().len(), 4);
     for tag in [996, 999] {
         let set = registry
             .codeset_of(registry.field_by_tag(tag).unwrap())
@@ -260,7 +261,7 @@ fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
     assert_eq!(set.code_value("Sell"), Some("2"));
     // The incoming name is still a set of its own: a name is an identity,
     // and folding its members into another does not retire it.
-    assert_eq!(held.codesets().len(), 4);
+    assert_eq!(held.codesets().len(), 5);
     assert!(held.get_codeset("venuecodeset").is_some());
 }
 
@@ -277,7 +278,7 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     let _ = std::fs::remove_dir_all(&path);
     let mut root = Holder::local(path.clone()).unwrap();
     let registry = FixRegistry::new();
-    assert_eq!(registry.codesets().len(), 2);
+    assert_eq!(registry.codesets().len(), 3);
     registry.commit(root.as_io_mut()).unwrap();
     assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
 
@@ -348,7 +349,7 @@ fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
         let refused = registry.set_codeset(name, &[FixCode::new("Buy", "1")]);
         assert!(refused.is_err() || name.is_empty(), "{name:?}");
     }
-    assert_eq!(registry.codesets().len(), 2);
+    assert_eq!(registry.codesets().len(), 3);
 }
 
 mod party_source {

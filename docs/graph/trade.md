@@ -7,15 +7,15 @@
 | Key | Rule |
 | --- | --- |
 | Owner | `yggdryl::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root, filed under `TRAD` |
-| Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it. A trade is not [sided](market.md#sides-and-cross-codes): it keeps the root's cross code as given, the base code of a sided root, whatever side it states |
+| Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it. A trade is not [sided](market.md#sides-and-cross-codes): it takes the root's base code under its own kind and side `0` (`21:0:T-1`), whatever side it states |
 | Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child at another instant (`.currunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`); a child may state any side, `UNKN` included, because a fill nobody sided is still a fill |
-| Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's cross code carrying its [side](market.md#sides-and-cross-codes) |
+| Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's stored cross code stating its [side](market.md#sides-and-cross-codes) |
 | Root | the highest child place, the earliest creation and recording instants, the latest execution instant; its digest feeds the execution count and each child's `curruuid` - never a child's `currhashcode` or content |
 | `is_execution` | always true |
 | `set_currunix` | rebases the root and every child atomically and re-finalizes them; each child keeps its `execunix` |
 | Following, merging | only under the same root cross code: children combine by execution cross code, then rebase to the resulting instant |
 | In a book | a [book](book.md#books) takes the bounds from the root and lists the children in `executions()`; neither enters depth |
-| From FIX | a trade capture report (`AE`) is no leaf: [`FixMsg::market_data`](../fix/message.md#market-data) answers none for it, and a capture's market data and books skip it; what it reports are the executions its parse splits off - one execution message per `NoSides(552)` occurrence, `EXEC` and `FILLED`, of side `UNKN` beside a [warning](../fix/capture.md#warnings) where the occurrence states no side or one no side reads - so each fill is stated once, and a fill's [accounts](../fix/message.md#accounts-and-regulatory-trade-identifiers) lead with its side's own parties and `Account(1)` |
+| From FIX | a trade capture report (`AE`) is no leaf: [`FixMsg::market_data`](../fix/message.md#market-data) answers none for it, and a capture's market data and books skip it; what it reports are the executions its parse splits off - one execution message per `NoSides(552)` occurrence, `EXEC` and `FILLED`, of side `UNKN` beside a [warning](../fix/capture.md#warnings) where the occurrence states no side or one no side reads - so each fill is stated once, and a fill's [accounts](../fix/message.md#parties-and-regulatory-trade-identifiers) lead with its side's own parties and `Account(1)` |
 | Bindings | Python `graph.TradeEvent.from_parts(root, executions)`, JavaScript `graph.TradeEvent.fromParts(root, executions)`; the built trade's `executions` is a property in both, a list (Python) or an array (JavaScript) of `ExecutionEvent` in the canonical order |
 
 ## Example
@@ -32,18 +32,18 @@ Apple shares crossed between a buyer and a seller at 189.50.
     let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {
         let mut execution = ExecutionEvent::at(T);
         execution.set_crosscode(code.to_owned());
-        execution.set_side(side);
-        execution.set_lastpx(Some("189.50".parse()?));
-        execution.set_lastqty(Some(Decimal::from_int(100)));
+        execution.set_side(side, true);
+        execution.set_lastpx(Some("189.50".parse()?), true);
+        execution.set_lastqty(Some(Decimal::from_int(100)), true);
         Ok(execution)
     };
     let mut root = OrderEvent::at(T);
     root.set_crosscode("T-1".to_owned());
-    root.set_ticker(Some("AAPL".into()));
+    root.set_ticker(Some("AAPL".into()), true);
 
     let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUYS", Side::Buy)?])?;
     let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).collect();
-    assert_eq!(codes, ["BUYS:E-BUYS", "SELL:E-SELL"]);
+    assert_eq!(codes, ["8:1:E-BUYS", "8:2:E-SELL"]);
     assert!(trade.is_execution());
     // Input order cannot change the trade.
     let again = TradeEvent::from_parts(&root, vec![fill("E-BUYS", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
@@ -75,7 +75,7 @@ Apple shares crossed between a buyer and a seller at 189.50.
 
     root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL")
     trade = graph.TradeEvent.from_parts(root, [fill("E-SELL", "SELL"), fill("E-BUYS", "BUYS")])
-    assert [execution.crosscode for execution in trade.executions] == ["BUYS:E-BUYS", "SELL:E-SELL"]
+    assert [execution.crosscode for execution in trade.executions] == ["8:1:E-BUYS", "8:2:E-SELL"]
     assert trade.is_execution
     # Input order cannot change the trade.
     again = graph.TradeEvent.from_parts(root, [fill("E-BUYS", "BUYS"), fill("E-SELL", "SELL")])
@@ -111,7 +111,7 @@ Apple shares crossed between a buyer and a seller at 189.50.
     const root = new graph.OrderEvent(T, { crosscode: 'T-1', ticker: 'AAPL' })
 
     const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-BUYS', 'BUYS')])
-    assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['BUYS:E-BUYS', 'SELL:E-SELL'])
+    assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['8:1:E-BUYS', '8:2:E-SELL'])
     assert.equal(trade.isExecution, true)
     // Input order cannot change the trade.
     const again = graph.TradeEvent.fromParts(root, [fill('E-BUYS', 'BUYS'), fill('E-SELL', 'SELL')])

@@ -423,33 +423,33 @@ fn forwarded_of(headers: &Headers, options: &ServerOptions) -> Forwarded {
     let trusted = &options.trusted_proxies;
     let reads = |header: ForwardedHeader| options.forwarded_headers.contains(&header);
     let mut forwarded = Forwarded::default();
-    if reads(ForwardedHeader::Forwarded) {
-        if let Some(value) = headers.get("forwarded") {
-            let elements = elements_of(value);
-            let client = elements
+    if reads(ForwardedHeader::Forwarded)
+        && let Some(value) = headers.get("forwarded")
+    {
+        let elements = elements_of(value);
+        let client = elements
+            .iter()
+            .rposition(|element| {
+                !element
+                    .get("for")
+                    .and_then(node_address)
+                    .is_some_and(|address| is_trusted(trusted, address))
+            })
+            .unwrap_or(0);
+        forwarded.client = elements
+            .get(client)
+            .and_then(|element| element.get("for"))
+            .and_then(node_address);
+        // The proxy that saw the client states the host and scheme it
+        // used; a proxy nearer this server states them when that one
+        // did not.
+        let stated = |name: &str| {
+            elements[client..]
                 .iter()
-                .rposition(|element| {
-                    !element
-                        .get("for")
-                        .and_then(node_address)
-                        .is_some_and(|address| is_trusted(trusted, address))
-                })
-                .unwrap_or(0);
-            forwarded.client = elements
-                .get(client)
-                .and_then(|element| element.get("for"))
-                .and_then(node_address);
-            // The proxy that saw the client states the host and scheme it
-            // used; a proxy nearer this server states them when that one
-            // did not.
-            let stated = |name: &str| {
-                elements[client..]
-                    .iter()
-                    .find_map(|element| element.get(name).map(str::to_owned))
-            };
-            forwarded.host = stated("host").filter(|host| is_authority(host));
-            forwarded.scheme = stated("proto").and_then(|proto| scheme_of(&proto));
-        }
+                .find_map(|element| element.get(name).map(str::to_owned))
+        };
+        forwarded.host = stated("host").filter(|host| is_authority(host));
+        forwarded.scheme = stated("proto").and_then(|proto| scheme_of(&proto));
     }
     let hops: Vec<Option<IpAddr>> = if reads(ForwardedHeader::XForwardedFor) {
         headers

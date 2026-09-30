@@ -4,6 +4,14 @@
 // clones it rather than reading the files of `config/fix` again.
 let committedRegistry
 
+/** The identifiers of a map by type, each value under its type. */
+const kinds = (ids) => Object.fromEntries(ids.toArray().map((id) => [id.type, id.value]))
+/** An identifier column's cell - a map from `src:type` to its row - by type, each value under its type. */
+const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
+  require('node:assert/strict').equal(key, `${row.src}:${row.type}`, 'a key is its row\'s src:type')
+  return [row.type, row.value]
+}))
+
 // The `fix` suite, in its own block: it brings its own
 // fixtures, and `const` is block-scoped.
 {
@@ -25,6 +33,28 @@ let committedRegistry
   const test = require('node:test')
 
   const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, graph, xxhash } = require('yggdryl')
+
+  /**
+   * The fixed row without `dropped`, holding the dictionary's `Parties(453)`
+   * group and its `NoPartyIDs` counter in place of the `partyids`
+   * identifiers: a narrower table's shape, which the fixed row keeps among
+   * its entries instead.
+   */
+  const withPartyGroup = (registry, dropped) => {
+    const wide = fix.schema(registry)
+    const count = registry.fieldByTag(453)
+    const group = registry.fieldByCounter(453)
+    count.setNullable(true)
+    group.setNullable(true)
+    const columns = []
+    for (let at = 0; at < wide.fieldLen; at += 1) {
+      const column = wide.fieldAt(at)
+      if (column.name === 'fixentries') columns.push(count, group)
+      if (column.name !== 'partyids' && !dropped.includes(column.name)) columns.push(column)
+    }
+    return fields.struct('fix', columns, { nullable: false })
+  }
+
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 
@@ -55,19 +85,24 @@ let committedRegistry
   // Which category a definition lands in is the core's answer, not a shape a
   // test guesses: a snapshot states the three, so the fields it lists are the
   // fields, whatever datatype each carries.
-  const CRATE_SCALAR_NAMES = new Set(new fix.FixRegistry().toJSON().fields.map((field) => field.name))
+  // The derived crate fields - the names a message goes by, the market and
+  // operation facts - are never registered: only the crate's base columns are.
+  const SNAPSHOT = new fix.FixRegistry().toJSON()
+  const CRATE_SCALAR_NAMES = new Set(SNAPSHOT.fields.map((field) => field.name))
+  const CRATE_GROUP_NAMES = new Set([...SNAPSHOT.groups, ...SNAPSHOT.components].map((field) => field.name))
   const CRATE_SCALARS = CRATE.filter((field) => CRATE_SCALAR_NAMES.has(field.name))
-  const CRATE_GROUPS = CRATE.filter((field) => !CRATE_SCALAR_NAMES.has(field.name))
+  const CRATE_GROUPS = CRATE.filter((field) => CRATE_GROUP_NAMES.has(field.name))
+  const CRATE_REGISTERED = [...CRATE_SCALARS, ...CRATE_GROUPS]
   // The crate's scalar tags, in the registry's own order.
   const CRATE_TAGS = CRATE_SCALARS.map((field) => field.fix.tag)
   // What a new registry holds before anything is inserted: every crate
   // definition and the two seeded clocks.
-  const SEEDED = 2 + CRATE.length
+  const SEEDED = 2 + CRATE_REGISTERED.length
   // The scalar fields the committed dictionary stores.
   const STORED = 6241
   // The named code sets it stores beside them, one per vocabulary however many
-  // fields read by it: the 735 published and the crate's MsgCat and state sets.
-  const CODESETS = 737
+  // fields read by it: the 735 published and the crate's MarketDataType, MsgCat and state sets.
+  const CODESETS = 738
 
   /**
  * The scalar fields a registry holds, and the definitions behind them.
@@ -287,7 +322,7 @@ let committedRegistry
 
   test('a field names the code set it reads by, and the dictionary holds it', () => {
     const registry = new fix.FixRegistry()
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'statecodeset'])
 
     // The set is stated first: a dictionary refuses a field naming a
     // vocabulary nothing states, so the members exist before a field points
@@ -296,7 +331,7 @@ let committedRegistry
       { value: '1', name: 'Buy' },
       { value: '2', name: 'Sell', aliases: ['Sold'], doc: 'Sell side', group: 'Outright' },
     ])
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'statecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'sidecodeset', 'statecodeset'])
 
     const side = fixField('Side', 'utf8', 54)
     assert.equal(side.fix.codeset, null)
@@ -342,7 +377,7 @@ let committedRegistry
     assert.equal(held.has('FIX:codeset'), false)
     registry.insert(held)
     assert.deepEqual(registry.removeCodeset('sidecodeset'), set.codes)
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'statecodeset'])
     assert.equal(registry.removeCodeset('sidecodeset'), null)
 
     // The committed dictionary is the same shape at scale: one set per
@@ -370,7 +405,7 @@ let committedRegistry
     const registry = new fix.FixRegistry()
     assert.throws(() => registry.insert(stray), refused)
     assert.equal(registry.getFieldByTag(54), null)
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'statecodeset'])
 
     // With the set stated the same field arrives, and a held field sent to a
     // set nothing states is refused on update, the dictionary unchanged.
@@ -445,7 +480,7 @@ let committedRegistry
       { value: '1', name: 'Buy' },
       { value: '2', name: 'Sell' },
     ])
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'statecodeset', 'venuesidecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['marketdatatypecodeset', 'msgcatcodeset', 'sidecodeset', 'statecodeset', 'venuesidecodeset'])
   })
 
   test('a tag crosses as a number and is never narrowed', () => {
@@ -1098,7 +1133,7 @@ let committedRegistry
     // categories, because a code set is the dictionary's and not a field's.
     const document = registry.toJSON()
     assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
-    assert.deepEqual(document.codesets.map((codeset) => codeset.name), ['msgcatcodeset', 'statecodeset'])
+    assert.deepEqual(document.codesets.map((codeset) => codeset.name), ['marketdatatypecodeset', 'msgcatcodeset', 'statecodeset'])
     assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['FIX:branches'], 'cme')
   })
 
@@ -1311,8 +1346,8 @@ let committedRegistry
     // is where its chain was created too; the cross code is the client's
     // order identifier, the first stated of the tags a chain is named by.
     assert.equal(message.side, 'BUYS')
-    // A sided message's cross code carries its side (A17).
-    assert.equal(message.crosscode, 'BUYS:C-1')
+    // A market message's stored cross code is its kind, its side, its base.
+    assert.equal(message.crosscode, '10:1:C-1')
     assert.equal(message.currunix, SENDING_NS)
     assert.equal(message.creaunix, SENDING_NS)
     // A new order stating no status asks for a new order.
@@ -1349,10 +1384,10 @@ let committedRegistry
     assert.equal(message.byName('MsgType').asJs(), 'D')
     assert.equal(message.byTag(54).asJs(), 'BUYS')
     assert.ok(message.byTag(52).equals(SENDING))
-    assert.ok(message.byTag(65001).equals(SENDING), 'unix, as the clock its column holds')
-    assert.equal(message.byTag(65008).asJs(), message.curruuid)
-    assert.equal(message.byTag(65011).asJs(), message.currhashcode)
-    assert.equal(message.byTag(65010).asJs(), 'BUYS:C-1')
+    assert.ok(message.byTag(65007).equals(SENDING), 'unix, as the clock its column holds')
+    assert.equal(message.byTag(65001).asJs(), message.curruuid)
+    assert.equal(message.byTag(65004).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65003).asJs(), '10:1:C-1')
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
     assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
@@ -1363,7 +1398,7 @@ let committedRegistry
     // A fact the message states nothing for is absent, not null.
     assert.equal(message.getByTag(44), null, 'no price')
     assert.equal(message.getByTag(58), null, 'no text')
-    assert.equal(message.getByTag(65030), null, 'no metadata')
+    assert.equal(message.getByTag(65035), null, 'no metadata')
     // An identifier is exact: one the dictionary holds no field under misses,
     // and so does one whose field the root does not declare.
     const stray = fixField('TradeID', 'utf8', 5001)
@@ -1408,14 +1443,19 @@ let committedRegistry
     assert.equal(event.currunix, SENDING_NS + 1_000_000_000n)
     assert.equal(event.creaunix, event.currunix)
     assert.equal(event.execunix, null)
-    assert.equal(event.recdunix, null)
+    // The message was received when its sender sent it.
+    assert.equal(event.recdunix, SENDING_NS)
     // A merge keeps no clock of the reference it chose.
     assert.equal('refrecdunix' in event, false)
     assert.equal(event.marketdatakind, 'ORDR')
     assert.equal(message.msgcat, 'ORDR')
-    assert.equal(message.strikepx, null)
+    // The strike price is the dictionary's StrikePrice(202), read each call: no crate field.
+    assert.equal(message.strikeprice, null)
+    assert.equal('strikepx' in message, false)
     assert.equal(event.price, '10.5')
-    assert.equal(event.quantity, '100')
+    // What is left to work is the quantity; what was asked for is `ordqty`.
+    assert.equal(event.quantity, '60')
+    assert.equal(event.ordqty, '100')
     assert.equal(event.lastpx, '10.25')
     assert.equal(event.lastqty, '40')
     assert.equal(event.avgpx, '10.3')
@@ -1423,7 +1463,9 @@ let committedRegistry
     assert.equal(event.leavesqty, '60')
     assert.equal(event.prevpx, '9.75')
     assert.equal(event.prevqty, null)
-    assert.equal(event.tif, '0')
+    // No `59` stated: the dictionary derives a day order, read as the
+    // `timeinforce` member's stored name.
+    assert.equal(event.timeinforce, 'DAY')
     assert.equal(event.tradable, null)
     // The market facts under their trait names: the instrument by its
     // ticker and its security identifiers, source to code - the CUSIP an
@@ -1433,7 +1475,7 @@ let committedRegistry
     assert.equal(event.currency, 'USD')
     assert.equal(event.unit, 'Shares')
     assert.equal(event.side, 'BUYS')
-    assert.deepEqual(event.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
+    assert.deepEqual(kinds(event.securityids), { cusip: '037833100', isin: 'US0378331005' })
     assert.equal(event.isincode, 'US0378331005')
     assert.deepEqual(event.fxrates, {})
     assert.equal(event.cficode, null)
@@ -1442,17 +1484,18 @@ let committedRegistry
     assert.equal(event.forwardpoints, null)
     // The metadata is what the message states that no typed column reads:
     // the two fields the dictionary derived from the ISIN and the currency,
-    // keyed by name as canonical text. The account is the leaf's ACCOUNT.
+    // keyed by name as canonical text. The account is the leaf's `account` party.
     assert.deepEqual(event.metadata, { countryofissue: 'US', currencycodesource: '6' })
-    assert.deepEqual(event.accountids, { ACCOUNT: 'ACC-1' })
-    // The operation facts: the names the order goes by, upper-cased keys in
-    // key order. An order's own price states no bid (A20).
-    assert.deepEqual(event.altids, { CLORDID: 'A1', ORDERID: 'O-1' })
-    assert.equal(event.bidpx, null)
+    assert.deepEqual(kinds(event.partyids), { account: 'ACC-1' })
+    // The operation facts: the names the order goes by, lower-case types in
+    // key order. A buying order's own price and quantity are its bid (A20).
+    assert.deepEqual(kinds(event.identifiers), { clordid: 'A1', orderid: 'O-1' })
+    assert.equal(event.bidpx, '10.5')
+    assert.equal(event.bidqty, '60')
     assert.equal(event.askpx, null)
     // The message answers the same facts as getters.
     for (const name of [
-      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'altids', 'isincode', 'fxrates',
+      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'identifiers', 'isincode', 'fxrates',
       'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy',
     ]) {
       assert.deepEqual(message[name], event[name], name)
@@ -1462,7 +1505,7 @@ let committedRegistry
     assert.deepEqual(message.metadata, {})
     // The retired spellings are gone rather than aliased.
     for (const gone of [
-      'identifiers', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
+      'altids', 'secaltids', 'parties', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
       'bidcurrency', 'bidunit', 'askcurrency', 'askunit', 'userids', 'marketoperationid',
       'bid', 'ask',
     ]) {
@@ -1553,8 +1596,8 @@ let committedRegistry
     assert.equal(event.crossuuid, message.crossuuid)
     assert.equal(event.crosshashcode, message.crosshashcode)
     assert.equal(event.crosscode, message.crosscode)
-    assert.deepEqual(event.altids, message.altids)
-    assert.deepEqual(event.securityids, message.securityids)
+    assert.ok(event.identifiers.equals(message.identifiers))
+    assert.ok(event.securityids.equals(message.securityids))
     assert.equal(event.side, message.side)
     assert.equal(event.currunix, message.currunix)
     assert.equal(event.state, message.state)
@@ -1565,12 +1608,14 @@ let committedRegistry
     assert.equal(event.quantity, message.quantity)
     assert.equal('px' in event, false)
     assert.equal('qty' in event, false)
-    // A buy of a hundred at no price states no bid or ask: those are what
-    // a quote or a book states (A20).
-    for (const name of ['bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
+    // A buy of a hundred fills its side's bid facts - the quantity, and no
+    // price - and states no ask (A20).
+    assert.equal(event.bidpx, null)
+    assert.equal(event.bidqty, '100')
+    for (const name of ['askpx', 'askqty', 'askccy']) {
       assert.equal(event[name], null, name)
     }
-    assert.deepEqual(event.securityids, {})
+    assert.equal(event.securityids.length, 0)
     for (const code of ['cficode', 'miccode']) {
       assert.equal(event[code], null, code)
     }
@@ -1603,10 +1648,10 @@ let committedRegistry
     // The message type, session, context and sequence joined as they are
     // stated, on the capture: delivery provenance, never a name the message
     // goes by.
-    assert.equal(message.crosscode, 'ORDER-1')
+    assert.equal(message.crosscode, '10:0:ORDER-1')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
-    assert.equal(message.byTag(65021).asJs(), '8:SESSION-1:CONTEXT-1:7')
-    assert.deepEqual(message.altids, { CLORDID: 'CLIENT-1', ORDERID: 'ORDER-1' })
+    assert.equal(message.byTag(65044).asJs(), '8:SESSION-1:CONTEXT-1:7')
+    assert.deepEqual(kinds(message.identifiers), { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
     const contentHash = message.currhashcode
@@ -1616,7 +1661,7 @@ let committedRegistry
     message.set('msgsessionid', 'SESSION-2')
     assert.equal(message.capture().msgsessionid, 'SESSION-2')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-1:7')
-    assert.deepEqual(message.altids, { CLORDID: 'CLIENT-1', ORDERID: 'ORDER-1' })
+    assert.deepEqual(kinds(message.identifiers), { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.currhashcode, contentHash)
     assert.equal(message.curruuid, contentUuid)
 
@@ -1624,7 +1669,7 @@ let committedRegistry
     message.set('msgctxid', null)
     assert.equal(message.capture().msgctxid, null)
     assert.equal(message.capture().msgsesseventid, null)
-    assert.equal(message.getByTag(65021), null)
+    assert.equal(message.getByTag(65044), null)
     assert.equal(message.currhashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
@@ -1637,13 +1682,13 @@ let committedRegistry
     const schema = fix.schema(registry)
     const at = schema.indexOf('msgsesseventid')
     assert.equal(at, schema.indexOf('msgsessionid') + 1)
-    assert.equal(schema.fieldAt(at).fix.tag, 65021)
+    assert.equal(schema.fieldAt(at).fix.tag, 65044)
     assert.equal(schema.indexOf('refrecdunix'), null)
     const row = message.intoRow(schema)
     assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
     const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
     assert.equal(rebuilt.crosscode, message.crosscode)
-    assert.deepEqual(rebuilt.altids, message.altids)
+    assert.ok(rebuilt.identifiers.equals(message.identifiers))
     assert.deepEqual(rebuilt.capture(), message.capture())
     assert.ok(rebuilt.intoRow(schema).equals(row))
   })
@@ -1659,8 +1704,8 @@ let committedRegistry
       .next().value
     assert.equal(named.capture().msgoriginator, 'PLUGIN_A')
     assert.equal(named.capture().conversationid, 'c-1')
-    assert.equal(named.byTag(65018).asJs(), 'PLUGIN_A')
-    assert.equal(named.byTag(65022).asJs(), 'c-1')
+    assert.equal(named.byTag(65041).asJs(), 'PLUGIN_A')
+    assert.equal(named.byTag(65045).asJs(), 'c-1')
     assert.equal(bare.capture().msgoriginator, null)
     assert.equal(bare.capture().conversationid, null)
     assert.equal(named.intoText('|'), bare.intoText('|'))
@@ -1680,20 +1725,31 @@ let committedRegistry
 
     // One record per key a field names a message by; follow and role are
     // optional going in, follow always stated coming out and role where one is.
-    field.fix.idmap = [{ map: 'altids', key: 'ORDERID', follow: true }]
-    assert.deepEqual(field.fix.idmap, [{ map: 'altids', key: 'ORDERID', follow: true }])
-    assert.equal(field.get('FIX:idmap'), '[{"map":"altids","key":"ORDERID","follow":true}]')
+    field.fix.idmap = [{ map: 'identifiers', key: 'orderid', follow: true }]
+    assert.deepEqual(field.fix.idmap, [{ map: 'identifiers', key: 'orderid', follow: true }])
+    assert.equal(field.get('FIX:idmap'), '[{"map":"identifiers","key":"orderid","follow":true}]')
+    // A key is read as the identifier type word it folds to, and stored as it.
+    field.fix.idmap = [{ map: 'identifiers', key: 'OrderID', follow: true }]
+    assert.deepEqual(field.fix.idmap, [{ map: 'identifiers', key: 'orderid', follow: true }])
 
     // A follow flag belongs to an alternate identifier alone, and a refused
     // list leaves the field as it was.
-    // A1: an identifier map is the alternate identifiers alone.
+    // `identifiers` is the one map left since A1 deleted the accounts and users.
     assert.throws(() => {
-      field.fix.idmap = [{ map: 'accountids', key: 'ORDERID', follow: true }]
-    }, /expected "map" to be altids, got "accountids"/)
+      field.fix.idmap = [{ map: 'accountids', key: 'orderid', follow: true }]
+    }, /expected "map" to be identifiers, got "accountids"/)
     assert.throws(() => {
-      field.fix.idmap = [{ map: 'altids', key: 'orderid' }]
-    }, /upper-case/)
-    assert.deepEqual(field.fix.idmap, [{ map: 'altids', key: 'ORDERID', follow: true }])
+      field.fix.idmap = [{ map: 'identifiers', key: 'order id!' }]
+    }, /identifier type/)
+    assert.deepEqual(field.fix.idmap, [{ map: 'identifiers', key: 'orderid', follow: true }])
+    // A stored document states the folded word itself: an upper-case key, or
+    // an alias of a type, is refused where it is read.
+    const other = new Field('OrderID', 'utf8')
+    other.fix.tag = 37
+    for (const key of ['ORDERID', 'isinnumber']) {
+      other.set('FIX:idmap', `[{"map":"identifiers","key":"${key}"}]`)
+      assert.throws(() => other.fix.idmap, /expected "key"/, key)
+    }
     field.fix.idmap = []
     assert.equal(field.has('FIX:idmap'), false)
 
@@ -1702,25 +1758,165 @@ let committedRegistry
     const registry = seed()
     const table = registry.idmapSources()
     assert.deepEqual(
-      table.find((row) => row.key === 'ORDERID'),
-      { tag: 37, map: 'altids', key: 'ORDERID', follow: true },
+      table.find((row) => row.key === 'orderid'),
+      { tag: 37, map: 'identifiers', key: 'orderid', follow: true },
     )
     assert.deepEqual(
       table.filter((row) => row.tag === 448).map((row) => [row.map, row.key, row.role]),
       [],
     )
 
-    // A bridge's own identifiers land in the maps their fields name.
-    const message = fixedCodec(registry)
-      .parseLine(Buffer.from(
-        '8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|' +
-        'PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|',
-      ))
-      .next().value
-    // A bridge's dealer account is no party: the accounts stay empty.
-    assert.deepEqual(message.accountids, {})
-    assert.equal('userids' in message, false)
-    assert.deepEqual(message.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1', ULTRADERCLORDID: 'U1' })
+    // The parents an identifier's chain gives it are stated by the field that
+    // states it: ClOrdID(11)'s one parent is the type OrigClOrdID(41) names.
+    assert.deepEqual(registry.fieldByTag(11).fix.parents, ['origclordid'])
+    assert.equal(registry.fieldByTag(11).get('FIX:parents'), '["origclordid"]')
+    assert.deepEqual(registry.parentSources().find((row) => row.base === 'clordid'), { base: 'clordid', parents: ['origclordid'] })
+  })
+
+  test('the parents of an identifier type are the registry\'s to state and its name to give', () => {
+    const registry = seed()
+    assert.deepEqual(registry.parentsOf('orderid'), ['parentorderid', 'origorderid'])
+    assert.deepEqual(registry.parentsOf('ClOrdID'), ['origclordid'], 'a stated list wins')
+    assert.deepEqual(registry.parentsOf('parentorderid'), [], 'a parent type has none')
+    assert.deepEqual(registry.parentOf('origclordid'), { base: 'clordid', at: 0 })
+    assert.deepEqual(registry.parentOf('parentorderid'), { base: 'orderid', at: 0 })
+    assert.deepEqual(registry.parentOf('origorderid'), { base: 'orderid', at: 1 })
+    assert.equal(registry.parentOf('orderid'), null)
+    assert.equal(registry.parentOf('originalorderid'), null)
+    assert.throws(() => registry.parentsOf('order id!'), /identifier type/)
+
+    // A field states its parents as folded identifier types, each once; a
+    // refused list leaves the field as it was and an empty one removes it.
+    const field = new Field('OrderID', 'utf8')
+    field.fix.tag = 37
+    assert.deepEqual(field.fix.parents, [])
+    field.fix.parents = ['ParentOrderID', 'origorderid']
+    assert.deepEqual(field.fix.parents, ['parentorderid', 'origorderid'])
+    assert.equal(field.get('FIX:parents'), '["parentorderid","origorderid"]')
+    assert.throws(() => { field.fix.parents = ['orderid', 'orderid'] })
+    assert.throws(() => { field.fix.parents = ['order id!'] }, /identifier type/)
+    assert.deepEqual(field.fix.parents, ['parentorderid', 'origorderid'])
+    field.fix.parents = []
+    assert.equal(field.has('FIX:parents'), false)
+  })
+
+  test('a security source reads by its name and an unknown one is kept as stated', () => {
+    const codec = fixedCodec(seed())
+    const parse = (line) => codec.parseFixLine(Buffer.from(line))
+    const byCode = parse('8=FIX.4.4|35=D|11=A|22=4|48=US0378331005|10=0|')
+    for (const name of ['ISIN number', 'isin']) {
+      const byName = parse(`8=FIX.4.4|35=D|11=A|22=${name}|48=US0378331005|10=0|`)
+      assert.deepEqual(byName.securityids.toArray().map(String), byCode.securityids.toArray().map(String))
+      // A derivation reads the name as the code: the ISIN's country.
+      assert.equal(byName.byTag(470).toJSON(), 'US')
+    }
+    const kept = parse('8=FIX.4.4|35=D|11=A|22=100|48=HOUSE-1|10=0|')
+    assert.equal(kept.securityids.getFrom('fix', '100'), 'HOUSE-1')
+    const refused = parse('8=FIX.4.4|35=D|11=A|22=House/Key|48=HK-1|10=0|')
+    assert.equal(refused.securityids.getFrom('fix', 'housekey'), null)
+    assert.ok(refused.anomalies.some((anomaly) => anomaly.field === 'securityid'))
+  })
+
+  test('an unmapped key naming an identifier lands in the set its type belongs to', () => {
+    // A key no dictionary resolves is read for the identifier name it ends with.
+    const codec = fixedCodec(seed())
+    const message = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=D|11=C1|VENUE_ClOrdID=X1|VENUE_UserID=U1|venue.InstrumentID=dbi;X|' +
+      'UnderlyingISIN=CH0012214059|TransversalKey=K1|10=0|',
+    ))
+    // An identifier the key's source and type name, a party for a role, a
+    // security for a security type: each in its own map, keyed `src:type`.
+    assert.deepEqual(message.identifiers.toArray().map(String), ['fix:clordid=C1', 'venue:clordid=X1'])
+    assert.deepEqual(message.partyids.toArray().map(String), ['venue:userid=U1'])
+    assert.deepEqual(message.securityids.toArray().map(String), ['venue:instrumentid=dbi;X'])
+    // Another instrument's security (`underlyingisin`) and a name that is no
+    // identifier's (`transversalkey`) are lifted nowhere.
+    assert.equal(message.isincode, null)
+    for (const ids of [message.identifiers, message.partyids, message.securityids]) {
+      for (const id of ids.toArray()) assert.ok(!['K1', 'CH0012214059'].includes(id.value), String(id))
+    }
+    // The entries stay on the wire as they arrived, folded.
+    const wire = message.intoText('|')
+    for (const entry of ['venueclordid=X1', 'underlyingisin=CH0012214059', 'transversalkey=K1']) {
+      assert.ok(wire.includes(entry), entry)
+    }
+    // A whole security name is that type from `base`, its value checked.
+    const isin = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|security_isin=US0378331005|10=0|'))
+    assert.equal(isin.securityids.getFrom('base', 'isin'), 'US0378331005')
+    // The market leaf lifts the same keys and keeps the rest in its metadata.
+    const [leaf] = message.marketData()
+    const order = leaf.asOrderEvent()
+    assert.equal(order.identifiers.getFrom('venue', 'clordid'), 'X1')
+    assert.equal(order.partyids.getFrom('venue', 'userid'), 'U1')
+    assert.equal(order.securityids.getFrom('venue', 'instrumentid'), 'dbi;X')
+    assert.deepEqual(order.metadata, { transversalkey: 'K1', underlyingisin: 'CH0012214059' })
+  })
+
+  test('a message reads its strike price off the dictionary field', () => {
+    // `strikeprice` is `StrikePrice(202)`, read each call; no crate column holds it.
+    const registry = seed()
+    const codec = fixedCodec(registry)
+    const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|'))
+    assert.equal(Number(stated.strikeprice), 12.5)
+    assert.ok(stated.strikeprice.startsWith('12.5'), stated.strikeprice)
+    assert.ok(stated.byName('strikeprice').equals(stated.byTag(202)))
+    assert.equal('strikepx' in stated, false)
+    assert.equal(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|10=0|')).strikeprice, null)
+    // A write to the field moves the answer, and a null clears it.
+    stated.set(202, '13')
+    assert.equal(Number(stated.strikeprice), 13)
+    stated.set(202, null)
+    assert.equal(stated.strikeprice, null)
+    // The fixed row's instrument band carries the dictionary's own column.
+    const schema = fix.schema(registry)
+    assert.equal(schema.indexOf('strikepx'), null)
+    const column = schema.fieldAt(schema.indexOf('strikeprice'))
+    assert.equal(column.fix.tag, 202)
+    assert.equal(column.dtype.toString(), 'decimal128(38,18)')
+    const row = codec
+      .parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|'))
+      .intoRow(schema)
+      .asJs()
+    assert.equal(String(row[schema.indexOf('strikeprice')]), '"12.500000000000000000"', 'a decimal128(38,18) cell')
+  })
+
+  test('party ids are typed by role and sourced by their id source', () => {
+    const codec = fixedCodec(seed())
+    const message = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=D|11=C-1|41=C-0|1=ACC9|453=2|448=BRK|447=D|452=1|448=CL|447=N|452=3|10=0|',
+    ))
+    // The role's code-set name is the type, the source's name the source, and
+    // `Account(1)` is the party `account`; a map is in the order of its keys.
+    assert.deepEqual(message.partyids.toArray().map(String), [
+      'base:account=ACC9',
+      'legalentityidentifier:clientid=CL',
+      'proprietary:executingfirm=BRK',
+    ])
+    assert.equal(message.partyids.get('executingfirm'), 'BRK')
+    assert.equal(message.partyids.getFrom('proprietary', 'executingfirm'), 'BRK')
+    // `OrigClOrdID(41)` is the `origclordid` of the `clordid` it replaced: its
+    // own key beside the `clordid`'s, no lineage held on the identifier.
+    const replaced = message.identifiers.getIdentifier('clordid')
+    assert.deepEqual([replaced.src, replaced.value], ['fix', 'C-1'])
+    assert.equal(message.identifiers.getFrom('fix', 'origclordid'), 'C-0')
+    assert.deepEqual(message.identifiers.toArray().map((id) => id.key), ['fix:clordid', 'fix:origclordid'])
+    // A party stating no role is typed `party`, a bare unknown role code is
+    // `partyrole<code>`, and a source stating none is `base`.
+    const bare = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C-2|453=2|448=P1|452=9999|448=P2|10=0|'))
+    assert.deepEqual(bare.partyids.toArray().map(String), ['base:party=P2', 'base:partyrole9999=P1'])
+  })
+
+  test('security ids are keyed by the source that stated them and the one that derived them', () => {
+    const codec = fixedCodec(seed())
+    const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'))
+    // A US ISIN embeds the CUSIP, derived beside it under its own source.
+    assert.deepEqual(message.securityids.toArray().map(String), [
+      'derived:cusip=037833100',
+      'fix:isin=US0378331005',
+    ])
+    assert.equal(message.securityids.getFrom('fix', 'isin'), 'US0378331005')
+    assert.equal(message.securityids.getFrom('base', 'isin'), null)
+    assert.equal(message.isincode, 'US0378331005')
   })
 
   test("a line's session event joins its four values as stated", () => {
@@ -1735,8 +1931,8 @@ let committedRegistry
     // Joined by `:` with nothing in front of a part, and held by the capture
     // rather than among the names the message goes by.
     assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
-    assert.equal(message.byTag(65021).asJs(), '8:e7256476:9effef3e6a:1094')
-    assert.equal('msgsesseventid' in message.altids, false)
+    assert.equal(message.byTag(65044).asJs(), '8:e7256476:9effef3e6a:1094')
+    assert.equal(message.identifiers.containsKind('msgsesseventid'), false)
 
     // A part missing is no session event at all.
     for (const [body, captures] of [
@@ -2064,7 +2260,7 @@ let committedRegistry
     const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
     const filled = reader.parseLine(Buffer.from(line)).next().value
     assert.equal(filled.byTag(22).toJSON(), '4')
-    assert.equal(filled.securityids.ISIN, 'US0378331005')
+    assert.equal(filled.securityids.get('isin'), 'US0378331005')
     assert.equal(filled.byTag(470).toJSON(), 'US')
     assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
     // What the message now states is what it emits: the frame leads, the
@@ -2077,12 +2273,12 @@ let committedRegistry
     // for it is an entry like any other, and the trait reads the standing off
     // it.
     assert.ok(flat(filled).some(([tag]) => tag === 59))
-    assert.equal(filled.tif, '0')
+    assert.equal(filled.timeinforce, 'DAY')
 
     // A value no standard closes answers nothing rather than a guess.
     const opaque = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|')).next().value
     assert.equal(opaque.getByTag(22), null)
-    assert.deepEqual(opaque.securityids, {})
+    assert.equal(opaque.securityids.length, 0)
   })
 
   test('the official time delay bounds which clock dates the message', () => {
@@ -2167,8 +2363,9 @@ let committedRegistry
     // each keeping the pair its source stated and taking its side's price.
     const [two, buy, sell] = codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
     assert.equal(two.side, 'UNKN')
-    assert.deepEqual([buy.side, buy.price, buy.crosscode], ['BUYS', '101', 'BUYS:Q3'])
-    assert.deepEqual([sell.side, sell.price, sell.crosscode], ['SELL', '102', 'SELL:Q3'])
+    assert.deepEqual([two.crosscode, buy.crosscode, sell.crosscode], ['14:0:Q3', '14:1:Q3', '14:2:Q3'])
+    assert.deepEqual([buy.side, buy.price], ['BUYS', '101'])
+    assert.deepEqual([sell.side, sell.price], ['SELL', '102'])
     for (const sided of [buy, sell]) {
       assert.deepEqual([sided.bidpx, sided.askpx], ['101', '102'])
     }
@@ -2176,7 +2373,7 @@ let committedRegistry
     const stated = [...codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))]
     assert.equal(stated.length, 1)
     assert.equal(stated[0].side, 'SELL')
-    assert.equal(stated[0].crosscode, 'SELL:Q4')
+    assert.equal(stated[0].crosscode, '14:2:Q4')
   })
 
   test('an execution report stating no execution clock executed at its instant', () => {
@@ -2291,11 +2488,11 @@ let committedRegistry
     const later = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|'))
     const earlier = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|'))
     const learned = [...codec.lifecycle([later, earlier])]
-    assert.equal(learned[1].securityids.BLOOMBERG, 'AAPL US Equity')
-    assert.equal('BLOOMBERG' in later.securityids, false, 'the input is never enriched in place')
+    assert.equal(learned[1].securityids.get('bloomberg'), 'AAPL US Equity')
+    assert.equal(later.securityids.containsKind('bloomberg'), false, 'the input is never enriched in place')
     const schema = fix.schema(registry)
     const rebuilt = fix.FixMsg.fromRow(schema, learned[1].intoRow(schema), registry)
-    assert.equal(rebuilt.securityids.BLOOMBERG, 'AAPL US Equity')
+    assert.equal(rebuilt.securityids.get('bloomberg'), 'AAPL US Equity')
 
     const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
     const entries = expiring.entries()
@@ -2306,19 +2503,20 @@ let committedRegistry
     assert.ok(walked.some((message) => message.currunix === deadline && message.state === 'EXPIRED'))
     const emittedSnapshots = walked.filter((message) => message.snapunix !== null)
     assert.ok(emittedSnapshots.length > 0)
-    assert.ok(emittedSnapshots.every((message) => message.snapunix < deadline))
+    assert.ok(emittedSnapshots.every((message) => message.currunix < deadline))
     // A view is the live message as of its tick: dated at it, so it has the
     // identity that tick derives, while its content, its place and its
-    // cross element are the live message's.
+    // cross element are the live message's, and its snapshot instant the
+    // one the live message was stated at.
     const [live] = walked
     assert.equal(live.snapunix, null)
     for (const view of emittedSnapshots) {
-      assert.equal(view.currunix, view.snapunix)
+      assert.equal(view.snapunix, live.currunix)
       assert.equal(view.currhashcode, live.currhashcode)
       assert.equal(view.seqnum, live.seqnum)
       assert.equal(view.prevuuid, live.prevuuid)
       assert.equal(view.crossuuid, live.crossuuid)
-      assert.equal(view.curruuid === live.curruuid, view.snapunix === live.currunix)
+      assert.equal(view.curruuid === live.curruuid, view.currunix === live.currunix)
     }
     assert.ok(emittedSnapshots.some((view) => view.curruuid !== live.curruuid))
   })
@@ -2366,31 +2564,80 @@ let committedRegistry
   test('the fixed schema places category beside message type and normalized codes once', () => {
     const registry = seed()
     const schema = fix.schema(registry)
-    // One more crate field than before the P2 batch: `forexcode` (W2a) and
-    // `strikepx` (A11) in, `nofixentries` (A8) out.
-    assert.equal(CRATE.length, 41)
-    assert.equal(CRATE_SCALARS.length, 40)
-    assert.equal(new fix.FixRegistry().size, 43)
-    assert.equal(scalars(new fix.FixRegistry()).length, 42)
-    assert.equal(schema.fieldLen, 133)
-    assert.equal(fix.schemaTags().length, 128)
+    // `forexcode` (W2a) in, `nofixentries` (A8) out, and eleven retired:
+    // the strike price is the dictionary's StrikePrice(202) and ten bridge
+    // columns (`omsdealeraccount`, `omsuserid`, `parentorderid`,
+    // `parentclordid`, `omsdealerparentorderid`, `exchangeclientorderid`,
+    // `transversalkey`, `ultraderclordid`, `omsinstrumentid`,
+    // `ullinkinstrumentid`) are no crate field - the 49 definitions
+    // `rust/tests/fix/crated.rs` pins, tags 65001 to 65049.
+    assert.equal(CRATE.length, 49)
+    assert.equal(CRATE_REGISTERED.length, 31)
+    assert.equal(CRATE_SCALARS.length, 30)
+    assert.equal(new fix.FixRegistry().size, 33)
+    assert.equal(scalars(new fix.FixRegistry()).length, 32)
+    // `SecurityID(48)`, `SecurityIDSource(22)` and the `Parties(453)` and
+    // `SecAltIDGrp(454)` groups with their counters left the row for
+    // `fixentries`: the prefix's `partyids` and `securityids` state them.
+    assert.equal(schema.fieldLen, 152)
+    assert.equal(fix.schemaTags().length, 149)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
-      ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'],
+      ['beginstring', 'msgtype', 'msgseqnum', 'sendercompid'],
     )
     // The crate views of the security identifiers, at their A11 tags; the
     // retired identifiers, cusipcode and sedolcode columns are gone.
-    for (const [name, tag] of [['isincode', 65023], ['bloombergcode', 65025], ['miccode', 65027], ['figicode', 65026]]) {
+    for (const [name, tag] of [['isincode', 65021], ['bloombergcode', 65047], ['miccode', 65022], ['figicode', 65048]]) {
       assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
     }
     assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
     // A11: the crate's own tags are numbered contiguously from 65001.
     const crateTags = fix.crateFields().map((field) => field.fix.tag).sort((left, right) => left - right)
     assert.deepEqual(crateTags, crateTags.map((_, at) => 65001 + at))
-    for (const name of ['identifiers', 'cusipcode', 'sedolcode']) {
+    assert.equal(crateTags.at(-1), 65049, 'sourceurl closes the block')
+    const crateNames = fix.crateFields().map((field) => field.name)
+    for (const retired of ['strikepx', 'omsdealeraccount', 'omsuserid', 'parentorderid', 'parentclordid',
+      'omsdealerparentorderid', 'exchangeclientorderid', 'transversalkey', 'ultraderclordid', 'omsinstrumentid',
+      'ullinkinstrumentid']) {
+      assert.equal(crateNames.includes(retired), false, retired)
+    }
+    for (const name of ['altids', 'secaltids', 'parties', 'cusipcode', 'sedolcode']) {
       assert.equal(schema.indexOf(name), null, name)
     }
+  })
+
+  test('a field maps its wire values onto TimeInForce members under FIX:timeinforce', () => {
+    // The view reads and writes `{ wire, timeinforce }` pairs; a spelling
+    // the enum reads is stored as the member's name.
+    const tif = new Field('venuetif', 'utf8')
+    tif.fix.tag = 59
+    assert.deepEqual(tif.fix.timeinforces, [])
+    tif.fix.timeinforces = [{ wire: 'G', timeinforce: 'gtc' }, { wire: 'H', timeinforce: 'ImmediateOrCancel' }]
+    assert.deepEqual(tif.fix.timeinforces, [
+      { wire: 'G', timeinforce: 'GTC' },
+      { wire: 'H', timeinforce: 'IOC' },
+    ])
+    assert.equal(tif.get('FIX:timeinforce'), '["G=GTC","H=IOC"]')
+    // A spelling that names no member throws and leaves the field unchanged.
+    assert.throws(() => {
+      tif.fix.timeinforces = [{ wire: 'G', timeinforce: 'nope' }]
+    }, /timeinforce/)
+    assert.equal(tif.fix.timeinforces.length, 2)
+
+    // The registry reads the dictionary's own mapping first, then
+    // `TimeInForce(59)`'s standard values, a value neither names being
+    // `OTHER`; a field stating no time in force answers null.
+    const registry = fix.FixRegistry.fromFields([tif])
+    assert.equal(registry.timeinforceOf(59, 'G'), 'GTC')
+    assert.equal(registry.timeinforceOf(59, '3'), 'IOC')
+    assert.equal(registry.timeinforceOf(59, 'Q'), 'OTHER')
+    assert.equal(registry.timeinforceOf(54, '1'), null)
+    // A message under that registry reads its time in force through it.
+    const codec = reading(registry, { defaultSendingTime: SENDING })
+    assert.equal(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|59=G|10=0|')).timeinforce, 'GTC')
+    tif.fix.timeinforces = []
+    assert.equal(tif.has('FIX:timeinforce'), false)
   })
 
   test('security source S identifies FIGI while A remains Bloomberg', () => {
@@ -2399,24 +2646,24 @@ let committedRegistry
     const figi = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=D|52=20240102-10:15:30|22=S|48=BBG000BLNQ16|454=1|455=BBG000BLNQ16|456=S|10=0|',
     ))
-    assert.equal(figi.securityids.FIGI, 'BBG000BLNQ16')
-    assert.equal(figi.securityids.FIGI, 'BBG000BLNQ16')
-    assert.equal('BLOOMBERG' in figi.securityids, false)
+    assert.equal(figi.securityids.get('figi'), 'BBG000BLNQ16')
+    assert.equal(figi.securityids.get('figi'), 'BBG000BLNQ16')
+    assert.equal(figi.securityids.containsKind('bloomberg'), false)
 
     const schema = fix.schema(registry)
     const rebuilt = fix.FixMsg.fromRow(schema, figi.intoRow(schema), registry)
-    assert.equal(rebuilt.securityids.FIGI, 'BBG000BLNQ16')
+    assert.equal(rebuilt.securityids.get('figi'), 'BBG000BLNQ16')
     assert.ok(rebuilt.intoRow(schema).equals(figi.intoRow(schema)))
 
     const bloomberg = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=D|52=20240102-10:15:30|22=A|48=AAPL US Equity|10=0|',
     ))
-    assert.equal(bloomberg.securityids.BLOOMBERG, 'AAPL US Equity')
-    assert.equal('FIGI' in bloomberg.securityids, false)
+    assert.equal(bloomberg.securityids.get('bloomberg'), 'AAPL US Equity')
+    assert.equal(bloomberg.securityids.containsKind('figi'), false)
 
     const stated = figi.clone()
-    stated.set(65026, 'BBG000BLNQ16')
-    assert.equal(stated.securityids.FIGI, 'BBG000BLNQ16')
+    stated.set(65048, 'BBG000BLNQ16')
+    assert.equal(stated.securityids.get('figi'), 'BBG000BLNQ16')
   })
 
   test('a parse restates deprecated fields to their latest aliases', () => {
@@ -2455,8 +2702,8 @@ let committedRegistry
     assert.equal(latest.price, null)
     assert.equal(latest.lastpx, '10.5')
     // A sided report's cross code carries its side (A17).
-    assert.equal(latest.crosscode, 'BUYS:O1')
-    assert.deepEqual(latest.altids, { EXECID: 'E1', ORDERID: 'O1' })
+    assert.equal(latest.crosscode, '10:1:O1')
+    assert.deepEqual(kinds(latest.identifiers), { execid: 'E1', orderid: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
     // in force is a day order, one fill's average is that fill's price, and what
     // it was worth is the quantity times the price.
@@ -2495,7 +2742,7 @@ let committedRegistry
     assert.equal(message.header().msgdirection, 'R')
     assert.equal(message.byTag(385).asJs(), 'R')
     assert.equal(message.capture().msgpluginid, 'Router_OrderRouting')
-    assert.equal(message.byTag(65017).asJs(), 'Router_OrderRouting')
+    assert.equal(message.byTag(65040).asJs(), 'Router_OrderRouting')
   })
 
   test('a row reads back into a message stating the same facts', () => {
@@ -2540,12 +2787,7 @@ let committedRegistry
 
     // A row that does not record its content code is settled from what it
     // states, so the fixed row is read without that column.
-    const wide = fix.schema(registry)
-    const columns = []
-    for (let at = 0; at < wide.fieldLen; at += 1) {
-      if (wide.fieldAt(at).name !== 'currhashcode') columns.push(wide.fieldAt(at))
-    }
-    const narrow = fields.struct('fix', columns, { nullable: false })
+    const narrow = withPartyGroup(registry, ['currhashcode'])
     const parties = narrow.indexOf('parties')
     const item = narrow.fieldByPath('parties').fieldAt(0)
     const subids = item.indexOf('partysubids')
@@ -2581,13 +2823,8 @@ let committedRegistry
     assert.ok(counted.intoText('|').includes('|453=0|'))
     assert.ok(!absent.intoText('|').includes('453='))
 
-    const wide = fix.schema(registry)
     for (const dropped of [['currhashcode'], ['currhashcode', 'nopartyids']]) {
-      const columns = []
-      for (let at = 0; at < wide.fieldLen; at += 1) {
-        if (!dropped.includes(wide.fieldAt(at).name)) columns.push(wide.fieldAt(at))
-      }
-      const narrow = fields.struct('fix', columns, { nullable: false })
+      const narrow = withPartyGroup(registry, dropped)
       const parties = narrow.indexOf('parties')
       for (const [message, stated] of [[absent, false], [counted, true]]) {
         const written = message.intoRow(narrow).asJs()
@@ -2615,15 +2852,18 @@ let committedRegistry
     const plain = fix.schema(registry, 'FixMessage')
     const carried = fix.schemaCarrying(carrier, plain)
 
-    assert.equal(carried.fieldAt(0).name, 'url')
-    assert.equal(carried.fieldAt(1).name, 'body')
+    // The shared columns open the row, the capture follows them.
+    const after = plain.indexOf('partyids') + 1
+    assert.equal(carried.fieldAt(0).name, 'curruuid')
+    assert.equal(carried.fieldAt(after).name, 'url')
+    assert.equal(carried.fieldAt(after + 1).name, 'body')
     assert.equal(carried.fieldLen, plain.fieldLen + 2)
     assert.equal(carried.indexOf('msgtype'), plain.indexOf('msgtype') + 2)
 
     // A column no tag names is the capture's, so a row answers null there: the
     // capture fills it, and nothing in the message says what it held.
     const row = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).next().value.intoRow(carried).toJSON()
-    assert.equal(row[0], null)
+    assert.equal(row[after], null)
     assert.equal(row[carried.indexOf('msgtype')], 'D')
 
     // A capture column whose folded name a FIX column takes is not carried in
@@ -2644,7 +2884,7 @@ let committedRegistry
     const folded = fix.schemaCarrying(stamped, plain)
     assert.equal(folded.fieldLen, plain.fieldLen + 3)
     assert.equal(folded.indexOf('msgSessionId'), null)
-    assert.equal(folded.indexOf('msgthreadid'), 2)
+    assert.equal(folded.indexOf('msgthreadid'), plain.indexOf('partyids') + 3)
     assert.equal(folded.indexOf('msgsessionid'), plain.indexOf('msgsessionid') + 3)
   })
 
@@ -3237,17 +3477,17 @@ let committedRegistry
     const reader = reading(seed()).parseTextArrowReader(capture([], 1))
     const names = []
     for (let at = 0; at < reader.field.fieldLen; at += 1) names.push(reader.field.fieldAt(at).name)
-    // The capture's own column leads; the fixed columns follow, opening on
-    // when the event happened, each named by its folded name and carrying
-    // its tag.
-    assert.equal(names[0], 'body')
-    assert.equal(names[1], 'currunix')
+    // The shared columns open the row and the capture's own column follows
+    // them; the fixed columns come after, each named by its folded name and
+    // carrying its tag.
+    assert.equal(names[0], 'curruuid')
+    assert.equal(names.indexOf('body'), names.indexOf('partyids') + 1)
     const header = names.indexOf('beginstring')
     assert.ok(header > 0)
     assert.equal(reader.field.fieldAt(header).fix.tag, 8)
     // One map closes the row: the residual content keyed `tag:name`, after
-    // the metadata an unmapped key lands in (A8, A9).
-    assert.deepEqual(names.slice(-2), ['metadata', 'fixentries'])
+    // the trailer's checksum (A8, A9).
+    assert.deepEqual(names.slice(-2), ['checksum', 'fixentries'])
     assert.equal(reader.field.field('fixentries').dtype.id, 'sorted_map')
     assert.equal(reader.field.fieldAt(names.indexOf('msgtype')).fix.tag, 35)
     // And an empty capture yields no batch at all.
@@ -3336,7 +3576,8 @@ let committedRegistry
     // levels nested (A2, A10).
     assert.ok(reader.field.equals(graph.MarketData.field()))
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
-    assert.equal(names[0], 'marketdatakind')
+    assert.equal(names[0], 'curruuid')
+    assert.ok(names.includes('marketdatakind'))
     for (const name of ['alive', 'deltas', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
       assert.ok(names.includes(name), name)
     }
@@ -3357,7 +3598,7 @@ let committedRegistry
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
     assert.equal(second.executions().length, 1)
     const live = second.alive()[0].asQuoteEvent()
-    assert.deepEqual(live.altids, { MDENTRYID: 'B1' })
+    assert.deepEqual(kinds(live.identifiers), { mdentryid: 'B1' })
     assert.equal(live.quantity, '11')
     assert.deepEqual(second.limits('BUYS').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
   })
@@ -3405,8 +3646,8 @@ let committedRegistry
     assert.equal(BigInt(buy.lastqty.toString()), 4n * 10n ** 18n)
     assert.equal(BigInt(sell.lastqty.toString()), 6n * 10n ** 18n)
     // A sided execution goes by its side's own execution identifier (A12).
-    assert.equal(new Map(buy.altids).get('EXECID'), 'BUY-EXEC')
-    assert.equal(new Map(sell.altids).get('EXECID'), 'SELL-EXEC')
+    assert.equal(rowKinds(buy.identifiers).get('execid'), 'BUY-EXEC')
+    assert.equal(rowKinds(sell.identifiers).get('execid'), 'SELL-EXEC')
     assert.notDeepEqual(buy.curruuid, sell.curruuid)
     assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
     assert.notEqual(buy.crosscode, sell.crosscode)
@@ -3577,8 +3818,9 @@ let committedRegistry
     // has no column to appear in: the row is a projection of the message.
     assert.ok(message.byTag(381).equals(Scalar.decimal(420n)))
     assert.equal(rows.schema.fields.some((field) => field.name === 'grosstradeamt'), false)
-    // The carried column still leads the row.
-    assert.equal(rows.schema.fields[0].name, 'body')
+    // The carried column follows the shared columns.
+    const shared = rows.schema.fields.findIndex((field) => field.name === 'partyids')
+    assert.equal(rows.schema.fields[shared + 1].name, 'body')
   })
 
   test('messages and arrowReader invert each other', () => {
@@ -3594,7 +3836,7 @@ let committedRegistry
       // order; the semantic values, supplied identity and fixed row stay exact.
       assert.equal(held.currhashcode, message.currhashcode)
       assert.equal(held.curruuid, message.curruuid)
-      for (const tag of [35, 11, 55, 54, 17, 37, 65011, 65008]) {
+      for (const tag of [35, 11, 55, 54, 17, 37, 65004, 65001]) {
         const value = message.getByTag(tag)
         if (value !== null && value.kind !== 'null') assert.ok(held.byTag(tag).equals(value), `tag ${tag}`)
       }
@@ -3606,37 +3848,41 @@ let committedRegistry
     assert.deepEqual(first, second)
   })
 
-  test('the names a message goes by are built from their source fields and have no column', () => {
+  test('the names a message goes by are built from their source fields and the row states them', () => {
     const registry = seed()
     const codec = reading(registry, { defaultSendingTime: SENDING })
     const schema = fix.schema(registry)
-    // A message states the names it goes by as a typed fact: the map the
-    // event holds, read back as a plain object with upper-cased keys in the
-    // core's key order, built at every settle from `OrderID(37)`,
-    // `ClOrdID(11)`, `ExecID(17)` and the other source fields.
+    // A message states the names it goes by as a typed fact: the set the
+    // event holds, each identifier keyed `src:type` - the source `fix`, the
+    // type a lower-case word - in the core's key order, built at every
+    // settle from `OrderID(37)`, `ClOrdID(11)`, `ExecID(17)` and the other
+    // source fields.
     const lines = [
       '8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|',
       '8=FIX.4.4|35=D|10=0|',
     ]
     const messages = lines.map((line) => one(codec, line))
-    assert.deepEqual(messages[0].altids, { CLORDID: 'C-001', EXECID: 'E-09', ORDERID: 'O-01' })
-    assert.deepEqual(Object.keys(messages[0].altids), ['CLORDID', 'EXECID', 'ORDERID'])
-    assert.deepEqual(messages[1].altids, {})
-    // A1: the alternate identifiers are the one identifier map of names;
-    // the accounts are the parties a message names, none here.
-    assert.deepEqual(messages[0].accountids, {})
+    assert.deepEqual(kinds(messages[0].identifiers), { clordid: 'C-001', execid: 'E-09', orderid: 'O-01' })
+    assert.deepEqual(messages[0].identifiers.toArray().map((id) => id.type), ['clordid', 'execid', 'orderid'])
+    assert.deepEqual(messages[0].identifiers.toArray().map((id) => id.src), ['fix', 'fix', 'fix'])
+    assert.equal(messages[1].identifiers.length, 0)
+    // A1: the identifiers are the one set of names a message goes by;
+    // the party ids are the parties a message names, none here.
+    assert.deepEqual(kinds(messages[0].partyids), {})
     assert.equal('userids' in messages[0], false)
 
-    // No column of its own: the row states the source fields, and a row
-    // read back builds the same map from them.
+    // The row states them in its `identifiers` column beside the source
+    // fields, and a row read back builds the same set from them; the
+    // retired names have no column.
     const table = codec.arrowReader(schema, messages).intoTable()
-    for (const gone of ['identifiers', 'altids', 'accountids', 'userids', 'securityids']) {
+    assert.ok(table.schema.fields.some((field) => field.name === 'identifiers'))
+    for (const gone of ['altids', 'secaltids', 'parties', 'userids']) {
       assert.equal(table.schema.fields.some((field) => field.name === gone), false, gone)
     }
     const restored = [...codec.messages(table)]
     assert.equal(restored.length, messages.length)
     for (const [at, held] of restored.entries()) {
-      assert.deepEqual(held.altids, messages[at].altids, `message ${at}`)
+      assert.deepEqual(held.identifiers, messages[at].identifiers, `message ${at}`)
       assert.ok(held.intoRow(schema).equals(messages[at].intoRow(schema)), `message ${at}`)
     }
 
@@ -3656,14 +3902,14 @@ let committedRegistry
     // The scalar answers the folded name a lookup asks for; the group is
     // reached by its counter and by the path grammar.
     assert.equal(registry.fieldByName('metadata').name, 'venueid')
-    assert.equal(registry.fieldByCounter(65030).name, 'metadata')
+    assert.equal(registry.fieldByCounter(65035).name, 'metadata')
     assert.equal(registry.fieldByPath('metadata').name, 'metadata')
     // A message carries the scalar in its row and the map as its own fact.
     const schema = fields.struct('row', [scalar, registry.fieldByTag(52)], { nullable: false })
     const value = new fix.FixMsg(schema, { venueid: 'scalar', sendingtime: SENDING }, registry)
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.deepEqual(value.metadata, {})
-    value.set(65030, new Map([['tech.clientid', 'X1']]))
+    value.set(65035, new Map([['tech.clientid', 'X1']]))
     assert.deepEqual(value.metadata, { 'tech.clientid': 'X1' })
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.equal(value.size, 1, 'the map is a fact, never a row child')
@@ -3782,13 +4028,13 @@ let committedRegistry
     // value, the settled clocks and the chain identity included.
     for (const [tag, value] of before) {
       if (tag === 55 || tag === 54) continue
-      if (tag === 65011 || tag === 65008) {
+      if (tag === 65004 || tag === 65001) {
         assert.equal(message.byTag(tag).equals(value), false, 'the identity follows the content')
         continue
       }
       assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
     }
-    assert.equal(message.byTag(65011).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65004).asJs(), message.currhashcode)
   })
 
   test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -3858,7 +4104,7 @@ let committedRegistry
     assert.equal(message.size, count - 1)
     for (const [tag, value] of before) {
       if (tag === 55) continue
-      if (tag === 65011 || tag === 65008) {
+      if (tag === 65004 || tag === 65001) {
         assert.equal(message.byTag(tag).equals(value), false, 'the identity follows the content')
         continue
       }
@@ -3952,11 +4198,14 @@ let committedRegistry
       Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|'),
     )
     const row = message.intoRow(schema)
-    // A8: the residual is a sorted map keyed `tag:name`; the symbol and the
-    // parties are projected, so neither is in it.
+    // A8: the residual is a sorted map keyed `tag:name`; the symbol is
+    // projected, so it is no entry, while `Parties(453)` is no column - the
+    // row's `partyids` states the party - so the group is one, kept as sent.
     const residual = row.asJs()[schema.indexOf('fixentries')]
     assert.ok(residual instanceof Map)
-    assert.ok([...residual.keys()].every((key) => !key.startsWith('55:') && !key.startsWith('453:')))
+    assert.ok([...residual.keys()].every((key) => !key.startsWith('55:')))
+    assert.ok(residual.has('453:parties'))
+    assert.equal(message.partyids.toString(), '[proprietary:executingfirm=BRK]')
     // A9: a key no dictionary resolves lands in the metadata, as spelled.
     assert.equal(row.asJs()[schema.indexOf('metadata')].get('9999'), 'x')
 
@@ -4017,7 +4266,7 @@ let committedRegistry
       assert.equal(written[schema.indexOf(carrier)], null, carrier)
     }
     assert.equal(written[schema.indexOf('symbol')], 'AAPL')
-    assert.ok(!again.intoText('|').includes('65031='))
+    assert.ok(!again.intoText('|').includes('65049='))
   })
 
   test('a row without the entries column keeps projected content', () => {
@@ -4284,10 +4533,10 @@ let committedRegistry
     assert.ok(Object.keys(report.metadata).every((key) => key === key.toLowerCase()))
     // The event reads the report: the instrument, the side, the price and the
     // quantity, and the names the message goes by.
-    assert.equal(report.securityids.ISIN, 'CH0012214059')
+    assert.equal(report.securityids.get('isin'), 'CH0012214059')
     assert.equal(report.miccode, 'XSWX')
     assert.equal(report.side, 'BUYS')
-    assert.ok(Object.keys(report.altids).includes('CLORDID'))
+    assert.ok(report.identifiers.containsKind('clordid'))
     // The parties merge to one group with the counter synced.
     const parties = report.entries().find((entry) => entry.tag === 453)
     assert.equal(parties.value, '8')
@@ -4416,8 +4665,9 @@ let committedRegistry
           crossuuid: event.crossuuid,
           crosscode: event.crosscode,
           crosshashcode: event.crosshashcode,
-          altids: event.altids,
-          securityids: event.securityids,
+          identifiers: event.identifiers.toString(),
+          securityids: event.securityids.toString(),
+          partyids: event.partyids.toString(),
           srcuuids: event.srcuuids,
           currunix: event.currunix,
           state: event.state,
@@ -4502,9 +4752,15 @@ let committedRegistry
     // no book control but its scope (A1), no lanes (A10), and the deltas'
     // side-prefixed cross codes (A17), each event's place out of its
     // content code, a delta's place its instant's, the metadata a
-    // follower takes from its chain, and the four-letter side code the
-    // book's own unstated side feeds (`UNKN`).
-    assert.equal(last.currhashcode, 7_372_418_038_390_061_154n)
+    // follower takes from its chain, the four-letter side code the
+    // book's own unstated side feeds (`UNKN`), and the identifiers each
+    // delta digests as a source, a type and a value under `identifiers`,
+    // `partyids` and `securityids`. It moved again with the stored cross
+    // code (`3:0:2454`, kind and side before the base, which the cross hash
+    // and every identity derive from) and the identifier maps (keyed
+    // `src:type`, the bridge's own keys inferred into them): the one value
+    // `rust/tests/fix/ulbridge.rs` and the Python binding pin for this log.
+    assert.equal(last.currhashcode, 1_642_488_774_851_967_775n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

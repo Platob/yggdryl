@@ -198,18 +198,18 @@ mod dataset {
 
     /// The instrument every named order flow of the capture reads as: its
     /// ISIN, the MIC, the CFI and the time in force each message of it
-    /// states where it states one.
+    /// states where it states one, by the member its wire value reads as.
     const FLOWS: [(&str, &str, Option<&str>, Option<&str>); 5] = [
         // ABB, a trade capture's fills.
-        ("CH0012221716", "XSWX", Some("ESVTFR"), Some("0")),
+        ("CH0012221716", "XSWX", Some("ESVTFR"), Some("DAY")),
         // Novartis and Holcim, an OMS dealer's orders.
-        ("CH0012005267", "XSWX", Some("ESVTFR"), Some("0")),
-        ("CH0012214059", "XSWX", Some("ESVTFR"), Some("0")),
+        ("CH0012005267", "XSWX", Some("ESVTFR"), Some("DAY")),
+        ("CH0012214059", "XSWX", Some("ESVTFR"), Some("DAY")),
         // A Taiwanese trade capture routed good till date.
-        ("TW0001605004", "RJEA", None, Some("6")),
+        ("TW0001605004", "RJEA", None, Some("GTD")),
         // MediaTek, a cancel/replace reject whose market is the instrument
         // key's.
-        ("TW0002454006", "XTAI", None, Some("0")),
+        ("TW0002454006", "XTAI", None, Some("DAY")),
     ];
 
     /// How many of the capture's messages carry a bridge row in their
@@ -232,7 +232,7 @@ mod dataset {
         for (isin, mic, cfi, tif) in FLOWS {
             let flow: Vec<&FixMsg> = messages
                 .iter()
-                .filter(|held| held.get_securityids().get("ISIN") == Some(isin))
+                .filter(|held| held.get_securityids().get(&yggdryl::IdType::Isin) == Some(isin))
                 .collect();
             assert!(!flow.is_empty(), "{isin} is in the capture");
             let mics: Vec<&str> = flow
@@ -254,7 +254,7 @@ mod dataset {
             );
             let tifs: Vec<String> = flow
                 .iter()
-                .filter_map(|held| held.get_tif().map(ToString::to_string))
+                .filter_map(|held| held.get_timeinforce().map(ToString::to_string))
                 .collect();
             assert!(
                 tifs.iter().all(|held| Some(held.as_str()) == tif) && !tifs.is_empty(),
@@ -273,8 +273,8 @@ mod dataset {
             // No security identifier the line does not state, but the Valor a
             // Swiss ISIN embeds.
             for id in message.get_securityids().iter() {
-                if id.sectype().as_str() != "VALOR" {
-                    assert!(body.contains(id.code()), "{id} is stated: {body}");
+                if id.kind() != "valor" {
+                    assert!(body.contains(id.value()), "{id} is stated: {body}");
                 }
             }
             // The ticker is the bare SYMBOL a bridge wrote, never a marked twin.
@@ -414,6 +414,64 @@ mod dataset {
             .collect();
         assert_eq!(once, whole);
         assert_eq!(walk(&codec.clone().with_sorted_lifecycle(true)), whole);
+    }
+
+    /// Where a message was read from travels along no chain: every source a
+    /// walked message names is the line it was read from or a message the
+    /// parse split off that same line, never an element it follows.
+    #[test]
+    fn a_walked_message_names_its_line_and_split_sources_and_never_a_predecessor() {
+        use std::collections::{HashMap, HashSet};
+
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let lines: HashSet<yggdryl::Uuid> =
+            text_lines().iter().map(TextLine::get_curruuid).collect();
+        let messages = line_messages(&codec);
+        // Every message a line's parse made, by the line.
+        let mut split: HashMap<yggdryl::Uuid, HashSet<yggdryl::Uuid>> = HashMap::new();
+        for message in &messages {
+            for source in message.get_srcuuids() {
+                if lines.contains(source) {
+                    split
+                        .entry(*source)
+                        .or_default()
+                        .insert(message.get_curruuid());
+                }
+            }
+        }
+        let walked = codec
+            .lifecycle(messages)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        for message in &walked {
+            let sources = message.get_srcuuids();
+            let from: Vec<&yggdryl::Uuid> = sources
+                .iter()
+                .filter(|source| lines.contains(source))
+                .collect();
+            assert!(
+                !from.is_empty(),
+                "{} names no line",
+                message.get_crosscode()
+            );
+            let siblings: HashSet<yggdryl::Uuid> = from
+                .iter()
+                .flat_map(|line| split.get(line).into_iter().flatten().copied())
+                .collect();
+            for source in sources {
+                assert!(
+                    lines.contains(source) || siblings.contains(source),
+                    "{} names {source}, neither its line nor a message split off it",
+                    message.get_crosscode()
+                );
+                assert_ne!(
+                    Some(*source),
+                    message.get_prevuuid(),
+                    "{}",
+                    message.get_crosscode()
+                );
+            }
+        }
     }
 
     #[test]
@@ -974,7 +1032,10 @@ mod dataset {
             Some("83.08"),
             "and the price the message states, read off it"
         );
-        assert_eq!(fill.get_securityids().get("ISIN"), Some("CH0012221716"));
+        assert_eq!(
+            fill.get_securityids().get(&yggdryl::IdType::Isin),
+            Some("CH0012221716")
+        );
         assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
         assert_eq!(fill.by_tag(460).unwrap().as_i128(), Some(5), "Product");
         assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
@@ -994,7 +1055,7 @@ mod dataset {
             })
             .expect("the anonymized line");
         assert_eq!(
-            masked.get_securityids().get("ISIN"),
+            masked.get_securityids().get(&yggdryl::IdType::Isin),
             None,
             "no ISIN off a masked one"
         );
@@ -1179,9 +1240,9 @@ mod dataset {
     }
 
     /// The typed spellings no leaf's metadata may key: each is a column, a
-    /// header or a trailer fact, the `Account(1)` the leaf's `accountids`
-    /// hold, or one of the two losing aliases of `OrderID(37)` its `altids`
-    /// lift.
+    /// header or a trailer fact, the `Account(1)` the leaf's `partyids`
+    /// hold, or one of the two losing aliases of `OrderID(37)` its
+    /// `identifiers` lift.
     const TYPED: [&str; 13] = [
         "account",
         "marketorderid",
@@ -1319,10 +1380,14 @@ mod dataset {
                 .collect::<Vec<_>>(),
             [None, None]
         );
-        assert_eq!(
-            yggdryl::graph::Market::get_quantity(deltas[0]),
-            Some(yggdryl::Decimal::from_int(10_000))
-        );
+        // A cancel request states what was ordered, never what is left
+        // open: its quantity is none, its ordered quantity the 10,000.
+        assert_eq!(yggdryl::graph::Market::get_quantity(deltas[0]), None);
+        assert!(matches!(
+            deltas[0],
+            yggdryl::graph::MarketData::OrderEvent(order)
+                if yggdryl::graph::Operation::get_ordqty(order) == Some(yggdryl::Decimal::from_int(10_000))
+        ));
         // The book's code digests its events' states, each fed as the `int32`
         // code of its member, and the identities of its two deltas. It moved
         // when every operation's identity fed its `marketdatakind` code in
@@ -1346,8 +1411,30 @@ mod dataset {
         // state: a delta's identity digests the metadata it took. It moved
         // again when a side came to be spelled by its four-letter code: the
         // book's own side, stated as none, feeds `UNKN` where it fed
-        // `UNKNOWN`, while both deltas, `SELL`, kept their identities.
-        assert_eq!(last.get_currhashcode(), 7_372_418_038_390_061_154);
+        // `UNKNOWN`, while both deltas, `SELL`, kept their identities. It
+        // moved again when a sided element's price and quantity came to
+        // quote its side - a seller's ask - an order to state its type and
+        // what it ordered, and its quantity to be what it has left open
+        // rather than what it ordered: each delta digests the
+        // `marketdatatype` its `OrdType(40)` reads and the `ordqty` its
+        // `OrderQty(38)` states, and quotes no quantity it does not know. It
+        // moved again when every identifier list became one shape: each delta
+        // digests its alternate identifiers, its parties and its security's
+        // identifiers as type, source and value under `altids`, `parties` and
+        // `secaltids`, where it fed a key and a value under `altids`,
+        // `accountids` and `securityids`. It moved again when an identifier
+        // became a source, a type and a value of lower-case words: each delta
+        // digests them in that order under `identifiers`, `partyids` and
+        // `securityids`, where it fed a type, a source and a value under
+        // `altids`, `parties` and `secaltids`. It moved again when every
+        // stored cross code took the codes of its kind and its side - each
+        // delta's reads `10:2:...`, so its identity does, and the book's own
+        // reads `3:0:2454` - and when a market element's identifiers came to
+        // be held in the order of their keys as `src:type` spells them, the
+        // bridge's own keys among them: each delta digests the identifiers
+        // its `ParentOrderID`, `OMSUserID` and `OMSInstrumentID` keys state
+        // under the sources their names spell.
+        assert_eq!(last.get_currhashcode(), 1_642_488_774_851_967_775);
 
         // No leaf keys a typed fact.
         for operation in &operations {
@@ -1359,25 +1446,66 @@ mod dataset {
                 );
             }
         }
-        // The bridge's own namespaced keys ride every leaf of the message
-        // that states them, as the message holds them: 73 of them over the
-        // eighteen leaves - a fill's report and the execution split off it
+        // The bridge's own keys ride every leaf of the message that states
+        // them, as the message holds them: 83 of them over the eighteen
+        // leaves - a fill's report and the execution split off it
         // each carry the 33 the fill's leaf alone carried before the split,
-        // the seven of one twin each the window yields once, and the trade
-        // capture's execution the seven its trade states.
+        // the seven of one twin each the window yields once, the trade
+        // capture's execution the seven its trade states, and the two
+        // `ULLINK.INSTRUMENTID` keys no crate field takes any more, and the
+        // eight aliases a dictionary field holding another value demoted -
+        // `MARKETORDERID`, `OMSDEALERORDERID`, `OMSDEALERACCOUNT` and
+        // `ULTRADERCLORDID`, twice each - which the message keeps in its
+        // metadata rather than as children. A key naming an identifier is read into the set its
+        // type belongs to and leaves the leaf's metadata with it, where the
+        // set holds the key's own value under the source its name spells:
+        // 35 of the 83 are such keys - `TECH.CLIENTID`, `TECH.ACCOUNT`,
+        // `FIRM.ORIG.CLIENTID`, `ULLINK.CLIENTID`, `CLIENT.CLIENTID`,
+        // `ULLINK.INSTRUMENTID` and the eight demoted aliases - and every
+        // other key stays.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
             .collect();
-        let mut carried = 0;
+        fn sets(operation: &MarketData) -> [&yggdryl::Identifiers; 3] {
+            use yggdryl::graph::Operation;
+            match operation {
+                MarketData::OrderEvent(held) => [
+                    held.get_securityids(),
+                    held.get_identifiers(),
+                    held.get_partyids(),
+                ],
+                MarketData::ExecutionEvent(held) => [
+                    held.get_securityids(),
+                    held.get_identifiers(),
+                    held.get_partyids(),
+                ],
+                other => panic!("an order or a fill, got {}", other.kind().as_str()),
+            }
+        }
+        let (mut carried, mut lifted) = (0, 0);
         for operation in &operations {
             let message = by_sources[operation.get_srcuuids()];
             for (key, value) in message.get_metadata() {
-                assert_eq!(operation.get_metadata().get(key), Some(value), "{key}");
-                carried += 1;
+                if operation.get_metadata().get(key) == Some(value) {
+                    carried += 1;
+                    continue;
+                }
+                let id = yggdryl::Identifier::from_key(key, value.as_str())
+                    .unwrap_or_else(|| panic!("{key} is neither carried nor an identifier"));
+                let [securityids, identifiers, partyids] = sets(operation);
+                let set = if id.kind().is_security() {
+                    securityids
+                } else if id.kind().is_party() {
+                    partyids
+                } else {
+                    identifiers
+                };
+                assert_eq!(set.get_from(id.src(), id.kind()), Some(id.value()), "{key}");
+                lifted += 1;
             }
         }
-        assert_eq!(carried, 73);
+        assert_eq!((carried, lifted), (48, 35));
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1385,17 +1513,20 @@ mod dataset {
                 .expect("a line of the capture")
                 .get_curruuid()
         };
-        // The fill line 105 carries is one of them.
+        // The fill line 105 carries is one of them: its `TECH.CLIENTID` is a
+        // party of the source `tech`, and no key of its metadata.
         let fill = operations
             .iter()
             .find(|operation| operation.get_srcuuids().contains(&of_line(105)))
             .expect("the fill line 105 carries");
         assert_eq!(
-            fill.get_metadata()
-                .get("tech.clientid")
-                .map(|held| held.as_str()),
+            sets(fill)[2].get_from(
+                &"tech".parse::<yggdryl::IdSource>().unwrap(),
+                &yggdryl::IdType::ClientId
+            ),
             Some("OMSX1")
         );
+        assert!(!fill.get_metadata().contains_key("tech.clientid"));
         // The trade line 112 carries keeps the metal's location its bridge
         // stated, on the message, and answers no leaf of its own: its fill
         // is the execution its parse split off, which carries the location
@@ -1733,33 +1864,45 @@ mod pipeline {
             .map(|held| held.name().as_str())
             .collect();
 
-        // The text reader's own columns lead the row - what the line was
+        // The columns every generated schema opens with lead the row, the
+        // text reader's own columns follow them - what the line was
         // classified as, the line itself and the header's captures - and the
-        // fixed columns follow. A capture whose folded name a fixed column
-        // takes is not carried in front, it fills that column: the reader's
-        // `msgtype`, and the header's `bridgesessionid`, `msgctxid` and
-        // `msgseqnum`, each named for the field it fills. What is left in
-        // front is what no column is spelled for - the thread that wrote the
-        // line and its level; the clock the bridge printed dates the line, so
-        // it is the line's `currunix` and leads no column of its own. Where
-        // the line came out of, which line it was and when it was written lead
-        // nothing any more: they are `crosscode`, `seqnum` and `currunix`, the
-        // event columns both halves already open with, so they stand in the
-        // fixed band with the rest of them.
+        // message's own columns follow those. A capture whose folded name a
+        // fixed column takes is not carried, it fills that column: the
+        // reader's `msgtype`, and the header's `bridgesessionid`, `msgctxid`
+        // and `msgseqnum`, each named for the field it fills. What is left
+        // is what no column is spelled for - the thread that wrote the line
+        // and its level; the clock the bridge printed dates the line, so it
+        // is the line's `currunix` and leads no column of its own. Where the
+        // line came out of, which line it was and when it was written are
+        // `crosscode`, `seqnum` and `currunix`, the columns both halves open
+        // with.
+        let shared = names
+            .iter()
+            .position(|held| *held == "partyids")
+            .expect("the shared columns")
+            + 1;
+        assert_eq!(names[0], "curruuid", "{names:?}");
         assert_eq!(
-            &names[..5],
-            ["mimetype", "body", "msgthreadid", "loglevel", "currunix"],
+            &names[shared..shared + 5],
+            ["mimetype", "body", "msgthreadid", "loglevel", "sendingtime"],
             "{names:?}"
         );
-        // The crate's own clocks open the fixed columns; the standard header
-        // follows them.
         let at = |name: &str| {
             names
                 .iter()
                 .position(|held| *held == name)
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
-        for pair in ["loglevel", "currunix", "creaunix", "prevunix"].windows(2) {
+        for pair in [
+            "currunix",
+            "creaunix",
+            "prevunix",
+            "loglevel",
+            "beginstring",
+        ]
+        .windows(2)
+        {
             assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
         }
         let header = names
@@ -1768,7 +1911,7 @@ mod pipeline {
             .expect("the header opens");
         assert_eq!(
             &names[header..header + 4],
-            ["beginstring", "msgtype", "msgcat", "msgseqnum"],
+            ["beginstring", "msgtype", "msgseqnum", "sendercompid"],
             "{names:?}"
         );
         for once in [
@@ -2317,10 +2460,11 @@ mod pipeline {
                     .expect("a tag:name key")
             })
             .collect();
-        // This projection leaves ExecBroker, GrossTradeAmt and CurrencyCodeSource
-        // in the residual record; its other content fields have typed columns.
+        // This projection leaves ExecBroker, GrossTradeAmt, CurrencyCodeSource
+        // and the `Parties(453)` group the fixed row projects no column for in
+        // the residual record; its other content fields have typed columns.
         // The map is sorted by its `tag:name` keys as text.
-        assert_eq!(recorded, [2897, 381, 76]);
+        assert_eq!(recorded, [2897, 381, 453, 76]);
         for filled in [
             34,
             yggdryl::MSGCTXID_TAG_NAME.0,

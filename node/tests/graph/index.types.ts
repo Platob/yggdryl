@@ -13,6 +13,7 @@ import {
   type CandleOptions,
   type CandleReading,
   type ExecutionEvent,
+  type Identifiers,
   type MarketData,
   type MarketItem,
   type Order,
@@ -43,7 +44,9 @@ const seqnum: number = event.seqnum
 const creaunix: bigint | null = event.creaunix
 const price: string | null = event.price
 const side: string = event.side
-const altids: Record<string, string> = event.altids
+const identifiers: Identifiers = event.identifiers
+const partyids: Identifiers = event.partyids
+const securityids: Identifiers = event.securityids
 const bidpx: string | null = event.bidpx
 const bidccy: string | null = event.bidccy
 const isincode: string | null = event.isincode
@@ -118,10 +121,10 @@ void new graph.CandleIterator(books)
 void new graph.CandleIterator(items, '1m')
 
 // A named view is one plan, applied to whatever `BatchReader.from` takes.
-const viewPlan: Plan = graph.MarketData.plan('orders', ["securityids['ISIN'] as isin", new FieldPath('ticker')])
-const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], 'C-1')
+const viewPlan: Plan = graph.MarketData.plan('orders', ["identifiers['fix:clordid'].value as clordid", new FieldPath('ticker')])
+const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], '10:1:C-1')
 const view: BatchReader = graph.MarketData.applyView('trades', reader)
-const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['ISIN'] as isin"])
+const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['base:isin'].value as isin"])
 const marketViews: readonly string[] = enums.marketViews
 // @ts-expect-error a lift is a path or its text
 graph.MarketData.plan('orders', [1])
@@ -143,7 +146,9 @@ void seqnum
 void creaunix
 void price
 void side
-void altids
+void identifiers
+void partyids
+void securityids
 void [bidpx, bidccy, isincode, fxrates, marketdatakind]
 void kind
 void followed

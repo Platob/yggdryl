@@ -205,10 +205,10 @@ impl Mapped {
         // Double, so a sequence of appends remaps a logarithmic number of times.
         let capacity = needed.max(current * 2).max(MINIMUM_GROWTH);
         // Windows cannot resize a file with a live mapped section.
-        if let Some(mapping) = self.mapping.take() {
-            if self.dirty {
-                mapping.flush()?;
-            }
+        if let Some(mapping) = self.mapping.take()
+            && self.dirty
+        {
+            mapping.flush()?;
         }
         self.file.set_len(capacity)?;
         self.dirty = true;
@@ -353,10 +353,10 @@ impl IOBase for LocalFile {
     }
 
     fn size(&self) -> u64 {
-        if let Ok(state) = self.state.lock() {
-            if let Some(mapped) = state.as_ref() {
-                return mapped.size;
-            }
+        if let Ok(state) = self.state.lock()
+            && let Some(mapped) = state.as_ref()
+        {
+            return mapped.size;
         }
         // Not materialized: a missing file is empty, an existing one reports
         // its on-disk length without mapping it.
@@ -500,10 +500,10 @@ impl Drop for LocalFile {
     fn drop(&mut self) {
         // Publish the logical length; a failure here cannot be reported, and
         // callers who care call `flush` explicitly.
-        if let Ok(mut state) = self.state.lock() {
-            if let Some(mapped) = state.as_mut() {
-                let _ = mapped.publish();
-            }
+        if let Ok(mut state) = self.state.lock()
+            && let Some(mapped) = state.as_mut()
+        {
+            let _ = mapped.publish();
         }
     }
 }
