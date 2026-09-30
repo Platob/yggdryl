@@ -2900,7 +2900,7 @@ trips against a store, where each one is a request.
 | whole digest | `read_digest=1` | 65 µs |
 | ranged digest | `read_range_digest=1` | 2.9 µs |
 | length | `size=1` | 9.7 ns |
-| reader drained to the end | `read_all_bytes=1` | 133 µs |
+| reader drained to the end | `read_all_bytes=1 is_container=1` | 133 µs |
 | coding: whole read | `pstream_bytes=1` | 221 µs |
 | coding: decoded length | `pstream_bytes=1` | 116 µs |
 | cache: warm ranged read | none | 184 ns |

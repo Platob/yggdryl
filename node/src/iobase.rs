@@ -1534,18 +1534,15 @@ impl JsIOBase {
     }
 
     /// Copy every byte here into `target`, returning the count.
+    ///
+    /// A container is refused by kind before a byte moves: its stream is its
+    /// leaves end to end, no one value to copy.
     #[napi]
     pub fn copy_into(&self, target: &mut JsIOBase) -> Result<BigInt> {
-        let copied = match (self.bound_location(), target.bound_location()) {
-            (Some(source), Some(target)) => {
-                yggdryl::fs::copy_bound(source, target).map_err(napi_error)?
-            }
-            _ => self
-                .inner
-                .copy_into(&mut target.inner)
-                .map_err(napi_error)?,
-        };
-        Ok(BigInt::from(copied))
+        self.inner
+            .copy_into(&mut target.inner)
+            .map(BigInt::from)
+            .map_err(napi_error)
     }
 
     /// Move this file into `target`, using the backend operation when equal.

@@ -175,17 +175,24 @@ pub trait IOFolder: IOBase {
             return Ok(Vec::new());
         }
         let batch_size = length.min(crate::DEFAULT_STREAM_BATCH_SIZE);
+        let mut stream = self.folder_pstream_bytes(offset, batch_size)?;
         let mut bytes = Vec::new();
-        for chunk in self.folder_pstream_bytes(offset, batch_size)? {
-            let chunk = chunk?;
-            let taken = chunk.len().min(length - bytes.len());
-            bytes.try_reserve(taken).map_err(|error| {
+        // Each read asks for no more than the range still owes, so the stream
+        // never fills a batch out of a leaf past the last byte asked for.
+        while bytes.len() < length {
+            let start = bytes.len();
+            let owed = (length - start).min(batch_size);
+            bytes.try_reserve(owed).map_err(|error| {
                 crate::Error::Io(std::io::Error::other(format!(
                     "cannot grow a container's read: {error}"
                 )))
             })?;
-            bytes.extend_from_slice(&chunk[..taken]);
-            if bytes.len() == length {
+            bytes.resize(start + owed, 0);
+            // Short only at the end, or before a failure the next read
+            // answers: an empty read is the end.
+            let read = stream.read_filled(&mut bytes[start..])?;
+            bytes.truncate(start + read);
+            if read == 0 {
                 break;
             }
         }

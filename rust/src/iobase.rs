@@ -215,7 +215,7 @@ pub(crate) use bytes::rest_of;
 pub use bytes::{Reader, Writer};
 pub(crate) use hierarchy::{container_is_tabular, owned_handle};
 use hierarchy::{descend, no_children};
-pub(crate) use lifecycle::{coding_mime, oversized, reject_container};
+pub(crate) use lifecycle::{coding_mime, not_atomic, oversized, reject_container};
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_onto;

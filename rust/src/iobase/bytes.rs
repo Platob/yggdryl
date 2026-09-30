@@ -145,7 +145,7 @@ macro_rules! delegate_iobase {
             read_digest, read_range_digest, write_all_bytes, append_bytes, applied_codec,
             pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
-            ls, kind, clear, remove, is_atomic, is_tabular, is_io);
+            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io);
     };
 
     // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
@@ -157,7 +157,7 @@ macro_rules! delegate_iobase {
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
-            parent, child_by_path, ls, kind);
+            parent, child_by_path, ls, kind, is_container);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -357,6 +357,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, remove) => {
         fn remove(&mut self, recursive: bool) -> $crate::Result<()> {
             $crate::IOBase::remove(&mut self.$handle, recursive)
+        }
+    };
+
+    (@method $handle:ident, is_container) => {
+        fn is_container(&self) -> bool {
+            $crate::IOBase::is_container(&self.$handle)
         }
     };
 

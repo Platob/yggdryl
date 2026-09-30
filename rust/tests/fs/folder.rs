@@ -157,6 +157,30 @@ mod fs {
     }
 
     #[test]
+    fn a_file_its_store_cannot_size_is_read_to_count_rather_than_passed_by() {
+        use crate::counting_filesystem::counted_folder;
+
+        let (filesystem, folder) = counted_folder("logs");
+        for (name, bytes) in [("a.log", &b"a1\na2\n"[..]), ("b.log", b"b1\n")] {
+            folder
+                .child_by_path(name)
+                .unwrap()
+                .write_all_bytes(bytes)
+                .unwrap();
+        }
+        // A size of zero is what a store answers when it cannot say, so
+        // passing a file by it would shift every later byte: `a.log` is read
+        // to count off the position instead.
+        filesystem.set_sizeless(true);
+        assert_eq!(folder.size(), 0);
+        assert_eq!(
+            chunks(folder.pstream_bytes(4, 2).unwrap()).concat(),
+            b"2\nb1\n"
+        );
+        assert_eq!(folder.read_range_bytes(6, 2).unwrap(), b"b1");
+    }
+
+    #[test]
     fn a_folder_holding_no_files_streams_nothing() {
         // Only a directory, a hidden file and an empty file beneath it.
         let folder = logs(&[("logs/.hidden", b"h\n"), ("logs/sub/empty.log", b"")]);

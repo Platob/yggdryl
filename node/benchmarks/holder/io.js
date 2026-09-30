@@ -80,9 +80,10 @@ benchmark('io/glob_fixed_prefix', () => lake.glob('year=2024/**/*.parquet'))
 benchmark('io/children_where', () => lake.childrenWhere({ year: '2024' }))
 benchmark('io/partitions', () => leaf.partitions)
 benchmark('io/read_leaf_bytes', () => leaf.readBytes())
-// A folder streams its leaves through one core stream the iterator holds: the
-// first chunk costs the listing and one open, the drain one open per leaf.
-benchmark('io/folder_stream_first_chunk', () => lake.pstreamBytes().next())
+// A folder streams its leaves through one core stream the iterator holds: a
+// first chunk inside the first leaf costs the listing and one open, the drain
+// one open per leaf.
+benchmark('io/folder_stream_first_chunk', () => lake.pstreamBytes(0, 4).next())
 benchmark('io/folder_stream_drain', () => {
   let bytes = 0
   for (const chunk of lake.pstreamBytes()) bytes += chunk.length

@@ -9,6 +9,7 @@
 
 use std::any::Any;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use yggdryl::Result;
@@ -22,9 +23,24 @@ use yggdryl::fs::{
 pub struct CountingFileSystem {
     inner: MemoryFileSystem,
     calls: Mutex<BTreeMap<&'static str, usize>>,
+    sizeless: AtomicBool,
 }
 
 impl CountingFileSystem {
+    /// Report every file with no size from here on, as a store that cannot
+    /// size its objects does: a reader must then read a file to count it.
+    pub fn set_sizeless(&self, sizeless: bool) {
+        self.sizeless.store(sizeless, Ordering::Relaxed);
+    }
+
+    /// `info` as this filesystem reports it: without a size when sizeless.
+    fn reported(&self, mut info: FileInfo) -> FileInfo {
+        if self.sizeless.load(Ordering::Relaxed) {
+            info.size = None;
+        }
+        info
+    }
+
     /// The calls made so far, in all.
     pub fn calls(&self) -> usize {
         self.calls.lock().expect("the tally").values().sum()
@@ -91,12 +107,20 @@ impl FileSystem for CountingFileSystem {
 
     fn file_info(&self, path: &str) -> Result<FileInfo> {
         self.count("file_info");
-        self.inner.file_info(path)
+        self.inner.file_info(path).map(|info| self.reported(info))
     }
 
     fn list(&self, selector: &FileSelector) -> FileInfos {
         self.count("list");
-        self.inner.list(selector)
+        let sizeless = self.sizeless.load(Ordering::Relaxed);
+        FileInfos::new(self.inner.list(selector).map(move |info| {
+            info.map(|mut info| {
+                if sizeless {
+                    info.size = None;
+                }
+                info
+            })
+        }))
     }
 
     fn create_dir(&self, path: &str, recursive: bool) -> Result<()> {

@@ -88,12 +88,20 @@ impl<H: IOBase> Coding<H> {
     }
 
     /// Materialize the decoded value, decoding the wrapped bytes once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::NotAtomic`] over a container, whose leaves are
+    /// no one value to hold, or the read or decode failure.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
             let plain = {
+                let mut stream = self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+                if stream.is_container() {
+                    return Err(crate::iobase::not_atomic(&self.handle, "decode"));
+                }
                 let mut plain = Vec::new();
-                self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
-                    .read_to_end(&mut plain)?;
+                stream.read_to_end(&mut plain)?;
                 plain
             };
             self.plain = Some(plain);
@@ -138,6 +146,12 @@ impl<H: IOBase> Coding<H> {
             return self.handle.pstream_bytes(position, batch_size);
         }
         let encoded = self.handle.pstream_bytes(0, window)?;
+        // A container's stream is its leaves, each already decoded by its own
+        // name: there is no one coded value under it to take this coding off.
+        if encoded.is_container() {
+            return ByteStream::from_reader(SkipReader::new(encoded, position), batch_size)
+                .map(ByteStream::with_container);
+        }
         ByteStream::from_reader(
             SkipReader::new(LazyDecoder::new(self.codec, encoded, window), position),
             batch_size,
@@ -161,6 +175,10 @@ impl<H: IOBase> Coding<H> {
     /// Count decoded bytes through one bounded window without retaining them.
     fn streamed_size(&self) -> Result<u64> {
         let mut source = self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+        // A container's size is zero: its leaves are no one value.
+        if source.is_container() {
+            return Ok(0);
+        }
         let mut chunk = vec![0_u8; DEFAULT_STREAM_BATCH_SIZE];
         let mut size = 0_u64;
         loop {
@@ -329,9 +347,13 @@ impl<H: IOBase> IOBase for Coding<H> {
         if buffer.is_empty() {
             return Ok(0);
         }
-        Ok(self
-            .decoded_stream(offset, buffer.len(), Self::positional_window(buffer.len()))?
-            .read(buffer)?)
+        let mut stream =
+            self.decoded_stream(offset, buffer.len(), Self::positional_window(buffer.len()))?;
+        // A container holds no bytes of its own for a position to land in.
+        if stream.is_container() {
+            return Ok(0);
+        }
+        Ok(stream.read(buffer)?)
     }
 
     /// Stream decoded bytes without materializing the decoded value.
@@ -482,8 +504,12 @@ impl<H: IOBase> IOBase for Coding<H> {
 
     fn open(&mut self) -> Result<()> {
         self.handle.open()?;
-        self.decoded()?;
-        Ok(())
+        // A container has no one value to hold open: its leaves are read,
+        // each decoded by its own name, when a stream reaches them.
+        match self.decoded() {
+            Err(crate::Error::NotAtomic { .. }) => Ok(()),
+            result => result.map(drop),
+        }
     }
 
     fn opened(&self) -> bool {

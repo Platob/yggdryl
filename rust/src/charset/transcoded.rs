@@ -153,11 +153,22 @@ impl<H: IOBase> Transcoded<H> {
     }
 
     /// Materialize the decoded value, decoding the wrapped bytes once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::NotAtomic`] over a container, whose leaves are
+    /// no one value to hold, or the read or decode failure.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
-            let mut plain = Vec::new();
-            self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
-                .read_to_end(&mut plain)?;
+            let plain = {
+                let mut stream = self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+                if stream.is_container() {
+                    return Err(crate::iobase::not_atomic(&self.handle, "decode"));
+                }
+                let mut plain = Vec::new();
+                stream.read_to_end(&mut plain)?;
+                plain
+            };
             self.plain = Some(plain);
         }
         self.plain
@@ -197,14 +208,21 @@ impl<H: IOBase> Transcoded<H> {
         }
         let start = self.resume_before(position)?;
         let encoded = self.handle.pstream_bytes(start.source, window)?;
-        ByteStream::from_reader(
+        let container = encoded.is_container();
+        let stream = ByteStream::from_reader(
             SkipReader::new(
                 self.charset
                     .reader(BufReader::with_capacity(window, encoded)),
                 position - start.decoded,
             ),
             batch_size,
-        )
+        )?;
+        // A container's leaves read in this charset stay a container's stream.
+        Ok(if container {
+            stream.with_container()
+        } else {
+            stream
+        })
     }
 
     /// The resume point at or before `position`.
@@ -257,6 +275,10 @@ impl<H: IOBase> Transcoded<H> {
         let mut source = self
             .handle
             .pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?;
+        // A container's size is zero: its leaves are no one value to index.
+        if source.is_container() {
+            return Ok(Resumes { points, size: 0 });
+        }
         let mut chunk = vec![0_u8; DEFAULT_STREAM_BATCH_SIZE];
         let mut text = Vec::with_capacity(DEFAULT_STREAM_BATCH_SIZE);
         let mut size = 0_u64;
@@ -353,9 +375,13 @@ impl<H: IOBase> IOBase for Transcoded<H> {
         if buffer.is_empty() {
             return Ok(0);
         }
-        Ok(self
-            .decoded_stream(offset, buffer.len(), Self::positional_window(buffer.len()))?
-            .read(buffer)?)
+        let mut stream =
+            self.decoded_stream(offset, buffer.len(), Self::positional_window(buffer.len()))?;
+        // A container holds no bytes of its own for a position to land in.
+        if stream.is_container() {
+            return Ok(0);
+        }
+        Ok(stream.read(buffer)?)
     }
 
     /// Stream decoded bytes without materializing the decoded value.
@@ -500,8 +526,12 @@ impl<H: IOBase> IOBase for Transcoded<H> {
 
     fn open(&mut self) -> Result<()> {
         self.handle.open()?;
-        self.decoded()?;
-        Ok(())
+        // A container has no one value to hold open: its leaves are read
+        // when a stream reaches them.
+        match self.decoded() {
+            Err(crate::Error::NotAtomic { .. }) => Ok(()),
+            result => result.map(drop),
+        }
     }
 
     fn opened(&self) -> bool {

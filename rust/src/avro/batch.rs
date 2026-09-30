@@ -2189,6 +2189,9 @@ pub struct Avro<H: IOBase> {
     /// Explicit lifecycle state. An opened empty container has no metadata,
     /// so cache presence cannot truthfully answer this question.
     opened: bool,
+    /// Whether the opened session is over a container, asked once at `open`:
+    /// its leaves answer every dimension ask, so it caches nothing.
+    container: bool,
     /// `Some(None)` is the stable opened-session answer for an empty handle.
     cached_dimensions: OnceLock<Option<AvroDimensions>>,
 }
@@ -2200,6 +2203,7 @@ impl<H: IOBase> Avro<H> {
             handle,
             options: AvroOptions::new(),
             opened: false,
+            container: false,
             cached_dimensions: OnceLock::new(),
         }
     }
@@ -2288,12 +2292,28 @@ impl<H: IOBase> Avro<H> {
     /// answer every dimension ask with no call - and which a container's
     /// session never holds.
     fn warm(&self) -> bool {
-        self.opened && self.cached_dimensions.get().is_some()
+        self.caches() && self.cached_dimensions.get().is_some()
+    }
+
+    /// Whether this session caches what it reads: an opened leaf's does, a
+    /// closed handle's and a container's never do.
+    const fn caches(&self) -> bool {
+        self.opened && !self.container
+    }
+
+    /// Whether a dimension ask goes to the leaves: a container, known from
+    /// `open` in a session and asked of the handle otherwise.
+    fn reads_leaves(&self) -> bool {
+        if self.opened {
+            self.container
+        } else {
+            self.handle.is_container()
+        }
     }
 
     /// Return the opened-session metadata, or a fresh uncached closed answer.
     fn dimensions(&self) -> crate::Result<Option<AvroDimensions>> {
-        if !self.opened {
+        if !self.caches() {
             return read_dimensions(&self.handle, &self.options);
         }
         if let Some(cached) = self.cached_dimensions.get() {
@@ -2310,7 +2330,7 @@ impl<H: IOBase> Avro<H> {
     /// session open. Closed operations never create a cache implicitly.
     fn refresh_dimensions(&mut self) -> crate::Result<()> {
         self.invalidate_dimensions();
-        if self.opened {
+        if self.caches() {
             let loaded = read_dimensions(&self.handle, &self.options)?;
             let _ = self.cached_dimensions.set(loaded);
         }
@@ -2321,7 +2341,7 @@ impl<H: IOBase> Avro<H> {
     /// commit. The original failure must remain the reported failure.
     fn refresh_dimensions_after_error(&mut self) {
         self.invalidate_dimensions();
-        if self.opened {
+        if self.caches() {
             if let Ok(loaded) = read_dimensions(&self.handle, &self.options) {
                 let _ = self.cached_dimensions.set(loaded);
             }
@@ -2345,7 +2365,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        if !self.warm() && self.handle.is_container() {
+        if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
@@ -2358,7 +2378,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if !self.warm() && self.handle.is_container() {
+        if !self.warm() && self.reads_leaves() {
             return Ok(crate::iomedia::container_field(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
@@ -2387,7 +2407,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        if !self.warm() && self.handle.is_container() {
+        if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         if self.opened {
@@ -2460,7 +2480,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
 impl<H: IOBase> IOBase for Avro<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
-        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind);
+        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.invalidate_dimensions();
@@ -2493,7 +2513,8 @@ impl<H: IOBase> IOBase for Avro<H> {
         self.invalidate_dimensions();
         // A container's leaves answer for it on every ask, so its session
         // caches nothing one leaf's dimensions would answer.
-        if !self.handle.is_container() {
+        self.container = self.handle.is_container();
+        if !self.container {
             let dimensions = read_dimensions(&self.handle, &self.options)?;
             let _ = self.cached_dimensions.set(dimensions);
         }
@@ -2509,6 +2530,7 @@ impl<H: IOBase> IOBase for Avro<H> {
     /// Flush the handle and drop the cached dimensions.
     fn close(&mut self) -> crate::Result<()> {
         self.opened = false;
+        self.container = false;
         self.invalidate_dimensions();
         self.handle.close()
     }
@@ -2521,7 +2543,7 @@ impl<H: IOBase> IOBase for Avro<H> {
     fn clear(&mut self) -> crate::Result<()> {
         self.invalidate_dimensions();
         let result = self.handle.clear();
-        if self.opened {
+        if self.caches() {
             if result.is_ok() {
                 let _ = self.cached_dimensions.set(None);
             } else {

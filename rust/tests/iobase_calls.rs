@@ -270,6 +270,35 @@ fn a_metadata_question_is_one_call_and_names_what_it_asks() {
 }
 
 #[test]
+fn a_wrapper_asks_the_container_question_rather_than_the_kind() {
+    use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+
+    // A leaf answers whether it is a container for free where its kind is a
+    // request - a store's `HEAD` - so every wrapper forwards the question
+    // rather than deriving it from the kind.
+    let buffered = Buffered::new(
+        source(&payload(64), "file:///lake/part.bin"),
+        BufferedOptions::default(),
+    );
+    let calls = Arc::clone(buffered.handle().calls());
+    costs("through a page cache", &calls, "is_container=1", || {
+        assert!(!buffered.is_container());
+    });
+
+    let cursor = yggdryl::Cursor::new(source(&payload(64), "file:///lake/part.bin"));
+    let calls = Arc::clone(cursor.handle().calls());
+    costs("through a cursor", &calls, "is_container=1", || {
+        assert!(!cursor.is_container());
+    });
+
+    let text = yggdryl::text::Text::new(source(b"AAPL\n", "file:///lake/part.txt"));
+    let calls = Arc::clone(text.handle().calls());
+    costs("through the text medium", &calls, "is_container=1", || {
+        assert!(!text.is_container());
+    });
+}
+
+#[test]
 fn draining_through_a_std_reader_is_one_call_not_one_per_doubling() {
     use std::io::Read;
 
@@ -575,6 +604,31 @@ fn streaming_a_folder_is_one_listing_and_one_open_per_file_it_reads() {
         }),
         "none",
         "an empty range"
+    );
+
+    // A range wider than one batch still asks each batch for no more than it
+    // owes, so the last batch ending inside the first file opens no second.
+    let (filesystem, folder) = counted_folder("wide");
+    let wide = payload(100_000);
+    folder
+        .child_by_path("part-0.log")
+        .expect("a child")
+        .write_all_bytes(&wide)
+        .expect("a write");
+    folder
+        .child_by_path("part-1.log")
+        .expect("a child")
+        .write_all_bytes(LINE)
+        .expect("a write");
+    assert_eq!(
+        filesystem.costs(|| {
+            assert_eq!(
+                folder.read_range_bytes(0, wide.len()).expect("a range"),
+                wide
+            );
+        }),
+        "file_info=1 list=1 open_input_stream=1",
+        "a range wider than a batch, inside the first file"
     );
 }
 

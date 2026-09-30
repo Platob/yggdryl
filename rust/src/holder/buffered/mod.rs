@@ -496,7 +496,7 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // the `clear`/`remove` pair - a cache that outlived either would answer a
     // later read with bytes that are gone.
     crate::delegate_iobase!(handle: pstream_bytes, size, capacity, reserve, uri, url, bound_location,
-        mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_atomic,
+        mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container, is_atomic,
         is_tabular);
 
     /// Serve the range from the pages holding it, fetching what is missing.
