@@ -11,7 +11,7 @@
 | `BookTable` | one served table: `name()` (what every route's `table` parameter states) and `holder()` (the location the books are read from) | `Debug` | - |
 | `BookQuery` | one question about one ticker's books: `table`, `ticker`, `from`, `to` (nanoseconds UTC, `to` exclusive), `timezone`, `interval` (`None` a minute in `timezone`), `side` (`None` both); `from_parameters(&Parameters)` reads it off a query string, `candle_options()` answers how the candles are bucketed | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | - |
 
-All in `graph::serve`, under the `http` feature, re-exported as `yggdryl::graph::{BookQuery, BookService, BookServiceOptions, BookTable}`. A table is any record location a [`Holder`](../holder/index.md#handles) reads books from - an Iceberg folder (the `iceberg` feature), an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it, `marketdatakind = 'BOOK'`, the ticker and the instants pushed into the location's own [record options](../holder/index.md#column-pushdown), so a store that prunes on them prunes; the `BOOK` rows come back as `BookEvent`s through [`MarketData::from_arrow_reader`](market-data.md#arrow), sorted by their instant. Where the location declares no field, the read declares the [`marketdata` row](market-data.md#columns): a CSV leaf, whose cells state no nested type, reads them as the row types them, and an empty or absent store - a zero-byte leaf, a file removed while serving - is the empty reading, no ticker listed and every ticker a `404`, rather than a failure. Nothing is cached: every request reads the table as it stands.
+All in `graph::serve`, under the `http` feature, re-exported as `yggdryl::graph::{BookQuery, BookService, BookServiceOptions, BookTable}`. A table is any record location a [`Holder`](../holder/index.md#handles) reads books from - an Iceberg folder (the `iceberg` feature), an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it, `marketdatakind = 'BOOK'`, the ticker and the instants pushed into the location's own [record options](../holder/index.md#column-pushdown), so a store that prunes on them prunes; the `BOOK` rows come back as `BookEvent`s through [`MarketData::from_arrow_reader`](market-data.md#arrow), sorted by their instant. Where the location declares no field, the read declares the [`marketdata` row](market-data.md#columns): a CSV leaf, whose cells state no nested type, reads them as the row types them, and an empty or absent store - a zero-byte leaf, a file removed while serving, a folder holding no leaf or not there yet - is the empty reading, no ticker listed and every ticker a `404`, rather than a failure; a folder whose leaves no record encoding reads keeps that refusal, a `500`. Nothing is cached: every request reads the table as it stands.
 
 ## The command
 
@@ -24,7 +24,7 @@ yggdryl market serve [TABLE...] [--bind 127.0.0.1:8080] [--path /] [--snapshot-m
 
 | Argument | Default | States |
 | --- | --- | --- |
-| `TABLE` | none | a table to serve, `name=location` or a location alone named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder; a `://` URL goes through `Holder::from_url`. A path where nothing is yet is taken as a folder - the one a capture makes a table of. Two tables of one name are refused, since a route's `table` names one |
+| `TABLE` | none | a table to serve, `name=location` or a location alone named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder; a `://` URL goes through `Holder::from_url`. A path where nothing is yet is taken as a folder - the one a capture makes a table of; served with no capture, it is a table holding no book, and nothing is created. Two tables of one name are refused, since a route's `table` names one |
 | `--bind` | `127.0.0.1:8080` | the address to listen on; port `0` takes a free one |
 | `--path` | `/` | the path the display answers under: its page is `<path>/index.html`, which `<path>` itself sends a browser to, and the routes stand under `<path>/api` |
 | `--snapshot-millis` | `0` | the [grid](book.md#book-fold) a capture's books are folded on before they land, milliseconds: a positive one adds the whole live book at every tick the capture crosses, zero only the books its instants touch |
@@ -99,7 +99,7 @@ The display is vanilla ES modules with no framework, no CDN and no build step: e
 
 The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears the hover, and a live readout beside the canvas states the hovered candle in text; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error.
 
-`node/book.js`, CommonJS, is the package's door to all of it:
+`node/book.js`, CommonJS and declared for TypeScript by `node/book.d.ts`, is the package's door to all of it, `require('yggdryl/book')`:
 
 ```text
 book.assets                    // the absolute `book/` folder
