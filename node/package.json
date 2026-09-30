@@ -18,6 +18,7 @@
       "default": "./binding.js"
     },
     "./book": {
+      "types": "./book.d.ts",
       "require": "./book.js",
       "default": "./book.js"
     }
@@ -28,6 +29,7 @@
     "binding.js",
     "binding.d.ts",
     "book.js",
+    "book.d.ts",
     "book/",
     "defaults.js",
     "fields.js",
