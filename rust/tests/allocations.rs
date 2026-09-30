@@ -29,8 +29,9 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    BookEvent, BookIterator, BookRef, Element, Event, EventColumn, ExecutionEvent, Market,
-    MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent, TradeEvent,
+    BookEvent, BookIterator, BookRef, CandleIterator, CandleOptions, Element, Event, EventColumn,
+    ExecutionEvent, Market, MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent,
+    TradeEvent,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -919,6 +920,68 @@ fn trade_construction_does_not_allocate_per_execution() {
         "constructing 128 executions allocated {deep_allocations} times but one execution allocated {shallow_allocations} times"
     );
     black_box((shallow, deep));
+}
+
+/// `count` books of `ALLOC` inside one minute, each carrying one fill of
+/// 5 whose `EXECID` is `exec(index)` - thirty-odd bytes, past `SmolStr`'s
+/// inline width, so holding one the fold has not seen allocates.
+fn allocation_candle_books(count: usize, exec: impl Fn(usize) -> String) -> Vec<BookEvent> {
+    (0..count)
+        .map(|index| {
+            let unix = i64::try_from(index).expect("a small corpus") + 1;
+            let mut fill = ExecutionEvent::at(unix);
+            fill.set_crosscode(format!("ALLOC-FILL-{index:04}"));
+            fill.set_ticker(Some(SmolStr::new("ALLOC")));
+            fill.set_side(Side::read("Buy").expect("the shipped buy side"));
+            fill.set_lastqty(Some(Decimal::from_int(5)));
+            fill.set_state(State::read("Filled").expect("the shipped filled state"));
+            assert!(fill.insert_altid("EXECID", &exec(index)).unwrap());
+            fill.finalize();
+            let mut book = BookEvent::new(unix, "ALLOC");
+            book.add_operations([MarketData::from(fill)])
+                .expect("one execution");
+            book
+        })
+        .collect()
+}
+
+/// What folding `books` into minute candles allocates, the one candle it
+/// answers included, and that candle's volume.
+fn allocation_candle_fold(books: Vec<BookEvent>) -> (usize, Decimal) {
+    let options = CandleOptions::from_spelling("1m").expect("a shipped spelling");
+    let (allocations, candles) = counted(|| {
+        CandleIterator::new(books.into_iter().map(Ok), options)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("a sorted stream")
+    });
+    assert_eq!(candles.len(), 1, "one bucket, one cross code");
+    (allocations, candles[0].volume)
+}
+
+#[test]
+fn a_candle_fold_allocates_per_trade_and_never_per_statement() {
+    // Every book restates one fill: its name is looked up borrowed, so a
+    // hundred and twenty-eight statements cost what one does.
+    let restated = |_: usize| "ALLOC-EXECUTION-IDENTIFIER-00000000".to_owned();
+    let (one, volume) = allocation_candle_fold(allocation_candle_books(1, restated));
+    assert_eq!(volume, Decimal::from_int(5));
+    let (many, volume) = allocation_candle_fold(allocation_candle_books(128, restated));
+    assert_eq!(volume, Decimal::from_int(5), "one trade, counted once");
+    assert_eq!(
+        many, one,
+        "128 statements of one trade allocated {many} times, one statement {one}"
+    );
+
+    // Every book states a fill of its own: each new name is held once, and
+    // the maps and slots grow by doubling - a logarithm of the trades.
+    let fresh = |index: usize| format!("ALLOC-EXECUTION-IDENTIFIER-{index:08}");
+    let (one, _) = allocation_candle_fold(allocation_candle_books(1, fresh));
+    let (many, volume) = allocation_candle_fold(allocation_candle_books(128, fresh));
+    assert_eq!(volume, Decimal::from_int(640), "128 trades of 5");
+    assert!(
+        many >= one + 127 && many <= one + 127 + 32,
+        "128 trades allocated {many} times where one trade allocated {one}"
+    );
 }
 
 fn allocation_book_operation(

@@ -51,7 +51,8 @@ fn quote(
     MarketData::from(quote)
 }
 
-/// One finalized execution of `ticker` going by `code`.
+/// One finalized execution of `ticker` going by `code`: an order of
+/// `quantity` filled whole, so the fill's last quantity is that too.
 fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> MarketData {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
@@ -60,7 +61,9 @@ fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> 
     order.set_price(Some("101".parse().unwrap()));
     order.set_quantity(Some(Decimal::from_int(quantity)));
     order.set_state(State::read("Filled").unwrap());
-    let mut execution = MarketData::from(ExecutionEvent::from(&order));
+    let mut fill = ExecutionEvent::from(&order);
+    fill.set_lastqty(Some(Decimal::from_int(quantity)));
+    let mut execution = MarketData::from(fill);
     execution.finalize();
     execution
 }

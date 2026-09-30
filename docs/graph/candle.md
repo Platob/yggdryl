@@ -34,7 +34,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 | Key | Rule |
 | --- | --- |
 | Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_currunix`; a regression is refused at `$.book.currunix` (`expected an instant at or after 2000, got 1000`), a `ValueError` in Python and an `Error` in JavaScript. The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order`, a `TypeError` in Python |
-| Buckets | the candles of a bucket are emitted, in cross-code order, when the stream moves past the bucket and at the stream's end; an empty bucket yields no candle. The open bucket holds one fold per cross code, each with one entry per trade its books reported, until it closes |
+| Buckets | the candles of a bucket are emitted, in cross-code order, when the stream moves past the bucket and at the stream's end; an empty bucket yields no candle. The open bucket holds one fold per cross code, each with the trades its books reported, until it closes; the trades a closed bucket counted are held, per cross code, until the bucket after it closes |
 | Failure | a source error, a regression, a range refusal or a volume past `decimal` ends the walk: the candles of every bucket the stream moved past - the refused book's own step included - are emitted before it, the open bucket is dropped rather than emitted incomplete, the error is the last item, and the iterator fuses |
 | `crosscode`, `ticker` | the book's [`get_crosscode`](market.md#sides-and-cross-codes) - the ticker, else the `{miccode}:{cficode}` key - and the first book's `get_ticker`, null where it states none |
 | `bid`, `ask` | over [`best_price(Side::Buy)`](book.md#limits) and `best_price(Side::Sell)` of every book that states one: the first opens the reading, each later one moves the close and the high or low; `None` where no book of the bucket stated one |
@@ -45,15 +45,16 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 
 ## Volume
 
-`volume` is the exact sum, over the trades a candle's executions report, of the quantity each traded - each trade counted once however many of its executions the books carried.
+`volume` is the exact sum, over the trades a candle's executions report, of the quantity each traded - each trade counted once within the bucket however many of its executions the books carried.
 
 | Key | Rule |
 | --- | --- |
-| Quantity | an execution's `Market::get_lastqty` - what its fill traded - else its `get_quantity`; one stating neither adds nothing. A fill of `235` out of an order of `300` traded `235` |
-| Trade | the one the execution's [`altids`](operation.md) name under `TRADEID` - FIX `TradeID(1003)`, which every side a trade report's parse splits off carries where the report states one - else the execution they name under `EXECID` - `ExecID(17)`, which every delivery of one fill carries - else the base of its cross code, which the two sides of one identifier share (`BUYS:X`, `SELL:X`). A `TRADEID` and an `EXECID` spelled alike name two trades. `TRDMATCHID` names none: FIX assigns `TrdMatchID(880)` to a match event, which may result in several trades |
-| Once | a trade counts at the largest quantity any of its executions states: its first statement adds its quantity, a later one what it states past the largest before it, any other nothing - so the two sides of one trade and a fill delivered twice count once, and a buyer's `100` against sellers of `60` and `40` counts `100` whichever book states it first |
-| Apart | executions naming nothing in common are trades of their own, even at one instant, price and quantity: a [`TradeEvent`](trade.md) a book folds lists its sides as its executions, so it counts once where its sides name one `TRADEID` or share a base code, and once per side otherwise |
-| Bucket | a candle knows the trades of its own bucket: one stated again in a later bucket counts there too |
+| Quantity | an execution's `Market::get_lastqty` - what its fill traded; one stating none adds nothing, whatever its order's `get_quantity` states. A fill of `235` out of an order of `300` traded `235` |
+| Names | what the execution's [`altids`](operation.md) state under `TRADEID` - FIX `TradeID(1003)` - `TRADEREPORTID` - `TradeReportID(571)`, which every side a trade report's parse splits off carries - `TVTIC` - a venue's transaction code, `RegulatoryTradeID(1903)` of `RegulatoryTradeIDType(1906)` `5`, which every side of one venue trade states - and `EXECID` - `ExecID(17)`, which every delivery of one fill carries, and on a side split off a trade report its `SideExecID(1427)`. Each is a kind of name of its own, so a `TRADEID` and an `EXECID` spelled alike name two trades. An execution stating none of them is named by the base of its cross code, which the two sides of one identifier share (`BUYS:X`, `SELL:X`). `TRDMATCHID` names none: FIX assigns `TrdMatchID(880)` to a match event, which may result in several trades |
+| Trade | executions sharing a name report one trade, and so do the trades one execution names together: a delivery naming the fill's `EXECID` and the trade's `TRADEID` and a delivery naming the `EXECID` alone are one trade, and so are a trade report's two sides, each under its own `SideExecID` and the report's `TradeReportID`. Two trades stating different `TRADEID`s, or different `TVTIC`s, stay two whatever else they share, and an execution whose names reach two such trades joins the first its names reach - `TRADEID` first, `EXECID` last - that states no other `TRADEID` or `TVTIC` than it does |
+| Once | a trade counts at the largest last quantity any of its executions states: its first statement adds its last quantity, a later one what it states past the largest counted before it, any other nothing - so the two sides of one trade and a fill delivered twice count once, and a buyer's `100` against sellers of `60` and `40` counts `100` whichever book states it first |
+| Apart | executions naming nothing in common are trades of their own, even at one instant, price and quantity: a [`TradeEvent`](trade.md) a book folds lists its sides as its executions, so it counts once where its sides name one trade or share a base code, and once per side otherwise. `ExecID` is unique only per sender and an execution names no session, so two sessions' fills on one book that share an `ExecID` and state no different `TRADEID` or `TVTIC` count as one trade |
+| Bucket | a candle knows the trades its own bucket names and those the bucket just before it named for the same cross code: a trade named again in the next bucket adds there only what it states past what was counted, so one restated bucket after bucket counts once in all; one named again only after a bucket that did not name it - two buckets on, or past a bucket that folded none of the cross code's books - counts again, so the volumes of candles further apart need not add up to what traded |
 
 ## Arrow row
 
@@ -87,7 +88,7 @@ Four books of one minute: one quote a side, restated at each book, and three fil
     ```rust
     use yggdryl::graph::{
         BookIterator, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market, MarketData, Ohlc,
-        OrderEvent, QuoteEvent,
+        QuoteEvent,
     };
     use yggdryl::{Decimal, Side, State};
 
@@ -103,17 +104,17 @@ Four books of one minute: one quote a side, restated at each book, and three fil
         quote.finalize();
         Ok(MarketData::from(quote))
     };
-    let fill = |unix: i64, code: &str, side: Side, quantity: Option<i64>| -> yggdryl::Result<MarketData> {
-        let mut order = OrderEvent::at(unix);
-        order.set_crosscode(code.to_owned());
-        order.set_ticker(Some("ACME".into()));
-        order.set_side(side);
-        order.set_price(Some("100".parse()?));
-        order.set_quantity(quantity.map(Decimal::from_int));
-        order.set_state(State::Filled);
-        let mut execution = MarketData::from(ExecutionEvent::from(&order));
-        execution.finalize();
-        Ok(execution)
+    let fill = |unix: i64, code: &str, side: Side, lastqty: Option<i64>| -> yggdryl::Result<MarketData> {
+        let mut fill = ExecutionEvent::at(unix);
+        fill.set_crosscode(code.to_owned());
+        fill.set_ticker(Some("ACME".into()));
+        fill.set_side(side);
+        fill.set_price(Some("100".parse()?));
+        // What the fill traded.
+        fill.set_lastqty(lastqty.map(Decimal::from_int));
+        fill.set_state(State::Filled);
+        fill.finalize();
+        Ok(MarketData::from(fill))
     };
     let operations = vec![
         quote(10 * SECOND, "B", Side::Buy, "100", 5)?,
@@ -142,9 +143,8 @@ Four books of one minute: one quote a side, restated at each book, and three fil
     assert_eq!(candle.ask, Some(ohlc("103", "103.5", "102.5", "103.5")?));
     assert_eq!(candle.mid, Some(ohlc("101.5", "102.5", "100.75", "102.25")?));
     assert_eq!(candle.spread, Some(ohlc("3", "3.5", "1", "2.5")?));
-    // The touch when the bucket closed, and what traded in it: no fill states
-    // a last quantity, so each counts the quantity it states, and the third
-    // states none and adds nothing.
+    // The touch when the bucket closed, and what traded in it: the first two
+    // fills' last quantities, 4 and 6; the third states none and adds nothing.
     assert_eq!((candle.bidqty, candle.askqty), (Some(Decimal::from_int(8)), Some(Decimal::from_int(9))));
     assert_eq!((candle.books, candle.executions, candle.volume), (4, 3, Decimal::from_int(10)));
     ```
@@ -163,9 +163,10 @@ Four books of one minute: one quote a side, restated at each book, and three fil
             unix, crosscode=code, ticker="ACME", side=side, price=Decimal(price), quantity=quantity, state="NEW"
         )
 
-    def fill(unix: int, code: str, side: str, quantity: int | None) -> graph.ExecutionEvent:
+    def fill(unix: int, code: str, side: str, lastqty: int | None) -> graph.ExecutionEvent:
+        # What the fill traded is its last quantity.
         return graph.ExecutionEvent(
-            unix, crosscode=code, ticker="ACME", side=side, price=Decimal("100"), quantity=quantity, state="FILLED"
+            unix, crosscode=code, ticker="ACME", side=side, price=Decimal("100"), lastqty=lastqty, state="FILLED"
         )
 
     operations = [
@@ -193,9 +194,8 @@ Four books of one minute: one quote a side, restated at each book, and three fil
     assert reading(candle.ask) == (Decimal("103"), Decimal("103.5"), Decimal("102.5"), Decimal("103.5"))
     assert reading(candle.mid) == (Decimal("101.5"), Decimal("102.5"), Decimal("100.75"), Decimal("102.25"))
     assert reading(candle.spread) == (Decimal("3"), Decimal("3.5"), Decimal("1"), Decimal("2.5"))
-    # The touch when the bucket closed, and what traded in it: no fill states
-    # a last quantity, so each counts the quantity it states, and the third
-    # states none and adds nothing.
+    # The touch when the bucket closed, and what traded in it: the first two
+    # fills' last quantities, 4 and 6; the third states none and adds nothing.
     assert candle.bidqty is not None and candle.bidqty.as_py() == Decimal(8)
     assert candle.askqty is not None and candle.askqty.as_py() == Decimal(9)
     assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 3, Decimal(10))
@@ -211,8 +211,9 @@ Four books of one minute: one quote a side, restated at each book, and three fil
     const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, {
       crosscode: code, ticker: 'ACME', side, price, quantity, state: 'NEW',
     })
-    const fill = (unix, code, side, quantity) => new graph.ExecutionEvent(unix, {
-      crosscode: code, ticker: 'ACME', side, price: '100', quantity, state: 'FILLED',
+    // What the fill traded is its last quantity.
+    const fill = (unix, code, side, lastqty) => new graph.ExecutionEvent(unix, {
+      crosscode: code, ticker: 'ACME', side, price: '100', lastqty, state: 'FILLED',
     })
     const operations = [
       quote(10n * SECOND, 'B', 'BUYS', '100', 5),
@@ -237,9 +238,8 @@ Four books of one minute: one quote a side, restated at each book, and three fil
     assert.deepEqual(candle.ask, { open: '103', high: '103.5', low: '102.5', close: '103.5' })
     assert.deepEqual(candle.mid, { open: '101.5', high: '102.5', low: '100.75', close: '102.25' })
     assert.deepEqual(candle.spread, { open: '3', high: '3.5', low: '1', close: '2.5' })
-    // The touch when the bucket closed, and what traded in it: no fill states
-    // a last quantity, so each counts the quantity it states, and the third
-    // states none and adds nothing.
+    // The touch when the bucket closed, and what traded in it: the first two
+    // fills' last quantities, 4 and 6; the third states none and adds nothing.
     assert.deepEqual([candle.bidqty, candle.askqty], ['8', '9'])
     assert.deepEqual([candle.books, candle.executions, candle.volume], [4, 3, '10'])
     ```

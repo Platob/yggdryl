@@ -597,7 +597,8 @@ assert_eq!(last.executions().len(), 1);
 `CandleIterator` folds books sorted by their instant into one `Candle` per
 cross code and bucket: the best bid, the best ask, the mid and the spread each
 an `Ohlc`, the touch when the bucket closed, the books, the executions and
-what they traded - each trade once, at its last quantity. `CandleOptions` is
+what they traded - each trade counted once within the bucket, at the largest
+last quantity any of its executions states. `CandleOptions` is
 the interval and the zone whose wall clock the buckets align to;
 `Candle::field()` is the twenty-five-cell row candles cross as.
 

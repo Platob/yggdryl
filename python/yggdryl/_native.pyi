@@ -8099,7 +8099,7 @@ class Candle:
         """How many executions the books carried, a trade they carried twice counted twice."""
     @property
     def volume(self) -> Scalar:
-        """What traded, as a decimal: each trade once, at its last quantity, else its quantity."""
+        """What traded, as a decimal: each trade counted once within the bucket, at the largest last quantity any of its executions states."""
     @staticmethod
     def field() -> Field:
         """The required struct ``candle`` every candle row is laid out under."""

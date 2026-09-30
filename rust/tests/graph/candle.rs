@@ -51,17 +51,18 @@ fn quote(
     MarketData::from(quote)
 }
 
-/// One finalized execution of `ticker` going by `code`, stating `quantity`
-/// where it is given one.
-fn execution(unix: i64, ticker: &str, code: &str, side: &str, quantity: Option<i64>) -> MarketData {
+/// One finalized fill of `ticker` going by `code`, stating what it traded
+/// as its `lastqty` where it is given one.
+fn execution(unix: i64, ticker: &str, code: &str, side: &str, lastqty: Option<i64>) -> MarketData {
     let mut order = yggdryl::graph::OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
     order.set_ticker(Some(SmolStr::new(ticker)));
     order.set_side(yggdryl::Side::read(side).unwrap());
     order.set_price(Some("100".parse().unwrap()));
-    order.set_quantity(quantity.map(Decimal::from_int));
     order.set_state(yggdryl::State::read("Filled").unwrap());
-    let mut execution = MarketData::from(ExecutionEvent::from(&order));
+    let mut fill = ExecutionEvent::from(&order);
+    fill.set_lastqty(lastqty.map(Decimal::from_int));
+    let mut execution = MarketData::from(fill);
     execution.finalize();
     execution
 }
@@ -337,15 +338,14 @@ fn a_one_sided_book_states_no_mid_or_spread() {
 fn the_volume_is_what_each_fill_traded() {
     // An order of 300 filled 235 - the Holcim fill of the bridge capture -
     // traded 235: its last quantity, never the order's own. A fill stating
-    // no last quantity counts the quantity it states, and one stating
-    // neither adds nothing.
+    // no last quantity adds nothing, whatever quantity its order states.
     assert_eq!(
         traded(vec![
             fill(10 * SECOND, "E1", "Buy", (Some(300), Some(235)), &[]),
             fill(20 * SECOND, "E2", "Buy", (Some(4), None), &[]),
             fill(30 * SECOND, "E3", "Sell", (None, None), &[]),
         ]),
-        [(3, Decimal::from_int(239))]
+        [(3, Decimal::from_int(235))]
     );
 }
 
@@ -380,13 +380,76 @@ fn a_fill_delivered_twice_counts_once() {
     );
     assert_eq!(traded(fills.clone()), [(4, Decimal::from_int(153))]);
 
-    // A candle knows its own bucket's trades: delivered again a minute
-    // later, the fill counts in that minute too.
-    let mut later = fills;
-    later.push(abb(70 * SECOND, "00064703467GBYZ0", 57));
+    // Delivered again in the next minute, the fill adds there only what it
+    // states past what the minute before counted - nothing, or the 3 a
+    // restatement of 60 raises it by - so the two minutes add up to what
+    // traded. Two minutes on, past the bucket just before, it counts again.
+    let again = |unix: i64, lastqty: i64| {
+        let mut later = fills.clone();
+        later.push(abb(unix, "00064703467GBYZ0", lastqty));
+        traded(later)
+    };
     assert_eq!(
-        traded(later),
+        again(70 * SECOND, 57),
+        [(4, Decimal::from_int(153)), (1, Decimal::ZERO)]
+    );
+    assert_eq!(
+        again(70 * SECOND, 60),
+        [(4, Decimal::from_int(153)), (1, Decimal::from_int(3))]
+    );
+    assert_eq!(
+        again(130 * SECOND, 57),
         [(4, Decimal::from_int(153)), (1, Decimal::from_int(57))]
+    );
+    // Restated minute after minute, it counts once in all.
+    let mut every = fills.clone();
+    every.push(abb(70 * SECOND, "00064703467GBYZ0", 57));
+    every.push(abb(130 * SECOND, "00064703467GBYZ0", 57));
+    assert_eq!(
+        traded(every),
+        [
+            (4, Decimal::from_int(153)),
+            (1, Decimal::ZERO),
+            (1, Decimal::ZERO)
+        ]
+    );
+
+    // The capture's two deliveries of the 57 stand 19 milliseconds apart;
+    // across a bucket edge they still count once in all.
+    let edge = |unix: i64| abb(unix, "00064703467GBYZ0", 57);
+    let quarter = CandleOptions::from_spelling("250ms").unwrap();
+    let across = candles(
+        vec![
+            MarketData::from(edge(59_743 * SECOND / 1_000)),
+            MarketData::from(edge(59_762 * SECOND / 1_000)),
+        ],
+        quarter.clone(),
+    );
+    assert_eq!(
+        across
+            .iter()
+            .map(|candle| candle.volume)
+            .collect::<Vec<_>>(),
+        [Decimal::from_int(57), Decimal::ZERO]
+    );
+    // A bucket between them that folds none of this ticker's books still
+    // stands between them: the restatement counts again.
+    let apart = candles(
+        vec![
+            MarketData::from(edge(59_743 * SECOND / 1_000)),
+            MarketData::from(edge(60_262 * SECOND / 1_000)),
+        ],
+        quarter,
+    );
+    assert_eq!(
+        apart
+            .iter()
+            .map(|candle| (candle.start, candle.volume))
+            .collect::<Vec<_>>(),
+        [
+            (59_500 * SECOND / 1_000, Decimal::from_int(57)),
+            (60_250 * SECOND / 1_000, Decimal::from_int(57)),
+        ]
     );
 }
 
@@ -460,6 +523,157 @@ fn the_sides_of_one_trade_count_once() {
             ),
         ]),
         [(2, Decimal::from_int(20))]
+    );
+
+    // A trade report's sides that state no `TradeID` keep its
+    // `TradeReportID`, and a venue's two reports of one trade its
+    // transaction code: each pair is one trade.
+    let named = |side: &str, exec: &str, key: &str, id: &str| {
+        fill(
+            10 * SECOND,
+            exec,
+            side,
+            (None, Some(100)),
+            &[("EXECID", exec), (key, id)],
+        )
+    };
+    assert_eq!(
+        traded(vec![
+            named("Buy", "SX-B", "TRADEREPORTID", "TR-1"),
+            named("Sell", "SX-S", "TRADEREPORTID", "TR-1"),
+        ]),
+        [(2, Decimal::from_int(100))]
+    );
+    assert_eq!(
+        traded(vec![
+            named("Buy", "V-1", "TVTIC", "042K38JAC5817YZV"),
+            named("Sell", "V-2", "TVTIC", "042K38JAC5817YZV"),
+        ]),
+        [(2, Decimal::from_int(100))]
+    );
+}
+
+#[test]
+fn statements_naming_one_trade_differently_count_it_once() {
+    // A delivery stating the fill's `EXECID` and the trade's `TRADEID`, and
+    // one stating the `EXECID` alone: one trade.
+    let stated = |unix: i64, code: &str, lastqty: i64, altids: &[(&str, &str)]| {
+        fill(unix, code, "Buy", (None, Some(lastqty)), altids)
+    };
+    assert_eq!(
+        traded(vec![
+            stated(
+                10 * SECOND,
+                "E-1",
+                57,
+                &[("EXECID", "E-1"), ("TRADEID", "T-1")]
+            ),
+            stated(11 * SECOND, "E-1", 57, &[("EXECID", "E-1")]),
+        ]),
+        [(2, Decimal::from_int(57))]
+    );
+    // Two statements naming nothing in common count twice until a third
+    // names both, which makes them one trade.
+    assert_eq!(
+        traded(vec![
+            stated(10 * SECOND, "E-2", 57, &[("EXECID", "E-2")]),
+            stated(11 * SECOND, "E-3", 57, &[("TRADEID", "T-2")]),
+        ]),
+        [(2, Decimal::from_int(114))]
+    );
+    assert_eq!(
+        traded(vec![
+            stated(10 * SECOND, "E-2", 57, &[("EXECID", "E-2")]),
+            stated(11 * SECOND, "E-3", 57, &[("TRADEID", "T-2")]),
+            stated(
+                12 * SECOND,
+                "E-2",
+                57,
+                &[("EXECID", "E-2"), ("TRADEID", "T-2")]
+            ),
+        ]),
+        [(3, Decimal::from_int(57))]
+    );
+    // Two trades stating different trade identifiers stay two, whatever
+    // identifier they share: a short `ExecID` two sessions both used.
+    assert_eq!(
+        traded(vec![
+            stated(
+                10 * SECOND,
+                "A",
+                10,
+                &[("EXECID", "1705"), ("TRADEID", "T-A")]
+            ),
+            stated(
+                11 * SECOND,
+                "B",
+                20,
+                &[("EXECID", "1705"), ("TRADEID", "T-B")]
+            ),
+        ]),
+        [(2, Decimal::from_int(30))]
+    );
+}
+
+#[test]
+fn a_parsed_trade_report_counts_each_trade_once() {
+    use yggdryl::{FixCodec, FixRegistry};
+
+    // Trade capture reports as the FIX parse splits them - one execution
+    // per side under its `SideExecID(1427)` and the report's
+    // `TradeReportID(571)` - walked, folded into books, then minute candles.
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry =
+        FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(root).unwrap()).unwrap();
+    let codec = FixCodec::new(std::sync::Arc::new(registry));
+    let report = |seq: u32, id: &str, lastqty: u32, sides: &str| {
+        format!(
+            "8=FIX.4.4|35=AE|49=A|56=B|34={seq}|52=20260814-12:00:00.000|571={id}|487=0|150=F|\
+             55=ACME|32={lastqty}|31=10|75=20260814|60=20260814-12:00:00.000|{sides}10=0|"
+        )
+    };
+    let volume = |frames: Vec<String>| {
+        let parsed = frames
+            .iter()
+            .flat_map(|frame| codec.parse_line(frame.as_bytes()).unwrap())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        let walked = codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        let books = BookIterator::new(codec.market_data(walked), 0)
+            .unwrap()
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        CandleIterator::new(
+            books.into_iter().map(Ok),
+            CandleOptions::new(MINUTE).unwrap(),
+        )
+        .map(|candle| {
+            let candle = candle.unwrap();
+            (candle.executions, candle.volume)
+        })
+        .collect::<Vec<_>>()
+    };
+    // Two sides stating no `TradeID(1003)`: one trade of 100.
+    assert_eq!(
+        volume(vec![report(
+            1,
+            "TR-1",
+            100,
+            "552=2|54=1|1427=SX-B|37=OB|54=2|1427=SX-S|37=OS|"
+        )]),
+        [(2, Decimal::from_int(100))]
+    );
+    // Two reports whose one side states only a placeholder `ClOrdID(11)`:
+    // one base code, two trades of 100 and 50.
+    assert_eq!(
+        volume(vec![
+            report(1, "TR-1", 100, "552=1|54=1|11=NOREF|"),
+            report(2, "TR-2", 50, "552=1|54=1|11=NOREF|"),
+        ]),
+        [(2, Decimal::from_int(150))]
     );
 }
 
@@ -849,9 +1063,10 @@ fn a_refused_book_follows_the_candles_of_the_bucket_it_completed() {
         order.set_ticker(Some(SmolStr::new("ACME")));
         order.set_side(yggdryl::Side::Buy);
         order.set_price(Some(Decimal::from_int(100)));
-        order.set_quantity(Some(huge));
         order.set_state(yggdryl::State::read("Filled").unwrap());
-        let mut execution = MarketData::from(ExecutionEvent::from(&order));
+        let mut fill = ExecutionEvent::from(&order);
+        fill.set_lastqty(Some(huge));
+        let mut execution = MarketData::from(fill);
         execution.finalize();
         execution
     };

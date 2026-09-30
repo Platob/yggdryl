@@ -153,11 +153,13 @@ Hold five facts:
     (a `BookIterator`'s are); a regression is refused at `$.book.currunix`.
     One candle per cross code and bucket: `bid`, `ask`, `mid` and `spread`
     each `{open, high, low, close}` over the books that stated one, `bidqty`/
-    `askqty` the last book's touch, `volume` what traded - each trade once, at
-    its executions' `lastqty` (else `quantity`), a trade named by the `TRADEID`
-    altid, else `EXECID`, else the cross code's base, so a trade's two sides
-    and a fill delivered twice count once - and an empty bucket yields no
-    candle.
+    `askqty` the last book's touch, `volume` what traded - each trade counted
+    once within the bucket, at the largest `lastqty` any of its executions
+    states (never the order's `quantity`), a trade named by the `TRADEID`,
+    `TRADEREPORTID`, `TVTIC` and `EXECID` altids its executions state, else
+    by the cross code's base, so a trade's two sides and a fill delivered
+    twice count once, and one stated again in the next bucket adds only what
+    it states past what was counted - and an empty bucket yields no candle.
 
 ## Pitfalls
 

@@ -152,9 +152,12 @@ impl JsCandle {
     }
 
     /// What traded in the bucket, as decimal text: each trade its executions
-    /// report counted once, at the last quantity - else the quantity - it
-    /// traded, a trade being named by `TRADEID`, else `EXECID`, else the
-    /// base of the cross code; `'0'` where nothing traded.
+    /// report counted once within the bucket, at the largest last quantity
+    /// any of its executions states - one stating none adds nothing - a
+    /// trade being named by the `TRADEID`, `TRADEREPORTID`, `TVTIC` and
+    /// `EXECID` its executions state, else by the base of the cross code; a
+    /// trade stated again in the next bucket adds there only what it states
+    /// past what was counted; `'0'` where nothing traded.
     #[napi(getter)]
     pub fn volume(&self) -> String {
         self.inner.volume.to_string()
