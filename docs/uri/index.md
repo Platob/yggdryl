@@ -36,6 +36,7 @@
 | Store endpoint | `store_endpoint()` is the host and explicit port to address, with a virtual-hosted container removed; `is_virtual_hosted()` says whether the container was written into the hostname |
 | Store key | `key()` is the path below the container as spelled - escapes and trailing slash kept, `""` at the root |
 | Store tables | `s3tables:` names an [Amazon S3 Tables](arn.md) table bucket and a table below it. It is a container, so `bucket()` and `key()` read it; it is not an object store, so no byte backend opens it |
+| Handle | An identifier opens what it names. In Rust `Uri` implements [`IOBase`](../holder/index.md) and `IOMedia`, resolved through `locator()` and `Holder::from_url` on the first operation that needs it and kept for the value's life - building one touches nothing, a clone or a changed component starts unresolved - and `Holder::from` takes a `Uri`, `Url`, `Urn` or `Arn` the same way. Python's `IOBase(uri)` and JavaScript's `new IOBase(uri)` route through that one dispatcher. A name lends no `url`: its address is itself. Where the value and the handle share a method name - `media_type`, `set_media_type`, `parent` - a method call reaches the value's, and the handle's is spelled through the trait (`IOBase::media_type(&uri)`) |
 
 ## Use
 
@@ -86,6 +87,68 @@
     assert.equal(uri.query, 'q=1')
     assert.equal(uri.fragment, 'summary')
     assert.equal(uri.fileName, 'report.tar.gz')
+    ```
+
+## As a handle
+
+An identifier is the handle of what it names: the location a URL spells, the path a name resolves to, the object an Amazon S3 ARN maps to. Nothing is touched until an operation needs it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{IOBase, IOKind, Uri, Url};
+
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-uri-as-a-handle");
+    let mut uri = Uri::from_path(root.join("ticks.csv"))?;
+
+    // Nothing was touched, and nothing is there yet.
+    assert_eq!(IOBase::kind(&uri), IOKind::Unknown);
+    uri.write_all_bytes(b"symbol\nAAPL\n")?;
+    assert_eq!(uri.read_all_bytes()?, b"symbol\nAAPL\n");
+    assert_eq!(IOBase::url(&uri), Some(&Url::from_path(root.join("ticks.csv"))?));
+
+    // Every identifier is a holder of what it names, resolved on first use.
+    let held = Holder::from(Url::from_path(root.join("ticks.csv"))?);
+    assert!(matches!(held, Holder::Uri(_)));
+    assert_eq!(held.size(), 12);
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, Url
+
+    url = Url.from_path(pathlib.Path(tempfile.mkdtemp()) / "ticks.csv")
+
+    # The one dispatcher the core opens every location through.
+    handle = IOBase(url)
+    handle.write_bytes(b"symbol\nAAPL\n")
+    assert IOBase(url).read_bytes() == b"symbol\nAAPL\n"
+    assert handle.size() == 12
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, Url } = require('yggdryl')
+
+    const url = Url.fromPath(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'uri-')), 'ticks.csv'))
+
+    // The one dispatcher the core opens every location through.
+    const handle = new IOBase(url)
+    handle.writeText('symbol\nAAPL\n')
+    assert.equal(new IOBase(url).readText(), 'symbol\nAAPL\n')
+    assert.equal(handle.size(), 12)
     ```
 
 ## Canonical on arrival

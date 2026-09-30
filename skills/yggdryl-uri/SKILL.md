@@ -122,6 +122,12 @@ Install and conventions are in `yggdryl`.
 15. **Python wrappers lock on first `hash`.** After `hash(uri)` (a dict key,
     a set member) a setter raises `TypeError`; `copy.copy` gives an unlocked
     copy. `stable_hash()` never locks.
+16. **An identifier is a handle.** Rust's `Uri` implements `IOBase` and
+    `IOMedia` over what it names, resolved through `Holder::from_url` on
+    first use; `Holder::from(uri | url | urn | arn)` holds it the same way.
+    Python `IOBase(uri)` / JavaScript `new IOBase(uri)` open it through that
+    one dispatcher. `uri.parent()` and `uri.media_type()` are the value's;
+    the handle's are `IOBase::parent(&uri)`, `IOBase::media_type(&uri)`.
 
 ## Pitfalls
 

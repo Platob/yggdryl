@@ -25,6 +25,7 @@ fn core_schema_values_are_send_and_sync() {
     assert_send_sync::<Uri>();
     assert_send_sync::<Url>();
     assert_send_sync::<Urn>();
+    assert_send_sync::<yggdryl::holder::Holder>();
 }
 
 mod enums {

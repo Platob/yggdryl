@@ -90,6 +90,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |
 | `Media` | any handle retained behind its record encoding | `media.Ipc`, `media.Parquet`, `media.Avro` |
+| `Uri` | an identifier - `Uri`, `Url`, `Urn`, `Arn` through `Holder::from` - holding what it names, resolved through `Holder::from_url` on first use ([as a handle](../uri/index.md#as-a-handle)) | Rust only; `IOBase(uri)` answers the backend's own class |
 
 The last four own the `Holder` they wrap; `repr` renders that stack outermost first and `into_handle` descends one layer. `into_text`, `into_coded`, `buffered`, `into_media` and `into_declared_media` never stack. JavaScript has one `IOBase` class over the whole enum.
 
