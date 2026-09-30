@@ -476,6 +476,8 @@ impl Holder {
             || *base == crate::MimeType::AVRO
             || *base == crate::MimeType::PLAIN_TEXT
             || *base == crate::MimeType::XMLA
+            || *base == crate::MimeType::CSV
+            || *base == crate::MimeType::TSV
             || *base == crate::MimeType::XLSX
             || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
         if !supported {
@@ -503,6 +505,9 @@ impl Holder {
         }
         if *base == crate::MimeType::XMLA {
             return Self::Media(Box::new(crate::media::Media::xmla(self)));
+        }
+        if *base == crate::MimeType::CSV || *base == crate::MimeType::TSV {
+            return Self::Media(Box::new(crate::media::Media::csv(self)));
         }
         if *base == crate::MimeType::XLSX {
             return Self::Media(Box::new(crate::media::Media::excel(self)));

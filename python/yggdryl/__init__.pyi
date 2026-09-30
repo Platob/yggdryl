@@ -67,6 +67,7 @@ from .holder import (
 )
 from .media import (
     Avro as Avro,
+    Csv as Csv,
     Excel as Excel,
     Ipc as Ipc,
     Media as Media,

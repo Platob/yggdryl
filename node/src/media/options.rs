@@ -5,7 +5,7 @@
 //! media type, which is what [`crate::iobase::JsIOBase::record_options`] reads off
 //! the handle.
 
-use napi::bindgen_prelude::{Buffer, Result};
+use napi::bindgen_prelude::{Buffer, Either, Null, Result};
 use napi_derive::napi;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
@@ -51,6 +51,39 @@ impl JsRecordOptions {
             Some(options) => Ok(options.inner.clone()),
             None => handle.record_options().map_err(napi_error),
         }
+    }
+}
+
+/// A CSV role byte as the one-character string JavaScript spells it.
+fn byte_text(byte: u8) -> String {
+    char::from(byte).to_string()
+}
+
+/// The one byte a CSV role is spelled as: a one-character string whose
+/// character is a byte. Whether that byte may play the role is the core's
+/// judgement, so a non-ASCII byte is handed over for its refusal; text that
+/// is not one such character can reach no byte and is refused here naming
+/// the property.
+fn byte_of(text: &str, name: &str) -> Result<u8> {
+    let mut characters = text.chars();
+    match (characters.next(), characters.next()) {
+        (Some(character), None) => u8::try_from(u32::from(character)).ok(),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        napi_error(format!(
+            "expected one ASCII character for {name}, got {text:?}"
+        ))
+    })
+}
+
+/// The byte an optional CSV role is set to, or `None` where `null` clears
+/// it. `undefined` is an argument not given, never a `null`: the `Either`
+/// refuses it before it reaches here, so nothing is cleared by omission.
+fn optional_byte_of(value: Either<String, Null>, name: &str) -> Result<Option<u8>> {
+    match value {
+        Either::A(text) => byte_of(&text, name).map(Some),
+        Either::B(Null) => Ok(None),
     }
 }
 
@@ -444,19 +477,6 @@ impl JsRecordOptions {
             .map_err(napi_error)
     }
 
-    /// Whether a workbook's first row names its columns, `null` for another
-    /// encoding.
-    #[napi(getter)]
-    pub fn header(&self) -> Option<bool> {
-        self.inner.excel_header()
-    }
-
-    /// State whether the first row names the columns.
-    #[napi(setter)]
-    pub fn set_header(&mut self, header: bool) -> Result<()> {
-        self.inner.set_excel_header(header).map_err(napi_error)
-    }
-
     /// The cells a workbook read or write addresses, `null` for the whole
     /// sheet - or for another encoding.
     #[napi(getter)]
@@ -478,14 +498,6 @@ impl JsRecordOptions {
     pub fn with_sheet(&self, sheet: Option<String>) -> Result<Self> {
         let mut options = self.clone();
         options.set_sheet(sheet)?;
-        Ok(options)
-    }
-
-    /// These options with or without a header row.
-    #[napi]
-    pub fn with_header(&self, header: bool) -> Result<Self> {
-        let mut options = self.clone();
-        options.set_header(header)?;
         Ok(options)
     }
 
@@ -575,6 +587,134 @@ impl JsRecordOptions {
             .collect()
     }
 
+    /// The CSV byte between two cells, as the one-character string it is;
+    /// `null` for another encoding.
+    #[napi(getter)]
+    pub fn separator(&self) -> Option<String> {
+        self.inner.csv_separator().map(byte_text)
+    }
+
+    /// Set the CSV byte between two cells: one ASCII character, neither a
+    /// line break nor a byte another role holds.
+    #[napi(setter)]
+    pub fn set_separator(&mut self, separator: String) -> Result<()> {
+        self.inner
+            .set_csv_separator(byte_of(&separator, "separator")?)
+            .map_err(napi_error)
+    }
+
+    /// The CSV quote byte as a one-character string; `null` where the
+    /// dialect quotes nothing, or for another encoding.
+    #[napi(getter)]
+    pub fn quote(&self) -> Option<String> {
+        self.inner.csv_quote().flatten().map(byte_text)
+    }
+
+    /// Set the CSV quote byte, or clear it with `null` so nothing is quoted
+    /// on write and a quote reads as content; `undefined`, an argument not
+    /// given, clears nothing and is refused.
+    #[napi(setter)]
+    pub fn set_quote(&mut self, quote: Either<String, Null>) -> Result<()> {
+        let quote = optional_byte_of(quote, "quote")?;
+        self.inner.set_csv_quote(quote).map_err(napi_error)
+    }
+
+    /// The CSV escape byte as a one-character string; `null` where a quote
+    /// inside a quoted cell is doubled instead (RFC 4180), or for another
+    /// encoding.
+    #[napi(getter)]
+    pub fn escape(&self) -> Option<String> {
+        self.inner.csv_escape().flatten().map(byte_text)
+    }
+
+    /// Set the CSV escape byte, or clear it with `null`; `undefined` clears
+    /// nothing and is refused.
+    #[napi(setter)]
+    pub fn set_escape(&mut self, escape: Either<String, Null>) -> Result<()> {
+        let escape = optional_byte_of(escape, "escape")?;
+        self.inner.set_csv_escape(escape).map_err(napi_error)
+    }
+
+    /// The CSV comment byte - a record opening with it is skipped - as a
+    /// one-character string; `null` where none is, or for another encoding.
+    #[napi(getter)]
+    pub fn comment(&self) -> Option<String> {
+        self.inner.csv_comment().flatten().map(byte_text)
+    }
+
+    /// Set the CSV comment byte, or clear it with `null`; `undefined` clears
+    /// nothing and is refused.
+    #[napi(setter)]
+    pub fn set_comment(&mut self, comment: Either<String, Null>) -> Result<()> {
+        let comment = optional_byte_of(comment, "comment")?;
+        self.inner.set_csv_comment(comment).map_err(napi_error)
+    }
+
+    /// Whether the first record names the columns - a CSV's first record, a
+    /// workbook's first row; `null` for another encoding.
+    #[napi(getter)]
+    pub fn header(&self) -> Option<bool> {
+        self.inner.header()
+    }
+
+    /// Set whether the first record names the columns: a CSV's first record,
+    /// a workbook's first row.
+    #[napi(setter)]
+    pub fn set_header(&mut self, header: bool) -> Result<()> {
+        self.inner.set_header(header).map_err(napi_error)
+    }
+
+    /// The CSV spellings of an absent value - an unquoted cell spelling one
+    /// is null, a null is written as the first; `null` for another encoding.
+    #[napi(getter)]
+    pub fn null_values(&self) -> Option<Vec<String>> {
+        self.inner
+            .csv_null_values()
+            .map(|spellings| spellings.iter().map(ToString::to_string).collect())
+    }
+
+    /// Set the CSV spellings of an absent value, each listed once.
+    #[napi(setter)]
+    pub fn set_null_values(&mut self, null_values: Vec<String>) -> Result<()> {
+        self.inner
+            .set_csv_null_values(null_values)
+            .map_err(napi_error)
+    }
+
+    /// Whether the CSV drops the blanks around an unquoted cell; `null` for
+    /// another encoding.
+    #[napi(getter)]
+    pub fn trim(&self) -> Option<bool> {
+        self.inner.csv_trim()
+    }
+
+    /// Set whether the CSV drops the blanks around an unquoted cell.
+    #[napi(setter)]
+    pub fn set_trim(&mut self, trim: bool) -> Result<()> {
+        self.inner.set_csv_trim(trim).map_err(napi_error)
+    }
+
+    /// The records a CSV read samples to infer a column's datatype when no
+    /// field is declared; `null` for another encoding.
+    #[napi(getter)]
+    pub fn infer_row_size(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.csv_infer_row_size().map(|rows| rows as f64)
+    }
+
+    /// Set the records a CSV read samples to infer a column's datatype; zero
+    /// is refused.
+    #[napi(setter)]
+    pub fn set_infer_row_size(&mut self, infer_row_size: f64) -> Result<()> {
+        let rows = crate::exact_u64(infer_row_size, "inferRowSize")?;
+        let rows = usize::try_from(rows).map_err(|_| {
+            napi_error(format!(
+                "inferRowSize {rows} exceeds this platform's row-count range"
+            ))
+        })?;
+        self.inner.set_csv_infer_row_size(rows).map_err(napi_error)
+    }
+
     /// Return these options with a different Parquet page compression.
     #[napi]
     pub fn with_compression(&self, compression: String) -> Result<Self> {
@@ -615,6 +755,73 @@ impl JsRecordOptions {
     pub fn with_sync_marker(&self, marker: Option<Buffer>) -> Result<Self> {
         let mut options = self.clone();
         options.set_sync_marker(marker)?;
+        Ok(options)
+    }
+
+    /// Return these options with another CSV byte between two cells.
+    #[napi]
+    pub fn with_separator(&self, separator: String) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_separator(separator)?;
+        Ok(options)
+    }
+
+    /// Return these options with another CSV quote byte, or `null` for none.
+    #[napi]
+    pub fn with_quote(&self, quote: Either<String, Null>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_quote(quote)?;
+        Ok(options)
+    }
+
+    /// Return these options with another CSV escape byte, or `null` for none.
+    #[napi]
+    pub fn with_escape(&self, escape: Either<String, Null>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_escape(escape)?;
+        Ok(options)
+    }
+
+    /// Return these options with another CSV comment byte, or `null` for none.
+    #[napi]
+    pub fn with_comment(&self, comment: Either<String, Null>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_comment(comment)?;
+        Ok(options)
+    }
+
+    /// Return these options with or without a header record: a CSV's first
+    /// record, a workbook's first row.
+    #[napi]
+    pub fn with_header(&self, header: bool) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_header(header)?;
+        Ok(options)
+    }
+
+    /// Return these options with other CSV spellings of an absent value.
+    #[napi]
+    pub fn with_null_values(&self, null_values: Vec<String>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_null_values(null_values)?;
+        Ok(options)
+    }
+
+    /// Return these options trimming, or keeping, the blanks around a CSV
+    /// cell.
+    #[napi]
+    pub fn with_trim(&self, trim: bool) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_trim(trim)?;
+        Ok(options)
+    }
+
+    /// Return these options sampling another number of CSV records to infer
+    /// a column's datatype.
+    #[napi]
+    pub fn with_infer_row_size(&self, infer_row_size: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_infer_row_size(infer_row_size)?;
         Ok(options)
     }
 

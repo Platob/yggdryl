@@ -549,8 +549,8 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
     );
     assert!(message.contains("read_arrow"), "{message}");
     // Any other media type is refused with the encodings alone.
-    let csv = yggdryl::MediaType::new(yggdryl::MimeType::CSV);
-    let message = RecordOptions::for_media_type(&csv).unwrap_err().to_string();
+    let orc = yggdryl::MediaType::new(yggdryl::MimeType::ORC);
+    let message = RecordOptions::for_media_type(&orc).unwrap_err().to_string();
     assert!(!message.contains("document is one value"), "{message}");
     assert!(
         message.contains("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
@@ -733,15 +733,15 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.excel_header(), Some(true));
+    assert_eq!(options.header(), Some(true));
     assert_eq!(options.excel_range(), None);
 
     options.set_excel_sheet(Some("Trades")).unwrap();
-    options.set_excel_header(false).unwrap();
+    options.set_header(false).unwrap();
     let range: yggdryl::excel::CellRange = "B2:D9".parse().unwrap();
     options.set_excel_range(Some(range)).unwrap();
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.excel_header(), Some(false));
+    assert_eq!(options.header(), Some(false));
     assert_eq!(options.excel_range(), Some(range));
     let RecordOptions::Excel(inner) = &options else {
         panic!("an xlsx handle names the workbook encoding");
@@ -798,18 +798,13 @@ fn excel_only_setters_reject_another_inferred_encoding() {
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.excel_header(), None);
+    assert_eq!(options.header(), None);
     assert_eq!(options.excel_range(), None);
     for (error, path, setting) in [
         (
             options.set_excel_sheet(Some("Trades")).unwrap_err(),
             "$.sheet",
             "a worksheet",
-        ),
-        (
-            options.set_excel_header(false).unwrap_err(),
-            "$.header",
-            "a header row",
         ),
         (
             options

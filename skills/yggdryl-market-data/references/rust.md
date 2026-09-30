@@ -592,6 +592,147 @@ assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(),
 assert_eq!(last.executions().len(), 1);
 ```
 
+## Fold books into candles
+
+`CandleIterator` folds books sorted by their instant into one `Candle` per
+cross code and bucket: the best bid, the best ask, the mid and the spread each
+an `Ohlc`, the touch when the bucket closed, the books, the executions and
+their volume. `CandleOptions` is the interval and the zone whose wall clock the
+buckets align to; `Candle::field()` is the twenty-five-cell row candles cross
+as.
+
+```rust
+use yggdryl::graph::{BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, Market, MarketData, QuoteEvent};
+use yggdryl::{ArrowCastOptions, Decimal, Serie, Side, State, Timezone};
+
+// 2023-11-14T22:13:20Z.
+const T: i64 = 1_700_000_000_000_000_000;
+const SECOND: i64 = 1_000_000_000;
+let quote = |unix: i64, code: &str, side: Side, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
+    let mut quote = QuoteEvent::at(unix);
+    quote.set_crosscode(code.to_owned());
+    quote.set_ticker(Some("AAPL".into()));
+    quote.set_side(side);
+    quote.set_price(Some(price.parse()?));
+    quote.set_quantity(Some(Decimal::from_int(quantity)));
+    quote.set_state(State::New);
+    quote.finalize();
+    Ok(MarketData::from(quote))
+};
+let stream = vec![
+    quote(T, "B1", Side::Buy, "189.48", 300)?,
+    quote(T, "A1", Side::Sell, "189.52", 100)?,
+    quote(T + 20 * SECOND, "B2", Side::Buy, "189.50", 200)?,
+    quote(T + 70 * SECOND, "A2", Side::Sell, "189.51", 50)?,
+];
+// Three books: the two quotes at T share one instant.
+let books = || BookIterator::new(stream.clone().into_iter(), 0);
+
+// Minute candles in UTC: the 22:13 and 22:14 buckets.
+let candles = CandleIterator::new(books()?, CandleOptions::from_spelling("1m")?).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(candles.len(), 2);
+let (first, second) = (&candles[0], &candles[1]);
+assert_eq!((first.crosscode.as_str(), first.start, first.end), ("AAPL", 1_699_999_980 * SECOND, 1_700_000_040 * SECOND));
+let bid = first.bid.expect("two books stated a bid");
+assert_eq!((bid.open, bid.high, bid.low, bid.close), ("189.48".parse()?, "189.50".parse()?, "189.48".parse()?, "189.50".parse()?));
+assert_eq!(first.spread.map(|spread| spread.close), Some("0.02".parse()?));
+assert_eq!((first.bidqty, first.askqty), (Some(Decimal::from_int(200)), Some(Decimal::from_int(100))));
+assert_eq!((first.books, first.executions, first.volume), (2, 0, Decimal::ZERO));
+// A2 undercuts A1: the second bucket's ask opens at 189.51 and the spread narrows.
+assert_eq!(second.ask.map(|ask| ask.open), Some("189.51".parse()?));
+assert_eq!(second.mid.map(|mid| mid.close), Some("189.505".parse()?));
+
+// Buckets align to the zone's wall clock: 22:13:20Z is 23:13:20 in Zurich,
+// so its daily candle opens at Zurich midnight, 23:00Z the day before.
+let zurich = CandleOptions::from_spelling("1d")?.with_timezone(Timezone::from_str("Europe/Zurich")?);
+let daily = CandleIterator::new(books()?, zurich).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!((daily.len(), daily[0].start, daily[0].books), (1, 1_699_916_400 * SECOND, 3));
+let utc = CandleIterator::new(books()?, CandleOptions::from_spelling("1d")?).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(utc[0].start, 1_699_920_000 * SECOND);
+
+// Candles cross as rows of `Candle::field()`, and read back as the same values.
+let field = Candle::field()?;
+assert_eq!(field.field_len(), 25);
+let batch = Candle::arrow_reader(candles.clone().into_iter().map(Ok), None)?.next().expect("one batch")?;
+let rows = Serie::from_arrow_batch(Some(&field), &batch, ArrowCastOptions::default())?;
+assert_eq!(Candle::from_scalar(&rows.scalar(1)?)?, candles[1]);
+```
+
+## Serve a table of books
+
+`BookService` is the HTTP face of a `marketdata` table - the tickers, the
+candles of a ticker over a range, the book at an instant, the audit of every
+entry, delta and execution - and every reading is a method, so a program
+asks without HTTP what the display's routes answer. `yggdryl market serve`
+is the same service with the display in front of it.
+
+```rust
+use std::sync::Arc;
+
+use yggdryl::graph::{BookIterator, BookQuery, BookService, BookServiceOptions, Element, Event, Market, MarketData, QuoteEvent};
+use yggdryl::holder::{Buffer, Holder};
+use yggdryl::http::{Request, Server, Status};
+use yggdryl::{Decimal, IOMedia, Side, State, Timezone, Url};
+
+const SECOND: i64 = 1_000_000_000;
+// 2026-01-05T10:00:00Z.
+const T0: i64 = 1_767_607_200 * SECOND;
+let quote = |unix: i64, code: &str, side: Side, price: i64| -> MarketData {
+    let mut quote = QuoteEvent::at(unix);
+    quote.set_crosscode(code.to_owned());
+    quote.set_ticker(Some("ACME".into()));
+    quote.set_side(side);
+    quote.set_price(Some(Decimal::from_int(price)));
+    quote.set_quantity(Some(Decimal::from_int(10)));
+    quote.set_state(State::New);
+    quote.finalize();
+    MarketData::from(quote)
+};
+// Books written as `marketdata` rows into any record location: here a buffer named `books.arrows`.
+let books = BookIterator::new(
+    vec![quote(T0 + 5 * SECOND, "B1", Side::Buy, 100), quote(T0 + 65 * SECOND, "A1", Side::Sell, 102)].into_iter(),
+    0,
+)?
+.map(|book| book.map(MarketData::from));
+let mut holder = Holder::Buffer(Buffer::new().with_media_type(Url::from_str("file:///books.arrows")?.media_type()));
+let options = holder.record_options()?;
+holder.overwrite_arrow_reader(MarketData::arrow_reader(books, None, None)?, &options)?;
+
+let service = Arc::new(BookService::new(BookServiceOptions::new()).with_table("books", holder));
+// The readings, without HTTP: one filtered read of the table each.
+let query = BookQuery {
+    table: "books".into(),
+    ticker: "ACME".into(),
+    from: T0,
+    to: T0 + 120 * SECOND,
+    timezone: Timezone::UTC,
+    interval: None, // a minute in `timezone`
+    side: None,
+};
+let candles = service.candles(&query)?;
+assert_eq!(candles.len(), 2);
+assert_eq!(candles[0].bid.map(|bid| bid.close), Some(Decimal::from_int(100)));
+assert_eq!(candles[1].ask.map(|ask| ask.open), Some(Decimal::from_int(102)));
+let book = service.book("books", "ACME", T0 + 90 * SECOND)?.expect("the last book at or before 10:01:30");
+assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
+assert_eq!(service.tickers("books")?.sequence_rows().map(|listed| listed.len()), Some(1));
+
+// The routes, on the crate's server: `{prefix}/api/...`, JSON, `Cache-Control: no-store`.
+let server = Server::bind("127.0.0.1:0")?;
+let endpoint = Arc::clone(&service).route(&server, "/")?;
+let answer = Request::get(&format!("{endpoint}api/tickers?table=books"))?.send()?;
+assert_eq!(answer.status(), Status::OK);
+assert!(answer.text()?.contains("\"ticker\":\"ACME\""));
+// The zones `tz` reads - UTC, then every zone this build has rules for - to offer a caller.
+let zones = Request::get(&format!("{endpoint}api/timezones"))?.send()?.scalar()?;
+let zones = zones.sequence_rows().expect("a list");
+assert_eq!(zones[0].as_str(), Some("UTC"));
+let refused = Request::get(&format!("{endpoint}api/candles?table=books&ticker=NONE&from=2026-01-05T10:00:00Z&to=2026-01-05T11:00:00Z"))?.send()?;
+assert_eq!(refused.status(), Status::NOT_FOUND);
+let error = refused.scalar()?;
+assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expected a ticker at \"books/NONE\", got nothing"));
+```
+
 ## Gotchas in Rust
 
 - Setters never finalize: a leaf with stale derived facts is refused when

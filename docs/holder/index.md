@@ -2190,9 +2190,9 @@ An absent resource reads as no batches; an encoding this build does not implemen
     );
 
     // An encoding this build does not implement is named rather than guessed.
-    let csv = Buffer::new().with_media_type(MimeType::CSV.into());
-    let message = csv.record_options().unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
+    let orc = Buffer::new().with_media_type(MimeType::ORC.into());
+    let message = orc.record_options().unwrap_err().to_string();
+    assert!(message.contains("application/vnd.apache.orc"), "{message}");
     ```
 
 === "Python"
@@ -2212,9 +2212,9 @@ An absent resource reads as no batches; an encoding this build does not implemen
     assert empty.read_arrow_reader().read_all().num_rows == 0
 
     # An encoding this build does not implement is named rather than guessed.
-    csv = IOBase(root / "trades.csv")
-    with pytest.raises(ValueError, match="text/csv"):
-        csv.record_options()
+    orc = IOBase(root / "trades.orc")
+    with pytest.raises(ValueError, match="application/vnd.apache.orc"):
+        orc.record_options()
     ```
 
 === "JavaScript"
@@ -2229,9 +2229,9 @@ An absent resource reads as no batches; an encoding this build does not implemen
     assert.equal([...empty.readArrowReader()].length, 0)
 
     // An encoding this build does not implement is named rather than guessed.
-    const csv = IOBase.fromBytes()
-    csv.mediaType = MimeType.CSV
-    assert.throws(() => csv.recordOptions(), /text\/csv/)
+    const orc = IOBase.fromBytes()
+    orc.mediaType = MimeType.ORC
+    assert.throws(() => orc.recordOptions(), /application\/vnd\.apache\.orc/)
     ```
 
 ### Lazy scans

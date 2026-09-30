@@ -49,15 +49,19 @@ everything it declares.
     ```bash
     cargo test -p yggdryl --all-features --test root
     cargo test -p yggdryl --all-features --test arrow
+    cargo test -p yggdryl --all-features --test auth
     cargo test -p yggdryl --all-features --test avro
+    cargo test -p yggdryl --all-features --test aws
     cargo test -p yggdryl --all-features --test charset
     cargo test -p yggdryl --all-features --test coding
+    cargo test -p yggdryl --all-features --test csv
     cargo test -p yggdryl --all-features --test expression
     cargo test -p yggdryl --all-features --test fix
     cargo test -p yggdryl --all-features --test fs
     cargo test -p yggdryl --all-features --test graph
     cargo test -p yggdryl --all-features --test hashing
     cargo test -p yggdryl --all-features --test holder
+    cargo test -p yggdryl --all-features --test http
     cargo test -p yggdryl --all-features --test iceberg
     cargo test -p yggdryl --all-features --test iobase
     cargo test -p yggdryl --all-features --test ipc
@@ -69,11 +73,15 @@ everything it declares.
     cargo test -p yggdryl --all-features --test mime_type
     cargo test -p yggdryl --all-features --test parquet
     cargo test -p yggdryl --all-features --test s3
+    cargo test -p yggdryl --all-features --test serie
+    cargo test -p yggdryl --all-features --test soap
     cargo test -p yggdryl --all-features --test text
     cargo test -p yggdryl --all-features --test toml
     cargo test -p yggdryl --all-features --test txhash
     cargo test -p yggdryl --all-features --test uri
     cargo test -p yggdryl --all-features --test value
+    cargo test -p yggdryl --all-features --test xml
+    cargo test -p yggdryl --all-features --test xmla
     cargo test -p yggdryl --all-features --test xxhash
     cargo test -p yggdryl --all-features --test yaml
     cargo test -p yggdryl --all-features --test zip

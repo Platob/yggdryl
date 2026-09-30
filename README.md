@@ -14,9 +14,12 @@ non-null `Struct` field describes rows, and a row is one ordered
 Storage backends (local, memory-mapped, ZIP, HTTP/1.1 behind the `http`
 feature with HTTP/2 and HTTP/3 behind `http2` and `http3`,
 and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
-feature), record media, and the FIX
-protocol are core domains over those same values; the expression layer is a
-grammar over them, never a second query engine.
+feature), record media (Arrow IPC, Parquet, Avro, CSV, plain text, XML for
+Analysis and Iceberg tables), the event graph - orders, quotes, executions,
+books, candles, and the book display `yggdryl market serve` hosts over a
+table of them - and the FIX protocol are core domains over those same
+values; the expression layer is a grammar over them, never a second query
+engine.
 
 ## Documentation
 
@@ -66,7 +69,7 @@ rust/                    The core crate
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
                          options, inference, magic, merge, partitions
-  src/{ipc,parquet,avro,iceberg,xmla,excel}/
+  src/{ipc,parquet,avro,csv,iceberg,xmla,excel}/
                          One folder per record medium; xmla/ also holds the
                          XML for Analysis provider and its HTTP server, and
                          excel/ the workbook, sheet and cell model
@@ -78,7 +81,8 @@ rust/                    The core crate
                          Field metadata, MIME and media types, identifiers
   src/{arrow,expression,graph,fix}/
                          Arrow interop, the expression grammar, the event
-                         graph, FIX
+                         graph - its books, candles and graph/serve.rs, the
+                         book display's HTTP service - FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
   tests/                 One test file per source file, at the mirrored path

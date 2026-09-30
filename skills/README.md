@@ -36,12 +36,12 @@ and let it follow the links. Every skill is plain Markdown with a `name` and
 | [`yggdryl-arrow`](yggdryl-arrow/SKILL.md) | `Serie`, `ChunkedSerie`, `SerieReader`, `ArrowCastPlan`; pyarrow, pandas, polars, NumPy and Arrow JS in and out |
 | [`yggdryl-storage`](yggdryl-storage/SKILL.md) | `IOBase` handles and bytes, local, ZIP and object-store backends, compression, charsets, call counts |
 | [`yggdryl-uri`](yggdryl-uri/SKILL.md) | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, hive partitions |
-| [`yggdryl-records`](yggdryl-records/SKILL.md) | record reads and writes, `RecordOptions`, Arrow IPC, Parquet, Avro, text, Iceberg, partitions |
+| [`yggdryl-records`](yggdryl-records/SKILL.md) | record reads and writes, `RecordOptions`, Arrow IPC, Parquet, Avro, CSV, text, Iceberg, partitions |
 | [`yggdryl-documents`](yggdryl-documents/SKILL.md) | JSON, JSON Lines, YAML, TOML and XML over `Scalar` |
 | [`yggdryl-expressions`](yggdryl-expressions/SKILL.md) | terms, filters, selectors, plans, evaluation and pushdown |
 | [`yggdryl-hashing`](yggdryl-hashing/SKILL.md) | xxHash digests, stable hashes, row digests, TxHash |
 | [`yggdryl-fix`](yggdryl-fix/SKILL.md) | FIX decode and encode, the registry and store, Arrow rows, captures, lifecycle, `yggdryl fix` |
-| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books, market data views |
+| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books, candles, market data views, the book display (`yggdryl market serve`) |
 
 Each skill is a `SKILL.md` - the decision table, the rules, the pitfalls -
 and `references/rust.md`, `references/python.md` and

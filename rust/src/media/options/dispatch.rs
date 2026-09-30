@@ -13,6 +13,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.name(),
             Self::Text(options) => options.name(),
             Self::Xmla(options) => options.name(),
+            Self::Csv(options) => options.name(),
             Self::Excel(options) => options.name(),
         }
     }
@@ -25,6 +26,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_name(name),
             Self::Text(options) => options.set_name(name),
             Self::Xmla(options) => options.set_name(name),
+            Self::Csv(options) => options.set_name(name),
             Self::Excel(options) => options.set_name(name),
         }
     }
@@ -37,6 +39,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.declared(),
             Self::Text(options) => options.declared(),
             Self::Xmla(options) => options.declared(),
+            Self::Csv(options) => options.declared(),
             Self::Excel(options) => options.declared(),
         }
     }
@@ -49,6 +52,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_declared(field),
             Self::Text(options) => options.set_declared(field),
             Self::Xmla(options) => options.set_declared(field),
+            Self::Csv(options) => options.set_declared(field),
             Self::Excel(options) => options.set_declared(field),
         }
     }
@@ -61,6 +65,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.merge_by(),
             Self::Text(options) => options.merge_by(),
             Self::Xmla(options) => options.merge_by(),
+            Self::Csv(options) => options.merge_by(),
             Self::Excel(options) => options.merge_by(),
         }
     }
@@ -73,6 +78,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_merge_by(merge_by),
             Self::Text(options) => options.set_merge_by(merge_by),
             Self::Xmla(options) => options.set_merge_by(merge_by),
+            Self::Csv(options) => options.set_merge_by(merge_by),
             Self::Excel(options) => options.set_merge_by(merge_by),
         }
     }
@@ -85,6 +91,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.filter(),
             Self::Text(options) => options.filter(),
             Self::Xmla(options) => options.filter(),
+            Self::Csv(options) => options.filter(),
             Self::Excel(options) => options.filter(),
         }
     }
@@ -97,6 +104,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_filter(filter),
             Self::Text(options) => options.set_filter(filter),
             Self::Xmla(options) => options.set_filter(filter),
+            Self::Csv(options) => options.set_filter(filter),
             Self::Excel(options) => options.set_filter(filter),
         }
     }
@@ -109,6 +117,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.select(),
             Self::Text(options) => options.select(),
             Self::Xmla(options) => options.select(),
+            Self::Csv(options) => options.select(),
             Self::Excel(options) => options.select(),
         }
     }
@@ -121,6 +130,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_select(select),
             Self::Text(options) => options.set_select(select),
             Self::Xmla(options) => options.set_select(select),
+            Self::Csv(options) => options.set_select(select),
             Self::Excel(options) => options.set_select(select),
         }
     }
@@ -133,6 +143,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.safe(),
             Self::Text(options) => options.safe(),
             Self::Xmla(options) => options.safe(),
+            Self::Csv(options) => options.safe(),
             Self::Excel(options) => options.safe(),
         }
     }
@@ -145,6 +156,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_safe(safe),
             Self::Text(options) => options.set_safe(safe),
             Self::Xmla(options) => options.set_safe(safe),
+            Self::Csv(options) => options.set_safe(safe),
             Self::Excel(options) => options.set_safe(safe),
         }
     }
@@ -157,6 +169,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.batch_byte_size(),
             Self::Text(options) => options.batch_byte_size(),
             Self::Xmla(options) => options.batch_byte_size(),
+            Self::Csv(options) => options.batch_byte_size(),
             Self::Excel(options) => options.batch_byte_size(),
         }
     }
@@ -169,6 +182,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.batch_row_size(),
             Self::Text(options) => options.batch_row_size(),
             Self::Xmla(options) => options.batch_row_size(),
+            Self::Csv(options) => options.batch_row_size(),
             Self::Excel(options) => options.batch_row_size(),
         }
     }
@@ -181,6 +195,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_batch_byte_size(batch_byte_size),
             Self::Text(options) => options.set_batch_byte_size(batch_byte_size),
             Self::Xmla(options) => options.set_batch_byte_size(batch_byte_size),
+            Self::Csv(options) => options.set_batch_byte_size(batch_byte_size),
             Self::Excel(options) => options.set_batch_byte_size(batch_byte_size),
         }
     }
@@ -193,6 +208,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_batch_row_size(batch_row_size),
             Self::Text(options) => options.set_batch_row_size(batch_row_size),
             Self::Xmla(options) => options.set_batch_row_size(batch_row_size),
+            Self::Csv(options) => options.set_batch_row_size(batch_row_size),
             Self::Excel(options) => options.set_batch_row_size(batch_row_size),
         }
     }
@@ -205,6 +221,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.max_row_size(),
             Self::Text(options) => options.max_row_size(),
             Self::Xmla(options) => options.max_row_size(),
+            Self::Csv(options) => options.max_row_size(),
             Self::Excel(options) => options.max_row_size(),
         }
     }
@@ -217,6 +234,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_max_row_size(max_row_size),
             Self::Text(options) => options.set_max_row_size(max_row_size),
             Self::Xmla(options) => options.set_max_row_size(max_row_size),
+            Self::Csv(options) => options.set_max_row_size(max_row_size),
             Self::Excel(options) => options.set_max_row_size(max_row_size),
         }
     }
@@ -229,6 +247,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.row_offset(),
             Self::Text(options) => options.row_offset(),
             Self::Xmla(options) => options.row_offset(),
+            Self::Csv(options) => options.row_offset(),
             Self::Excel(options) => options.row_offset(),
         }
     }
@@ -241,6 +260,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_row_offset(row_offset),
             Self::Text(options) => options.set_row_offset(row_offset),
             Self::Xmla(options) => options.set_row_offset(row_offset),
+            Self::Csv(options) => options.set_row_offset(row_offset),
             Self::Excel(options) => options.set_row_offset(row_offset),
         }
     }
@@ -253,6 +273,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.max_byte_size(),
             Self::Text(options) => options.max_byte_size(),
             Self::Xmla(options) => options.max_byte_size(),
+            Self::Csv(options) => options.max_byte_size(),
             Self::Excel(options) => options.max_byte_size(),
         }
     }
@@ -265,6 +286,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_max_byte_size(max_byte_size),
             Self::Text(options) => options.set_max_byte_size(max_byte_size),
             Self::Xmla(options) => options.set_max_byte_size(max_byte_size),
+            Self::Csv(options) => options.set_max_byte_size(max_byte_size),
             Self::Excel(options) => options.set_max_byte_size(max_byte_size),
         }
     }
@@ -277,6 +299,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.commit_row_size(),
             Self::Text(options) => options.commit_row_size(),
             Self::Xmla(options) => options.commit_row_size(),
+            Self::Csv(options) => options.commit_row_size(),
             Self::Excel(options) => options.commit_row_size(),
         }
     }
@@ -289,6 +312,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_commit_row_size(commit_row_size),
             Self::Text(options) => options.set_commit_row_size(commit_row_size),
             Self::Xmla(options) => options.set_commit_row_size(commit_row_size),
+            Self::Csv(options) => options.set_commit_row_size(commit_row_size),
             Self::Excel(options) => options.set_commit_row_size(commit_row_size),
         }
     }
@@ -301,6 +325,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.level(),
             Self::Text(options) => options.level(),
             Self::Xmla(options) => options.level(),
+            Self::Csv(options) => options.level(),
             Self::Excel(options) => options.level(),
         }
     }
@@ -313,6 +338,7 @@ impl IORecordOptions for RecordOptions {
             Self::Avro(options) => options.set_level(level),
             Self::Text(options) => options.set_level(level),
             Self::Xmla(options) => options.set_level(level),
+            Self::Csv(options) => options.set_level(level),
             Self::Excel(options) => options.set_level(level),
         }
     }
@@ -346,6 +372,12 @@ impl From<crate::text::TextOptions> for RecordOptions {
 impl From<crate::xmla::XmlaOptions> for RecordOptions {
     fn from(value: crate::xmla::XmlaOptions) -> Self {
         Self::Xmla(value)
+    }
+}
+
+impl From<crate::csv::CsvOptions> for RecordOptions {
+    fn from(value: crate::csv::CsvOptions) -> Self {
+        Self::Csv(value)
     }
 }
 

@@ -127,12 +127,13 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Bytes and records on any storage | [Holder](holder/index.md) |
 | gzip, zlib, zstd | [Coding](media/index.md#compression) |
 | Character encodings | [Charset](media/index.md#charsets) |
-| IPC, Parquet, Avro, Iceberg | [Media](media/index.md) |
+| IPC, Parquet, Avro, CSV, Iceberg | [Media](media/index.md) |
 | JSON, YAML, TOML, XML | [Structured documents](media/index.md#json) |
 | Naming a resource | [URI](uri/index.md) |
 | Scalars, schemas, and batch readers at the Arrow boundary | [Arrow](arrow/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |
 | Digests and time-keyed digests | [Hashing](hashing.md) |
+| Orders, quotes, executions, books, candles, and the book display | [Graph](graph/index.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
 
 ## Agent skills

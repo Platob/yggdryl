@@ -1,6 +1,6 @@
 {
   "name": "yggdryl",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Native Yggdryl schemas, fields, Arrow interop, URIs, and structured codecs for Node.js",
   "license": "Apache-2.0",
   "repository": {
@@ -16,6 +16,10 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
+    },
+    "./book": {
+      "require": "./book.js",
+      "default": "./book.js"
     }
   },
   "files": [
@@ -23,6 +27,8 @@
     "index.d.ts",
     "binding.js",
     "binding.d.ts",
+    "book.js",
+    "book/",
     "defaults.js",
     "fields.js",
     "*.node",

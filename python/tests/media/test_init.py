@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import datetime
+import gzip
 import pathlib
 import pickle
 import struct
@@ -63,8 +65,8 @@ class TestTheEncodingComesFromTheHandle:
     def test_an_encoding_this_build_lacks_is_named_rather_than_guessed(
         self, tmp_path: pathlib.Path
     ) -> None:
-        with pytest.raises(ValueError, match="text/csv"):
-            IOBase(tmp_path / "trades.csv").record_options()
+        with pytest.raises(ValueError, match="application/vnd.apache.orc"):
+            IOBase(tmp_path / "trades.orc").record_options()
 
     def test_a_buffer_declares_what_it_holds(self) -> None:
         handle = IOBase.from_bytes()
@@ -493,6 +495,130 @@ class TestAbsenceAndScope:
         # another reader needs to find the end of the stream.
         assert handle.closed
         assert path.stat().st_size == IOBase(path).size
+
+
+CSV_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("symbol", pa.string()),
+    ]
+)
+CSV_ROWS = [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}]
+
+
+class TestCsv:
+    """CSV is reached through the record surface; the dialect is on the options."""
+
+    def test_the_name_picks_the_dialect_and_its_defaults(self) -> None:
+        options = RecordOptions("trades.csv")
+        assert str(options.mime_type) == "text/csv"
+        assert (
+            options.separator,
+            options.quote,
+            options.escape,
+            options.comment,
+            options.header,
+            options.null_values,
+            options.trim,
+            options.infer_row_size,
+        ) == (",", '"', None, None, True, [""], False, 1024)
+        tsv = RecordOptions("trades.tsv")
+        assert str(tsv.mime_type) == "text/tab-separated-values"
+        assert tsv.separator == "\t"
+        # The encoding is named by the separator, so a tab makes a TSV.
+        options.separator = "\t"
+        assert str(options.mime_type) == "text/tab-separated-values"
+
+    def test_a_declared_schema_round_trips_rows(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "trades.csv")
+        options = handle.record_options()
+        options.field = CSV_SCHEMA
+        handle.overwrite_records(CSV_ROWS, options=options)
+
+        assert (tmp_path / "trades.csv").read_bytes() == b"id,symbol\n1,AAPL\n2,\n"
+        assert list(handle.read_records(options=options)) == CSV_ROWS
+        assert handle.read_arrow_field(options=options).dtype[0].dtype == DataType("int64")
+        assert handle.row_size == 2 and handle.column_size == 2
+
+    def test_an_inferred_schema_types_each_column_from_its_sample(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        rows = [
+            {"id": 1, "price": 1.5, "active": True, "day": datetime.date(2026, 1, 5), "name": "AAPL"},
+            {"id": 2, "price": 2.25, "active": False, "day": datetime.date(2026, 1, 6), "name": None},
+        ]
+        IOBase(tmp_path / "typed.csv").overwrite_records(rows)
+
+        assert (tmp_path / "typed.csv").read_bytes() == (
+            b"id,price,active,day,name\n1,1.5,true,2026-01-05,AAPL\n2,2.25,false,2026-01-06,\n"
+        )
+        inferred = IOBase(tmp_path / "typed.csv").read_arrow_field()
+        assert [str(child.dtype) for child in inferred.dtype] == [
+            "int64",
+            "float64",
+            "boolean",
+            "date32",
+            "utf8",
+        ]
+        assert all(child.nullable for child in inferred.dtype)
+        assert list(IOBase(tmp_path / "typed.csv").read_records()) == rows
+
+    def test_a_null_and_the_empty_text_are_told_apart(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "nulls.csv")
+        options = handle.record_options()
+        options.field = CSV_SCHEMA
+        rows = [{"id": 1, "symbol": None}, {"id": 2, "symbol": ""}]
+        handle.overwrite_records(rows, options=options)
+
+        # An empty cell is null and a quoted empty cell the empty text.
+        assert (tmp_path / "nulls.csv").read_bytes() == b'id,symbol\n1,\n2,""\n'
+        assert list(handle.read_records(options=options)) == rows
+
+    def test_a_coded_name_reads_and_writes_through_the_handles_coding(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        IOBase(tmp_path / "trades.csv.gz").overwrite_records(CSV_ROWS)
+
+        stored = LocalPath(tmp_path / "trades.csv.gz").read_bytes()
+        assert stored[:2] == b"\x1f\x8b"
+        assert gzip.decompress(stored) == b"id,symbol\n1,AAPL\n2,\n"
+        # Identical calls on the way back; only the name says gzip.
+        assert IOBase(tmp_path / "trades.csv.gz").read_arrow_field().dtype[0].name == "id"
+        assert IOBase(tmp_path / "trades.csv.gz").row_size == 2
+        assert IOBase(tmp_path / "trades.csv.gz").read_arrow_reader().read_all().num_rows == 2
+        assert list(IOBase(tmp_path / "trades.csv.gz").read_records()) == CSV_ROWS
+
+    def test_a_separator_is_a_per_call_property(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "semi.csv")
+        handle.overwrite_records(CSV_ROWS, separator=";")
+
+        assert (tmp_path / "semi.csv").read_bytes() == b"id;symbol\n1;AAPL\n2;\n"
+        assert handle.read_arrow_reader(separator=";").read_all().num_rows == 2
+        assert list(handle.read_records(separator=";")) == CSV_ROWS
+        # Under the default dialect the header is one column.
+        assert len(handle.read_arrow_field().dtype) == 1
+        assert len(handle.read_arrow_field(separator=";").dtype) == 2
+
+    def test_a_tsv_name_is_the_tab_dialect(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "trades.tsv")
+        assert handle.record_options().separator == "\t"
+        handle.overwrite_records(CSV_ROWS)
+
+        assert (tmp_path / "trades.tsv").read_bytes() == b"id\tsymbol\n1\tAAPL\n2\t\n"
+        assert list(IOBase(tmp_path / "trades.tsv").read_records()) == CSV_ROWS
+
+    def test_the_refusals_name_what_was_asked(self, tmp_path: pathlib.Path) -> None:
+        options = RecordOptions("trades.csv")
+        with pytest.raises(ValueError, match="one-character str or one byte for separator"):
+            options.separator = ";;"
+        with pytest.raises(ValueError, match=r"\$\.separator.*which is the quote"):
+            options.separator = '"'
+        assert options.separator == ","
+
+        ragged = tmp_path / "ragged.csv"
+        ragged.write_bytes(b"id,symbol\n1,AAPL\n2\n")
+        with pytest.raises(ValueError, match="expected 2 cells, got 1 in row 3 of"):
+            IOBase(ragged).read_arrow_reader().read_all()
 
 
 KNOWN_MIME_TYPES = {

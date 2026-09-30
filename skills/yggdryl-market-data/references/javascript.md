@@ -442,6 +442,95 @@ assert.equal(last.bestPrice('BUYS'), '101')
 assert.equal(last.executions().length, 1)
 ```
 
+## Fold books into candles
+
+`graph.candles(books, interval, timezone)` folds books sorted by their instant
+into one `Candle` per cross code and bucket - the best bid, the best ask, the
+mid and the spread each `{ open, high, low, close }` of decimal text - and
+`new graph.CandleIterator(books, options)` is the same walk, lazy. The
+interval is a spelling or a `bigint` of nanoseconds; the zone is what the
+buckets' wall clock aligns to.
+
+```javascript
+const assert = require('node:assert/strict')
+const { Serie, graph } = require('yggdryl')
+
+// 2023-11-14T22:13:20Z.
+const T = 1_700_000_000_000_000_000n
+const SECOND = 1_000_000_000n
+const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, {
+  crosscode: code, ticker: 'AAPL', side, price, quantity, state: 'NEW',
+})
+const stream = [
+  quote(T, 'B1', 'BUYS', '189.48', 300),
+  quote(T, 'A1', 'SELL', '189.52', 100),
+  quote(T + 20n * SECOND, 'B2', 'BUYS', '189.50', 200),
+  quote(T + 70n * SECOND, 'A2', 'SELL', '189.51', 50),
+]
+// Three books: the two quotes at T share one instant.
+const books = [...new graph.BookIterator(stream)]
+
+// Minute candles in UTC: the 22:13 and 22:14 buckets.
+const [first, second] = graph.candles(books, '1m')
+assert.deepEqual([first.crosscode, first.start, first.end], ['AAPL', 1_699_999_980n * SECOND, 1_700_000_040n * SECOND])
+assert.deepEqual(first.bid, { open: '189.48', high: '189.5', low: '189.48', close: '189.5' })
+assert.deepEqual(first.spread, { open: '0.04', high: '0.04', low: '0.02', close: '0.02' })
+assert.deepEqual([first.bidqty, first.askqty, first.books, first.executions, first.volume], ['200', '100', 2, 0, '0'])
+// A2 undercuts A1: the second bucket's ask opens at 189.51 and the spread narrows.
+assert.equal(second.ask.open, '189.51')
+assert.equal(second.mid.close, '189.505')
+const [walked] = new graph.CandleIterator(books, new graph.CandleOptions('1m'))
+assert.ok(walked.equals(first))
+
+// Buckets align to the zone's wall clock: 22:13:20Z is 23:13:20 in Zurich,
+// so its daily candle opens at Zurich midnight, 23:00Z the day before.
+const [daily] = graph.candles(books, '1d', 'Europe/Zurich')
+assert.deepEqual([daily.start, daily.books], [1_699_916_400n * SECOND, 3])
+const [utc] = graph.candles(books, new graph.CandleOptions('1d'))
+assert.equal(utc.start, 1_699_920_000n * SECOND)
+
+// Candles cross as rows of Candle.field(), as JSON, and read back as the same values.
+const field = graph.Candle.field()
+assert.equal(field.fieldLen, 25)
+const rows = Serie.fromScalars(field, [first.intoScalar(), second.intoScalar()])
+assert.ok(graph.Candle.fromScalar(rows.scalar(1)).equals(second))
+assert.equal(JSON.parse(JSON.stringify(second)).askopen, '189.51')
+assert.ok(graph.Candle.fromJSON(JSON.stringify(second)).equals(second))
+// Books must arrive sorted; a bare quote is not a book.
+assert.throws(() => graph.candles([...books].reverse(), '1m'), /\$\.book\.currunix/)
+assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got quote_event/)
+```
+
+## Start the display beside a Node program
+
+`require('yggdryl/book')` is the package's door to the display: `assets` is the folder of
+the display's files, `serveArguments(options)` the argument vector `yggdryl
+market serve` takes, and `serve(options)` spawns the command - `bin` from
+`YGGDRYL_BIN`, else `yggdryl` on the path - resolving `{ endpoint, process,
+close() }` once it has printed its endpoint - or rejecting with the stderr
+of a process that exits first, and with an `AbortError` once an aborted
+`signal` (`AbortSignal.timeout(ms)`) has ended it. A table is
+`'name=location'`, a location or `{ name, location }`; `capture` folds FIX
+bridge logs into the first table before serving.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+
+const book = require('yggdryl/book')
+
+assert.equal(book.assetFiles.length, 8)
+assert.equal(book.assetFiles[0], 'index.html')
+assert.deepEqual(
+  book.serveArguments({ tables: [{ name: 'books', location: '/data/books' }], bind: '127.0.0.1:8080', capture: ['bridge.log'] }),
+  ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:8080', '--path', '/', '--capture', 'bridge.log'],
+)
+// `serve` runs that vector and hands back the endpoint to open, or rejects with
+// what the command wrote on stderr before it printed one:
+//   const { endpoint, close } = await book.serve({ tables: 'books=/data/books' })
+assert.equal(typeof book.serve, 'function')
+```
+
 ## Gotchas in JavaScript
 
 - Instants are `bigint`: `T + 1_000_000_000n`, never `T + 1e9`; a `Date` is

@@ -160,9 +160,22 @@ pub(super) fn no_children(url: Option<&Url>, name: &str) -> Error {
 ///
 /// Returns the parent's resolution failure, or the copy's read failure.
 pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
+    // A located handle is reopened where its *stored* bytes are. A handle
+    // that applies a coding presents them decoded and its media type names
+    // no coding, so the reopened one is stamped with that coding put back
+    // for a decoded stream to peel - the shape `Holder::from_url` builds for
+    // every coded name. Raw DEFLATE has no media type spelling and `Coded`
+    // never applies it; the zlib framing is what the one table spells.
+    let stored_media_type = || -> Result<crate::MediaType> {
+        let mut media_type = handle.media_type().clone();
+        if let Some(coding) = crate::iobase::coding_mime(handle.applied_codec()) {
+            media_type.push_encoding(coding)?;
+        }
+        Ok(media_type)
+    };
     if let Some(bound) = handle.bound_location() {
         let mut file = crate::fs::FsFile::new(bound.clone());
-        file.set_media_type(handle.media_type().clone());
+        file.set_media_type(stored_media_type()?);
         return Ok(Holder::FsFile(file));
     }
     if let Some(parent) = handle.parent() {
@@ -172,7 +185,7 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
             // the child of the path's file name is another member; only a
             // handle at the same location is this resource reopened.
             if child.url() == handle.url() {
-                child.set_media_type(handle.media_type().clone());
+                child.set_media_type(stored_media_type()?);
                 return Ok(child);
             }
         }

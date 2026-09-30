@@ -456,7 +456,7 @@ fn row_size_counts_every_row_inside_the_range_less_the_header() {
     let options = |excel: ExcelOptions| {
         let mut options = handle.record_options().unwrap();
         options.set_excel_range(excel.range).unwrap();
-        options.set_excel_header(excel.header).unwrap();
+        options.set_header(excel.header).unwrap();
         options
     };
     let counted = |options: RecordOptions| records(&handle, &options).len();

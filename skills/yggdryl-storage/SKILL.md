@@ -90,8 +90,10 @@ Install and cross-language conventions are in `yggdryl`.
    another writer changes.
 7. **The name declares the coding.** `trades.json.gz` is base `application/json`
    plus coding `gzip`: `media_type` names the decoded representation, `codec`
-   the stored coding. In-memory bytes are sniffed; declare a type the bytes
-   cannot prove (CSV) with `with_media_type` / the `media_type` setter.
+   the stored coding. In-memory bytes are sniffed for a signature, and
+   delimited text has none: declare `text/csv` or `text/tab-separated-values`
+   with `with_media_type` / the `media_type` setter and the handle reads and
+   writes records through the CSV medium (`yggdryl-records`).
 8. **Know which bytes a handle presents.** Python `IOBase(name)` composes what
    the name declares (`Text(Gzip(LocalPath))`) and reads decoded bytes; the
    role classes (`LocalPath`, `LocalFile`, `S3File`, `FsPath`) address stored

@@ -1401,8 +1401,8 @@ mod write {
         ));
 
         // An encoding with no implementation is named rather than guessed.
-        let message = handle("t.csv").record_options().unwrap_err().to_string();
-        assert!(message.contains("text/csv"), "{message}");
+        let message = handle("t.orc").record_options().unwrap_err().to_string();
+        assert!(message.contains("application/vnd.apache.orc"), "{message}");
     }
 
     #[test]

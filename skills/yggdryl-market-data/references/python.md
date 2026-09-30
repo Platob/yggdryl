@@ -494,6 +494,73 @@ assert best is not None and best.as_py() == Decimal(101)
 assert len(last.executions) == 1
 ```
 
+## Fold books into candles
+
+`graph.candles(books, interval, timezone=None)` folds books sorted by their
+instant into one `Candle` per cross code and bucket - the best bid, the best
+ask, the mid and the spread each a reading of `open`, `high`, `low`, `close` -
+and `graph.CandleIterator(books, options)` is the same walk, lazy. The
+interval is a spelling or a count of nanoseconds; the zone is what the
+buckets' wall clock aligns to.
+
+```python
+from decimal import Decimal
+
+import pytest
+
+from yggdryl import Serie, graph
+
+# 2023-11-14T22:13:20Z.
+T = 1_700_000_000_000_000_000
+SECOND = 1_000_000_000
+
+def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.QuoteEvent:
+    return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
+
+stream = [
+    quote(T, "B1", "BUYS", "189.48", 300),
+    quote(T, "A1", "SELL", "189.52", 100),
+    quote(T + 20 * SECOND, "B2", "BUYS", "189.50", 200),
+    quote(T + 70 * SECOND, "A2", "SELL", "189.51", 50),
+]
+# Three books: the two quotes at T share one instant.
+books = list(graph.BookIterator(stream))
+
+def reading(value: dict | None) -> tuple | None:
+    return None if value is None else tuple(value[cell].as_py() for cell in ("open", "high", "low", "close"))
+
+# Minute candles in UTC: the 22:13 and 22:14 buckets.
+first, second = graph.candles(books, "1m")
+assert (first.crosscode, first.start, first.end) == ("AAPL", 1_699_999_980 * SECOND, 1_700_000_040 * SECOND)
+assert reading(first.bid) == (Decimal("189.48"), Decimal("189.50"), Decimal("189.48"), Decimal("189.50"))
+assert reading(first.spread) == (Decimal("0.04"), Decimal("0.04"), Decimal("0.02"), Decimal("0.02"))
+assert first.bidqty is not None and first.bidqty.as_py() == 200
+assert (first.books, first.executions, first.volume.as_py()) == (2, 0, 0)
+# A2 undercuts A1: the second bucket's ask opens at 189.51 and the spread narrows.
+assert reading(second.ask) is not None and reading(second.ask)[0] == Decimal("189.51")
+assert reading(second.mid) is not None and reading(second.mid)[3] == Decimal("189.505")
+assert list(graph.CandleIterator(books, graph.CandleOptions("1m"))) == [first, second]
+
+# Buckets align to the zone's wall clock: 22:13:20Z is 23:13:20 in Zurich,
+# so its daily candle opens at Zurich midnight, 23:00Z the day before.
+[daily] = graph.candles(books, "1d", "Europe/Zurich")
+assert (daily.start, daily.books) == (1_699_916_400 * SECOND, 3)
+[utc] = graph.candles(books, graph.CandleOptions("1d"))
+assert utc.start == 1_699_920_000 * SECOND
+
+# Candles cross as rows of Candle.field(), and read back as the same values.
+field = graph.Candle.field()
+assert len(list(field)) == 25
+rows = Serie.from_scalars(field, [candle.into_scalar() for candle in (first, second)])
+assert graph.Candle.from_scalar(rows.scalar(1)) == second
+assert second.as_py()["askopen"] == Decimal("189.51")
+# Books must arrive sorted; a bare quote is not a book.
+with pytest.raises(ValueError, match=r"\$\.book\.currunix"):
+    graph.candles(list(reversed(books)), "1m")
+with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
+    graph.candles([stream[0]], "1m")
+```
+
 ## Gotchas in Python
 
 - Seconds or milliseconds where nanoseconds are expected land in 1970; build

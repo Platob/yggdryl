@@ -382,7 +382,7 @@ fn the_options_convert_into_the_excel_variant_unchanged() {
     assert_eq!(record.name(), "row");
     assert_eq!(record.max_row_size(), Some(9));
     assert_eq!(record.excel_sheet(), Some("Trades"));
-    assert_eq!(record.excel_header(), Some(false));
+    assert_eq!(record.header(), Some(false));
     assert_eq!(record.excel_range(), Some("C3:D".parse().unwrap()));
     let RecordOptions::Excel(inner) = record else {
         panic!("Excel options convert into the Excel variant");
@@ -394,15 +394,15 @@ fn the_options_convert_into_the_excel_variant_unchanged() {
 fn the_variant_reads_and_writes_the_workbook_settings() {
     let mut options = RecordOptions::from(ExcelOptions::new());
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.excel_header(), Some(true));
+    assert_eq!(options.header(), Some(true));
     assert_eq!(options.excel_range(), None);
 
     let range: CellRange = "B2:C9".parse().unwrap();
     options.set_excel_sheet(Some("Trades")).unwrap();
-    options.set_excel_header(false).unwrap();
+    options.set_header(false).unwrap();
     options.set_excel_range(Some(range)).unwrap();
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.excel_header(), Some(false));
+    assert_eq!(options.header(), Some(false));
     assert_eq!(options.excel_range(), Some(range));
     assert_eq!(
         options,
@@ -417,7 +417,7 @@ fn the_variant_reads_and_writes_the_workbook_settings() {
     // `None` clears the sheet and the range back to the defaults.
     options.set_excel_sheet(None).unwrap();
     options.set_excel_range(None).unwrap();
-    options.set_excel_header(true).unwrap();
+    options.set_header(true).unwrap();
     assert_eq!(options, RecordOptions::Excel(ExcelOptions::new()));
 }
 
@@ -466,7 +466,7 @@ fn another_encoding_answers_no_workbook_setting_and_refuses_to_set_one() {
     let mut options = RecordOptions::Ipc(IpcOptions::new());
     let before = options.clone();
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.excel_header(), None);
+    assert_eq!(options.header(), None);
     assert_eq!(options.excel_range(), None);
 
     for (error, path, setting) in [
@@ -474,11 +474,6 @@ fn another_encoding_answers_no_workbook_setting_and_refuses_to_set_one() {
             options.set_excel_sheet(Some("Trades")).unwrap_err(),
             "$.sheet",
             "a worksheet",
-        ),
-        (
-            options.set_excel_header(false).unwrap_err(),
-            "$.header",
-            "a header row",
         ),
         (
             options

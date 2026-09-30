@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -42,9 +42,13 @@ medium does the work before a byte is decoded.
 | Parquet page codec | `options.set_parquet_compression_name("zstd(3)")?`, `ParquetOptions::new().with_compression(..)` | `compression="zstd(3)"` | `{ compression: 'zstd(3)' }`, `withCompression` |
 | Parquet footer statistics | `read_parquet_statistics()?` | `read_parquet_statistics()` | `readParquetStatistics()` |
 | Avro bytes with a reader schema | `avro::read_container_resolved(&h, &schema)?` | `avro.loads(data, reader_schema=...)` | `avro.loads(data, { readerSchema })` |
-| Excel worksheet, header row and range on a `.xlsx` handle | `options.set_excel_sheet(Some("Trades"))?`, `set_excel_header(false)?`, `set_excel_range(Some("A2:D".parse()?))?` | `read_arrow_reader(sheet="Trades", header=False, range="A2:D")` | `readArrowReader({ sheet: 'Trades', header: false, range: 'A2:D' })` |
+| Excel worksheet, header row and range on a `.xlsx` handle | `options.set_excel_sheet(Some("Trades"))?`, `set_header(false)?`, `set_excel_range(Some("A2:D".parse()?))?` | `read_arrow_reader(sheet="Trades", header=False, range="A2:D")` | `readArrowReader({ sheet: 'Trades', header: false, range: 'A2:D' })` |
 | any cell of a workbook, a sheet as a column set | `Workbook::open(h)?.sheet_mut("Trades")?.set_cell("B2".parse()?, 2.5)?`, `sheet.into_serie(Some(&field), true, Default::default())?`, `Sheet::from_serie("Notes", &serie, true)?` | `Workbook.open(p)["Trades"]["B2"]`, `sheet["B2"] = 2.5`, `sheet.into_serie(field)`, `Sheet.from_serie("Notes", table)` | `Workbook.open(p).sheet('Trades').cell('B2')`, `sheet.setCell('B2', 2.5)`, `sheet.intoSerie(field)`, `Sheet.fromSerie('Notes', table)` |
 | log lines as typed rows | `handle.into_text_with(TextOptions)` | `IOBase(p).into_text(TextOptions())`, or `read_arrow_reader(rowheader=...)` | `new IOBase(p).intoText(opts)`, or `readArrowReader({ rowheader })` |
+| a CSV dialect for one call | `options.set_csv_separator(b';')?`, `set_csv_quote(None)?`, `set_header(false)?`, `set_csv_null_values(["NA"])?`, `set_csv_trim(true)?`, `set_csv_comment(Some(b'#'))?`, `set_csv_infer_row_size(64)?` | `read_records(separator=";")`, `quote=None`, `header=False`, `null_values=["NA"]`, `trim=True`, `comment="#"`, `infer_row_size=64` | `readRecords({ separator: ';' })`, `{ quote: null, header: false, nullValues: ['NA'], trim: true, comment: '#', inferRowSize: 64 }` |
+| CSV options in hand | `CsvOptions::new().with_separator(b';')?`, `RecordOptions::for_mime_type(&MimeType::CSV)?` | `RecordOptions("trades.csv")`, `options.separator = ";"` | `RecordOptions.from('trades.csv').withSeparator(';')` |
+| a TSV | `CsvOptions::tsv()`, or a `.tsv` name | `IOBase("trades.tsv")`, `RecordOptions("trades.tsv")` | `new IOBase('trades.tsv')`, `RecordOptions.from('trades.tsv')` |
+| a compressed CSV | `Holder::local("trades.csv.gz")?.into_declared_media()` | `IOBase("trades.csv.gz")` | `new IOBase('trades.csv.gz')` |
 | write a partitioned folder | `Holder::folder(&root)?.overwrite_arrow_reader(r, &options)?` | `IOBase(dir).overwrite_arrow_batch(b, options=o)` | `new IOBase(dir).overwriteArrowTable(t, options)` |
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
 | derived partition column | `field.as_partition_mut().set_transform(Function::Year)?`, `root.as_transform().apply_arrow_batch(&b)?` | `field.partition.transform = "year"`, `root.partition.apply_arrow_batch(b)` | not bound |
@@ -87,7 +91,7 @@ medium does the work before a byte is decoded.
    answer until `close()`.
 7. **The name picks the encoding and the outer coding.** `.arrows` (IPC
    stream), `.arrow`/`.feather`/`.ipc` (IPC file), `.parquet`, `.avro`,
-   `.xlsx` (one worksheet of a workbook), `.txt`/`.log`, a table folder;
+   `.csv`, `.tsv`, `.xlsx` (one worksheet of a workbook), `.txt`/`.log`, a table folder;
    `.gz`, `.zz`, `.zst` wrap the bytes. Parquet and a workbook compress
    internally, so `.parquet.gz` and `.xlsx.gz` are refused before a byte is
    written - set `compression` on Parquet instead.
@@ -95,8 +99,8 @@ medium does the work before a byte is decoded.
    implies `parquet`); the Python and Node packages carry both.
 9. **Absent is empty; never probe first.** An absent resource reads as no
    batches and the first write creates it and its parents. Do not guard with
-   `exists`; an encoding the build lacks (e.g. `text/csv`) is named by
-   `record_options()`.
+   `exists`; an encoding the build lacks (e.g. `application/vnd.apache.orc`)
+   is named by `record_options()`.
 10. **Properties by name are copies.** `read_arrow_reader(rowheader=...)` /
     `readArrowReader({ rowheader })` set that property on a copy of the
     handle's (or the given) options; the handle's options are unchanged. Left
@@ -124,13 +128,29 @@ medium does the work before a byte is decoded.
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
     again - and never a `prevuuid`, so no line identity moves. A write consumes each row's non-empty `body`.
-15. **Iceberg commits are snapshots.** `append` and metadata-only commits
+15. **CSV is typed by its header and a sample, or by the declared `field`.**
+    The first record names the columns (`header=False`: `column_1`, ...),
+    a sample of `infer_row_size` records (1,024) types each column - boolean,
+    `int64`, `float64`, `date32`, `datetime64(ns, UTC)`, else `utf8` - and
+    every inferred column is nullable; a later cell its column cannot read
+    is refused, naming `infer_row_size`; declare the `field` to read every
+    cell under a contract. A write onto a stored document completes onto its
+    header, never the sample: the rows are written as they are, a header
+    column they lack is empty, and a column the header lacks is refused. An
+    unquoted cell spelling one of `null_values` (the empty cell, by default)
+    is null and `""` the empty text, a record with the
+    wrong number of cells is refused by row, a `.tsv` name is the same medium
+    under a tab, and the dialect is a set of option properties -
+    `separator`, `quote`, `escape`, `comment`, `header`, `null_values`,
+    `trim`, `infer_row_size` - never a format argument. Compression and the
+    charset are the handle's (`trades.csv.gz`, `;charset=windows-1252`).
+16. **Iceberg commits are snapshots.** `append` and metadata-only commits
     rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
     conflict instead. A merge keys on the identity partition columns plus
     `merge_by`, so a row only ever updates its own partition. A scan decodes
     qualifying files side by side (`read.parallelism`) and hands batches back
     in plan order.
-16. **Folders read by their layout.** A stored `column=value` layout is
+17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
     decide where rows go (`with_partition_fields`). The first batch to reach a
     leaf performs the write's operation; later ones append.
@@ -184,8 +204,16 @@ medium does the work before a byte is decoded.
   `[{ id: 1 }, { id: 2n }]` is one `int64` column, the integral `number` read
   as `bigint`; only a fraction beside `bigint` rows is refused, naming the
   column and the value.
-- Looking for a CSV reader: `text/csv` is not a record encoding; read lines
-  with a `rowheader` regex, or convert upstream.
+- Reading a `;` or `|` document under the default CSV dialect: the header is
+  one column. Pass `separator=';'` / `{ separator: ';' }` /
+  `set_csv_separator(b';')?` on the read - and on the write, or the file
+  reads back one-columned under the default.
+- Trusting an inferred CSV column: the sample's datatypes are a reading,
+  so a later cell that does not fit is refused - `$[row].<column>: expected
+  int64, the datatype the first 1024 records (infer_row_size) infer, got
+  "x" ...` - partway through the read. Declare the `field` (or widen
+  `infer_row_size`) for a contract; a declared nullable column takes such a
+  cell as null under `safe`.
 
 ## Language references
 
@@ -199,7 +227,7 @@ medium does the work before a byte is decoded.
 - Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
 - Media overview and options: https://platob.github.io/yggdryl/media/#read-and-write
-- Per format: https://platob.github.io/yggdryl/media/#arrow-ipc, https://platob.github.io/yggdryl/media/#parquet, https://platob.github.io/yggdryl/media/#avro, https://platob.github.io/yggdryl/media/#excel, https://platob.github.io/yggdryl/media/#plain-text, https://platob.github.io/yggdryl/media/#iceberg
+- Per format: https://platob.github.io/yggdryl/media/#arrow-ipc, https://platob.github.io/yggdryl/media/#parquet, https://platob.github.io/yggdryl/media/#avro, https://platob.github.io/yggdryl/media/#excel, https://platob.github.io/yggdryl/media/#csv, https://platob.github.io/yggdryl/media/#plain-text, https://platob.github.io/yggdryl/media/#iceberg
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

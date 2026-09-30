@@ -38,11 +38,12 @@ yggdryl fix --root config/fix components list Order
 
 ## Install
 
-The published wheel includes the native executable. From a checkout, Cargo runs the same binary:
+The published wheel includes the native executable, every namespace in it: `yggdryl market serve --help` is the book display's own usage. From a checkout, Cargo runs the same binary:
 
 ```bash
 pip install yggdryl
 yggdryl fix --help
+yggdryl market serve --help
 cargo run -p yggdryl-cli -- fix fields list Symbol
 ```
 
@@ -52,6 +53,16 @@ To include the CLI in a locally built wheel, stage it before building the wheel:
 python scripts/stage_cli.py
 maturin build --manifest-path python/Cargo.toml --out dist
 ```
+
+## Namespaces
+
+`yggdryl` is one binary over three namespaces, each a subcommand owning its own verbs and state; this page is `fix`'s.
+
+| Namespace | Serves | Page |
+| --- | --- | --- |
+| `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively | this page |
+| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/index.md#provider) |
+| `market` | `yggdryl market serve`: tables of market data as the book display - bid and ask candles, books and audits over HTTP - each `--capture` folding a FIX bridge log into the first table before it serves | [Book display](../graph/serve.md) |
 
 ## Three category command trees
 
@@ -236,8 +247,11 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ```bash
 cargo test -p yggdryl-cli --test fix
+cargo test -p yggdryl-cli --test market      # `yggdryl market serve`: the refusals and every example its help states; `-- --ignored` hosts the live display under `--path /book` and at the root
+cargo test -p yggdryl-cli --features iceberg --test market -- --ignored   # a ULBridge capture folded into an Iceberg table, then served
 cargo clippy -p yggdryl-cli --all-targets -- -D warnings
 cargo run -p yggdryl-cli -- fix groups create --help
+cargo run -p yggdryl-cli -- market serve --help
 ```
 
 ## Performance

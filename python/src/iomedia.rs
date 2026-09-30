@@ -1432,6 +1432,55 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::Line
     yggdryl::text::LineSep::new(bytes).map_err(value_error)
 }
 
+/// Read one CSV dialect byte - a separator, a quote, an escape or a comment
+/// byte - out of a one-character `str` or one byte of `bytes`, naming the
+/// setting on refusal. Only the shape is judged here: whether the byte can
+/// play the role is the core's own refusal.
+fn csv_byte_from_value(value: &Bound<'_, PyAny>, setting: &str) -> PyResult<u8> {
+    if let Ok(text) = value.extract::<&str>() {
+        let mut characters = text.chars();
+        if let (Some(character), None) = (characters.next(), characters.next())
+            && let Ok(byte) = u8::try_from(u32::from(character))
+        {
+            return Ok(byte);
+        }
+        return Err(PyValueError::new_err(format!(
+            "expected a one-character str or one byte for {setting}, got {text:?}"
+        )));
+    }
+    if let Ok(bytes) = value.cast::<PyBytes>() {
+        if let [byte] = bytes.as_bytes() {
+            return Ok(*byte);
+        }
+        return Err(PyValueError::new_err(format!(
+            "expected a one-character str or one byte for {setting}, got {} bytes",
+            bytes.len()?
+        )));
+    }
+    Err(PyTypeError::new_err(format!(
+        "{setting} must be a one-character str or one byte, not {}",
+        type_name(value)
+    )))
+}
+
+/// [`csv_byte_from_value`] for a role the dialect may leave unfilled: `None`
+/// clears it.
+fn optional_csv_byte_from_value(
+    value: Option<&Bound<'_, PyAny>>,
+    setting: &str,
+) -> PyResult<Option<u8>> {
+    value
+        .filter(|value| !value.is_none())
+        .map(|value| csv_byte_from_value(value, setting))
+        .transpose()
+}
+
+/// One CSV dialect byte as the one-character `str` Python reads it as; the
+/// core holds every role to ASCII, so the byte is the character.
+fn csv_byte_text(byte: Option<u8>) -> Option<String> {
+    byte.map(|byte| char::from(byte).to_string())
+}
+
 /// Read one required key from private `RecordOptions` pickle state.
 fn required_record_pickle_item<'py>(
     state: &Bound<'py, PyDict>,
@@ -1518,11 +1567,13 @@ impl PyRecordOptions {
         }
         if let RecordOptions::Excel(options) = &self.inner {
             state.set_item("sheet", options.sheet.as_deref())?;
-            state.set_item("header", options.header)?;
             state.set_item(
                 "range",
                 options.range.map(crate::excel::PyCellRange::from_inner),
             )?;
+        }
+        if let Some(header) = self.inner.header() {
+            state.set_item("header", header)?;
         }
         if let Some(block_codec) = self.inner.avro_block_codec() {
             state.set_item("block_codec", block_codec)?;
@@ -1539,7 +1590,52 @@ impl PyRecordOptions {
         if let Some(metadata) = self.inner.parquet_key_value_metadata() {
             state.set_item("key_value_metadata", metadata.to_vec())?;
         }
+        if let Some(separator) = self.inner.csv_separator() {
+            state.set_item("separator", csv_byte_text(Some(separator)))?;
+            state.set_item("quote", csv_byte_text(self.inner.csv_quote().flatten()))?;
+            state.set_item("escape", csv_byte_text(self.inner.csv_escape().flatten()))?;
+            state.set_item("comment", csv_byte_text(self.inner.csv_comment().flatten()))?;
+            state.set_item(
+                "null_values",
+                self.inner.csv_null_values().map(|spellings| {
+                    spellings
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                }),
+            )?;
+            state.set_item("trim", self.inner.csv_trim())?;
+            state.set_item("infer_row_size", self.inner.csv_infer_row_size())?;
+        }
         Ok(state)
+    }
+
+    /// Restore the CSV dialect a pickle state carries, where it carries one.
+    ///
+    /// The three optional roles are cleared before the separator lands, so a
+    /// dialect whose separator is the default quote restores as it was set
+    /// rather than being refused by a default it had already replaced.
+    fn restore_csv_dialect(&mut self, state: &Bound<'_, PyDict>) -> PyResult<()> {
+        let Some(separator) = state.get_item("separator")? else {
+            return Ok(());
+        };
+        self.set_quote(None)?;
+        self.set_escape(None)?;
+        self.set_comment(None)?;
+        self.set_separator(&separator)?;
+        self.set_quote(state.get_item("quote")?.as_ref())?;
+        self.set_escape(state.get_item("escape")?.as_ref())?;
+        self.set_comment(state.get_item("comment")?.as_ref())?;
+        if let Some(value) = state.get_item("null_values")? {
+            self.set_null_values(&value)?;
+        }
+        if let Some(value) = state.get_item("trim")? {
+            self.set_trim(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("infer_row_size")? {
+            self.set_infer_row_size(value.extract()?)?;
+        }
+        Ok(())
     }
 }
 
@@ -1681,6 +1777,7 @@ impl PyRecordOptions {
         if let Some(value) = state.get_item("key_value_metadata")? {
             options.set_key_value_metadata(&value)?;
         }
+        options.restore_csv_dialect(state)?;
         Ok(options)
     }
 
@@ -1953,19 +2050,6 @@ impl PyRecordOptions {
         self.inner.set_excel_sheet(sheet).map_err(value_error)
     }
 
-    /// Whether a workbook's first row names its columns, `None` for another
-    /// encoding.
-    #[getter]
-    fn header(&self) -> Option<bool> {
-        self.inner.excel_header()
-    }
-
-    #[setter]
-    fn set_header(&mut self, header: bool) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_excel_header(header).map_err(value_error)
-    }
-
     /// The cells a workbook read or write addresses, `None` for the whole
     /// sheet - or for another encoding.
     #[getter]
@@ -2067,6 +2151,143 @@ impl PyRecordOptions {
         self.require_mutable()?;
         self.inner
             .set_parquet_key_value_metadata(string_pairs_from_value(metadata)?)
+            .map_err(value_error)
+    }
+
+    /// The CSV byte between two cells, as a one-character `str`, or `None`
+    /// for another encoding.
+    ///
+    /// The setter takes a one-character `str` or one byte; a line break, or
+    /// the byte another role holds, is refused by the core naming both.
+    #[getter]
+    fn separator(&self) -> Option<String> {
+        csv_byte_text(self.inner.csv_separator())
+    }
+
+    #[setter]
+    fn set_separator(&mut self, separator: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let byte = csv_byte_from_value(separator, "separator")?;
+        self.inner.set_csv_separator(byte).map_err(value_error)
+    }
+
+    /// The CSV quote byte, as a one-character `str`; `None` where the dialect
+    /// quotes nothing, or for another encoding.
+    ///
+    /// The setter takes a one-character `str` or one byte, and `None` turns
+    /// quoting off on read and write.
+    #[getter]
+    fn quote(&self) -> Option<String> {
+        csv_byte_text(self.inner.csv_quote().flatten())
+    }
+
+    #[setter]
+    fn set_quote(&mut self, quote: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let byte = optional_csv_byte_from_value(quote, "quote")?;
+        self.inner.set_csv_quote(byte).map_err(value_error)
+    }
+
+    /// The CSV escape byte, as a one-character `str`: when set, that byte
+    /// before a quote inside a quoted cell spells the quote; `None` doubles
+    /// the quote instead (RFC 4180), or is another encoding.
+    #[getter]
+    fn escape(&self) -> Option<String> {
+        csv_byte_text(self.inner.csv_escape().flatten())
+    }
+
+    #[setter]
+    fn set_escape(&mut self, escape: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let byte = optional_csv_byte_from_value(escape, "escape")?;
+        self.inner.set_csv_escape(byte).map_err(value_error)
+    }
+
+    /// The CSV comment byte, as a one-character `str`: a record opening with
+    /// it is skipped; `None` skips none, or is another encoding.
+    #[getter]
+    fn comment(&self) -> Option<String> {
+        csv_byte_text(self.inner.csv_comment().flatten())
+    }
+
+    #[setter]
+    fn set_comment(&mut self, comment: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let byte = optional_csv_byte_from_value(comment, "comment")?;
+        self.inner.set_csv_comment(byte).map_err(value_error)
+    }
+
+    /// Whether the first record names the columns - a CSV's first record, a
+    /// workbook's first row, read from it and written first - or `None` for
+    /// another encoding.
+    #[getter]
+    fn header(&self) -> Option<bool> {
+        self.inner.header()
+    }
+
+    #[setter]
+    fn set_header(&mut self, header: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_header(header).map_err(value_error)
+    }
+
+    /// The CSV spellings of an absent value - an unquoted cell spelling one
+    /// reads as null, and a null is written as the first - or `None` for
+    /// another encoding.
+    ///
+    /// The setter takes the spellings as a list of `str`; a spelling listed
+    /// twice is refused.
+    #[getter]
+    fn null_values(&self) -> Option<Vec<String>> {
+        self.inner
+            .csv_null_values()
+            .map(|spellings| spellings.iter().map(ToString::to_string).collect())
+    }
+
+    #[setter]
+    fn set_null_values(&mut self, null_values: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        // A `str` iterates its characters, so one handed in directly would
+        // land as one spelling per character and fail no check.
+        if null_values.is_instance_of::<PyString>() || null_values.is_instance_of::<PyBytes>() {
+            return Err(PyTypeError::new_err(
+                "null_values must be a list of str, not one str; wrap it in a list",
+            ));
+        }
+        let mut spellings = Vec::new();
+        for spelling in null_values.try_iter()? {
+            spellings.push(spelling?.extract::<String>()?);
+        }
+        self.inner
+            .set_csv_null_values(spellings)
+            .map_err(value_error)
+    }
+
+    /// Whether a CSV read strips the ASCII blanks around an unquoted cell, or
+    /// `None` for another encoding.
+    #[getter]
+    fn trim(&self) -> Option<bool> {
+        self.inner.csv_trim()
+    }
+
+    #[setter]
+    fn set_trim(&mut self, trim: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_csv_trim(trim).map_err(value_error)
+    }
+
+    /// The records a CSV read samples to infer each column's datatype when
+    /// no field is declared, or `None` for another encoding; zero is refused.
+    #[getter]
+    fn infer_row_size(&self) -> Option<usize> {
+        self.inner.csv_infer_row_size()
+    }
+
+    #[setter]
+    fn set_infer_row_size(&mut self, infer_row_size: usize) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_csv_infer_row_size(infer_row_size)
             .map_err(value_error)
     }
 

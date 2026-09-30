@@ -26,18 +26,24 @@ const CLASSES = [
   'MarketDataRowIterator',
   'BookIterator',
   'EventIterator',
+  'Candle',
+  'CandleOptions',
+  'CandleIterator',
 ]
 
 test('every native class is reached through the namespace, and only there', () => {
   assert.deepEqual(
     Object.keys(graph).sort(),
-    [...CLASSES, 'ENTRY_ID', 'ENTRY_REF_ID'].sort(),
+    [...CLASSES, 'candles', 'ENTRY_ID', 'ENTRY_REF_ID'].sort(),
   )
   for (const name of CLASSES) {
     assert.equal(typeof graph[name], 'function', name)
     assert.equal(yggdryl[name], undefined, name)
     assert.equal(yggdryl[`Js${name}`], undefined, name)
   }
+  // The one function beside the classes: the candle walk, drained.
+  assert.equal(typeof graph.candles, 'function')
+  assert.equal(yggdryl.candles, undefined)
 })
 
 test('no retired name survives', () => {
@@ -65,6 +71,8 @@ test('no retired name survives', () => {
   assert.equal(yggdryl._marketDataArrowReaderNative, undefined)
   assert.equal(graph.BookIterator._bookIteratorNative, undefined)
   assert.equal(graph.EventIterator._eventIteratorNative, undefined)
+  assert.equal(graph.CandleIterator._candleIteratorNative, undefined)
+  assert.equal(graph.Candle._fromScalarNative, undefined)
   assert.equal(yggdryl._graphGlobalSymbolNative, undefined)
 })
 

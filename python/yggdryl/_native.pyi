@@ -4070,6 +4070,11 @@ class Avro(Media):
 class Xmla(Media):
     """An XML for Analysis rowset document."""
 
+class Csv(Media):
+    """A delimiter-separated values document: ``text/csv``, or
+    ``text/tab-separated-values`` under a tab, its dialect on the record
+    options."""
+
 class Excel(Media):
     """An Office Open XML workbook, one worksheet read and written as records."""
 
@@ -4401,10 +4406,6 @@ class RecordOptions:
     @sheet.setter
     def sheet(self, sheet: str | None) -> None: ...
     @property
-    def header(self) -> bool | None: ...
-    @header.setter
-    def header(self, header: bool) -> None: ...
-    @property
     def range(self) -> CellRange | None: ...
     @range.setter
     def range(self, range: CellRange | str | tuple[CellRef | str, CellRef | str] | None) -> None: ...
@@ -4432,6 +4433,56 @@ class RecordOptions:
     def key_value_metadata(
         self, metadata: Mapping[str, str] | Iterable[tuple[str, str]]
     ) -> None: ...
+    @property
+    def separator(self) -> str | None:
+        """The CSV byte between two cells as a one-character ``str``; ``None``
+        for another encoding. The setter takes a one-character ``str`` or one
+        byte."""
+    @separator.setter
+    def separator(self, separator: str | bytes) -> None: ...
+    @property
+    def quote(self) -> str | None:
+        """The CSV quote byte; ``None`` where the dialect quotes nothing, or for
+        another encoding. ``None`` turns quoting off."""
+    @quote.setter
+    def quote(self, quote: str | bytes | None) -> None: ...
+    @property
+    def escape(self) -> str | None:
+        """The CSV escape byte before a quote inside a quoted cell; ``None``
+        doubles the quote instead (RFC 4180), or is another encoding."""
+    @escape.setter
+    def escape(self, escape: str | bytes | None) -> None: ...
+    @property
+    def comment(self) -> str | None:
+        """The CSV comment byte a skipped record opens with; ``None`` skips
+        none, or is another encoding."""
+    @comment.setter
+    def comment(self, comment: str | bytes | None) -> None: ...
+    @property
+    def header(self) -> bool | None:
+        """Whether the first record names the columns - a CSV's first record,
+        a workbook's first row; ``None`` for another encoding."""
+    @header.setter
+    def header(self, header: bool) -> None: ...
+    @property
+    def null_values(self) -> list[str] | None:
+        """The CSV spellings of an absent value - an unquoted cell spelling one
+        reads as null, a null is written as the first; ``None`` for another
+        encoding. A spelling listed twice is refused."""
+    @null_values.setter
+    def null_values(self, null_values: Iterable[str]) -> None: ...
+    @property
+    def trim(self) -> bool | None:
+        """Whether a CSV read strips the ASCII blanks around an unquoted cell;
+        ``None`` for another encoding."""
+    @trim.setter
+    def trim(self, trim: bool) -> None: ...
+    @property
+    def infer_row_size(self) -> int | None:
+        """The records a CSV read samples to infer each column's datatype when
+        no field is declared; ``None`` for another encoding, zero refused."""
+    @infer_row_size.setter
+    def infer_row_size(self, infer_row_size: int) -> None: ...
     def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatch: ...
@@ -8001,6 +8052,130 @@ class EventIterator(Iterator[MarketData]):
     def alive(self) -> list[MarketData]: ...
     def __iter__(self) -> EventIterator: ...
     def __next__(self) -> MarketData: ...
+
+# The reading a candle answers for one of its four series: ``open``, ``high``,
+# ``low`` and ``close``, each a decimal ``Scalar``, in that order.
+CandleReading = dict[str, Scalar]
+
+class Candle:
+    """One OHLC of one book over one bucket.
+
+    What the books of one cross code whose instants fell in ``[start, end)``
+    read at their best bid, their best ask, their midpoint and their spread,
+    the quantities resting at the touch when the bucket closed, and what
+    executed in it. Immutable; built by ``CandleIterator``, ``candles`` or
+    ``from_scalar``, never directly.
+    """
+
+    @property
+    def crosscode(self) -> str: ...
+    @property
+    def ticker(self) -> str | None: ...
+    @property
+    def start(self) -> int:
+        """The bucket's start: nanoseconds since the Unix epoch, UTC."""
+    @property
+    def end(self) -> int:
+        """The bucket's end, exclusive: nanoseconds since the Unix epoch, UTC."""
+    @property
+    def bid(self) -> CandleReading | None:
+        """The best bid over the bucket; ``None`` where no book stated one."""
+    @property
+    def ask(self) -> CandleReading | None: ...
+    @property
+    def mid(self) -> CandleReading | None:
+        """The midpoint of the best bid and offer; ``None`` where no book stated both."""
+    @property
+    def spread(self) -> CandleReading | None: ...
+    @property
+    def bidqty(self) -> Scalar | None:
+        """The quantity at the best bid when the bucket closed; ``None`` where none."""
+    @property
+    def askqty(self) -> Scalar | None: ...
+    @property
+    def books(self) -> int: ...
+    @property
+    def executions(self) -> int: ...
+    @property
+    def volume(self) -> Scalar:
+        """The exact sum of the quantities the executions state, as a decimal."""
+    @staticmethod
+    def field() -> Field:
+        """The required struct ``candle`` every candle row is laid out under."""
+        ...
+    def into_scalar(self) -> Scalar:
+        """The candle as the named struct ``Scalar`` of its twenty-five cells."""
+        ...
+    @staticmethod
+    def from_scalar(value: Scalar | Mapping[str, Any] | Sequence[Any]) -> Candle:
+        """A candle read back from its named struct, a mapping of the same names
+        (a name left out a null) or the ordered row ``field()`` canonicalizes to."""
+        ...
+    def as_py(self) -> dict[str, Any]:
+        """The cells as native Python values keyed by name: ``into_scalar().as_py()``."""
+        ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> Candle: ...
+    def __deepcopy__(self, memo: Any) -> Candle: ...
+    def __reduce__(self) -> tuple[object, tuple[Scalar]]: ...
+
+class CandleOptions:
+    """How instants are bucketed: the interval and the zone whose wall clock the
+    buckets align to, so a daily candle opens at local midnight and hourly
+    candles follow a saving-time change. Immutable.
+    """
+
+    def __init__(
+        self,
+        interval: int | str | CandleOptions,
+        timezone: Timezone | str | Any | None = None,
+    ) -> None: ...
+    @property
+    def interval(self) -> int:
+        """The bucket width in nanoseconds of the zone's wall clock."""
+    @property
+    def timezone(self) -> Timezone: ...
+    @property
+    def spelling(self) -> str:
+        """The interval as its count and the widest unit dividing it exactly."""
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> CandleOptions: ...
+    def __deepcopy__(self, memo: Any) -> CandleOptions: ...
+    def __reduce__(self) -> tuple[object, tuple[int, str]]: ...
+
+class CandleIterator(Iterator[Candle]):
+    """Candles from a sorted stream of books, one per cross code and bucket.
+
+    Pulling its books - ``BookEvent``, or ``MarketData`` holding one - lazily
+    from the caller's iterable; a regression in their instants is refused.
+    The candles of a bucket are yielded in cross-code order when the stream
+    moves past it and at its end; an empty bucket yields none.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    def __init__(
+        self,
+        books: Iterable[BookEvent | MarketData],
+        options: CandleOptions | int | str,
+    ) -> None: ...
+    @property
+    def options(self) -> CandleOptions: ...
+    def __iter__(self) -> CandleIterator: ...
+    def __next__(self) -> Candle: ...
+
+def candles(
+    books: Iterable[BookEvent | MarketData],
+    interval: CandleOptions | int | str,
+    timezone: Timezone | str | Any | None = None,
+) -> list[Candle]:
+    """``list(CandleIterator(books, CandleOptions(interval, timezone)))``."""
+    ...
 
 ENTRY_ID: str
 ENTRY_REF_ID: str

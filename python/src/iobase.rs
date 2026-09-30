@@ -219,6 +219,7 @@ impl Role {
             Self::Media(Encoding::Parquet) => "Parquet",
             Self::Media(Encoding::Avro) => "Avro",
             Self::Media(Encoding::Xmla) => "Xmla",
+            Self::Media(Encoding::Csv) => "Csv",
             Self::Media(Encoding::Excel) => "Excel",
             Self::Held => "IOBase",
         }

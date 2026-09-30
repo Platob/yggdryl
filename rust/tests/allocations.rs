@@ -5386,6 +5386,72 @@ fn a_record_crosses_into_a_batch_for_one_box_per_leaf() {
     );
 }
 
+/// `rows` CSV records of `cells` cells each, comma-separated, quoted every
+/// fourth cell so the quoted path runs too.
+fn csv_records(rows: usize, cells: usize) -> Buffer {
+    let mut text = String::new();
+    for cell in 0..cells {
+        let _ = write!(text, "{}c{cell}", if cell == 0 { "" } else { "," });
+    }
+    text.push('\n');
+    for row in 0..rows {
+        for cell in 0..cells {
+            if cell > 0 {
+                text.push(',');
+            }
+            // Fixed-width numbers, so every record is the same length and
+            // the record buffer never has to grow past the first.
+            if cell % 4 == 3 {
+                let _ = write!(text, "\"v {row:05},{cell:03}\"");
+            } else {
+                let _ = write!(text, "{:08}", row * cells + cell);
+            }
+        }
+        text.push('\n');
+    }
+    Buffer::from_bytes(text.into_bytes()).with_media_type(MediaType::from_file_name("rows.csv"))
+}
+
+/// What counting `rows` records of `cells` cells through `row_size` costs.
+fn csv_count_cost(source: &Buffer, rows: usize) -> usize {
+    let options = yggdryl::csv::CsvOptions::new();
+    let media = yggdryl::csv::Csv::new(source.clone()).with_options(options);
+    let (allocations, counted_rows) =
+        counted(|| yggdryl::IOMedia::row_size(black_box(&media)).expect("a count"));
+    assert_eq!(counted_rows as usize, rows, "every record was counted");
+    allocations
+}
+
+/// What counting a CSV costs, by how many cells a record holds: twelve for
+/// eight cells, eighteen for sixty-four, and the same at sixteen records as
+/// at a thousand.
+///
+/// Seven for a one-cell record, measured: five for the transport and the
+/// cutter - the stream over the handle and its box, the fetch buffer and
+/// the box the coding chain ends in, the cutter's window - and one each for
+/// the record buffer and the cell index on the first record. Every count
+/// past that is those two vectors doubling up to the first record's width,
+/// five and two more at eight cells and eight and five at sixty-four, and
+/// nothing after it: a record is cut into the buffer the one before it was
+/// cut into, and a cell is a range of it.
+const CSV_COUNT_COSTS: [(usize, usize); 2] = [(8, 12), (64, 18)];
+
+#[test]
+fn tokenizing_csv_records_costs_a_constant_and_nothing_a_record() {
+    for (cells, expected) in CSV_COUNT_COSTS {
+        let narrow = csv_count_cost(&csv_records(16, cells), 16);
+        let wide = csv_count_cost(&csv_records(1_024, cells), 1_024);
+        assert_eq!(
+            narrow, wide,
+            "{cells} cells: 16 records cost {narrow} allocations and 1024 cost {wide}"
+        );
+        assert_eq!(
+            narrow, expected,
+            "{cells} cells: the count's constant moved"
+        );
+    }
+}
+
 /// The trades table every Excel allocation case lays out: an integer, a
 /// nullable text and a float, the three storages a cell takes.
 fn excel_field() -> Field {

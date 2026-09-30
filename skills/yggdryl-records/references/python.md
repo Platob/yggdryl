@@ -28,8 +28,8 @@ assert handle.record_options().block_codec == "deflate"
 
 # Absent reads as empty; an unimplemented encoding is named, never guessed.
 assert IOBase(root / "absent.arrows").read_arrow_reader().read_all().num_rows == 0
-with pytest.raises(ValueError, match="text/csv"):
-    IOBase(root / "trades.csv").record_options()
+with pytest.raises(ValueError, match="application/vnd.apache.orc"):
+    IOBase(root / "trades.orc").record_options()
 ```
 
 ## Write batches and stream them back
@@ -349,6 +349,56 @@ with tempfile.TemporaryDirectory() as directory:
     assert levels.schema.names[-2:] == ["body", "level"]
 ```
 
+## CSV and TSV: the dialect by name
+
+A `.csv` handle is a `Csv` medium: it reads RFC 4180 records under its header and a sample of the rows, or under the declared `field`; a `.tsv` name is the same medium under a tab. The dialect is option properties (`separator`, `quote`, `escape`, `comment`, `header`, `null_values`, `trim`, `infer_row_size`), each also a keyword on any read or write; compression is the name's (`trades.csv.gz`).
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+import pytest
+
+from yggdryl import IOBase, RecordOptions
+
+root = pathlib.Path(tempfile.mkdtemp())
+field = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("symbol", pa.string())])
+rows = [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}, {"id": 3, "symbol": ""}]
+
+# The name says CSV and gzip; the declared field is the contract every cell crosses.
+handle = IOBase(root / "trades.csv.gz")
+assert type(handle).__name__ == "Csv"
+handle.overwrite_records(rows, field=field)
+# A null is the empty cell; the empty text is quoted, so the two read back apart.
+assert list(handle.read_records(field=field)) == rows
+
+# Undeclared, the header names the columns and the sample types them, every one nullable.
+assert [child.name for child in handle.read_arrow_field().dtype] == ["id", "symbol"]
+assert (handle.row_size, handle.column_size) == (3, 2)
+
+# A `;` document another writer saved: the separator is a property of the read.
+(root / "eu.csv").write_bytes(b"id;symbol\n1;AAPL\n2;\n")
+assert list(IOBase(root / "eu.csv").read_records(separator=";")) == rows[:2]
+# Under the default dialect the same header is one column.
+assert len(IOBase(root / "eu.csv").read_arrow_field().dtype) == 1
+
+# The dialect on an options value: a byte role is one character, None clears one.
+options = RecordOptions("trades.csv")
+options.separator = "|"
+options.quote = None
+options.null_values = ["NA", ""]
+options.header = False
+assert (options.separator, options.quote, options.null_values) == ("|", None, ["NA", ""])
+assert RecordOptions("trades.tsv").separator == "\t"
+assert RecordOptions("trades.parquet").separator is None  # a CSV-only setting
+
+# A record with the wrong number of cells is refused by row, never widened.
+(root / "ragged.csv").write_bytes(b"a,b\n1,2\n3\n")
+with pytest.raises(ValueError, match=r"expected 2 cells, got 1 in row 3"):
+    list(IOBase(root / "ragged.csv").read_records())
+```
+
 ## Partitioned folders: route on write, prune on read
 
 Addressing a folder writes each row to its `column=value` leaf (the path carries the partition columns, the leaf does not) and reads them back typed. A `filter` equality prunes leaves by path before anything is decoded.
@@ -546,4 +596,5 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 - JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`. `write_arrow` on them accepts `"overwrite"` only - a document is written whole.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
+- A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character `str` or one byte, and `null_values` a list - a bare `str` is a `TypeError`; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options is `None` to read and a `ValueError` to set.
 - `Table` objects cache their metadata; after writing through another handle, `Table.open(...)` again.

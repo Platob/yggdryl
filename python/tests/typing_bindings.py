@@ -110,7 +110,7 @@ from yggdryl.holder import (
     LocalFolder,
     LocalPath,
 )
-from yggdryl.media import Avro, Excel, Ipc, Media, Parquet, Text, Xmla
+from yggdryl.media import Avro, Csv, Excel, Ipc, Media, Parquet, Text, Xmla
 
 numeric_version: Version = Version(5, 0, 2)
 parsed_version: Version = Version.from_str("255.255.65535")
@@ -612,7 +612,7 @@ role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
 role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
 role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
 coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
-encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro, Xmla, Excel]
+encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro, Xmla, Csv, Excel]
 storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
@@ -930,6 +930,24 @@ record_handle.write_polars_frame(polars_frame, "merge", options=record_options)
 parquet_options: RecordOptions = RecordOptions("trades.parquet")
 row_group_size: int | None = parquet_options.max_row_group_size
 footer_metadata: dict[str, str] | None = parquet_options.key_value_metadata
+csv_options: RecordOptions = RecordOptions("trades.csv")
+csv_separator: str | None = csv_options.separator
+csv_quote: str | None = csv_options.quote
+csv_escape: str | None = csv_options.escape
+csv_comment: str | None = csv_options.comment
+csv_header: bool | None = csv_options.header
+csv_null_values: list[str] | None = csv_options.null_values
+csv_trim: bool | None = csv_options.trim
+csv_infer_row_size: int | None = csv_options.infer_row_size
+csv_options.separator = ";"
+csv_options.quote = b"'"
+csv_options.escape = None
+csv_options.comment = "#"
+csv_options.header = False
+csv_options.null_values = ["", "NA"]
+csv_options.trim = True
+csv_options.infer_row_size = 64
+csv_rows: Iterator[dict[str, Any]] = IOBase(Path("trades.csv")).read_records(separator=";")
 
 iceberg_schema: Field = iceberg.assign_field_ids(
     pa.schema([pa.field("id", pa.int64(), nullable=False)])
@@ -2108,6 +2126,36 @@ graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="
 graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
     "books", graph.MarketData.arrow_reader([graph_book_with_operations])
 )
+graph_candle_options: graph.CandleOptions = graph.CandleOptions("1m", timezone=Timezone.UTC)
+graph_candle_options_again: graph.CandleOptions = graph.CandleOptions(
+    60_000_000_000, "Europe/Zurich"
+)
+graph_candle_interval: int = graph_candle_options.interval
+graph_candle_timezone: Timezone = graph_candle_options.timezone
+graph_candle_spelling: str = graph_candle_options.spelling
+graph_candle_walk: graph.CandleIterator = graph.CandleIterator(
+    [graph_book_with_operations, graph.MarketData(graph_book)], graph_candle_options
+)
+graph_candle_walk_options: graph.CandleOptions = graph_candle_walk.options
+graph_candle_walk_hash: None = graph.CandleIterator.__hash__
+graph_candles: list[graph.Candle] = list(graph_candle_walk)
+graph_candles_again: list[graph.Candle] = graph.candles([graph_book], "1m", "Europe/Zurich")
+graph_candle_field: Field = graph.Candle.field()
+graph_candle: graph.Candle = graph.Candle.from_scalar(
+    {"crosscode": "IBM", "start": 0, "end": 60_000_000_000, "books": 1, "executions": 0, "volume": 0}
+)
+graph_candle_crosscode: str = graph_candle.crosscode
+graph_candle_ticker: str | None = graph_candle.ticker
+graph_candle_start: int = graph_candle.start
+graph_candle_end: int = graph_candle.end
+graph_candle_bid: dict[str, Scalar] | None = graph_candle.bid
+graph_candle_spread: dict[str, Scalar] | None = graph_candle.spread
+graph_candle_bidqty: Scalar | None = graph_candle.bidqty
+graph_candle_volume: Scalar = graph_candle.volume
+graph_candle_books: int = graph_candle.books
+graph_candle_scalar: Scalar = graph_candle.into_scalar()
+graph_candle_read: graph.Candle = graph.Candle.from_scalar(graph_candle_scalar)
+graph_candle_dict: dict[str, Any] = graph_candle.as_py()
 graph_view_lifecycle_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
     "lifecycle", graph.MarketData.arrow_reader([graph_order_event]), (), crosscode="G-1"
 )

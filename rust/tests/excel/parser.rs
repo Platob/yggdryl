@@ -61,7 +61,7 @@ fn handle(bytes: Vec<u8>) -> Buffer {
 /// The handle's record options, the header row as `header` says.
 fn options(handle: &Buffer, header: bool) -> RecordOptions {
     let mut options = handle.record_options().unwrap();
-    options.set_excel_header(header).unwrap();
+    options.set_header(header).unwrap();
     options
 }
 

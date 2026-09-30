@@ -19,8 +19,8 @@ assert_eq!(RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.parquet_max_ro
 // Absent reads as empty; an unimplemented encoding is named, never guessed.
 let empty = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 assert_eq!(empty.read_arrow_reader(&empty.record_options()?)?.count(), 0);
-let csv = Buffer::new().with_media_type(MimeType::CSV.into());
-assert!(csv.record_options().unwrap_err().to_string().contains("text/csv"));
+let orc = Buffer::new().with_media_type(MimeType::ORC.into());
+assert!(orc.record_options().unwrap_err().to_string().contains("application/vnd.apache.orc"));
 ```
 
 ## Write batches and stream them back
@@ -384,7 +384,7 @@ assert_eq!(decoded.rows[0].get_key_str("note").and_then(Scalar::as_str), Some("n
 
 ## Excel: one worksheet as records, the workbook as cells
 
-A `.xlsx` handle is a record medium over one worksheet - `set_excel_sheet`, `set_excel_header` and `set_excel_range` pick which cells - and `yggdryl::excel::Workbook` is the same package cell by cell.
+A `.xlsx` handle is a record medium over one worksheet - `set_excel_sheet`, `set_header` and `set_excel_range` pick which cells - and `yggdryl::excel::Workbook` is the same package cell by cell.
 
 ```rust
 use yggdryl::excel::{CellRef, Sheet, Workbook};
@@ -449,6 +449,75 @@ let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
 assert_eq!(id.scalar(1)?, Scalar::from(9_i64));
+```
+
+## CSV and TSV: the dialect on the options
+
+A `.csv` handle reads RFC 4180 records under its header and a sample of the rows, or under the declared `field`; a `.tsv` name is the same medium under a tab. The dialect is `RecordOptions` properties (`csv_separator`, `set_csv_separator`, ..., or `CsvOptions` directly), never a format argument; compression is the name's (`trades.csv.gz`).
+
+```rust
+use yggdryl::csv::CsvOptions;
+use yggdryl::holder::Buffer;
+use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+
+struct Trade(i64, Option<&'static str>);
+
+impl From<Trade> for Scalar {
+    fn from(row: Trade) -> Self {
+        Scalar::from_sequence([Scalar::from(row.0), row.1.map_or(Scalar::Null, Scalar::from)])
+    }
+}
+
+let field = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("symbol"),
+])?)
+.required_field("trade");
+let mut handle = Buffer::new().with_media_type(MimeType::CSV.into());
+let declared = handle.record_options()?.with_field(field.clone());
+handle.overwrite_records([Trade(1, Some("AAPL")), Trade(2, None), Trade(3, Some(""))], &declared)?;
+// A null is the empty cell; the empty text is quoted, so the two read back apart.
+assert_eq!(handle.read_all_bytes()?, b"id,symbol\n1,AAPL\n2,\n3,\"\"\n".to_vec());
+
+// Undeclared, the header names the columns and the sample types them, every one nullable.
+let inferred = handle.read_arrow_field(&handle.record_options()?)?;
+assert_eq!(inferred.dtype(), &DataType::from_str("struct<id: int64, symbol: utf8>")?);
+assert_eq!((handle.row_size()?, handle.column_size()?), (3, 2));
+
+// Declared, every cell crosses the column's contract; a null and "" stay apart.
+let mut symbols = Vec::new();
+for records in handle.read_arrow(Some(&declared))? {
+    let records = records?;
+    let symbol = records.child("symbol").expect("a symbol column");
+    for row in 0..symbol.len() {
+        symbols.push(symbol.scalar(row)?);
+    }
+}
+assert_eq!(symbols, [Scalar::from("AAPL"), Scalar::Null, Scalar::from("")]);
+
+// A `;` document another writer saved: the separator is a property of the read.
+let semicolon = Buffer::from_bytes(b"id;symbol\n1;AAPL\n2;\n".to_vec()).with_media_type(MimeType::CSV.into());
+let mut dialect = semicolon.record_options()?;
+dialect.set_csv_separator(b';')?;
+assert_eq!(dialect.csv_separator(), Some(b';'));
+let batch = semicolon.read_arrow_reader(&dialect)?.next().expect("one batch")?;
+assert_eq!((batch.num_rows(), batch.num_columns()), (2, 2));
+// Under the default dialect the same header is one column.
+assert_eq!(semicolon.read_arrow_field(&semicolon.record_options()?)?.field_len(), 1);
+
+// A tab separator is what a `.tsv` name reads and writes.
+assert_eq!(CsvOptions::tsv().separator(), b'\t');
+assert_eq!(RecordOptions::for_mime_type(&MimeType::TSV)?.csv_separator(), Some(b'\t'));
+assert_eq!(RecordOptions::for_mime_type(&MimeType::PARQUET)?.csv_separator(), None);
+
+// A record with the wrong number of cells is refused by row, never widened.
+let ragged = Buffer::from_bytes(b"a,b\n1,2\n3\n".to_vec()).with_media_type(MimeType::CSV.into());
+let refused = match ragged.read_arrow_reader(&ragged.record_options()?) {
+    Ok(reader) => reader.collect::<Result<Vec<_>, _>>().map(|_| ()).unwrap_err().to_string(),
+    Err(error) => error.to_string(),
+};
+assert!(refused.contains("expected 2 cells, got 1 in row 3"), "{refused}");
 ```
 
 ## Partitioned folders: route on write, prune on read
@@ -669,4 +738,5 @@ std::fs::remove_dir_all(&root)?;
 - `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
 - There is no `read_records` in Rust: rows out are `read_arrow` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
+- A CSV byte role is a `u8` (`b';'`), one ASCII byte that is no line break and no other role's; `set_csv_*` on another encoding's options is an error, and `csv_*` on them answers `None`. `linesep` is `CsvOptions::with_linesep` only.
 - Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet-only setter on another encoding's options is an error, not a no-op.

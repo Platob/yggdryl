@@ -5,14 +5,13 @@ const { existsSync, readdirSync } = require('node:fs')
 const { dirname, join } = require('node:path')
 
 const root = join(__dirname, '..')
-const npmCli = process.env.npm_execpath ?? join(
-  dirname(process.execPath),
-  'node_modules',
-  'npm',
-  'bin',
-  'npm-cli.js',
-)
-if (!existsSync(npmCli)) {
+// Under `npm run` the CLI is named by the environment; run bare, it is the one
+// bundled beside the node binary (Windows) or under its `lib` (Unix).
+const npmCli = process.env.npm_execpath ?? [
+  join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+].find((candidate) => existsSync(candidate))
+if (npmCli === undefined || !existsSync(npmCli)) {
   throw new Error('cannot locate npm-cli.js for the package dry-run')
 }
 const result = spawnSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json'], {

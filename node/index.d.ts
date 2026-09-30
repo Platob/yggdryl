@@ -679,6 +679,147 @@ export declare class ByteWriter {
 export type JsFsByteWriter = ByteWriter
 
 /**
+ * One OHLC of one book over one bucket: what the books of one cross code
+ * whose instants fell in `[start, end)` read at their best bid, their best
+ * ask, their midpoint and their spread, the quantities resting at the
+ * touch when the bucket closed, and what executed in it. Built by
+ * `CandleIterator`, or read back from a row through `fromScalar`.
+ */
+export declare class Candle {
+  /**
+   * The required struct `candle` every candle row is laid out under:
+   * `crosscode`, `ticker`, `start`, `end`, the four cells of each reading
+   * (`bidopen` .. `spreadclose`), `bidqty`, `askqty`, `books`,
+   * `executions` and `volume`.
+   */
+  static field(): Field
+  /** The book's cross code. */
+  get crosscode(): string
+  /** The book's ticker, where it stated one. */
+  get ticker(): string | null
+  /** The bucket's start: nanoseconds since the epoch, UTC. */
+  get start(): bigint
+  /** The bucket's end, exclusive: nanoseconds since the epoch, UTC. */
+  get end(): bigint
+  /**
+   * The best bid's open, high, low and close over the books stating one;
+   * `null` where none did.
+   */
+  get bid(): CandleReading | null
+  /**
+   * The best ask's open, high, low and close over the books stating one;
+   * `null` where none did.
+   */
+  get ask(): CandleReading | null
+  /**
+   * The BBO midpoint's open, high, low and close over the books stating
+   * one; `null` where none did.
+   */
+  get mid(): CandleReading | null
+  /**
+   * The spread's open, high, low and close over the books stating one;
+   * `null` where none did.
+   */
+  get spread(): CandleReading | null
+  /**
+   * The last book's quantity at the best bid, as decimal text; `null`
+   * where it had none.
+   */
+  get bidqty(): string | null
+  /**
+   * The last book's quantity at the best ask, as decimal text; `null`
+   * where it had none.
+   */
+  get askqty(): string | null
+  /**
+   * The exact sum of the quantities the bucket's executions state, as
+   * decimal text; `'0'` where none did.
+   */
+  get volume(): string
+  /** How many books folded into the bucket. */
+  get books(): number
+  /** How many executions the folded books carried. */
+  get executions(): number
+  /**
+   * The candle as the named struct of its cells - the flat row
+   * `Candle.field()` declares - an absent ticker, reading or quantity a
+   * null.
+   */
+  intoScalar(): JsScalar
+  /** Whether this candle states the same cells as `other`. */
+  equals(other: Candle): boolean
+  /** A cheap native clone. */
+  clone(): Candle
+  /**
+   * The candle's row as the plain JSON object the core's JSON codec
+   * writes it as under `Candle.field()`: the flat cells, the instants as
+   * ISO 8601 text and every decimal as text, so `JSON.stringify` is exact
+   * and `fromJSON` reads it back.
+   */
+  toJSON(): any
+  /** Rebuild a candle `toJSON` wrote: the object, or its text. */
+  static fromJSON(value: any): Candle
+  /** `Candle(<crosscode>, start=<start>, end=<end>)`. */
+  toString(): string
+}
+export type JsCandle = Candle
+
+/**
+ * Candles from a sorted stream of books, one per cross code and bucket,
+ * pulling the books lazily from the caller's iterable. Yields `Candle`;
+ * a regression in the books' instants is refused at `$.book.currunix` and
+ * ends the walk.
+ */
+export declare class CandleIterator {
+  /** The options the walk buckets by. */
+  get options(): CandleOptions
+  /**
+   * Advance the walk: the next candle, or `null` at its end. The loader
+   * wraps this into the iterator protocol.
+   */
+  next(): IteratorResult<Candle>
+}
+export type JsCandleIterator = CandleIterator
+
+/**
+ * How instants are bucketed: the interval, spelled as a count and a unit
+ * (`30s`, `1m`, `5m`, `1h`, `1d`, `1w`) or as a count of nanoseconds, and
+ * the zone whose wall clock the buckets align to - UTC unless named - so a
+ * daily candle opens at local midnight and hourly candles follow a
+ * saving-time change.
+ */
+export declare class CandleOptions {
+  /**
+   * Buckets of `interval` - another `CandleOptions`, a spelling such as
+   * `'1m'`, or a `bigint` or whole `number` of nanoseconds - aligned to
+   * `timezone`'s wall clock where one is named, and otherwise to the
+   * given options' own zone, or UTC.
+   */
+  constructor(interval: CandleOptions | string | bigint | number, timezone?: TimezoneInput | undefined | null)
+  /** The bucket width in nanoseconds of the zone's wall clock. */
+  get interval(): bigint
+  /** The zone the buckets align to. */
+  get timezone(): JsTimezone
+  /**
+   * The interval as its count and the widest unit dividing it exactly:
+   * what the constructor reads back.
+   */
+  get spelling(): string
+  /** These buckets aligned to another zone. */
+  withTimezone(timezone: TimezoneInput): CandleOptions
+  /** Whether `other` buckets by the same interval in the same zone. */
+  equals(other: CandleOptions): boolean
+  /** A cheap native clone. */
+  clone(): CandleOptions
+  /**
+   * The interval's spelling, then the zone where it is not UTC:
+   * `1h Europe/Zurich`.
+   */
+  toString(): string
+}
+export type JsCandleOptions = CandleOptions
+
+/**
  * A warehouse folder of namespaces of Iceberg tables.
  *
  * The catalog is storage and nothing else: a dotted name like `"nyc.taxis"`
@@ -6426,13 +6567,6 @@ export declare class RecordOptions {
   /** Address the worksheet `sheet`, or the first worksheet for `null`. */
   set sheet(sheet: string | undefined | null)
   /**
-   * Whether a workbook's first row names its columns, `null` for another
-   * encoding.
-   */
-  get header(): boolean | null
-  /** State whether the first row names the columns. */
-  set header(header: boolean)
-  /**
    * The cells a workbook read or write addresses, `null` for the whole
    * sheet - or for another encoding.
    */
@@ -6441,8 +6575,6 @@ export declare class RecordOptions {
   set range(range: CellRangeInput | undefined | null)
   /** These options addressing the sheet `sheet`. */
   withSheet(sheet?: string | undefined | null): RecordOptions
-  /** These options with or without a header row. */
-  withHeader(header: boolean): RecordOptions
   /** These options addressing the cells of `range`. */
   withRange(range?: CellRangeInput | undefined | null): RecordOptions
   /** The Avro block codec name, or `null` for another encoding. */
@@ -6469,6 +6601,82 @@ export declare class RecordOptions {
   set maxRowGroupSize(rows: number)
   /** The footer key/value entries a Parquet write adds. */
   get keyValueMetadata(): Array<MetadataEntry>
+  /**
+   * The CSV byte between two cells, as the one-character string it is;
+   * `null` for another encoding.
+   */
+  get separator(): string | null
+  /**
+   * Set the CSV byte between two cells: one ASCII character, neither a
+   * line break nor a byte another role holds.
+   */
+  set separator(separator: string)
+  /**
+   * The CSV quote byte as a one-character string; `null` where the
+   * dialect quotes nothing, or for another encoding.
+   */
+  get quote(): string | null
+  /**
+   * Set the CSV quote byte, or clear it with `null` so nothing is quoted
+   * on write and a quote reads as content; `undefined`, an argument not
+   * given, clears nothing and is refused.
+   */
+  set quote(quote: string | null)
+  /**
+   * The CSV escape byte as a one-character string; `null` where a quote
+   * inside a quoted cell is doubled instead (RFC 4180), or for another
+   * encoding.
+   */
+  get escape(): string | null
+  /**
+   * Set the CSV escape byte, or clear it with `null`; `undefined` clears
+   * nothing and is refused.
+   */
+  set escape(escape: string | null)
+  /**
+   * The CSV comment byte - a record opening with it is skipped - as a
+   * one-character string; `null` where none is, or for another encoding.
+   */
+  get comment(): string | null
+  /**
+   * Set the CSV comment byte, or clear it with `null`; `undefined` clears
+   * nothing and is refused.
+   */
+  set comment(comment: string | null)
+  /**
+   * Whether the first record names the columns - a CSV's first record, a
+   * workbook's first row; `null` for another encoding.
+   */
+  get header(): boolean | null
+  /**
+   * Set whether the first record names the columns: a CSV's first record,
+   * a workbook's first row.
+   */
+  set header(header: boolean)
+  /**
+   * The CSV spellings of an absent value - an unquoted cell spelling one
+   * is null, a null is written as the first; `null` for another encoding.
+   */
+  get nullValues(): Array<string> | null
+  /** Set the CSV spellings of an absent value, each listed once. */
+  set nullValues(nullValues: Array<string>)
+  /**
+   * Whether the CSV drops the blanks around an unquoted cell; `null` for
+   * another encoding.
+   */
+  get trim(): boolean | null
+  /** Set whether the CSV drops the blanks around an unquoted cell. */
+  set trim(trim: boolean)
+  /**
+   * The records a CSV read samples to infer a column's datatype when no
+   * field is declared; `null` for another encoding.
+   */
+  get inferRowSize(): number | null
+  /**
+   * Set the records a CSV read samples to infer a column's datatype; zero
+   * is refused.
+   */
+  set inferRowSize(inferRowSize: number)
   /** Return these options with a different Parquet page compression. */
   withCompression(compression: string): RecordOptions
   /** Return these options with a different Parquet row-group size. */
@@ -6479,6 +6687,31 @@ export declare class RecordOptions {
   withBlockCodec(blockCodec: string): RecordOptions
   /** Return these options with a fixed Avro marker, or `null` to clear it. */
   withSyncMarker(marker?: Buffer | undefined | null): RecordOptions
+  /** Return these options with another CSV byte between two cells. */
+  withSeparator(separator: string): RecordOptions
+  /** Return these options with another CSV quote byte, or `null` for none. */
+  withQuote(quote: string | null): RecordOptions
+  /** Return these options with another CSV escape byte, or `null` for none. */
+  withEscape(escape: string | null): RecordOptions
+  /** Return these options with another CSV comment byte, or `null` for none. */
+  withComment(comment: string | null): RecordOptions
+  /**
+   * Return these options with or without a header record: a CSV's first
+   * record, a workbook's first row.
+   */
+  withHeader(header: boolean): RecordOptions
+  /** Return these options with other CSV spellings of an absent value. */
+  withNullValues(nullValues: Array<string>): RecordOptions
+  /**
+   * Return these options trimming, or keeping, the blanks around a CSV
+   * cell.
+   */
+  withTrim(trim: boolean): RecordOptions
+  /**
+   * Return these options sampling another number of CSV records to infer
+   * a column's datatype.
+   */
+  withInferRowSize(inferRowSize: number): RecordOptions
   /** Return these options with a declared canonical root Field. */
   withField(field: Field): RecordOptions
   /** Return these options with a different root Field name. */
@@ -9649,6 +9882,21 @@ export interface BytesParametersInput {
   bound?: number
   fixed?: number
   max?: number
+}
+
+/**
+ * One reading's open, high, low and close over a bucket, each as decimal
+ * text: the plain object a candle's `bid`, `ask`, `mid` and `spread` are.
+ */
+export interface CandleReading {
+  /** The first value of the bucket. */
+  open: string
+  /** The greatest value of the bucket. */
+  high: string
+  /** The least value of the bucket. */
+  low: string
+  /** The last value of the bucket. */
+  close: string
 }
 
 /** A cell's parts beside its value. */

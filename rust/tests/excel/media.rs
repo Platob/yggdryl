@@ -168,7 +168,7 @@ fn record_options_are_the_excel_options_the_wrapper_holds() {
     assert_eq!(options.field(), Some(trades()));
     assert_eq!(options.mime_type(), MimeType::XLSX);
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.excel_header(), Some(false));
+    assert_eq!(options.header(), Some(false));
     assert_eq!(options.excel_range(), Some(range));
 }
 
@@ -344,7 +344,7 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
     let mut renamed = options.clone();
     renamed.set_name("trade".into());
     let mut headless = options.clone();
-    headless.set_excel_header(false).unwrap();
+    headless.set_header(false).unwrap();
     costs("another reading while open", &calls, "none", || {
         assert_eq!(media.read_arrow_field(&renamed).unwrap().name(), "trade");
         assert_eq!(

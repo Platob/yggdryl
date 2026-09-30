@@ -8,6 +8,7 @@ import math
 import pickle
 import struct
 import sys
+import types
 import zoneinfo
 from dataclasses import dataclass
 from decimal import Decimal
@@ -990,6 +991,9 @@ def test_a_record_says_that_its_names_are_field_names() -> None:
     # A Python mapping is a mapping; a record is what a struct row resolves to.
     assert Scalar.from_({"a": 1}).kind == "map"
     assert Scalar.from_struct([("a", 1), ("b", 2)]).kind == "struct"
+    # Any `Mapping` says the same through its `items()`, however it iterates.
+    proxy = types.MappingProxyType({"ab": 1, "cd": 2})
+    assert Scalar.from_struct(proxy).as_py() == {"ab": 1, "cd": 2}
 
     with pytest.raises(ValueError):
         Scalar.from_struct([("a", 1), ("a", 2)])

@@ -552,6 +552,7 @@ macro_rules! event_verbs {
 }
 
 pub(crate) mod book;
+pub(crate) mod candle;
 pub(crate) mod iterator;
 pub(crate) mod market_data;
 pub(crate) mod operation;
@@ -808,6 +809,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<market_data::PyMarketData>()?;
     module.add_class::<market_data::PyMarketDataRowIterator>()?;
     module.add_class::<iterator::PyEventIterator>()?;
+    module.add_class::<candle::PyCandle>()?;
+    module.add_class::<candle::PyCandleOptions>()?;
+    module.add_class::<candle::PyCandleIterator>()?;
+    module.add_function(wrap_pyfunction!(candle::candles, module)?)?;
     // The alternate-identifier keys a market-data entry's own identifiers
     // are held under.
     module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID)?;

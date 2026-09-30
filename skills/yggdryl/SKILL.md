@@ -1,6 +1,6 @@
 ---
 name: yggdryl
-description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), record media (Arrow IPC, Parquet, Avro, Excel, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
+description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), record media (Arrow IPC, Parquet, Avro, CSV, Excel, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
 ---
 
 # Yggdryl
@@ -54,12 +54,12 @@ answers the task.
 | Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
-| read or write rows/batches in Arrow IPC, Parquet, Avro, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
+| read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
 | FIX messages, dictionaries, captures, the `yggdryl fix` CLI | `yggdryl-fix` |
-| orders, quotes, executions, order books, market data | `yggdryl-market-data` |
+| orders, quotes, executions, order books, candles, market data, the book display (`yggdryl market serve`) | `yggdryl-market-data` |
 
 ## Cross-language conventions
 

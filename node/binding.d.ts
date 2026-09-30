@@ -45,6 +45,7 @@ export {
   Xxh64,
   type BookLimit,
   type BookRefInput,
+  type CandleReading,
   type BytesParameters,
   type BytesParametersInput,
   type FieldBound,
@@ -160,6 +161,9 @@ import {
   MarketDataRowIterator,
   BookIterator,
   EventIterator,
+  Candle,
+  CandleOptions,
+  CandleIterator,
 } from './index'
 import type {
   DataType as ArrowDataType,
@@ -286,6 +290,9 @@ export type {
   MarketDataRowIterator,
   BookIterator,
   EventIterator,
+  Candle,
+  CandleOptions,
+  CandleIterator,
 }
 
 /** A native MIME wrapper or canonical MIME/extension string. */
@@ -4487,6 +4494,24 @@ export interface EventIteratorConstructor {
   readonly prototype: EventIterator
 }
 
+/**
+ * How candles bucket: a `CandleOptions`, or what one is built from - an
+ * interval spelling (`'30s'`, `'1m'`, `'5m'`, `'1h'`, `'1d'`, `'1w'`) or a
+ * count of nanoseconds - aligned to UTC.
+ */
+export type CandleOptionsInput = CandleOptions | string | bigint | number
+
+/**
+ * The public `CandleIterator` constructor: its books - `BookEvent`s, or
+ * `MarketData` holding one - pulled lazily from the caller's iterable, the
+ * way `BookIterator`'s items are; a failure behind the iterable is thrown as
+ * itself.
+ */
+export interface CandleIteratorConstructor {
+  new (books: Iterable<BookEvent | MarketData>, options: CandleOptionsInput): CandleIterator
+  readonly prototype: CandleIterator
+}
+
 declare module './index' {
   namespace MarketData {
     /**
@@ -4528,6 +4553,17 @@ declare module './index' {
   }
   interface MarketDataRowIterator extends IterableIterator<MarketData> {
     next(): IteratorResult<MarketData>
+  }
+  interface CandleIterator extends IterableIterator<Candle> {
+    next(): IteratorResult<Candle>
+  }
+  namespace Candle {
+    /**
+     * Read a candle back from its row: the named struct `intoScalar`
+     * answers, the ordered row `Candle.field()` lays it out as, or a plain
+     * object spelling those cells, widened through `Scalar.from`.
+     */
+    function fromScalar(value: Scalar | Record<string, unknown>): Candle
   }
 }
 
@@ -4572,6 +4608,18 @@ export interface Graph {
   readonly BookIterator: BookIteratorConstructor
   /** A walk that chains each operation event to the live element it follows within its own market data kind. */
   readonly EventIterator: EventIteratorConstructor
+  /** One OHLC of one book over one bucket: the best bid, the best ask, their midpoint and the spread. */
+  readonly Candle: typeof Candle
+  /** How instants are bucketed: an interval and the zone its buckets align to. */
+  readonly CandleOptions: typeof CandleOptions
+  /** Candles from a sorted stream of books, pulling them lazily. */
+  readonly CandleIterator: CandleIteratorConstructor
+  /**
+   * Every candle of a sorted stream of books, as an array; a zone beside a
+   * `CandleOptions`, an interval spelling or a count of nanoseconds is the
+   * `CandleOptions` of both.
+   */
+  candles(books: Iterable<BookEvent | MarketData>, options: CandleOptionsInput, timezone?: TimezoneInput): Candle[]
   /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */
   readonly ENTRY_ID: string
   /** The alternate-identifier key an entry's `MDEntryRefID(280)` is held under. */

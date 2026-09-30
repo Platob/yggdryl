@@ -231,6 +231,8 @@ nav:
     - Trade: graph/trade.md
     - Book: graph/book.md
     - Market data: graph/market-data.md
+    - Candle: graph/candle.md
+    - Book display: graph/serve.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

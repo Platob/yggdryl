@@ -1,11 +1,13 @@
 # `yggdryl`: the command line, one namespace per subcommand.
 #
-# `yggdryl fix` is everything a desk does to a FIX dictionary, from a shell, and
+# `yggdryl fix` is everything a desk does to a FIX dictionary, from a shell,
 # `yggdryl xmla serve` puts folders of record media on the wire as XML for
-# Analysis catalogs. Its own member rather than a binary inside the core, so a
-# library consumer carries none of what a terminal needs - argument parsing,
-# raw mode, colour - and the core's dependency set stays exactly what a schema
-# needs.
+# Analysis catalogs, and `yggdryl market serve` puts a table of market data on the
+# wire as the book display - bid and ask candles, books and audits - with a FIX
+# bridge capture folded in first. Its own member rather than a binary inside the
+# core, so a library consumer carries none of what a terminal needs - argument
+# parsing, raw mode, colour - and the core's dependency set stays exactly what a
+# schema needs.
 [package]
 name = "yggdryl-cli"
 version.workspace = true
@@ -13,7 +15,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The yggdryl command line: manage a FIX dictionary and serve XML for Analysis catalogs from a terminal."
+description = "The yggdryl command line: manage a FIX dictionary, serve XML for Analysis catalogs and serve the book display of a market-data table (`yggdryl market serve`) from a terminal."
 
 [[bin]]
 name = "yggdryl"
@@ -24,7 +26,8 @@ doc = false
 
 [dependencies]
 # The default core plus `http`: a tool that reads a dictionary wants the same
-# core a consumer has, and `yggdryl xmla serve` answers on the core's HTTP server.
+# core a consumer has, and `yggdryl xmla serve` and `yggdryl market serve` answer on the
+# core's HTTP server.
 yggdryl = { path = "../rust", features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
@@ -39,9 +42,11 @@ shlex = "2.0"
 log.workspace = true
 
 [features]
-# `yggdryl xmla serve` over an Iceberg folder needs the core's table reader; without
-# it an Iceberg table is listed and refused on read, by name. The staged binary
-# (`scripts/stage_cli.py`) enables it; the default build stays the schema-only core.
+# `yggdryl xmla serve` and `yggdryl market serve` over an Iceberg folder need the
+# core's table reader, and `yggdryl market serve --capture` makes an empty folder a table with
+# it; without it an Iceberg table is listed and refused on read, by name. The
+# staged binary (`scripts/stage_cli.py`) enables it; the default build stays the
+# schema-only core.
 iceberg = ["yggdryl/iceberg"]
 
 [[bench]]
