@@ -62,10 +62,10 @@ fn quote(
 ) -> MarketData {
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
-    quote.set_ticker(Some(ticker.into()));
-    quote.set_side(side);
-    quote.set_price(Some(price.parse().expect("a decimal")));
-    quote.set_quantity(Some(Decimal::from_int(quantity)));
+    quote.set_ticker(Some(ticker.into()), true);
+    quote.set_side(side, true);
+    quote.set_price(Some(price.parse().expect("a decimal")), true);
+    quote.set_quantity(Some(Decimal::from_int(quantity)), true);
     quote.set_state(State::New);
     quote.finalize();
     MarketData::from(quote)

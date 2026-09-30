@@ -44,7 +44,7 @@
 use smol_str::format_smolstr;
 
 use crate::warning::warned;
-use crate::{Cusip, DataType, Decimal, Isin, Scalar, Sedol, StringEnum};
+use crate::{Cusip, DataType, Decimal, IdType, Isin, Scalar, Sedol, StringEnum};
 
 use super::msg::FixMsg;
 
@@ -139,13 +139,16 @@ impl<'message> NativeRow<'message> {
         value.as_str().map(read)
     }
 
-    fn text_is(&self, tag: i32, expected: &str) -> bool {
-        self.with_text(tag, |value| value == expected)
+    fn text_in(&self, tag: i32, expected: &[&str]) -> bool {
+        self.with_text(tag, |value| expected.contains(&value))
             .unwrap_or(false)
     }
 
-    fn text_in(&self, tag: i32, expected: &[&str]) -> bool {
-        self.with_text(tag, |value| expected.contains(&value))
+    /// Whether the security source `tag` states is one of `kinds`, read as
+    /// the message's identifiers read it - its code (`4`) or any name the
+    /// code set gives it (`ISIN number`, `isin`).
+    fn source_in(&self, tag: i32, kinds: &[IdType]) -> bool {
+        self.with_text(tag, |value| is_source(value, kinds))
             .unwrap_or(false)
     }
 
@@ -153,20 +156,25 @@ impl<'message> NativeRow<'message> {
         Decimal::from_scalar(&self.get(tag)?)
     }
 
-    /// The first alternate identifier under `source`: the first occurrence
-    /// stating that source answers, so an absent member there is absence
-    /// rather than permission to inspect a later occurrence.
-    fn alternate(&self, source_value: &str) -> Option<Scalar> {
+    /// The first alternate identifier under `source`, read as the message's
+    /// identifiers read it: the first occurrence stating that source
+    /// answers, so an absent member there is absence rather than permission
+    /// to inspect a later occurrence.
+    fn alternate(&self, source: IdType) -> Option<Scalar> {
         let at = self.msg.as_field().index_of("secaltids")?;
         let column = self.msg.as_field().fields().get(at)?;
         let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let identifier = item.index_of("securityaltid")?;
-        let source = item.index_of("securityaltidsource")?;
+        let stated = item.index_of("securityaltidsource")?;
         let group = self.msg.as_value().as_sequence()?.get(at)?.as_serie()?;
         for occurrence in group.iter() {
             let held = occurrence.as_sequence()?;
-            if held.get(source).and_then(Scalar::as_str) == Some(source_value) {
+            if held
+                .get(stated)
+                .and_then(Scalar::as_str)
+                .is_some_and(|value| is_source(value, std::slice::from_ref(&source)))
+            {
                 return held
                     .get(identifier)
                     .filter(|value| !value.is_null())
@@ -336,18 +344,24 @@ fn order_status(row: &NativeRow<'_>) -> Option<Scalar> {
     (leaves.is_positive() && row.decimal(14)?.is_positive()).then(|| Scalar::from("1"))
 }
 
+/// Whether a stated `SecurityIDSource(22)` or `SecurityAltIDSource(456)`
+/// value reads as one of `kinds`.
+fn is_source(value: &str, kinds: &[IdType]) -> bool {
+    IdType::from_security_source(value).is_ok_and(|kind| kinds.contains(&kind))
+}
+
 fn alternate_isin(row: &NativeRow<'_>) -> Option<Isin> {
-    let alternate = row.alternate("4")?;
+    let alternate = row.alternate(IdType::Isin)?;
     Isin::new(alternate.as_str()?).ok()
 }
 
 fn symbol(row: &NativeRow<'_>) -> Option<Scalar> {
-    if row.text_in(22, &["8", "A"]) {
-        if let Some(identifier) = row.get(48) {
-            return Some(identifier);
-        }
+    if row.source_in(22, &[IdType::ExchSymb, IdType::Bloomberg])
+        && let Some(identifier) = row.get(48)
+    {
+        return Some(identifier);
     }
-    row.alternate("8")
+    row.alternate(IdType::ExchSymb)
 }
 
 fn time_in_force(row: &NativeRow<'_>) -> Option<Scalar> {
@@ -584,7 +598,7 @@ fn pegged_price(row: &NativeRow<'_>) -> Option<Scalar> {
 
 fn stated_isin(row: &NativeRow<'_>) -> Option<Isin> {
     let primary = row
-        .text_is(22, "4")
+        .source_in(22, &[IdType::Isin])
         .then(|| row.get(48))
         .flatten()
         .and_then(|value| value.as_str().and_then(|text| Isin::new(text).ok()));

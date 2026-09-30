@@ -1299,13 +1299,12 @@ impl Session {
     /// the process environment: an environment a caller handed over names
     /// its files itself, through `BOTO_CONFIG` and `AWS_CREDENTIAL_FILE`.
     fn legacy_credentials(&self, env: &Environment) -> Option<Credentials> {
-        if let Some(path) = env.get("AWS_CREDENTIAL_FILE") {
-            if let Some(found) = std::fs::read_to_string(path)
+        if let Some(path) = env.get("AWS_CREDENTIAL_FILE")
+            && let Some(found) = std::fs::read_to_string(path)
                 .ok()
                 .and_then(|text| profile::ec2_credential_file(&text))
-            {
-                return Some(found);
-            }
+        {
+            return Some(found);
         }
         let paths: Vec<PathBuf> = match (env.get("BOTO_CONFIG"), env) {
             (Some(path), _) => vec![profile::expand_user(&path, self.home().as_deref())],
@@ -1550,10 +1549,10 @@ impl Session {
         };
         let cli_cache = directory.join("cli").join("cache");
         let credentials_key = sso.credentials_cache_key();
-        if !self.skips_caches() {
-            if let Some(cached) = sts::read_cache(&cli_cache, &credentials_key, now) {
-                return Ok(cached);
-            }
+        if !self.skips_caches()
+            && let Some(cached) = sts::read_cache(&cli_cache, &credentials_key, now)
+        {
+            return Ok(cached);
         }
         let oidc = self
             .endpoint_url("sso-oidc")

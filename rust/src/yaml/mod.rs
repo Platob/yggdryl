@@ -736,6 +736,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Side(_)
             | Scalar::State(_)
             | Scalar::MarketDataKind(_)
+            | Scalar::MarketDataType(_)
             | Scalar::TimeInForce(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
@@ -839,10 +840,10 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             )?;
         }
         Scalar::Date32(value) => {
-            if value.unit() == crate::TimeUnit::Day {
-                if let Some(text) = crate::temporal::format_date(value.count()) {
-                    return write_scalar_string(writer, &text);
-                }
+            if value.unit() == crate::TimeUnit::Day
+                && let Some(text) = crate::temporal::format_date(value.count())
+            {
+                return write_scalar_string(writer, &text);
             }
             write!(writer, "{}", value.count())?;
         }
@@ -851,12 +852,10 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             let days = value.count().div_euclid(DAY_MILLISECONDS);
             if value.unit() == crate::TimeUnit::Millisecond
                 && value.count().rem_euclid(DAY_MILLISECONDS) == 0
+                && let Ok(days) = i32::try_from(days)
+                && let Some(text) = crate::temporal::format_date(days)
             {
-                if let Ok(days) = i32::try_from(days) {
-                    if let Some(text) = crate::temporal::format_date(days) {
-                        return write_scalar_string(writer, &text);
-                    }
-                }
+                return write_scalar_string(writer, &text);
             }
             write!(writer, "{}", value.count())?;
         }

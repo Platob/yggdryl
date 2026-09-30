@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Scalar, Timezone, graph } = require('yggdryl')
+const { Identifier, Scalar, Timezone, graph } = require('yggdryl')
 
 const SECOND = 1_000_000_000n
 const MINUTE = 60n * SECOND
@@ -131,7 +131,7 @@ test('the OHLC of every reading over one minute', () => {
   assert.equal(folded.length, 1)
   const [candle] = folded
   assert.ok(candle instanceof graph.Candle)
-  assert.equal(candle.crosscode, 'ACME')
+  assert.equal(candle.crosscode, '3:0:ACME', 'the book\'s stored cross code')
   assert.equal(candle.ticker, 'ACME')
   assert.equal(candle.start, 0n)
   assert.equal(candle.end, MINUTE)
@@ -144,7 +144,7 @@ test('the OHLC of every reading over one minute', () => {
   assert.equal(candle.books, 4)
   assert.equal(candle.executions, 3)
   assert.equal(candle.volume, '10')
-  assert.equal(candle.toString(), 'Candle("ACME", start=0, end=60000000000)')
+  assert.equal(candle.toString(), 'Candle("3:0:ACME", start=0, end=60000000000)')
   // The same walk, spelled through its options or its own iterator.
   assert.ok(candles(operations, new graph.CandleOptions(MINUTE))[0].equals(candle))
   const walk = new graph.CandleIterator(new graph.BookIterator(operations), '1m')
@@ -177,37 +177,38 @@ test('a one-sided book states no mid or spread', () => {
 
 test('the volume counts each trade once at what it traded', () => {
   // The order's quantity; what the fill traded is its last quantity.
-  const fill = (unix, code, side, lastqty, altids = {}) => new graph.ExecutionEvent(unix, {
-    crosscode: code, ticker: 'ACME', side, price: '100', quantity: 600, lastqty, state: 'FILLED', altids,
+  const fill = (unix, code, side, lastqty, identifiers = {}) => new graph.ExecutionEvent(unix, {
+    crosscode: code, ticker: 'ACME', side, price: '100', quantity: 600, lastqty, state: 'FILLED',
+    identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier('fix', kind, value)),
   })
-  // A fill delivered twice under one `EXECID`, the two sides of a trade
-  // under one `TRADEID`, and a fill stating no last quantity, which adds
+  // A fill delivered twice under one `execid`, the two sides of a trade
+  // under one `tradeid`, and a fill stating no last quantity, which adds
   // nothing whatever its order's quantity: six executions, three trades.
   const [candle] = candles([
-    fill(10n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
-    fill(10n * SECOND, 'X-2', 'BUY', 57, { EXECID: 'X-2' }),
-    fill(11n * SECOND, 'X-2', 'BUY', 57, { EXECID: 'X-2' }),
-    fill(20n * SECOND, 'S-1', 'BUY', 100, { EXECID: 'S-1', TRADEID: 'T-1' }),
-    fill(20n * SECOND, 'S-2', 'SELL', 100, { EXECID: 'S-2', TRADEID: 'T-1' }),
+    fill(10n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
+    fill(10n * SECOND, 'X-2', 'BUY', 57, { execid: 'X-2' }),
+    fill(11n * SECOND, 'X-2', 'BUY', 57, { execid: 'X-2' }),
+    fill(20n * SECOND, 'S-1', 'BUY', 100, { execid: 'S-1', tradeid: 'T-1' }),
+    fill(20n * SECOND, 'S-2', 'SELL', 100, { execid: 'S-2', tradeid: 'T-1' }),
     fill(30n * SECOND, 'X-3', 'SELL', undefined),
   ], '1m')
   assert.deepEqual([candle.books, candle.executions, candle.volume], [4, 6, '178'])
 
-  // A trade report's two sides named by its `TRADEREPORTID` alone, and a
-  // fill naming its `EXECID` and the trade's `TRADEID` delivered again
-  // naming the `EXECID` alone: two trades.
+  // A trade report's two sides named by its `tradereportid` alone, and a
+  // fill naming its `execid` and the trade's `tradeid` delivered again
+  // naming the `execid` alone: two trades.
   const [named] = candles([
-    fill(10n * SECOND, 'SX-B', 'BUY', 100, { EXECID: 'SX-B', TRADEREPORTID: 'TR-1' }),
-    fill(10n * SECOND, 'SX-S', 'SELL', 100, { EXECID: 'SX-S', TRADEREPORTID: 'TR-1' }),
-    fill(20n * SECOND, 'E-1', 'BUY', 57, { EXECID: 'E-1', TRADEID: 'T-1' }),
-    fill(21n * SECOND, 'E-1', 'BUY', 57, { EXECID: 'E-1' }),
+    fill(10n * SECOND, 'SX-B', 'BUY', 100, { execid: 'SX-B', tradereportid: 'TR-1' }),
+    fill(10n * SECOND, 'SX-S', 'SELL', 100, { execid: 'SX-S', tradereportid: 'TR-1' }),
+    fill(20n * SECOND, 'E-1', 'BUY', 57, { execid: 'E-1', tradeid: 'T-1' }),
+    fill(21n * SECOND, 'E-1', 'BUY', 57, { execid: 'E-1' }),
   ], '1m')
   assert.deepEqual([named.executions, named.volume], [4, '157'])
 
   // Delivered again in the next minute, a fill adds nothing there.
   const [first, second] = candles([
-    fill(10n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
-    fill(70n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
+    fill(10n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
+    fill(70n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
   ], '1m')
   assert.deepEqual([first.volume, second.volume], ['21', '0'])
 })
@@ -267,10 +268,10 @@ test('two cross codes interleave and emit in cross-code order', () => {
   assert.deepEqual(
     folded.map((candle) => [candle.crosscode, candle.start, candle.books]),
     [
-      ['AAPL', 0n, 1],
-      ['IBM', 0n, 2],
-      ['AAPL', MINUTE, 1],
-      ['IBM', MINUTE, 1],
+      ['3:0:AAPL', 0n, 1],
+      ['3:0:IBM', 0n, 2],
+      ['3:0:AAPL', MINUTE, 1],
+      ['3:0:IBM', MINUTE, 1],
     ],
   )
   assert.deepEqual(folded[1].bid, ohlc('100', '101', '100', '101'))
@@ -353,7 +354,7 @@ test('a JavaScript failure is thrown as itself, and an item is a book or refused
   // `MarketData`, is refused by the core's own narrowing, naming its kind.
   assert.throws(() => [...new graph.CandleIterator([1], '1m')], {
     name: 'TypeError',
-    message: 'expected MarketData or a market leaf, got number',
+    message: 'expected MarketData, a market leaf or a FixMsg, got number',
   })
   assert.throws(() => [...new graph.CandleIterator([new graph.Order()], '1m')], {
     name: 'Error',
@@ -406,7 +407,7 @@ test('a JavaScript failure follows the completed buckets, and the open one is dr
         refused.push(candle)
       }
     },
-    { name: 'TypeError', message: 'expected MarketData or a market leaf, got number' },
+    { name: 'TypeError', message: 'expected MarketData, a market leaf or a FixMsg, got number' },
   )
   assert.deepEqual(refused, [])
 })
@@ -464,7 +465,7 @@ test('a candle round trips through its scalar and its JSON', () => {
   // text, decimals as text, counts as numbers - what `JSON.stringify` writes
   // and `fromJSON` reads back, as the object or as its text.
   const json = candle.toJSON()
-  assert.equal(json.crosscode, 'ACME')
+  assert.equal(json.crosscode, '3:0:ACME')
   assert.equal(json.start, '1970-01-01T00:00:00.000000000Z')
   assert.equal(json.end, '1970-01-01T00:01:00.000000000Z')
   assert.equal(json.bidopen, '100')

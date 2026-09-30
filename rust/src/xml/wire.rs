@@ -179,33 +179,30 @@ pub(crate) fn decode_x_escapes(encoded: &str) -> std::borrow::Cow<'_, str> {
     let mut pending: Option<u16> = None;
     let mut rest = encoded;
     while !rest.is_empty() {
-        if let Some(after) = rest.strip_prefix("_x") {
-            if after.len() >= 5
-                && after.as_bytes()[4] == b'_'
-                && after.as_bytes()[..4].iter().all(u8::is_ascii_hexdigit)
-            {
-                if let Ok(unit) = u16::from_str_radix(&after[..4], 16) {
-                    rest = &after[5..];
-                    if let Some(high) = pending.take() {
-                        if (0xDC00..=0xDFFF).contains(&unit) {
-                            let code = 0x10000
-                                + ((u32::from(high) - 0xD800) << 10)
-                                + (u32::from(unit) - 0xDC00);
-                            decoded.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
-                            continue;
-                        }
-                        // A high half no low half follows spells no character,
-                        // whatever comes next.
-                        decoded.push('\u{FFFD}');
-                    }
-                    if (0xD800..=0xDBFF).contains(&unit) {
-                        pending = Some(unit);
-                    } else {
-                        decoded.push(char::from_u32(u32::from(unit)).unwrap_or('\u{FFFD}'));
-                    }
+        if let Some(after) = rest.strip_prefix("_x")
+            && after.len() >= 5
+            && after.as_bytes()[4] == b'_'
+            && after.as_bytes()[..4].iter().all(u8::is_ascii_hexdigit)
+            && let Ok(unit) = u16::from_str_radix(&after[..4], 16)
+        {
+            rest = &after[5..];
+            if let Some(high) = pending.take() {
+                if (0xDC00..=0xDFFF).contains(&unit) {
+                    let code =
+                        0x10000 + ((u32::from(high) - 0xD800) << 10) + (u32::from(unit) - 0xDC00);
+                    decoded.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
                     continue;
                 }
+                // A high half no low half follows spells no character,
+                // whatever comes next.
+                decoded.push('\u{FFFD}');
             }
+            if (0xD800..=0xDBFF).contains(&unit) {
+                pending = Some(unit);
+            } else {
+                decoded.push(char::from_u32(u32::from(unit)).unwrap_or('\u{FFFD}'));
+            }
+            continue;
         }
         let character = rest.chars().next().unwrap_or('\u{FFFD}');
         if pending.take().is_some() {
@@ -258,11 +255,9 @@ fn write_element<W: Write>(
         return Err(codec_error("nesting depth limit exceeded while encoding"));
     }
     check_name(name)?;
-    if separated {
-        if let Some(unit) = layout.unit {
-            writer.write_all(b"\n")?;
-            write_units(writer, unit, depth - 1)?;
-        }
+    if separated && let Some(unit) = layout.unit {
+        writer.write_all(b"\n")?;
+        write_units(writer, unit, depth - 1)?;
     }
     match value {
         // A variant is the value its bytes hold, written as that value.
@@ -363,12 +358,12 @@ where
         }
         write_child(writer, key, value, layout, depth + 1, separated, max_depth)?;
     }
-    // Two `if`s rather than a `let` chain: the declared MSRV, Rust 1.85, has none.
-    if has_children && separated {
-        if let Some(unit) = layout.unit {
-            writer.write_all(b"\n")?;
-            write_units(writer, unit, depth - 1)?;
-        }
+    if has_children
+        && separated
+        && let Some(unit) = layout.unit
+    {
+        writer.write_all(b"\n")?;
+        write_units(writer, unit, depth - 1)?;
     }
     write!(writer, "</{name}>")?;
     Ok(())

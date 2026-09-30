@@ -1068,7 +1068,8 @@ Each line likewise states, as `prevunix`, the `currunix` the read dated the line
     // The record's place is its row number, under `seqnum`.
     assert_eq!(
         text_batch
-            .column(12)
+            .column_by_name("seqnum")
+            .expect("the event's place")
             .as_any()
             .downcast_ref::<UInt64Array>()
             .unwrap()
@@ -1078,7 +1079,8 @@ Each line likewise states, as `prevunix`, the `currunix` the read dated the line
     // The body is the record past the header the reader took off it.
     assert_eq!(
         text_batch
-            .column(15)
+            .column_by_name("body")
+            .expect("the record's body")
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()

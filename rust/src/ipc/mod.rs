@@ -622,20 +622,19 @@ fn owned_decoded_reader<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn
         && handle
             .url()
             .is_some_and(|url| !crate::Codec::from_url(url).is_identity());
-    if !decoded_view_over_coded_url {
-        if let Some(parent) = handle.parent() {
-            if let Some(name) = handle.url().and_then(crate::Url::file_name) {
-                let mut child = parent.child_by_path(name)?;
-                // The path's file name is the resource only where the URL
-                // addresses one by its path: a member of an archive is
-                // addressed in the fragment, and the child of that name is
-                // another member. Only a handle at the same location is the
-                // same resource reopened; anything else is snapshotted below.
-                if child.url() == handle.url() {
-                    child.set_media_type(handle.media_type().clone());
-                    return decoded_prefix_reader(codec, crate::Cursor::new(child));
-                }
-            }
+    if !decoded_view_over_coded_url
+        && let Some(parent) = handle.parent()
+        && let Some(name) = handle.url().and_then(crate::Url::file_name)
+    {
+        let mut child = parent.child_by_path(name)?;
+        // The path's file name is the resource only where the URL
+        // addresses one by its path: a member of an archive is
+        // addressed in the fragment, and the child of that name is
+        // another member. Only a handle at the same location is the
+        // same resource reopened; anything else is snapshotted below.
+        if child.url() == handle.url() {
+            child.set_media_type(handle.media_type().clone());
+            return decoded_prefix_reader(codec, crate::Cursor::new(child));
         }
     }
     let mut encoded = Vec::new();
@@ -885,10 +884,10 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        if self.opened {
-            if let Some(rows) = self.cached_row_size.get() {
-                return Ok(*rows);
-            }
+        if self.opened
+            && let Some(rows) = self.cached_row_size.get()
+        {
+            return Ok(*rows);
         }
         // Past the session's cache, which only a leaf ever fills.
         if self.handle.is_container() {
@@ -906,10 +905,10 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        if self.opened {
-            if let Some(columns) = self.cached_column_size.get() {
-                return Ok(*columns);
-            }
+        if self.opened
+            && let Some(columns) = self.cached_column_size.get()
+        {
+            return Ok(*columns);
         }
         let columns = if let Some(field) = self.options.field() {
             field.field_len()
@@ -948,10 +947,11 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         // An explicit held Field makes the opened cache a logical declaration,
         // not the stored schema. A caller supplying different options must then
         // derive the bytes afresh rather than receive that unrelated Field.
-        if self.opened && self.options.field().is_none() {
-            if let Some(cached) = self.cached_schema.get() {
-                return Ok(cached.clone().with_name(options.name()));
-            }
+        if self.opened
+            && self.options.field().is_none()
+            && let Some(cached) = self.cached_schema.get()
+        {
+            return Ok(cached.clone().with_name(options.name()));
         }
         if self.handle.is_container() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
@@ -977,10 +977,8 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
                 // write. An already-open one keeps its cache coherent with the
                 // final field after all shaping and stored completion.
                 self.invalidate_cached_metadata();
-                if opened {
-                    if let Some(published) = published {
-                        let _ = self.cached_schema.set(published);
-                    }
+                if opened && let Some(published) = published {
+                    let _ = self.cached_schema.set(published);
                 }
                 Ok(())
             }

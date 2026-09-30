@@ -65,6 +65,9 @@ const CAPTURE: &[&str] = &[
 /// and the two remarks hold no readable pair at all.
 const SILENT: [usize; 5] = [7, 8, 11, 12, 13];
 
+/// A message is recorded when its carrier says it was, else when its sender
+/// says it sent it - a `SendingTime(52)` it states, never the hop clocks
+/// and never a stand-in - and a clock it states itself stands over both.
 #[test]
 fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
     const DIRECT: i64 = 1_704_190_530_100_000_000;
@@ -79,11 +82,33 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .expect("a raw message");
     assert_eq!(
         raw.get_recdunix(),
-        None,
-        "FIX sending clocks are not carrier recording time"
+        Some(DIRECT),
+        "a message no carrier recorded was recorded when it was sent"
     );
+    // A message stating no sending clock is dated by a stand-in, which
+    // records nothing.
+    let unsent = reader
+        .sole_line(b"8=FIX.4.4|35=8|122=20240102-10:15:30.200|10=0|")
+        .expect("a raw message");
+    assert_eq!(unsent.get_recdunix(), None);
 
+    // A carrier's clock outranks the sender's.
     let options = Arc::new(yggdryl::text::TextOptions::new());
+    let sent = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|10=0|").unwrap(),
+        Arc::clone(&options),
+    )
+    .unwrap()
+    .with_handle_mtime(CARRIER);
+    let message = reader
+        .parse_text_line(&sent)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(message.get_recdunix(), Some(CARRIER));
+
     let carried = TextLine::from_bytes(
         0,
         TextBytes::from_bytes(b"8=FIX.4.4|35=8|10=0|").unwrap(),
@@ -102,7 +127,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
     let direct = TextLine::from_bytes(
         0,
         TextBytes::from_bytes(
-            b"8=FIX.4.4|35=8|65003=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
+            b"8=FIX.4.4|35=8|65009=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
         )
         .unwrap(),
         options,
@@ -119,7 +144,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
     // 65064 once carried the merge reference's recording clock; the slot is
     // retired now that the reference is the latest `recdunix` alone, so a
     // frame still spelling it states no clock at all - not the recording,
-    // which stays the stated 65003, and no value, entry or wire byte either,
+    // which stays the stated 65009, and no value, entry or wire byte either,
     // as any crate tag with no definition behind it.
     assert_ne!(message.get_recdunix(), Some(REFERENCE));
     assert!(message.by_tag(65_064).is_err());
@@ -430,9 +455,11 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
 
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    let parties = row.get(schema.index_of("parties").unwrap()).unwrap();
-    let parties = parties.as_sequence().unwrap();
-    assert_eq!(parties.len(), 2, "projection retains parsed occurrences");
+    // The `partyids` column is a sorted map keyed `src:type`: one entry per
+    // party the two occurrences name.
+    let partyids = row.get(schema.index_of("partyids").unwrap()).unwrap();
+    let partyids = yggdryl::Identifiers::from_scalar(partyids.as_ref()).unwrap();
+    assert_eq!(partyids.len(), 2, "projection retains parsed occurrences");
 }
 
 #[test]
@@ -1540,26 +1567,37 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
     assert_eq!(message.by_tag(38).unwrap(), super::decimal("3"));
 
-    let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
-    let parties_at = schema.index_of("parties").expect("the projected group");
-    let DataType::Serie(party) = schema.fields()[parties_at].dtype() else {
-        panic!("parties is not a serie")
+    // The message's own group holds the two outer occurrences, and the
+    // fixed row's `partyids` the two parties they name.
+    let outer = |message: &yggdryl::FixMsg| {
+        let at = message.as_field().index_of("parties").expect("the group");
+        let DataType::Serie(party) = message.as_field().fields()[at].dtype() else {
+            panic!("parties is not a serie")
+        };
+        let [partyid, source, role] =
+            ["partyid", "partyidsource", "partyrole"].map(|name| party.index_of(name).expect(name));
+        let parties = super::sequence(message.by_name("parties").expect("the occurrences"));
+        assert_eq!(parties.len(), 2);
+        for (occurrence, (expected_id, expected_role)) in
+            parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
+        {
+            let members = occurrence.as_sequence().expect("a party row");
+            assert_eq!(members[partyid].as_str(), Some(expected_id));
+            assert_eq!(members[source].as_str(), Some("D"));
+            assert_eq!(members[role].as_i64(), Some(expected_role));
+        }
     };
-    let partyid = party.index_of("partyid").expect("PartyID");
-    let source = party.index_of("partyidsource").expect("PartyIDSource");
-    let role = party.index_of("partyrole").expect("PartyRole");
+    let named = |row: &Scalar, schema: &Field| {
+        let at = schema.index_of("partyids").expect("the partyids column");
+        yggdryl::Identifiers::from_scalar(row.get(at).expect("the partyids").as_ref())
+            .expect("the partyids")
+            .to_string()
+    };
+    const OUTER: &str = "[proprietary:clientid=OUTER-B, proprietary:executingfirm=OUTER-A]";
+    let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
+    outer(&message);
     let row = message.into_row(&schema).unwrap();
-    let parties = row.get(parties_at).expect("the projected occurrences");
-    let parties = parties.as_sequence().expect("the projected occurrences");
-    assert_eq!(parties.len(), 2);
-    for (occurrence, (expected_id, expected_role)) in
-        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
-    {
-        let members = occurrence.as_sequence().expect("a party row");
-        assert_eq!(members[partyid].as_str(), Some(expected_id));
-        assert_eq!(members[source].as_str(), Some("D"));
-        assert_eq!(members[role].as_i64(), Some(expected_role));
-    }
+    assert_eq!(named(&row, &schema), OUTER);
 
     // A shadowed numeric group ends before its later scalar: the outer
     // group stays whole and the nested scalar still overrides its outer value.
@@ -1575,22 +1613,9 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     let numeric = reader().sole_line(&frame).unwrap();
     assert_eq!(numeric.by_tag(453).unwrap(), Scalar::from(2_i32));
     assert_eq!(numeric.by_tag(38).unwrap(), super::decimal("3"));
+    outer(&numeric);
     let row = numeric.into_row(&schema).unwrap();
-    let parties = row
-        .get(parties_at)
-        .expect("the outer projected occurrences");
-    let parties = parties
-        .as_sequence()
-        .expect("the outer projected occurrences");
-    assert_eq!(parties.len(), 2);
-    for (occurrence, (expected_id, expected_role)) in
-        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
-    {
-        let members = occurrence.as_sequence().expect("an outer party row");
-        assert_eq!(members[partyid].as_str(), Some(expected_id));
-        assert_eq!(members[source].as_str(), Some("D"));
-        assert_eq!(members[role].as_i64(), Some(expected_role));
-    }
+    assert_eq!(named(&row, &schema), OUTER);
 }
 
 #[test]
@@ -3702,7 +3727,7 @@ mod equivalence {
             "8=FIX.4.4|9=224|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|64=20240104|10=118|",
             "8=FIX.4.4|9=224|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-2|39=2|150=F|55=AAPL|54=1|38=100|14=100|32=60|31=10.5|15=EUR|155=1.1|10=119|",
             "recv |MSGTYPE=D|SYMBOL=TTF|SIDE=1|ORDERQTY=1200|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|",
-            r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" OrdQty="50"/></FIXML>"#,
+            r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" Qty="50"/></FIXML>"#,
             concat!(
                 r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
                 r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","#,

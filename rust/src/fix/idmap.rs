@@ -3,16 +3,16 @@
 //!
 //! A message goes by the names its fields state - the order's own and its
 //! parent's identifiers, the quote's, the execution's - and the
-//! [`IdMap`](crate::IdMap) of alternate identifiers an
-//! [`Operation`](crate::graph::Operation) answers holds them, each under an
-//! upper-cased key. Which field states which key is a fact about the field,
+//! [`Identifiers`](crate::Identifiers) an
+//! [`Operation`](crate::graph::Operation) answers holds them, each a type
+//! from the `fix` source. Which field states which key is a fact about the field,
 //! so it travels on the field: `FIX:idmap` is one [canonical
 //! document](super::document) of entries, read borrowed, and the registry
 //! compiles every field's once into the table a message rebuilds its maps
 //! from.
 //!
 //! ```text
-//! OrderID(37)   [{"map":"altids","key":"ORDERID","follow":true}]
+//! OrderID(37)   [{"map":"identifiers","key":"orderid","follow":true}]
 //! ```
 //!
 //! An entry states the map and the key, whether an operation that follows
@@ -21,12 +21,12 @@
 //!
 //! Two readings are the crate's own rather than a field's: a message's
 //! parties and its `Account(1)` are its
-//! [`accountids`](crate::graph::Operation::get_accountids), every
-//! `Parties(453)` and `RootParties(1116)` occurrence's identifier under its
-//! role's name - `EXECUTINGTRADER`, `CUSTOMERACCOUNT` - and the account
-//! under `ACCOUNT`, and its regulatory trade identifiers are alternate
-//! identifiers keyed by their `RegulatoryTradeIDType(1906)` - `REGTRADEID`,
-//! `TVTIC`. A side's own parties, account and identifiers come first, so an
+//! [`partyids`](crate::graph::Operation::get_partyids), every `Parties(453)`
+//! and `RootParties(1116)` occurrence's identifier typed by its role's name -
+//! `executingtrader`, `customeraccount` - from its `PartyIDSource(447)`'s,
+//! and the account typed `account` from its `AcctIDSource(660)`'s, and its
+//! regulatory trade identifiers are identifiers typed by their
+//! `RegulatoryTradeIDType(1906)` - `regtradeid`, `tvtic`. A side's own parties, account and identifiers come first, so an
 //! execution a trade's parse split off states its side's, and a book
 //! entry's own parties lead the message's on its leaf. A leaf lifts, too,
 //! every scalar of its metadata whose key ends with one of the
@@ -39,6 +39,8 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::IdType;
+
 use super::document::{Cursor, Refusal, Scan, Writer};
 use crate::{Error, Result};
 
@@ -47,7 +49,7 @@ const TARGET: &str = "fix idmap";
 
 /// The map the value lands in.
 const MAP: &str = "map";
-/// The upper-cased key it lands under.
+/// The identifier type it lands under.
 const KEY: &str = "key";
 /// Whether a following operation carries it.
 const FOLLOW: &str = "follow";
@@ -57,27 +59,23 @@ const ROLE: &str = "role";
 /// The keys one entry may state, in the order it states them.
 pub(super) const KEYS: [&str; 4] = [MAP, KEY, FOLLOW, ROLE];
 
-/// The most bytes a key may be: the width an [`IdMap`](crate::IdMap) key
-/// holds.
-const KEY_WIDTH: usize = 32;
-
 /// The identifier map an operation answers that a field's value names a
 /// message by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FixIdMapKind {
-    /// `altids`: the alternate identifiers it goes by.
-    Alts,
+    /// `identifiers`: the identifiers it goes by.
+    Identifiers,
 }
 
 impl FixIdMapKind {
     /// Every map, in the order an operation states them.
-    pub const ALL: [Self; 1] = [Self::Alts];
+    pub const ALL: [Self; 1] = [Self::Identifiers];
 
     /// The map's name, as an operation's accessor spells it.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Alts => "altids",
+            Self::Identifiers => "identifiers",
         }
     }
 }
@@ -98,7 +96,7 @@ impl FromStr for FixIdMapKind {
             .find(|kind| kind.as_str().eq_ignore_ascii_case(text.trim()))
             .ok_or_else(|| {
                 refused(format_smolstr!(
-                    "expected {MAP:?} to be altids, got {text:?}"
+                    "expected {MAP:?} to be identifiers, got {text:?}"
                 ))
             })
     }
@@ -107,12 +105,13 @@ impl FromStr for FixIdMapKind {
 /// One field stating one key of one identifier map.
 ///
 /// ```
+/// use yggdryl::IdType;
 /// use yggdryl::fix::{FixIdMapKind, FixIdSource};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let order = FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true);
-/// assert_eq!(order.map(), FixIdMapKind::Alts);
-/// assert_eq!(order.key(), "ORDERID");
+/// let order = FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true);
+/// assert_eq!(order.map(), FixIdMapKind::Identifiers);
+/// assert_eq!(order.key(), &IdType::OrderId);
 /// assert!(order.follows());
 /// assert_eq!(order.role(), None);
 /// # Ok(())
@@ -121,7 +120,7 @@ impl FromStr for FixIdMapKind {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FixIdSource {
     map: FixIdMapKind,
-    key: SmolStr,
+    key: IdType,
     follow: bool,
     role: Option<SmolStr>,
 }
@@ -130,10 +129,10 @@ impl FixIdSource {
     /// Builds one source stating `key` in `map`, followed by nothing and
     /// read off the field itself.
     #[must_use]
-    pub fn new(map: FixIdMapKind, key: impl Into<SmolStr>) -> Self {
+    pub fn new(map: FixIdMapKind, key: IdType) -> Self {
         Self {
             map,
-            key: key.into(),
+            key,
             follow: false,
             role: None,
         }
@@ -159,9 +158,9 @@ impl FixIdSource {
         self.map
     }
 
-    /// The key it lands under.
+    /// The identifier type it lands under.
     #[must_use]
-    pub fn key(&self) -> &str {
+    pub fn key(&self) -> &IdType {
         &self.key
     }
 
@@ -178,28 +177,15 @@ impl FixIdSource {
         self.role.as_deref()
     }
 
-    /// Holds this source to what the document can state: a key of one to
-    /// 32 upper-case ASCII letters and digits, and a role that is a code of
-    /// ASCII letters and digits.
+    /// Holds this source to what the document can state: a role that is a
+    /// code of ASCII letters and digits.
     fn validate(&self) -> Result<()> {
-        let key = self.key.as_str();
-        if key.is_empty()
-            || key.len() > KEY_WIDTH
-            || !key
-                .bytes()
-                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+        if let Some(role) = self.role()
+            && (role.is_empty() || !role.bytes().all(|byte| byte.is_ascii_alphanumeric()))
         {
             return Err(refused(format_smolstr!(
-                "expected {KEY:?} to be 1 to {KEY_WIDTH} upper-case ASCII letters or digits, \
-                 got {key:?}"
+                "expected {ROLE:?} to be a PartyRole code, got {role:?}"
             )));
-        }
-        if let Some(role) = self.role() {
-            if role.is_empty() || !role.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
-                return Err(refused(format_smolstr!(
-                    "expected {ROLE:?} to be a PartyRole code, got {role:?}"
-                )));
-            }
         }
         Ok(())
     }
@@ -208,7 +194,7 @@ impl FixIdSource {
     fn write_into(&self, writer: &mut Writer) -> Result<()> {
         writer.open_element();
         writer.text(true, MAP, self.map.as_str())?;
-        writer.text(false, KEY, &self.key)?;
+        writer.text(false, KEY, self.key.as_str())?;
         if self.follow {
             writer.flag(false, FOLLOW, true);
         }
@@ -250,9 +236,8 @@ impl<'field> FixIdSources<'field> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when a source states a key that is not one
-    /// to 32 upper-case letters or digits, a role that is not a code of
-    /// letters and digits, or a key twice.
+    /// Returns [`Error::Parse`] when a source states a role that is not a
+    /// code of letters and digits, or a key twice.
     pub(super) fn render(sources: &[FixIdSource]) -> Result<String> {
         sources.iter().try_for_each(FixIdSource::validate)?;
         for (index, source) in sources.iter().enumerate() {
@@ -303,6 +288,12 @@ impl<'field> FixIdSources<'field> {
         let map = map
             .parse::<FixIdMapKind>()
             .map_err(|_| Refusal::NotAWord(MAP))?;
+        // A stored key is the folded word its type spells, no alias of it.
+        let key = key
+            .parse::<IdType>()
+            .ok()
+            .filter(|kind| kind.as_str() == key)
+            .ok_or(Refusal::NotAWord(KEY))?;
         let mut source = FixIdSource::new(map, key).with_follow(follow);
         if let Some(role) = role {
             source = source.with_role(role);

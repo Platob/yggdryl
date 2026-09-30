@@ -200,6 +200,7 @@ impl Scalar {
             Self::Side(_) => Ok(DataType::Side),
             Self::State(_) => Ok(DataType::State),
             Self::MarketDataKind(_) => Ok(DataType::MarketDataKind),
+            Self::MarketDataType(_) => Ok(DataType::MarketDataType),
             Self::TimeInForce(_) => Ok(DataType::TimeInForce),
             Self::Isin(_) => Ok(DataType::Isin),
             Self::Cusip(_) => Ok(DataType::Cusip),

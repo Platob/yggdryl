@@ -315,7 +315,11 @@ export declare class BookEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -363,21 +367,35 @@ export declare class BookEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -460,8 +478,10 @@ export declare class BookEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: BookEvent): BookEvent | null
   /**
@@ -694,7 +714,7 @@ export declare class Candle {
    * `executions` and `volume`.
    */
   static field(): Field
-  /** The book's cross code. */
+  /** The book's stored cross code, such as `3:0:ACME`. */
   get crosscode(): string
   /** The book's ticker, where it stated one. */
   get ticker(): string | null
@@ -1485,7 +1505,8 @@ export type JsDigest = Digest
 /**
  * A walk that chains each operation event to the live element it follows
  * within its own market data kind (an order and an execution under one
- * cross code are two chains) and yields it enriched, pulling its items lazily from the caller's
+ * base are two chains: their stored cross codes carry the kind) and yields
+ * it enriched, pulling its items lazily from the caller's
  * iterable: any leaf or `MarketData`, the dated operations and trades
  * walking and every other variant yielded unchanged, in place. Yields
  * `MarketData`.
@@ -1533,7 +1554,8 @@ export declare class Execution {
   /**
    * Build the element from its named facts, one record `Scalar`
    * keyed by column name - the market and operation columns and
-   * the element's own `crosscode` and `srcuuids` - each checked by
+   * the element's own `crosscode` - stated as its base and stored
+   * `{kind}:{side}:{base}` - and `srcuuids` - each checked by
    * its column's field and stated through its column, then
    * finalized. A `null` fact clears; a derived identity or any
    * other event column is refused by name.
@@ -1558,7 +1580,11 @@ export declare class Execution {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -1576,21 +1602,35 @@ export declare class Execution {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -1665,23 +1705,33 @@ export declare class Execution {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -1691,8 +1741,10 @@ export declare class Execution {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: Execution): Execution | null
   /**
@@ -1766,7 +1818,11 @@ export declare class ExecutionEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -1814,21 +1870,35 @@ export declare class ExecutionEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -1903,23 +1973,33 @@ export declare class ExecutionEvent {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -1929,8 +2009,10 @@ export declare class ExecutionEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: ExecutionEvent): ExecutionEvent | null
   /**
@@ -2658,8 +2740,9 @@ export declare class FixCodec {
    * unstated, and `null`, zero or a negative window remembering none;
    * `marketMetadata` is whether a market operation carries its message's
    * unmapped fields - its parties, `Account(1)` and regulatory trade
-   * identifiers stay its `accountids` and `altids` - and lifts the
-   * identifiers among them into its `altids`, on when unstated.
+   * identifiers stay its `partyids` and `identifiers` - and lifts the
+   * identifiers among them into the set their type belongs to, on when
+   * unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
@@ -2752,7 +2835,7 @@ export declare class FixCodec {
    * Whether a market operation this codec builds carries, in its
    * metadata, what its message states that no typed column reads and no
    * identifier map of the leaf holds, and lifts the identifiers among
-   * them into its `altids`.
+   * them into the set their type belongs to.
    */
   get marketMetadata(): boolean
   /**
@@ -2958,8 +3041,9 @@ export type JsFixMessages = FixMessages
  * by its facts and its row, against the registry it was resolved against.
  *
  * Every message carries its identity settled: the cross code, the first
- * stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
- * over it, the `currhashcode` over everything the message says but the
+ * stated of tags 37, 11, 41, 117, 131 and 262 stored as
+ * `{kind}:{side}:{base}`, the `crosshashcode` over that stored code, the
+ * `currhashcode` over everything the message says but the
  * standard header and trailer, the `curruuid` ordered by millisecond and
  * sequence with a content payload seeded by the cross hash, and the
  * `crossuuid` over the cross hash - or
@@ -3027,7 +3111,9 @@ export declare class FixMsg {
    * `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
    * empty `W` - each a `MarketData` carrying, in its `metadata`, what the
    * message states that no typed column reads and no identifier map of the
-   * leaf holds, the identifiers among it lifted into the leaf's `altids`.
+   * leaf holds, the identifiers among it lifted into the set their type
+   * belongs to - `securityids`, `partyids` or `identifiers` - where that
+   * set holds the key free or with the same value.
    */
   marketData(): Array<JsMarketData>
   /** The standard header, typed, as one plain object read once. */
@@ -3054,10 +3140,10 @@ export declare class FixMsg {
    */
   get msgcat(): string
   /**
-   * The option strike price the message identifies, `StrikePrice(202)`,
-   * as decimal text, or `null`.
+   * The option strike price the message identifies - `StrikePrice(202)`
+   * read off the dictionary field - as decimal text, or `null`.
    */
-  get strikepx(): string | null
+  get strikeprice(): string | null
   /**
    * This message's own `UUIDv7` identity, ordered by millisecond and
    * sequence with a content payload seeded by its cross hash, as
@@ -3069,11 +3155,16 @@ export declare class FixMsg {
    * text: `curruuid` when no cross code names a chain.
    */
   get crossuuid(): string
-  /** The code the chain is named by, or empty. */
+  /**
+   * The code the chain is named by, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0` for any
+   * other) and the identifier the message names, so a buy order `O-1` is
+   * `10:1:O-1` - or empty where it names none.
+   */
   get crosscode(): string
   /** The XXH3-64 over everything this message says. */
   get currhashcode(): bigint
-  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  /** The XXH3-64 of the stored cross code, `0n` where there is none. */
   get crosshashcode(): bigint
   /** When the event happened, nanoseconds since the Unix epoch, UTC. */
   get currunix(): bigint
@@ -3123,12 +3214,14 @@ export declare class FixMsg {
    */
   get carried(): Record<string, Scalar>
   /**
-   * The security identifiers the instrument goes by, source to code, in
-   * the core's key order: `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI`
-   * and any other source `SecurityIDSource(22)` or the `SecurityAltID`
-   * group names; empty where the message states none.
+   * The security identifiers the instrument goes by, each a source, a
+   * type and a code - `base:isin`, `derived:cusip`, `base:sedol`,
+   * `base:figi` and any other source `SecurityIDSource(22)`, the
+   * `SecurityAltID` group or an unmapped entry whose key names a security
+   * type names - a map keyed `src:type`, in key order; empty where the
+   * message states none.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /** The instrument's ISIN, borrowed from `securityids`, or `null`. */
   get isincode(): string | null
   /**
@@ -3169,19 +3262,21 @@ export declare class FixMsg {
    */
   get askccy(): string | null
   /**
-   * The names the operation goes by, key to value, upper-cased and in key
-   * order: `ORDERID`, `CLORDID`,
-   * `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
-   * `TRADEID` and the rest the message states.
+   * The names the operation goes by, each typed by the field that
+   * stated it - `orderid`, `clordid`, `execid`, `quoteid`, `tradeid` and
+   * the rest the message states - from `fix` or the source an unmapped
+   * entry's key names (`OMS_ClOrdID` is `oms:clordid`), with the parents
+   * a chain gave them (`origclordid`, `parentorderid`, `origorderid`); a
+   * map keyed `src:type`, in key order.
    */
-  get altids(): Record<string, string>
+  get identifiers(): Identifiers
   /**
-   * The accounts and parties the message names - each `Parties`
-   * occurrence's `PartyID` under its `PartyRole`'s name, such as
-   * `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
-   * `ACCOUNT` - key to value, in key order.
+   * The parties the message names - each `Parties` occurrence's
+   * `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
+   * from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
+   * map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get partyids(): Identifiers
   /**
    * The price stated, as decimal text, or `null` where none is. Never a
    * last executed price, which `lastpx` answers.
@@ -3192,11 +3287,24 @@ export declare class FixMsg {
    * a last executed quantity, which `lastqty` answers.
    */
   get quantity(): string | null
+  /** The stop price the message states, `StopPx(99)`, as decimal text, or `null` where none is. */
+  get stoppx(): string | null
+  /** The part of the quantity shown, `DisplayQty(1138)` else `MaxFloor(111)`, as decimal text, or `null` where none is. */
+  get displayqty(): string | null
+  /** The part of the quantity kept back: the quantity past the part shown, as decimal text, or `null` where none is. */
+  get hiddenqty(): string | null
+  /** How much was canceled, `CxlQty(84)`, as decimal text, or `null` where none is. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
    * where none is stated.
    */
   get unit(): string
+  /**
+   * The type of its kind the message is, as the `marketdatatype` member's
+   * stored name: `UNKN` where none.
+   */
+  get marketdatatype(): string
   /**
    * The side, as the `side` member's four-letter code: the one stated, else
    * `UNKN` - never `null`.
@@ -3250,11 +3358,16 @@ export declare class FixMsg {
    */
   get forwardpoints(): string | null
   /**
-   * How long the message stands, `TimeInForce(59)`, as the code it
-   * stores - `0` for a day order, a venue's own `GTX` as stated - or
-   * `null`. What the code names is the dictionary's to say.
+   * How long the message stands, `TimeInForce(59)`, as the `timeinforce`
+   * member's stored name - `DAY`, `GTC`, a venue's own value `OTHER` -
+   * or `null` where none is stated.
    */
-  get tif(): string | null
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text, or `null` where
+   * none is stated.
+   */
+  get ordqty(): string | null
   /**
    * Whether the instrument could be traded when the message was sent, or
    * `null` where the market said nothing either way - which is not the
@@ -3348,7 +3461,7 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching the capture's own column - `sourceurl` (65031), by tag
+   * key reaching the capture's own column - `sourceurl` (65049), by tag
    * or by name: a message holds no fact for it, and a row child would put
    * it on the wire.
    */
@@ -3701,10 +3814,44 @@ export declare class FixRegistry {
   /**
    * Every field that names a message by an identifier, one entry per key
    * its `FIX:idmap` states, in tag order. A message rebuilds its
-   * `altids` from these, and an operation that follows another carries
+   * `identifiers` from these, and an operation that follows another carries
    * the keys whose entry follows.
    */
   idmapSources(): Array<FixIdMapSource>
+  /**
+   * Every parents list this dictionary's fields state under
+   * `FIX:parents`, one `{ base, parents }` per field, in field order: the
+   * base is the field's `FIX:idmap` key, else its folded name.
+   */
+  parentSources(): Array<FixParentSource>
+  /**
+   * The parent types of the identifier type `base`, nearest first: the
+   * list a field stating it names under `FIX:parents`, else the ones its
+   * name has - `orderid` is `["parentorderid", "origorderid"]`, `clordid`
+   * `["origclordid"]`; a parent type has none.
+   */
+  parentsOf(base: string): Array<string>
+  /**
+   * The base the identifier type `kind` is a parent of and its place
+   * among the base's parents - `{ base: "clordid", at: 0 }` for
+   * `origclordid`, `{ base: "orderid", at: 1 }` for `origorderid` - or
+   * `null` for a type that is no one's parent.
+   */
+  parentOf(kind: string): FixParentPlace | null
+  /**
+   * The market data type one wire value of the FIX field `tag` types an
+   * element as, as the member's stored name: this dictionary's own
+   * `FIX:marketdatatype` first, then the crate's table; `null` for a
+   * field that types nothing.
+   */
+  marketdatatypeOf(tag: number, wire: string): string | null
+  /**
+   * The time in force one wire value of the FIX field `tag` stands for,
+   * as the member's stored name: this dictionary's own `FIX:timeinforce`
+   * first, then `TimeInForce(59)`'s own values, a value neither names
+   * being `OTHER`; `null` for a field that states no time in force.
+   */
+  timeinforceOf(tag: number, wire: string): string | null
   /**
    * The symbolic name one wire value stands for in the set `name`.
    *
@@ -4030,6 +4177,97 @@ export declare class IcebergOptions {
   clone(): IcebergOptions
 }
 export type JsIcebergOptions = IcebergOptions
+
+/**
+ * One identifier: a source, a type and a value, unique by its key
+ * `src:type`.
+ */
+export declare class Identifier {
+  /**
+   * A source and a type are words, folded to lower case without their
+   * breaks; the value is trimmed text that states something, held as its
+   * type stores it.
+   */
+  constructor(src: string, kind: string, value: string)
+  /**
+   * The identifier a key names, or `null` where it names none, the value
+   * states nothing or its type refuses the value.
+   *
+   * An explicit `src:type` is read as it is. Otherwise a whole name a
+   * security type is spelled by - `ISINCode`, `security_cusip` - is that
+   * type from `base`, and a security type is never read off a key that
+   * names another instrument's (`underlyingisin`, `legisin`). Otherwise
+   * the key folds - lower case, no `_`, `-`, space or `#` - and the
+   * longest identifier name it ends with is the type: a type the crate
+   * names whose spelling ends with `id`, `account`, `isin`, `cusip`,
+   * `sedol` or `figi`, a parentage word (`parent`, `orig`, `origin`,
+   * `original`) right before it kept inside the type. The source is the
+   * rest of the folded key with its dots trimmed at both ends and kept
+   * inside, `base` where nothing is left.
+   *
+   * `firm.x.ParentOrderID` is `firm.x:parentorderid`, `OMS_InstrumentID`
+   * `oms:instrumentid`, `marketorderid` `market:orderid`, `ISINCode`
+   * `base:isin`; `underlyingisin` and `transversalkey` name none.
+   */
+  static fromKey(key: string, value: string): Identifier | null
+  /**
+   * Who gave the name: `fix`, `oms`, `derived`, `base` where no source
+   * is named.
+   */
+  get src(): string
+  /** The type of name this is: `isin`, `executingtrader`, `clordid`. */
+  get type(): string
+  /** The name itself. */
+  get value(): string
+  /** The unique key, `src:type`, an `Identifiers` keys it by. */
+  get key(): string
+  /** Whether this identifier's key is `src:type`, each folded. */
+  isOf(src: string, kind: string): boolean
+  /** Compare the complete native values. */
+  equals(other: Identifier): boolean
+  /**
+   * Compare native values in canonical order: the key as spelled
+   * (`src:type`), then the value.
+   */
+  compare(other: Identifier): number
+  /** Render `src:type=value`. */
+  toString(): string
+}
+export type JsIdentifier = Identifier
+
+/**
+ * A sorted map of identifiers, one per unique key `src:type`, iterated in
+ * key order.
+ */
+export declare class Identifiers {
+  /** The map `ids` fill, the first identifier of a key standing. */
+  constructor(ids?: Array<Identifier> | undefined | null)
+  /**
+   * The value of the first identifier of `type`, a stated source before a
+   * derived one; `null` where none.
+   */
+  get(kind: string): string | null
+  /**
+   * The first identifier of `type`, a stated source before a derived one;
+   * `null` where none.
+   */
+  getIdentifier(kind: string): Identifier | null
+  /** The value of the identifier keyed `src:type`; `null` where none. */
+  getFrom(src: string, kind: string): string | null
+  /** Whether the set holds an identifier of `type`. */
+  containsKind(kind: string): boolean
+  /** Every identifier of `type`, one per source. */
+  ofKind(kind: string): Array<Identifier>
+  /** Every identifier, in key order. */
+  toArray(): Array<Identifier>
+  /** How many identifiers the set holds. */
+  get length(): number
+  /** Compare the complete native values. */
+  equals(other: Identifiers): boolean
+  /** Render `[src:type=value, ...]`. */
+  toString(): string
+}
+export type JsIdentifiers = Identifiers
 
 /** A random-access resource: a local file, a directory, or a memory buffer. */
 export declare class IOBase {
@@ -4591,13 +4829,17 @@ export type JsManifestFile = ManifestFile
 
 /**
  * One value over every market leaf - an order, a quote or an execution,
- * undated or dated, a trade, a book or a snapshot control -
+ * undated or dated, a trade, a book, a snapshot control or a FIX message
+ * held whole -
  * answering the element and market facts its leaf answers. Immutable:
  * every verb answers a new value.
  */
 export declare class MarketData {
-  /** Wrap any market leaf, through the core's own `From`. */
-  constructor(leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent)
+  /**
+   * Wrap any market leaf, or a `FixMsg` held whole, through the core's
+   * own `From`.
+   */
+  constructor(leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg)
   /** Every leaf kind a value may be, in declaration order. */
   static kinds(): Array<string>
   /** Which leaf this is, as its `MarketData.kinds()` spelling. */
@@ -4606,7 +4848,7 @@ export declare class MarketData {
    * The market data category of this value's leaf, as the
    * `marketdatakind` member's stored name: an order `ORDR`, a quote
    * `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-   * `BOOK`.
+   * `BOOK`, a FIX message its own `msgcat`.
    */
   get marketdatakind(): string
   /** Whether the leaf is one of the six dated ones. */
@@ -4634,8 +4876,10 @@ export declare class MarketData {
   asBookEvent(): BookEvent | null
   /** The snapshot control this value is, else `null`. */
   asSnapshotEvent(): SnapshotEvent | null
+  /** The FIX message this value holds whole, else `null`. */
+  asFix(): FixMsg | null
   /** The leaf this value holds, as its own class. */
-  intoLeaf(): Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent
+  intoLeaf(): Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg
   /** The lifted `marketdata` row field every leaf is written under. */
   static field(): Field
   /**
@@ -4647,10 +4891,13 @@ export declare class MarketData {
   /**
    * The plan one named view is over a `marketdata` stream - `orders`,
    * `quotes`, `executions`, `trades`, `books`, or the
-   * `lifecycle` of the chain `crosscode` names, the one view that takes
+   * `lifecycle` of the chain `crosscode` names - the stored cross code,
+   * `10:1:ORD-1`, the exact code of the chain - the one view that takes
    * one - read ignoring ASCII case, with each lift, a `FieldPath` read
-   * once, appended as a projection after the view's own columns. Built
-   * structurally; its text reads back as the same plan.
+   * once (`identifiers['fix:clordid'].value as clordid`: an identifier
+   * column is a map keyed `src:type`), appended as a projection after the
+   * view's own columns. Built structurally; its text reads back as the
+   * same plan.
    */
   static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
   /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
@@ -4664,7 +4911,11 @@ export declare class MarketData {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -4682,21 +4933,35 @@ export declare class MarketData {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -4774,8 +5039,10 @@ export declare class MarketData {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: MarketData): MarketData | null
   /**
@@ -5143,7 +5410,8 @@ export declare class Order {
   /**
    * Build the element from its named facts, one record `Scalar`
    * keyed by column name - the market and operation columns and
-   * the element's own `crosscode` and `srcuuids` - each checked by
+   * the element's own `crosscode` - stated as its base and stored
+   * `{kind}:{side}:{base}` - and `srcuuids` - each checked by
    * its column's field and stated through its column, then
    * finalized. A `null` fact clears; a derived identity or any
    * other event column is refused by name.
@@ -5168,7 +5436,11 @@ export declare class Order {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -5186,21 +5458,35 @@ export declare class Order {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -5275,23 +5561,33 @@ export declare class Order {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -5301,8 +5597,10 @@ export declare class Order {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: Order): Order | null
   /**
@@ -5376,7 +5674,11 @@ export declare class OrderEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -5424,21 +5726,35 @@ export declare class OrderEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -5513,23 +5829,33 @@ export declare class OrderEvent {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -5539,8 +5865,10 @@ export declare class OrderEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: OrderEvent): OrderEvent | null
   /**
@@ -5936,6 +6264,20 @@ export declare class ProtocolField {
    */
   set names(values: Array<string>)
   /**
+   * The identifier types holding the parents of the identifier this field
+   * states, nearest first: `FIX:parents`, as `["origclordid"]` on
+   * `ClOrdID(11)`.
+   *
+   * An absent property is an empty array.
+   */
+  get parents(): Array<string>
+  /**
+   * Record the parent types, each folded as an identifier type folds; an
+   * empty array removes the property, and a spelling no identifier type
+   * folds from or a type listed twice throws leaving the field unchanged.
+   */
+  set parents(values: Array<string>)
+  /**
    * The component's direct scalar identifier names, in member order.
    *
    * An absent property is an empty array.
@@ -5974,10 +6316,34 @@ export declare class ProtocolField {
   get idmap(): Array<FixIdSource>
   /**
    * Record the keys; an empty array removes the property, and a key that
-   * is not one to 32 upper-case letters or digits, a follow flag off
-   * `altids`, or one key twice throws leaving the field unchanged.
+   * is not one to 64 upper-case letters or digits, a follow flag off
+   * `identifiers`, or one key twice throws leaving the field unchanged.
    */
   set idmap(values: Array<FixIdSource>)
+  /**
+   * The market data types this field's values type an element as, one
+   * `{ wire, marketdatatype }` per wire value; an absent property is an
+   * empty array.
+   */
+  get marketdatatypes(): Array<FixMarketDataType>
+  /**
+   * Record the types; an empty array removes the property, and a name
+   * that is no member, or a wire value the property cannot hold, throws
+   * leaving the field unchanged.
+   */
+  set marketdatatypes(values: Array<FixMarketDataType>)
+  /**
+   * The times in force this field's values stand for, one
+   * `{ wire, timeinforce }` per wire value; an absent property is an
+   * empty array.
+   */
+  get timeinforces(): Array<FixTimeInForce>
+  /**
+   * Record the times in force; an empty array removes the property, and
+   * a spelling that names no member, or a wire value the property cannot
+   * hold, throws leaving the field unchanged.
+   */
+  set timeinforces(values: Array<FixTimeInForce>)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */
@@ -6008,7 +6374,8 @@ export declare class Quote {
   /**
    * Build the element from its named facts, one record `Scalar`
    * keyed by column name - the market and operation columns and
-   * the element's own `crosscode` and `srcuuids` - each checked by
+   * the element's own `crosscode` - stated as its base and stored
+   * `{kind}:{side}:{base}` - and `srcuuids` - each checked by
    * its column's field and stated through its column, then
    * finalized. A `null` fact clears; a derived identity or any
    * other event column is refused by name.
@@ -6033,7 +6400,11 @@ export declare class Quote {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -6051,21 +6422,35 @@ export declare class Quote {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -6140,23 +6525,33 @@ export declare class Quote {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -6166,8 +6561,10 @@ export declare class Quote {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: Quote): Quote | null
   /**
@@ -6241,7 +6638,11 @@ export declare class QuoteEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -6289,21 +6690,35 @@ export declare class QuoteEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -6378,23 +6793,33 @@ export declare class QuoteEvent {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -6404,8 +6829,10 @@ export declare class QuoteEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: QuoteEvent): QuoteEvent | null
   /**
@@ -7620,7 +8047,11 @@ export declare class SnapshotEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -7668,21 +8099,35 @@ export declare class SnapshotEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -7765,8 +8210,10 @@ export declare class SnapshotEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: SnapshotEvent): SnapshotEvent | null
   /**
@@ -8881,7 +9328,11 @@ export declare class TradeEvent {
   get crossuuid(): string
   /**
    * The cross code: the identifier every statement of one element
-   * shares, empty where it names none.
+   * shares, stored as `{kind}:{side}:{base}` - the
+   * `MarketDataKind` code, the `Side` code of a sided kind (`0`
+   * for any other) and the identifier itself, so a buy order
+   * `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+   * it names none.
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
@@ -8929,21 +9380,35 @@ export declare class TradeEvent {
   get currency(): string
   /** The quantity stated, as decimal text; `null` where none. */
   get quantity(): string | null
+  /** The stop price the order triggers at, as decimal text; `null` where none. */
+  get stoppx(): string | null
+  /** The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none. */
+  get displayqty(): string | null
+  /** The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none. */
+  get hiddenqty(): string | null
+  /** How much was canceled, as decimal text; `null` where none. */
+  get cxlqty(): string | null
   /**
    * The unit the quantity is counted in, as spelled; empty where
    * none.
    */
   get unit(): string
   /**
+   * The type of its kind this is, as the `marketdatatype` member's
+   * stored name; `UNKN` where none, never `null`.
+   */
+  get marketdatatype(): string
+  /**
    * The side, as the `side` member's four-letter code; `UNKN` where
    * none, never `null`.
    */
   get side(): string
   /**
-   * The instrument's identifiers, one code under each source -
-   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   * The instrument's security identifiers, each a source, a type
+   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
+   * map keyed `src:type`, in key order.
    */
-  get securityids(): Record<string, string>
+  get securityids(): Identifiers
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -9018,23 +9483,33 @@ export declare class TradeEvent {
    */
   get metadata(): Record<string, string>
   /**
-   * How long this stands, as the stored code; `null` where
+   * How long this stands, as the `timeinforce` member's stored
+   * name; `null` where unstated.
+   */
+  get timeinforce(): string | null
+  /**
+   * The quantity the order asked for, as decimal text; `null` where
    * unstated.
    */
-  get tif(): string | null
+  get ordqty(): string | null
   /**
    * Whether the instrument trades, or `null` where the market said
    * nothing either way - which is not `false`.
    */
   get tradable(): boolean | null
-  /** The names the operation goes by, in key order. */
-  get altids(): Record<string, string>
   /**
-   * The accounts and parties the operation names, party role to
-   * identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-   * order.
+   * The names the operation goes by - `fix:clordid`,
+   * `fix:orderid` - with the parents a chain gave them
+   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
+   * a map keyed `src:type`, in key order.
    */
-  get accountids(): Record<string, string>
+  get identifiers(): Identifiers
+  /**
+   * The parties the operation names, each typed by its role -
+   * `executingtrader`, `clientid` - from its source, a map keyed
+   * `src:type`.
+   */
+  get partyids(): Identifiers
   /**
    * The market data category this leaf stands under, as the
    * `marketdatakind` member's stored name.
@@ -9044,8 +9519,10 @@ export declare class TradeEvent {
    * This value stated as the one after `previous`, or `null` where
    * it cannot follow it or following changes nothing. It takes
    * every `metadata` key of its chain it lacks and, where it names
-   * identifiers, every `altids` key but `MDENTRYREFID` and every
-   * `accountids` role, its own values standing.
+   * identifiers, every `identifiers` type but `mdentryrefid` and every
+   * party id, its own values standing, and the parents each
+   * identifier it states takes from its chain (`orderid` A then B
+   * is `parentorderid` A).
    */
   withPrevious(previous: TradeEvent): TradeEvent | null
   /**
@@ -10094,19 +10571,19 @@ export interface FixCaptureView {
    * The session event the message was delivered as - `MsgType`,
    * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
    * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-   * `byTag(65021)`.
+   * `byTag(65043)`.
    */
   msgsesseventid: string | null
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65018)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65040)`.
    */
   msgoriginator: string | null
   /**
    * The conversation a bridge filed the message under - a
    * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-   * of its log line; also `byTag(65022)`.
+   * of its log line; also `byTag(65044)`.
    */
   conversationid: string | null
 }
@@ -10205,8 +10682,8 @@ export interface FixCodecOptions {
    * Whether a market operation this codec builds carries, in its
    * metadata, what its message states that no typed column reads and no
    * identifier map of the leaf holds, lifting the identifiers among them
-   * into its `altids` - part of the leaf's identity; the core's `true`
-   * when unstated.
+   * into the set their type belongs to - part of the leaf's identity; the
+   * core's `true` when unstated.
    */
   marketMetadata?: boolean
 }
@@ -10254,10 +10731,14 @@ export interface FixCommitReport {
  * `msgsessionid` - and the `msgsesseventid` the session and the context
  * join to with the message type and sequence; the capture's own column,
  * `sourceurl`, which whoever read the line states on the row and no message
- * holds; the `msgcat` the message type files under; and the instrument,
- * order and bridge facts a message names - each a fact no FIX dictionary
- * publishes, at the datatype its graph column names, numbered contiguously
- * from `65001`.
+ * holds; the `msgcat` the message type files under; the normalized
+ * instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
+ * `miccode`) and the market and operation facts a message names - each a
+ * fact no FIX dictionary publishes, at the datatype its graph column names,
+ * numbered contiguously from `65001` through `fixmsg` (`65050`). The strike
+ * price is the dictionary's `StrikePrice(202)`, no crate field, and a
+ * bridge's own identifier keys are no crate field either: they arrive as
+ * unmapped entries and are read for the identifier name they end with.
  *
  * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null; `state` is written on every row a message
@@ -10346,20 +10827,13 @@ export interface FixHeaderView {
   checksum: string | null
 }
 
-/**
- * One borrowed code set, as the object JavaScript reads.
- *
- * The members are owned on the way across - a JavaScript value outlives the
- * dictionary it was read from - and the stored escapes are decoded there,
- * which is what `FixCode::from` does.
- * One field that names a message by an identifier, and the key it states.
- */
+/** One field that names a message by an identifier, and the key it states. */
 export interface FixIdMapSource {
   /** The field's tag. */
   tag: number
-  /** The map it lands in: `altids`, the one identifier map. */
+  /** The map it lands in: `identifiers`, the one identifier map. */
   map: string
-  /** The upper-case key it lands under. */
+  /** The lower-case identifier type it lands under. */
   key: string
   /** Whether an operation that follows another carries it. */
   follow: boolean
@@ -10369,14 +10843,49 @@ export interface FixIdMapSource {
 
 /** One identifier-map key a FIX field's value states. */
 export interface FixIdSource {
-  /** The map it lands in: `altids`, the one identifier map. */
+  /** The map it lands in: `identifiers`, the one identifier map. */
   map: string
-  /** The upper-case key it lands under. */
+  /** The lower-case identifier type it lands under. */
   key: string
-  /** Whether an operation that follows another carries it; `altids` only. */
+  /** Whether an operation that follows another carries it; `identifiers` only. */
   follow?: boolean
   /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
   role?: string
+}
+
+/** One wire value of a FIX field and the market data type it types an element as. */
+export interface FixMarketDataType {
+  /** The wire value, as the message carries it. */
+  wire: string
+  /** The `marketdatatype` member's stored name. */
+  marketdatatype: string
+}
+
+/** Where one identifier type stands among the parents of a base. */
+export interface FixParentPlace {
+  /** The identifier type this one is a parent of. */
+  base: string
+  /** Its place among the base's parents, `0` the nearest. */
+  at: number
+}
+
+/**
+ * One borrowed code set, as the object JavaScript reads.
+ *
+ * The members are owned on the way across - a JavaScript value outlives the
+ * dictionary it was read from - and the stored escapes are decoded there,
+ * which is what `FixCode::from` does.
+ * The parents one identifier type is given: a base and its parent types,
+ * nearest first.
+ */
+export interface FixParentSource {
+  /**
+   * The identifier type the parents belong to: the field's `FIX:idmap`
+   * key, else its folded name.
+   */
+  base: string
+  /** The parent types, nearest first. */
+  parents: Array<string>
 }
 
 /**
@@ -10422,6 +10931,17 @@ export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
  * content record.
  */
 export declare function fixSchemaTags(): Array<number>
+
+/**
+ * One `{ wire, timeinforce }` pair of a FIX field's `timeinforces`: the
+ * time in force one wire value stands for.
+ */
+export interface FixTimeInForce {
+  /** The wire value, as the message carries it. */
+  wire: string
+  /** The `timeinforce` member's stored name. */
+  timeinforce: string
+}
 
 /**
  * A credential, spelled one way at a time.
@@ -10761,6 +11281,34 @@ export interface MarketDataKindMember {
   description: string
 }
 
+/**
+ * The FIX field and wire value the member `name` stands for, or `null` for
+ * `UNKN` and a catch-all; throws on a name that is no member.
+ */
+export declare function marketDataTypeFixCode(name: string): MarketDataTypeFixCode | null
+
+/** The FIX field and wire value one member stands for. */
+export interface MarketDataTypeFixCode {
+  tag: number
+  wire: string
+}
+
+/**
+ * The member one FIX field's wire value types an element as, as its stored
+ * name, or `null` for a field that types nothing.
+ */
+export declare function marketDataTypeFromFix(tag: number, wire: string): string | null
+
+/**
+ * One member of the core's market data type enum: its stored name, the code
+ * a `marketdatatype` column stores, and what it means.
+ */
+export interface MarketDataTypeMember {
+  name: string
+  code: number
+  description: string
+}
+
 /** One field-metadata key/value pair. */
 export interface MetadataEntry {
   /** Metadata key. */
@@ -10895,6 +11443,28 @@ export interface StringParametersInput {
   bound?: number
   fixed?: number
   max?: number
+}
+
+/**
+ * The `TimeInForce(59)` wire value the member `name` stands for, or `null`
+ * for `UNKN` and `OTHER`; throws on a name that is no member.
+ */
+export declare function timeInForceFixCode(name: string): string | null
+
+/**
+ * The member one `TimeInForce(59)` wire value stands for, as its stored
+ * name; a value no member names - a venue's own - is `OTHER`.
+ */
+export declare function timeInForceFromFix(wire: string): string
+
+/**
+ * One member of the core's time-in-force enum: its stored name, the code a
+ * `timeinforce` column stores, and what it means.
+ */
+export interface TimeInForceMember {
+  name: string
+  code: number
+  description: string
 }
 
 /** One alias and the canonical name it resolves to. */

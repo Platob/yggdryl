@@ -151,8 +151,8 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
 fn a_group_is_lifted_out_of_the_record_with_its_members() {
     let (registry, codec) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let line =
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|453=2|448=P1|447=D|452=1|448=P2|447=D|452=11|10=0|";
+    let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|453=2|448=P1|447=D|452=1|448=P2|447=D|452=11|\
+1907=2|1903=UTI-1|1906=0|1903=TVT-1|1906=5|10=0|";
 
     let keep = [
         "beginstring",
@@ -185,18 +185,33 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         .unwrap()
         .unwrap();
 
-    // Two parties, each member where the group definition puts it, and the
-    // counter counting them.
-    assert_eq!(at(&row, &schema, "nopartyids").as_i128(), Some(2));
-    let parties = at(&row, &schema, "parties")
+    // Two regulatory trade identifiers, each member where the group
+    // definition puts it, and the counter counting them.
+    assert_eq!(at(&row, &schema, "noregulatorytradeids").as_i128(), Some(2));
+    let occurrences = at(&row, &schema, "regulatorytradeids")
         .as_sequence()
-        .expect("the parties");
-    assert_eq!(parties.len(), 2);
-    let identifiers: Vec<Option<&str>> = parties
+        .expect("the regulatory trade identifiers");
+    assert_eq!(occurrences.len(), 2);
+    let identifiers: Vec<Option<&str>> = occurrences
         .iter()
-        .map(|party| party.as_sequence().expect("a party")[0].as_str())
+        .map(|occurrence| occurrence.as_sequence().expect("an occurrence")[0].as_str())
         .collect();
-    assert_eq!(identifiers, [Some("P1"), Some("P2")]);
+    assert_eq!(identifiers, [Some("UTI-1"), Some("TVT-1")]);
+    // The party group the fixed row projects no column for stays one entry,
+    // and the parties it names are the row's `partyids`.
+    let entries = at(&row, &schema, "fixentries");
+    assert!(
+        entries
+            .mapping_iter()
+            .any(|(key, _)| key.as_str() == Some("453:parties")),
+        "{entries:?}"
+    );
+    assert_eq!(
+        yggdryl::Identifiers::from_scalar(at(&row, &schema, "partyids"))
+            .expect("the partyids")
+            .to_string(),
+        "[proprietary:executingfirm=P1, proprietary:orderoriginationtrader=P2]"
+    );
 }
 
 /// The Arrow twin: the same rows, one batch at a time.

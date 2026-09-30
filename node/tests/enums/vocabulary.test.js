@@ -35,6 +35,7 @@ test('the vocabularies the core lists are the ones exported', () => {
       'dataTypeIds',
       'dataTypeKinds',
       'digestAlgorithms',
+      'elementColumns',
       'eventColumns',
       'ioKinds',
       'ioModes',

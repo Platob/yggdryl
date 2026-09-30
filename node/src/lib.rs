@@ -36,6 +36,7 @@ mod hashing;
 mod holder;
 mod http;
 mod iceberg;
+mod identifier;
 mod iobase;
 mod iomedia;
 mod media;
@@ -48,9 +49,13 @@ mod serie;
 #[allow(dead_code)]
 mod marketdatakind;
 #[allow(dead_code)]
+mod marketdatatype;
+#[allow(dead_code)]
 mod side;
 #[allow(dead_code)]
 mod state;
+#[allow(dead_code)]
+mod timeinforce;
 #[allow(dead_code)]
 mod uri;
 mod value;

@@ -1,8 +1,8 @@
 # yggdryl-market-data in Rust
 
 The leaves, `MarketData`, the iterators and views live in `yggdryl::graph`;
-`Decimal`, `Side`, `MarketDataKind`, `State`, `Ccy`, `Mic`, `SecType`,
-`SecurityId`, `Uuid` and `Limit` at the crate root. Getters and setters are
+`Decimal`, `Side`, `MarketDataKind`, `State`, `Ccy`, `Mic`, `IdType`,
+`IdSource`, `Identifier`, `Identifiers`, `Uuid` and `Limit` at the crate root. Getters and setters are
 trait methods: import `yggdryl::graph::{Element, Event, Market, Operation}` as
 needed. Setters do not finalize - call `finalize()` once the facts are in.
 
@@ -14,32 +14,33 @@ execution's cross code is stored under.
 
 ```rust
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-use yggdryl::{Ccy, Decimal, MarketDataKind, SecType, SecurityId, Side, State};
+use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, MarketDataKind, Side, State};
 
 // Instants are i64 nanoseconds since the Unix epoch, UTC.
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = OrderEvent::at(T);
 order.set_crosscode("O-1001".to_owned());
-order.set_side(Side::Buy);
-order.set_price(Some("189.50".parse()?));
-order.set_quantity(Some(Decimal::from_int(100)));
-order.set_currency(Ccy::new("USD")?);
-order.set_ticker(Some("AAPL".into()));
-order.insert_securityid(SecurityId::new(SecType::read("ISIN")?, "US0378331005")?)?;
-order.insert_altid("ORDERID", "O-1001")?;
+order.set_side(Side::Buy, true);
+order.set_price(Some("189.50".parse()?), true);
+order.set_quantity(Some(Decimal::from_int(100)), true);
+order.set_currency(Ccy::new("USD")?, true);
+order.set_ticker(Some("AAPL".into()), true);
+// An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
+order.insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "US0378331005")?)?;
+order.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
 order.finalize();
 
 // A dated identity is a UUIDv7: its millisecond leads.
 assert_eq!(order.get_curruuid(), order.time_uuid()?);
 assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
-// An order, a quote or an execution stores its cross code under its side: one chain per side.
-assert_eq!(order.get_crosscode(), "BUYS:O-1001");
+// A cross code is stored as `{kind}:{side}:{base}`: one chain per side.
+assert_eq!(order.get_crosscode(), "10:1:O-1001");
 assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
-assert_eq!(order.get_securityids().get("CUSIP"), Some("037833100"));
+assert_eq!(order.get_securityids().to_string(), "[base:isin=US0378331005, derived:cusip=037833100]");
 assert_eq!(order.get_isincode(), Some("US0378331005"));
 assert_eq!(order.get_lastpx(), None, "a price is never a last execution");
-assert_eq!(order.get_bidpx(), None, "nor the bid an order states");
+assert_eq!(order.get_bidpx(), order.get_price(), "a buy's price is its bid");
 assert!(order.get_fxrates().is_empty(), "nothing fills the rates");
 assert_eq!(*order.get_state(), State::Unknown);
 assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);
@@ -58,8 +59,8 @@ use yggdryl::{Ccy, Decimal, MarketDataKind, Side, Uuid};
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = Order::new();
 order.set_crosscode("O-1001".to_owned());
-order.set_side(Side::Buy);
-order.set_price(Some("189.50".parse()?));
+order.set_side(Side::Buy, true);
+order.set_price(Some("189.50".parse()?), true);
 order.finalize();
 assert_eq!(order.kind(), MarketKind::Order);
 assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode())));
@@ -69,24 +70,24 @@ assert!(!event.is_after(&event));
 // A two-sided quote: its bid and ask are facts, and it takes no side.
 let mut quote = QuoteEvent::at(T);
 quote.set_crosscode("Q-7".to_owned());
-quote.set_ticker(Some("AAPL".into()));
-quote.set_bidpx(Some("189.48".parse()?));
-quote.set_bidqty(Some(Decimal::from_int(300)));
-quote.set_bidccy(Some(Ccy::new("USD")?));
-quote.set_askpx(Some("189.52".parse()?));
-quote.set_askqty(Some(Decimal::from_int(100)));
-quote.set_askccy(Some(Ccy::new("USD")?));
+quote.set_ticker(Some("AAPL".into()), true);
+quote.set_bidpx(Some("189.48".parse()?), true);
+quote.set_bidqty(Some(Decimal::from_int(300)), true);
+quote.set_bidccy(Some(Ccy::new("USD")?), true);
+quote.set_askpx(Some("189.52".parse()?), true);
+quote.set_askqty(Some(Decimal::from_int(100)), true);
+quote.set_askccy(Some(Ccy::new("USD")?), true);
 quote.finalize();
-assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Unknown, "Q-7"));
+assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Unknown, "14:0:Q-7"));
 assert_eq!(quote.kind().marketdatakind(), MarketDataKind::Quotation);
 
 // A sided offer, placed in a book by its control; the scope is a fact, the rest walk-time.
 let mut offer = QuoteEvent::at(T);
 offer.set_crosscode("Q-8".to_owned());
-offer.set_ticker(Some("AAPL".into()));
-offer.set_side(Side::Sell);
-offer.set_price(Some("189.52".parse()?));
-offer.set_quantity(Some(Decimal::from_int(100)));
+offer.set_ticker(Some("AAPL".into()), true);
+offer.set_side(Side::Sell, true);
+offer.set_price(Some("189.52".parse()?), true);
+offer.set_quantity(Some(Decimal::from_int(100)), true);
 offer.finalize();
 let mut entry = offer.clone().with_book(BookRef {
     action: MdUpdateAction::read("new"),
@@ -115,9 +116,9 @@ let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
     let mut event = OrderEvent::at(unix);
     event.set_crosscode("O-1001".to_owned());
     event.set_state(State::from_spelling(state).expect("a shipped state"));
-    event.set_side(Side::Buy);
-    event.set_price(Some("189.50".parse()?));
-    event.set_quantity(Some(Decimal::from_int(100)));
+    event.set_side(Side::Buy, true);
+    event.set_price(Some("189.50".parse()?), true);
+    event.set_quantity(Some(Decimal::from_int(100)), true);
     event.finalize();
     Ok(event)
 };
@@ -148,7 +149,7 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 ## Walk a stream into chains
 
 `EventIterator` chains a stream by cross identity (and by a live element's
-`altids`), yields a twin as a restatement rather than a successor, retires a
+`identifiers`), yields a twin as a restatement rather than a successor, retires a
 chain at a terminal state and emits one `EXPIRED` at a deadline. An order's,
 a quote's or an execution's chain is keyed by side, a chain lives within one
 `marketdatakind` (an order and an execution under one cross code are two
@@ -163,7 +164,7 @@ const SECOND: i64 = 1_000_000_000;
 let event = |second: i64, order: &str, side: Side, state: &str| {
     let mut event = OrderEvent::at(T + second * SECOND);
     event.set_crosscode(order.to_owned());
-    event.set_side(side);
+    event.set_side(side, true);
     event.set_state(State::from_spelling(state).expect("a shipped state"));
     event.finalize();
     event
@@ -198,7 +199,7 @@ let walked: Vec<OrderEvent> = EventIterator::new(
     true,
 )
 .collect();
-assert_eq!((walked[1].get_crosscode(), walked[1].get_seqnum()), ("SELL:O-2002", 0));
+assert_eq!((walked[1].get_crosscode(), walked[1].get_seqnum()), ("10:2:O-2002", 0));
 assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
 assert_eq!(*walked[2].get_state(), State::Updated);
 let joined: Vec<OrderEvent> = EventIterator::new(
@@ -207,7 +208,7 @@ let joined: Vec<OrderEvent> = EventIterator::new(
 )
 .collect();
 assert_eq!(joined[1].get_prevuuid(), Some(joined[0].get_curruuid()));
-assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "BUYS:O-3003"));
+assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "10:1:O-3003"));
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS: i64 = 1_000_000;
@@ -216,8 +217,13 @@ expiring.set_crosscode("O-4004".to_owned());
 expiring.set_exprunix(Some(T + 70 * MS));
 expiring.finalize();
 let timed: Vec<OrderEvent> = EventIterator::new([expiring], true).with_snapshot_ns(10 * MS).collect();
-let view = timed.iter().find(|held| held.get_snapunix() == Some(T + 60 * MS)).expect("a view");
-// Dated at its tick: the identity is the tick's, the content the order's.
+let view = timed
+    .iter()
+    .find(|held| held.get_snapunix().is_some() && held.get_currunix() == T + 60 * MS)
+    .expect("a view");
+// Dated at its tick: the identity is the tick's, the content the order's,
+// and its snapshot instant the one the order was stated at.
+assert_eq!(view.get_snapunix(), Some(T + 50 * MS));
 assert_eq!((view.get_currunix(), view.get_seqnum()), (T + 60 * MS, 0));
 assert_eq!(view.get_currhashcode(), timed[0].get_currhashcode());
 let expired = timed.last().expect("the deadline event");
@@ -228,7 +234,8 @@ assert_eq!((expired.get_currunix(), *expired.get_state()), (T + 70 * MS, State::
 
 `TradeEvent::from_parts` is the one door: a root event and its sided
 executions, canonicalized so input order never changes the trade. The trade
-itself is not sided: it keeps the root's cross code, a sided root's base code.
+itself is not sided: it keeps the root's base code under its own kind and side
+`0` (`21:0:T-1`).
 
 ```rust
 use yggdryl::graph::{Element, Event, ExecutionEvent, Market, OrderEvent, TradeEvent};
@@ -238,17 +245,17 @@ const T: i64 = 1_700_000_000_000_000_000;
 let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {
     let mut execution = ExecutionEvent::at(T);
     execution.set_crosscode(code.to_owned());
-    execution.set_side(side);
-    execution.set_lastpx(Some("189.50".parse()?));
-    execution.set_lastqty(Some(Decimal::from_int(100)));
+    execution.set_side(side, true);
+    execution.set_lastpx(Some("189.50".parse()?), true);
+    execution.set_lastqty(Some(Decimal::from_int(100)), true);
     Ok(execution)
 };
 let mut root = OrderEvent::at(T);
 root.set_crosscode("T-1".to_owned());
-root.set_ticker(Some("AAPL".into()));
+root.set_ticker(Some("AAPL".into()), true);
 let trade = TradeEvent::from_parts(&root, vec![fill("E-SELL", Side::Sell)?, fill("E-BUYS", Side::Buy)?])?;
 let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).collect();
-assert_eq!(codes, ["BUYS:E-BUYS", "SELL:E-SELL"]);
+assert_eq!(codes, ["8:1:E-BUYS", "8:2:E-SELL"]);
 assert!(trade.is_execution());
 let again = TradeEvent::from_parts(&root, vec![fill("E-BUYS", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
 assert_eq!(again.get_curruuid(), trade.get_curruuid());
@@ -276,7 +283,7 @@ fn label(value: &(impl Element + Market)) -> String {
 
 let mut order = OrderEvent::at(1_700_000_000_000_000_000);
 order.set_crosscode("O-1001".to_owned());
-order.set_side(Side::Buy);
+order.set_side(Side::Buy, true);
 order.finalize();
 
 let value = MarketData::from(order.clone());
@@ -285,7 +292,7 @@ assert_eq!(value.kind().as_str(), "order_event");
 assert_eq!(value.marketdatakind(), MarketDataKind::Order);
 assert!(value.is_event());
 assert_eq!(value.as_order_event(), Some(&order));
-assert_eq!(label(&value), "BUYS:O-1001/BUYS");
+assert_eq!(label(&value), "10:1:O-1001/BUYS");
 assert_eq!(label(&value), label(&order));
 assert!(QuoteEvent::try_from(value.clone()).is_err(), "another kind is refused");
 assert_eq!(OrderEvent::try_from(value)?, order);
@@ -318,10 +325,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 54 columns: marketdatakind, 15 event, 28 market, 4 operation, bookscope, 5 nested.
+// 60 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation, bookscope, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 54);
-assert_eq!(field.fields()[0].name(), "marketdatakind");
+assert_eq!(field.field_len(), 60);
+assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
     .collect::<yggdryl::Result<_>>()?;
@@ -335,14 +342,15 @@ let schema = Arc::new(Schema::new(vec![
     Field::new("msgtype", DataType::Utf8, true),
 ]));
 let foreign = RecordBatch::try_new(Arc::clone(&schema), vec![
-    Arc::new(Int32Array::from(vec![MarketDataKind::Order.code()])),
+    // Any integer column reads as codes.
+    Arc::new(Int32Array::from(vec![i32::from(MarketDataKind::Order.code())])),
     Arc::new(Int64Array::from(vec![1_700_000_000_000_000_000])),
-    Arc::new(StringArray::from(vec!["O-1001"])),
+    Arc::new(StringArray::from(vec!["10:0:O-1001"])),
     Arc::new(StringArray::from(vec!["D"])),
 ])?;
 let lifted: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(schema, [foreign]))?.collect::<yggdryl::Result<_>>()?;
 let event = lifted[0].as_order_event().expect("a dated ORDR row is an order event");
-assert_eq!((event.get_crosscode(), event.get_currunix()), ("O-1001", 1_700_000_000_000_000_000));
+assert_eq!((event.get_crosscode(), event.get_currunix()), ("10:0:O-1001", 1_700_000_000_000_000_000));
 ```
 
 ## Persist a marketdata stream and read it back
@@ -387,19 +395,19 @@ const SECOND: i64 = 1_000_000_000;
 let bid = |unix: i64, code: &str, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
-    order.set_ticker(Some("AAPL".into()));
-    order.set_side(Side::Buy);
-    order.set_price(Some(price.parse()?));
-    order.set_quantity(Some(Decimal::from_int(quantity)));
+    order.set_ticker(Some("AAPL".into()), true);
+    order.set_side(Side::Buy, true);
+    order.set_price(Some(price.parse()?), true);
+    order.set_quantity(Some(Decimal::from_int(quantity)), true);
     order.finalize();
     Ok(MarketData::from(order))
 };
 let mut fill = ExecutionEvent::at(T + SECOND);
 fill.set_crosscode("E-1".to_owned());
-fill.set_ticker(Some("AAPL".into()));
-fill.set_side(Side::Buy);
-fill.set_lastpx(Some("189.52".parse()?));
-fill.set_lastqty(Some(Decimal::from_int(100)));
+fill.set_ticker(Some("AAPL".into()), true);
+fill.set_side(Side::Buy, true);
+fill.set_lastpx(Some("189.52".parse()?), true);
+fill.set_lastqty(Some(Decimal::from_int(100)), true);
 fill.finalize();
 let stream = vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill)];
 
@@ -408,7 +416,7 @@ assert_eq!(books.len(), 2, "one book per touched instant");
 let last = &books[1];
 assert_eq!((last.get_currunix(), last.alive().count()), (T + SECOND, 2), "depth persists");
 assert_eq!(last.deltas().count(), 1);
-assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["BUYS:E-1"]);
+assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
 
 // A 500 ms grid adds the living book at each crossed tick.
 let gridded = BookIterator::new(stream.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
@@ -417,11 +425,11 @@ assert_eq!(gridded.len(), 3);
 // No ticker: the book is the category, `XXXX` or `XXXXXX` for what is unstated.
 let mut listed = OrderEvent::at(T);
 listed.set_crosscode("L-1".to_owned());
-listed.set_side(Side::Sell);
-listed.set_miccode(Some(Mic::new("XNAS")?));
+listed.set_side(Side::Sell, true);
+listed.set_miccode(Some(Mic::new("XNAS")?), true);
 listed.finalize();
 let [book] = BookIterator::new([MarketData::from(listed)].into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("one book");
-assert_eq!((book.get_crosscode(), book.get_ticker()), ("XNAS:XXXXXX", None));
+assert_eq!((book.get_crosscode(), book.get_ticker()), ("3:0:XNAS:XXXXXX", None));
 // A value a book does not fold - an undated order - is refused by its kind.
 let undated = MarketData::from(Order::new());
 assert!(BookIterator::new([undated].into_iter(), 0)?.next().expect("one result").is_err());
@@ -442,10 +450,10 @@ const T: i64 = 1_700_000_000_000_000_000;
 let entry = |code: &str, side: Side, price: Option<&str>, quantity: i64| -> yggdryl::Result<OrderEvent> {
     let mut order = OrderEvent::at(T);
     order.set_crosscode(code.to_owned());
-    order.set_ticker(Some("AAPL".into()));
-    order.set_side(side);
-    order.set_price(price.map(str::parse).transpose()?);
-    order.set_quantity(Some(Decimal::from_int(quantity)));
+    order.set_ticker(Some("AAPL".into()), true);
+    order.set_side(side, true);
+    order.set_price(price.map(str::parse).transpose()?, true);
+    order.set_quantity(Some(Decimal::from_int(quantity)), true);
     Ok(order)
 };
 let done = |mut order: OrderEvent| {
@@ -453,7 +461,7 @@ let done = |mut order: OrderEvent| {
     MarketData::from(order)
 };
 let mut halted = entry("B-0", Side::Buy, Some("189.49"), 10)?;
-halted.set_tradable(Some(false));
+halted.set_tradable(Some(false), true);
 let mut book = BookEvent::new(T, "AAPL");
 book.add_operations([
     done(halted),
@@ -492,10 +500,10 @@ const T: i64 = 1_700_000_000_000_000_000;
 let order = |code: &str, side: Side, price: &str| -> yggdryl::Result<MarketData> {
     let mut order = OrderEvent::at(T);
     order.set_crosscode(code.to_owned());
-    order.set_ticker(Some("AAPL".into()));
-    order.set_side(side);
-    order.set_price(Some(price.parse()?));
-    order.set_quantity(Some(Decimal::from_int(100)));
+    order.set_ticker(Some("AAPL".into()), true);
+    order.set_side(side, true);
+    order.set_price(Some(price.parse()?), true);
+    order.set_quantity(Some(Decimal::from_int(100)), true);
     order.finalize();
     Ok(MarketData::from(order))
 };
@@ -504,7 +512,7 @@ book.add_operations([order("B-1", Side::Buy, "189.48")?, order("A-1", Side::Sell
 assert_eq!(book.alive().count(), 2);
 
 let mut at = OrderEvent::at(T + 1_000_000_000);
-at.set_ticker(Some("AAPL".into()));
+at.set_ticker(Some("AAPL".into()), true);
 at.finalize();
 let control = SnapshotEvent::snapshot(&at, None);
 assert_eq!(control.book().action, Some(MdUpdateAction::Snapshot));
@@ -522,19 +530,19 @@ columns.
 
 ```rust
 use arrow_array::RecordBatch;
-use yggdryl::graph::{Element, ExecutionEvent, Market, MarketData, MarketView, OrderEvent, TradeEvent};
-use yggdryl::{FieldPath, Plan, SecType, SecurityId, Side};
+use yggdryl::graph::{Element, ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
+use yggdryl::{FieldPath, IdSource, IdType, Identifier, Plan, Side};
 
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = OrderEvent::at(T);
 order.set_crosscode("O-1001".to_owned());
-order.set_side(Side::Buy);
-order.insert_securityid(SecurityId::new(SecType::read("ISIN")?, "US0378331005")?)?;
+order.set_side(Side::Buy, true);
+order.insert_identifier(Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1")?)?;
 order.finalize();
 let fill = |code: &str, side: Side| {
     let mut execution = ExecutionEvent::at(T + 1_000_000_000);
     execution.set_crosscode(code.to_owned());
-    execution.set_side(side);
+    execution.set_side(side, true);
     execution
 };
 let mut root = OrderEvent::at(T + 1_000_000_000);
@@ -543,9 +551,10 @@ let trade = TradeEvent::from_parts(&root, vec![fill("E-1", Side::Buy), fill("E-2
 let stream = || MarketData::arrow_reader([MarketData::from(order.clone()), MarketData::from(trade.clone())], None, None);
 let rows = |batches: Vec<RecordBatch>| batches.iter().map(RecordBatch::num_rows).sum::<usize>();
 
-let lifts: Vec<FieldPath> = vec!["securityids['ISIN'] as isin".parse()?];
+// A lift reaches one identifier of the map by its key.
+let lifts: Vec<FieldPath> = vec!["identifiers['fix:clordid'].value as clordid".parse()?];
 let orders = MarketData::apply_view(&MarketView::Orders, &lifts, stream()?)?;
-assert_eq!(orders.schema().fields().last().map(|column| column.name().as_str()), Some("isin"));
+assert_eq!(orders.schema().fields().last().map(|column| column.name().as_str()), Some("clordid"));
 assert_eq!(rows(orders.collect::<Result<_, _>>()?), 1);
 
 // One row per execution, beside the trade's own columns.
@@ -557,7 +566,7 @@ assert_eq!(rows(trades.collect::<Result<_, _>>()?), 2);
 let plan = MarketData::plan(&MarketView::read("Trades", None)?, &[])?;
 assert_eq!(plan.to_string().parse::<Plan>()?, plan);
 // A lifecycle follows the cross code as stored: side included.
-let lifecycle = MarketView::read("lifecycle", Some("BUYS:O-1001"))?;
+let lifecycle = MarketView::read("lifecycle", Some("10:1:O-1001"))?;
 assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Result<_, _>>()?), 1);
 ```
 
@@ -612,10 +621,10 @@ const SECOND: i64 = 1_000_000_000;
 let quote = |unix: i64, code: &str, side: Side, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
-    quote.set_ticker(Some("AAPL".into()));
-    quote.set_side(side);
-    quote.set_price(Some(price.parse()?));
-    quote.set_quantity(Some(Decimal::from_int(quantity)));
+    quote.set_ticker(Some("AAPL".into()), true);
+    quote.set_side(side, true);
+    quote.set_price(Some(price.parse()?), true);
+    quote.set_quantity(Some(Decimal::from_int(quantity)), true);
     quote.set_state(State::New);
     quote.finalize();
     Ok(MarketData::from(quote))
@@ -633,7 +642,7 @@ let books = || BookIterator::new(stream.clone().into_iter(), 0);
 let candles = CandleIterator::new(books()?, CandleOptions::from_spelling("1m")?).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(candles.len(), 2);
 let (first, second) = (&candles[0], &candles[1]);
-assert_eq!((first.crosscode.as_str(), first.start, first.end), ("AAPL", 1_699_999_980 * SECOND, 1_700_000_040 * SECOND));
+assert_eq!((first.crosscode.as_str(), first.start, first.end), ("3:0:AAPL", 1_699_999_980 * SECOND, 1_700_000_040 * SECOND));
 let bid = first.bid.expect("two books stated a bid");
 assert_eq!((bid.open, bid.high, bid.low, bid.close), ("189.48".parse()?, "189.50".parse()?, "189.48".parse()?, "189.50".parse()?));
 assert_eq!(first.spread.map(|spread| spread.close), Some("0.02".parse()?));
@@ -681,10 +690,10 @@ const T0: i64 = 1_767_607_200 * SECOND;
 let quote = |unix: i64, code: &str, side: Side, price: i64| -> MarketData {
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
-    quote.set_ticker(Some("ACME".into()));
-    quote.set_side(side);
-    quote.set_price(Some(Decimal::from_int(price)));
-    quote.set_quantity(Some(Decimal::from_int(10)));
+    quote.set_ticker(Some("ACME".into()), true);
+    quote.set_side(side, true);
+    quote.set_price(Some(Decimal::from_int(price)), true);
+    quote.set_quantity(Some(Decimal::from_int(10)), true);
     quote.set_state(State::New);
     quote.finalize();
     MarketData::from(quote)
@@ -738,11 +747,13 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
 
 - Setters never finalize: a leaf with stale derived facts is refused when
   written to Arrow. Call `finalize()` after the last `set_*`.
-- `get_crosscode` answers the stored code: `BUYS:O-1001` for a buy order,
-  quote or execution, the bare code for `Side::Unknown` and for every element
-  `marketdatakind().is_sided()` answers `false` for - a trade, a book, a snapshot control -
-  whatever side it states. `sided_crosscode(code)` says what a code is stored
-  as; a lifecycle view and a lookup name the stored spelling.
+- `get_crosscode` answers the stored code `{kind}:{side}:{base}`: `10:1:O-1001`
+  for a buy order, `10:0:O-1001` for `Side::Unknown`, and side `0` for every
+  element `marketdatakind().is_sided()` answers `false` for - a trade, a book, a
+  snapshot control - whatever side it states. `stored_crosscode(code)` says
+  what a code is stored as, idempotent and converging whichever of the code,
+  the kind and the side is stated last; a lifecycle view and a lookup name the
+  stored spelling.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
   stream you know is sorted, so it streams - an unsorted stream under `true` is
   not refused, it yields broken chains (a step before its live element
@@ -755,10 +766,21 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   warning.
 - `with_previous`/`merge_with` answer `Option`: `None` means nothing moved (its
   own predecessor, an earlier event, another element), not an error.
-- `insert_securityid` fills an absent key or replaces one that was derived (a
-  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`,
-  `insert_accountid` and `insert_fxrate` fill an absent key only;
-  `set_securityids`, `set_altids`, `set_accountids` and `set_fxrates` replace
-  the whole set.
+- `insert_securityid(id)` fills an absent source and type and takes back a
+  `derived` identifier of its type (a CUSIP derived from the ISIN), answering
+  whether it added; `insert_identifier`, `insert_partyid` and `insert_fxrate` fill
+  an absent source and type (a target) only; `set_securityids`, `set_identifiers`
+  and `set_partyids` replace the whole map under `overwrite` and fill without
+  it, `set_fxrates` replaces the map; `remove_securityid(&src, &kind)` of an
+  `isin` takes every `derived` identifier back. `Identifier::new(src, kind,
+  value)` takes an `IdSource` and an `IdType`, refuses a word that is none, a
+  value that states nothing and a code its type does not check, so a verb never
+  sees one; `Identifier::from_key("fix:clordid", value)` reads the full
+  `src:type` key.
+- A follower fills a parent identifier from the type it replaces - `orderid`
+  into `parentorderid` into `origorderid`, `clordid` into `origclordid` - as
+  `Operation::parents_of(&base)` lists the parents nearest first
+  (`IdType::parents`, or the `FIX:parents` a FIX dictionary states);
+  `Identifiers::fill_parents` and `follow_parents` are the verbs behind it.
 - The traits are object-safe except the verbs that take or return `Self`
   (`with_previous`, `merge_with`, `is_after` ...): `&dyn Event` reads every fact.

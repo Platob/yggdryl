@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use yggdryl::fix::{FixIdMapKind, FixIdSource};
 use yggdryl::local::LocalFolder;
 use yggdryl::{
-    DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructType,
+    DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, IdType, Scalar, StructType,
 };
 
 fn scratch(label: &str) -> PathBuf {
@@ -81,6 +81,41 @@ fn the_committed_store_carries_the_crate_dump() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The fixed row a store dumps is the row `fix_schema` builds, in its
+/// order: the columns every generated schema opens with - the element's,
+/// the event's, the market's and the operation's, the crate's own among
+/// them - then the message's bands.
+#[test]
+fn the_committed_fixed_row_opens_with_the_shared_columns_in_order() {
+    use yggdryl::graph::{ElementColumn, EventColumn, MarketColumn, OperationColumn};
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../config/fix/components/fixmsg.json");
+    let document: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let dumped: Vec<&str> = document["dtype"]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|column| column["name"].as_str().unwrap())
+        .collect();
+    let schema = yggdryl::fix_schema(&super::committed_registry(), "fixmsg").unwrap();
+    let built: Vec<&str> = schema.fields().iter().map(|column| column.name()).collect();
+    assert_eq!(dumped, built, "the dump is the schema, column for column");
+    let prefix: Vec<&str> = ElementColumn::ALL
+        .iter()
+        .map(|column| column.name())
+        .chain(EventColumn::ALL.iter().map(|column| column.name()))
+        .chain(MarketColumn::ALL.iter().map(|column| column.name()))
+        .chain(OperationColumn::ALL.iter().map(|column| column.name()))
+        .collect();
+    assert_eq!(&dumped[..prefix.len()], prefix.as_slice());
+    // The shared columns end with the operation's last, the party map.
+    assert_eq!(prefix.last(), Some(&"partyids"));
+    // The crate's own columns lead the row: every crate tag of the prefix
+    // stands before any message band.
+    assert_eq!(dumped[prefix.len()], "sendingtime");
+}
+
 /// The set `PartyID` reads by, named the way a field that states none is
 /// named: the folded field name and `codeset`.
 const PARTY_CODESET: &str = "partyidcodeset";
@@ -135,7 +170,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_030).unwrap();
+    let map = registry.get_field_by_counter(65_035).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
@@ -154,7 +189,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
@@ -166,14 +201,14 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_field_by_counter(65_030).unwrap().clone();
+    let mut map = registry.get_field_by_counter(65_035).unwrap().clone();
     map.as_fix_mut().set_group("metadata").unwrap();
     let component = StructType::from_fields([map])
         .map(DataType::from)
@@ -446,7 +481,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_030).unwrap();
+    let map = registry.get_field_by_counter(65_035).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -460,7 +495,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
@@ -471,7 +506,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_030), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_035), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -845,9 +880,9 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     assert!(root.join("codesets/venuecodeset.json").is_file());
     let loaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(loaded, registry);
-    // The persisted party and venue sets sit beside the built-in MsgCat and
-    // state sets.
-    assert_eq!(loaded.codesets().len(), 4);
+    // The persisted party and venue sets sit beside the built-in MsgCat,
+    // state and market data type sets.
+    assert_eq!(loaded.codesets().len(), 5);
     assert_eq!(
         loaded.codeset("venuecodeset").unwrap().code_name("V"),
         Some("Venue")
@@ -1030,11 +1065,11 @@ fn enum_codes_belong_to_each_field() {
         .expect("the holder's own set");
     assert_eq!(holder.code_value("VenueBroker"), None);
     assert_eq!(holder.code_value("Broker"), Some("B"));
-    // The two test vocabularies and the built-in MsgCat and state sets are
-    // held once each under their names. Categories hold Field documents and
-    // resolve references, which is why `codesets` is written beside the three
-    // folders rather than as a fourth.
-    assert_eq!(registry.codesets().len(), 4);
+    // The two test vocabularies and the built-in MsgCat, state and market
+    // data type sets are held once each under their names. Categories hold
+    // Field documents and resolve references, which is why `codesets` is
+    // written beside the three folders rather than as a fourth.
+    assert_eq!(registry.codesets().len(), 5);
     assert_eq!(FixCategory::ALL.len(), 3);
     assert!(FixCategory::from_str("codesets").is_err());
 }
@@ -2089,8 +2124,8 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     order
         .as_fix_mut()
         .set_idmap(&[
-            FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true),
-            FixIdSource::new(FixIdMapKind::Alts, "SECONDARYORDERID"),
+            FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true),
+            FixIdSource::new(FixIdMapKind::Identifiers, IdType::SecondaryOrderId),
         ])
         .unwrap();
     let canonical = order.get_metadata("FIX:idmap").unwrap().to_owned();
@@ -2110,7 +2145,7 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
             .as_deref()
             .and_then(|source| source.get_key_str("key"))
             .and_then(Scalar::as_str),
-        Some("ORDERID"),
+        Some("orderid"),
     );
     // And the keys stay in the order the reader walks them, so the file
     // reads the way the document is written.
@@ -2126,8 +2161,8 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
         r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,"metadata":{
             "FIX:tag":"37",
             "FIX:idmap":[
-                {"follow":true,"key":"ORDERID","map":"altids"},
-                {"key":"SECONDARYORDERID","map":"altids"}
+                {"follow":true,"key":"orderid","map":"identifiers"},
+                {"key":"secondaryorderid","map":"identifiers"}
             ]
         }}"#,
     )
@@ -2147,7 +2182,7 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     let text = yggdryl::from_json_scalar(
         r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,
             "metadata":{"FIX:tag":"37",
-            "FIX:idmap":"[{\"map\":\"altids\",\"key\":\"ORDERID\"}]"}}"#,
+            "FIX:idmap":"[{\"map\":\"identifiers\",\"key\":\"orderid\"}]"}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(text).expect_err("the escaped shape is not the shape");
@@ -2158,7 +2193,7 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     let unknown = yggdryl::from_json_scalar(
         r#"{"name":"OrderID","dtype":{"type":"string"},"nullable":true,
             "metadata":{"FIX:tag":"37",
-            "FIX:idmap":[{"map":"altids","key":"ORDERID","note":"x"}]}}"#,
+            "FIX:idmap":[{"map":"identifiers","key":"orderid","note":"x"}]}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(unknown).expect_err("an undeclared key");
@@ -3038,7 +3073,7 @@ mod committed {
     /// set now hashes numeric values, and those two crate-field definitions
     /// hash their current datatypes and descriptions.
     /// It moved when `parentuuids` left the crate: a message names its
-    /// predecessor by `prevuuid` alone, so the crate field at 65041 and its
+    /// predecessor by `prevuuid` alone, so the crate field at 65040 and its
     /// member of the fixed row are gone and nothing else moved.
     /// It moved when `refrecdunix` left the crate and `msgsesseventid`
     /// took a field of its own: the definition at 65064 and its member of
@@ -3109,14 +3144,14 @@ mod committed {
     /// fields that stated one and `FIX:replacements` the thirty-seven retired
     /// standard fields and the crate's `omsinstrumentid` (65076) and
     /// `ullinkinstrumentid` (65077); the crate's `nofixentries` (65027) went
-    /// with the list it counted, and `metadata` (65049) now describes every
+    /// with the list it counted, and `metadata` (65048) now describes every
     /// key no dictionary resolved - one crate field fewer, and no other
     /// document, tag or count of the census moved.
     /// It last moved when the crate's own tags were numbered afresh and the
     /// option strike joined them: every crate definition runs contiguously
     /// from 65001 in the fixed row's band order - `currunix` 65001 through
     /// `metadata` 65030, then `sourceurl`, the bridge's content fields and
-    /// `fixmsg` up to 65042 - with `strikepx` (65028), `StrikePrice(202)` as
+    /// `fixmsg` up to 65041 - with `strikepx` (65028), `StrikePrice(202)` as
     /// the decimal leaf, in the instrument band, so every crate field, the
     /// `metadata` group and the `fixmsg` row moved and the crate holds one
     /// field more; the graph's bid and ask lanes leaving the market rows
@@ -3156,10 +3191,86 @@ mod committed {
     /// execution, which wins over what its content states: four
     /// descriptions of the crate's field shard, and no other document, tag
     /// or count of the census moved.
+    /// It last moved when every generated schema came to open with the same
+    /// columns in the order of the traits that answer them - the element's,
+    /// the event's, the market's, the operation's: the crate's own fields
+    /// were numbered again from 65001 in that order, `curruuid` first and
+    /// `fixmsg` at 65062; `msgcat` became `marketdatakind` (65016) under the
+    /// `MarketColumn`'s display; `marketdatatype` (65017) joined beside it,
+    /// the order, quote, trade or book entry type read by the intrinsic
+    /// `marketdatatypecodeset`; `recdunix` (65009) says it falls back to a
+    /// stated `SendingTime(52)`; nineteen market and operation columns the
+    /// fixed row derives from FIX fields stated under other names -
+    /// `hiddenqty` to `accountids`, `ordqty` (65036) beside `OrderQty(38)`
+    /// among them - joined the shard, which no registry files, so the
+    /// census of registered scalars moved by none of them; and every crate
+    /// field took a readable display - `Current Time`, `ISIN Code`,
+    /// `Message Session ID` - where it spelled its name in FIX's style.
+    /// It last moved when the operation's `tif` column became `timeinforce`,
+    /// the name of the FIX field it holds: the fixed row states it as
+    /// `TimeInForce(59)` itself, as it states `Price(44)` for `price`, so the
+    /// crate field at 65037 retired and every crate tag after it moved down
+    /// by one - `tradable` 65037, `fixmsg` 65061 - with the shard one field
+    /// fewer; it was derived, so no registered scalar and no count of the
+    /// census moved.
+    /// It last moved when the intrinsic `marketdatatypecodeset` grew by the
+    /// four sets `MarketDataType` came to type besides its first four - a
+    /// trade report's `TradeReportType(856)` (`TRPT*`), a quote request's
+    /// `QuoteRequestType(303)` (`QRQ*`), a mass cancel's
+    /// `MassCancelRequestType(530)` (`MCX*`) and a market data request's
+    /// `SubscriptionRequestType(263)` (`MDR*`), each with its catch-all -
+    /// which the registry renders from the enum rather than reads from a
+    /// shipped document, so no file and no count of the census moved.
+    /// It last moved when the identifier maps became sorted sets of
+    /// identifiers - a type, a source and a value with the lineage beside
+    /// them: the fixed row's `securityids` (65020) became `secaltids`,
+    /// `accountids` (65039) became `parties` and `altids` (65038) kept its
+    /// name, each a `serie<identifier>` of five required texts where it was
+    /// a sorted map, under its new display and description; and `forexcode`
+    /// (65046) names `get_securityids()` as its view. The fixed row component
+    /// and the crate's field shard moved by those documents alone, and no
+    /// registered scalar and no count of the census moved.
+    /// It last moved when the identifier maps became sorted maps again, keyed
+    /// by the `src:type` each identifier is unique by, and parentage became a
+    /// list a field states: the fixed row's `securityids`, `identifiers` and
+    /// `partyids` are each a `map` from that key to the identifier's
+    /// `struct<src, type, value>`, the `parent` and `orig` lineage texts gone
+    /// with the retired lineage; the crate retired `strikepx` - the strike is
+    /// `StrikePrice(202)` itself, a column of the fixed row's instrument
+    /// band - and its ten bridge fields, `omsdealeraccount`, `omsuserid`,
+    /// `parentorderid`, `parentclordid`, `omsdealerparentorderid`,
+    /// `exchangeclientorderid`, `transversalkey`, `ultraderclordid`,
+    /// `omsinstrumentid` and `ullinkinstrumentid`, which a message's keys now
+    /// state as the identifiers their names spell, so `sourceurl` stands at
+    /// 65049 and `fixmsg` at 65050 and the crate holds eleven fields fewer;
+    /// `crosscode` (65003) describes the category and side codes a code is
+    /// stored under; and `FIX:parents` - the identifier types holding the
+    /// parents of the identifier a field states, nearest first - joined the
+    /// dictionary, `ClOrdID(11)` stating `origclordid` among the five fields
+    /// whose own `Orig...` or `Parent...` fields name their parents. No
+    /// count of the census below moved: it adds the crate's own fields as it
+    /// finds them.
+    /// It last moved when the dictionary named FIX's own fields where
+    /// bridges spelled them and mapped the secondary identifiers: the seven
+    /// secondary identifier fields - `SecondaryClOrdID(526)`,
+    /// `SecondaryExecID(527)`, `SecondaryAllocID(793)`,
+    /// `SecondaryIndividualAllocID(989)`, `SecondaryTradeID(1040)`,
+    /// `SecondaryFirmTradeID(1042)` and `SecondaryQuoteID(1751)` - state a
+    /// `FIX:idmap` into `identifiers`; a field that is its base's one parent
+    /// takes the other prefix's spelling among its `FIX:names` -
+    /// `OrigClOrdID(41)` `parentclordid`, `OrigCrossID(551)`
+    /// `parentcrossid`, `OrigTradeID(1126)` `parenttradeid`,
+    /// `OrigSecondaryTradeID(1127)` `parentsecondarytradeid` and
+    /// `ParentAllocID(1593)` `origallocid`; and four bridge spellings joined
+    /// the names of the fields they state - `omsdealeraccount` on
+    /// `Account(1)`, `ultraderclordid` on `ClOrdID(11)`,
+    /// `exchangeclientorderid` on `SecondaryClOrdID(526)` and `omsuserid` on
+    /// `Username(553)` - with the crate's dump written again. No count of the
+    /// census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 16_674_175_903_259_060_511);
+        assert_eq!(registry.stable_hash(), 9_043_431_446_917_212_413);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
@@ -3308,6 +3419,55 @@ fn a_store_read_back_commits_clean() {
         "a loaded store restates itself; it moved {:?} and removed {:?}",
         replay.written,
         replay.removed,
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The parents a field states are part of its document: a commit writes
+/// `FIX:parents` as the JSON array it is, and the registry a store is read
+/// back as answers the same list.
+#[test]
+fn a_store_keeps_the_parents_a_field_states() {
+    let mut order = tagged("OrderID", 37, DataType::utf8());
+    order
+        .as_fix_mut()
+        .set_parents(["parentorderid", "grandparentorderid", "origorderid"])
+        .unwrap();
+    let mut registry = FixRegistry::new();
+    registry.insert(order).unwrap();
+    let scratch = scratch("parents");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+    registry.commit(&mut folder).unwrap();
+
+    let written = std::fs::read_dir(scratch.join("fields"))
+        .unwrap()
+        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        written.contains("\"FIX:parents\"")
+            && written.contains("\"grandparentorderid\"")
+            && written.contains("\"origorderid\""),
+        "{written}"
+    );
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    let order = loaded.field(37).unwrap();
+    assert_eq!(
+        order.as_fix().parents().collect::<Vec<_>>(),
+        ["parentorderid", "grandparentorderid", "origorderid"]
+    );
+    assert_eq!(
+        loaded.parents_of(&IdType::OrderId).as_ref(),
+        [
+            "parentorderid".parse::<IdType>().unwrap(),
+            "grandparentorderid".parse().unwrap(),
+            "origorderid".parse().unwrap()
+        ]
+    );
+    assert!(
+        loaded.commit(&mut folder).unwrap().is_clean(),
+        "a store read back restates itself"
     );
     std::fs::remove_dir_all(&scratch).ok();
 }

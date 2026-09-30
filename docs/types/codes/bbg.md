@@ -161,8 +161,8 @@ The value is the published spelling, kept exactly: case is preserved, and the sp
 
     sid = Field("sid", "bbg")
     arrow_field = sid.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.bbg"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.bbg"
     assert Field.from_arrow(arrow_field) == sid
     ```
 
@@ -238,7 +238,7 @@ An identifier has no neutral member, so the empty text is refused at the value d
 - No vocabulary: `StringEnum::from_logical_name("bbg")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about it, so [`merge_with`](index.md#the-code-family-value) keeps this identifier.
 - A `bbg` and a [`ric`](ric.md) of the same bytes are two values: the identity leads, then the text.
-- FIX names the company rather than the type: `SecurityIDSource(22)=A` is the source key `BLOOMBERG` in a [FIX capture](index.md#fix-message-definitions), and the crate tag for its normalized column is `bloombergcode(65025)`; source `S` lifts a valid [FIGI](figi.md) instead.
+- FIX names the company rather than the type: `SecurityIDSource(22)=A` is the security identifier type `bloomberg` in a [FIX capture](index.md#fix-message-definitions), and the crate tag for its normalized column is `bloombergcode(65047)`; source `S` lifts a valid [FIGI](figi.md) instead.
 
 ## Commands
 

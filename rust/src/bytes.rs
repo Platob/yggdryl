@@ -62,12 +62,10 @@ mod arrow {
     /// storage.
     ///
     /// Two leaves state something Arrow cannot: a maximum, which no Arrow
-    /// layout carries, and the second view width, which Arrow has one of.
+    /// layout carries, and the second view width, which Arrow has one of -
+    /// the leaf's identifier's [`DataTypeId::arrow_extension_name`].
     pub(crate) const fn needs_extension(parameters: BytesType) -> bool {
-        matches!(
-            parameters,
-            BytesType::SizedBinary(_) | BytesType::LargeBinaryView
-        )
+        parameters.id().arrow_extension_name().is_some()
     }
 
     /// The Arrow storage one byte datatype lays out.
@@ -1690,10 +1688,10 @@ impl BytesType {
             if held != width as usize {
                 return Err(refusal(format_args!("exactly {width} bytes")));
             }
-        } else if let Some(max) = self.max() {
-            if held > max as usize {
-                return Err(refusal(format_args!("at most {max} bytes")));
-            }
+        } else if let Some(max) = self.max()
+            && held > max as usize
+        {
+            return Err(refusal(format_args!("at most {max} bytes")));
         }
         Ok(payload)
     }

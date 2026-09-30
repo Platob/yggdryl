@@ -523,10 +523,10 @@ mod arrow {
                 continue;
             };
             let held = batch.schema().index_of(child.name()).ok();
-            if let Some(index) = held {
-                if !is_unwritten(child, &columns[index], rows)? {
-                    continue;
-                }
+            if let Some(index) = held
+                && !is_unwritten(child, &columns[index], rows)?
+            {
+                continue;
             }
             let bound = match bound.get() {
                 Some(bound) => bound,

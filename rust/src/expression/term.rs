@@ -534,12 +534,11 @@ impl Term {
     #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Self {
-        if let Self::Literal(held) = &self {
-            if let Some(negated) = negate_value(held.value()) {
-                if let Ok(folded) = Literal::new(held.dtype().clone(), negated) {
-                    return Self::Literal(folded);
-                }
-            }
+        if let Self::Literal(held) = &self
+            && let Some(negated) = negate_value(held.value())
+            && let Ok(folded) = Literal::new(held.dtype().clone(), negated)
+        {
+            return Self::Literal(folded);
         }
         Self::Negate(Box::new(self))
     }
@@ -804,10 +803,10 @@ impl Term {
         let mut children: Vec<&Self> = Vec::new();
         while let Some(node) = pending.pop() {
             if let Self::Path(_) = node {
-                if let Some(name) = node.root_column() {
-                    if !names.iter().any(|held| held.eq_ignore_ascii_case(name)) {
-                        names.push(name.to_owned());
-                    }
+                if let Some(name) = node.root_column()
+                    && !names.iter().any(|held| held.eq_ignore_ascii_case(name))
+                {
+                    names.push(name.to_owned());
                 }
                 continue;
             }
@@ -823,10 +822,10 @@ impl Term {
     pub fn parameters(&self) -> Vec<String> {
         let mut found: Vec<String> = Vec::new();
         self.walk(&mut |node| {
-            if let Self::Parameter(name) = node {
-                if !found.iter().any(|held| held == name.as_str()) {
-                    found.push(name.to_string());
-                }
+            if let Self::Parameter(name) = node
+                && !found.iter().any(|held| held == name.as_str())
+            {
+                found.push(name.to_string());
             }
         });
         found

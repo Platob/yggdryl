@@ -517,12 +517,11 @@ fn parse(text: &str, style: Style) -> Vec<(Header, Table)> {
         }
         let indent = line.len() - line.trim_start().len();
         if key_indent.is_some_and(|key| indent > key) {
-            if let (Some(key), Some((_, table))) = (&pending, sections.last_mut()) {
-                if let Some((name, value)) = split_pair(trimmed) {
-                    if let Some(Entry::Table(values)) = table.get_mut(key) {
-                        values.insert(name.to_ascii_lowercase(), value.to_owned());
-                    }
-                }
+            if let (Some(key), Some((_, table))) = (&pending, sections.last_mut())
+                && let Some((name, value)) = split_pair(trimmed)
+                && let Some(Entry::Table(values)) = table.get_mut(key)
+            {
+                values.insert(name.to_ascii_lowercase(), value.to_owned());
             }
             continue;
         }

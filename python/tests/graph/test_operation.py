@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import MarketDataKind, Scalar, Side, State, graph
+from yggdryl import Identifier, Identifiers, MarketDataKind, Scalar, Side, State, TimeInForce, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -27,9 +27,9 @@ def order_event(**facts: Any) -> graph.OrderEvent:
         "currency": "USD",
         "quantity": 5,
         "ticker": "ACME",
-        "tif": "0",
-        "altids": {"ORDERID": "O-100"},
-        "securityids": {"ISIN": "US0378331005"},
+        "timeinforce": "0",
+        "identifiers": Identifiers([Identifier("fix", "orderid", "O-100")]),
+        "securityids": [Identifier("base", "isin", "US0378331005")],
         "fxrates": {"EUR": D("1.25")},
         "bidpx": D("100.5"),
         "bidqty": 7,
@@ -43,8 +43,8 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     event = order_event()
     assert isinstance(event.curruuid, Scalar) and event.curruuid.kind == "uuid"
     assert isinstance(event.crossuuid, Scalar) and event.crossuuid.kind == "uuid"
-    # A sided element's cross code states its side.
-    assert event.crosscode == "BUYS:O-100"
+    # A market element's cross code is stored as `{kind}:{side}:{base}`.
+    assert event.crosscode == "10:1:O-100"
     assert isinstance(event.currhashcode, int) and isinstance(event.crosshashcode, int)
     assert event.srcuuids == []
     assert event.currunix == CLOCK
@@ -62,7 +62,8 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.unit == ""
     assert event.side is Side.BUYS
     # A US ISIN embeds its CUSIP, which the core derives beside it.
-    assert event.securityids == {"CUSIP": "037833100", "ISIN": "US0378331005"}
+    assert [str(id) for id in event.securityids] == ["base:isin=US0378331005", "derived:cusip=037833100"]
+    assert event.securityids.get("isin") == "US0378331005"
     assert event.isincode == "US0378331005"
     assert {target: rate.as_py() for target, rate in event.fxrates.items()} == {"EUR": D("1.25")}
     assert event.bidpx is not None and event.bidpx.as_py() == D("100.5")
@@ -76,14 +77,14 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.spotrate is None and event.forwardpoints is None
     assert event.ticker == "ACME"
     assert event.metadata == {}
-    assert event.tif == "0"
+    assert event.timeinforce is TimeInForce.DAY
     assert event.tradable is None
-    assert event.altids == {"ORDERID": "O-100"}
-    # The accounts an operation names, by role: none stated here.
-    assert event.accountids == {}
+    assert event.identifiers == Identifiers([Identifier("fix", "orderid", "O-100")])
+    # The party ids an operation names, by role and source: none stated here.
+    assert len(event.partyids) == 0 and not event.partyids
     assert event.kind == "order"
     assert event.marketdatakind is MarketDataKind.ORDR
-    for retired in ("marketoperationid", "userids", "bid", "ask"):
+    for retired in ("marketoperationid", "userids", "accountids", "secaltids", "altids", "parties", "bid", "ask"):
         assert not hasattr(event, retired), retired
     assert not event.is_execution
     assert event.book is None and event.action is None
@@ -93,8 +94,8 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
 def test_a_side_stated_as_none_is_unknown_never_none() -> None:
     event = graph.OrderEvent(CLOCK, crosscode="O-1")
     assert event.side is Side.UNKN
-    # An element stating no side keeps its cross code unprefixed.
-    assert event.crosscode == "O-1"
+    # An element stating no side states side 0 in its stored cross code.
+    assert event.crosscode == "10:0:O-1"
     assert event.isincode is None and event.fxrates == {}
     assert graph.OrderEvent(CLOCK, side=Side.SELL).side is Side.SELL
     assert graph.QuoteEvent(CLOCK).marketdatakind is MarketDataKind.QUOT
@@ -111,6 +112,26 @@ def test_an_unknown_fact_is_refused_by_name() -> None:
     assert graph.OrderEvent(CLOCK, PRICE=1).price == graph.OrderEvent(CLOCK, price=1).price
 
 
+def test_the_three_identifier_sets_are_one_name_each_on_every_leaf() -> None:
+    event = graph.OrderEvent(
+        CLOCK,
+        crosscode="O-1",
+        securityids=[Identifier("base", "isin", "us0378331005")],
+        identifiers=[Identifier("fix", "orderid", "O-9"), Identifier("ullink", "instrumentid", "dbi;X")],
+        partyids=[Identifier("proprietary", "executingtrader", "T-1")],
+    )
+    assert event.securityids.get("isin") == "US0378331005"
+    assert [str(id) for id in event.identifiers] == ["fix:orderid=O-9", "ullink:instrumentid=dbi;X"]
+    assert [str(id) for id in event.partyids] == ["proprietary:executingtrader=T-1"]
+    # A source and a type are keys: a set holds one value per `src:type`.
+    assert event.identifiers.get_from("ullink", "instrumentid") == "dbi;X"
+    assert event.identifiers.get_from("fix", "instrumentid") is None
+    # The retired spellings are no fact of any leaf.
+    for retired in ("secaltids", "altids", "parties"):
+        with pytest.raises(ValueError, match=f'OrderEvent states no fact "{retired}"'):
+            graph.OrderEvent(CLOCK, **{retired: []})
+
+
 def test_a_fact_is_checked_by_its_columns_field() -> None:
     with pytest.raises(ValueError, match=r"\$\.price"):
         graph.OrderEvent(CLOCK, price="not a number")
@@ -122,10 +143,16 @@ def test_ellipsis_is_skipped_and_none_clears() -> None:
     # `...` is a fact not given: the event states nothing of it.
     assert graph.OrderEvent(CLOCK, crosscode="X", ticker=...) == graph.OrderEvent(CLOCK, crosscode="X")
     assert order_event(ticker=...).ticker is None
-    stated = {"crosscode": "X", "price": 1, "ticker": "T", "tif": "0", "altids": {"ORDERID": "X"}}
-    cleared = graph.OrderEvent(CLOCK, **{**stated, "ticker": None, "price": None, "tif": None, "altids": None})
-    assert cleared.ticker is None and cleared.price is None and cleared.tif is None
-    assert cleared.altids == {}
+    stated = {
+        "crosscode": "X",
+        "price": 1,
+        "ticker": "T",
+        "timeinforce": "0",
+        "identifiers": [Identifier("fix", "orderid", "X")],
+    }
+    cleared = graph.OrderEvent(CLOCK, **{**stated, "ticker": None, "price": None, "timeinforce": None, "identifiers": None})
+    assert cleared.ticker is None and cleared.price is None and cleared.timeinforce is None
+    assert cleared.identifiers == Identifiers()
     assert cleared == graph.OrderEvent(CLOCK, crosscode="X")
     assert cleared != graph.OrderEvent(CLOCK, **stated)
     assert cleared != order_event()
@@ -134,7 +161,7 @@ def test_ellipsis_is_skipped_and_none_clears() -> None:
 
 def test_an_undated_element_states_no_clock_state_or_chain() -> None:
     element = graph.Order(crosscode="O-1", price=D("10"), side="SELL", curruuid=...)
-    assert element.crosscode == "SELL:O-1" and element.kind == "order"
+    assert element.crosscode == "10:2:O-1" and element.kind == "order"
     assert element.side is Side.SELL
     for name in ("currunix", "state", "seqnum", "prevuuid"):
         with pytest.raises(ValueError, match="an undated element has no clock, state or chain"):
@@ -152,7 +179,7 @@ def test_a_derived_identity_is_refused_by_name() -> None:
         with pytest.raises(ValueError, match=f'OrderEvent states no fact "{name}": an identity is derived'):
             graph.OrderEvent(CLOCK, **{name: value})
     # The two element facts `finalize` keeps are stated.
-    assert graph.Order(crosscode="O-1", srcuuids=[]).crosscode == "O-1"
+    assert graph.Order(crosscode="O-1", srcuuids=[]).crosscode == "10:0:O-1"
 
 
 def test_currunix_is_stated_once() -> None:
@@ -167,7 +194,7 @@ def test_at_dates_an_element_and_into_element_undates_it() -> None:
     element = graph.Quote(crosscode="Q-1", side="SELL", price=D("102"))
     event = element.at(CLOCK)
     assert isinstance(event, graph.QuoteEvent)
-    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "SELL:Q-1", element.price)
+    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "14:2:Q-1", element.price)
     back = event.into_element()
     assert isinstance(back, graph.Quote)
     assert back == element
@@ -234,7 +261,7 @@ def test_following_crosses_no_kind() -> None:
         graph.QuoteEvent(CLOCK, book=graph.BookRef(scope="S")),
         graph.Order(crosscode="O", metadata={"k": "v"}),
         graph.Quote(),
-        graph.Execution(securityids={"ISIN": "US0378331005"}),
+        graph.Execution(securityids=[Identifier("base", "isin", "US0378331005")]),
     ],
     ids=lambda leaf: type(leaf).__name__,
 )
@@ -277,3 +304,50 @@ class TestBookRef:
         assert repr(control) == (
             'BookRef(action="snapshot", scope="S", position=None, entry_px=None, entry_size=None)'
         )
+
+
+def test_a_market_elements_cross_code_is_stored_as_its_kind_its_side_and_its_base() -> None:
+    # The kind is `MarketDataKind.code()` - order 10, quotation 14, execution 8,
+    # trade 21, book 3 - and the side `Side.code()` for a sided kind alone.
+    assert graph.OrderEvent(CLOCK, crosscode="ORD-1", side="BUYS").crosscode == "10:1:ORD-1"
+    assert graph.OrderEvent(CLOCK, crosscode="ORD-1", side="SELL").crosscode == "10:2:ORD-1"
+    assert graph.OrderEvent(CLOCK, crosscode="ORD-1").crosscode == "10:0:ORD-1", "no side stated, side 0"
+    assert graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS").crosscode == "14:1:Q-1"
+    assert graph.ExecutionEvent(CLOCK, crosscode="E-1", side="SELL").crosscode == "8:2:E-1"
+    # A book is no sided kind: it states side 0 whatever side it takes, and its
+    # base may hold colons.
+    assert graph.BookEvent(CLOCK, "AAPL").crosscode == "3:0:AAPL"
+    assert graph.BookEvent(CLOCK, "XNAS:ESVUFR").crosscode == "3:0:XNAS:ESVUFR"
+    assert graph.OrderEvent(CLOCK, crosscode="ORD-1", side="BUYS").crosscode.split(":", 2) == ["10", "1", "ORD-1"]
+    # A code already prefixed with another kind or side has the prefix replaced,
+    # and an empty code stays empty.
+    assert graph.OrderEvent(CLOCK, crosscode="14:2:ORD-1", side="BUYS").crosscode == "10:1:ORD-1"
+    assert graph.OrderEvent(CLOCK, crosscode="10:1:ORD-1", side="BUYS").crosscode == "10:1:ORD-1"
+    assert graph.OrderEvent(CLOCK, crosscode="", side="BUYS").crosscode == ""
+    # The identities derive from the stored code: one base, two sides or two
+    # kinds, are different chains.
+    buy = graph.OrderEvent(CLOCK, crosscode="ORD-1", side="BUYS")
+    sell = graph.OrderEvent(CLOCK, crosscode="ORD-1", side="SELL")
+    fill = graph.ExecutionEvent(CLOCK, crosscode="ORD-1", side="BUYS")
+    assert len({buy.crossuuid, sell.crossuuid, fill.crossuuid}) == 3
+    assert len({buy.crosshashcode, sell.crosshashcode, fill.crosshashcode}) == 3
+    assert buy.crossuuid == graph.OrderEvent(CLOCK + 1, crosscode="10:1:ORD-1", side="BUYS").crossuuid
+
+
+def test_a_sequence_of_identifiers_states_the_map_it_makes() -> None:
+    ids = [Identifier("fix", "orderid", "O-9"), Identifier("ullink", "instrumentid", "dbi;X"), Identifier("fix", "orderid", "O-9")]
+    event = graph.OrderEvent(CLOCK, identifiers=ids)
+    assert event.identifiers == Identifiers(ids), "one identifier stated twice is one"
+    assert [id.key for id in event.identifiers] == ["fix:orderid", "ullink:instrumentid"]
+    assert event.identifiers.get_from("fix", "orderid") == "O-9"
+    # Two values under one key are two readings, refused naming the place.
+    with pytest.raises(ValueError, match=r"\$\[1\].*fix:orderid"):
+        graph.OrderEvent(CLOCK, identifiers=[Identifier("fix", "orderid", "O-9"), Identifier("fix", "orderid", "O-10")])
+    assert graph.OrderEvent(CLOCK, identifiers=tuple(ids)).identifiers == event.identifiers
+    assert graph.OrderEvent(CLOCK, identifiers=Identifiers(ids)).identifiers == event.identifiers
+    assert graph.OrderEvent(CLOCK, identifiers=[]).identifiers == Identifiers()
+    # The three sets state alike, and a sequence of anything else is no map.
+    quote = graph.QuoteEvent(CLOCK, partyids=[Identifier("proprietary", "executingtrader", "T-1")])
+    assert quote.partyids.get_from("proprietary", "executingtrader") == "T-1"
+    with pytest.raises(ValueError):
+        graph.OrderEvent(CLOCK, identifiers=[ids[0], 1])

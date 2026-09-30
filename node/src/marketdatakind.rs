@@ -23,7 +23,7 @@ pub fn market_data_kind_members_native() -> Vec<MarketDataKindMember> {
         .iter()
         .map(|kind| MarketDataKindMember {
             name: kind.as_str().to_owned(),
-            code: kind.code(),
+            code: i32::from(kind.code()),
             description: kind.description().to_owned(),
         })
         .collect()

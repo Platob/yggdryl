@@ -465,28 +465,28 @@ fn parse_cookie_date(text: &str) -> Option<i64> {
         .split(is_date_delimiter)
         .filter(|token| !token.is_empty())
     {
-        if time.is_none() {
-            if let Some(found) = parse_time(token) {
-                time = Some(found);
-                continue;
-            }
+        if time.is_none()
+            && let Some(found) = parse_time(token)
+        {
+            time = Some(found);
+            continue;
         }
-        if day.is_none() {
-            if let Some(found) = leading_digits(token, 1, 2) {
-                day = Some(found);
-                continue;
-            }
+        if day.is_none()
+            && let Some(found) = leading_digits(token, 1, 2)
+        {
+            day = Some(found);
+            continue;
         }
-        if month.is_none() {
-            if let Some(found) = parse_month(token) {
-                month = Some(found);
-                continue;
-            }
+        if month.is_none()
+            && let Some(found) = parse_month(token)
+        {
+            month = Some(found);
+            continue;
         }
-        if year.is_none() {
-            if let Some(found) = leading_digits(token, 2, 4) {
-                year = Some(i32::try_from(found).ok()?);
-            }
+        if year.is_none()
+            && let Some(found) = leading_digits(token, 2, 4)
+        {
+            year = Some(i32::try_from(found).ok()?);
         }
     }
     let (hour, minute, second) = time?;

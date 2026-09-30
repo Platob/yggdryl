@@ -1,5 +1,5 @@
 """What kind of market data an element is: FIX's MsgCat code set as an enum,
-stored as an ``int32``.
+stored as a ``uint8``.
 
 ``MarketDataKind`` is the core's enum member for member - its stored name, the
 four-letter MsgCat code, and the code a ``marketdatakind`` column stores -

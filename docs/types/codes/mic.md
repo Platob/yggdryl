@@ -175,8 +175,8 @@ The value is the identifier, under the market's identity. A value shorter than t
 
     venue = Field("venue", "mic")
     arrow_field = venue.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.mic"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.mic"
     assert Field.from_arrow(arrow_field) == venue
 
     # The column holds the text itself: nothing is padded, so nothing is
@@ -316,7 +316,7 @@ assert!(Mic::from_reuters_exchange_code("TH").is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings
     ```
 
 === "Python"

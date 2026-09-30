@@ -119,16 +119,16 @@ impl MsgType {
             .msgtype()
             .ok_or_else(|| Error::absent("FIX:msgtype", field.name()))?;
         validate_code(code)?;
-        if let Some(category) = field.as_fix().msgcat() {
-            if !super::field::is_msgcat(category) {
-                return Err(Error::InvalidRecord {
-                    path: field.name().into(),
-                    reason: crate::text::expected_got(
-                        "one fixed FIX message category",
-                        format_args!("FIX:msgcat={category:?}"),
-                    ),
-                });
-            }
+        if let Some(category) = field.as_fix().msgcat()
+            && !super::field::is_msgcat(category)
+        {
+            return Err(Error::InvalidRecord {
+                path: field.name().into(),
+                reason: crate::text::expected_got(
+                    "one fixed FIX message category",
+                    format_args!("FIX:msgcat={category:?}"),
+                ),
+            });
         }
         let tags = field
             .fields()

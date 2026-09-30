@@ -1,6 +1,6 @@
 # MarketDataKind
 
-What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-six members, stored as the `int32` code of its member - the code set's own value, `UNKN` at `0` to `TRAD` at `21`, then the four batch categories the crate files after them, `ORDB` `22` to `TRDB` `25` - and the first column of every [market data row](../../graph/market-data.md).
+What kind of market data an element is: FIX's MsgCat code set as an enum of twenty-six members, stored as the `uint8` code of its member - the code set's own value, `UNKN` at `0` to `TRAD` at `21`, then the four batch categories the crate files after them, `ORDB` `22` to `TRDB` `25` - and the first column of every [market data row](../../graph/market-data.md).
 
 ## Contract
 
@@ -11,8 +11,8 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | An integer that is the code of no member, naming the code; a spelling that names no kind, naming the spelling |
-| Stores | `int32` under `yggdryl.marketdatakind`: the MsgCat value itself |
-| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds store their cross code under their side |
+| Stores | `uint8` under `yggdryl.marketdatakind`: the MsgCat value itself |
+| Owner | The one owner of the MsgCat set: a FIX dictionary's `FIX:msgcat` resolves to a member by its four-letter code, the crate's `msgcatcodeset` renders from `MarketDataKind::ALL`, and a [FIX message](../../fix/message.md)'s `msgcat` and a market data row's `marketdatakind` both state a member; and of the [sided rule](#sided-kinds-and-batches) - which kinds state their side in their stored cross code, `{kind}:{side}:{base}`, whose first number is the kind's `code` |
 
 A reader tells the leaves of market data apart by one column every FIX engine already speaks: an order is `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD` and a book `BOOK`.
 
@@ -160,20 +160,20 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 
 ## Arrow storage
 
-`Int32` under `yggdryl.marketdatakind`: one value buffer of codes, like every [enum](index.md). Text entering the column is read as a spelling and an integer as a code, each refused - or null under `safe` in a nullable column - where it names no member; the column cast to text answers each member's four-letter name, and cast to an integer its code.
+`UInt8` under `yggdryl.marketdatakind`: one value buffer of codes, like every [enum](index.md). Text entering the column is read as a spelling and an integer of any width, signed or unsigned, as a code, each refused - or null under `safe` in a nullable column - where it names no member; the column cast to text answers each member's four-letter name, and cast to an integer its code.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int32Array, StringArray};
+    use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let kind = Field::new("marketdatakind", DataType::MarketDataKind, false);
     let arrow = kind.clone().into_arrow_field()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.marketdatakind");
     assert_eq!(Field::from_arrow_field(&arrow)?, kind);
 
@@ -182,7 +182,7 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
     let stored = Serie::from_arrow_array(Some(&kind), spelled, ArrowCastOptions::new())?
         .into_arrow_array()
         .expect("a column, not a run");
-    let codes = stored.as_any().downcast_ref::<Int32Array>().expect("int32 codes");
+    let codes = stored.as_any().downcast_ref::<UInt8Array>().expect("uint8 codes");
     assert_eq!(codes.values().to_vec(), [10, 14, 8]);
     ```
 
@@ -195,8 +195,8 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 
     kind = Field("marketdatakind", "marketdatakind")
     arrow_field = kind.into_arrow()
-    assert arrow_field.type == pa.int32()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.marketdatakind"
+    assert arrow_field.type.storage_type == pa.uint8()
+    assert arrow_field.type.extension_name == "yggdryl.marketdatakind"
     assert Field.from_arrow(arrow_field) == kind
 
     stored = Serie.from_arrow_array(pa.array(["ORDR", "quotation"]), kind, safe=False)
@@ -297,7 +297,7 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 | Reading | Rule |
 | --- | --- |
-| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its cross code is stored under that side - `BUYS:ORD-1` - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - keeps its cross code as given whatever side it states |
+| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its stored cross code states that side - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - states `0` there whatever side it takes: `21:0:T-1`, `3:0:AAPL` |
 | `is_batch()` | `ORDB`, `QUOB`, `EXEB` and `TRDB`: a message stating many orders, quotes, executions or trades at once - a list, a mass order, a cross, a mass quote, a match report - which a [FIX parse splits](../../fix/message.md#a-parse-splits-what-a-message-reports) into one message per entry; no standard message type is filed under `EXEB` |
 | `item()` | the kind one entry of a batch is - `ORDB` `ORDR`, `QUOB` `QUOT`, `EXEB` `EXEC`, `TRDB` `TRAD` - and the member itself for any other |
 

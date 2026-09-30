@@ -113,7 +113,10 @@ fn plan_schema() -> Field {
 /// every manifest it does open, the other venue's file survives to be excluded
 /// by its partition tuple - so `files_skipped` cannot be zero.
 fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
-    assert!(files % 2 == 0, "expected an even file count, got {files}");
+    assert!(
+        files.is_multiple_of(2),
+        "expected an even file count, got {files}"
+    );
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();

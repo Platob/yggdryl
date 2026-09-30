@@ -168,11 +168,11 @@ impl Endpoint {
     /// whole path itself and hands it over in [`Request::target`].
     fn path(&self, container: &str, key: &str) -> String {
         let mut path = String::new();
-        if self.account_in_path {
-            if let Some(account) = &self.account {
-                path.push('/');
-                path.push_str(&sigv4::encode_key(account));
-            }
+        if self.account_in_path
+            && let Some(account) = &self.account
+        {
+            path.push('/');
+            path.push_str(&sigv4::encode_key(account));
         }
         if self.path_style && !container.is_empty() {
             path.push('/');
@@ -399,19 +399,18 @@ impl Client {
     /// The knobs the profile states for S3 that the caller left unset: the
     /// `s3` table's `payload_signing_enabled`, and `max_attempts`.
     fn under_profile(mut options: S3Options, session: &Session) -> S3Options {
-        if options.aws().payload_signing().is_none() {
-            if let Some(signing) = session
+        if options.aws().payload_signing().is_none()
+            && let Some(signing) = session
                 .profile()
                 .and_then(|profile| profile.s3("payload_signing_enabled").map(is_true))
-            {
-                let aws = options.aws().clone().with_payload_signing(signing);
-                options = options.with_aws(aws);
-            }
+        {
+            let aws = options.aws().clone().with_payload_signing(signing);
+            options = options.with_aws(aws);
         }
-        if options.max_attempts() == S3Options::default().max_attempts() {
-            if let Some(attempts) = session.max_attempts() {
-                options = options.with_max_attempts(attempts);
-            }
+        if options.max_attempts() == S3Options::default().max_attempts()
+            && let Some(attempts) = session.max_attempts()
+        {
+            options = options.with_max_attempts(attempts);
         }
         options
     }
@@ -811,14 +810,13 @@ impl Client {
             };
             // A bucket in another region answers with the region it is in, so
             // the correction costs one redirect rather than a lookup per client.
-            if !redirected {
-                if let Some(region) = bucket_region_of(&answer) {
-                    if region != self.region() {
-                        redirected = true;
-                        self.adopt_region(region)?;
-                        continue;
-                    }
-                }
+            if !redirected
+                && let Some(region) = bucket_region_of(&answer)
+                && region != self.region()
+            {
+                redirected = true;
+                self.adopt_region(region)?;
+                continue;
             }
             if self.refresh_on_expiry(&answer, &mut refreshed)? {
                 continue;
@@ -1054,14 +1052,13 @@ impl Client {
                     headers,
                     body,
                 };
-                if !redirected {
-                    if let Some(region) = bucket_region_of(&answer) {
-                        if region != self.region() {
-                            redirected = true;
-                            self.adopt_region(region)?;
-                            continue;
-                        }
-                    }
+                if !redirected
+                    && let Some(region) = bucket_region_of(&answer)
+                    && region != self.region()
+                {
+                    redirected = true;
+                    self.adopt_region(region)?;
+                    continue;
                 }
                 if self.refresh_on_expiry(&answer, &mut refreshed)? {
                     continue;

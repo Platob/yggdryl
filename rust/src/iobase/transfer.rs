@@ -573,11 +573,10 @@ impl ArrowWriteSession {
                     .as_mut()
                     .expect("a shaped session owns a commit buffer")
                     .push(batch)
+                    && let Err(error) = self.publish(handle, reader)
                 {
-                    if let Err(error) = self.publish(handle, reader) {
-                        self.abort();
-                        return Err(error);
-                    }
+                    self.abort();
+                    return Err(error);
                 }
                 if let Err(error) = self.publish_ready(handle) {
                     self.abort();
@@ -607,11 +606,11 @@ impl ArrowWriteSession {
         use crate::media::IORecordOptions as _;
 
         self.require_live()?;
-        if !self.input_complete {
-            if let Err(error) = self.complete_input(handle) {
-                self.abort();
-                return Err(error);
-            }
+        if !self.input_complete
+            && let Err(error) = self.complete_input(handle)
+        {
+            self.abort();
+            return Err(error);
         }
         if self.mode == crate::IOMode::Overwrite && !self.published {
             if self.shaped_schema.is_none() {

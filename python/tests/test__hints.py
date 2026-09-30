@@ -528,7 +528,10 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
     assert DataType.from_pyhint(datetime.datetime).into_arrow() == pa.timestamp(
         "us", tz="UTC"
     )
-    assert DataType.from_pyhint(decimal.Decimal).into_arrow() == pa.decimal128(38, 18)
+    # The fixed decimal is the registered `yggdryl.decimal` over its storage.
+    fixed = DataType.from_pyhint(decimal.Decimal).into_arrow()
+    assert fixed.extension_name == "yggdryl.decimal"
+    assert fixed.storage_type == pa.decimal128(38, 18)
 
 
 def test_scalar_subclasses_keep_their_physical_type() -> None:

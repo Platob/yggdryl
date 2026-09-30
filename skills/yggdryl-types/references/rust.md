@@ -349,16 +349,18 @@ assert_eq!(
 );
 ```
 
-## Enums: side, marketdatakind, state
+## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind` and `state` are the `enum` family: each member is an
-`int32` code in a column and its stored name in text, read from every spelling
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype`,
+`code()` answering that width - and its stored name in text, read from every spelling
 its vocabulary has. A side is never absent - `UNKN` (code 0) is unstated. A side's name is a four-letter code (`BUYS`, `SELL`,
 `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are still read
 and never written.
 
 ```rust
-use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
+use yggdryl::{DataType, MarketDataKind, Scalar, Side, State, TimeInForce};
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
@@ -378,6 +380,12 @@ assert!(DataType::marketdatakind().is_enum());
 // Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
 assert_eq!(State::Updated.code(), 3004);
 assert!(State::Updated.is_new_like() && State::Updated.is_live());
+
+// How long an order stands: FIX `TimeInForce(59)`, the wire value read as a member.
+assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
+assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other, "a venue's own value");
+assert_eq!((TimeInForce::GoodTillCancel.code(), TimeInForce::GoodTillCancel.fix_code()), (2, Some("1")));
+assert_eq!(DataType::timeinforce().scalar("IOC")?, Scalar::TimeInForce(TimeInForce::ImmediateOrCancel));
 ```
 
 ## Nested values: serie, map, union, dictionary
@@ -560,10 +568,15 @@ assert_eq!(DataType::utf8().decode_value_bytes(&wide)?, Scalar::from("7"));
 
 A `Field` crosses `arrow_schema::Field` losslessly, extension identity
 included. A bare Arrow datatype has no metadata, so import the field to keep a
-code, UUID or fixed decimal. `into_arrow_*` consumes: clone first.
+code, UUID or fixed decimal. Each datatype marker (`CcyType`, `StateType`,
+`UuidType`, ...) and the `StringType`/`BytesType` leaves implement arrow-rs's
+`ExtensionType`, so `try_extension_type`/`with_extension_type` answer as the
+import does; `DataTypeId::arrow_extension_name` names each one.
+`into_arrow_*` consumes: clone first.
 
 ```rust
-use yggdryl::{DataType, Field, Scheme, TimeUnit, Timezone};
+use arrow_schema::extension::ExtensionType;
+use yggdryl::{DataType, Field, MicType, Scheme, TimeUnit, Timezone};
 
 let venue = Field::new("venue", DataType::Mic, false);
 let arrow = venue.clone().into_arrow_field()?;
@@ -571,6 +584,8 @@ assert_eq!(arrow.data_type(), &arrow_schema::DataType::Utf8);
 assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
 assert_eq!(Field::from_arrow_field(&arrow)?, venue); // identity kept
 assert_eq!(DataType::from_arrow_datatype(arrow.data_type())?, DataType::utf8()); // lost
+assert_eq!(arrow.try_extension_type::<MicType>()?, MicType); // the typed view
+assert_eq!(MicType::NAME, "yggdryl.mic");
 
 let stamp = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?;
 assert_eq!(

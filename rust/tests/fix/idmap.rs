@@ -3,7 +3,7 @@
 //! operation carries it, and the `Parties` role stating it.
 
 use yggdryl::fix::{FixIdMapKind, FixIdSource};
-use yggdryl::{DataType, Field, FixRegistry};
+use yggdryl::{DataType, Field, FixRegistry, IdType};
 
 fn order() -> Field {
     let mut order = DataType::utf8().nullable_field("orderid");
@@ -24,14 +24,14 @@ fn a_source_is_written_once_and_read_back_whole() {
     let mut party = DataType::utf8().nullable_field("partyid");
     party.as_fix_mut().set_tag(448).expect("a tag");
     let stated = [
-        FixIdSource::new(FixIdMapKind::Alts, "CUSTOMERID").with_role("24"),
-        FixIdSource::new(FixIdMapKind::Alts, "ENTERINGFIRM").with_role("7"),
+        FixIdSource::new(FixIdMapKind::Identifiers, IdType::CustomerAccount).with_role("24"),
+        FixIdSource::new(FixIdMapKind::Identifiers, IdType::EnteringFirm).with_role("7"),
     ];
     party.as_fix_mut().set_idmap(&stated).expect("two sources");
     assert_eq!(
         party.get_metadata("FIX:idmap"),
         Some(
-            r#"[{"map":"altids","key":"CUSTOMERID","role":"24"},{"map":"altids","key":"ENTERINGFIRM","role":"7"}]"#
+            r#"[{"map":"identifiers","key":"customeraccount","role":"24"},{"map":"identifiers","key":"enteringfirm","role":"7"}]"#
         )
     );
     assert_eq!(sources(&party), stated);
@@ -47,10 +47,11 @@ fn a_map_reads_by_its_name_and_nothing_else() {
         assert_eq!(kind.to_string(), kind.as_str());
     }
     assert_eq!(
-        "ALTIDS".parse::<FixIdMapKind>().expect("folded"),
-        FixIdMapKind::Alts
+        "IDENTIFIERS".parse::<FixIdMapKind>().expect("folded"),
+        FixIdMapKind::Identifiers
     );
-    assert!("altid".parse::<FixIdMapKind>().is_err());
+    assert!("identifier".parse::<FixIdMapKind>().is_err());
+    assert!("altids".parse::<FixIdMapKind>().is_err());
     // The accounts and users a message names are no identifier map.
     assert!("accountids".parse::<FixIdMapKind>().is_err());
     assert!("userids".parse::<FixIdMapKind>().is_err());
@@ -58,37 +59,24 @@ fn a_map_reads_by_its_name_and_nothing_else() {
 
 #[test]
 fn a_source_the_document_cannot_state_is_refused_and_the_field_stands() {
-    for (source, says) in [
-        (
-            FixIdSource::new(FixIdMapKind::Alts, "orderid"),
-            "upper-case",
-        ),
-        (FixIdSource::new(FixIdMapKind::Alts, ""), "upper-case"),
-        (
-            FixIdSource::new(FixIdMapKind::Alts, "ORDER_ID"),
-            "upper-case",
-        ),
-        (
-            FixIdSource::new(FixIdMapKind::Alts, "X".repeat(33)),
-            "upper-case",
-        ),
-        (
-            FixIdSource::new(FixIdMapKind::Alts, "TRADER").with_role("a role"),
-            "PartyRole code",
-        ),
-    ] {
-        let mut field = order();
-        let refusal = field
-            .as_fix_mut()
-            .set_idmap(std::slice::from_ref(&source))
-            .expect_err("refused");
-        assert!(refusal.to_string().contains(says), "{source:?}: {refusal}");
-        assert_eq!(field.get_metadata("FIX:idmap"), None, "{source:?}");
-    }
+    // A key is a typed word the moment a source holds it, so the one thing
+    // left to refuse is a role that is no PartyRole code.
+    let source =
+        FixIdSource::new(FixIdMapKind::Identifiers, IdType::ExecutingTrader).with_role("a role");
+    let mut field = order();
+    let refusal = field
+        .as_fix_mut()
+        .set_idmap(std::slice::from_ref(&source))
+        .expect_err("refused");
+    assert!(
+        refusal.to_string().contains("PartyRole code"),
+        "{source:?}: {refusal}"
+    );
+    assert_eq!(field.get_metadata("FIX:idmap"), None, "{source:?}");
     let mut field = order();
     let twice = [
-        FixIdSource::new(FixIdMapKind::Alts, "ORDERID"),
-        FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true),
+        FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId),
+        FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true),
     ];
     let refusal = field
         .as_fix_mut()
@@ -100,12 +88,17 @@ fn a_source_the_document_cannot_state_is_refused_and_the_field_stands() {
 #[test]
 fn a_hand_edited_document_is_refused_where_it_stops() {
     for stored in [
-        r#"[{"map":"altids"}]"#,
-        r#"[{"key":"ORDERID","map":"altids"}]"#,
-        r#"[{"map":"altids","key":"ORDERID","follow":"yes"}]"#,
-        r#"[{"map":"altids","key":"ORDERID","colour":"red"}]"#,
-        r#"[{"map":"trades","key":"ORDERID"}]"#,
-        r#"[{"map":"accountids","key":"ACCOUNT"}]"#,
+        r#"[{"map":"identifiers"}]"#,
+        r#"[{"key":"orderid","map":"identifiers"}]"#,
+        r#"[{"map":"identifiers","key":"orderid","follow":"yes"}]"#,
+        r#"[{"map":"identifiers","key":"orderid","colour":"red"}]"#,
+        r#"[{"map":"trades","key":"orderid"}]"#,
+        r#"[{"map":"accountids","key":"account"}]"#,
+        // A key is the folded word its type spells: neither an upper-case
+        // spelling nor an alias of one.
+        r#"[{"map":"identifiers","key":"ORDERID"}]"#,
+        r#"[{"map":"identifiers","key":"isinnumber"}]"#,
+        r#"[{"map":"altids","key":"orderid"}]"#,
     ] {
         let mut field = order();
         field
@@ -124,7 +117,9 @@ fn a_registry_takes_a_role_on_partyid_alone() {
     let mut field = order();
     field
         .as_fix_mut()
-        .set_idmap(&[FixIdSource::new(FixIdMapKind::Alts, "TRADER").with_role("12")])
+        .set_idmap(&[
+            FixIdSource::new(FixIdMapKind::Identifiers, IdType::ExecutingTrader).with_role("12"),
+        ])
         .expect("a document");
     let refusal = registry.add_field(field).expect_err("a role off PartyID");
     assert!(refusal.to_string().contains("PartyID(448)"), "{refusal}");
@@ -134,12 +129,12 @@ fn a_registry_takes_a_role_on_partyid_alone() {
 fn a_store_writes_the_document_as_the_json_it_is_and_reads_it_back() {
     let mut registry = FixRegistry::new();
     let mut field = order();
-    let stated = [FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true)];
+    let stated = [FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true)];
     field.as_fix_mut().set_idmap(&stated).expect("a document");
     registry.add_field(field).expect("a field");
     let json = registry.into_json().expect("a snapshot");
     assert!(
-        json.contains(r#""FIX:idmap":[{"map":"altids","key":"ORDERID","follow":true}]"#),
+        json.contains(r#""FIX:idmap":[{"map":"identifiers","key":"orderid","follow":true}]"#),
         "{json}"
     );
     let again = FixRegistry::from_json(&json).expect("the snapshot reads back");
@@ -149,16 +144,11 @@ fn a_store_writes_the_document_as_the_json_it_is_and_reads_it_back() {
 
 /// The order's own identities follow a FIX message's chain, never an
 /// execution's or a quote's: a message follows its dictionary's `FIX:idmap`
-/// flags, where a graph leaf follows every identifier it lacks.
-const FOLLOWED: [&str; 7] = [
-    "EXCHANGECLIENTORDERID",
-    "OMSDEALERPARENTORDERID",
-    "ORDERID",
-    "PARENTCLORDID",
-    "PARENTORDERID",
-    "SECONDARYORDERID",
-    "TRANSVERSALKEY",
-];
+/// flags, where a graph leaf follows every identifier it lacks. The parents
+/// of an identifier are no flag of any field: a follower takes them from its
+/// chain by the parentage rule, and a bridge's own keys are read off their
+/// names.
+const FOLLOWED: [&str; 2] = ["orderid", "secondaryorderid"];
 
 #[test]
 fn the_committed_dictionary_follows_the_orders_own_identities() {
@@ -167,7 +157,7 @@ fn the_committed_dictionary_follows_the_orders_own_identities() {
         .idmap_sources()
         .iter()
         .filter(|(_, source)| source.follows())
-        .map(|(_, source)| source.key())
+        .map(|(_, source)| source.key().as_str())
         .collect();
     followed.sort_unstable();
     assert_eq!(followed, FOLLOWED);
@@ -181,62 +171,131 @@ fn the_committed_dictionary_follows_the_orders_own_identities() {
             "{source:?} is stated once"
         );
     }
-    // Ten fields of the dictionary and six of the crate's own; no account
-    // and no user is an identifier.
-    assert_eq!(sources.len(), 16, "{sources:?}");
+    // Seventeen fields of the dictionary and none of the crate's own, whose
+    // bridge keys are read off their names: the ten operation identifiers
+    // and the seven secondary ones - SecondaryClOrdID(526),
+    // SecondaryExecID(527), SecondaryAllocID(793),
+    // SecondaryIndividualAllocID(989), SecondaryTradeID(1040),
+    // SecondaryFirmTradeID(1042) and SecondaryQuoteID(1751); no account and
+    // no user is an identifier.
+    assert_eq!(sources.len(), 17, "{sources:?}");
+    for secondary in [526, 527, 793, 989, 1040, 1042, 1751] {
+        assert!(
+            sources.iter().any(|(tag, _)| *tag == secondary),
+            "{secondary} is a source: {sources:?}"
+        );
+    }
     assert!(
         sources
             .iter()
-            .all(|(_, source)| source.map() == FixIdMapKind::Alts && source.role().is_none()),
+            .all(|(_, source)| source.map() == FixIdMapKind::Identifiers && source.role().is_none()),
         "{sources:?}"
     );
 }
 
-/// A message's parties are its accounts: each `Parties(453)` occurrence's
-/// `PartyID(448)` under its `PartyRole(452)`'s name - `PARTYROLE{code}` for
-/// a role the set does not name or one longer than a key holds, `PARTY` for
-/// none - and its regulatory trade identifiers are alternate identifiers
-/// keyed by their `RegulatoryTradeIDType(1906)`. The leaf a message becomes
-/// states both.
+/// A message's parties are each `Parties(453)` occurrence's `PartyID(448)`
+/// typed by its `PartyRole(452)`'s name - `partyrole{code}` for a role the
+/// set does not name, `party` for none - from
+/// its `PartyIDSource(447)`'s name, `base` for none; its regulatory trade
+/// identifiers are identifiers typed by their
+/// `RegulatoryTradeIDType(1906)`. The leaf a message becomes states both.
 #[test]
-fn parties_are_accounts_and_regulatory_trade_ids_are_alternate_identifiers() {
+fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
     use yggdryl::graph::{Element, MarketData, Operation};
+    use yggdryl::{FixEntry, IdSource, Identifier};
 
     let message = super::fixed_codec(super::committed_registry())
         .parse_fix_line(
             b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|40=2|44=100|453=5|448=TRADER1|447=D|452=12|448=ACC-9|447=D|452=24|448=CA-1|452=71|448=X-1|452=999|448=NOROLE|1907=2|1903=UTI-1|1906=0|1903=TVT-1|1906=5|10=0|",
         )
         .expect("one order");
-    let accounts = message.get_accountids();
-    assert_eq!(accounts.get("EXECUTINGTRADER"), Some("TRADER1"));
-    assert_eq!(accounts.get("CUSTOMERACCOUNT"), Some("ACC-9"));
-    // `CompetentAuthorityTransactionVenue` is longer than a key holds.
-    assert_eq!(accounts.get("PARTYROLE71"), Some("CA-1"));
-    assert_eq!(accounts.get("PARTYROLE999"), Some("X-1"));
-    assert_eq!(accounts.get("PARTY"), Some("NOROLE"));
-    let altids = message.get_altids();
-    assert_eq!(altids.get("REGTRADEID"), Some("UTI-1"));
-    assert_eq!(altids.get("TVTIC"), Some("TVT-1"));
-    assert_eq!(altids.get("CLORDID"), Some("C1"));
+    let parties = message.get_partyids();
+    assert_eq!(
+        parties.get_from(&IdSource::Proprietary, &IdType::ExecutingTrader),
+        Some("TRADER1")
+    );
+    assert_eq!(
+        parties.get_from(&IdSource::Proprietary, &IdType::CustomerAccount),
+        Some("ACC-9")
+    );
+    // A role's name is its type whatever its length.
+    assert_eq!(
+        parties.get_from(
+            &IdSource::Base,
+            &"competentauthoritytransactionvenue"
+                .parse::<IdType>()
+                .unwrap()
+        ),
+        Some("CA-1")
+    );
+    assert_eq!(
+        parties.get_from(&IdSource::Base, &"partyrole999".parse::<IdType>().unwrap()),
+        Some("X-1")
+    );
+    assert_eq!(
+        parties.get_from(&IdSource::Base, &IdType::Party),
+        Some("NOROLE")
+    );
+    let identifiers = message.get_identifiers();
+    assert_eq!(
+        identifiers.get_from(&IdSource::Fix, &IdType::RegTradeId),
+        Some("UTI-1")
+    );
+    assert_eq!(
+        identifiers.get_from(&IdSource::Fix, &IdType::Tvtic),
+        Some("TVT-1")
+    );
+    assert_eq!(
+        identifiers.get_from(&IdSource::Fix, &IdType::ClOrdId),
+        Some("C1")
+    );
 
-    // The accounts are the parties': a direct write is refused by name.
+    // A caller's party is its word: it fills a role and source the message
+    // holds none of, a held one stays, and the wire is kept as sent.
     let mut written = message.clone();
-    let refused = written
-        .insert_accountid("CLIENTID", "C-2")
-        .unwrap_err()
-        .to_string();
-    assert!(refused.contains("accountids"), "{refused}");
+    let party = |src: IdSource, kind: IdType, value: &str| {
+        Identifier::new(src, kind, value).expect("a party")
+    };
+    assert!(
+        written
+            .insert_partyid(party(IdSource::Base, IdType::ClientId, "C-2"))
+            .unwrap()
+    );
     assert!(
         !written
-            .insert_accountid("EXECUTINGTRADER", "OTHER")
+            .insert_partyid(party(
+                IdSource::Proprietary,
+                IdType::ExecutingTrader,
+                "OTHER"
+            ))
             .unwrap()
+    );
+    assert_eq!(written.get_partyids().get(&IdType::ClientId), Some("C-2"));
+    assert_eq!(
+        written.get_partyids().get(&IdType::ExecutingTrader),
+        Some("TRADER1")
+    );
+    assert_eq!(
+        written
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 453)
+            .and_then(FixEntry::value),
+        Some("5")
     );
 
     let leaves = message.into_market_data().expect("an order leaf");
     let [MarketData::OrderEvent(order)] = leaves.as_slice() else {
         panic!("one order event, got {}", leaves.len())
     };
-    assert_eq!(order.get_accountids().get("CUSTOMERACCOUNT"), Some("ACC-9"));
-    assert_eq!(order.get_altids().get("TVTIC"), Some("TVT-1"));
-    assert!(order.get_crosscode().starts_with("BUYS:"));
+    assert_eq!(
+        order.get_partyids().get(&IdType::CustomerAccount),
+        Some("ACC-9")
+    );
+    assert_eq!(order.get_identifiers().get(&IdType::Tvtic), Some("TVT-1"));
+    assert!(
+        order.get_crosscode().starts_with("10:1:"),
+        "{}",
+        order.get_crosscode()
+    );
 }

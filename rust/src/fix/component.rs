@@ -46,14 +46,13 @@ fn singularize(stem: &str) -> SmolStr {
     if stem.ends_with("sses") {
         return SmolStr::new(&stem[..stem.len() - 2]);
     }
-    if let Some(prefix) = stem.strip_suffix("es") {
-        if prefix.ends_with('x')
+    if let Some(prefix) = stem.strip_suffix("es")
+        && (prefix.ends_with('x')
             || prefix.ends_with("ch")
             || prefix.ends_with("sh")
-            || prefix.ends_with("zz")
-        {
-            return SmolStr::new(prefix);
-        }
+            || prefix.ends_with("zz"))
+    {
+        return SmolStr::new(prefix);
     }
     SmolStr::new(&stem[..stem.len() - 1])
 }

@@ -206,10 +206,10 @@ impl Relationships {
 pub(crate) fn resolve_target(source: &str, target: &str) -> SmolStr {
     let decoded = percent_decode(target);
     let mut segments: Vec<&str> = Vec::new();
-    if !decoded.starts_with('/') {
-        if let Some((folder, _)) = source.rsplit_once('/') {
-            segments.extend(folder.split('/').filter(|segment| !segment.is_empty()));
-        }
+    if !decoded.starts_with('/')
+        && let Some((folder, _)) = source.rsplit_once('/')
+    {
+        segments.extend(folder.split('/').filter(|segment| !segment.is_empty()));
     }
     for segment in decoded.split('/') {
         match segment {

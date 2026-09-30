@@ -132,9 +132,9 @@ The same number rule holds: `large_binary(16)` is refused.
 
 | Canonical | Also parsed as | Note |
 | --- | --- | --- |
-| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `timeinforce`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | thirteen registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 8, 32 |
+| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | twelve registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32 |
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
-| `side`, `marketdatakind`, `state` | - | kind `enum`: each stored as the `int32` code of its member under `yggdryl.side`, `yggdryl.marketdatakind`, `yggdryl.state`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
+| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | a sixteen-bit `major` and `minor` then an optional text patch (`5.0SP2` is `5.0.2`, `1.0-rc1` keeps `-rc1`), naturally ordered |
 | `mimetype` | `mime` | one `type/subtype` |

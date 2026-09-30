@@ -53,10 +53,10 @@ fn entry_advice(entry: &str, host: &str) -> Option<Advice> {
     let port = port.parse::<u16>().ok().filter(|port| *port != 0)?;
     let mut max_age = DEFAULT_MAX_AGE;
     for parameter in parts {
-        if let Some((name, value)) = parameter.trim().split_once('=') {
-            if name.trim().eq_ignore_ascii_case("ma") {
-                max_age = Duration::from_secs(value.trim().trim_matches('"').parse().ok()?);
-            }
+        if let Some((name, value)) = parameter.trim().split_once('=')
+            && name.trim().eq_ignore_ascii_case("ma")
+        {
+            max_age = Duration::from_secs(value.trim().trim_matches('"').parse().ok()?);
         }
     }
     Some(Advice::Http3 { port, max_age })

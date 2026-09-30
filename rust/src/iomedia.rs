@@ -136,10 +136,8 @@ pub trait IOMedia: Send {
         // this with a listing, and the two routes below want the same answer.
         let container = handle.is_container();
         #[cfg(feature = "iceberg")]
-        if container {
-            if let Some(table) = crate::iceberg::located(handle)? {
-                return table.column_size();
-            }
+        if container && let Some(table) = crate::iceberg::located(handle)? {
+            return table.column_size();
         }
         // Preserve the container route: its canonical field may include Hive
         // partition columns restored from paths across multiple leaves.

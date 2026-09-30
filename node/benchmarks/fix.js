@@ -177,7 +177,7 @@ const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.B
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
 const orderType = registry.msgtype('D')
 const orderDeclaration = orderType.asField()
-if (parsed.altids.CLORDID !== 'ORDER-000000') {
+if (parsed.identifiers.get('clordid') !== 'ORDER-000000') {
   throw new Error('a parse must carry the stated order identifier onto the event')
 }
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
@@ -251,8 +251,9 @@ try {
   benchmark('fix/message_market_data', () => parsed.marketData())
   benchmark('fix/message_isincode', () => parsed.isincode)
   benchmark('fix/message_fxrates', () => parsed.fxrates)
-  benchmark('fix/message_altids', () => parsed.altids)
+  benchmark('fix/message_identifiers', () => parsed.identifiers)
   benchmark('fix/message_securityids', () => parsed.securityids)
+  benchmark('fix/message_partyids', () => parsed.partyids)
   benchmark('fix/message_metadata', () => parsed.metadata)
   benchmark('fix/message_curruuid', () => parsed.curruuid)
   benchmark('fix/message_currhashcode', () => parsed.currhashcode)

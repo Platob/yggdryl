@@ -1018,8 +1018,8 @@
     "metadata": {
       "FIX:idmap": [
         {
-          "map": "altids",
-          "key": "TRDMATCHID"
+          "map": "identifiers",
+          "key": "trdmatchid"
         }
       ],
       "FIX:tag": "880",

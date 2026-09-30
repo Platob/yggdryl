@@ -245,10 +245,10 @@ impl Signer {
     /// the date, the region, `s3` and `aws4_request`.
     fn signing_key(&self, date: &str) -> [u8; 32] {
         let mut cache = self.key.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((cached, key)) = cache.as_ref() {
-            if cached == date {
-                return *key;
-            }
+        if let Some((cached, key)) = cache.as_ref()
+            && cached == date
+        {
+            return *key;
         }
         let secret = format!("AWS4{}", self.secret_access_key);
         let mut key = hmac_sha256(secret.as_bytes(), date.as_bytes());

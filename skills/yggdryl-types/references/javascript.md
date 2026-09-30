@@ -299,18 +299,20 @@ assert.equal(uuid.scalar(text.toUpperCase()).asJs(), text)
 assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs()], [1, 2])
 ```
 
-## Enums: side, marketdatakind, state
+## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind` and `state` are the `enum` family: each member is an
-`int32` code in a column and its stored name in text. A value answers the
-name; `Side` and `MarketDataKind` at the package root are frozen name-to-code
-objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype` -
+and its stored name in text. A value answers the name; `Side`,
+`MarketDataKind`, `MarketDataType`, `State` and `TimeInForce` at the package
+root are frozen name-to-code objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
 names before the codes (`BUY`, `SSHORT`, ...) are still read and never written. A
 side is never absent - `UNKN` (code 0) is unstated.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { DataType, MarketDataKind, Side, fields } = require('yggdryl')
+const { DataType, MarketDataKind, Side, TimeInForce, fields, timeInForceFromFix } = require('yggdryl')
 
 // A side reads its stored name, FIX's wire code or its code.
 const side = fields.side('side', { nullable: false })
@@ -326,6 +328,11 @@ assert.deepEqual([MarketDataKind.ORDR, MarketDataKind.TRAD], [10, 21])
 
 // Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
 assert.equal(new DataType('state').scalar('UPDATED').asJs(), 'UPDATED')
+
+// How long an order stands: FIX `TimeInForce(59)`, the wire value read as a member.
+assert.equal(fields.timeinforce('tif').scalar('0').asJs(), 'DAY')
+assert.equal(timeInForceFromFix('Z'), 'OTHER', "a venue's own value")
+assert.equal(TimeInForce.GTC, 2)
 ```
 
 ## Nested values: serie, map, union, dictionary
@@ -537,4 +544,6 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
 - Arrow JS crossing is copied IPC (see `yggdryl-arrow`). The batch schema keeps
   `ARROW:extension:name`, so `Serie.fromArrowBatch(batch)` reads a `ccy` column
   back as `ccy`, and so does `Field.fromArrow(arrowField)`, nullability
-  included; Arrow JS's own `get()` values are plain strings.
+  included; `field.intoArrow()` is the way out, an Arrow JS `Field` whose
+  metadata names the extension, since Arrow JS has no extension types of its
+  own. Arrow JS's own `get()` values are plain strings.

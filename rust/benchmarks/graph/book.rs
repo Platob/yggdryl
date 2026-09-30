@@ -15,10 +15,10 @@ fn entry(side: &str, level: usize, quantity: i64) -> MarketData {
     };
     let mut event = QuoteEvent::at(1);
     event.set_crosscode(format!("{name}-{level}"));
-    event.set_ticker(Some(SmolStr::new("BENCH")));
-    event.set_side(Side::read(side).expect("a shipped side"));
-    event.set_price(Some(Decimal::from_int(price)));
-    event.set_quantity(Some(Decimal::from_int(quantity)));
+    event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_side(Side::read(side).expect("a shipped side"), true);
+    event.set_price(Some(Decimal::from_int(price)), true);
+    event.set_quantity(Some(Decimal::from_int(quantity)), true);
     event.set_state(State::read("New").expect("the shipped new state"));
     event.finalize();
     MarketData::from(event)

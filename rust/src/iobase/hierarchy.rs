@@ -178,16 +178,16 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
         file.set_media_type(stored_media_type()?);
         return Ok(Holder::FsFile(file));
     }
-    if let Some(parent) = handle.parent() {
-        if let Some(name) = handle.uri().and_then(crate::Uri::file_name) {
-            let mut child = parent.child_by_path(name)?;
-            // A member of an archive is addressed in the URL's fragment, so
-            // the child of the path's file name is another member; only a
-            // handle at the same location is this resource reopened.
-            if child.url() == handle.url() {
-                child.set_media_type(stored_media_type()?);
-                return Ok(child);
-            }
+    if let Some(parent) = handle.parent()
+        && let Some(name) = handle.uri().and_then(crate::Uri::file_name)
+    {
+        let mut child = parent.child_by_path(name)?;
+        // A member of an archive is addressed in the URL's fragment, so
+        // the child of the path's file name is another member; only a
+        // handle at the same location is this resource reopened.
+        if child.url() == handle.url() {
+            child.set_media_type(stored_media_type()?);
+            return Ok(child);
         }
     }
     // A value, never a container: every caller reads a container's leaves

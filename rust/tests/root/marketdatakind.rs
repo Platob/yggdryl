@@ -22,7 +22,7 @@ fn strict() -> ArrowCastOptions {
 
 /// The MsgCat code set and the four batch categories after it: every member
 /// with its code and its four-letter name.
-const MEMBERS: [(MarketDataKind, i32, &str); 26] = [
+const MEMBERS: [(MarketDataKind, u8, &str); 26] = [
     (MarketDataKind::Unknown, 0, "UNKN"),
     (MarketDataKind::Account, 1, "ACCT"),
     (MarketDataKind::Allocation, 2, "ALLO"),
@@ -54,7 +54,7 @@ const MEMBERS: [(MarketDataKind, i32, &str); 26] = [
 #[test]
 fn a_code_or_a_spelling_that_names_no_kind_is_refused_by_name() {
     assert_eq!(MarketDataKind::from_code(26), None);
-    assert_eq!(MarketDataKind::from_code(-1), None);
+    assert!(MarketDataKind::read_code(-1).is_err());
     let refused = MarketDataKind::read_code(4_242).unwrap_err().to_string();
     assert!(refused.contains("4242"), "{refused}");
     assert!(refused.contains("marketdatakind"), "{refused}");
@@ -84,12 +84,12 @@ fn the_members_are_the_msgcat_code_set_in_code_order() {
         assert_eq!(MarketDataKind::from_code(code), Some(member), "{name}");
         assert_eq!(MarketDataKind::from_name(name), Some(member), "{name}");
         assert_eq!(MarketDataKind::try_from(code).unwrap(), member);
-        assert_eq!(i32::from(member), code);
+        assert_eq!(u8::from(member), code);
         assert!(!member.description().is_empty(), "{name}");
         assert!(member.description().ends_with('.'), "{name}");
     }
     // Codes unique and ascending, names unique.
-    let codes: Vec<i32> = MarketDataKind::ALL.iter().map(|held| held.code()).collect();
+    let codes: Vec<u8> = MarketDataKind::ALL.iter().map(|held| held.code()).collect();
     assert_eq!(codes, (0..26).collect::<Vec<_>>());
     let mut names: Vec<&str> = MarketDataKind::ALL
         .iter()
@@ -103,7 +103,7 @@ fn the_members_are_the_msgcat_code_set_in_code_order() {
     members.sort_unstable();
     assert_eq!(members, MarketDataKind::ALL);
     assert_eq!(MarketDataKind::default(), MarketDataKind::Unknown);
-    assert_eq!(std::mem::size_of::<MarketDataKind>(), 4);
+    assert_eq!(std::mem::size_of::<MarketDataKind>(), 1);
 }
 
 /// Only an order, a quote and an execution are sided: their cross code is
@@ -345,10 +345,10 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
 }
 
 #[test]
-fn a_column_is_int32_codes_under_the_marketdatakind_extension() {
+fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
     let field = Field::new("marketdatakind", DataType::MarketDataKind, true);
     let arrow = field.clone().into_arrow_field().unwrap();
-    assert_eq!(arrow.data_type(), &ArrowDataType::Int32);
+    assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(
         arrow.metadata()["ARROW:extension:name"],
         "yggdryl.marketdatakind"
@@ -364,7 +364,10 @@ fn a_column_is_int32_codes_under_the_marketdatakind_extension() {
     let serie = Serie::from_scalars(field.clone(), values.clone()).unwrap();
     assert!(matches!(serie, Serie::MarketDataKind(_)));
     let array = serie.require_arrow_array().unwrap();
-    let codes = array.as_any().downcast_ref::<Int32Array>().unwrap();
+    let codes = array
+        .as_any()
+        .downcast_ref::<arrow_array::UInt8Array>()
+        .unwrap();
     assert_eq!(codes.values().as_ref(), [10, 0, 21]);
     assert!(codes.is_null(1));
     let back = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default()).unwrap();
@@ -381,7 +384,7 @@ fn a_column_is_int32_codes_under_the_marketdatakind_extension() {
     assert_eq!(
         one.into_inner()
             .as_any()
-            .downcast_ref::<Int32Array>()
+            .downcast_ref::<arrow_array::UInt8Array>()
             .unwrap()
             .value(0),
         14
@@ -503,7 +506,8 @@ fn a_kind_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         let value = Scalar::MarketDataKind(member);
         let bytes = value.into_value_bytes();
         assert_eq!(bytes[1], DataTypeId::MarketDataKind.as_u8());
-        assert_eq!(bytes[2..], member.code().to_le_bytes());
+        // The canonical four bytes, whatever width a column stores.
+        assert_eq!(bytes[2..], i32::from(member.code()).to_le_bytes());
         assert_eq!(Scalar::decode_value_bytes(&bytes).unwrap(), value);
         // A digest reads the code under the leaf's tag: a member's name is
         // free to change, and a state of the same code is another value.
@@ -514,7 +518,7 @@ fn a_kind_crosses_the_value_stream_the_digest_and_the_structured_codecs() {
         );
         assert_ne!(
             value.digest(DigestAlgorithm::Xxh3),
-            Scalar::State(yggdryl::State::from_code(member.code()).unwrap_or_default())
+            Scalar::State(yggdryl::State::from_code(u16::from(member.code())).unwrap_or_default())
                 .digest(DigestAlgorithm::Xxh3),
             "{member}"
         );

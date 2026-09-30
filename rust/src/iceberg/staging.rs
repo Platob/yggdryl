@@ -121,13 +121,13 @@ impl Staging {
         drop(staged);
         let uploaded = upload(&mut target, &path, size);
         // The staged copy has served its purpose however the upload ended.
-        if let Err(error) = std::fs::remove_file(&path) {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                log::warn!(
-                    "the iceberg staging file {} could not be removed: {error}",
-                    path.display()
-                );
-            }
+        if let Err(error) = std::fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            log::warn!(
+                "the iceberg staging file {} could not be removed: {error}",
+                path.display()
+            );
         }
         if let Err(error) = uploaded {
             return Err(unpublished(target, error));
@@ -165,12 +165,12 @@ impl Staging {
                 .position(|(path, _)| path == relative)
                 .map(|index| published.remove(index))
         };
-        if let Some((path, mut handle)) = withdrawn {
-            if let Err(error) = handle.remove(false) {
-                log::warn!(
-                    "the file {path} of a beaten iceberg commit attempt could not be removed: {error}"
-                );
-            }
+        if let Some((path, mut handle)) = withdrawn
+            && let Err(error) = handle.remove(false)
+        {
+            log::warn!(
+                "the file {path} of a beaten iceberg commit attempt could not be removed: {error}"
+            );
         }
         Ok(())
     }
@@ -196,13 +196,13 @@ impl Drop for Staging {
     /// remove is the orphan a failed commit always could leave, and the
     /// local directory is under the temporary folder.
     fn drop(&mut self) {
-        if !self.committed.load(Ordering::Acquire) {
-            if let Ok(mut published) = self.published.lock() {
-                for (_, handle) in published.iter_mut().rev() {
-                    let _ = handle.remove(false);
-                }
-                published.clear();
+        if !self.committed.load(Ordering::Acquire)
+            && let Ok(mut published) = self.published.lock()
+        {
+            for (_, handle) in published.iter_mut().rev() {
+                let _ = handle.remove(false);
             }
+            published.clear();
         }
         if let Some(directory) = &self.directory {
             match std::fs::remove_dir_all(directory) {

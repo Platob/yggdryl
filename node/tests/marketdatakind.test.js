@@ -1,7 +1,7 @@
 'use strict'
 
 // `node/src/marketdatakind.rs`: `MarketDataKind`, FIX's MsgCat code set as
-// the enum a `marketdatakind` column stores as the `int32` code of its member.
+// the enum a `marketdatakind` column stores as the `uint8` code of its member.
 
 const test = require('node:test')
 const assert = require('node:assert/strict')

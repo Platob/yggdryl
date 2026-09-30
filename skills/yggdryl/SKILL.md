@@ -16,7 +16,7 @@ and Python, `camelCase` in JavaScript).
 | | Rust | Python | Node.js |
 | --- | --- | --- | --- |
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
-| minimum | Rust 1.85 (1.94 with `iceberg`) | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
+| minimum | Rust 1.94 | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
 | optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
 | extras | Arrow is `arrow-*` 59 | the `yggdryl` CLI ships in the wheel | - |
 

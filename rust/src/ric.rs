@@ -155,8 +155,7 @@ pub(crate) const RIC_EXTENSION_NAME: &str = "yggdryl.ric";
 /// The most bytes a Refinitiv Identification Code may be.
 ///
 /// A bound rather than a shape, as for a Bloomberg identifier: a ticker and
-/// an exchange mnemonic have no fixed length between them. Thirty-two is the
-/// width a security identifier source other than a checked one is held to.
+/// an exchange mnemonic have no fixed length between them.
 pub(crate) const RIC_WIDTH: usize = 32;
 
 impl DataType {

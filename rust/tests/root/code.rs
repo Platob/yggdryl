@@ -29,7 +29,7 @@ mod datatypes {
     }
 
     /// The codes, each with its width and one value its standard names.
-    const CODED: [(&str, DataType, usize, &str); 12] = [
+    const CODED: [(&str, DataType, usize, &str); 11] = [
         ("country", DataType::Country, 2, "US"),
         ("ccy", DataType::Ccy, 3, "USD"),
         ("mic", DataType::Mic, 4, "XPAR"),
@@ -40,7 +40,6 @@ mod datatypes {
         ("figi", DataType::Figi, 12, "BBG000BLNQ16"),
         ("bbg", DataType::Bbg, 32, "AAPL US Equity"),
         ("ric", DataType::Ric, 32, "AAPL.OQ"),
-        ("timeinforce", DataType::TimeInForce, 8, "0"),
         ("forex", DataType::Forex, 7, "EUR/USD"),
     ];
 
@@ -248,24 +247,24 @@ mod datatypes {
     fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
         // The value contract accepts the text, rewrites it into the declared
         // representation, and answers an unchanged value untouched.
-        let tif = DataType::TimeInForce.scalar(Scalar::from("GTC")).unwrap();
-        assert!(matches!(tif, Scalar::TimeInForce(_)));
-        assert_eq!(tif.as_str(), Some("GTC"));
-        assert_eq!(DataType::TimeInForce.scalar(tif.clone()).unwrap(), tif);
+        let mic = DataType::Mic.scalar(Scalar::from("XPAR")).unwrap();
+        assert!(matches!(mic, Scalar::Mic(_)));
+        assert_eq!(mic.as_str(), Some("XPAR"));
+        assert_eq!(DataType::Mic.scalar(mic.clone()).unwrap(), mic);
 
         // Packing is the crate's fixed-ASCII packing at the code's own width:
         // NUL-padded up to it, the padding gone on the way back. The padding is
         // the packing's; the column stores no padding at all.
         assert_eq!(
-            DataType::TimeInForce.ascii_packed(b"GTC").unwrap(),
-            DataType::fixed_ascii(8)
+            DataType::Mic.ascii_packed(b"XPAR").unwrap(),
+            DataType::fixed_ascii(4)
                 .unwrap()
-                .ascii_packed(b"GTC")
+                .ascii_packed(b"XPAR")
                 .unwrap()
         );
         for (dtype, value) in [
-            (DataType::TimeInForce, "GTC"),
-            (DataType::TimeInForce, "0"),
+            (DataType::Mic, "XPAR"),
+            (DataType::Cfi, "ESVUFR"),
             (DataType::Ccy, "USD"),
         ] {
             let packed = dtype.ascii_packed(value.as_bytes()).unwrap();
@@ -273,15 +272,14 @@ mod datatypes {
             assert_eq!(read.as_str(), value, "{dtype} {value}");
         }
 
-        // A time in force is the text it is, at its width, and a value longer
-        // than the width is the refusal any fixed-ASCII field gives.
-        let refused = DataType::TimeInForce
-            .scalar(Scalar::from("TOOLONGTIF"))
-            .unwrap_err();
-        assert!(refused.to_string().contains("8 bytes"), "{refused}");
-        // A side is no code: it packs into no integer, because its column
+        // A code is the text it is, at its width, and a value longer than
+        // the width is the refusal any fixed-ASCII field gives.
+        let refused = DataType::Mic.scalar(Scalar::from("XPARIS")).unwrap_err();
+        assert!(refused.to_string().contains("4 bytes"), "{refused}");
+        // An enum is no code: it packs into no integer, because its column
         // stores its member's code already.
         assert!(DataType::Side.ascii_packed(b"BUY").is_err());
+        assert!(DataType::TimeInForce.ascii_packed(b"GTC").is_err());
     }
 
     #[test]
@@ -367,14 +365,6 @@ mod datatypes {
 
     #[test]
     fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
-        // A time in force declares a vocabulary exactly as `Mic` does: a value no
-        // version defines is held rather than refused.
-        let (dtype, outside) = (DataType::TimeInForce, "X");
-        let stored = dtype.scalar(Scalar::from(outside)).unwrap();
-        assert_eq!(stored.as_str(), Some(outside), "{dtype}");
-        let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
-        assert_eq!(dtype.ascii_value(packed).unwrap().as_str(), outside);
-
         // The listing is what a name resolves from, and two readers answer the
         // same members because it is a constant.
         for (name, count) in [
@@ -389,12 +379,13 @@ mod datatypes {
                 "{name}"
             );
         }
-        // Every prebuilt member fits the width its own datatype fixes; the
-        // sides fit the fixed ASCII width their string listing declares,
-        // since a side column itself stores codes and packs nothing.
+        // Every prebuilt member fits the fixed ASCII width its string listing
+        // declares: a side or a time in force column itself stores enum codes
+        // and packs nothing, and the listing is the wire values a FIX field
+        // of that name holds.
         for (name, dtype) in [
             ("side", DataType::fixed_ascii(8).unwrap()),
-            ("timeinforce", DataType::TimeInForce),
+            ("timeinforce", DataType::fixed_ascii(8).unwrap()),
         ] {
             StringEnum::from_logical_name(name)
                 .unwrap()
@@ -406,17 +397,17 @@ mod datatypes {
     #[test]
     fn a_code_carries_its_identity_into_equality_and_order() {
         // Two codes whose bytes agree are two values: the identity compares
-        // first, then the text, so a unit and a time in force never collide in
-        // a set or sort beside each other.
-        let unit = DataType::Unit.scalar(Scalar::from("BUY")).unwrap();
-        let tif = DataType::TimeInForce.scalar(Scalar::from("BUY")).unwrap();
-        assert_eq!(unit.as_str(), tif.as_str());
-        assert_ne!(unit, tif);
-        assert_ne!(unit.cmp(&tif), std::cmp::Ordering::Equal);
-        assert_eq!(unit, DataType::Unit.scalar(Scalar::from("BUY")).unwrap());
+        // first, then the text, so a unit and a market identifier never
+        // collide in a set or sort beside each other.
+        let unit = DataType::Unit.scalar(Scalar::from("XPAR")).unwrap();
+        let mic = DataType::Mic.scalar(Scalar::from("XPAR")).unwrap();
+        assert_eq!(unit.as_str(), mic.as_str());
+        assert_ne!(unit, mic);
+        assert_ne!(unit.cmp(&mic), std::cmp::Ordering::Equal);
+        assert_eq!(unit, DataType::Unit.scalar(Scalar::from("XPAR")).unwrap());
 
         // And a code is not the string of the same characters.
-        assert_ne!(unit, Scalar::from("BUY"));
+        assert_ne!(unit, Scalar::from("XPAR"));
         assert_ne!(
             DataType::Ccy.scalar(Scalar::from("USD")).unwrap(),
             DataType::fixed_ascii(3).unwrap().scalar("USD").unwrap()
@@ -859,8 +850,8 @@ mod datatypes {
 
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
+        use yggdryl::Forex;
         use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
-        use yggdryl::{Forex, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
@@ -868,7 +859,6 @@ mod datatypes {
                 crate::family_leaf!(Ccy, Ccy::new("USD").unwrap()),
                 crate::family_leaf!(Mic, Mic::new("XPAR").unwrap()),
                 crate::family_leaf!(Cfi, Cfi::new("ESVUFR").unwrap()),
-                crate::family_leaf!(TimeInForce, TimeInForce::new("0").unwrap()),
                 crate::family_leaf!(Isin, Isin::new("US0378331005").unwrap()),
                 crate::family_leaf!(Cusip, Cusip::new("037833100").unwrap()),
                 crate::family_leaf!(Sedol, Sedol::new("B0YBKJ7").unwrap()),
@@ -1206,7 +1196,6 @@ mod securities {
         assert!(DataType::Isin < DataType::Cusip);
         assert!(DataType::Cusip < DataType::Sedol);
         assert!(DataType::MediaType < DataType::Cusip);
-        assert!(DataType::TimeInForce < DataType::Cusip);
         let mut shuffled = [
             DataType::Ric,
             DataType::Sedol,

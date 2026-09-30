@@ -106,6 +106,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Side
         | D::State
         | D::MarketDataKind
+        | D::MarketDataType
         | D::TimeInForce
         | D::Unit
         | D::Ric
@@ -378,6 +379,7 @@ fn text_or_binary_to_js<'env>(
         | D::Side
         | D::State
         | D::MarketDataKind
+        | D::MarketDataType
         | D::TimeInForce
         | D::Unit
         | D::Ric => value

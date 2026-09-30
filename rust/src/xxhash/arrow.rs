@@ -787,13 +787,13 @@ fn fill_struct<S: ArrowDigestState>(
                 // A null instant names no key. A nullable holder stores that
                 // absence; a required one cannot, and inventing an instant
                 // would be worse than no digest.
-                if !field.is_nullable() {
-                    if let Some(row) = (0..row_count).find(|row| mask[*row] && unix.is_null(*row)) {
-                        return Err(Error::IncompatibleSchema(format!(
-                            "holder {} row {row}: DIGEST:time source is null and the holder is required",
-                            holder.path
-                        )));
-                    }
+                if !field.is_nullable()
+                    && let Some(row) = (0..row_count).find(|row| mask[*row] && unix.is_null(*row))
+                {
+                    return Err(Error::IncompatibleSchema(format!(
+                        "holder {} row {row}: DIGEST:time source is null and the holder is required",
+                        holder.path
+                    )));
                 }
                 crate::txhash::arrow::collect(unix, &values, None, time.unit, holder.algorithm)?
             }

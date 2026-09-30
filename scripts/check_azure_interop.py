@@ -112,6 +112,10 @@ def provision_azurite() -> subprocess.Popen[bytes]:
     shutil.rmtree(data, ignore_errors=True)
     data.mkdir(parents=True, exist_ok=True)
     print(f"starting azurite on {azurite_url()}")
+    # The reference client is installed at its latest release, whose service
+    # version can be newer than the newest Azurite answers. The version is
+    # not what this exchange checks - the signature is, and Azurite still
+    # recomputes it for every request - so the version gate is skipped.
     process = subprocess.Popen(
         [
             str(binary),
@@ -122,6 +126,7 @@ def provision_azurite() -> subprocess.Popen[bytes]:
             "--location",
             str(data),
             "--silent",
+            "--skipApiVersionCheck",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

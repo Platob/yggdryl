@@ -8,10 +8,12 @@ use arrow_array::{
 use smol_str::SmolStr;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{
-    BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketView, OperationEvent,
-    OperationKind, OrderEvent, QuoteEvent, TradeEvent,
+    BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketView, Operation,
+    OperationEvent, OperationKind, OrderEvent, QuoteEvent, TradeEvent,
 };
-use yggdryl::{Decimal, Field, FieldPath, MarketDataKind, Plan, SecType, SecurityId, Side, State};
+use yggdryl::{
+    Decimal, Field, FieldPath, IdSource, IdType, Identifier, MarketDataKind, Plan, Side, State,
+};
 
 /// The nested columns of the root row: what a flat view drops.
 const NESTED: [&str; 5] = ["alive", "deltas", "executions", "bidlimits", "asklimits"];
@@ -28,10 +30,10 @@ fn operation<K: OperationKind>(
     let mut operation = OperationEvent::<K>::at(unix);
     operation.set_crosscode(code.to_owned());
     operation.set_seqnum(u64::try_from(unix).unwrap());
-    operation.set_price(Some(Decimal::from_int(100 + unix)));
-    operation.set_quantity(Some(Decimal::from_int(10 + unix)));
-    operation.set_side(Side::read(side).unwrap());
-    operation.set_ticker(Some(SmolStr::new("ACME")));
+    operation.set_price(Some(Decimal::from_int(100 + unix)), true);
+    operation.set_quantity(Some(Decimal::from_int(10 + unix)), true);
+    operation.set_side(Side::read(side).unwrap(), true);
+    operation.set_ticker(Some(SmolStr::new("ACME")), true);
     operation.set_state(State::read(state).unwrap());
     operation.finalize();
     operation
@@ -41,7 +43,7 @@ fn operation<K: OperationKind>(
 fn identified_order(unix: i64, code: &str) -> OrderEvent {
     let mut order: OrderEvent = operation(unix, code, "Buy", "New");
     order
-        .insert_securityid(SecurityId::new(SecType::read("ISIN").unwrap(), ISIN).unwrap())
+        .insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, ISIN).unwrap())
         .unwrap();
     order.finalize();
     order
@@ -55,7 +57,7 @@ fn execution(unix: i64, code: &str, side: &str) -> ExecutionEvent {
 fn trade(unix: i64, code: &str, executions: usize) -> TradeEvent {
     let mut root = OrderEvent::at(unix);
     root.set_crosscode(code.to_owned());
-    root.set_ticker(Some(SmolStr::new("ACME")));
+    root.set_ticker(Some(SmolStr::new("ACME")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     let parts = (0..executions)
@@ -111,7 +113,10 @@ fn tied_chain(code: &str, leaves: usize) -> Vec<OrderEvent> {
     for index in 0..leaves {
         let unix = if index + 1 == leaves { 20 } else { 10 };
         let mut order: OrderEvent = operation(unix, code, "Buy", "New");
-        order.set_quantity(Some(Decimal::from_int(i64::try_from(1 + index).unwrap())));
+        order.set_quantity(
+            Some(Decimal::from_int(i64::try_from(1 + index).unwrap())),
+            true,
+        );
         order.finalize();
         let order = match chain.last() {
             Some(previous) => order.with_previous(previous).unwrap(),
@@ -185,7 +190,7 @@ fn column<'batch>(batch: &'batch RecordBatch, name: &str) -> &'batch ArrayRef {
 fn kinds(array: &ArrayRef) -> Vec<Option<MarketDataKind>> {
     array
         .as_any()
-        .downcast_ref::<arrow_array::Int32Array>()
+        .downcast_ref::<arrow_array::UInt8Array>()
         .unwrap()
         .iter()
         .map(|code| code.and_then(MarketDataKind::from_code))
@@ -285,7 +290,7 @@ fn a_view_is_read_by_its_spelling_and_only_the_lifecycle_takes_a_crosscode() {
 
 #[test]
 fn every_plan_is_built_as_its_text_reads_back() {
-    let lifts: Vec<FieldPath> = vec!["securityids['ISIN'] as isin".parse().unwrap()];
+    let lifts: Vec<FieldPath> = vec!["securityids['base:isin'].value as isin".parse().unwrap()];
     for spelling in MarketView::ALL {
         let view = MarketView::read(spelling, (spelling == "lifecycle").then_some("C-1")).unwrap();
         for lifted in [&[][..], &lifts[..]] {
@@ -302,7 +307,7 @@ fn every_plan_is_built_as_its_text_reads_back() {
             .unwrap()
             .to_string(),
         format!(
-            "select * exclude ({nested}), securityids['ISIN'] as isin \
+            "select * exclude ({nested}), securityids['base:isin'].value as isin \
              where marketdatakind = 'ORDR'"
         )
     );
@@ -386,11 +391,11 @@ fn a_trade_is_one_row_per_execution_its_own_columns_beside_it() {
     assert_eq!(
         texts(column(&out, "crosscode")),
         [
-            Some("T-9"),
-            Some("T-9"),
-            Some("T-9"),
-            Some("T-12"),
-            Some("T-12")
+            Some("21:0:T-9"),
+            Some("21:0:T-9"),
+            Some("21:0:T-9"),
+            Some("21:0:T-12"),
+            Some("21:0:T-12")
         ]
     );
     // Each trade's executions in the order the trade holds them.
@@ -457,9 +462,10 @@ fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
 #[test]
 fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     let out = view(
-        // A chain's cross code is stored under its side.
+        // A chain is read by the cross code it is stored under: its
+        // category, its side and its base.
         &MarketView::Lifecycle {
-            crosscode: SmolStr::new("BUYS:C-1"),
+            crosscode: SmolStr::new("10:1:C-1"),
         },
         &[],
     );
@@ -507,7 +513,7 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
     )
     .unwrap();
     let target = MarketView::Lifecycle {
-        crosscode: SmolStr::new("BUYS:C-9"),
+        crosscode: SmolStr::new("10:1:C-9"),
     };
     let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
     let current = uuids(column(&out, "curruuid"));
@@ -526,11 +532,13 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
 }
 
 #[test]
-fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
+fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
     let lifts: Vec<FieldPath> = vec![
-        "securityids['ISIN'] as isin".parse().unwrap(),
-        "securityids['CUSIP'] as cusip".parse().unwrap(),
-        "securityids['WKN'] as wkn".parse().unwrap(),
+        "securityids['base:isin'].value as isin".parse().unwrap(),
+        "securityids['derived:cusip'].value as cusip"
+            .parse()
+            .unwrap(),
+        "securityids['base:wkn'].value as wkn".parse().unwrap(),
     ];
     let out = view(&MarketView::Orders, &lifts);
     let mut expected = flat();
@@ -539,20 +547,21 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
     let codes = texts(column(&out, "crosscode"));
     let isins = texts(column(&out, "isin"));
     for (code, isin) in codes.iter().zip(&isins) {
-        let expected = (*code == Some("BUYS:O-5")).then_some(ISIN);
+        let expected = (*code == Some("10:1:O-5")).then_some(ISIN);
         assert_eq!(*isin, expected, "{code:?}");
     }
     // A United States ISIN states its CUSIP, which the set derives; no
     // order states a WKN.
     let cusips = texts(column(&out, "cusip"));
     for (code, cusip) in codes.iter().zip(&cusips) {
-        let expected = (*code == Some("BUYS:O-5")).then_some(&ISIN[2..11]);
+        let expected = (*code == Some("10:1:O-5")).then_some(&ISIN[2..11]);
         assert_eq!(*cusip, expected, "{code:?}");
     }
     assert_eq!(column(&out, "wkn").null_count(), out.num_rows());
-    // The key is read as it is stored: another case is another key.
-    let lower: Vec<FieldPath> = vec!["securityids['isin'] as isin".parse().unwrap()];
-    let out = view(&MarketView::Orders, &lower);
+    // The key is read as it is stored, folded lower case: another case is
+    // another key.
+    let upper: Vec<FieldPath> = vec!["securityids['base:ISIN'].value as isin".parse().unwrap()];
+    let out = view(&MarketView::Orders, &upper);
     assert_eq!(column(&out, "isin").null_count(), out.num_rows());
     // A lift reads the parent row beside a flattened one.
     let out = view(&MarketView::Trades, &lifts[..1]);
@@ -563,14 +572,18 @@ fn a_lift_reads_one_key_of_a_root_column_and_null_where_it_is_missing() {
 
     // A lift naming a column the root does not hold is refused where the
     // plan binds.
-    let missing: Vec<FieldPath> = vec!["nothing['ISIN'] as isin".parse().unwrap()];
+    let missing: Vec<FieldPath> = vec!["nothing['base:isin'].value as isin".parse().unwrap()];
     let error = MarketData::apply_view(&MarketView::Orders, &missing, stream())
         .and_then(drained)
         .unwrap_err()
         .to_string();
     assert!(error.contains("nothing"), "{error}");
     // Two columns of one name are refused, a lift over a kept column too.
-    let twice: Vec<FieldPath> = vec!["securityids['ISIN'] as marketdatakind".parse().unwrap()];
+    let twice: Vec<FieldPath> = vec![
+        "securityids['base:isin'].value as marketdatakind"
+            .parse()
+            .unwrap(),
+    ];
     let error = MarketData::apply_view(&MarketView::Orders, &twice, stream())
         .and_then(drained)
         .unwrap_err()
@@ -611,4 +624,156 @@ fn a_quote_leaf_is_a_quote_whatever_it_is_dated() {
     assert!(
         uuids(column(&out, "curruuid")).contains(&Some(quote.get_curruuid().into_bytes().to_vec()))
     );
+}
+
+/// A lift reaches one identifier of an identifier map by its key
+/// `src:type`: the value where the row states it, null where it does not,
+/// whichever of the three maps holds it.
+#[test]
+fn a_lift_by_key_reads_an_identifier_a_party_and_null_where_one_is_absent() {
+    let stated = |unix: i64, code: &str, clordid: Option<&str>, account: Option<&str>| {
+        let mut order: OrderEvent = operation(unix, code, "Buy", "New");
+        if let Some(clordid) = clordid {
+            order
+                .insert_identifier(
+                    Identifier::new(IdSource::Fix, IdType::ClOrdId, clordid).unwrap(),
+                )
+                .unwrap();
+        }
+        if let Some(account) = account {
+            order
+                .insert_partyid(Identifier::new(IdSource::Fix, IdType::Account, account).unwrap())
+                .unwrap();
+        }
+        order.finalize();
+        MarketData::from(order)
+    };
+    let leaves = vec![
+        stated(1, "O-1", Some("C-1"), Some("ACC-1")),
+        stated(2, "O-2", None, Some("ACC-2")),
+        stated(3, "O-3", Some("C-3"), None),
+        stated(4, "O-4", None, None),
+    ];
+    let lifts: Vec<FieldPath> = vec![
+        "identifiers['fix:clordid'].value as clordid"
+            .parse()
+            .unwrap(),
+        "partyids['fix:account'].value as account".parse().unwrap(),
+        "identifiers['fix:orderid'].value as orderid"
+            .parse()
+            .unwrap(),
+    ];
+    let stream = MarketData::arrow_reader(leaves, None, None).unwrap();
+    let out =
+        drained(MarketData::apply_view(&MarketView::Orders, &lifts, stream).unwrap()).unwrap();
+    let mut expected = flat();
+    expected.extend([
+        "clordid".to_owned(),
+        "account".to_owned(),
+        "orderid".to_owned(),
+    ]);
+    assert_eq!(names(&out), expected);
+    assert_eq!(
+        texts(column(&out, "clordid")),
+        [Some("C-1"), None, Some("C-3"), None]
+    );
+    assert_eq!(
+        texts(column(&out, "account")),
+        [Some("ACC-1"), Some("ACC-2"), None, None]
+    );
+    assert_eq!(column(&out, "orderid").null_count(), out.num_rows());
+
+    // The ISIN is a column of the row as well as a security identifier: the
+    // lift by key and the column read the same value.
+    let isins: Vec<FieldPath> = vec!["securityids['base:isin'].value as isin".parse().unwrap()];
+    let stream = MarketData::arrow_reader(
+        vec![
+            MarketData::from(identified_order(5, "O-5")),
+            MarketData::from(identified_order(6, "O-6")),
+        ],
+        None,
+        None,
+    )
+    .unwrap();
+    let out =
+        drained(MarketData::apply_view(&MarketView::Orders, &isins, stream).unwrap()).unwrap();
+    assert_eq!(texts(column(&out, "isin")), [Some(ISIN), Some(ISIN)]);
+    assert_eq!(texts(column(&out, "isincode")), [Some(ISIN), Some(ISIN)]);
+}
+
+/// A lifecycle is one chain, named by the exact stored cross code it is
+/// filed under - category, side and base - so the same base under another
+/// side or category is another chain, and the bare base or the old
+/// `BUYS:` spelling names none.
+#[test]
+fn a_lifecycle_is_read_by_the_stored_cross_code_alone() {
+    let leaves = |unix: i64| {
+        vec![
+            MarketData::from(operation::<yggdryl::graph::OrderKind>(
+                unix, "X-1", "Buy", "New",
+            )),
+            MarketData::from(operation::<yggdryl::graph::OrderKind>(
+                unix + 1,
+                "X-1",
+                "Sell",
+                "New",
+            )),
+            MarketData::from(operation::<yggdryl::graph::OrderKind>(
+                unix + 2,
+                "X-1",
+                "Unknown",
+                "New",
+            )),
+            MarketData::from(operation::<yggdryl::graph::QuoteKind>(
+                unix + 3,
+                "X-1",
+                "Buy",
+                "New",
+            )),
+            MarketData::from(operation::<yggdryl::graph::ExecutionKind>(
+                unix + 4,
+                "X-1",
+                "Sell",
+                "Filled",
+            )),
+        ]
+    };
+    let read = |stored: &str| {
+        let target = MarketView::Lifecycle {
+            crosscode: SmolStr::new(stored),
+        };
+        let stream = MarketData::arrow_reader(leaves(10), None, None).unwrap();
+        let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
+        (
+            out.num_rows(),
+            texts(column(&out, "crosscode"))
+                .into_iter()
+                .map(|code| code.map(str::to_owned))
+                .collect::<Vec<_>>(),
+        )
+    };
+    for (stored, instant) in [
+        ("10:1:X-1", 10),
+        ("10:2:X-1", 11),
+        ("10:0:X-1", 12),
+        ("14:1:X-1", 13),
+        ("8:2:X-1", 14),
+    ] {
+        let (rows, codes) = read(stored);
+        assert_eq!(rows, 1, "{stored}");
+        assert_eq!(codes, [Some(stored.to_owned())], "{stored}");
+        let target = MarketView::Lifecycle {
+            crosscode: SmolStr::new(stored),
+        };
+        let stream = MarketData::arrow_reader(leaves(10), None, None).unwrap();
+        let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
+        assert_eq!(
+            instants(column(&out, "currunix")),
+            [Some(instant)],
+            "{stored}"
+        );
+    }
+    for unnamed in ["X-1", "BUYS:X-1", "10:3:X-1", "21:0:X-1"] {
+        assert_eq!(read(unnamed).0, 0, "{unnamed}");
+    }
 }

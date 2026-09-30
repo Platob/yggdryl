@@ -29,12 +29,14 @@
 //! book before it and the executions at its instant, and answers each side
 //! as its price levels, best first. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
-//! the one after the live element it follows. [`EventColumn`] is the
-//! fifteen columns every generated schema of an event states,
-//! [`MarketColumn`] the twenty-eight of a market and [`OperationColumn`] the
-//! four of an operation - one per fact the traits answer, under one name
-//! and one datatype each - so a text line's batch, a FIX row and a chained
-//! message join on them without a mapping.
+//! the one after the live element it follows. [`ElementColumn`] is the six
+//! columns every generated schema of an element opens with,
+//! [`EventColumn`] the nine an event adds, [`MarketColumn`] the thirty-four
+//! of a market and [`OperationColumn`] the five of an operation - one per
+//! fact the traits answer, under one name and one datatype each, in that
+//! order - so a text line's batch, a FIX row, a chained message and a
+//! `marketdata` row open with the same columns and join on them without a
+//! mapping.
 
 /// `impl Event` forwarding every accessor to a field that is an `Event`,
 /// with the readings a wrapper answers itself given as closures.
@@ -132,185 +134,214 @@ macro_rules! delegate_market {
             fn get_price(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_price(&self.$($field).+)
             }
-            fn set_price(&mut self, price: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_price(&mut self.$($field).+, price);
+            fn set_price(&mut self, price: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_price(&mut self.$($field).+, price, overwrite);
+            }
+
+            fn get_stoppx(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_stoppx(&self.$($field).+)
+            }
+
+            fn set_stoppx(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_stoppx(&mut self.$($field).+, value, overwrite);
             }
             fn get_currency(&self) -> &$crate::Ccy {
                 $crate::graph::Market::get_currency(&self.$($field).+)
             }
-            fn set_currency(&mut self, currency: $crate::Ccy) {
-                $crate::graph::Market::set_currency(&mut self.$($field).+, currency);
+            fn set_currency(&mut self, currency: $crate::Ccy, overwrite: bool) {
+                $crate::graph::Market::set_currency(&mut self.$($field).+, currency, overwrite);
             }
             fn get_quantity(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_quantity(&self.$($field).+)
             }
-            fn set_quantity(&mut self, quantity: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity);
+            fn set_quantity(&mut self, quantity: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity, overwrite);
+            }
+
+            fn get_displayqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_displayqty(&self.$($field).+)
+            }
+
+            fn set_displayqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_displayqty(&mut self.$($field).+, value, overwrite);
+            }
+
+            fn get_hiddenqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_hiddenqty(&self.$($field).+)
+            }
+
+            fn set_hiddenqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_hiddenqty(&mut self.$($field).+, value, overwrite);
             }
             fn get_unit(&self) -> &$crate::Unit {
                 $crate::graph::Market::get_unit(&self.$($field).+)
             }
-            fn set_unit(&mut self, unit: $crate::Unit) {
-                $crate::graph::Market::set_unit(&mut self.$($field).+, unit);
+            fn set_unit(&mut self, unit: $crate::Unit, overwrite: bool) {
+                $crate::graph::Market::set_unit(&mut self.$($field).+, unit, overwrite);
             }
             fn get_side(&self) -> $crate::Side {
                 $crate::graph::Market::get_side(&self.$($field).+)
             }
-            fn set_side(&mut self, side: $crate::Side) {
-                $crate::graph::Market::set_side(&mut self.$($field).+, side);
+            fn set_side(&mut self, side: $crate::Side, overwrite: bool) {
+                $crate::graph::Market::set_side(&mut self.$($field).+, side, overwrite);
             }
             fn marketdatakind(&self) -> $crate::MarketDataKind {
                 $crate::graph::Market::marketdatakind(&self.$($field).+)
             }
-            fn get_securityids(&self) -> &$crate::securityid::SecurityIds {
+            fn get_marketdatatype(&self) -> $crate::MarketDataType {
+                $crate::graph::Market::get_marketdatatype(&self.$($field).+)
+            }
+            fn set_marketdatatype(&mut self, mdtype: $crate::MarketDataType, overwrite: bool) {
+                $crate::graph::Market::set_marketdatatype(&mut self.$($field).+, mdtype, overwrite);
+            }
+            fn get_securityids(&self) -> &$crate::Identifiers {
                 $crate::graph::Market::get_securityids(&self.$($field).+)
             }
-            fn set_securityids(
-                &mut self,
-                ids: $crate::securityid::SecurityIds,
-            ) -> $crate::Result<()> {
-                $crate::graph::Market::set_securityids(&mut self.$($field).+, ids)
+            fn set_securityids(&mut self, ids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+                $crate::graph::Market::set_securityids(&mut self.$($field).+, ids, overwrite)
             }
-            fn insert_securityid(
-                &mut self,
-                id: $crate::securityid::SecurityId,
-            ) -> $crate::Result<bool> {
+            fn insert_securityid(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Market::insert_securityid(&mut self.$($field).+, id)
             }
-            fn remove_securityid(
-                &mut self,
-                key: &$crate::securityid::SecType,
-            ) -> $crate::Result<bool> {
-                $crate::graph::Market::remove_securityid(&mut self.$($field).+, key)
+            fn remove_securityid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
+                $crate::graph::Market::remove_securityid(&mut self.$($field).+, src, kind)
             }
-            fn derive_securityid(&mut self, id: $crate::securityid::SecurityId) -> bool {
-                $crate::graph::Market::derive_securityid(&mut self.$($field).+, id)
+            fn derive_securityid(&mut self, kind: &$crate::IdType, code: &str) -> bool {
+                $crate::graph::Market::derive_securityid(&mut self.$($field).+, kind, code)
             }
             fn get_cficode(&self) -> Option<&$crate::Cfi> {
                 $crate::graph::Market::get_cficode(&self.$($field).+)
             }
-            fn set_cficode(&mut self, code: Option<$crate::Cfi>) {
-                $crate::graph::Market::set_cficode(&mut self.$($field).+, code);
+            fn set_cficode(&mut self, code: Option<$crate::Cfi>, overwrite: bool) {
+                $crate::graph::Market::set_cficode(&mut self.$($field).+, code, overwrite);
             }
             fn get_miccode(&self) -> Option<&$crate::Mic> {
                 $crate::graph::Market::get_miccode(&self.$($field).+)
             }
-            fn set_miccode(&mut self, code: Option<$crate::Mic>) {
-                $crate::graph::Market::set_miccode(&mut self.$($field).+, code);
+            fn set_miccode(&mut self, code: Option<$crate::Mic>, overwrite: bool) {
+                $crate::graph::Market::set_miccode(&mut self.$($field).+, code, overwrite);
             }
             fn get_execunix(&self) -> Option<i64> {
                 $crate::graph::Market::get_execunix(&self.$($field).+)
             }
-            fn set_execunix(&mut self, unix: Option<i64>) {
-                $crate::graph::Market::set_execunix(&mut self.$($field).+, unix);
+            fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+                $crate::graph::Market::set_execunix(&mut self.$($field).+, unix, overwrite);
             }
             fn get_lastpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_lastpx(&self.$($field).+)
             }
-            fn set_lastpx(&mut self, px: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_lastpx(&mut self.$($field).+, px);
+            fn set_lastpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_lastpx(&mut self.$($field).+, px, overwrite);
             }
             fn get_lastqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_lastqty(&self.$($field).+)
             }
-            fn set_lastqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_lastqty(&mut self.$($field).+, qty);
+            fn set_lastqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_lastqty(&mut self.$($field).+, qty, overwrite);
             }
             fn get_avgpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_avgpx(&self.$($field).+)
             }
-            fn set_avgpx(&mut self, px: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_avgpx(&mut self.$($field).+, px);
+            fn set_avgpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_avgpx(&mut self.$($field).+, px, overwrite);
             }
             fn get_cumqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_cumqty(&self.$($field).+)
             }
-            fn set_cumqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_cumqty(&mut self.$($field).+, qty);
+            fn set_cumqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_cumqty(&mut self.$($field).+, qty, overwrite);
             }
             fn get_leavesqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_leavesqty(&self.$($field).+)
             }
-            fn set_leavesqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_leavesqty(&mut self.$($field).+, qty);
+            fn set_leavesqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_leavesqty(&mut self.$($field).+, qty, overwrite);
+            }
+
+            fn get_cxlqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Market::get_cxlqty(&self.$($field).+)
+            }
+
+            fn set_cxlqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_cxlqty(&mut self.$($field).+, value, overwrite);
             }
             fn get_prevpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_prevpx(&self.$($field).+)
             }
-            fn set_prevpx(&mut self, px: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_prevpx(&mut self.$($field).+, px);
+            fn set_prevpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_prevpx(&mut self.$($field).+, px, overwrite);
             }
             fn get_prevqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_prevqty(&self.$($field).+)
             }
-            fn set_prevqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_prevqty(&mut self.$($field).+, qty);
+            fn set_prevqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_prevqty(&mut self.$($field).+, qty, overwrite);
             }
             fn get_spotrate(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_spotrate(&self.$($field).+)
             }
-            fn set_spotrate(&mut self, rate: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_spotrate(&mut self.$($field).+, rate);
+            fn set_spotrate(&mut self, rate: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_spotrate(&mut self.$($field).+, rate, overwrite);
             }
             fn get_forwardpoints(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_forwardpoints(&self.$($field).+)
             }
-            fn set_forwardpoints(&mut self, points: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_forwardpoints(&mut self.$($field).+, points);
+            fn set_forwardpoints(&mut self, points: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_forwardpoints(&mut self.$($field).+, points, overwrite);
             }
             fn get_ticker(&self) -> Option<&str> {
                 $crate::graph::Market::get_ticker(&self.$($field).+)
             }
-            fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
-                $crate::graph::Market::set_ticker(&mut self.$($field).+, ticker);
+            fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
+                $crate::graph::Market::set_ticker(&mut self.$($field).+, ticker, overwrite);
             }
             fn get_metadata(&self) -> &$crate::graph::Metadata {
                 $crate::graph::Market::get_metadata(&self.$($field).+)
             }
-            fn set_metadata(&mut self, metadata: Option<$crate::graph::Metadata>) {
-                $crate::graph::Market::set_metadata(&mut self.$($field).+, metadata);
+            fn set_metadata(&mut self, metadata: Option<$crate::graph::Metadata>, overwrite: bool) {
+                $crate::graph::Market::set_metadata(&mut self.$($field).+, metadata, overwrite);
             }
             fn get_fxrates(&self) -> &$crate::graph::FxRates {
                 $crate::graph::Market::get_fxrates(&self.$($field).+)
             }
-            fn set_fxrates(&mut self, rates: $crate::graph::FxRates) {
-                $crate::graph::Market::set_fxrates(&mut self.$($field).+, rates);
+            fn set_fxrates(&mut self, rates: $crate::graph::FxRates, overwrite: bool) {
+                $crate::graph::Market::set_fxrates(&mut self.$($field).+, rates, overwrite);
             }
             fn get_bidpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_bidpx(&self.$($field).+)
             }
-            fn set_bidpx(&mut self, px: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_bidpx(&mut self.$($field).+, px);
+            fn set_bidpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_bidpx(&mut self.$($field).+, px, overwrite);
             }
             fn get_bidqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_bidqty(&self.$($field).+)
             }
-            fn set_bidqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_bidqty(&mut self.$($field).+, qty);
+            fn set_bidqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_bidqty(&mut self.$($field).+, qty, overwrite);
             }
             fn get_bidccy(&self) -> Option<&$crate::Ccy> {
                 $crate::graph::Market::get_bidccy(&self.$($field).+)
             }
-            fn set_bidccy(&mut self, ccy: Option<$crate::Ccy>) {
-                $crate::graph::Market::set_bidccy(&mut self.$($field).+, ccy);
+            fn set_bidccy(&mut self, ccy: Option<$crate::Ccy>, overwrite: bool) {
+                $crate::graph::Market::set_bidccy(&mut self.$($field).+, ccy, overwrite);
             }
             fn get_askpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_askpx(&self.$($field).+)
             }
-            fn set_askpx(&mut self, px: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_askpx(&mut self.$($field).+, px);
+            fn set_askpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_askpx(&mut self.$($field).+, px, overwrite);
             }
             fn get_askqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_askqty(&self.$($field).+)
             }
-            fn set_askqty(&mut self, qty: Option<$crate::Decimal>) {
-                $crate::graph::Market::set_askqty(&mut self.$($field).+, qty);
+            fn set_askqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Market::set_askqty(&mut self.$($field).+, qty, overwrite);
             }
             fn get_askccy(&self) -> Option<&$crate::Ccy> {
                 $crate::graph::Market::get_askccy(&self.$($field).+)
             }
-            fn set_askccy(&mut self, ccy: Option<$crate::Ccy>) {
-                $crate::graph::Market::set_askccy(&mut self.$($field).+, ccy);
+            fn set_askccy(&mut self, ccy: Option<$crate::Ccy>, overwrite: bool) {
+                $crate::graph::Market::set_askccy(&mut self.$($field).+, ccy, overwrite);
             }
         }
     };
@@ -321,44 +352,56 @@ macro_rules! delegate_market {
 macro_rules! delegate_operation {
     ($type:ty, $($field:ident).+) => {
         impl $crate::graph::Operation for $type {
-            fn get_tif(&self) -> Option<&$crate::TimeInForce> {
-                $crate::graph::Operation::get_tif(&self.$($field).+)
+            fn get_ordqty(&self) -> Option<$crate::Decimal> {
+                $crate::graph::Operation::get_ordqty(&self.$($field).+)
             }
-            fn set_tif(&mut self, tif: Option<$crate::TimeInForce>) {
-                $crate::graph::Operation::set_tif(&mut self.$($field).+, tif);
+            fn set_ordqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+                $crate::graph::Operation::set_ordqty(&mut self.$($field).+, qty, overwrite);
+            }
+            fn get_timeinforce(&self) -> Option<&$crate::TimeInForce> {
+                $crate::graph::Operation::get_timeinforce(&self.$($field).+)
+            }
+            fn set_timeinforce(&mut self, tif: Option<$crate::TimeInForce>, overwrite: bool) {
+                $crate::graph::Operation::set_timeinforce(&mut self.$($field).+, tif, overwrite);
             }
             fn get_tradable(&self) -> Option<bool> {
                 $crate::graph::Operation::get_tradable(&self.$($field).+)
             }
-            fn set_tradable(&mut self, tradable: Option<bool>) {
-                $crate::graph::Operation::set_tradable(&mut self.$($field).+, tradable);
+            fn set_tradable(&mut self, tradable: Option<bool>, overwrite: bool) {
+                $crate::graph::Operation::set_tradable(&mut self.$($field).+, tradable, overwrite);
             }
-            fn get_altids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::Operation::get_altids(&self.$($field).+)
+            fn get_identifiers(&self) -> &$crate::Identifiers {
+                $crate::graph::Operation::get_identifiers(&self.$($field).+)
             }
-            fn set_altids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::Operation::set_altids(&mut self.$($field).+, ids)
+            fn set_identifiers(&mut self, ids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+                $crate::graph::Operation::set_identifiers(&mut self.$($field).+, ids, overwrite)
             }
-            fn insert_altid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::insert_altid(&mut self.$($field).+, key, value)
+            fn insert_identifier(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
+                $crate::graph::Operation::insert_identifier(&mut self.$($field).+, id)
             }
-            fn remove_altid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_altid(&mut self.$($field).+, key)
+            fn remove_identifier(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, src, kind)
             }
-            fn get_accountids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::Operation::get_accountids(&self.$($field).+)
+            fn get_partyids(&self) -> &$crate::Identifiers {
+                $crate::graph::Operation::get_partyids(&self.$($field).+)
             }
-            fn set_accountids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::Operation::set_accountids(&mut self.$($field).+, ids)
+            fn set_partyids(&mut self, partyids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+                $crate::graph::Operation::set_partyids(&mut self.$($field).+, partyids, overwrite)
             }
-            fn insert_accountid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::insert_accountid(&mut self.$($field).+, key, value)
+            fn insert_partyid(&mut self, partyid: $crate::Identifier) -> $crate::Result<bool> {
+                $crate::graph::Operation::insert_partyid(&mut self.$($field).+, partyid)
             }
-            fn remove_accountid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_accountid(&mut self.$($field).+, key)
+            fn remove_partyid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, src, kind)
             }
-            fn is_followed_altid(&self, key: &str) -> bool {
-                $crate::graph::Operation::is_followed_altid(&self.$($field).+, key)
+            fn is_followed_identifier(&self, id: &$crate::Identifier) -> bool {
+                $crate::graph::Operation::is_followed_identifier(&self.$($field).+, id)
+            }
+            fn parents_of(&self, base: &$crate::IdType) -> ::std::borrow::Cow<'_, [$crate::IdType]> {
+                $crate::graph::Operation::parents_of(&self.$($field).+, base)
+            }
+            fn parent_of(&self, kind: &$crate::IdType) -> Option<($crate::IdType, usize)> {
+                $crate::graph::Operation::parent_of(&self.$($field).+, kind)
             }
         }
     };
@@ -372,6 +415,7 @@ pub mod book;
 pub mod candle;
 pub mod column;
 pub mod element;
+pub mod element_column;
 pub(crate) mod facts;
 pub mod iterator;
 pub mod kind;
@@ -389,6 +433,7 @@ pub use book::{BookEvent, BookIterator, SnapshotEvent};
 pub use candle::{Candle, CandleIterator, CandleOptions, Ohlc};
 pub use column::EventColumn;
 pub use element::{Element, Event};
+pub use element_column::ElementColumn;
 pub use iterator::EventIterator;
 pub use kind::MarketKind;
 pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};

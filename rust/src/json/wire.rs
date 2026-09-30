@@ -70,10 +70,10 @@ impl Serialize for JsonRef<'_> {
             Scalar::Geography(value) => serializer
                 .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
             Scalar::Date32(value) => {
-                if value.unit() == TimeUnit::Day {
-                    if let Some(text) = crate::temporal::format_date(value.count()) {
-                        return serializer.serialize_str(&text);
-                    }
+                if value.unit() == TimeUnit::Day
+                    && let Some(text) = crate::temporal::format_date(value.count())
+                {
+                    return serializer.serialize_str(&text);
                 }
                 serializer.serialize_i32(value.count())
             }
@@ -81,12 +81,11 @@ impl Serialize for JsonRef<'_> {
                 const DAY_MILLISECONDS: i64 = 86_400_000;
                 if value.unit() == TimeUnit::Millisecond {
                     let days = value.count().div_euclid(DAY_MILLISECONDS);
-                    if value.count().rem_euclid(DAY_MILLISECONDS) == 0 {
-                        if let Ok(days) = i32::try_from(days) {
-                            if let Some(text) = crate::temporal::format_date(days) {
-                                return serializer.serialize_str(&text);
-                            }
-                        }
+                    if value.count().rem_euclid(DAY_MILLISECONDS) == 0
+                        && let Ok(days) = i32::try_from(days)
+                        && let Some(text) = crate::temporal::format_date(days)
+                    {
+                        return serializer.serialize_str(&text);
                     }
                 }
                 serializer.serialize_i64(value.count())

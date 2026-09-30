@@ -82,20 +82,22 @@ test('the namespace is frozen', () => {
 })
 
 test('the two constants are exported, and no followed list: a leaf follows every identifier it lacks', () => {
-  assert.equal(graph.ENTRY_ID, 'MDENTRYID')
-  assert.equal(graph.ENTRY_REF_ID, 'MDENTRYREFID')
-  assert.equal('FOLLOWED_ALTIDS' in graph, false)
+  assert.equal(graph.ENTRY_ID, 'mdentryid')
+  assert.equal(graph.ENTRY_REF_ID, 'mdentryrefid')
+  assert.equal('FOLLOWED_IDENTIFIERS' in graph, false)
 })
 
 test('the enum listings name the column vocabulary and the market kinds', () => {
   assert.deepEqual(enums.marketKinds, graph.MarketData.kinds())
-  assert.equal(enums.marketKinds.length, 9)
+  assert.equal(enums.marketKinds.length, 10)
+  assert.equal(enums.marketKinds.at(-1), 'fix')
   assert.ok(Object.isFrozen(enums.marketKinds))
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
-  assert.equal(enums.eventColumns.length, 15)
-  assert.equal(enums.marketColumns.length, 28)
-  assert.equal(enums.operationColumns.length, 4)
-  assert.deepEqual(enums.operationColumns, ['tif', 'tradable', 'altids', 'accountids'])
+  assert.equal(enums.elementColumns.length, 6)
+  assert.equal(enums.eventColumns.length, 9)
+  assert.equal(enums.marketColumns.length, 34)
+  assert.equal(enums.operationColumns.length, 5)
+  assert.deepEqual(enums.operationColumns, ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
   // When an element last executed is a market fact, never an event's.
   assert.ok(enums.marketColumns.includes('execunix'))
   assert.equal(enums.eventColumns.includes('execunix'), false)
@@ -105,7 +107,7 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   // A named fact is a column name: every one the three listings spell is a
   // getter of an operation event.
   const event = new graph.OrderEvent(1, { crosscode: 'O-1' })
-  for (const column of [...enums.eventColumns, ...enums.marketColumns, ...enums.operationColumns]) {
+  for (const column of [...enums.elementColumns, ...enums.eventColumns, ...enums.marketColumns, ...enums.operationColumns]) {
     assert.ok(column in event, column)
   }
 })
@@ -115,12 +117,14 @@ test('a fact given as undefined is skipped and null clears', () => {
   assert.ok(new graph.OrderEvent(1, { crosscode: 'X', ticker: undefined }).equals(plain))
   assert.ok(new graph.OrderEvent(1, { crosscode: 'X', book: undefined }).equals(plain))
   assert.ok(new graph.OrderEvent(1, { crosscode: 'X', book: null }).equals(plain))
-  const stated = { crosscode: 'X', price: '1', ticker: 'T', tif: '0', altids: { ORDERID: 'X' } }
-  const cleared = new graph.OrderEvent(1, { ...stated, ticker: null, price: null, tif: null, altids: null })
+  const stated = {
+    crosscode: 'X', price: '1', ticker: 'T', timeinforce: '0', identifiers: [new yggdryl.Identifier('fix', 'orderid', 'X')],
+  }
+  const cleared = new graph.OrderEvent(1, { ...stated, ticker: null, price: null, timeinforce: null, identifiers: null })
   assert.equal(cleared.ticker, null)
   assert.equal(cleared.price, null)
-  assert.equal(cleared.tif, null)
-  assert.deepEqual(cleared.altids, {})
+  assert.equal(cleared.timeinforce, null)
+  assert.equal(cleared.identifiers.length, 0)
   assert.ok(cleared.equals(plain))
   assert.ok(!cleared.equals(new graph.OrderEvent(1, stated)))
 })
@@ -141,7 +145,7 @@ test('the market facts cross as plain values', () => {
   const event = new graph.OrderEvent(1, {
     crosscode: 'O-1',
     side: 'BUYS',
-    securityids: { ISIN: 'US0378331005' },
+    securityids: [new yggdryl.Identifier('base', 'isin', 'US0378331005')],
     bidpx: '100.5',
     bidqty: 3,
     bidccy: 'EUR',
@@ -155,10 +159,45 @@ test('the market facts cross as plain values', () => {
   // Nothing fills the rates, so an element states none unless given.
   assert.deepEqual(event.fxrates, {})
   assert.equal(event.marketdatakind, 'ORDR')
-  // A sided element's cross code carries its side (A17).
-  assert.equal(event.crosscode, 'BUYS:O-1')
+  // The stored cross code is the kind, the side, then the base.
+  assert.equal(event.crosscode, '10:1:O-1')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1', side: 'SELL' }).crosscode, '10:2:O-1')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).side, 'UNKN')
+  assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).crosscode, '10:0:O-1', 'a side nobody stated is 0')
   assert.equal(new graph.OrderEvent(1, { crosscode: 'O-1' }).isincode, null)
+})
+
+test('every element states its cross code as {kind}:{side}:{base}', () => {
+  const stored = (Class, facts) => new Class(1, facts).crosscode
+  // The kind is the `MarketDataKind` code and the side the `Side` code of a
+  // sided kind - an order, a quote, an execution - and 0 for any other kind.
+  assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1', side: 'BUYS' }), '10:1:ORD-1')
+  assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1', side: 'SELL' }), '10:2:ORD-1')
+  assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1' }), '10:0:ORD-1', 'a side nobody stated is 0')
+  assert.equal(stored(graph.QuoteEvent, { crosscode: 'Q-1', side: 'BUYS' }), '14:1:Q-1')
+  assert.equal(stored(graph.ExecutionEvent, { crosscode: 'E-1', side: 'SELL' }), '8:2:E-1')
+})
+
+test('a stored cross code replaces another kind or side prefix and an empty code stays empty', () => {
+  const order = (facts) => new graph.OrderEvent(1, facts).crosscode
+  assert.equal(order({ crosscode: '8:2:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'the prefix is replaced')
+  assert.equal(order({ crosscode: '10:1:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'a stored code is itself')
+  assert.equal(order({ crosscode: '', side: 'BUYS' }), '', 'no code, no prefix')
+  assert.equal(new graph.BookEvent(1, '').crosscode, '')
+})
+
+test('a book states 3:0:{ticker} and every identity derives from the stored code', () => {
+  assert.equal(new graph.BookEvent(1, 'AAPL').crosscode, '3:0:AAPL')
+  assert.equal(new graph.BookEvent(1, 'XNAS:ESVUFR').crosscode, '3:0:XNAS:ESVUFR')
+  // The cross hash is the XXH3-64 of the stored, prefixed code, and the cross
+  // identity follows it: the same base on the other side is another chain.
+  const buy = new graph.OrderEvent(1, { crosscode: 'ORD-1', side: 'BUYS' })
+  const sell = new graph.OrderEvent(1, { crosscode: 'ORD-1', side: 'SELL' })
+  assert.equal(buy.crosshashcode, yggdryl.xxhash.xxh3(Buffer.from('10:1:ORD-1')))
+  assert.equal(sell.crosshashcode, yggdryl.xxhash.xxh3(Buffer.from('10:2:ORD-1')))
+  assert.notEqual(buy.crossuuid, sell.crossuuid)
+  assert.notEqual(buy.crosshashcode, sell.crosshashcode)
+  assert.equal(buy.crossuuid, new graph.OrderEvent(2, { crosscode: 'ORD-1', side: 'BUYS' }).crossuuid, 'one chain')
 })
 
 test('a fact record crosses as a Scalar too', () => {

@@ -585,7 +585,7 @@ mod leaves {
         for accepted in [
             DataType::fixed_ascii(8).unwrap(),
             DataType::fixed_ascii(16).unwrap(),
-            DataType::TimeInForce,
+            DataType::Mic,
         ] {
             let field = Field::new("side", accepted.clone(), false)
                 .try_with_string_enum(&sides)
@@ -753,7 +753,7 @@ mod fields {
                 .is_ok()
         );
         assert!(
-            DataType::TimeInForce
+            DataType::Mic
                 .required_field("side")
                 .try_with_string_enum(&sides)
                 .is_ok()

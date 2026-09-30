@@ -42,9 +42,11 @@ mod hashing;
 mod holder;
 mod http;
 mod iceberg;
+mod identifier;
 mod iobase;
 mod iomedia;
 mod marketdatakind;
+mod marketdatatype;
 mod media;
 mod parameters;
 mod properties;
@@ -54,6 +56,7 @@ mod serie;
 mod side;
 mod state;
 mod text;
+mod timeinforce;
 mod timezone;
 mod uri;
 mod version;
@@ -461,7 +464,8 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 /// crate's line-count lint.
 fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()> {
     use yggdryl::graph::{
-        EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
+        ElementColumn, EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction,
+        OperationColumn,
     };
 
     listing.set_item(
@@ -472,6 +476,10 @@ fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()>
     listing.set_item(
         "md_update_actions",
         MdUpdateAction::ALL.map(MdUpdateAction::as_str).to_vec(),
+    )?;
+    listing.set_item(
+        "element_columns",
+        ElementColumn::ALL.map(ElementColumn::name).to_vec(),
     )?;
     listing.set_item(
         "event_columns",
@@ -599,7 +607,7 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Register the member tables the three enum-family classes are built from
-/// at import: `State`, `MarketDataKind` and `Side`.
+/// at import: `State`, `MarketDataKind`, `MarketDataType` and `Side`.
 fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
@@ -613,6 +621,19 @@ fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
         marketdatakind::marketdatakind_from_spelling,
         module
     )?)?;
+    for function in [
+        wrap_pyfunction!(marketdatatype::marketdatatype_members, module)?,
+        wrap_pyfunction!(marketdatatype::marketdatatype_from_spelling, module)?,
+        wrap_pyfunction!(marketdatatype::marketdatatype_from_fix, module)?,
+        wrap_pyfunction!(marketdatatype::marketdatatype_fix_code, module)?,
+        wrap_pyfunction!(marketdatatype::marketdatatype_fix_tags, module)?,
+        wrap_pyfunction!(marketdatatype::marketdatatype_fix_tags_of, module)?,
+        wrap_pyfunction!(timeinforce::timeinforce_members, module)?,
+        wrap_pyfunction!(timeinforce::timeinforce_from_spelling, module)?,
+        wrap_pyfunction!(timeinforce::timeinforce_from_fix, module)?,
+    ] {
+        module.add_function(function)?;
+    }
     module.add_function(wrap_pyfunction!(side::side_members, module)?)?;
     module.add_function(wrap_pyfunction!(side::side_from_spelling, module)?)?;
     Ok(())
@@ -655,6 +676,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<version::PyVersion>()?;
+    module.add_class::<identifier::PyIdentifier>()?;
+    module.add_class::<identifier::PyIdentifiers>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;

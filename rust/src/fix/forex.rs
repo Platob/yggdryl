@@ -23,7 +23,6 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use super::FixMsg;
-use crate::securityid::{SecType, SecurityId};
 use crate::xxhash::Xxh64;
 use crate::{Cfi, FxSymbol, FxTenor, Result, Scalar};
 
@@ -259,8 +258,7 @@ impl FixMsg {
         }
         let paired = !self.derives_pair_of(forex.as_str());
         if paired {
-            let key = SecType::read("FOREX")?;
-            self.set_derived_pair(Some(SecurityId::new(key, forex.as_str())?));
+            self.set_derived_pair(Some(forex.as_str()));
         }
         let wrote = !writes.is_empty();
         if wrote {

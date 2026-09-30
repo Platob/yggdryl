@@ -350,11 +350,14 @@ assert Scalar.from_(uuid.UUID(text)).kind == "string"  # undeclared: text
 assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 ```
 
-## Enums: side, marketdatakind, state
+## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind` and `state` are the `enum` family: each member is an
-`int32` code in a column and its stored name in text. Python reads them as the
-`enum.IntEnum`s `yggdryl.Side`, `yggdryl.MarketDataKind` and `yggdryl.State`,
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype` -
+and its stored name in text. Python reads them as the `enum.IntEnum`s
+`yggdryl.Side`, `yggdryl.MarketDataKind`, `yggdryl.MarketDataType`,
+`yggdryl.State` and `yggdryl.TimeInForce`,
 and a value of the column answers the member. A side is never absent -
 `Side.UNKN` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
 `SELL`, `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are
@@ -362,7 +365,7 @@ still read and never written.
 
 ```python
 import yggdryl
-from yggdryl import DataType, MarketDataKind, Side, State
+from yggdryl import DataType, MarketDataKind, Side, State, TimeInForce
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
@@ -383,6 +386,11 @@ assert MarketDataKind.from_spelling("10") is None      # a stored code is an int
 # Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
 assert (int(State.UPDATED), State.UPDATED.rank) == (3004, 30)
 assert State.UPDATED.is_live()
+
+# How long an order stands: FIX `TimeInForce(59)`, the wire value read as a member.
+assert DataType("timeinforce").scalar("0").as_py() is TimeInForce.DAY
+assert TimeInForce.from_fix("Z") is TimeInForce.OTHER   # a venue's own value
+assert (int(TimeInForce.GTC), TimeInForce.GTC.fix_code) == (2, "1")
 ```
 
 ## Nested values: serie, map, union, dictionary
@@ -562,8 +570,10 @@ assert pickle.loads(pickle.dumps(row)) == row
 ## Cross an Arrow schema
 
 A `Field` imports and exports pyarrow fields and schemas losslessly,
-extension identity included; a bare `pa.DataType` has no metadata, so import
-the field to keep a code, a UUID or a fixed decimal.
+extension identity included. Every `yggdryl.*` datatype is a pyarrow
+extension type registered when `yggdryl` is imported
+(`yggdryl.extension.YggdrylType`), so a bare type, an array and a scalar carry
+the identity too: a code, a UUID or a fixed decimal crosses as itself.
 
 ```python
 import pyarrow as pa
@@ -581,10 +591,11 @@ assert root.into_arrow_schema().field("id").type == pa.uint32()
 
 venue = yggdryl.mic("venue", nullable=False)
 arrow_field = venue.into_arrow()
-assert arrow_field.type == pa.string()
-assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.mic"
+assert arrow_field.type.storage_type == pa.string()
+assert arrow_field.type.extension_name == "yggdryl.mic"
 assert Field.from_arrow(arrow_field) == venue           # identity kept
-assert DataType.from_arrow(arrow_field.type) == DataType("utf8")  # lost
+assert DataType.from_arrow(arrow_field.type) == DataType("mic")  # the type too
+assert arrow_field.type.datatype == DataType("mic")
 
 assert DataType("datetime64(us,UTC)").into_arrow() == pa.timestamp("us", tz="UTC")
 assert Field("px", "float64").arrow_scalar(1.5) == pa.scalar(1.5)

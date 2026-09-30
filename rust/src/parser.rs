@@ -159,17 +159,16 @@ mod field {
             if member.trim().is_empty() {
                 continue;
             }
-            if index == 0 {
-                if let Some((display_name, display_type)) =
+            if index == 0
+                && let Some((display_name, display_type)) =
                     split_arrow_display_field(member, offset)?
-                {
-                    name = Some(display_name);
-                    let (display_type, is_nullable) = strip_nullable_prefix(display_type);
-                    nullable = Some(is_nullable);
-                    let type_offset = offset + member.find(display_type).unwrap_or_default();
-                    dtype = Some(parse_dtype(display_type, type_offset)?);
-                    continue;
-                }
+            {
+                name = Some(display_name);
+                let (display_type, is_nullable) = strip_nullable_prefix(display_type);
+                nullable = Some(is_nullable);
+                let type_offset = offset + member.find(display_type).unwrap_or_default();
+                dtype = Some(parse_dtype(display_type, type_offset)?);
+                continue;
             }
             if member.trim().eq_ignore_ascii_case("dict_is_ordered") {
                 if dictionary_is_ordered.is_some() {
@@ -876,6 +875,7 @@ impl fmt::Display for DataType {
             | D::Side
             | D::State
             | D::MarketDataKind
+            | D::MarketDataType
             | D::TimeInForce
             | D::Unit
             | D::Forex
@@ -1096,13 +1096,13 @@ impl<'a> Parser<'a> {
     pub(crate) fn parse_type(&mut self, depth: usize) -> Result<DataType> {
         self.check_depth(depth)?;
 
-        if let Some(open) = self.peek_symbol() {
-            if let Some(close) = matching_close(open) {
-                self.index += 1;
-                let value = self.parse_type(depth + 1)?;
-                self.expect_symbol(close)?;
-                return self.parse_postfix_series(value, depth);
-            }
+        if let Some(open) = self.peek_symbol()
+            && let Some(close) = matching_close(open)
+        {
+            self.index += 1;
+            let value = self.parse_type(depth + 1)?;
+            self.expect_symbol(close)?;
+            return self.parse_postfix_series(value, depth);
         }
 
         let token = self
@@ -1633,22 +1633,22 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn skip_value(&mut self) -> Result<()> {
-        if let Some(open) = self.peek_symbol() {
-            if let Some(close) = matching_close(open) {
-                self.index += 1;
-                let mut depth = 1_usize;
-                while depth != 0 {
-                    let token = self
-                        .next()
-                        .ok_or_else(|| self.error_here("unclosed Arrow field property"))?;
-                    match token.kind {
-                        TokenKind::Symbol(symbol) if symbol == open => depth += 1,
-                        TokenKind::Symbol(symbol) if symbol == close => depth -= 1,
-                        _ => {}
-                    }
+        if let Some(open) = self.peek_symbol()
+            && let Some(close) = matching_close(open)
+        {
+            self.index += 1;
+            let mut depth = 1_usize;
+            while depth != 0 {
+                let token = self
+                    .next()
+                    .ok_or_else(|| self.error_here("unclosed Arrow field property"))?;
+                match token.kind {
+                    TokenKind::Symbol(symbol) if symbol == open => depth += 1,
+                    TokenKind::Symbol(symbol) if symbol == close => depth -= 1,
+                    _ => {}
                 }
-                return Ok(());
             }
+            return Ok(());
         }
         self.next()
             .map(|_| ())

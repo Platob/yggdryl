@@ -76,10 +76,10 @@ fn previous<'registry>(
     category: FixCategory,
     field: &Field,
 ) -> Option<&'registry Field> {
-    if category == FixCategory::Fields {
-        if let Some(id) = field.as_fix().id().ok().flatten() {
-            return registry.get_field_by_id(id);
-        }
+    if category == FixCategory::Fields
+        && let Some(id) = field.as_fix().id().ok().flatten()
+    {
+        return registry.get_field_by_id(id);
     }
     registry.get_definition(category, field.name())
 }

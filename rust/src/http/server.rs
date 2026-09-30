@@ -1385,6 +1385,9 @@ impl Server {
                 shared.connections.fetch_add(1, Ordering::Relaxed);
                 // Past the cap the stream is dropped here, closing it unread:
                 // a thread per connection is only bounded if this is.
+                // `fetch_update` is the spelling the declared MSRV, Rust
+                // 1.94, knows; its rename `try_update` came later.
+                #[allow(deprecated)]
                 let admitted = shared
                     .live
                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |live| {

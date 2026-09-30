@@ -29,23 +29,24 @@ ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
-# The fifteen event columns every line batch opens with: the line as the
-# event it is, the same fifteen a FIX row parsed out of it opens with.
+# The fifteen columns every line batch opens with: the six identities every
+# graph element states, then the event's nine - the same fifteen a FIX row
+# parsed out of the line opens with.
 EVENT_COLUMNS = [
+    "curruuid",
+    "crossuuid",
+    "crosscode",
+    "currhashcode",
+    "crosshashcode",
+    "srcuuids",
     "currunix",
     "creaunix",
     "recdunix",
     "exprunix",
     "prevunix",
     "snapunix",
-    "curruuid",
-    "crossuuid",
-    "crosscode",
-    "currhashcode",
-    "crosshashcode",
     "prevuuid",
     "seqnum",
-    "srcuuids",
     "state",
 ]
 

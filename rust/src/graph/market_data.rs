@@ -37,6 +37,11 @@ pub enum MarketData {
     BookEvent(Box<BookEvent>),
     /// A full-snapshot control.
     SnapshotEvent(SnapshotEvent),
+    /// A FIX message held whole: every fact its dictionary reads, its
+    /// fields and its capture, answered through the same traits as every
+    /// leaf. It walks, merges and writes as it is; a book folds the leaves
+    /// it splits into ([`FixMsg::market_data`](crate::FixMsg::market_data)).
+    Fix(Box<crate::FixMsg>),
 }
 
 impl MarketData {
@@ -53,15 +58,20 @@ impl MarketData {
             Self::TradeEvent(_) => MarketKind::TradeEvent,
             Self::BookEvent(_) => MarketKind::BookEvent,
             Self::SnapshotEvent(_) => MarketKind::SnapshotEvent,
+            Self::Fix(_) => MarketKind::Fix,
         }
     }
 
     /// The market data category of this value's leaf: an order `ORDR`, a
     /// quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a
-    /// snapshot `BOOK` - what the `marketdatakind` column states.
+    /// snapshot `BOOK`, and a FIX message the category its dictionary files
+    /// it under - what the `marketdatakind` column states.
     #[must_use]
     pub fn marketdatakind(&self) -> crate::MarketDataKind {
-        self.kind().marketdatakind()
+        match self {
+            Self::Fix(message) => message.msgcat(),
+            other => other.kind().marketdatakind(),
+        }
     }
 
     /// Whether this value is one of the six dated leaves.
@@ -143,6 +153,7 @@ macro_rules! delegate_by_variant {
             Self::TradeEvent(v) => v.$method($($arg),*),
             Self::BookEvent(v) => v.$method($($arg),*),
             Self::SnapshotEvent(v) => v.$method($($arg),*),
+            Self::Fix(v) => v.$method($($arg),*),
         }
     };
 }
@@ -236,6 +247,9 @@ impl Element for MarketData {
             (Self::SnapshotEvent(v), Self::SnapshotEvent(previous)) => {
                 v.with_previous(previous).map(Self::SnapshotEvent)
             }
+            (Self::Fix(v), Self::Fix(previous)) => (*v)
+                .with_previous(previous)
+                .map(|held| Self::Fix(Box::new(held))),
             _ => None,
         }
     }
@@ -266,6 +280,9 @@ impl Element for MarketData {
             (Self::SnapshotEvent(v), Self::SnapshotEvent(other)) => {
                 v.merge_with(other).map(Self::SnapshotEvent)
             }
+            (Self::Fix(v), Self::Fix(other)) => {
+                (*v).merge_with(other).map(|held| Self::Fix(Box::new(held)))
+            }
             _ => None,
         }
     }
@@ -275,176 +292,218 @@ impl Market for MarketData {
     fn get_price(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_price)
     }
-    fn set_price(&mut self, price: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_price, price);
+    fn set_price(&mut self, price: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_price, price, overwrite);
+    }
+
+    fn get_stoppx(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_stoppx)
+    }
+
+    fn set_stoppx(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_stoppx, value, overwrite);
     }
     fn get_currency(&self) -> &crate::Ccy {
         delegate_by_variant!(self, get_currency)
     }
-    fn set_currency(&mut self, currency: crate::Ccy) {
-        delegate_by_variant!(self, set_currency, currency);
+    fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
+        delegate_by_variant!(self, set_currency, currency, overwrite);
     }
     fn get_quantity(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_quantity)
     }
-    fn set_quantity(&mut self, quantity: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_quantity, quantity);
+    fn set_quantity(&mut self, quantity: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_quantity, quantity, overwrite);
+    }
+
+    fn get_displayqty(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_displayqty)
+    }
+
+    fn set_displayqty(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_displayqty, value, overwrite);
+    }
+
+    fn get_hiddenqty(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_hiddenqty)
+    }
+
+    fn set_hiddenqty(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_hiddenqty, value, overwrite);
     }
     fn get_unit(&self) -> &crate::Unit {
         delegate_by_variant!(self, get_unit)
     }
-    fn set_unit(&mut self, unit: crate::Unit) {
-        delegate_by_variant!(self, set_unit, unit);
+    fn set_unit(&mut self, unit: crate::Unit, overwrite: bool) {
+        delegate_by_variant!(self, set_unit, unit, overwrite);
     }
     fn get_side(&self) -> crate::Side {
         delegate_by_variant!(self, get_side)
     }
-    fn set_side(&mut self, side: crate::Side) {
-        delegate_by_variant!(self, set_side, side);
+    fn set_side(&mut self, side: crate::Side, overwrite: bool) {
+        delegate_by_variant!(self, set_side, side, overwrite);
     }
     fn marketdatakind(&self) -> crate::MarketDataKind {
         self.kind().marketdatakind()
     }
-    fn get_securityids(&self) -> &crate::securityid::SecurityIds {
+    fn get_marketdatatype(&self) -> crate::MarketDataType {
+        delegate_by_variant!(self, get_marketdatatype)
+    }
+    fn set_marketdatatype(&mut self, mdtype: crate::MarketDataType, overwrite: bool) {
+        delegate_by_variant!(self, set_marketdatatype, mdtype, overwrite);
+    }
+    fn get_securityids(&self) -> &crate::Identifiers {
         delegate_by_variant!(self, get_securityids)
     }
-    fn set_securityids(&mut self, ids: crate::securityid::SecurityIds) -> Result<()> {
-        delegate_by_variant!(self, set_securityids, ids)
+    fn set_securityids(&mut self, ids: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        delegate_by_variant!(self, set_securityids, ids, overwrite)
     }
-    fn insert_securityid(&mut self, id: crate::securityid::SecurityId) -> Result<bool> {
+    fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         delegate_by_variant!(self, insert_securityid, id)
     }
-    fn remove_securityid(&mut self, key: &crate::securityid::SecType) -> Result<bool> {
-        delegate_by_variant!(self, remove_securityid, key)
+    fn remove_securityid(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        delegate_by_variant!(self, remove_securityid, src, kind)
     }
-    fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
-        delegate_by_variant!(self, derive_securityid, id)
+    fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
+        delegate_by_variant!(self, derive_securityid, kind, code)
     }
     fn get_cficode(&self) -> Option<&crate::Cfi> {
         delegate_by_variant!(self, get_cficode)
     }
-    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
-        delegate_by_variant!(self, set_cficode, code);
+    fn set_cficode(&mut self, code: Option<crate::Cfi>, overwrite: bool) {
+        delegate_by_variant!(self, set_cficode, code, overwrite);
     }
     fn get_miccode(&self) -> Option<&crate::Mic> {
         delegate_by_variant!(self, get_miccode)
     }
-    fn set_miccode(&mut self, code: Option<crate::Mic>) {
-        delegate_by_variant!(self, set_miccode, code);
+    fn set_miccode(&mut self, code: Option<crate::Mic>, overwrite: bool) {
+        delegate_by_variant!(self, set_miccode, code, overwrite);
     }
     fn get_execunix(&self) -> Option<i64> {
         delegate_by_variant!(self, get_execunix)
     }
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        delegate_by_variant!(self, set_execunix, unix);
+    fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+        delegate_by_variant!(self, set_execunix, unix, overwrite);
     }
     fn get_lastpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_lastpx)
     }
-    fn set_lastpx(&mut self, px: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_lastpx, px);
+    fn set_lastpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_lastpx, px, overwrite);
     }
     fn get_lastqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_lastqty)
     }
-    fn set_lastqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_lastqty, qty);
+    fn set_lastqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_lastqty, qty, overwrite);
     }
     fn get_avgpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_avgpx)
     }
-    fn set_avgpx(&mut self, px: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_avgpx, px);
+    fn set_avgpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_avgpx, px, overwrite);
     }
     fn get_cumqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_cumqty)
     }
-    fn set_cumqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_cumqty, qty);
+    fn set_cumqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_cumqty, qty, overwrite);
     }
     fn get_leavesqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_leavesqty)
     }
-    fn set_leavesqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_leavesqty, qty);
+    fn set_leavesqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_leavesqty, qty, overwrite);
+    }
+
+    fn get_cxlqty(&self) -> Option<crate::Decimal> {
+        delegate_by_variant!(self, get_cxlqty)
+    }
+
+    fn set_cxlqty(&mut self, value: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_cxlqty, value, overwrite);
     }
     fn get_prevpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_prevpx)
     }
-    fn set_prevpx(&mut self, px: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_prevpx, px);
+    fn set_prevpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_prevpx, px, overwrite);
     }
     fn get_prevqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_prevqty)
     }
-    fn set_prevqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_prevqty, qty);
+    fn set_prevqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_prevqty, qty, overwrite);
     }
     fn get_spotrate(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_spotrate)
     }
-    fn set_spotrate(&mut self, rate: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_spotrate, rate);
+    fn set_spotrate(&mut self, rate: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_spotrate, rate, overwrite);
     }
     fn get_forwardpoints(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_forwardpoints)
     }
-    fn set_forwardpoints(&mut self, points: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_forwardpoints, points);
+    fn set_forwardpoints(&mut self, points: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_forwardpoints, points, overwrite);
     }
     fn get_ticker(&self) -> Option<&str> {
         delegate_by_variant!(self, get_ticker)
     }
-    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
-        delegate_by_variant!(self, set_ticker, ticker);
+    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
+        delegate_by_variant!(self, set_ticker, ticker, overwrite);
     }
     fn get_metadata(&self) -> &super::market::Metadata {
         delegate_by_variant!(self, get_metadata)
     }
-    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
-        delegate_by_variant!(self, set_metadata, metadata);
+    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>, overwrite: bool) {
+        delegate_by_variant!(self, set_metadata, metadata, overwrite);
     }
     fn get_fxrates(&self) -> &super::market::FxRates {
         delegate_by_variant!(self, get_fxrates)
     }
-    fn set_fxrates(&mut self, rates: super::market::FxRates) {
-        delegate_by_variant!(self, set_fxrates, rates);
+    fn set_fxrates(&mut self, rates: super::market::FxRates, overwrite: bool) {
+        delegate_by_variant!(self, set_fxrates, rates, overwrite);
     }
     fn get_bidpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_bidpx)
     }
-    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_bidpx, px);
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_bidpx, px, overwrite);
     }
     fn get_bidqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_bidqty)
     }
-    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_bidqty, qty);
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_bidqty, qty, overwrite);
     }
     fn get_bidccy(&self) -> Option<&crate::Ccy> {
         delegate_by_variant!(self, get_bidccy)
     }
-    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
-        delegate_by_variant!(self, set_bidccy, ccy);
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        delegate_by_variant!(self, set_bidccy, ccy, overwrite);
     }
     fn get_askpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_askpx)
     }
-    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_askpx, px);
+    fn set_askpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_askpx, px, overwrite);
     }
     fn get_askqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_askqty)
     }
-    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
-        delegate_by_variant!(self, set_askqty, qty);
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        delegate_by_variant!(self, set_askqty, qty, overwrite);
     }
     fn get_askccy(&self) -> Option<&crate::Ccy> {
         delegate_by_variant!(self, get_askccy)
     }
-    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
-        delegate_by_variant!(self, set_askccy, ccy);
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        delegate_by_variant!(self, set_askccy, ccy, overwrite);
     }
 }
 
@@ -460,6 +519,7 @@ impl MarketData {
             Self::TradeEvent(v) => Some(v),
             Self::BookEvent(v) => Some(v.as_ref()),
             Self::SnapshotEvent(v) => Some(v),
+            Self::Fix(v) => Some(v.as_ref()),
             _ => None,
         }
     }
@@ -475,6 +535,7 @@ impl MarketData {
             Self::QuoteEvent(v) => Some(v),
             Self::ExecutionEvent(v) => Some(v),
             Self::TradeEvent(v) => Some(v),
+            Self::Fix(v) => Some(v.as_ref()),
             _ => None,
         }
     }
@@ -487,6 +548,7 @@ impl MarketData {
             Self::QuoteEvent(v) => Some(v),
             Self::ExecutionEvent(v) => Some(v),
             Self::TradeEvent(v) => Some(v),
+            Self::Fix(v) => Some(v.as_mut()),
             _ => None,
         }
     }
@@ -541,6 +603,30 @@ from_leaf!(QuoteEvent, QuoteEvent);
 from_leaf!(ExecutionEvent, ExecutionEvent);
 from_leaf!(TradeEvent, TradeEvent);
 from_leaf!(SnapshotEvent, SnapshotEvent);
+
+impl From<crate::FixMsg> for MarketData {
+    fn from(value: crate::FixMsg) -> Self {
+        Self::Fix(Box::new(value))
+    }
+}
+
+impl TryFrom<MarketData> for crate::FixMsg {
+    type Error = Error;
+
+    fn try_from(value: MarketData) -> Result<Self> {
+        match value {
+            MarketData::Fix(value) => Ok(*value),
+            other => Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.kind"),
+                reason: format_smolstr!(
+                    "expected {}, got {}",
+                    MarketKind::Fix.as_str(),
+                    other.kind().as_str()
+                ),
+            }),
+        }
+    }
+}
 
 impl From<BookEvent> for MarketData {
     fn from(value: BookEvent) -> Self {
@@ -636,6 +722,15 @@ impl MarketData {
     pub fn as_snapshot_event(&self) -> Option<&SnapshotEvent> {
         match self {
             Self::SnapshotEvent(value) => Some(value),
+            _ => None,
+        }
+    }
+    /// Borrows this value as the [`FixMsg`](crate::FixMsg) it holds, where
+    /// it is one.
+    #[must_use]
+    pub fn as_fix(&self) -> Option<&crate::FixMsg> {
+        match self {
+            Self::Fix(value) => Some(value),
             _ => None,
         }
     }

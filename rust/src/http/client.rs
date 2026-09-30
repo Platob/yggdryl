@@ -577,12 +577,10 @@ impl Client {
                 Some(chosen) => chosen.is_some(),
                 None => self.inner.agent.config().proxy().is_some(),
             };
-            if !proxied {
-                if let Some(exchanged) = framed.exchange(wire, &mut payload) {
-                    let answer = exchanged?;
-                    framed.learn(wire.url, &answer.headers);
-                    return Ok(answer);
-                }
+            if !proxied && let Some(exchanged) = framed.exchange(wire, &mut payload) {
+                let answer = exchanged?;
+                framed.learn(wire.url, &answer.headers);
+                return Ok(answer);
             }
         }
         let answer = self.attempt_http1(wire, payload, proxy)?;

@@ -987,7 +987,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => {
             if value.is_code() && value.id() == dtype.id() {
@@ -1015,7 +1014,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Bbg => Scalar::Bbg(crate::Bbg::new(text)?),
                 D::Ric => Scalar::Ric(crate::Ric::new(text)?),
                 D::Figi => Scalar::Figi(crate::Figi::new(text)?),
-                D::TimeInForce => Scalar::TimeInForce(crate::TimeInForce::new(text)?),
                 D::Unit => Scalar::Unit(crate::Unit::new(text)?),
                 D::Forex => Scalar::Forex(crate::Forex::new(text)?),
                 _ => unreachable!("registered code matched above"),
@@ -1562,10 +1560,10 @@ fn broken_map_invariant(
     if let Some(index) = duplicate_mapping_key_index(entries) {
         return Some((index, "map keys collide"));
     }
-    if map.keys_sorted() {
-        if let Some(index) = entries.windows(2).position(|pair| pair[0].0 > pair[1].0) {
-            return Some((index + 1, "map keys are not sorted"));
-        }
+    if map.keys_sorted()
+        && let Some(index) = entries.windows(2).position(|pair| pair[0].0 > pair[1].0)
+    {
+        return Some((index + 1, "map keys are not sorted"));
     }
     None
 }
@@ -1864,7 +1862,6 @@ fn validate_dtype_value(
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => match ascii_bytes(value) {
             // A pair's spellings are wider than the pair; the width holds
@@ -2012,13 +2009,13 @@ fn validate_sequence(
     let serie = value
         .as_serie()
         .ok_or_else(|| expected(expected_name, value))?;
-    if let Some(expected_len) = expected_len {
-        if serie.len() != expected_len {
-            return Err(ValidationFailure::new(format_smolstr!(
-                "{expected_name} requires {expected_len} items, got {}",
-                serie.len()
-            )));
-        }
+    if let Some(expected_len) = expected_len
+        && serie.len() != expected_len
+    {
+        return Err(ValidationFailure::new(format_smolstr!(
+            "{expected_name} requires {expected_len} items, got {}",
+            serie.len()
+        )));
     }
     // A column of the exact item field holds only rows it accepts - its door
     // proved them - so no row is read.

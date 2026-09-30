@@ -340,6 +340,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "parenttradeid"
+      ],
       "FIX:tag": "1126",
       "description": "Used to preserve original trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "display": "OrigTradeID"
@@ -352,6 +355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "parentsecondarytradeid"
+      ],
       "FIX:tag": "1127",
       "description": "Used to preserve original secondary trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "display": "OrigSecondaryTradeID"

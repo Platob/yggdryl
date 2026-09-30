@@ -426,20 +426,19 @@ impl Sheet {
         if count == 0 {
             return Ok(());
         }
-        if let Some(last) = self.rows.keys().next_back().copied() {
-            if last >= at
-                && last
-                    .checked_add(count)
-                    .is_none_or(|moved| moved >= MAX_ROWS)
-            {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: format_smolstr!(
-                        "expected the moved rows to stay within {MAX_ROWS} rows, got row {} moving by {count}",
-                        last + 1
-                    ),
-                });
-            }
+        if let Some(last) = self.rows.keys().next_back().copied()
+            && last >= at
+            && last
+                .checked_add(count)
+                .is_none_or(|moved| moved >= MAX_ROWS)
+        {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!(
+                    "expected the moved rows to stay within {MAX_ROWS} rows, got row {} moving by {count}",
+                    last + 1
+                ),
+            });
         }
         let moved: Vec<(u32, Row)> = self
             .rows

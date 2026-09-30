@@ -45,7 +45,8 @@ def decimal_of(value: Scalar | None) -> object:
 class TestBookEvent:
     def test_an_empty_book(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
-        assert book.currunix == CLOCK and book.crosscode == "IBM"
+        # A book states side 0 whatever side it takes: kind 3, side 0, its ticker.
+        assert book.currunix == CLOCK and book.crosscode == "3:0:IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
         # A book states no side of its own.
         assert book.side is Side.UNKN
@@ -115,7 +116,7 @@ class TestBookEvent:
         book = graph.BookEvent(CLOCK, "IBM").with_operations([unpriced, order()])
         # The market order is held rather than refused, after every priced
         # level, and states no best of its own.
-        assert [entry.crosscode for entry in book.alive] == ["BUYS:O-1", "BUYS:M-1"]
+        assert [entry.crosscode for entry in book.alive] == ["10:1:O-1", "10:1:M-1"]
         assert decimal_of(book.best_price(Side.BUYS)) == D("101")
         last = book.limits(Side.BUYS)[-1]
         assert last["price"].as_py() is None
@@ -181,7 +182,7 @@ class TestBookEvent:
         execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1)
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [type(held) for held in book.executions] == [graph.ExecutionEvent]
-        assert book.executions[0].crosscode == "BUYS:E-1"
+        assert book.executions[0].crosscode == "8:1:E-1"
 
     def test_a_snapshot_control_folds(self) -> None:
         snapshot = graph.SnapshotEvent.snapshot(order(), "Symbol=IBM")
@@ -190,7 +191,7 @@ class TestBookEvent:
 
     def test_refusals_name_the_item(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
-        with pytest.raises(TypeError, match=r"operations\[1\]: .*expected MarketData or a market leaf, got int"):
+        with pytest.raises(TypeError, match=r"operations\[1\]: .*expected MarketData, a market leaf or a FixMsg, got int"):
             book.with_operations([order(), 1])  # type: ignore[list-item]
         with pytest.raises(ValueError, match=r"\$\.operations\[0\]\.kind: expected order_event.*got order"):
             book.with_operations([graph.Order()])
@@ -202,7 +203,7 @@ class TestBookEvent:
         assert twin.alive == book.alive
         assert twin.limits(Side.BUYS) == book.limits(Side.BUYS)
         assert copy.copy(book) == book and copy.deepcopy(book) == book
-        assert repr(book) == f'BookEvent({book.curruuid.as_py()}, currunix={CLOCK}, crosscode="IBM")'
+        assert repr(book) == f'BookEvent({book.curruuid.as_py()}, currunix={CLOCK}, crosscode="3:0:IBM")'
         later = graph.BookEvent(CLOCK + 1, "IBM")
         assert later.is_after(book) and book.is_before(later)
 
@@ -242,7 +243,7 @@ class TestBookIterator:
         assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
         assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
-        assert [held.crosscode for held in books[1].executions] == ["BUYS:O-1"]
+        assert [held.crosscode for held in books[1].executions] == ["8:1:O-1"]
         assert hash(walk.__class__) is not None and walk.__hash__ is None
 
     def test_a_walk_takes_no_global_mode(self) -> None:

@@ -14,17 +14,17 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65030 - with no scalar counter column.
+A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65035 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,281 |
+| Scalar fields | 6,241 | 6,271 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
-| Code sets, read by 2,027 fields | 735 | 737 |
+| Code sets, read by 2,027 fields | 735 | 738 |
 
-The live additions are the crate's 40 scalar fields - `srcuuids`, `msgcat`, `isincode`, `forexcode`, `figicode`, `strikepx`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation, its account, its user, its six identifiers and its two instrument names among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` and `statecodeset` make the live code-set count 737. The native fixed capture schema has 133 columns over 128 tags.
+The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 152 columns.
 
 === "Rust"
 
@@ -36,26 +36,26 @@ The live additions are the crate's 40 scalar fields - `srcuuids`, `msgcat`, `isi
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_790);
+    assert_eq!(registry.len(), 7_780);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_790);
+    assert_eq!(registry.iter().count(), 7_780);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let metadata = registry.field_by_counter(65_030)?;
+    let metadata = registry.field_by_counter(65_035)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().tag()?, Some(65_030));
+    assert_eq!(metadata.as_fix().tag()?, Some(65_035));
     assert!(metadata.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
-    assert!(registry.get_field_by_tag(65_030).is_none());
+    assert!(registry.get_field_by_tag(65_035).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
-    // The crate's own columns are fields from tag 65001, held by every registry;
+    // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together.
     let (tag, name) = CURRUNIX_TAG_NAME;
     let currunix = registry.field_by_id(FixId::of(tag, name)?)?;
     assert_eq!(currunix.name(), "currunix");
-    assert_eq!(currunix.display(), Some("CurrUnix"));
-    assert_eq!(currunix.as_fix().id()?, Some(FixId::of(65_001, "CurrUnix")?));
+    assert_eq!(currunix.display(), Some("Current Time"));
+    assert_eq!(currunix.as_fix().id()?, Some(FixId::of(65_007, "CurrUnix")?));
     ```
 
 === "Python"
@@ -67,22 +67,22 @@ The live additions are the crate's 40 scalar fields - `srcuuids`, `msgcat`, `isi
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_790
-    assert sum(1 for _ in registry) == 6_281
+    assert len(registry) == 7_780
+    assert sum(1 for _ in registry) == 6_271
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    metadata = registry.field_by_counter(65_030)
-    assert metadata.name == "metadata" and metadata.fix.tag == 65_030
+    metadata = registry.field_by_counter(65_035)
+    assert metadata.name == "metadata" and metadata.fix.tag == 65_035
     assert metadata.into_arrow().type.keys_sorted
-    assert registry.get_field_by_tag(65_030) is None
+    assert registry.get_field_by_tag(65_035) is None
     assert registry.msgtype("D").value == "D"
-    # The crate's own columns are fields from tag 65001, held by every registry;
+    # The crate's own columns are fields from tag 65007, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
-    currunix = registry.field_by_tag(65_001)
+    currunix = registry.field_by_tag(65_007)
     assert currunix.name == "currunix"
-    assert currunix.display == "CurrUnix"
+    assert currunix.display == "Current Time"
     assert registry.field_by_id(currunix.fix.id) == currunix
     ```
 
@@ -96,23 +96,23 @@ The live additions are the crate's 40 scalar fields - `srcuuids`, `msgcat`, `isi
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7790)
+    assert.equal(registry.size, 7780)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const metadata = registry.fieldByCounter(65030)
+    const metadata = registry.fieldByCounter(65035)
     assert.equal(metadata.name, 'metadata')
-    assert.equal(metadata.fix.tag, 65030)
+    assert.equal(metadata.fix.tag, 65035)
     assert.match(metadata.dtype.toString(), /keys_sorted=true/)
-    assert.equal(registry.getFieldByTag(65030), null)
+    assert.equal(registry.getFieldByTag(65035), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
-    // The crate's own columns are fields from tag 65001, held by every registry;
+    // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
-    const currunix = registry.fieldByTag(65_001)
+    const currunix = registry.fieldByTag(65_007)
     assert.equal(currunix.name, 'currunix')
-    assert.equal(currunix.display, 'CurrUnix')
+    assert.equal(currunix.display, 'Current Time')
     assert.ok(registry.fieldById(currunix.fix.id).equals(currunix))
     ```
 
@@ -134,7 +134,7 @@ A field's detail panel names the code set it reads by and opens that one set's m
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 133 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
+The [Capture](capture.md#find-a-column) page searches the 152 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
 
 ## Where it came from
 

@@ -47,9 +47,12 @@
     "metadata": {
       "FIX:idmap": [
         {
-          "map": "altids",
-          "key": "TRADEID"
+          "map": "identifiers",
+          "key": "tradeid"
         }
+      ],
+      "FIX:parents": [
+        "origtradeid"
       ],
       "FIX:tag": "1003",
       "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
@@ -504,6 +507,15 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "secondarytradeid"
+        }
+      ],
+      "FIX:parents": [
+        "origsecondarytradeid"
+      ],
       "FIX:tag": "1040",
       "description": "Used to carry an internal trade entity ID which may or may not be reported to the firm",
       "display": "SecondaryTradeID"
@@ -528,6 +540,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "secondaryfirmtradeid"
+        }
+      ],
       "FIX:tag": "1042",
       "description": "Used to carry an internal firm assigned ID which may or may not be reported to the exchange or central counterpary",
       "display": "SecondaryFirmTradeID"

@@ -934,21 +934,21 @@ fn at_most_one<'a>(parent: &'a Element<'_>, local: &str) -> Result<Option<Elemen
 /// names and attribute names under `value` spell - a namespace declaration
 /// itself excepted, since it binds rather than uses.
 fn used_prefixes<'a>(name: &'a str, value: &'a Scalar, prefixes: &mut Vec<&'a str>) {
-    if let Some((prefix, _)) = name.split_once(':') {
-        if !prefixes.contains(&prefix) {
-            prefixes.push(prefix);
-        }
+    if let Some((prefix, _)) = name.split_once(':')
+        && !prefixes.contains(&prefix)
+    {
+        prefixes.push(prefix);
     }
     match value {
         Scalar::Struct(entries) => {
             for (key, held) in entries.as_map() {
                 if let Some(attribute) = key.strip_prefix(ATTRIBUTE_PREFIX) {
-                    if attribute != "xmlns" && !attribute.starts_with("xmlns:") {
-                        if let Some((prefix, _)) = attribute.split_once(':') {
-                            if !prefixes.contains(&prefix) {
-                                prefixes.push(prefix);
-                            }
-                        }
+                    if attribute != "xmlns"
+                        && !attribute.starts_with("xmlns:")
+                        && let Some((prefix, _)) = attribute.split_once(':')
+                        && !prefixes.contains(&prefix)
+                    {
+                        prefixes.push(prefix);
                     }
                 } else if !key.starts_with('#') {
                     used_prefixes(key, held, prefixes);

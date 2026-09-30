@@ -65,6 +65,21 @@ impl GroupPlan {
                 });
             }
         }
+        // A member's alternate tags route to it too - a venue numbering a
+        // member its own way still states that member - where no member
+        // holds the tag as its own and no second member names it.
+        let mut alternates: HashMap<i32, Option<usize>> = HashMap::new();
+        for (index, column) in columns.iter().enumerate() {
+            for tag in column.as_fix().tags()? {
+                if !tags.contains_key(&tag) {
+                    alternates
+                        .entry(tag)
+                        .and_modify(|held| *held = None)
+                        .or_insert(Some(index));
+                }
+            }
+        }
+        tags.extend(alternates);
         Ok(Self {
             field,
             columns,

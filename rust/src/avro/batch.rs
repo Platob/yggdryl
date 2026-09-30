@@ -2341,10 +2341,10 @@ impl<H: IOBase> Avro<H> {
     /// commit. The original failure must remain the reported failure.
     fn refresh_dimensions_after_error(&mut self) {
         self.invalidate_dimensions();
-        if self.caches() {
-            if let Ok(loaded) = read_dimensions(&self.handle, &self.options) {
-                let _ = self.cached_dimensions.set(loaded);
-            }
+        if self.caches()
+            && let Ok(loaded) = read_dimensions(&self.handle, &self.options)
+        {
+            let _ = self.cached_dimensions.set(loaded);
         }
     }
 }
@@ -2410,10 +2410,10 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
-        if self.opened {
-            if let Some(dimensions) = self.dimensions()? {
-                return Ok(dimensions.field.with_name(options.name()));
-            }
+        if self.opened
+            && let Some(dimensions) = self.dimensions()?
+        {
+            return Ok(dimensions.field.with_name(options.name()));
         }
         Ok(read_field(&self.handle, options)?)
     }

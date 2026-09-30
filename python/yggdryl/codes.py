@@ -1,10 +1,8 @@
-"""The registered code field factories: thirteen identities, one width each.
+"""The registered code field factories: twelve identities, one width each.
 
 The registered codes - ``country``, ``ccy``, ``mic``, ``cfi``, the six
 securities identifiers ``isin``, ``cusip``, ``sedol``, ``bbg``, ``ric`` and
-``figi``, FIX's own ``timeinforce``, ``unit`` and the currency pair
-``forex`` - are
-datatypes of their own, each storing as the ASCII text it is and held to the
+``figi``, ``unit`` and the currency pair ``forex`` - are datatypes of their own, each storing as the ASCII text it is and held to the
 width its standard fixes, so a code factory is not a bounded string wearing a
 name: the field it builds carries the code's identity across Arrow under its
 own extension name, answers ``is_code`` and ``code_width``, and never
@@ -35,13 +33,12 @@ if TYPE_CHECKING:
     BbgField: TypeAlias = TypedField[Literal["bbg"], str]
     RicField: TypeAlias = TypedField[Literal["ric"], str]
     FigiField: TypeAlias = TypedField[Literal["figi"], str]
-    TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
     UnitField: TypeAlias = TypedField[Literal["unit"], str]
     ForexField: TypeAlias = TypedField[Literal["forex"], str]
 else:
     CountryField = CcyField = MicField = CfiField = IsinField = CusipField = SedolField = (
         BbgField
-    ) = RicField = FigiField = TimeInForceField = UnitField = ForexField = Field
+    ) = RicField = FigiField = UnitField = ForexField = Field
 
 _COUNTRY = simple_dtype("country")
 _CCY = simple_dtype("ccy")
@@ -53,7 +50,6 @@ _SEDOL = simple_dtype("sedol")
 _BBG = simple_dtype("bbg")
 _RIC = simple_dtype("ric")
 _FIGI = simple_dtype("figi")
-_TIMEINFORCE = simple_dtype("timeinforce")
 _UNIT = simple_dtype("unit")
 _FOREX = simple_dtype("forex")
 
@@ -126,17 +122,6 @@ def figi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(FigiField, name, _FIGI, nullable, metadata)
 
 
-def timeinforce(
-    name: str,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> TimeInForceField:
-    """FIX ``TimeInForce(59)``, the wire value rather than a name for it."""
-
-    return new_field(TimeInForceField, name, _TIMEINFORCE, nullable, metadata)
-
-
 def unit(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> UnitField:
     """The unit a quantity is counted in, FIX ``UnitOfMeasure(996)``: ASCII up to 32 bytes."""
 
@@ -165,7 +150,6 @@ __all__ = [
     "MicField",
     "RicField",
     "SedolField",
-    "TimeInForceField",
     "UnitField",
     "bbg",
     "cfi",
@@ -178,6 +162,5 @@ __all__ = [
     "mic",
     "ric",
     "sedol",
-    "timeinforce",
     "unit",
 ]

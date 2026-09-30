@@ -124,6 +124,7 @@ fn value_of(
     Ok(match source {
         // The line's own reading of the fact, which refuses by name a
         // capture the fact's type cannot read.
+        TextSource::Element(column) => line.element_fact(*column).unwrap_or(Scalar::Null),
         TextSource::Event(column) => line.event_fact(*column)?.unwrap_or(Scalar::Null),
         TextSource::BodyType => Scalar::from(line.bodytype().as_str()),
         TextSource::Body => Scalar::from(line.body()),
@@ -201,6 +202,7 @@ const ALIASES: [(&str, &[&str]); 5] = [
 /// The name a fixed column carries before any rename.
 const fn default_name_of(source: &TextSource) -> Option<&'static str> {
     Some(match source {
+        TextSource::Element(column) => column.name(),
         TextSource::Event(column) => column.name(),
         TextSource::BodyType => "mimetype",
         TextSource::Body => "body",
@@ -390,17 +392,17 @@ pub fn from_arrow_reader(
             return None;
         }
         loop {
-            if let Some((batch, row)) = pending.as_mut() {
-                if *row < batch.rows {
-                    let result = line_of(&plan, &intake, batch, *row, ordinal);
-                    *row += 1;
-                    ordinal += 1;
-                    if result.is_err() {
-                        done = true;
-                        pending = None;
-                    }
-                    return Some(result);
+            if let Some((batch, row)) = pending.as_mut()
+                && *row < batch.rows
+            {
+                let result = line_of(&plan, &intake, batch, *row, ordinal);
+                *row += 1;
+                ordinal += 1;
+                if result.is_err() {
+                    done = true;
+                    pending = None;
                 }
+                return Some(result);
             }
             pending = None;
             let batch = match batches.next() {
@@ -570,15 +572,14 @@ fn body_of(
     if held.is_string_storage()
         && !matches!(held, Serie::FixedString(_))
         && child.dtype().layout_is_contract()
+        && let Some(run) = held.value_bytes(row)
     {
-        if let Some(run) = held.value_bytes(row) {
-            return super::TextBytes::from_bytes(run).map_err(|error| {
-                refused(smol_str::format_smolstr!(
-                    "{}",
-                    crate::text::elide_display(&error)
-                ))
-            });
-        }
+        return super::TextBytes::from_bytes(run).map_err(|error| {
+            refused(smol_str::format_smolstr!(
+                "{}",
+                crate::text::elide_display(&error)
+            ))
+        });
     }
     let value = cell_of(held, row, ordinal, None, column, child)?;
     // A cell that states nothing at all is no row; an empty one is the line
@@ -678,50 +679,50 @@ fn apply(
         })
     };
     match &column.source {
-        // What the batch states of the event is the line's word: a line
-        // read back keeps the identity a message named as its source. The
-        // columns never null spell nothing as the epoch and the nil
-        // identity, and nothing stated is nothing to restate: the line
+        // What the batch states of the element and the event is the line's
+        // word: a line read back keeps the identity a message named as its
+        // source. The columns never null spell nothing as the epoch and the
+        // nil identity, and nothing stated is nothing to restate: the line
         // reads its own instant and identity, as it did before the batch.
-        TextSource::Event(held) => {
-            let nothing = match held {
-                crate::graph::EventColumn::CurrUnix => value.temporal_count() == Some(0),
-                crate::graph::EventColumn::CurrUuid | crate::graph::EventColumn::CrossUuid => {
-                    matches!(value, Scalar::Uuid(uuid) if uuid.is_nil())
-                }
-                _ => false,
-            };
+        TextSource::Element(held) => {
+            let nothing = matches!(
+                held,
+                crate::graph::ElementColumn::CurrUuid | crate::graph::ElementColumn::CrossUuid
+            ) && matches!(value, Scalar::Uuid(uuid) if uuid.is_nil());
             if !nothing {
                 held.record(line, value);
             }
-            match held {
-                // The code is the identifier the line was read under, so a
-                // code that reads as one restores what the line was
-                // addressed by - a name as much as a location, and a name
-                // locates itself again where it resolves to. A code that is
-                // no identifier is an ordinary code and addresses nothing,
-                // which is the unaddressed line it always was.
-                crate::graph::EventColumn::CrossCode => {
-                    if let Some(source) = value.as_str().and_then(LineSource::from_crosscode) {
-                        line.state_source(Some(source));
-                    }
-                }
-                // The place at its instant is the row number, so it restores
-                // the line's index under the same offset the read counted
-                // from; a number before that offset is refused rather than
-                // wrapped.
-                crate::graph::EventColumn::SeqNum => {
-                    let number = value
-                        .as_i128()
-                        .and_then(|number| u64::try_from(number - i128::from(start_rownum)).ok())
-                        .ok_or_else(|| {
-                            refused(SmolStr::new_static(
-                                "expected a sequence number at or after start_rownum",
-                            ))
-                        })?;
-                    line.set_index(number);
-                }
-                _ => {}
+            // The code is the identifier the line was read under, so a code
+            // that reads as one restores what the line was addressed by - a
+            // name as much as a location, and a name locates itself again
+            // where it resolves to. A code that is no identifier is an
+            // ordinary code and addresses nothing, which is the unaddressed
+            // line it always was.
+            if *held == crate::graph::ElementColumn::CrossCode
+                && let Some(source) = value.as_str().and_then(LineSource::from_crosscode)
+            {
+                line.state_source(Some(source));
+            }
+        }
+        TextSource::Event(held) => {
+            let nothing =
+                *held == crate::graph::EventColumn::CurrUnix && value.temporal_count() == Some(0);
+            if !nothing {
+                held.record(line, value);
+            }
+            // The place at its instant is the row number, so it restores the
+            // line's index under the same offset the read counted from; a
+            // number before that offset is refused rather than wrapped.
+            if *held == crate::graph::EventColumn::SeqNum {
+                let number = value
+                    .as_i128()
+                    .and_then(|number| u64::try_from(number - i128::from(start_rownum)).ok())
+                    .ok_or_else(|| {
+                        refused(SmolStr::new_static(
+                            "expected a sequence number at or after start_rownum",
+                        ))
+                    })?;
+                line.set_index(number);
             }
         }
         TextSource::BodyType => {

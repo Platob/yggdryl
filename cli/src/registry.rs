@@ -142,10 +142,10 @@ pub fn list(
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut matched = 0_usize;
     for field in store.registry().definitions(category) {
-        if let Some(dialect) = dialect {
-            if !field.as_fix().has_branch(dialect) {
-                continue;
-            }
+        if let Some(dialect) = dialect
+            && !field.as_fix().has_branch(dialect)
+        {
+            continue;
         }
         if let Some(held) = &folded {
             let tag = field
@@ -325,10 +325,10 @@ pub fn resolve<'registry>(
     category: FixCategory,
     key: &str,
 ) -> Result<&'registry Field> {
-    if category == FixCategory::Fields {
-        if let Ok(tag) = key.parse::<i32>() {
-            return registry.field_by_tag(tag);
-        }
+    if category == FixCategory::Fields
+        && let Ok(tag) = key.parse::<i32>()
+    {
+        return registry.field_by_tag(tag);
     }
     registry.definition(category, key)
 }

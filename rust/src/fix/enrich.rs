@@ -653,13 +653,11 @@ impl<I> Prepared<I> {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len_hint().min(4_096);
-        // A bridge's instrument names state a listing - `dbi;ISIN_MIC_CCY` -
-        // and are no association of the ISIN alone.
-        let listings = super::crated::instrument_sources()
-            .filter_map(|(_, _, source)| crate::SecType::read(source).ok());
+        // A bridge's instrument key states a listing - `dbi;ISIN_MIC_CCY` -
+        // and is no association of the ISIN alone.
         Self {
             source,
-            codes: SecurityIdRegistry::with_listings(listings),
+            codes: SecurityIdRegistry::with_listings([crate::IdType::InstrumentId]),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -780,15 +778,14 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
                     let hour = message.get_currunix().div_euclid(HOUR_NS);
                     self.position = Some(hour);
                     let key = session_event_key(&message);
-                    if let Some(&(held, slot)) = key.as_ref().and_then(|key| self.held.get(key)) {
-                        if let Some(observations) = self
+                    if let Some(&(held, slot)) = key.as_ref().and_then(|key| self.held.get(key))
+                        && let Some(observations) = self
                             .buckets
                             .get_mut(&held)
                             .and_then(|bucket| bucket.get_mut(slot))
-                        {
-                            observations.others.push(message);
-                            continue;
-                        }
+                    {
+                        observations.others.push(message);
+                        continue;
                     }
                     let bucket = self.buckets.entry(hour).or_default();
                     if let Some(key) = &key {

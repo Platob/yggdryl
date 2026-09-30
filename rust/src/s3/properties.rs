@@ -239,15 +239,15 @@ impl S3Options {
     #[must_use]
     pub fn under(mut self, ambient: &Self) -> Self {
         let fallback = Self::default();
-        if self.endpoint().is_none() {
-            if let Some(endpoint) = ambient.endpoint() {
-                self = self.with_endpoint(endpoint);
-            }
+        if self.endpoint().is_none()
+            && let Some(endpoint) = ambient.endpoint()
+        {
+            self = self.with_endpoint(endpoint);
         }
-        if self.region().is_none() {
-            if let Some(region) = ambient.region() {
-                self = self.with_region(region);
-            }
+        if self.region().is_none()
+            && let Some(region) = ambient.region()
+        {
+            self = self.with_region(region);
         }
         if self.credentials().is_none() && !self.anonymous() {
             if let Some(credentials) = ambient.credentials() {
@@ -258,15 +258,15 @@ impl S3Options {
                 self = self.with_anonymous(true);
             }
         }
-        if self.path_style().is_none() {
-            if let Some(path_style) = ambient.path_style() {
-                self = self.with_path_style(path_style);
-            }
+        if self.path_style().is_none()
+            && let Some(path_style) = ambient.path_style()
+        {
+            self = self.with_path_style(path_style);
         }
-        if self.proxy().is_none() {
-            if let Some(proxy) = ambient.proxy() {
-                self = self.with_proxy(proxy);
-            }
+        if self.proxy().is_none()
+            && let Some(proxy) = ambient.proxy()
+        {
+            self = self.with_proxy(proxy);
         }
         if self.encryption().is_default() && !ambient.encryption().is_default() {
             self = self.with_encryption(ambient.encryption().clone());

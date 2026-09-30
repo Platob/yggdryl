@@ -1467,8 +1467,8 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
 fn a_refused_cfb_field_cannot_replace_a_builtin_code_set() {
     let body = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
-    <vocabulary><vocabulary-tag name="9001" alt="MsgCat" type="string" /></vocabulary>
-    <maps><map name="MsgCat"><entries><entry key="X" value="Injected" /></entries></map></maps>
+    <vocabulary><vocabulary-tag name="9001" alt="MarketDataKind" type="string" /></vocabulary>
+    <maps><map name="MarketDataKind"><entries><entry key="X" value="Injected" /></entries></map></maps>
 </cplugin-configuration>"#;
     let baseline = FixRegistry::new();
     let codes = baseline
@@ -1486,7 +1486,9 @@ fn a_refused_cfb_field_cannot_replace_a_builtin_code_set() {
     assert_eq!(held.document(), codes);
     assert_eq!(held.codes().count(), 26);
     assert!(
-        warnings.iter().any(|warning| warning.contains("msgcat")),
+        warnings
+            .iter()
+            .any(|warning| warning.contains("marketdatakind")),
         "{warnings:?}"
     );
 }

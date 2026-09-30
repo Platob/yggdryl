@@ -64,7 +64,7 @@ def test_the_datatype_stores_the_code_and_reads_back_the_member() -> None:
     assert pickle.loads(pickle.dumps(held)).as_py() is MarketDataKind.TRAD
 
 
-def test_an_arrow_column_is_int32_under_its_extension() -> None:
+def test_an_arrow_column_is_uint8_under_its_extension() -> None:
     arrow = Field("kind", "marketdatakind").into_arrow()
-    assert arrow.type == pa.int32()
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.marketdatakind"
+    assert arrow.type.storage_type == pa.uint8()
+    assert arrow.type.extension_name == "yggdryl.marketdatakind"

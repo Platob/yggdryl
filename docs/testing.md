@@ -33,8 +33,7 @@ Every check runs from the repository root, which owns the Cargo workspace.
 
 | Pass | Toolchain |
 | --- | --- |
-| Default features, schema-only core | Rust 1.85 |
-| `--all-features`, both bindings | Rust 1.94 or newer |
+| Every feature, both bindings | Rust 1.94 or newer |
 
 ## By entry
 

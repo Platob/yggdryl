@@ -422,11 +422,12 @@ pub(crate) fn column_of(
     match array.data_type() {
         ArrowDataType::Int8 => primitive!(Int8Type, read_native),
         ArrowDataType::Int16 => primitive!(Int16Type, read_native),
-        // An enum member is the code of its leaf, read back as the member.
-        ArrowDataType::Int32 if field.dtype().is_enum() => primitive!(Int32Type, read_enum),
         ArrowDataType::Int32 => primitive!(Int32Type, read_native),
         ArrowDataType::Int64 => primitive!(Int64Type, read_native),
+        // An enum member is the code of its leaf, read back as the member.
+        ArrowDataType::UInt8 if field.dtype().is_enum() => primitive!(UInt8Type, read_enum),
         ArrowDataType::UInt8 => primitive!(UInt8Type, read_native),
+        ArrowDataType::UInt16 if field.dtype().is_enum() => primitive!(UInt16Type, read_enum),
         ArrowDataType::UInt16 => primitive!(UInt16Type, read_native),
         ArrowDataType::UInt32 => primitive!(UInt32Type, read_native),
         ArrowDataType::UInt64 => primitive!(UInt64Type, read_native),

@@ -710,15 +710,15 @@ impl Request {
     /// Learn what an answer's headers say about the resource: its media
     /// type from `Content-Type`, once, and its length when `size` says so.
     fn learn(&self, headers: &Headers, size: Option<u64>) {
-        if headers.content_type().is_some() {
-            if let Ok(media_type) = headers.media_type() {
-                let _ = self.learned.set(media_type);
-            }
+        if headers.content_type().is_some()
+            && let Ok(media_type) = headers.media_type()
+        {
+            let _ = self.learned.set(media_type);
         }
-        if let Some(size) = size {
-            if let Ok(mut state) = self.state() {
-                learn_size(&mut state, size);
-            }
+        if let Some(size) = size
+            && let Ok(mut state) = self.state()
+        {
+            learn_size(&mut state, size);
         }
     }
 
@@ -1114,10 +1114,10 @@ impl IOBase for Request {
     /// The byte length: the stage's, the cached one while open, else one
     /// `HEAD`; zero when absent or unstated.
     fn size(&self) -> u64 {
-        if let Ok(state) = self.state() {
-            if let Some(stage) = state.stage.as_ref() {
-                return stage.bytes.len() as u64;
-            }
+        if let Ok(state) = self.state()
+            && let Some(stage) = state.stage.as_ref()
+        {
+            return stage.bytes.len() as u64;
         }
         self.meta()
             .ok()
@@ -1127,10 +1127,10 @@ impl IOBase for Request {
     }
 
     fn capacity(&self) -> u64 {
-        if let Ok(state) = self.state() {
-            if let Some(stage) = state.stage.as_ref() {
-                return stage.bytes.capacity() as u64;
-            }
+        if let Ok(state) = self.state()
+            && let Some(stage) = state.stage.as_ref()
+        {
+            return stage.bytes.capacity() as u64;
         }
         self.size()
     }
@@ -1208,10 +1208,10 @@ impl IOBase for Request {
     /// `File` once a head answered `2xx` or a write is staged, `Unknown` on
     /// a `404`.
     fn kind(&self) -> IOKind {
-        if let Ok(state) = self.state() {
-            if state.stage.as_ref().is_some_and(|stage| stage.dirty) {
-                return IOKind::File;
-            }
+        if let Ok(state) = self.state()
+            && state.stage.as_ref().is_some_and(|stage| stage.dirty)
+        {
+            return IOKind::File;
         }
         self.file_kind()
     }

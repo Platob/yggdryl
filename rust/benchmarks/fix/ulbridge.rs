@@ -29,9 +29,10 @@ use criterion::measurement::Measurement;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::{Event, Market};
 use yggdryl::holder::Buffer;
-use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{FixCodec, FixMsg, Scalar, Serie, Timezone, Url, fix_schema};
+use yggdryl::{
+    FixCodec, FixMsg, IdSource, IdType, Identifier, Scalar, Serie, Timezone, Url, fix_schema,
+};
 
 use super::seed;
 
@@ -306,7 +307,7 @@ pub(crate) fn stages<M: Measurement>(
     // already holds - the typed facts lifted, the clocks and the identity
     // settled - which is what `with_registry` costs over the content row;
     // one typed write, which is what settling the identity again costs; one
-    // normalized identifier write, including its `secaltids` occurrence;
+    // normalized identifier write, including its `securityids` occurrence;
     // and the entries derived from the row, which is what the wire
     // re-emission starts from.
     let rows: Vec<(yggdryl::Field, Scalar)> = messages
@@ -340,11 +341,8 @@ pub(crate) fn stages<M: Measurement>(
             BatchSize::LargeInput,
         );
     });
-    let bloombergcode = SecurityId::new(
-        SecType::read("BLOOMBERG").expect("the Bloomberg source"),
-        "AAPL US EQUITY",
-    )
-    .expect("a Bloomberg identifier");
+    let bloombergcode = Identifier::new(IdSource::Base, IdType::Bloomberg, "AAPL US EQUITY")
+        .expect("a Bloomberg identifier");
     group.bench_function("step/insert_securityid", |bencher| {
         bencher.iter_batched(
             || messages.clone(),

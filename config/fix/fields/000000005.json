@@ -332,6 +332,15 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "secondaryclordid"
+        }
+      ],
+      "FIX:names": [
+        "exchangeclientorderid"
+      ],
       "FIX:tag": "526",
       "description": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system.",
       "display": "SecondaryClOrdID"
@@ -344,6 +353,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "identifiers",
+          "key": "secondaryexecid"
+        }
+      ],
       "FIX:tag": "527",
       "description": "Assigned by the party which accepts the order. Can be used to provide the ExecID (17) used by an exchange or executing system.",
       "display": "SecondaryExecID"
@@ -611,6 +626,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:parents": [
+        "origcrossid"
+      ],
       "FIX:tag": "548",
       "description": "Identifier for a cross order. Must be unique during a given trading day. Recommend that firms use the order date as part of the CrossID for Good Till Cancel (GT) orders.",
       "display": "CrossID"
@@ -649,6 +667,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "parentcrossid"
+      ],
       "FIX:tag": "551",
       "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
       "display": "OrigCrossID"
@@ -674,6 +695,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "omsuserid"
+      ],
       "FIX:tag": "553",
       "description": "Userid or username.",
       "display": "Username"

@@ -125,7 +125,7 @@ test('BookEvent: locked, spread and imbalance read the two bests', () => {
 test('BookEvent: an empty book', () => {
   const book = new graph.BookEvent(CLOCK, 'IBM')
   assert.equal(book.currunix, CLOCK)
-  assert.equal(book.crosscode, 'IBM')
+  assert.equal(book.crosscode, '3:0:IBM')
   assert.equal(book.marketdatakind, 'BOOK')
   assert.equal(book.side, 'UNKN')
   assert.deepEqual(book.alive(), [])
@@ -162,15 +162,15 @@ test('BookEvent: executions and MarketData fold, read from any iterable', () => 
   const execution = new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUYS', lastpx: '101', lastqty: 1 })
   const book = new graph.BookEvent(CLOCK, 'IBM').withOperations(new Set([new graph.MarketData(order()), execution]))
   assert.ok(book.executions().every((held) => held instanceof graph.ExecutionEvent))
-  // A sided element's cross code carries its side (A17).
-  assert.deepEqual(book.executions().map((held) => held.crosscode), ['BUYS:E-1'])
+  // The stored cross code is the kind, the side, then the base.
+  assert.deepEqual(book.executions().map((held) => held.crosscode), ['8:1:E-1'])
 })
 
 test('BookEvent: refusals name the item', () => {
   const book = new graph.BookEvent(CLOCK, 'IBM')
   assert.throws(
     () => book.withOperations([order(), 1]),
-    /operations\[1\]: expected MarketData or a market leaf, got number/,
+    /operations\[1\]: expected MarketData, a market leaf or a FixMsg, got number/,
   )
   assert.throws(
     () => book.withOperations([new graph.Order()]),
@@ -187,7 +187,7 @@ test('BookEvent: equals, stableHash, toString, clone and toJSON round trip', () 
   assert.ok(twin.alive().every((entry, at) => entry.equals(book.alive()[at])))
   assert.deepEqual(twin.limits('SELL'), book.limits('SELL'))
   assert.ok(book.clone().equals(book))
-  assert.equal(book.toString(), `BookEvent(${book.curruuid}, currunix=${CLOCK}, crosscode="IBM")`)
+  assert.equal(book.toString(), `BookEvent(${book.curruuid}, currunix=${CLOCK}, crosscode="3:0:IBM")`)
   const later = new graph.BookEvent(CLOCK + 1n, 'IBM')
   assert.ok(later.isAfter(book) && book.isBefore(later))
 })
@@ -226,7 +226,7 @@ test('BookIterator: books over three items in order', () => {
   assert.deepEqual(books.map((book) => book.currunix), [CLOCK, CLOCK + 1n])
   assert.equal(books[0].bestPrice('BUYS'), '101')
   assert.equal(books[0].bestPrice('SELL'), '102')
-  assert.deepEqual(books[1].executions().map((held) => held.crosscode), ['BUYS:O-1'])
+  assert.deepEqual(books[1].executions().map((held) => held.crosscode), ['8:1:O-1'])
   assert.equal(walk[Symbol.iterator](), walk)
   assert.equal('GLOBAL_SYMBOL' in graph, false)
 })
@@ -246,7 +246,7 @@ test('BookIterator: a JavaScript failure is thrown as itself', () => {
   assert.throws(() => [...new graph.BookIterator(items())], { name: 'RangeError', message: 'the source gave up' })
   assert.throws(() => [...new graph.BookIterator([1])], {
     name: 'TypeError',
-    message: 'expected MarketData or a market leaf, got number',
+    message: 'expected MarketData, a market leaf or a FixMsg, got number',
   })
   assert.throws(() => new graph.BookIterator(5), /items must be an iterable/)
 })

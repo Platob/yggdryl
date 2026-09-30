@@ -169,8 +169,8 @@ The value is the six characters, under the classification's identity.
 
     classification = Field("classification", "cfi")
     arrow_field = classification.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.cfi"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.cfi"
     assert Field.from_arrow(arrow_field) == classification
     ```
 
@@ -286,7 +286,7 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes
     ```
 
 === "Python"

@@ -8,8 +8,8 @@
 | --- | --- |
 | Owner | trait `yggdryl::graph::Element` (`graph::element`); Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `curruuid` | `get_curruuid`/`set_curruuid`: [`Uuid`](../types/uuid.md) - UUIDv8 over the content code (undated) or [event identity](event.md#identity) (dated) |
-| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; an order, a quote or an execution stores it under the side it takes - `BUYS:O-1001` - and every other element as given ([Market](market.md#sides-and-cross-codes)) |
-| `crosshashcode`, `crossuuid` | `get_crosshashcode`/`set_crosshashcode`: XXH3-64 of the cross code, zero if none; `get_crossuuid`/`set_crossuuid`: the cross element, never absent - UUIDv8 over the cross hash, else the element's own identity, so every element stands in one chain |
+| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; a market element stores it as `{kind}:{side}:{base}` - `10:1:O-1001` an order to buy, `21:0:T-1` a trade - through [`Market::stored_crosscode`](market.md#sides-and-cross-codes) |
+| `crosshashcode`, `crossuuid` | `get_crosshashcode`/`set_crosshashcode`: XXH3-64 of the cross code as stored, zero if none; `get_crossuuid`/`set_crossuuid`: the cross element, never absent - UUIDv8 over the cross hash, else the element's own identity, so every element stands in one chain |
 | `currhashcode` | `get_currhashcode`/`set_currhashcode`: XXH3-64 digest of content |
 | `srcuuids` | `get_srcuuids`/`set_srcuuids`: sorted unique identities this one was read from; provenance, never chain, never digested |
 | Order | `is_after()`/`is_before()` (its mirror): one strict weak order |
@@ -19,7 +19,7 @@
 | Composite | feeds only nested `curruuid` bytes per occurrence, never `currhashcode`/content, framed by the layout's kind/count |
 | `with_previous` | implementor's: this element after another; events delegate to [`Event::following`](event.md#following) |
 | `merge_with` | provided: folds another same-`curruuid` statement (missing cross code, unioned sources), else no-op; events use [`Event::merging`](event.md#merging) |
-| Not here | operation names: [`Operation::get_altids`](operation.md#alternate-identifiers); book placement: [book control](order.md#book-control) |
+| Not here | operation names: [`Operation::get_identifiers`](operation.md#identifiers); book placement: [book control](order.md#book-control) |
 
 ## Example
 

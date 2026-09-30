@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use yggdryl::graph::Market;
-use yggdryl::securityid::{SecType, SecurityId};
-use yggdryl::{Cfi, FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
+use yggdryl::{
+    Cfi, FixCodec, FixMsg, FixRegistry, IdSource, IdType, Identifier, Scalar, fix_schema,
+};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -23,15 +24,15 @@ fn cell(message: &FixMsg, tag: i32) -> Option<String> {
         .or_else(|| held.as_i64().map(|value| value.to_string()))
 }
 
-fn pair(code: &str) -> SecurityId {
-    SecurityId::new(SecType::read("FOREX").expect("the crate's key"), code).expect("a pair")
+fn pair(code: &str) -> Identifier {
+    Identifier::new(IdSource::Base, IdType::Forex, code).expect("a pair")
 }
 
-/// The pair the message's identifiers hold under `FOREX`.
+/// The pair the message's identifiers hold under `forex`.
 fn forex(message: &FixMsg) -> Option<String> {
     message
         .get_securityids()
-        .get("FOREX")
+        .get(&IdType::Forex)
         .map(ToOwned::to_owned)
 }
 
@@ -59,7 +60,7 @@ fn a_stated_class_that_is_not_foreign_exchange_blocks_every_fill() {
         let message = reader.sole_line(line).expect("an order");
         let spelled = String::from_utf8_lossy(line);
         assert_eq!(forex(&message), None, "{spelled}");
-        assert_eq!(cell(&message, 65_024), None, "{spelled}");
+        assert_eq!(cell(&message, 65_046), None, "{spelled}");
         assert_ne!(cell(&message, 461).as_deref(), Some("IFXXXP"), "{spelled}");
         assert_eq!(cell(&message, 15), None, "{spelled}");
         assert_eq!(cell(&message, 120), None, "{spelled}");
@@ -108,7 +109,7 @@ fn a_spot_pair_states_its_class_its_currencies_and_no_market() {
         "detected is derived, not stated"
     );
     assert_eq!(
-        message.get_by_tag(65_024),
+        message.get_by_tag(65_046),
         Some(Scalar::Forex(yggdryl::Forex::new("EUR/USD").unwrap()))
     );
     assert_eq!(cell(&message, 167).as_deref(), Some("FXSPOT"));
@@ -182,7 +183,10 @@ fn a_stated_identifier_beside_the_pair_keeps_both() {
     let message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=EUR/USD|22=4|48=CH0012221716|10=0|")
         .expect("an order");
-    assert_eq!(message.get_securityids().get("ISIN"), Some("CH0012221716"));
+    assert_eq!(
+        message.get_securityids().get(&IdType::Isin),
+        Some("CH0012221716")
+    );
     assert_eq!(forex(&message).as_deref(), Some("EUR/USD"));
 }
 
@@ -197,7 +201,14 @@ fn a_detected_row_reads_back_stating_its_pair() {
     let mut back = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(back.into_row(&schema).unwrap(), row, "a fixed point");
     assert_eq!(forex(&back).as_deref(), Some("EUR/USD"));
-    assert!(!derives_its_pair(&back), "a row's pair is the row's word");
+    // The row states where its pair came from: the identifier's source is
+    // part of the row, so the pair detection derived reads back derived.
+    assert_eq!(
+        back.get_securityids()
+            .get_identifier(&IdType::Forex)
+            .map(Identifier::src),
+        Some(&IdSource::Derived)
+    );
     // A changed symbol leaves a pair the row stated.
     back.set(55, Scalar::from("GBP/USD")).unwrap();
     assert_eq!(forex(&back).as_deref(), Some("EUR/USD"));
@@ -215,7 +226,7 @@ fn a_changed_symbol_derives_again_and_keeps_what_a_caller_set() {
     message.set(55, Scalar::from("GBP/USD")).unwrap();
     assert_eq!(forex(&message).as_deref(), Some("GBP/USD"));
     assert_eq!(
-        cell(&message, 65_024).as_deref(),
+        cell(&message, 65_046).as_deref(),
         Some("GBP/USD"),
         "the cell follows the pair"
     );
@@ -234,7 +245,7 @@ fn a_changed_symbol_derives_again_and_keeps_what_a_caller_set() {
     // A symbol naming no pair takes back everything detection derived.
     message.set(55, Scalar::from("AAPL")).unwrap();
     assert_eq!(forex(&message), None);
-    assert_eq!(cell(&message, 65_024), None);
+    assert_eq!(cell(&message, 65_046), None);
     assert_eq!(cell(&message, 15), None);
     assert_eq!(cell(&message, 120), None);
     assert_eq!(cell(&message, 460), None);
@@ -264,7 +275,7 @@ fn a_disagreeing_spelling_of_the_stated_pair_is_an_anomaly() {
     assert!(
         anomalies
             .iter()
-            .any(|held| held.contains("states FOREX:GBP/USD where FOREX:EUR/USD")),
+            .any(|held| held.contains("states base:forex=GBP/USD where base:forex=EUR/USD")),
         "{anomalies:?}"
     );
 }
@@ -283,8 +294,8 @@ fn a_stated_pair_is_its_column_and_never_an_alternate_identifier() {
         .expect("an order");
     let before = alternates(&message);
     assert!(message.insert_securityid(pair("EUR/USD")).unwrap());
-    assert_eq!(alternates(&message), before, "no FOREX occurrence");
-    assert_eq!(cell(&message, 65_024).as_deref(), Some("EUR/USD"));
+    assert_eq!(alternates(&message), before, "no forex occurrence");
+    assert_eq!(cell(&message, 65_046).as_deref(), Some("EUR/USD"));
     assert!(!derives_its_pair(&message));
 
     // A successor inherits its predecessor's pair the same way.
@@ -303,7 +314,7 @@ fn a_stated_pair_is_its_column_and_never_an_alternate_identifier() {
         .unwrap();
     assert_eq!(walked.len(), 2);
     assert_eq!(forex(&walked[1]).as_deref(), Some("EUR/USD"));
-    assert_eq!(alternates(&walked[1]), before, "no FOREX occurrence");
+    assert_eq!(alternates(&walked[1]), before, "no forex occurrence");
 }
 
 #[cfg(feature = "internals")]

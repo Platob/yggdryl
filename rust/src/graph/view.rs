@@ -10,15 +10,16 @@
 //!
 //! A *lift* is a [`FieldPath`] into the root row appended to the view's
 //! projections, so a fact kept inside a nested column - an identifier in
-//! `securityids`, say - becomes a column of its own: `securityids['ISIN'] as
-//! isin` reads the key exactly as it is stored, a row without it reads null,
-//! and a path naming a column the root does not hold is refused where the
-//! plan binds.
+//! `identifiers`, say - becomes a column of its own:
+//! `identifiers['fix:clordid'].value as clordid` reads the value under that
+//! key, the unique `src:type` the identifier map is keyed by, a row without
+//! one reads null, and a path naming a column the root does not hold is
+//! refused where the plan binds.
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS, MARKETDATAKIND};
-use super::{EventColumn, MarketData};
+use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS};
+use super::{ElementColumn, EventColumn, MarketColumn, MarketData};
 use crate::MarketDataKind;
 use crate::arrow::BatchReader;
 use crate::expression::{FieldPath, Function, Ordering, Plan, Projection, Selector, Term};
@@ -44,7 +45,7 @@ const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 /// # fn main() -> yggdryl::Result<()> {
 /// let view = MarketView::read("Trades", None)?;
 /// assert_eq!(view, MarketView::Trades);
-/// let plan = MarketData::plan(&view, &["securityids['ISIN'] as isin".parse()?])?;
+/// let plan = MarketData::plan(&view, &["identifiers['fix:clordid'].value as clordid".parse()?])?;
 /// assert!(plan
 ///     .to_string()
 ///     .starts_with("select * exclude (alive, deltas, executions, bidlimits, asklimits)"));
@@ -165,7 +166,7 @@ impl std::fmt::Display for MarketView {
 /// `marketdatakind = '...'`: the rows of one category, dated or not - the
 /// name coerces to the member where the plan binds.
 fn category(kind: MarketDataKind) -> Term {
-    Term::column(MARKETDATAKIND).eq(Term::literal(kind.as_str()))
+    Term::column(MarketColumn::MarketDataKind.name()).eq(Term::literal(kind.as_str()))
 }
 
 /// `marketdatakind = 'BOOK' and alive is not null`: the books, which state
@@ -205,7 +206,7 @@ impl MarketData {
             MarketView::Books => (Selector::all_except([EXECUTIONS]), books()),
             MarketView::Lifecycle { crosscode } => (
                 flat(),
-                Term::column(EventColumn::CrossCode.name()).eq(Term::literal(crosscode.as_str())),
+                Term::column(ElementColumn::CrossCode.name()).eq(Term::literal(crosscode.as_str())),
             ),
         };
         for lift in lifts {

@@ -27,16 +27,13 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
-    MsgType as CoreMsgType, Scalar, StructType, TimeInForce as CoreTimeInForce, TimeUnit, Timezone,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, IdType,
+    MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
-use crate::graph::{
-    code_scalar, decimal_scalar, ellipsis, fxrates_dict, idmap_dict, member, securityids_dict,
-    uuid_scalar,
-};
+use crate::graph::{code_scalar, decimal_scalar, ellipsis, fxrates_dict, member, uuid_scalar};
 use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
@@ -325,9 +322,9 @@ impl PyFixRegistry {
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
     /// `fix_crate_fields` lists what the crate adds beside the specification:
-    /// its own columns in tag order from 65001 - the clocks, the identities,
-    /// the derived facts and the capture's own - and the Map group
-    /// `metadata`. Beside them sit two seeded standard
+    /// its own columns in tag order from 65001 - the identities, the clocks,
+    /// the market and operation facts, the message's own and the capture's
+    /// own, the Map group `metadata` among them. Beside them sit two seeded standard
     /// clocks, `SendingTime` (52) and `TransactTime` (60), each a nanosecond
     /// UTC `datetime64`, ordinary definitions a loaded dictionary supplies its
     /// own metadata for; the crate's fields are held by every dictionary
@@ -700,21 +697,112 @@ impl PyFixRegistry {
 
     /// Every field that names a message by an identifier, one record per
     /// key its `FIX:idmap` states: `{"tag", "map", "key", "follow",
-    /// "role"}`, in tag order. A message rebuilds its `altids` from these,
+    /// "role"}`, in tag order. A message rebuilds its `identifiers` from these,
     /// and an operation that follows
-    /// another carries the `altids` keys whose record follows.
+    /// another carries the `identifiers` keys whose record follows.
     fn idmap_sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut records = Vec::new();
         for (tag, source) in self.inner.idmap_sources() {
             let record = PyDict::new(py);
             record.set_item("tag", tag)?;
             record.set_item("map", source.map().as_str())?;
-            record.set_item("key", source.key())?;
+            record.set_item("key", source.key().as_str())?;
             record.set_item("follow", source.follows())?;
             record.set_item("role", source.role())?;
             records.push(record);
         }
         Ok(records)
+    }
+
+    /// Every identifier type whose field states `FIX:parents`, one record per
+    /// field - `{"base": "clordid", "parents": ["origclordid"]}` - in field
+    /// order: the base is the field's `FIX:idmap` key, else its folded name.
+    fn parent_sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        let mut records = Vec::new();
+        for (base, parents) in self.inner.parent_sources() {
+            let record = PyDict::new(py);
+            record.set_item("base", base.as_str())?;
+            record.set_item(
+                "parents",
+                parents.iter().map(IdType::as_str).collect::<Vec<_>>(),
+            )?;
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    /// The parent types of the identifier type `base`, nearest first: the
+    /// list a field stating it names under `FIX:parents`, else the ones its
+    /// name has (`orderid` is `["parentorderid", "origorderid"]`, `clordid`
+    /// `["origclordid"]`; a parent type has none).
+    fn parents_of(&self, base: &str) -> PyResult<Vec<String>> {
+        let base: IdType = base.parse().map_err(value_error)?;
+        Ok(self
+            .inner
+            .parents_of(&base)
+            .iter()
+            .map(|kind| kind.as_str().to_owned())
+            .collect())
+    }
+
+    /// The base the identifier type `kind` is a parent of and its place among
+    /// the base's parents - `("clordid", 0)` for `origclordid`,
+    /// `("orderid", 1)` for `origorderid` - or `None` for a type that is
+    /// no one's parent.
+    fn parent_of(&self, kind: &str) -> PyResult<Option<(String, usize)>> {
+        let kind: IdType = kind.parse().map_err(value_error)?;
+        Ok(self
+            .inner
+            .parent_of(&kind)
+            .map(|(base, at)| (base.as_str().to_owned(), at)))
+    }
+
+    /// The `MarketDataType` member a field's wire value types a message as,
+    /// read through every `FIX:marketdatatype` the dictionary states, else
+    /// the crate's own reading of `OrdType(40)`, `QuoteType(537)`,
+    /// `TrdType(828)` and `MDEntryType(269)`; `None` where the field types
+    /// nothing.
+    fn marketdatatype_of(
+        &self,
+        py: Python<'_>,
+        tag: i32,
+        wire: &str,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        self.inner
+            .marketdatatype_of(tag, wire)
+            .map(|held| member(py, held))
+            .transpose()
+    }
+
+    /// Every wire value a field maps to a market data type through its
+    /// `FIX:marketdatatype`, one `(tag, wire, member)` per value.
+    fn marketdatatype_sources(&self, py: Python<'_>) -> PyResult<Vec<(i32, String, Py<PyAny>)>> {
+        self.inner
+            .marketdatatype_sources()
+            .iter()
+            .map(|(tag, wire, held)| Ok((*tag, wire.to_string(), member(py, *held)?)))
+            .collect()
+    }
+
+    /// The `TimeInForce` member a field's wire value stands for, read
+    /// through every `FIX:timeinforce` the dictionary states, else the
+    /// crate's own reading of `TimeInForce(59)`; `None` where the field
+    /// states no time in force.
+    fn timeinforce_of(&self, py: Python<'_>, tag: i32, wire: &str) -> PyResult<Option<Py<PyAny>>> {
+        self.inner
+            .timeinforce_of(tag, wire)
+            .map(|held| member(py, held))
+            .transpose()
+    }
+
+    /// Every wire value a field maps to a time in force through its
+    /// `FIX:timeinforce`, one `(tag, wire, member)` per value.
+    fn timeinforce_sources(&self, py: Python<'_>) -> PyResult<Vec<(i32, String, Py<PyAny>)>> {
+        self.inner
+            .timeinforce_sources()
+            .iter()
+            .map(|(tag, wire, held)| Ok((*tag, wire.to_string(), member(py, *held)?)))
+            .collect()
     }
 
     /// State the members of the code set `name`, replacing what it held.
@@ -1767,7 +1855,7 @@ impl PyFixMsg {
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
     /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
-    /// own column - `sourceurl` (65031), by tag or by name - is a located
+    /// own column - `sourceurl` (65050), by tag or by name - is a located
     /// `ValueError`: a message holds no fact for it, and a row child would
     /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
@@ -1899,7 +1987,7 @@ impl PyFixMsg {
     /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
     /// empty `W` - each a `MarketData` carrying, in its `metadata`, what the
     /// message states that no typed column reads and no identifier map of the
-    /// leaf holds, the identifiers among it lifted into the leaf's `altids`.
+    /// leaf holds, the identifiers among it lifted into the leaf's `identifiers`.
     fn market_data(&self) -> PyResult<Vec<PyMarketData>> {
         self.inner
             .market_data()
@@ -1926,11 +2014,12 @@ impl PyFixMsg {
         member(py, self.inner.msgcat())
     }
 
-    /// The option strike price the message identifies, as a decimal; `None`
-    /// where it states none.
+    /// The option strike price the message identifies - `StrikePrice(202)`
+    /// read off the dictionary field - as a decimal; `None` where it states
+    /// none.
     #[getter]
-    fn strikepx(&self) -> Option<PyScalar> {
-        self.inner.strikepx().map(decimal_scalar)
+    fn strikeprice(&self) -> Option<PyScalar> {
+        self.inner.strikeprice().map(decimal_scalar)
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -1979,9 +2068,11 @@ impl PyFixMsg {
     }
 
     /// The cross code: the identifier every message of one lifecycle
-    /// shares, as the message spells it - `OrderID`, `ClOrdID`,
-    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the first
-    /// stated - and empty where it names none.
+    /// shares, stored as `{kind}:{side}:{base}` - the `MarketDataKind` code,
+    /// the `Side` code of a sided kind (`0` for any other) and the
+    /// identifier the message names (`OrderID`, `ClOrdID`, `OrigClOrdID`,
+    /// `QuoteID`, `QuoteReqID` or `MDReqID`, the first stated), so a buy order
+    /// `O-1` is `10:1:O-1` - and empty where it names none.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()
@@ -2119,6 +2210,30 @@ impl PyFixMsg {
         self.inner.get_quantity().map(decimal_scalar)
     }
 
+    /// The stop price the message states, `StopPx(99)`, as a decimal; `None` where none.
+    #[getter]
+    fn stoppx(&self) -> Option<PyScalar> {
+        self.inner.get_stoppx().map(decimal_scalar)
+    }
+
+    /// The part of the quantity shown, `DisplayQty(1138)` else `MaxFloor(111)`, as a decimal; `None` where none.
+    #[getter]
+    fn displayqty(&self) -> Option<PyScalar> {
+        self.inner.get_displayqty().map(decimal_scalar)
+    }
+
+    /// The part of the quantity kept back: the quantity past the part shown, as a decimal; `None` where none.
+    #[getter]
+    fn hiddenqty(&self) -> Option<PyScalar> {
+        self.inner.get_hiddenqty().map(decimal_scalar)
+    }
+
+    /// How much was canceled, `CxlQty(84)`, as a decimal; `None` where none.
+    #[getter]
+    fn cxlqty(&self) -> Option<PyScalar> {
+        self.inner.get_cxlqty().map(decimal_scalar)
+    }
+
     /// The unit the quantity is counted in, as spelled; empty where the
     /// message states none.
     #[getter]
@@ -2133,16 +2248,25 @@ impl PyFixMsg {
         member(py, self.inner.get_side())
     }
 
-    /// The identifiers the instrument is stated under, one code under each
-    /// source - `ISIN`, `CUSIP`, `FIGI` - read off `SecurityID(48)` under
-    /// `SecurityIDSource(22)` and the `SecurityAltID` group, in source
-    /// order; empty where the message states none.
+    /// The type of its kind the message is, as the `MarketDataType` member:
+    /// the one stated, else `MarketDataType.UNKN` - never `None`.
     #[getter]
-    fn securityids(&self) -> BTreeMap<String, String> {
-        securityids_dict(self.inner.get_securityids())
+    fn marketdatatype(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        member(py, self.inner.get_marketdatatype())
     }
 
-    /// The ISIN the instrument is stated under - the `ISIN` entry of
+    /// The identifiers the instrument is stated under, each a source, a
+    /// type and a code - read off `SecurityID(48)` under
+    /// `SecurityIDSource(22)`, the `SecurityAltID` group and an unmapped
+    /// entry whose key names a security type, beside the codes an ISIN
+    /// embeds - a map keyed `src:type`, in key order; empty where the
+    /// message states none.
+    #[getter]
+    fn securityids(&self) -> crate::identifier::PyIdentifiers {
+        crate::identifier::PyIdentifiers::from_core(self.inner.get_securityids())
+    }
+
+    /// The ISIN the instrument is stated under - the `isin` entry of
     /// `securityids` - as text; `None` where none.
     #[getter]
     fn isincode(&self) -> Option<&str> {
@@ -2333,12 +2457,21 @@ impl PyFixMsg {
         self.inner.get_ticker()
     }
 
-    /// How long the message stands, `TimeInForce(59)`, as the code it
-    /// states; `None` where it says nothing. What the code `1` names is
-    /// the dictionary's to say.
+    /// The quantity ordered, `OrderQty(38)`, as a decimal; `None` where none.
     #[getter]
-    fn tif(&self) -> Option<&str> {
-        self.inner.get_tif().map(CoreTimeInForce::as_str)
+    fn ordqty(&self) -> Option<PyScalar> {
+        self.inner.get_ordqty().map(decimal_scalar)
+    }
+
+    /// How long the message stands, as the `TimeInForce` member its
+    /// `TimeInForce(59)` - or a field the dictionary maps through
+    /// `FIX:timeinforce` - names; `None` where it says nothing.
+    #[getter]
+    fn timeinforce(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        self.inner
+            .get_timeinforce()
+            .map(|held| member(py, *held))
+            .transpose()
     }
 
     /// Whether the instrument could be traded when the message was sent, or
@@ -2349,21 +2482,23 @@ impl PyFixMsg {
         self.inner.get_tradable()
     }
 
-    /// The names the message goes by - `ORDERID`, `CLORDID`, `EXECID`,
-    /// `QUOTEID` - each under the field that stated it, in key order;
-    /// empty where it names none.
+    /// The names the message goes by - `orderid`, `clordid`, `execid`,
+    /// `quoteid` - each typed by the field that stated it, from `fix` or the
+    /// source an unmapped entry's key names (`OMS_ClOrdID` is `oms:clordid`),
+    /// with the parents a chain gave them (`origclordid`, `parentorderid`,
+    /// `origorderid`); a map keyed `src:type`, empty where it names none.
     #[getter]
-    fn altids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_altids())
+    fn identifiers(&self) -> crate::identifier::PyIdentifiers {
+        crate::identifier::PyIdentifiers::from_core(self.inner.get_identifiers())
     }
 
-    /// The accounts and parties the message names - each `Parties`
-    /// occurrence's `PartyID` under its `PartyRole`'s name, such as
-    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
-    /// `ACCOUNT` - in key order; empty where it names none.
+    /// The party ids the message names - each `Parties` occurrence's
+    /// `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
+    /// from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
+    /// map keyed `src:type`, empty where it names none.
     #[getter]
-    fn accountids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_accountids())
+    fn partyids(&self) -> crate::identifier::PyIdentifiers {
+        crate::identifier::PyIdentifiers::from_core(self.inner.get_partyids())
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.
@@ -2566,8 +2701,8 @@ impl PyFixCodec {
     /// is whether a market operation the codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds - its parties, its `Account(1)` and
-    /// its regulatory trade identifiers stay the leaf's `accountids` and
-    /// `altids` - and lifts into its `altids` each scalar of it whose key
+    /// its regulatory trade identifiers stay the leaf's `partyids` and
+    /// `identifiers` - and lifts into its `identifiers` each scalar of it whose key
     /// ends with an identifier its message's type declares - on by default,
     /// and part of the leaf's identity.
     #[new]
@@ -2800,7 +2935,7 @@ impl PyFixCodec {
 
     /// Whether a market operation this codec builds carries its message's
     /// unmapped fields in its metadata, and lifts the identifiers among
-    /// them into its `altids`.
+    /// them into its `identifiers`.
     #[getter]
     fn market_metadata(&self) -> bool {
         self.inner.market_metadata()
@@ -3353,10 +3488,12 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// filed under - the `srcuuids` of the lines it was read from - what a
 /// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,
 /// the `msgsessionid` and the `msgsesseventid` they join to with the message
-/// type and sequence - the normalized instrument codes and the `strikepx`,
-/// the `sourceurl` a line was read from and the Map group `metadata`. Each a
-/// fact no FIX dictionary publishes, at the datatype its graph column
-/// names.
+/// type and sequence - the normalized instrument codes (`isincode`,
+/// `bloombergcode`, `figicode`, `forexcode`, `miccode`), the `sourceurl` a
+/// line was read from, the Map group `metadata` and the `fixmsg` row's own
+/// definition. Each a fact no FIX dictionary publishes, at the datatype its
+/// graph column names; the strike price is the dictionary's `StrikePrice(202)`,
+/// no crate field.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

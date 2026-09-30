@@ -21,7 +21,7 @@ pub fn state_members_native() -> Vec<StateMember> {
         .iter()
         .map(|state| StateMember {
             name: state.as_str().to_owned(),
-            code: state.code(),
+            code: i32::from(state.code()),
             description: state.description().to_owned(),
             rank: u32::from(state.rank()),
         })

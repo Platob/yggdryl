@@ -63,7 +63,7 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 use crate::parser::Parser;
 use crate::{
     BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, FOREX_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -102,12 +102,10 @@ mod arrow {
     /// Plain `utf8`, `large_utf8` and `utf8_view` are Arrow's own datatypes
     /// and cross bare. Every other leaf states something Arrow cannot - a
     /// charset, a number, or the second view width - so the leaf rides the
-    /// document, written whole.
+    /// document, written whole. Which is which is the leaf's identifier's
+    /// [`DataTypeId::arrow_extension_name`].
     pub(crate) const fn needs_extension(parameters: StringType) -> bool {
-        !matches!(
-            parameters,
-            StringType::Utf8String | StringType::LargeUtf8String | StringType::Utf8StringView
-        )
+        parameters.id().arrow_extension_name().is_some()
     }
 
     /// The Arrow storage one string datatype lays out.
@@ -191,7 +189,7 @@ pub(crate) mod casts {
         StringViewBuilder,
     };
     use arrow_array::{
-        Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, Int32Array, StringArray,
+        Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray, UInt8Array, UInt16Array,
     };
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
     use arrow_schema::DataType as ArrowDataType;
@@ -221,8 +219,8 @@ pub(crate) mod casts {
         Code(DataType),
         /// A UUID: sixteen stored bytes, read as the canonical spelling they are.
         Uuid,
-        /// An enum leaf: the `int32` codes of its members, each read as the
-        /// name it stands for under that leaf.
+        /// An enum leaf: the codes of its members at the leaf's width, each
+        /// read as the name it stands for under that leaf.
         Enum(DataType),
         /// Storage with no extension identity.
         Bare,
@@ -294,26 +292,37 @@ pub(crate) mod casts {
                 (StringSource::Bare, Cell::Bytes(bytes)) => target.read_text(bytes),
             }
         };
-        if let (StringSource::Enum(held), ArrowDataType::Int32) = (source, array.data_type()) {
-            let codes = downcast::<Int32Array>(array.as_ref())?;
-            return string_storage(
-                target,
-                field,
-                codes.len(),
-                safe,
-                exposure,
-                budget,
-                |index| {
-                    codes.is_valid(index).then(|| {
-                        crate::enums::read_enum_code(held.id(), i64::from(codes.value(index)))
-                            .and_then(|member| {
-                                read(Cell::Text(
-                                    member.enum_name().expect("the leaf's own member"),
-                                ))
-                            })
-                    })
-                },
-            );
+        // An enum column's codes, at whichever width its leaf stores them,
+        // each read as the name of the member it stands for.
+        macro_rules! enum_names {
+            ($held:expr, $array:ty) => {{
+                let codes = downcast::<$array>(array.as_ref())?;
+                return string_storage(
+                    target,
+                    field,
+                    codes.len(),
+                    safe,
+                    exposure,
+                    budget,
+                    |index| {
+                        codes.is_valid(index).then(|| {
+                            crate::enums::read_enum_code($held.id(), i64::from(codes.value(index)))
+                                .and_then(|member| {
+                                    read(Cell::Text(
+                                        member.enum_name().expect("the leaf's own member"),
+                                    ))
+                                })
+                        })
+                    },
+                );
+            }};
+        }
+        if let StringSource::Enum(held) = source {
+            match array.data_type() {
+                ArrowDataType::UInt8 => enum_names!(held, UInt8Array),
+                ArrowDataType::UInt16 => enum_names!(held, UInt16Array),
+                _ => {}
+            }
         }
         if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
             let cells = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
@@ -720,7 +729,6 @@ impl DataType {
         ("isin", DataType::Isin, ISIN_WIDTH),
         ("cusip", DataType::Cusip, CUSIP_WIDTH),
         ("sedol", DataType::Sedol, SEDOL_WIDTH),
-        ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
         ("bbg", DataType::Bbg, BBG_WIDTH),
         ("figi", DataType::Figi, FIGI_WIDTH),
         ("unit", DataType::Unit, UNIT_WIDTH),
@@ -2365,11 +2373,9 @@ impl StringEnum {
     ///
     /// The wire values rather than the names, exactly as [`Self::SIDES`] is:
     /// a code set's value is what a message carries, and the name is what a
-    /// dictionary translates it to. The names are
-    /// [`TIMEINFORCE_CODES`](crate::TIMEINFORCE_CODES), which
-    /// [`TimeInForce::from_spelling`](crate::TimeInForce::from_spelling)
-    /// reads a name through; a value outside the listing is held, never
-    /// refused.
+    /// dictionary translates it to. The member each stands for is the
+    /// [`TimeInForce`](crate::TimeInForce) enum's
+    /// ([`TimeInForce::from_fix`](crate::TimeInForce::from_fix)).
     pub const TIMESINFORCE: &'static [&'static str] = &[
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C",
     ];

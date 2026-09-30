@@ -10,7 +10,10 @@ use yggdryl::arrow::BatchReader;
 use super::SoleMessage;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
+use yggdryl::{
+    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdSource, IdType, Scalar, StructType,
+    fix_schema,
+};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -169,21 +172,36 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         .map(|held| held.name().as_str())
         .collect();
 
-    // The capture's own column leads, then the crate's own clocks; the rest
-    // of the fixed columns follow, named by their folded names, each
-    // carrying its tag on the field - which is what the row is filled by.
-    // The capture's own column leads and the crate's own clocks open the
-    // fixed ones, each found by its name rather than by an offset.
-    assert_eq!(names.first(), Some(&"body"), "{names:?}");
+    // The columns every generated schema opens with lead, the capture's
+    // own column follows them, then the message's own columns, named by
+    // their folded names, each carrying its tag on the field - which is what
+    // the row is filled by - each found by its name rather than by an offset.
+    assert_eq!(names.first(), Some(&"curruuid"), "{names:?}");
     let at = |name: &str| {
         names
             .iter()
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["body", "currunix", "creaunix", "prevunix", "snapunix"].windows(2) {
+    for pair in [
+        "curruuid",
+        "currunix",
+        "creaunix",
+        "prevunix",
+        "snapunix",
+        "partyids",
+        "body",
+        "sendingtime",
+    ]
+    .windows(2)
+    {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
+    assert_eq!(
+        at("body"),
+        at("partyids") + 1,
+        "right after the shared columns"
+    );
     assert_eq!(names.last(), Some(&"fixentries"));
     // The standard header, the body a consumer queries, the groups worth
     // keeping whole, the trailer, and this crate's own derived facts - each
@@ -199,10 +217,11 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         133,
         134,
         135, // the quote's bid and offer
-        453,
-        454,
-        768, // the groups
-        10,  // the trailer
+        768,
+        1907, // the groups
+        10,   // the trailer
+        yggdryl::SECURITYIDS_TAG_NAME.0,
+        yggdryl::PARTYIDS_TAG_NAME.0, // the identifiers the groups state
         yggdryl::CURRHASHCODE_TAG_NAME.0,
         yggdryl::CURRUNIX_TAG_NAME.0,
         yggdryl::CREAUNIX_TAG_NAME.0, // the digest and the clocks
@@ -214,6 +233,15 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         assert!(
             yggdryl::fix_column_of(&fixed, tag).is_some(),
             "tag {tag} missing from {names:?}"
+        );
+    }
+    // The wire's own identifier fields are no columns: what a message
+    // states of them is its entries, and its identifiers are the logical
+    // columns above.
+    for tag in [22, 48, 453, 454] {
+        assert!(
+            yggdryl::fix_column_of(&fixed, tag).is_none(),
+            "tag {tag} in {names:?}"
         );
     }
 
@@ -1210,7 +1238,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             .next()
             .unwrap()
             .unwrap();
-        message.set_execunix(Some(execunix));
+        message.set_execunix(Some(execunix), true);
         message
     };
 
@@ -1234,7 +1262,11 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         older.capture().msgsesseventid(),
         Some("D:SESSION-A:CONTEXT-A:7")
     );
-    assert!(!older.get_altids().contains_key("MSGSESSEVENTID"));
+    assert!(
+        !older
+            .get_identifiers()
+            .contains_kind(&"msgsesseventid".parse::<IdType>().unwrap())
+    );
 
     let directly_merged = newer
         .clone()
@@ -1243,7 +1275,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert!(directly_merged.get_prevuuid().is_none());
     assert_eq!(directly_merged.get_by_tag(55), Some(Scalar::from("MSFT")));
     assert_eq!(
-        directly_merged.get_securityids().get("ISIN"),
+        directly_merged.get_securityids().get(&IdType::Isin),
         Some("US0378331005")
     );
     // The later recording (200) is the reference, and the merged event
@@ -1313,7 +1345,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         assert_eq!(message.capture().msgctxid(), Some("CONTEXT-A"));
         assert_eq!(message.get_by_tag(55), Some(Scalar::from("MSFT")));
         assert_eq!(
-            message.get_securityids().get("ISIN"),
+            message.get_securityids().get(&IdType::Isin),
             Some("US0378331005"),
             "the reference keeps its row and the full graph merge fills a missing market fact"
         );
@@ -1396,7 +1428,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             "the later recording of the pair folded last is the reference"
         );
         assert_eq!(
-            replayed[0].get_securityids().get("ISIN"),
+            replayed[0].get_securityids().get(&IdType::Isin),
             Some("US0378331005"),
             "the folded pair still fills what the new reference omits"
         );
@@ -1595,7 +1627,7 @@ fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
 }
 
 #[test]
-fn lifecycle_inherits_missing_order_links_from_the_exact_predecessor() {
+fn lifecycle_inherits_the_client_order_and_the_parents_from_the_exact_predecessor() {
     let codec = codec();
     let previous = codec
         .parse_fix_line(
@@ -1621,13 +1653,27 @@ fn lifecycle_inherits_missing_order_links_from_the_exact_predecessor() {
         current.get_by_tag(11).as_ref().and_then(Scalar::as_str),
         Some("CLIENT-A")
     );
+    // The parents travel in the identifiers alone: the order identifier
+    // that changed has the value it held before as its parent, and its
+    // chain's first as its origin, and no field is written for them - the
+    // spelling the line stated empty stays as it arrived.
     assert_eq!(
         current
             .get_by_name("parentorderid")
             .as_ref()
-            .and_then(Scalar::as_str),
-        Some("ORDER-A")
+            .and_then(Scalar::as_str)
+            .filter(|held| !held.is_empty()),
+        None
     );
+    for parent in ["parentorderid", "origorderid"] {
+        assert_eq!(
+            current
+                .get_identifiers()
+                .get_from(&IdSource::Fix, &parent.parse::<IdType>().unwrap()),
+            Some("ORDER-A"),
+            "{parent}"
+        );
+    }
     assert_ne!(
         current.get_curruuid(),
         before,
@@ -1803,7 +1849,7 @@ fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes
     assert_eq!(walked.len(), 2);
     assert_eq!(walked[0].header().msgseqnum(), Some(1));
     assert_eq!(
-        walked[1].get_securityids().get("BLOOMBERG"),
+        walked[1].get_securityids().get(&IdType::Bloomberg),
         Some("AAPL US Equity")
     );
     assert_eq!(
@@ -1829,7 +1875,7 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(
-        learned[1].get_securityids().get("FIGI"),
+        learned[1].get_securityids().get(&IdType::Figi),
         Some("BBG000BLNQ16")
     );
 
@@ -1842,7 +1888,7 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert!(
-        ambiguous[2].get_securityids().get("FIGI").is_none(),
+        ambiguous[2].get_securityids().get(&IdType::Figi).is_none(),
         "a conflicting association stays unknown"
     );
 }
@@ -1873,15 +1919,17 @@ fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(
-        walked[0].get_securityids().get("OMSINSTRUMENTID"),
+        walked[0]
+            .get_securityids()
+            .get_from(&"oms".parse::<IdSource>().unwrap(), &IdType::InstrumentId),
         Some("dbi;CH0012214059_XSWX_CHF"),
         "the message stating it keeps it"
     );
     assert_eq!(
-        walked[1].get_securityids().get("BLOOMBERG"),
+        walked[1].get_securityids().get(&IdType::Bloomberg),
         Some("HOLN SW")
     );
-    assert_eq!(walked[1].get_securityids().get("OMSINSTRUMENTID"), None);
+    assert_eq!(walked[1].get_securityids().get(&IdType::InstrumentId), None);
 }
 
 #[test]
@@ -2063,7 +2111,7 @@ fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
 }
 
 /// The three steps - the lines as a batch, the messages parsed out of it,
-/// the lifecycle's rows - each contain the seventeen columns every event is
+/// the lifecycle's rows - each open with the fifteen columns every event is
 /// stated in, under one name and one datatype, and join on them: a
 /// message's `srcuuids` is the `curruuid` its line's batch states, read off
 /// that column rather than recomputed, and a chained message's `prevuuid`
@@ -2071,10 +2119,10 @@ fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
 /// chain reached.
 #[test]
 fn the_three_steps_join_on_the_columns_every_event_states() {
-    use yggdryl::graph::EventColumn;
+    use yggdryl::graph::{ElementColumn, EventColumn};
 
     const PLACED: &str = "8=FIX.4.4|35=D|11=C-1|37=A|39=0|54=1|38=100|10=0|";
-    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|65003=20240102-10:15:30.100|10=0|";
+    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|65009=20240102-10:15:30.100|10=0|";
     let codec = codec();
     let options = Arc::new(yggdryl::text::TextOptions::new());
     let mut lines: Vec<TextLine> = [PLACED, FILLED]
@@ -2096,10 +2144,11 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     lines[1].set_curruuid(yggdryl::Uuid::from_v8(7));
     let identities: Vec<yggdryl::Uuid> = lines.iter().map(Element::get_curruuid).collect();
 
-    // Step 1: the lines as a batch, opening with the seventeen as fields.
+    // Step 1: the lines as a batch, opening with the fifteen as fields.
     let carrier = yggdryl::text::into_arrow_batch(lines.clone(), &options).unwrap();
     let stated = yggdryl::Field::from_arrow_schema("lines", &carrier.schema()).unwrap();
-    let expected = EventColumn::fields().unwrap();
+    let mut expected = ElementColumn::fields().unwrap();
+    expected.extend(EventColumn::fields().unwrap());
     for (held, column) in stated.fields().iter().zip(&expected) {
         assert_eq!(held.name(), column.name());
         assert_eq!(held.dtype(), column.dtype(), "{}", column.name());
@@ -2112,7 +2161,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     }
 
     // Step 2: the messages parsed out of the batch, each stating the line
-    // the carrier said it was as its one source, and the same seventeen under
+    // the carrier said it was as its one source, and the same fifteen under
     // the row's own names and datatypes.
     let parsed = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
@@ -2124,16 +2173,19 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         .next()
         .expect("one batch");
     let row = yggdryl::Field::from_arrow_schema("row", &parsed.schema()).unwrap();
-    for column in EventColumn::ALL {
-        let held = row
-            .field(column.name())
-            .unwrap_or_else(|error| panic!("{}: {error}", column.name()));
-        assert_eq!(
-            held.dtype(),
-            &column.datatype().unwrap(),
-            "{}",
-            column.name()
+    let columns = ElementColumn::ALL
+        .into_iter()
+        .map(|column| (column.name(), column.datatype()))
+        .chain(
+            EventColumn::ALL
+                .into_iter()
+                .map(|column| (column.name(), column.datatype())),
         );
+    for (name, dtype) in columns {
+        let held = row
+            .field(name)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(held.dtype(), &dtype, "{name}");
     }
     let messages: Vec<FixMsg> = codec
         .messages(yggdryl::arrow::batch_reader(
@@ -2695,7 +2747,7 @@ fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_dire
 }
 
 #[test]
-fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
+fn a_captures_own_columns_follow_the_shared_ones_and_a_clash_yields_to_fix() {
     // Shaped the way the text line reader shapes a capture: where the line was
     // read from, which line it was, what stamped it, and the frame itself.
     let capture = StructType::from_fields([
@@ -2729,10 +2781,16 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         .iter()
         .map(|held| held.name().clone())
         .collect();
+    let shared = columns
+        .iter()
+        .position(|held| held == "partyids")
+        .expect("the shared columns")
+        + 1;
+    assert_eq!(columns[0], "curruuid", "the shared columns open the row");
     assert_eq!(
-        &columns[..4],
+        &columns[shared..shared + 4],
         ["url", "rownum", "threadname", "body"],
-        "the capture leads the row"
+        "the capture follows the shared columns"
     );
     assert_eq!(
         columns.iter().filter(|held| *held == "fixentries").count(),
@@ -2744,9 +2802,9 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     assert_eq!(row_count(&read), 1);
     let held = rows_of(&read[0]);
     let row = held[0].as_sequence().expect("its columns").to_vec();
-    assert_eq!(row[0].as_str(), Some("file:///capture.log"));
-    assert_eq!(row[1].as_i64(), Some(7));
-    assert_eq!(row[2].as_str(), Some("session-a"));
+    assert_eq!(row[shared].as_str(), Some("file:///capture.log"));
+    assert_eq!(row[shared + 1].as_i64(), Some(7));
+    assert_eq!(row[shared + 2].as_str(), Some("session-a"));
     let at = columns
         .iter()
         .position(|held| held == "msgtype")
@@ -2763,7 +2821,7 @@ fn a_fix_batch_row_with_an_invalid_state_code_is_excluded_at_the_landing() {
     use arrow_array::cast::AsArray as _;
 
     // A code no member of the state enum takes.
-    const FOREIGN: i32 = 7;
+    const FOREIGN: u16 = 7;
     let codec = codec();
     let read = batches(codec.parse_text_arrow_reader(source()).unwrap());
     let batch = &read[0];
@@ -2778,18 +2836,18 @@ fn a_fix_batch_row_with_an_invalid_state_code_is_excluded_at_the_landing() {
         .expect("the batch's own rows");
     assert_eq!(intact.len(), batch.num_rows());
 
-    // The state column is `int32` codes under the state extension, so a
+    // The state column is `uint16` codes under the state extension, so a
     // code no member takes is an integer the layout holds and the datatype
     // refuses.
     let at = batch.schema().index_of("state").expect("a state column");
-    let mut codes: Vec<Option<i32>> = batch
+    let mut codes: Vec<Option<u16>> = batch
         .column(at)
-        .as_primitive::<arrow_array::types::Int32Type>()
+        .as_primitive::<arrow_array::types::UInt16Type>()
         .iter()
         .collect();
     codes[1] = Some(FOREIGN);
     let mut columns = batch.columns().to_vec();
-    columns[at] = Arc::new(arrow_array::Int32Array::from(codes));
+    columns[at] = Arc::new(arrow_array::UInt16Array::from(codes));
     let forged = RecordBatch::try_new(batch.schema(), columns).unwrap();
     let read = codec
         .messages(yggdryl::arrow::batch_reader(forged.schema(), [forged]))
@@ -2816,7 +2874,7 @@ fn a_fix_batch_row_with_an_invalid_state_code_is_excluded_at_the_landing() {
         capture.into_arrow_schema().unwrap(),
         vec![
             Arc::new(arrow_array::BinaryArray::from_vec(vec![frame; 2])),
-            Arc::new(arrow_array::Int32Array::from(vec![
+            Arc::new(arrow_array::UInt16Array::from(vec![
                 yggdryl::State::New.code(),
                 FOREIGN,
             ])),
@@ -2850,15 +2908,22 @@ fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
         .expect("a payload-column reader");
     let column_batch = columns.into_iter().next().unwrap().unwrap();
 
+    // Both reads infer the one occurrence the separatorless group holds:
+    // the party it names, and the group itself among the row's entries as
+    // the wire stated it.
     for batch in [&row_batch, &column_batch] {
-        assert_eq!(first_tag_value(batch, 453), Scalar::from(1_i32));
-        let group = first_value(batch, "parties");
-        let parties = group.as_sequence().expect("the party group");
-        assert_eq!(parties.len(), 1);
-        let members = parties[0].as_sequence().expect("one occurrence");
-        assert_eq!(members[0].as_str(), Some("BUYSIDE"));
-        assert_eq!(members[1].as_str(), Some("D"));
-        assert_eq!(members[2].as_i64(), Some(1));
+        let partyids = yggdryl::Identifiers::from_scalar(&first_value(batch, "partyids"))
+            .expect("the partyids column");
+        assert_eq!(partyids.to_string(), "[proprietary:executingfirm=BUYSIDE]");
+        let entries = first_value(batch, yggdryl::fix::FIXENTRIES_COLUMN);
+        let group = entries
+            .mapping_iter()
+            .find(|(key, _)| key.as_str() == Some("453:parties"))
+            .map(|(_, value)| value.as_str().expect("the group as JSON").to_owned());
+        assert_eq!(
+            group.as_deref(),
+            Some(r#"[{"447:partyidsource":"D","448:partyid":"BUYSIDE","452:partyrole":"1"}]"#)
+        );
     }
 }
 

@@ -15,7 +15,7 @@ fn event<K: OperationKind>(
 ) -> OperationEvent<K> {
     let mut event = OperationEvent::<K>::at(unix);
     event.set_crosscode(crosscode.to_owned());
-    event.set_ticker(symbol.map(SmolStr::new));
+    event.set_ticker(symbol.map(SmolStr::new), true);
     event.set_recdunix(recdunix);
     event.finalize();
     event
@@ -39,11 +39,11 @@ fn execution(
     execunix: Option<i64>,
 ) -> ExecutionEvent {
     let mut event: ExecutionEvent = event(unix, crosscode, symbol, recdunix);
-    event.set_side(Side::read(side).unwrap());
-    event.set_price(Some(Decimal::from_int(price)));
+    event.set_side(Side::read(side).unwrap(), true);
+    event.set_price(Some(Decimal::from_int(price)), true);
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
-    event.set_execunix(execunix);
+    event.set_execunix(execunix, true);
     event.finalize();
     event
 }
@@ -89,7 +89,7 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
     let mut root = root(20, "T-1", Some("IBM"), Some(18));
     root.set_seqnum(2);
     root.set_creaunix(Some(15));
-    root.set_execunix(Some(17));
+    root.set_execunix(Some(17), true);
     root.finalize();
     let buy_b = execution(
         20,
@@ -139,9 +139,9 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
             .map(|held| (held.get_side().as_str(), held.get_crosscode()))
             .collect::<Vec<_>>(),
         [
-            ("BUYS", "BUYS:E-A"),
-            ("BUYS", "BUYS:E-B"),
-            ("SELL", "SELL:E-S")
+            ("BUYS", "8:1:E-A"),
+            ("BUYS", "8:1:E-B"),
+            ("SELL", "8:2:E-S")
         ]
     );
     assert!(
@@ -150,6 +150,9 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
             .iter()
             .all(|held| held.kind() == MarketKind::Execution)
     );
+    // The root is not sided: the code it was given, under the trade's
+    // category and side 0.
+    assert_eq!(first.get_crosscode(), "21:0:T-1");
     assert_eq!(first.get_seqnum(), 7);
     assert_eq!(first.get_creaunix(), Some(12));
     assert_eq!(first.get_recdunix(), Some(16));
@@ -203,7 +206,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .filter(|held| held.get_crosscode() == "BUYS:E-1")
+            .filter(|held| held.get_crosscode() == "8:1:E-1")
             .count(),
         1
     );
@@ -211,7 +214,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         merged
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "BUYS:E-1")
+            .find(|held| held.get_crosscode() == "8:1:E-1")
             .unwrap()
             .get_price(),
         Some(Decimal::from_int(101)),
@@ -247,7 +250,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         trade
             .executions()
             .iter()
-            .find(|held| held.get_crosscode() == "BUYS:E-1")
+            .find(|held| held.get_crosscode() == "8:1:E-1")
             .unwrap()
             .get_price()
     };

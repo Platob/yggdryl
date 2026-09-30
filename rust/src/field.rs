@@ -18,10 +18,11 @@ use crate::{
     BbgType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType, DateTimeType,
     DateType, DecimalType, DurationType, EnumType, FigiType, Float16Type, Float32Type, Float64Type,
     ForexType, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
-    IntervalType, IsinType, MappingType, MarketDataKindType, MediaTypeType, MicType, MimeTypeType,
-    NullType, RicType, RunEndType, SedolType, SerieType, SideType, StateType, StringType,
-    StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type,
-    UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
+    IntervalType, IsinType, MappingType, MarketDataKindType, MarketDataTypeType, MediaTypeType,
+    MicType, MimeTypeType, NullType, RicType, RunEndType, SedolType, SerieType, SideType,
+    StateType, StringType, StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type,
+    UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType, UuidType, VariantType,
+    VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1621,6 +1622,7 @@ field_leaves! {
     [Side] => SideField / SideType,
     [State] => StateField / StateType,
     [MarketDataKind] => MarketDataKindField / MarketDataKindType,
+    [MarketDataType] => MarketDataTypeField / MarketDataTypeType,
     [TimeInForce] => TimeInForceField / TimeInForceType,
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
@@ -2369,7 +2371,8 @@ mod arrow {
         /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
         /// document says whether it is a geometry or a geography.
         Geospatial(GeospatialParameters),
-        /// A code's own `yggdryl.{country,ccy,mic,cfi}` over Utf8.
+        /// A registered code's own `yggdryl.<code>` - `yggdryl.ccy`,
+        /// `yggdryl.isin` and the ten beside them - over Utf8.
         ///
         /// It is separate from [`Self::String`] because the identity is the
         /// point: text under `yggdryl.ccy` is a currency and the same text
@@ -2384,9 +2387,10 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
-        /// An enum leaf's own `yggdryl.{state,...}` over the `Int32` codes of
-        /// its members: which leaf, because a state's codes and a side's are
-        /// two vocabularies over one storage.
+        /// An enum leaf's own `yggdryl.<enum>` - `yggdryl.state`,
+        /// `yggdryl.side` and the three beside them - over the unsigned codes
+        /// of its members at the leaf's width: which leaf, because a side's
+        /// codes and a time in force's are two vocabularies over one storage.
         Enum(DataType),
         /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
         Decimal,
@@ -2573,10 +2577,13 @@ mod arrow {
                 ArrowDataType::Utf8
             )
             .then_some(RecognizedExtension::MediaType)),
-            // An enum leaf is its `Int32` codes under its own name, with
-            // nothing to say in a document: the name says which leaf.
+            // An enum leaf is its codes under its own name, at the leaf's
+            // own width, with nothing to say in a document: the name says
+            // which leaf, and any other storage is a foreign field wearing it.
             held if document.unwrap_or("").is_empty()
-                && matches!(storage, ArrowDataType::Int32) =>
+                && crate::enums::enum_for_extension(held).is_some_and(|leaf| {
+                    leaf.arrow_datatype().is_ok_and(|held| &held == storage)
+                }) =>
             {
                 Ok(crate::enums::enum_for_extension(held).map(RecognizedExtension::Enum))
             }
@@ -2594,8 +2601,8 @@ mod arrow {
     /// itself to declare its identity. Peeling here is what lets a caller's own
     /// `dictionary(int32, ccy)` - or `dictionary(int32, uuid)`, or any other
     /// extension - import as itself rather than as anonymous storage; no datatype
-    /// this crate recognizes *is* a dictionary - a code is its own fixed binary -
-    /// so this is only about not losing what a caller composed.
+    /// this crate recognizes *is* a dictionary - a code is text under its own
+    /// name - so this is only about not losing what a caller composed.
     ///
     /// # Errors
     ///

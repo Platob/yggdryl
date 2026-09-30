@@ -147,10 +147,8 @@ impl<T: Expiring + Clone> Lease<T> {
             if paused && !expired {
                 return Ok(Some(held));
             }
-            if paused {
-                if let Some(failure) = &state.failure {
-                    return Err(repeated(failure));
-                }
+            if paused && let Some(failure) = &state.failure {
+                return Err(repeated(failure));
             }
             return match obtain() {
                 Ok(Some(fresh)) => Ok(Some(self.adopt(&mut state, fresh, now))),
@@ -180,10 +178,8 @@ impl<T: Expiring + Clone> Lease<T> {
         if state.none_until.is_some_and(|until| now < until) {
             return Ok(None);
         }
-        if paused {
-            if let Some(failure) = &state.failure {
-                return Err(repeated(failure));
-            }
+        if paused && let Some(failure) = &state.failure {
+            return Err(repeated(failure));
         }
         match obtain() {
             Ok(Some(found)) => Ok(Some(self.adopt(&mut state, found, now))),

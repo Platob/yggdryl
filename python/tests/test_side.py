@@ -82,7 +82,7 @@ def test_the_enums_package_holds_no_side() -> None:
     assert not hasattr(yggdryl.codes, "side")
 
 
-def test_an_arrow_column_is_int32_under_its_extension() -> None:
+def test_an_arrow_column_is_uint8_under_its_extension() -> None:
     arrow = Field("side", "side").into_arrow()
-    assert arrow.type == pa.int32()
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.side"
+    assert arrow.type.storage_type == pa.uint8()
+    assert arrow.type.extension_name == "yggdryl.side"

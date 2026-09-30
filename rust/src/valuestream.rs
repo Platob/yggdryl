@@ -397,14 +397,13 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             write_variable(chunk, held.metadata());
             write_variable(chunk, held.value());
         }
-        // An enum member is the code it stores, under its leaf's identifier.
+        // An enum member is the code it stores, under its leaf's identifier,
+        // written at the canonical four bytes whatever width a column stores
+        // it at, so the stream never moves when a leaf's width does.
         held @ crate::enum_scalars!() => fixed(
             chunk,
             held.id(),
-            &held
-                .enum_code()
-                .expect("an enum member stores its code")
-                .to_le_bytes(),
+            &i32::from(held.enum_code().expect("an enum member stores its code")).to_le_bytes(),
         ),
         // A registered code is its text under its own identifier.
         code @ crate::code_scalars!() => write_text(

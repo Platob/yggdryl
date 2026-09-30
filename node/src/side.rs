@@ -25,7 +25,7 @@ pub fn side_members_native() -> Vec<SideMember> {
         .iter()
         .map(|side| SideMember {
             name: side.as_str().to_owned(),
-            code: side.code(),
+            code: i32::from(side.code()),
             description: side.description().to_owned(),
             fix_code: side.fix_code().map(String::from),
             is_bid: side.is_bid(),

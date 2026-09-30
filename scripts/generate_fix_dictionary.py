@@ -671,12 +671,13 @@ def fold_legacy_codes(
 # identifiers, its quote's, its execution's - and which field states which
 # key is the crate's reading, not the specification's. Each entry is written
 # onto its field as a ``FIX:idmap`` document; the crate's own bridge fields
-# carry theirs in the crate dump. ``follow`` marks an alternate identifier
-# an operation that follows another carries forward, and ``role`` the
+# carry theirs in the crate dump. ``follow`` marks an identifier an
+# operation that follows another carries forward, and ``role`` the
 # PartyRole(452) of the Parties occurrence whose PartyID(448) states the key.
-# A message's parties are its accountids and its regulatory trade identifiers
-# alternate identifiers, both read by the crate natively rather than stated
-# on a field.
+# A key is the folded word of its identifier type - lower-case letters and
+# digits. A message's parties are its ``partyids`` and its regulatory trade
+# identifiers are ``identifiers``, both read by the crate natively rather
+# than stated on a field.
 
 
 def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = None) -> dict[str, Any]:
@@ -690,23 +691,105 @@ def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = N
 
 
 IDMAP_SOURCES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
-    (11, [idmap("altids", "CLORDID")]),
-    (17, [idmap("altids", "EXECID")]),
-    (37, [idmap("altids", "ORDERID", follow=True)]),
-    (41, [idmap("altids", "ORIGCLORDID")]),
-    (117, [idmap("altids", "QUOTEID")]),
-    (131, [idmap("altids", "QUOTEREQID")]),
-    (198, [idmap("altids", "SECONDARYORDERID", follow=True)]),
-    (262, [idmap("altids", "MDREQID")]),
-    (880, [idmap("altids", "TRDMATCHID")]),
-    (1003, [idmap("altids", "TRADEID")]),
+    (11, [idmap("identifiers", "clordid")]),
+    (17, [idmap("identifiers", "execid")]),
+    (37, [idmap("identifiers", "orderid", follow=True)]),
+    (41, [idmap("identifiers", "origclordid")]),
+    (117, [idmap("identifiers", "quoteid")]),
+    (131, [idmap("identifiers", "quotereqid")]),
+    (198, [idmap("identifiers", "secondaryorderid", follow=True)]),
+    (262, [idmap("identifiers", "mdreqid")]),
+    (526, [idmap("identifiers", "secondaryclordid")]),
+    (527, [idmap("identifiers", "secondaryexecid")]),
+    (793, [idmap("identifiers", "secondaryallocid")]),
+    (880, [idmap("identifiers", "trdmatchid")]),
+    (989, [idmap("identifiers", "secondaryindividualallocid")]),
+    (1003, [idmap("identifiers", "tradeid")]),
+    (1040, [idmap("identifiers", "secondarytradeid")]),
+    (1042, [idmap("identifiers", "secondaryfirmtradeid")]),
+    (1751, [idmap("identifiers", "secondaryquoteid")]),
 )
+
+# The parents of the identifier a field states are what the dictionary's
+# own field names say of one another: a field named ``parent`` or ``orig``
+# before another identifier field's name is listed among that field's
+# ``FIX:parents``, nearest first - a ``parent`` type before an ``orig`` one.
+# OrigClOrdID(41) makes ClOrdID(11)'s parents ``origclordid``, the client
+# order identifier a cancel/replace replaced; ClOrdID takes no ``parent``
+# field, its previous value being FIX's own OrigClOrdID. The crate reads the
+# same rule off any dictionary it loads (``FixRegistry::parent_sources``),
+# and a test holds the two to one answer over this dictionary.
+PARENT_PREFIXES = ("parent", "orig")
+
+
+def parent_of(name: str, names: set[str]) -> tuple[str, int] | None:
+    """The identifier field ``name`` is a parent of by name, and the place
+    it takes among that field's parents; ``None`` where it is none."""
+    for rank, prefix in enumerate(PARENT_PREFIXES):
+        if not name.startswith(prefix):
+            continue
+        base = name[len(prefix):]
+        # ``origin...`` and ``original...`` are words of their own.
+        if prefix == "orig" and base.startswith("in"):
+            return None
+        if base == "clordid":
+            return (base, 0) if prefix == "orig" else None
+        if not base.endswith("id") or parent_of(base, names) is not None:
+            return None
+        return (base, rank) if base in names else None
+    return None
+
+
+def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
+    """Write onto every identifier field the parents the dictionary's own
+    field names say it has, as ``FIX:parents``, each type once; and where a
+    field is its base's one parent, name it by the other prefix too - an
+    ``orig`` field also ``parent``, a ``parent`` field also ``orig`` - since
+    with one parent the two spellings are one field: OrigClOrdID(41) is also
+    ``parentclordid``, ParentAllocID(1593) also ``origallocid``. A spelling
+    another field holds, as its name or an alias, is never taken."""
+    by_name = {field["name"]: field for field in catalog["fields"]}
+    names = set(by_name)
+    parents: dict[str, list[tuple[int, str]]] = {}
+    for name in sorted(names):
+        found = parent_of(name, names)
+        if found is not None:
+            base, rank = found
+            parents.setdefault(base, []).append((rank, name))
+    # ClOrdID's one parent is OrigClOrdID by FIX's own rule, never read off a
+    # ``parent`` name, so the swap reads the parent fields themselves.
+    held_names = names | {
+        alias for field in catalog["fields"] for alias in field["metadata"].get("FIX:names", [])
+    }
+    for base, held in parents.items():
+        metadata = by_name[base]["metadata"]
+        metadata["FIX:parents"] = [name for _, name in sorted(held)]
+        by_name[base]["metadata"] = dict(sorted(metadata.items()))
+        if len(held) != 1:
+            continue
+        parent = held[0][1]
+        prefix = next(prefix for prefix in PARENT_PREFIXES if parent.startswith(prefix))
+        other = next(other for other in PARENT_PREFIXES if other != prefix)
+        swapped = other + parent[len(prefix):]
+        if swapped in held_names:
+            continue
+        aliases = by_name[parent]["metadata"]
+        aliases["FIX:names"] = aliases.get("FIX:names", []) + [swapped]
+        by_name[parent]["metadata"] = dict(sorted(aliases.items()))
+        held_names.add(swapped)
 
 # Spellings a bridge writes for a field that no FIX version ever wrote, each
 # an alias ranked after every spelling a version did: OrderID(37) arrives as a
-# bridge's market or OMS dealer order identifier.
+# bridge's market or OMS dealer order identifier, Account(1) as its OMS
+# dealer account, ClOrdID(11) as a trader's own client order identifier,
+# SecondaryClOrdID(526) as the one an exchange uses and Username(553) as the
+# OMS user.
 CRATE_NAMES: tuple[tuple[int, list[str]], ...] = (
+    (1, ["omsdealeraccount"]),
+    (11, ["ultraderclordid"]),
     (37, ["marketorderid", "omsdealerorderid"]),
+    (526, ["exchangeclientorderid"]),
+    (553, ["omsuserid"]),
 )
 
 
@@ -716,7 +799,7 @@ def attach_identifier_maps(
 ) -> None:
     """Write the identifier-map and crate-name tables onto their fields,
     refusing an entry that does not resolve: every tag is a field, a key is
-    one to 32 upper-case letters or digits, the map is ``altids``, a
+    one to 64 lower-case letters or digits, the map is ``identifiers``, a
     ``role`` sits on PartyID(448) and is a PartyRole(452) code, and a crate
     name is not already one of the field's."""
     by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
@@ -725,10 +808,10 @@ def attach_identifier_maps(
             raise ValueError(f"idmap for unknown tag {tag}")
         for entry in entries:
             where = f"idmap of tag {tag}"
-            if entry["map"] != "altids":
+            if entry["map"] != "identifiers":
                 raise ValueError(f"{where}: unknown map {entry['map']!r}")
-            if not re.fullmatch(r"[A-Z0-9]{1,32}", entry["key"]):
-                raise ValueError(f"{where}: key {entry['key']!r} is not upper-case letters or digits")
+            if not re.fullmatch(r"[a-z0-9]{1,64}", entry["key"]):
+                raise ValueError(f"{where}: key {entry['key']!r} is not lower-case letters or digits")
             if "role" in entry:
                 if tag != 448:
                     raise ValueError(f"{where}: a role sits on PartyID(448) alone")
@@ -1082,6 +1165,7 @@ def build(
         )
     catalog = build_catalog(latest, fields)
     attach_identifier_maps(catalog, code_values)
+    attach_parents(catalog)
     return catalog, code_sets
 
 

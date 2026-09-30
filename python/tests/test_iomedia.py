@@ -1296,7 +1296,10 @@ class TestAsciiRecords:
 
         assert handle.read_arrow_field().dtype["ccy"].dtype == DataType.fixed_ascii(4)
         stored = handle.read_arrow_reader().read_all().column("ccy")
-        assert stored.to_pylist() == [b"USD\x00", b"EUR\x00"]
+        # The storage is the padded width; the registered `yggdryl.string`
+        # type reads each cell as the core does, trimmed.
+        assert stored.combine_chunks().storage.to_pylist() == [b"USD\x00", b"EUR\x00"]
+        assert stored.to_pylist() == ["USD", "EUR"]
         # Every read route renders the width trimmed through the one core rule.
         assert list(handle.read_records(Quote)) == [Quote(1, "USD"), Quote(2, "EUR")]
         assert list(handle.read_records(Quote, options=options)) == [

@@ -5,60 +5,77 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
-use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
 use yggdryl::{
-    Ccy, Cfi, DataType, Decimal, Field, Mic, Scalar, Side, StructType, TimeUnit, Timezone, Unit,
+    Ccy, Cfi, DataType, Decimal, Field, IdSource, IdType, Identifier, Identifiers, Mic, Scalar,
+    Side, StructType, TimeUnit, Timezone, Unit,
 };
 
 fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
 }
 
-fn securityid(key: &str, code: &str) -> SecurityId {
-    SecurityId::new(SecType::read(key).unwrap(), code).unwrap()
+/// One security identifier of `kind` - a type's name or its FIX source code -
+/// from `base`, validated by its type.
+fn securityid(kind: &str, code: &str) -> Identifier {
+    Identifier::new(
+        IdSource::Base,
+        IdType::from_security_source(kind).unwrap(),
+        code,
+    )
+    .unwrap()
 }
 
 #[test]
 fn market_columns_round_trip_every_optional_band() {
     let mut source = OrderEvent::at(10);
-    source.set_price(Some(decimal("101.25")));
-    source.set_currency(Ccy::new("USD").unwrap());
-    source.set_quantity(Some(Decimal::from_int(7)));
-    source.set_unit(Unit::new("share").unwrap());
-    source.set_side(Side::read("Buy").unwrap());
+    source.set_price(Some(decimal("101.25")), true);
+    source.set_stoppx(Some(decimal("99.5")), true);
+    source.set_displayqty(Some(Decimal::from_int(2)), true);
+    source.set_hiddenqty(Some(Decimal::from_int(5)), true);
+    source.set_cxlqty(Some(Decimal::from_int(1)), true);
+    source.set_currency(Ccy::new("USD").unwrap(), true);
+    source.set_quantity(Some(Decimal::from_int(7)), true);
+    source.set_unit(Unit::new("share").unwrap(), true);
+    source.set_side(Side::read("Buy").unwrap(), true);
     source
         .insert_securityid(securityid("BLOOMBERG", "BBG000B9XRY4"))
         .unwrap();
     source
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .unwrap();
-    source.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
-    source.set_miccode(Some(Mic::new("XNAS").unwrap()));
-    source.set_execunix(Some(1_650_000_000_000_000_000));
-    source.set_lastpx(Some(decimal("101")));
-    source.set_lastqty(Some(Decimal::from_int(2)));
-    source.set_avgpx(Some(decimal("100.5")));
-    source.set_cumqty(Some(Decimal::from_int(3)));
-    source.set_leavesqty(Some(Decimal::from_int(4)));
-    source.set_prevpx(Some(decimal("100")));
-    source.set_prevqty(Some(Decimal::from_int(8)));
-    source.set_spotrate(Some(decimal("100.75")));
-    source.set_forwardpoints(Some(decimal("0.5")));
-    source.set_bidpx(Some(decimal("100.25")));
-    source.set_bidqty(Some(Decimal::from_int(6)));
-    source.set_bidccy(Some(Ccy::new("USD").unwrap()));
-    source.set_askpx(Some(decimal("100.5")));
-    source.set_askqty(Some(Decimal::from_int(7)));
-    source.set_askccy(Some(Ccy::new("EUR").unwrap()));
-    source.set_fxrates(BTreeMap::from([
-        (Ccy::new("EUR").unwrap(), decimal("1.085")),
-        (Ccy::new("GBP").unwrap(), decimal("0.86")),
-    ]));
-    source.set_ticker(Some(SmolStr::new("IBM")));
-    source.set_metadata(Some(BTreeMap::from([(
-        SmolStr::new("Feed"),
-        SmolStr::new("PRIMARY"),
-    )])));
+    source.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
+    source.set_miccode(Some(Mic::new("XNAS").unwrap()), true);
+    source.set_execunix(Some(1_650_000_000_000_000_000), true);
+    source.set_lastpx(Some(decimal("101")), true);
+    source.set_lastqty(Some(Decimal::from_int(2)), true);
+    source.set_avgpx(Some(decimal("100.5")), true);
+    source.set_cumqty(Some(Decimal::from_int(3)), true);
+    source.set_leavesqty(Some(Decimal::from_int(4)), true);
+    source.set_prevpx(Some(decimal("100")), true);
+    source.set_prevqty(Some(Decimal::from_int(8)), true);
+    source.set_spotrate(Some(decimal("100.75")), true);
+    source.set_forwardpoints(Some(decimal("0.5")), true);
+    source.set_bidpx(Some(decimal("100.25")), true);
+    source.set_bidqty(Some(Decimal::from_int(6)), true);
+    source.set_bidccy(Some(Ccy::new("USD").unwrap()), true);
+    source.set_askpx(Some(decimal("100.5")), true);
+    source.set_askqty(Some(Decimal::from_int(7)), true);
+    source.set_askccy(Some(Ccy::new("EUR").unwrap()), true);
+    source.set_fxrates(
+        BTreeMap::from([
+            (Ccy::new("EUR").unwrap(), decimal("1.085")),
+            (Ccy::new("GBP").unwrap(), decimal("0.86")),
+        ]),
+        true,
+    );
+    source.set_ticker(Some(SmolStr::new("IBM")), true);
+    source.set_metadata(
+        Some(BTreeMap::from([(
+            SmolStr::new("Feed"),
+            SmolStr::new("PRIMARY"),
+        )])),
+        true,
+    );
     source.finalize();
 
     let row: Vec<Scalar> = MarketColumn::ALL
@@ -78,19 +95,23 @@ fn market_columns_round_trip_every_optional_band() {
     }
 
     assert_eq!(restored.get_price(), source.get_price());
+    assert_eq!(restored.get_stoppx(), source.get_stoppx());
     assert_eq!(restored.get_currency(), source.get_currency());
     assert_eq!(restored.get_quantity(), source.get_quantity());
+    assert_eq!(restored.get_displayqty(), source.get_displayqty());
+    assert_eq!(restored.get_hiddenqty(), source.get_hiddenqty());
+    assert_eq!(restored.get_cxlqty(), source.get_cxlqty());
     assert_eq!(restored.get_unit(), source.get_unit());
     assert_eq!(restored.get_side(), source.get_side());
     assert_eq!(restored.get_securityids(), source.get_securityids());
     assert_eq!(restored.get_isincode(), Some("US0378331005"));
     assert_eq!(restored.get_fxrates(), source.get_fxrates());
     assert_eq!(
-        restored.get_securityids().get("BLOOMBERG"),
+        restored.get_securityids().get(&IdType::Bloomberg),
         Some("BBG000B9XRY4")
     );
     assert_eq!(
-        restored.get_securityids().get("CUSIP"),
+        restored.get_securityids().get(&IdType::Cusip),
         Some("037833100"),
         "the CUSIP the ISIN carries was derived at finalization and travels as a column"
     );
@@ -114,14 +135,14 @@ fn market_columns_round_trip_every_optional_band() {
 #[test]
 fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     let mut element = OrderEvent::default();
-    element.set_price(Some(decimal("1")));
-    element.set_currency(Ccy::new("EUR").unwrap());
-    element.set_quantity(Some(Decimal::from_int(2)));
-    element.set_unit(Unit::new("bbl").unwrap());
-    element.set_side(Side::read("Sell").unwrap());
-    element.set_lastpx(Some(decimal("3")));
-    element.set_execunix(Some(4));
-    element.set_ticker(Some(SmolStr::new("BRN")));
+    element.set_price(Some(decimal("1")), true);
+    element.set_currency(Ccy::new("EUR").unwrap(), true);
+    element.set_quantity(Some(Decimal::from_int(2)), true);
+    element.set_unit(Unit::new("bbl").unwrap(), true);
+    element.set_side(Side::read("Sell").unwrap(), true);
+    element.set_lastpx(Some(decimal("3")), true);
+    element.set_execunix(Some(4), true);
+    element.set_ticker(Some(SmolStr::new("BRN")), true);
     element
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .unwrap();
@@ -141,7 +162,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     assert_eq!(element.get_lastpx(), None);
     assert_eq!(element.get_execunix(), None);
     assert_eq!(element.get_ticker(), None);
-    assert_eq!(element.get_securityids(), &SecurityIds::default());
+    assert_eq!(element.get_securityids(), &Identifiers::new());
     for column in MarketColumn::ALL {
         let fact = column.fact(&element);
         if column.nullable() {
@@ -176,20 +197,31 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
             .filter(|column| !column.nullable())
             .map(|column| column.name())
             .collect::<Vec<_>>(),
-        ["currency", "unit", "side"]
+        [
+            "marketdatakind",
+            "marketdatatype",
+            "currency",
+            "unit",
+            "side"
+        ]
     );
 }
 
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 28);
+    assert_eq!(fields.len(), 34);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
+            "marketdatakind",
+            "marketdatatype",
             "price",
+            "stoppx",
             "currency",
             "quantity",
+            "displayqty",
+            "hiddenqty",
             "unit",
             "side",
             "securityids",
@@ -202,6 +234,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "avgpx",
             "cumqty",
             "leavesqty",
+            "cxlqty",
             "prevpx",
             "prevqty",
             "spotrate",
@@ -217,9 +250,13 @@ fn market_column_schema_has_one_owner_and_order() {
             "metadata",
         ]
     );
-    // The bid and the ask a quote or a book states: decimals and codes,
-    // null where none is stated.
+    // The order terms and the bid and the ask a quote or a book states:
+    // decimals and codes, null where none is stated.
     for column in [
+        MarketColumn::StopPx,
+        MarketColumn::DisplayQty,
+        MarketColumn::HiddenQty,
+        MarketColumn::CxlQty,
         MarketColumn::BidPx,
         MarketColumn::BidQty,
         MarketColumn::AskPx,
@@ -233,7 +270,7 @@ fn market_column_schema_has_one_owner_and_order() {
         assert!(column.nullable());
     }
     assert_eq!(MarketColumn::IsinCode.datatype(), DataType::Isin);
-    assert_eq!(MarketColumn::IsinCode.display(), "ISIN");
+    assert_eq!(MarketColumn::IsinCode.display(), "ISIN Code");
     // When the element last executed: a market fact, the event clocks'
     // nanosecond UTC datatype, null where none is known.
     assert_eq!(
@@ -268,7 +305,12 @@ fn market_column_schema_has_one_owner_and_order() {
         .unwrap()
     );
     assert_eq!(MarketColumn::FxRates.display(), "FX Rates");
-    assert_eq!(MarketColumn::SecurityIds.datatype(), SecurityIds::dtype());
+    assert_eq!(
+        MarketColumn::SecurityIds.datatype(),
+        Identifiers::dtype("securityid")
+    );
+    assert_eq!(MarketColumn::SecurityIds.name(), "securityids");
+    assert_eq!(MarketColumn::SecurityIds.display(), "Security IDs");
     assert_eq!(MarketColumn::Ticker.datatype(), DataType::utf8());
     assert_eq!(MarketColumn::Unit.datatype(), DataType::Unit);
     assert_eq!(MarketColumn::Side.datatype(), DataType::Side);
@@ -288,7 +330,7 @@ fn market_column_schema_has_one_owner_and_order() {
     // columns folded into `securityids`, the lanes and the old ticker name.
     for gone in [
         "marketoperationid",
-        "tif",
+        "timeinforce",
         "tradable",
         "cusipcode",
         "sedolcode",
@@ -297,13 +339,15 @@ fn market_column_schema_has_one_owner_and_order() {
         "askunit",
         "symbolticker",
         "identifiers",
+        "partyids",
+        "secaltids",
     ] {
         assert_eq!(MarketColumn::of_name(gone), None, "{gone}");
     }
 }
 
 /// `isincode` is a projection of `securityids`: recording it fills an
-/// absent `ISIN`, and - the lenient door - leaves a different one standing.
+/// absent `isin`, and - the lenient door - leaves a different one standing.
 #[test]
 fn recording_an_isincode_fills_an_absent_isin_and_leaves_another_alone() {
     let mut blank = OrderEvent::at(1);

@@ -13,6 +13,8 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         .required_field("row")
 }
 
+#[path = "arrow/extension.rs"]
+mod extension;
 #[path = "arrow/mod_.rs"]
 mod mod_;
 #[path = "arrow/rows.rs"]

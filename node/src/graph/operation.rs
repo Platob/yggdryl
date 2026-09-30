@@ -84,7 +84,8 @@ macro_rules! operation_element_class {
         impl $class {
             /// Build the element from its named facts, one record `Scalar`
             /// keyed by column name - the market and operation columns and
-            /// the element's own `crosscode` and `srcuuids` - each checked by
+            /// the element's own `crosscode` - stated as its base and stored
+            /// `{kind}:{side}:{base}` - and `srcuuids` - each checked by
             /// its column's field and stated through its column, then
             /// finalized. A `null` fact clears; a derived identity or any
             /// other event column is refused by name.

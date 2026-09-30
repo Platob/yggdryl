@@ -127,10 +127,10 @@ impl Catalog {
         let mut schemas = Vec::new();
         for child in self.holder.ls(false, false) {
             let child = child?;
-            if Entry::under_root(&child) == Entry::Schema {
-                if let Some(name) = entry_name(&child) {
-                    schemas.push(name);
-                }
+            if Entry::under_root(&child) == Entry::Schema
+                && let Some(name) = entry_name(&child)
+            {
+                schemas.push(name);
             }
         }
         Ok(schemas)

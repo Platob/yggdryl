@@ -283,10 +283,10 @@ pub(crate) fn infer_field<R: Read>(
         }
         Ok(())
     };
-    if !source.header {
-        if let Some(first) = &first {
-            observe(&mut header, &mut dtypes, &mut present, &mut nullable, first)?;
-        }
+    if !source.header
+        && let Some(first) = &first
+    {
+        observe(&mut header, &mut dtypes, &mut present, &mut nullable, first)?;
     }
     for row in rows {
         observe(&mut header, &mut dtypes, &mut present, &mut nullable, &row?)?;

@@ -443,12 +443,11 @@ impl IOBase for S3File {
             // asking, so a scan that runs off the end costs nothing. Only
             // while open: a closed handle keeps nothing, and a size a listing
             // reported is what the store held then, not what it holds now.
-            if state.opened {
-                if let Some(Some(meta)) = state.meta.as_ref() {
-                    if offset >= meta.size {
-                        return Ok(0);
-                    }
-                }
+            if state.opened
+                && let Some(Some(meta)) = state.meta.as_ref()
+                && offset >= meta.size
+            {
+                return Ok(0);
             }
         }
         // The lock is released across the request, so two threads reading one
@@ -728,10 +727,10 @@ impl IOBase for S3File {
     fn kind(&self) -> crate::IOKind {
         // A staged write has already decided this location is an object, even
         // though publication waits for a flush or a close.
-        if let Ok(state) = self.state() {
-            if state.stage.as_ref().is_some_and(|stage| stage.dirty) {
-                return crate::IOKind::File;
-            }
+        if let Ok(state) = self.state()
+            && state.stage.as_ref().is_some_and(|stage| stage.dirty)
+        {
+            return crate::IOKind::File;
         }
         self.file_kind()
     }

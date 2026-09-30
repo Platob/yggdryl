@@ -693,6 +693,8 @@ const nativeWrapperPrototypes = Object.freeze([
   Urn.prototype,
   Arn.prototype,
   Version.prototype,
+  binding.Identifier.prototype,
+  binding.Identifiers.prototype,
 ])
 const regexpSourceGetter = Object.getOwnPropertyDescriptor(
   RegExp.prototype,
@@ -3322,6 +3324,20 @@ for (const SchemaValue of [DataType, Field]) {
   })
 }
 
+// The mirror of `Field.fromArrow`: the field crosses as the one-field schema
+// of an Arrow IPC stream, which Arrow JS reads back with every key of its
+// metadata - the extension name and document of a datatype Arrow cannot
+// state alone included, since Arrow JS has no extension types of its own.
+const fieldIntoArrowReader = Field.prototype._intoArrowReaderNative
+delete Field.prototype._intoArrowReaderNative
+Object.defineProperty(Field.prototype, 'intoArrow', {
+  configurable: true,
+  value() {
+    const ipc = fieldIntoArrowReader.call(this).intoIpc()
+    return arrow().tableFromIPC(ipc).schema.fields[0]
+  },
+})
+
 Object.defineProperty(Field, 'fromArrow', {
   value(value) {
     if (value instanceof NativeField || typeof value === 'string') {
@@ -4661,8 +4677,8 @@ const NativeCandle = binding.Candle
 const NativeCandleOptions = binding.CandleOptions
 const NativeCandleIterator = binding.CandleIterator
 
-// Every class a market stream item may be: `MarketData` or one of its nine
-// leaves, the union the native doors read.
+// Every class a market stream item may be: `MarketData`, one of its nine
+// leaves or a `FixMsg` held whole, the union the native doors read.
 const MARKET_ITEMS = [
   NativeMarketData,
   NativeOrder,
@@ -4674,6 +4690,7 @@ const MARKET_ITEMS = [
   NativeTradeEvent,
   NativeBookEvent,
   NativeSnapshotEvent,
+  NativeFixMsg,
 ]
 
 // Every graph class whose value is no column's: a fact given one is refused
@@ -4694,7 +4711,7 @@ const GRAPH_VALUES = [
 function asMarketItem(value) {
   if (MARKET_ITEMS.some((owner) => value instanceof owner)) return value
   const kind = value === null ? 'null' : typeof value
-  throw new TypeError(`expected MarketData or a market leaf, got ${kind}`)
+  throw new TypeError(`expected MarketData, a market leaf or a FixMsg, got ${kind}`)
 }
 
 // The named facts an operation leaf is built from, widened once for the
@@ -5996,6 +6013,7 @@ binding.yaml = yaml
     marketKinds: Object.freeze(listing.marketKinds),
     marketViews: Object.freeze(listing.marketViews),
     mdUpdateActions: Object.freeze(listing.mdUpdateActions),
+    elementColumns: Object.freeze(listing.elementColumns),
     eventColumns: Object.freeze(listing.eventColumns),
     marketColumns: Object.freeze(listing.marketColumns),
     operationColumns: Object.freeze(listing.operationColumns),
@@ -6020,6 +6038,28 @@ binding.yaml = yaml
   const members = binding._marketDataKindMembersNative()
   delete binding._marketDataKindMembersNative
   binding.MarketDataKind = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
+// What type of its kind a market element is: an order type, a quote type, a
+// trade type or a book entry type, each member's stored name under the code a
+// `marketdatatype` column stores.
+{
+  const members = binding._marketDataTypeMembersNative()
+  delete binding._marketDataTypeMembersNative
+  binding.MarketDataType = Object.freeze(
+    Object.fromEntries(members.map(({ name, code }) => [name, code])),
+  )
+}
+
+// How long an order stands: FIX's TimeInForce(59) code set, each member's
+// stored name under the code a `timeinforce` column stores - `UNKN` at zero,
+// the FIX values in wire order, `OTHER` for a venue's own.
+{
+  const members = binding._timeInForceMembersNative()
+  delete binding._timeInForceMembersNative
+  binding.TimeInForce = Object.freeze(
     Object.fromEntries(members.map(({ name, code }) => [name, code])),
   )
 }

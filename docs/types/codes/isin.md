@@ -166,8 +166,8 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
     sid = Field("sid", "isin")
     arrow_field = sid.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.isin"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.isin"
     assert Field.from_arrow(arrow_field) == sid
     ```
 
@@ -264,7 +264,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - A `ZZ` number - ISO 6166's placeholder for a derivative no agency has numbered yet - yields to another prefix on a [`merge_with`](index.md#the-code-family-value); any other two numbers are two statements, and this one stands.
 - A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
-- `SecurityIDSource(22)` and the crate tag `isincode(65023)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `ISIN` security identifier.
+- `SecurityIDSource(22)` and the crate tag `isincode(65021)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `isin` [security identifier](../../graph/identifier.md).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 
 ## Commands
@@ -272,7 +272,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes code::securities cusip::securities figi::securities sedol::securities timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes code::securities cusip::securities figi::securities sedol::securities
     ```
 
 === "Python"

@@ -243,12 +243,12 @@ impl<H: IOBase> Coding<H> {
                 .clone()
                 .try_with_encodings(crate::iobase::coding_mime(self.codec))?
         };
-        if let Some(parent) = self.handle.parent() {
-            if let Some(name) = self.handle.url().and_then(crate::Url::file_name) {
-                let mut child = parent.child_by_path(name)?;
-                child.set_media_type(encoded_media_type);
-                return Ok(child);
-            }
+        if let Some(parent) = self.handle.parent()
+            && let Some(name) = self.handle.url().and_then(crate::Url::file_name)
+        {
+            let mut child = parent.child_by_path(name)?;
+            child.set_media_type(encoded_media_type);
+            return Ok(child);
         }
 
         // A value, never a container: the record read takes a container's

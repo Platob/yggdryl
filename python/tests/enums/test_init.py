@@ -71,16 +71,30 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "trade_event",
         "book_event",
         "snapshot_event",
+        "fix",
     )
     assert not hasattr(enums, "OPERATION_KINDS")
     assert enums.MD_UPDATE_ACTIONS == ("0", "1", "2", "3", "4", "5", "snapshot")
-    assert len(enums.EVENT_COLUMNS) == 15
+    assert enums.ELEMENT_COLUMNS == (
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "crosshashcode",
+        "srcuuids",
+    )
+    assert len(enums.EVENT_COLUMNS) == 9
     assert enums.EVENT_COLUMNS[0] == "currunix"
     assert enums.EVENT_COLUMNS[-1] == "state"
     assert enums.MARKET_COLUMNS == (
+        "marketdatakind",
+        "marketdatatype",
         "price",
+        "stoppx",
         "currency",
         "quantity",
+        "displayqty",
+        "hiddenqty",
         "unit",
         "side",
         "securityids",
@@ -93,6 +107,7 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "avgpx",
         "cumqty",
         "leavesqty",
+        "cxlqty",
         "prevpx",
         "prevqty",
         "spotrate",
@@ -107,7 +122,13 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "ticker",
         "metadata",
     )
-    assert enums.OPERATION_COLUMNS == ("tif", "tradable", "altids", "accountids")
+    assert enums.OPERATION_COLUMNS == (
+        "ordqty",
+        "timeinforce",
+        "tradable",
+        "identifiers",
+        "partyids",
+    )
     # `yggdryl.Side` is the one Python side: the enums package holds none.
     assert not hasattr(enums, "Side") and not hasattr(enums, "SIDE")
     # The views a `marketdata` stream is read by, in declaration order.
@@ -123,6 +144,7 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         enums.MARKET_KINDS,
         enums.MARKET_VIEWS,
         enums.MD_UPDATE_ACTIONS,
+        enums.ELEMENT_COLUMNS,
         enums.EVENT_COLUMNS,
         enums.MARKET_COLUMNS,
         enums.OPERATION_COLUMNS,
