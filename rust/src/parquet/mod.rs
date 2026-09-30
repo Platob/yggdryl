@@ -1882,6 +1882,9 @@ pub struct Parquet<H: IOBase> {
     /// Explicit lifecycle state. An opened empty file has no footer, so cache
     /// presence cannot truthfully answer whether the wrapper is open.
     opened: bool,
+    /// Whether the opened session is over a container, asked once at `open`:
+    /// its leaves answer every dimension ask, so it caches nothing.
+    container: bool,
     /// `Some(None)` is the stable opened-session answer for an empty handle.
     cached: OnceLock<Option<Arc<ParquetMetaData>>>,
     /// The schema conversion is also metadata-only, but materially more
@@ -1898,6 +1901,7 @@ impl<H: IOBase> Parquet<H> {
             handle,
             options: ParquetOptions::new(),
             opened: false,
+            container: false,
             cached: OnceLock::new(),
             cached_column_size: OnceLock::new(),
         }
@@ -1968,12 +1972,28 @@ impl<H: IOBase> Parquet<H> {
     /// every dimension ask with no call - and which a container's session
     /// never holds.
     fn warm(&self) -> bool {
-        self.opened && self.cached.get().is_some()
+        self.caches() && self.cached.get().is_some()
+    }
+
+    /// Whether this session caches what it reads: an opened leaf's does, a
+    /// closed handle's and a container's never do.
+    const fn caches(&self) -> bool {
+        self.opened && !self.container
+    }
+
+    /// Whether a dimension ask goes to the leaves: a container, known from
+    /// `open` in a session and asked of the handle otherwise.
+    fn reads_leaves(&self) -> bool {
+        if self.opened {
+            self.container
+        } else {
+            self.handle.is_container()
+        }
     }
 
     /// Return opened-session footer metadata, or a fresh uncached closed read.
     fn metadata(&self) -> Result<Option<Arc<ParquetMetaData>>> {
-        if !self.opened {
+        if !self.caches() {
             return if self.handle.is_empty() {
                 Ok(None)
             } else {
@@ -1998,7 +2018,7 @@ impl<H: IOBase> Parquet<H> {
     /// closed wrapper.
     fn refresh_metadata(&mut self) -> crate::Result<()> {
         self.invalidate_metadata();
-        if self.opened {
+        if self.caches() {
             let loaded = if self.handle.is_empty() {
                 None
             } else {
@@ -2013,7 +2033,7 @@ impl<H: IOBase> Parquet<H> {
     /// The original write error remains authoritative.
     fn refresh_metadata_after_error(&mut self) {
         self.invalidate_metadata();
-        if self.opened {
+        if self.caches() {
             let loaded = if self.handle.is_empty() {
                 Some(None)
             } else {
@@ -2099,7 +2119,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        if !self.warm() && self.handle.is_container() {
+        if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
@@ -2112,14 +2132,14 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        if self.opened {
+        if self.caches() {
             if let Some(column_size) = self.cached_column_size.get() {
                 return Ok(*column_size);
             }
         }
         let column_size = if let Some(field) = self.options.field() {
             field.field_len()
-        } else if !self.warm() && self.handle.is_container() {
+        } else if !self.warm() && self.reads_leaves() {
             crate::iomedia::container_field(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
@@ -2130,10 +2150,11 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         } else {
             0
         };
-        if self.opened {
+        if self.caches() {
             let _ = self.cached_column_size.set(column_size);
+            return Ok(*self.cached_column_size.get().unwrap_or(&column_size));
         }
-        Ok(*self.cached_column_size.get().unwrap_or(&column_size))
+        Ok(column_size)
     }
 
     /// Return this wrapper's Parquet options even when the wrapped byte handle
@@ -2147,7 +2168,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        if !self.warm() && self.handle.is_container() {
+        if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let schema = self.read_arrow_schema()?;
@@ -2219,7 +2240,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
 impl<H: IOBase> IOBase for Parquet<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
-        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind);
+        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.invalidate_metadata();
@@ -2252,7 +2273,8 @@ impl<H: IOBase> IOBase for Parquet<H> {
         self.invalidate_metadata();
         // A container's leaves answer for it on every ask, so its session
         // caches nothing one leaf's footer would answer.
-        if !self.handle.is_container() {
+        self.container = self.handle.is_container();
+        if !self.container {
             let metadata = if self.handle.is_empty() {
                 None
             } else {
@@ -2272,6 +2294,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
     /// Flush the handle and drop the cached footer.
     fn close(&mut self) -> crate::Result<()> {
         self.opened = false;
+        self.container = false;
         self.invalidate_metadata();
         self.handle.close()
     }
@@ -2284,7 +2307,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
     fn clear(&mut self) -> crate::Result<()> {
         self.invalidate_metadata();
         let result = self.handle.clear();
-        if self.opened {
+        if self.caches() {
             if result.is_ok() {
                 let _ = self.cached.set(None);
             } else {

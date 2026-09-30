@@ -22,6 +22,9 @@ pub struct ByteStream<'source> {
     batch_size: usize,
     pending_error: Option<Error>,
     done: bool,
+    /// Whether this is a container's stream: the leaves beneath it, each
+    /// already decoded by its own name, rather than one value's bytes.
+    container: bool,
 }
 
 impl<'source> ByteStream<'source> {
@@ -103,6 +106,21 @@ impl<'source> ByteStream<'source> {
             },
             batch_size,
         )
+        .map(ByteStream::with_container)
+    }
+
+    /// Whether this is a container's stream ([`Self::from_container`]): a
+    /// wrapper that would decode or index one value passes it through
+    /// instead, since each leaf was already read as its own name says.
+    pub(crate) const fn is_container(&self) -> bool {
+        self.container
+    }
+
+    /// This stream, marked as a container's: what a wrapper re-batching a
+    /// container's stream answers, so the mark survives it.
+    pub(crate) const fn with_container(mut self) -> Self {
+        self.container = true;
+        self
     }
 
     pub(super) fn from_handle<H: IOBase + ?Sized>(
@@ -138,11 +156,12 @@ impl<'source> ByteStream<'source> {
             batch_size,
             pending_error: None,
             done: false,
+            container: false,
         })
     }
 
     /// Read up to `target.len()` bytes, filling it unless the stream ends.
-    fn read_filled(&mut self, target: &mut [u8]) -> Result<usize> {
+    pub(crate) fn read_filled(&mut self, target: &mut [u8]) -> Result<usize> {
         if target.is_empty() || self.done {
             return Ok(0);
         }

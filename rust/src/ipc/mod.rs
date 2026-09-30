@@ -914,11 +914,13 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         let columns = if let Some(field) = self.options.field() {
             field.field_len()
         } else if self.handle.is_container() {
-            crate::iomedia::container_field(
+            // Answered by the leaves on every ask, never cached: a leaf
+            // written beneath the container since changes it.
+            return Ok(crate::iomedia::container_field(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
             )?
-            .field_len()
+            .field_len());
         } else if self.handle.is_empty() {
             0
         } else {
@@ -1046,7 +1048,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
 impl<H: IOBase> IOBase for Ipc<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
-        bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind);
+        bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.invalidate_cached_metadata();

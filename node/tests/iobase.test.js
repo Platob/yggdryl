@@ -817,6 +817,24 @@ test('bytes move between two handles without a temporary copy', (t) => {
   source.flush()
 })
 
+test('a bound folder is refused as a copy source before a byte moves', () => {
+  const filesystem = memoryFs()
+  IOBase.fromFs(filesystem, 'logs/a.log').writeText('a1\n')
+  // This filesystem keeps no directories of its own, so it answers `logs`
+  // as the one a real store would.
+  const fileInfo = filesystem.fileInfo
+  filesystem.fileInfo = (name) =>
+    name === 'logs' ? { path: name, kind: 'directory' } : fileInfo(name)
+  const folder = IOBase.fromFs(filesystem, 'logs')
+  const target = IOBase.fromFs(filesystem, 'out.log')
+  target.writeText('kept')
+
+  // Its stream is its leaves end to end, which no one copy of a value is:
+  // refused by kind, as the core refuses it, with the target untouched.
+  assert.throws(() => folder.copyInto(target), /expected copy on a byte value/)
+  assert.equal(target.readText(), 'kept')
+})
+
 test('a memory handle needs no location', () => {
   const handle = IOBase.fromBytes(Buffer.from('AAPL'))
 

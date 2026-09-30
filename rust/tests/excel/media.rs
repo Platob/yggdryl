@@ -366,11 +366,13 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
             )
         );
     });
-    // The rows themselves stream from a package opened for the read.
+    // The rows themselves stream from a package opened for the read, which
+    // asks whether the handle is a container - forwarded as that question,
+    // never derived from the kind, which on a store is a request.
     costs(
         "the rows while open",
         &calls,
-        "pstream_bytes=1 bound_location=3 media_type=1 kind=1 parent=1",
+        "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
         || assert_eq!(media.read_arrow_reader(&options).unwrap().count(), 1),
     );
 

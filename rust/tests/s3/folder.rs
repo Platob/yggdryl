@@ -80,6 +80,28 @@ mod accounting {
     }
 
     #[test]
+    fn a_refused_coded_object_fails_with_the_stores_own_error() {
+        let store = store();
+        store.put(
+            BUCKET,
+            "logs/a.log.gz",
+            &yggdryl::Codec::Gzip.dump(b"a1\n").expect("an encoding"),
+        );
+        let prefix = folder(&store, "logs/");
+
+        // The listing answers; the coded object's `GET` is refused. The
+        // failure is the store's own, naming the service and the object -
+        // not a decoder's complaint about a missing gzip header.
+        store.fail_after(1, 403, "AccessDenied", 1);
+        let error = prefix.read_all_bytes().expect_err("a refused GET");
+        assert!(
+            matches!(&error, yggdryl::Error::Remote { status: 403, .. }),
+            "{error:?}"
+        );
+        assert!(error.to_string().contains("logs/a.log.gz"), "{error}");
+    }
+
+    #[test]
     fn a_prefix_stream_passes_the_objects_before_its_position_unfetched() {
         let store = store();
         logs(&store);

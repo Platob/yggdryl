@@ -154,7 +154,7 @@ impl<H: IOBase> IOBase for Hashed<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close, parent,
-        child_by_path, ls, kind, is_atomic, is_tabular, is_io);
+        child_by_path, ls, kind, is_container, is_atomic, is_tabular, is_io);
 
     /// Write through, extending the running digest when the write is the next
     /// sequential byte and dropping it when it is not.

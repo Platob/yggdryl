@@ -8,6 +8,9 @@
 //! through `yggdryl::internals`. What the backends do over a whole tree is in
 //! `system.rs`, beside the reference contract itself.
 
+#[path = "support/counting_filesystem.rs"]
+mod counting_filesystem;
+
 #[path = "fs/file.rs"]
 mod file;
 #[path = "fs/folder.rs"]

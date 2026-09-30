@@ -35,8 +35,8 @@ MEDIA.open()
 # A compound name: three layers to compose and one class to answer with.
 COMPOSED = ROOT / "trades.txt.gz"
 # A folder of sixteen small leaves, streamed through one core stream the
-# iterator holds: the first chunk costs the listing and one open, the drain
-# one open per leaf.
+# iterator holds: a first chunk inside the first leaf costs the listing and
+# one open, the drain one open per leaf.
 FOLDER = ROOT / "logs"
 FOLDER.mkdir()
 for index in range(16):
@@ -113,7 +113,7 @@ def main() -> None:
         )
         _measure(
             "folder stream first chunk",
-            lambda: next(iter(LEAVES.pstream_bytes())),
+            lambda: next(iter(LEAVES.pstream_bytes(0, 64))),
             arguments.iterations,
         )
         _measure(

@@ -214,7 +214,7 @@ impl<H: IOBase> IOBase for Text<H> {
         read_digest, read_range_digest, write_all_bytes, append_bytes,
         pwrite, size, capacity, reserve,
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close, parent,
-        child_by_path, ls, kind, clear, remove, is_atomic, is_io);
+        child_by_path, ls, kind, is_container, clear, remove, is_atomic, is_io);
 
     fn is_tabular(&self) -> bool {
         true

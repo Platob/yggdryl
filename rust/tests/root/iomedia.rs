@@ -2805,6 +2805,108 @@ mod shape {
         let _ = std::fs::remove_dir_all(&path);
     }
 
+    /// One Arrow batch of `columns` Int64 columns and `rows` rows.
+    fn int64_batch(columns: usize, rows: usize) -> arrow_array::RecordBatch {
+        use std::sync::Arc;
+
+        let fields: Vec<_> = (0..columns)
+            .map(|column| {
+                arrow_schema::Field::new(format!("c{column}"), arrow_schema::DataType::Int64, false)
+            })
+            .collect();
+        let values: Vec<arrow_array::ArrayRef> = (0..columns)
+            .map(|_| {
+                Arc::new(arrow_array::Int64Array::from_iter_values(0..rows as i64))
+                    as arrow_array::ArrayRef
+            })
+            .collect();
+        arrow_array::RecordBatch::try_new(Arc::new(arrow_schema::Schema::new(fields)), values)
+            .expect("an Int64 fixture")
+    }
+
+    #[test]
+    fn an_opened_ipc_session_over_a_folder_never_caches_its_width() {
+        use yggdryl::IOMedia as _;
+
+        let path = root("ipc-session");
+        let lake = path.join("lake");
+        std::fs::create_dir_all(&lake).unwrap();
+        let mut ipc = yggdryl::ipc::Ipc::new(yggdryl::local::LocalFolder::new(&lake).unwrap());
+        ipc.open().unwrap();
+        assert_eq!(
+            ipc.column_size().unwrap(),
+            0,
+            "an empty folder has no columns"
+        );
+
+        // A leaf written beneath the folder since is what its width is now.
+        let batch = int64_batch(2, 3);
+        let mut leaf = yggdryl::local::LocalPath::new(lake.join("a.arrows")).unwrap();
+        let options = leaf.record_options().unwrap();
+        leaf.overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &options,
+        )
+        .unwrap();
+        assert_eq!(ipc.column_size().unwrap(), 2);
+        assert_eq!(ipc.row_size().unwrap(), 3);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_opened_avro_session_over_a_folder_answers_from_its_leaves_after_a_write() {
+        use yggdryl::IOMedia as _;
+
+        let path = root("avro-session");
+        let lake = path.join("lake");
+        std::fs::create_dir_all(&lake).unwrap();
+        let mut avro = yggdryl::avro::Avro::new(yggdryl::local::LocalFolder::new(&lake).unwrap());
+        avro.open().unwrap();
+
+        // The write lands a leaf beneath the folder; the session it refreshes
+        // holds no leaf's dimensions, so the leaves still answer.
+        let batch = int64_batch(2, 3);
+        let options = avro.record_options().unwrap();
+        avro.overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &options,
+        )
+        .unwrap();
+        assert_eq!(avro.row_size().unwrap(), 3);
+        assert_eq!(avro.column_size().unwrap(), 2);
+        assert_eq!(avro.read_arrow_field(&options).unwrap().field_len(), 2);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn an_opened_parquet_session_over_a_folder_answers_from_its_leaves_after_a_write() {
+        use yggdryl::IOMedia as _;
+
+        let path = root("parquet-session");
+        let lake = path.join("lake");
+        std::fs::create_dir_all(&lake).unwrap();
+        let mut parquet =
+            yggdryl::parquet::Parquet::new(yggdryl::local::LocalFolder::new(&lake).unwrap());
+        parquet.open().unwrap();
+
+        let batch = int64_batch(2, 3);
+        let options = parquet.record_options().unwrap();
+        parquet
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(parquet.row_size().unwrap(), 3);
+        assert_eq!(parquet.column_size().unwrap(), 2);
+        assert_eq!(parquet.read_arrow_field(&options).unwrap().field_len(), 2);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
     #[test]
     fn a_csv_wrapper_over_a_folder_answers_for_the_leaves_beneath_it() {
         use yggdryl::IOMedia as _;

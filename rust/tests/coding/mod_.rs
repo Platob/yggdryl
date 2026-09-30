@@ -695,3 +695,44 @@ mod transport {
         assert_eq!(requests.load(Ordering::Relaxed), 0);
     }
 }
+
+#[test]
+fn a_coding_over_a_folder_reads_its_leaves_as_their_own_names_say() {
+    let mut root = yggdryl::local::LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    root.push(format!("yggdryl-coding-folder-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("a.log"), b"alpha\n").unwrap();
+    std::fs::write(root.join("b.log.gz"), Codec::Gzip.dump(b"beta\n").unwrap()).unwrap();
+
+    // Each leaf is already read as its own name says - `b.log.gz` as its
+    // text - so there is no one coded value under the folder to take a
+    // coding off, and the coding passes the leaves through.
+    let mut coded = Coding::new(
+        yggdryl::local::LocalFolder::new(&root).unwrap(),
+        Codec::Gzip,
+    );
+    assert_eq!(coded.read_all_bytes().unwrap(), b"alpha\nbeta\n");
+    assert_eq!(coded.read_range_bytes(3, 5).unwrap(), b"ha\nbe");
+    let streamed: Vec<u8> = coded
+        .pstream_bytes(2, 4)
+        .unwrap()
+        .map(|chunk| chunk.unwrap())
+        .collect::<Vec<_>>()
+        .concat();
+    assert_eq!(streamed, b"pha\nbeta\n");
+
+    // A container holds no bytes of its own: a position lands nowhere, its
+    // size is zero, and opening it holds no value open.
+    let mut buffer = [0_u8; 4];
+    assert_eq!(coded.pread(0, &mut buffer).unwrap(), 0);
+    assert_eq!(coded.size(), 0);
+    coded.open().unwrap();
+    assert_eq!(coded.read_all_bytes().unwrap(), b"alpha\nbeta\n");
+    coded.close().unwrap();
+
+    let _ = std::fs::remove_dir_all(&root);
+}

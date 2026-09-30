@@ -4350,7 +4350,12 @@ export declare class IOBase {
   openOutputStream(metadata?: Record<string, string> | undefined | null): ByteWriter
   /** Open an append stream and forward optional metadata exactly. */
   openAppendStream(metadata?: Record<string, string> | undefined | null): ByteWriter
-  /** Copy every byte here into `target`, returning the count. */
+  /**
+   * Copy every byte here into `target`, returning the count.
+   *
+   * A container is refused by kind before a byte moves: its stream is its
+   * leaves end to end, no one value to copy.
+   */
   copyInto(target: IOBase): bigint
   /** Move this file into `target`, using the backend operation when equal. */
   moveInto(target: IOBase): IOBase

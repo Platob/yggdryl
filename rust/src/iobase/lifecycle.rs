@@ -53,7 +53,7 @@ pub fn not_empty(url: &Url) -> Error {
 /// one byte value - a digest, a copy, a coding transfer - and would otherwise
 /// take a container's stream of its leaves, end to end in its backend's
 /// listing order, for one.
-fn not_atomic<H: super::IOBase + ?Sized>(handle: &H, operation: &'static str) -> Error {
+pub(crate) fn not_atomic<H: super::IOBase + ?Sized>(handle: &H, operation: &'static str) -> Error {
     Error::NotAtomic {
         operation,
         kind: handle.kind().as_str(),
