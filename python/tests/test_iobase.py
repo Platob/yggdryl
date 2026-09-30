@@ -122,13 +122,13 @@ class TestNativeHandleLayers:
         assert handle.opened
         first = handle.read_arrow_field()
         assert [child.name for child in first.dtype] == ["id"]
-        assert handle.row_size == 2
+        assert handle.row_size() == 2
 
         # Replace the resource outside this handle. Repeated metadata reads in
         # the opened scope stay on the retained native media cache.
         IOBase.from_fs(filesystem, location).write_bytes(replacement.read_bytes())
         assert [child.name for child in handle.read_arrow_field().dtype] == ["id"]
-        assert handle.row_size == 2
+        assert handle.row_size() == 2
 
         handle.close()
         assert handle.closed
@@ -136,7 +136,7 @@ class TestNativeHandleLayers:
             "id",
             "symbol",
         ]
-        assert handle.row_size == 3
+        assert handle.row_size() == 3
 
 
 class TestPathlibParity:
@@ -158,7 +158,7 @@ class TestPathlibParity:
         assert not absent.exists()
         # Reads skip, so probing a location needs no existence check first.
         assert absent.read_bytes() == b""
-        assert absent.size == 0
+        assert absent.size() == 0
 
     def test_a_handle_says_whether_it_holds_bytes_or_rows(
         self, lake: pathlib.Path, tmp_path: pathlib.Path
@@ -185,9 +185,9 @@ class TestPathlibParity:
     ) -> None:
         empty_folder = IOBase(tmp_path / "empty")
         empty_folder.mkdir()
-        assert IOBase.from_bytes().kind == "memory"
-        assert empty_folder.kind == "directory"
-        assert IOBase(tmp_path / "missing").kind == "unknown"
+        assert IOBase.from_bytes().kind() == "memory"
+        assert empty_folder.kind() == "directory"
+        assert IOBase(tmp_path / "missing").kind() == "unknown"
         assert not empty_folder.is_io()
         assert IOBase(tmp_path / "notes.txt").is_io()
 
@@ -202,23 +202,23 @@ class TestPathlibParity:
 
         handle = IOBase(tmp_path / "dimensions.arrows")
         handle.overwrite_arrow_table(table([1, 2, 3, 4]))
-        assert handle.kind == "file"
+        assert handle.kind() == "file"
         assert handle.is_io()
-        assert handle.row_size == 4
-        assert handle.column_size == 2
+        assert handle.row_size() == 4
+        assert handle.column_size() == 2
 
         # A publication through an opened handle refreshes its row metadata.
         # Overwrite replaces rows, not the stored field: an extra incoming
         # column is safely completed onto the existing two-column shape.
         handle.open()
-        assert (handle.row_size, handle.column_size) == (4, 2)
+        assert (handle.row_size(), handle.column_size()) == (4, 2)
         handle.overwrite_arrow_table(table([9], wide=True))
-        assert (handle.row_size, handle.column_size) == (1, 2)
+        assert (handle.row_size(), handle.column_size()) == (1, 2)
         handle.close()
 
         typed_empty = IOBase(tmp_path / "typed-empty.arrows")
         typed_empty.overwrite_arrow_table(table([]))
-        assert (typed_empty.row_size, typed_empty.column_size) == (0, 2)
+        assert (typed_empty.row_size(), typed_empty.column_size()) == (0, 2)
 
         # A folder aggregates only leaves of its selected record encoding;
         # unrelated text never becomes a row in the table.
@@ -227,7 +227,7 @@ class TestPathlibParity:
         IOBase(lake / "b.arrows").overwrite_arrow_table(table([3]))
         IOBase(lake / "notes.txt").write_text("not a table row")
         folder = IOBase(lake)
-        assert (folder.row_size, folder.column_size) == (3, 2)
+        assert (folder.row_size(), folder.column_size()) == (3, 2)
 
     def test_children_are_resolved_the_way_paths_are(self, lake: pathlib.Path) -> None:
         by_operator = IOBase(lake) / "year=2024" / "month=01" / "part-0.parquet"
@@ -263,7 +263,7 @@ class TestPathlibParity:
         assert handle.write_text("AAPL") == 4
         assert handle.read_text() == "AAPL"
         assert handle.exists()
-        assert handle.size == 4
+        assert handle.size() == 4
 
         handle.unlink()
         assert handle.read_bytes() == b""
@@ -311,7 +311,7 @@ class TestPathlibParity:
         leaf = folder / "empty.arrows"
         leaf.touch()
         assert leaf.exists()
-        assert leaf.size == 0
+        assert leaf.size() == 0
 
         leaf.write_text("kept")
         leaf.touch()
@@ -655,7 +655,7 @@ class TestByteStreams:
         folder = IOBase(tmp_path)
         assert b"".join(folder.pstream_bytes()) == b"a1\na2b1\nc1\n"
         assert folder.read_bytes() == b"a1\na2b1\nc1\n"
-        assert folder.size == 0
+        assert folder.size() == 0
 
         # A position counts across leaves, and chunks are full across them.
         assert list(folder.pstream_bytes(3, 4)) == [b"a2b1", b"\nc1\n"]
@@ -697,6 +697,36 @@ class TestByteStreams:
         # as each chunk is yielded.
         assert list(cursor.stream_bytes(3)) == [b"\na2", b"b1\n"]
         assert cursor.tell() == 8
+
+    def test_filesystem_options_cross_as_keywords_too(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        import warnings
+
+        from yggdryl import UnknownPropertyWarning
+
+        (tmp_path / "a.log").write_bytes(b"a")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            IOBase.from_uri("s3://trades/lake/a.log", region="eu-west-1")
+        with pytest.warns(
+            UnknownPropertyWarning, match=r"'regoin'.*did you mean 'region'"
+        ):
+            IOBase.from_uri((tmp_path / "a.log").as_uri(), regoin="eu-west-1")
+
+    def test_into_text_keywords_land_on_the_text_options_it_retains(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from yggdryl import TextOptions
+
+        path = tmp_path / "app.log"
+        path.write_bytes(b"INFO started\n")
+        handle = IOBase(path).into_text(TextOptions(rowheader=r"^(?<level>[A-Z]+) "))
+        # A keyword alone keeps what the handle retained and adds to it.
+        handle = handle.into_text(start_rownum=1)
+        options = handle.record_options()
+        assert options.rowheader == r"^(?<level>[A-Z]+) "
+        assert options.start_rownum == 1
 
     def test_a_container_is_no_value_to_digest_or_copy(
         self, tmp_path: pathlib.Path
@@ -745,22 +775,22 @@ def test_a_handle_reports_and_reserves_the_allocation_behind_it() -> None:
     handle = IOBase.from_bytes(b"AAPL", capacity=1024)
 
     # Capacity is what fits before the next growth; size is what is stored.
-    assert handle.capacity >= 1024
-    assert handle.size == 4
+    assert handle.capacity() >= 1024
+    assert handle.size() == 4
 
     handle.reserve(4096)
-    assert handle.capacity >= 4096
-    assert handle.size == 4
+    assert handle.capacity() >= 4096
+    assert handle.size() == 4
     assert handle.read_bytes() == b"AAPL"
 
     # Reserving never shrinks.
     handle.reserve(16)
-    assert handle.capacity >= 4096
+    assert handle.capacity() >= 4096
 
     # A capacity with no data is the one-allocation start a known length wants.
-    assert IOBase.from_bytes(capacity=512).capacity >= 512
-    assert IOBase.from_bytes(capacity=512).size == 0
-    assert IOBase.from_bytes().capacity == 0
+    assert IOBase.from_bytes(capacity=512).capacity() >= 512
+    assert IOBase.from_bytes(capacity=512).size() == 0
+    assert IOBase.from_bytes().capacity() == 0
 
 
 def test_the_positional_primitives_have_an_exact_form() -> None:
@@ -770,7 +800,7 @@ def test_the_positional_primitives_have_an_exact_form() -> None:
     assert handle.pread_exact(13, 4) == b"AAPL"
 
     # `read_range_bytes` answers what exists; the exact form refuses.
-    assert len(handle.read_range_bytes(0, 10_000)) == handle.size
+    assert len(handle.read_range_bytes(0, 10_000)) == handle.size()
     with pytest.raises(OSError):
         handle.pread_exact(0, 10_000)
 
@@ -810,7 +840,7 @@ def test_a_cursor_goes_back_to_the_resource_it_rides() -> None:
 
     assert cursor.tell() == 7
     assert cursor.handle.read_bytes() == b"symbol,price\n"
-    assert cursor.handle.size == handle.size
+    assert cursor.handle.size() == handle.size()
     # The cursor owns only its position, so reading the whole resource
     # through the handle does not move it.
     assert cursor.tell() == 7

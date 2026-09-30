@@ -34,7 +34,7 @@ Install and cross-language conventions are in `yggdryl`.
 | bounded chunks | `pstream_bytes(position, batch_size)?` | `pstream_bytes(position=0, batch_size=65536)` | `pstreamBytes(position?, batchSize?)` |
 | cursor | `cursor()`, `cursor_at(n)` + `IOCursor` (`tell`, `seek_to`, `read_next`, `write_next`, `stream_bytes`), `std::io::Read/Write/Seek` | `cursor(pos)`: `read`, `readinto`, `write`, `seek(o, whence)`, `tell`, `stream_bytes` | `cursor(pos)`: `read`, `write`, `seek`, `tell`, `position`, `streamBytes` |
 | `std::io` adapters | `reader_at(o)`, `writer_at(o)` | the cursor is file-like | n/a |
-| size, kind, existence | `size()`, `kind()`, `is_container()`, `kind().is_known()` | `size`, `kind`, `exists()`, `is_dir()`, `is_file()` | `size`, `kind`, `exists()`, `isDir()`, `isFile()` |
+| size, kind, existence | `size()`, `kind()`, `is_container()`, `kind().is_known()` | `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` | `size()`, `kind()`, `exists()`, `isDir()`, `isFile()` |
 | child, parent | `child_by_path("a/b.bin")?`, `parent()` | `h / "a/b.bin"`, `joinpath(...)`, `parent` | `joinpath('a/b.bin')`, `parent` |
 | list, glob | `ls(recursive, include_private)`, `glob(pattern, include_private)?` | `ls(recursive=False)`, `iterdir()`, `glob(p)`, `rglob(p)` | `ls(recursive?)`, `iterdir()`, `glob(p)`, `rglob(p)`, `[...h]` |
 | make a folder | `LocalPath::as_directory()?.create()?`, `truncate(0)?` on a folder | `mkdir()` (returns the folder role) | `mkdir()` |
@@ -180,7 +180,7 @@ Install and cross-language conventions are in `yggdryl`.
 | Wrong | Right |
 | --- | --- |
 | `if not h.exists(): h.mkdir()` then write | write; parents are created on the first write |
-| reading the whole value to slice off a footer (`read_all_bytes` / `read_bytes()[-8:]`) | Rust `h.read_range_bytes(h.size() - 8, 8)?`, Python `h.read_range_bytes(h.size - 8, 8)`, JS `h.readRangeBytes(h.size - 8, 8)` |
+| reading the whole value to slice off a footer (`read_all_bytes` / `read_bytes()[-8:]`) | Rust `h.read_range_bytes(h.size() - 8, 8)?`, Python `h.read_range_bytes(h.size() - 8, 8)`, JS `h.readRangeBytes(h.size() - 8, 8)` |
 | a loop of `read_range_bytes` over a `.gz` handle | one `pstream_bytes` drain, or `open()`/`buffered` first |
 | Python `IOBase("x.gz").read_bytes()` expecting gzip bytes | it is decoded; `LocalPath("x.gz").read_bytes()` is stored |
 | JS `new IOBase('x.gz').writeText(s)` expecting a gzip file | writes plain bytes under a `.gz` name; `plain.compressInto(gz)` or `gz.writeBytes(gzip.dumps(b))` |

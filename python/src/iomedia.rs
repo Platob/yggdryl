@@ -1610,6 +1610,48 @@ impl PyRecordOptions {
         Ok(state)
     }
 
+    /// Set one property by name, through the setter an assignment runs:
+    /// `false` when `name` names no settable property of this class.
+    ///
+    /// Each arm extracts the value as the setter's own signature does, so a
+    /// keyword is refused exactly as `options.name = value` is.
+    pub(crate) fn set_property(&mut self, name: &str, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let given = (!value.is_none()).then_some(value);
+        match name {
+            "name" => self.set_name(&value.extract::<String>()?)?,
+            "field" => self.set_field(given)?,
+            "safe" => self.set_safe(value.extract()?)?,
+            "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
+            "commit_row_size" => self.set_commit_row_size(given)?,
+            "max_row_size" => self.set_max_row_size(value.extract()?)?,
+            "row_offset" => self.set_row_offset(value.extract()?)?,
+            "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
+            "level" => self.set_level(value.extract()?)?,
+            "merge_by" => self.set_merge_by(value)?,
+            "select" => self.set_select(value)?,
+            "filter" => self.set_filter(value)?,
+            "plan" => self.set_plan(value)?,
+            "timezone" => self.set_timezone(given)?,
+            "sheet" => self.set_sheet(value.extract::<Option<String>>()?.as_deref())?,
+            "range" => self.set_range(given)?,
+            "block_codec" => self.set_block_codec(&value.extract::<String>()?)?,
+            "sync_marker" => self.set_sync_marker(given)?,
+            "compression" => self.set_compression(&value.extract::<String>()?)?,
+            "max_row_group_size" => self.set_max_row_group_size(value.extract()?)?,
+            "key_value_metadata" => self.set_key_value_metadata(value)?,
+            "separator" => self.set_separator(value)?,
+            "quote" => self.set_quote(given)?,
+            "escape" => self.set_escape(given)?,
+            "comment" => self.set_comment(given)?,
+            "header" => self.set_header(value.extract()?)?,
+            "null_values" => self.set_null_values(value)?,
+            "trim" => self.set_trim(value.extract()?)?,
+            "infer_row_size" => self.set_infer_row_size(value.extract()?)?,
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
     /// Restore the CSV dialect a pickle state carries, where it carries one.
     ///
     /// The three optional roles are cleared before the separator lands, so a
@@ -1653,27 +1695,116 @@ pub(crate) fn core_record_options_from_value(value: &Bound<'_, PyAny>) -> PyResu
     RecordOptions::for_media_type(&core_media_type_from_value(value)?).map_err(value_error)
 }
 
+/// `options` with each of `properties` set by its own setter - a text
+/// encoding's by `TextOptions`', every other by `RecordOptions'` - on the
+/// native value, with no Python object built on the way.
+///
+/// A `...` value is skipped as not given; a name the class has no setter for
+/// is skipped with an `UnknownPropertyWarning`, whatever its value.
+pub(crate) fn fold_record_properties(
+    options: RecordOptions,
+    properties: &Bound<'_, PyDict>,
+) -> PyResult<RecordOptions> {
+    let RecordOptions::Text(text) = options else {
+        let py = properties.py();
+        let ellipsis = py.Ellipsis();
+        let mut held = PyRecordOptions::from_core(options);
+        for (name, value) in properties.iter() {
+            let name = name.cast::<PyString>()?.to_str()?;
+            if value.is(&ellipsis) {
+                check_property_name::<PyRecordOptions>(py, "RecordOptions", name)?;
+            } else if !held.set_property(name, &value)? {
+                warn_unknown_property::<PyRecordOptions>(py, "RecordOptions", name)?;
+            }
+        }
+        return Ok(held.inner);
+    };
+    fold_text_properties(*text, properties).map(RecordOptions::from)
+}
+
+/// Text `options` with each of `properties` set by its own `TextOptions`
+/// setter, as [`fold_record_properties`] sets a text encoding's.
+pub(crate) fn fold_text_properties(
+    options: CoreTextOptions,
+    properties: &Bound<'_, PyDict>,
+) -> PyResult<CoreTextOptions> {
+    let py = properties.py();
+    let ellipsis = py.Ellipsis();
+    let mut held = PyTextOptions::from_core(options);
+    for (name, value) in properties.iter() {
+        let name = name.cast::<PyString>()?.to_str()?;
+        if value.is(&ellipsis) {
+            check_property_name::<PyTextOptions>(py, "TextOptions", name)?;
+        } else if !held.set_property(name, &value)? {
+            warn_unknown_property::<PyTextOptions>(py, "TextOptions", name)?;
+        }
+    }
+    Ok(held.inner)
+}
+
+/// Warn, for a keyword given as `...`, when its name is no property of the
+/// options class `T` at all - the value is skipped, the typo is still heard.
+fn check_property_name<T: pyo3::PyTypeInfo>(
+    py: Python<'_>,
+    owner: &str,
+    name: &str,
+) -> PyResult<()> {
+    let candidates = crate::properties::class_properties(&py.get_type::<T>())?;
+    if candidates.iter().any(|candidate| candidate == name) {
+        return Ok(());
+    }
+    crate::properties::warn_unknown(py, owner, name, candidates)
+}
+
+/// Warn that `name` is no settable property of the options class `T`,
+/// suggesting the closest one it has.
+fn warn_unknown_property<T: pyo3::PyTypeInfo>(
+    py: Python<'_>,
+    owner: &str,
+    name: &str,
+) -> PyResult<()> {
+    let candidates = crate::properties::class_properties(&py.get_type::<T>())?;
+    crate::properties::warn_unknown(py, owner, name, candidates)
+}
+
 #[pymethods]
 impl PyRecordOptions {
-    /// Derive the options for the encoding a media type names.
+    /// Derive the options for the encoding a media type names, each of
+    /// `properties` set by its own setter: `RecordOptions("text/csv",
+    /// separator=";")`.
     #[new]
-    fn new(media_type: &Bound<'_, PyAny>) -> PyResult<Self> {
-        RecordOptions::for_media_type(&core_media_type_from_value(media_type)?)
-            .map(Self::from_core)
-            .map_err(value_error)
+    #[pyo3(signature = (media_type, **properties))]
+    fn new(
+        media_type: &Bound<'_, PyAny>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        let options = RecordOptions::for_media_type(&core_media_type_from_value(media_type)?)
+            .map_err(value_error)?;
+        Ok(Self::from_core(match properties {
+            Some(properties) if !properties.is_empty() => {
+                fold_record_properties(options, properties)?
+            }
+            _ => options,
+        }))
     }
 
-    /// Derive the options for the encoding a media type names.
+    /// Derive the options for the encoding a media type names, each of
+    /// `properties` set by its own setter.
     #[classmethod]
-    fn for_media_type(_cls: &Bound<'_, PyType>, media_type: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Self::new(media_type)
+    #[pyo3(signature = (media_type, **properties))]
+    fn for_media_type(
+        _cls: &Bound<'_, PyType>,
+        media_type: &Bound<'_, PyAny>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        Self::new(media_type, properties)
     }
 
     /// Rebuild the complete configuration without carrying a transient hash lock.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
         let media_type = required_record_pickle_item(state, "media_type")?;
-        let mut options = Self::new(&media_type)?;
+        let mut options = Self::new(&media_type, None)?;
 
         let name = required_record_pickle_item(state, "name")?.extract::<String>()?;
         options.set_name(&name)?;
@@ -1797,10 +1928,7 @@ impl PyRecordOptions {
     #[setter]
     fn set_name(&mut self, name: &str) -> PyResult<()> {
         self.require_mutable()?;
-        // The trait's setter names a `SmolStr`, which is the core's string type
-        // and not a dependency of this crate; its builder takes anything that
-        // converts into one, so the builder is the route from a Python string.
-        self.inner = self.inner.clone().with_name(name);
+        self.inner.set_name(name.into());
         Ok(())
     }
 
@@ -2463,13 +2591,60 @@ impl PyTextOptions {
     fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         PyRecordOptions::from_core(self.inner.clone().into()).pickle_state(py)
     }
+
+    /// Set one property by name, through the setter an assignment runs:
+    /// `false` when `name` names no settable property of this class.
+    ///
+    /// Each arm extracts the value as the setter's own signature does, so a
+    /// keyword is refused exactly as `options.name = value` is.
+    pub(crate) fn set_property(&mut self, name: &str, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let given = (!value.is_none()).then_some(value);
+        match name {
+            "name" => self.set_name(&value.extract::<String>()?)?,
+            "field" => self.set_field(given)?,
+            "safe" => self.set_safe(value.extract()?)?,
+            "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
+            "commit_row_size" => self.set_commit_row_size(given)?,
+            "max_row_size" => self.set_max_row_size(value.extract()?)?,
+            "row_offset" => self.set_row_offset(value.extract()?)?,
+            "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
+            "level" => self.set_level(value.extract()?)?,
+            "merge_by" => self.set_merge_by(value)?,
+            "select" => self.set_select(value)?,
+            "filter" => self.set_filter(value)?,
+            "plan" => self.set_plan(value)?,
+            "framing" => self.set_framing(value.extract()?)?,
+            "leading_fragment" => self.set_leading_fragment(&value.extract::<String>()?)?,
+            "max_record_byte_size" => self.set_max_record_byte_size(value.extract()?)?,
+            "start_rownum" => self.set_start_rownum(given)?,
+            "parse_mtime" => self.set_parse_mtime(value.extract()?)?,
+            "rowheader" => self.set_rowheader(value.extract::<Option<String>>()?.as_deref())?,
+            "lstrip" => self.set_lstrip(value.extract()?)?,
+            "rstrip" => self.set_rstrip(value.extract()?)?,
+            "linesep" => self.set_linesep(given)?,
+            "autotype" => self.set_autotype(value.extract()?)?,
+            "timezone" => self.set_timezone(given)?,
+            "rename_columns" => self.set_rename_columns(given)?,
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
 }
 
 #[pymethods]
 impl PyTextOptions {
+    /// The default text options, each of `properties` set by its own setter:
+    /// `TextOptions(rowheader="^(?<level>[A-Z]+) ", autotype=True)`.
     #[new]
-    fn new() -> Self {
-        Self::from_core(CoreTextOptions::new())
+    #[pyo3(signature = (**properties))]
+    fn new(properties: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
+        let options = CoreTextOptions::new();
+        match properties {
+            Some(properties) if !properties.is_empty() => {
+                fold_text_properties(options, properties).map(Self::from_core)
+            }
+            _ => Ok(Self::from_core(options)),
+        }
     }
 
     #[staticmethod]

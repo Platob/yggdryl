@@ -122,7 +122,7 @@ def main() -> None:
             arguments.iterations,
         )
         _measure("opened media field", MEDIA.read_arrow_field, arguments.iterations)
-        _measure("opened media row size", lambda: MEDIA.row_size, arguments.iterations)
+        _measure("opened media row size", lambda: MEDIA.row_size(), arguments.iterations)
     finally:
         MEDIA.close()
         gc.enable()

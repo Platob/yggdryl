@@ -50,7 +50,7 @@ table = pa.table({"id": [1, 2, 3], "venue": ["XNAS", "XNYS", None]}, schema=sche
 source = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
 source.overwrite_arrow_table(table)
 assert source.read_arrow_field().name == "row"
-assert (source.row_size, source.column_size) == (3, 2)
+assert (source.row_size(), source.column_size()) == (3, 2)
 
 # Stream from one handle into another: nothing is collected on the way.
 target = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
@@ -188,7 +188,7 @@ root = pathlib.Path(tempfile.mkdtemp())
 handle = IOBase(root / "trades.arrows")
 for mode in ("overwrite", "append"):
     handle.write_arrow_table(pa.table({"id": [1, 2]}), mode)
-assert handle.row_size == 4
+assert handle.row_size() == 4
 
 # A document handle takes rows through write_arrow, one document per row.
 lines = IOBase(root / "quotes.jsonl")
@@ -224,7 +224,7 @@ table = pa.table({"id": list(range(10))})
 
 handle = IOBase(root / "trades.parquet")
 handle.overwrite_arrow_table(table, commit_row_size=4)
-assert handle.row_size == 10
+assert handle.row_size() == 10
 
 sizes = [batch.num_rows for batch in handle.read_arrow_reader(batch_row_size=4)]
 assert sum(sizes) == 10 and max(sizes) <= 4
@@ -253,7 +253,7 @@ handle = IOBase(root / "trades.parquet")
 handle.overwrite_arrow_table(table, compression="snappy", max_row_group_size=250)
 
 # row_size and the statistics come from the footer, never from decoding rows.
-assert handle.row_size == 1_000
+assert handle.row_size() == 1_000
 assert len(handle.read_parquet_statistics()["row_groups"]) == 4
 assert handle.read_arrow_reader(filter="id >= 900").read_all().num_rows == 100
 
@@ -375,7 +375,7 @@ assert list(handle.read_records(field=field)) == rows
 
 # Undeclared, the header names the columns and the sample types them, every one nullable.
 assert [child.name for child in handle.read_arrow_field().dtype] == ["id", "symbol"]
-assert (handle.row_size, handle.column_size) == (3, 2)
+assert (handle.row_size(), handle.column_size()) == (3, 2)
 
 # A `;` document another writer saved: the separator is a property of the read.
 (root / "eu.csv").write_bytes(b"id;symbol\n1;AAPL\n2;\n")

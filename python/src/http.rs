@@ -263,6 +263,29 @@ fn property_pairs(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
     Ok(pairs)
 }
 
+/// The `HttpOptions` a mapping of property names and the same properties
+/// by keyword beside it read as, the keywords over the mapping.
+///
+/// A mapping key naming no property is ignored, as a catalog's whole bag
+/// carries them; a keyword naming none is skipped with an
+/// `UnknownPropertyWarning`.
+fn http_options(
+    options: Option<&Bound<'_, PyAny>>,
+    properties: Option<&Bound<'_, PyDict>>,
+) -> PyResult<HttpOptions> {
+    let mut pairs = match options {
+        Some(mapping) => property_pairs(mapping)?,
+        None => Vec::new(),
+    };
+    pairs.extend(crate::properties::property_pairs(
+        "HttpOptions",
+        properties,
+        HttpOptions::is_property,
+        &HttpOptions::PROPERTY_NAMES,
+    )?);
+    HttpOptions::from_properties(pairs).map_err(storage_error)
+}
+
 /// What a session starts every request from, as the constructor spells it.
 struct Settings<'a, 'py> {
     base_url: Option<&'a Bound<'py, PyAny>>,
@@ -271,18 +294,15 @@ struct Settings<'a, 'py> {
     timeout: Option<&'a Bound<'py, PyAny>>,
     http_version: Option<&'a Bound<'py, PyAny>>,
     options: Option<&'a Bound<'py, PyAny>>,
+    properties: Option<&'a Bound<'py, PyDict>>,
 }
 
 impl Settings<'_, '_> {
-    /// Resolve the settings into one `HttpOptions`: the mapping first, then
-    /// each named argument over it.
+    /// Resolve the settings into one `HttpOptions`: the mapping first, the
+    /// same properties by keyword over it, then each named argument over
+    /// both.
     fn resolve(&self) -> PyResult<HttpOptions> {
-        let mut options = match self.options {
-            None => HttpOptions::default(),
-            Some(mapping) => {
-                HttpOptions::from_properties(property_pairs(mapping)?).map_err(storage_error)?
-            }
-        };
+        let mut options = http_options(self.options, self.properties)?;
         if let Some(base_url) = self.base_url {
             options = options.with_base_url(core_url_from_value(base_url)?);
         }
@@ -635,9 +655,11 @@ impl PySession {
     /// `base_url`, `headers` go under every request's own, `auth` is a
     /// `(user, password)` pair or a bearer token, `timeout` seconds or a
     /// `timedelta`, `http_version` `"auto"` (negotiated), `"1.1"`, `2` or
-    /// `3`, and `options` any `HttpOptions` property by name.
+    /// `3`, and `options` any `HttpOptions` property by name - or the same
+    /// properties as keywords, `Session(max_attempts=5)`, a name no property
+    /// owns skipped with an `UnknownPropertyWarning`.
     #[new]
-    #[pyo3(signature = (base_url = None, *, headers = None, auth = None, timeout = None, http_version = None, options = None))]
+    #[pyo3(signature = (base_url = None, *, headers = None, auth = None, timeout = None, http_version = None, options = None, **properties))]
     fn new(
         base_url: Option<&Bound<'_, PyAny>>,
         headers: Option<&Bound<'_, PyAny>>,
@@ -645,6 +667,7 @@ impl PySession {
         timeout: Option<&Bound<'_, PyAny>>,
         http_version: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let session = Settings {
             base_url,
@@ -653,6 +676,7 @@ impl PySession {
             timeout,
             http_version,
             options,
+            properties,
         }
         .session(None)?;
         Ok(
@@ -1768,16 +1792,15 @@ pub(crate) struct PyClient {
 #[pymethods]
 impl PyClient {
     /// A client built for the transport `options` name - timeouts, proxy,
-    /// CA bundle, attempts - read by `HttpOptions` property name.
+    /// CA bundle, attempts - read by `HttpOptions` property name, and for
+    /// the same properties by keyword: `Client(timeout=5, proxy=...)`.
     #[new]
-    #[pyo3(signature = (options = None))]
-    fn new(options: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        let options = match options {
-            None => HttpOptions::default(),
-            Some(mapping) => {
-                HttpOptions::from_properties(property_pairs(mapping)?).map_err(storage_error)?
-            }
-        };
+    #[pyo3(signature = (options = None, **properties))]
+    fn new(
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        let options = http_options(options, properties)?;
         Ok(Self {
             inner: Client::with_options(&options).map_err(storage_error)?,
         })
@@ -1792,7 +1815,7 @@ impl PyClient {
     /// A session on this client's pool, spelled as the `Session`
     /// constructor spells one; a pool knob stated otherwise than the client
     /// was built with is refused.
-    #[pyo3(signature = (base_url = None, *, headers = None, auth = None, timeout = None, http_version = None, options = None))]
+    #[pyo3(signature = (base_url = None, *, headers = None, auth = None, timeout = None, http_version = None, options = None, **properties))]
     #[allow(clippy::too_many_arguments)]
     fn session(
         &self,
@@ -1803,6 +1826,7 @@ impl PyClient {
         timeout: Option<&Bound<'_, PyAny>>,
         http_version: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
         let session = Settings {
             base_url,
@@ -1811,6 +1835,7 @@ impl PyClient {
             timeout,
             http_version,
             options,
+            properties,
         }
         .session(Some(&self.inner))?;
         describe(py, Holder::HttpSession(session))

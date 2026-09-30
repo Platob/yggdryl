@@ -169,13 +169,54 @@ impl HttpOptions {
             if value.is_empty() {
                 continue;
             }
-            self = self.read(name, value)?;
+            self = self.read(name, value)?.0;
         }
         Ok(self)
     }
 
-    /// Apply one property.
-    fn read(self, name: &str, value: &str) -> Result<Self> {
+    /// The names of the properties [`Self::with_properties`] reads, as this
+    /// crate spells them - the aliases it also reads, and `header.<name>`,
+    /// aside. What a binding suggests a mistyped keyword against.
+    pub const PROPERTY_NAMES: [&'static str; 22] = [
+        "timeout",
+        "connect_timeout",
+        "max_pause",
+        "max_attempts",
+        "max_redirects",
+        "concurrency",
+        "stream_batch_size",
+        "page_limit",
+        "follow_redirects",
+        "read_environment",
+        "cookies",
+        "max_body_size",
+        "accept_encoding",
+        "user_agent",
+        "proxy",
+        "ca_bundle",
+        "base_url",
+        "pagination",
+        "records",
+        "http_version",
+        "bearer_token",
+        "basic_auth",
+    ];
+
+    /// Whether `name` is a property [`Self::with_properties`] reads, in any
+    /// spelling it accepts: a name it answers `false` for is one it ignores.
+    ///
+    /// Answered by the reader itself - a known name either takes a probe
+    /// value or refuses it, and only an unknown one falls through - so the
+    /// answer can never disagree with what a read does.
+    #[must_use]
+    pub fn is_property(name: &str) -> bool {
+        Self::default()
+            .read(name, "x")
+            .map_or(true, |(_, known)| known)
+    }
+
+    /// Apply one property, answering whether `name` is one this reads.
+    fn read(self, name: &str, value: &str) -> Result<(Self, bool)> {
         let lowered = name.to_ascii_lowercase();
         if let Some(header) = lowered
             .strip_prefix("header.")
@@ -186,83 +227,86 @@ impl HttpOptions {
             }
             // The name is kept as the caller spelled it, so it is read off
             // `name` rather than the lowered copy.
-            return self.with_header(&name[name.len() - header.len()..], value);
+            return Ok((
+                self.with_header(&name[name.len() - header.len()..], value)?,
+                true,
+            ));
         }
         let key = lowered.replace('-', "_");
-        Ok(match key.as_str() {
-            "timeout" | "request_timeout" => self.with_timeout(seconds(name, value)?),
-            "connect_timeout" | "connection_timeout" => {
-                self.with_connect_timeout(seconds(name, value)?)
-            }
-            "max_pause" => self.with_max_pause(seconds(name, value)?),
-            "max_attempts" => self.with_max_attempts(count(name, value)?),
-            "max_redirects" => self.with_max_redirects(count(name, value)?),
-            "concurrency" => self.with_concurrency(
-                usize::try_from(count(name, value)?)
-                    .map_err(|_| refusal(name, value, "a thread count"))?,
-            ),
-            "stream_batch_size" => self.with_stream_batch_size(
-                usize::try_from(size(name, value)?)
-                    .map_err(|_| refusal(name, value, "a batch size that fits memory"))?,
-            ),
-            "page_limit" => {
-                let limit = usize::try_from(count(name, value)?)
-                    .map_err(|_| refusal(name, value, "a page count"))?;
-                self.with_page_limit((limit > 0).then_some(limit))
-            }
-            "follow_redirects" => self.with_follow_redirects(flag(name, value)?),
-            "read_environment" => self.with_read_environment(flag(name, value)?),
-            "cookies" => self.with_cookies(flag(name, value)?),
-            "max_body_size" => self.with_max_body_size(size(name, value)?),
-            "accept_encoding" | "accept_encodings" => {
-                let mut codecs = Vec::new();
-                for member in value.split(',') {
-                    let member = member.trim();
-                    if member.is_empty() {
-                        continue;
-                    }
-                    codecs.push(
-                        Codec::from_str(member).map_err(|_| {
-                            refusal(name, value, "content codings this crate decodes")
-                        })?,
-                    );
+        let options =
+            match key.as_str() {
+                "timeout" | "request_timeout" => self.with_timeout(seconds(name, value)?),
+                "connect_timeout" | "connection_timeout" => {
+                    self.with_connect_timeout(seconds(name, value)?)
                 }
-                self.with_accept_encodings(codecs)
-            }
-            "user_agent" => self.with_user_agent(value),
-            "proxy" | "proxy_url" | "proxy_uri" => self.with_proxy(value),
-            "ca_bundle" => self.with_ca_bundle(value),
-            "base_url" => {
-                self.with_base_url(Url::from_str(value).map_err(|_| refusal(name, value, "a URL"))?)
-            }
-            "pagination" => self.with_pagination(
-                Pagination::from_str(value)
-                    .map_err(|_| refusal(name, value, "a pagination spelling"))?,
-            ),
-            "records" => self.with_records(
-                FieldPath::from_str(value).map_err(|_| refusal(name, value, "a field path"))?,
-            ),
-            "http_version" => self.with_http_version(if value.eq_ignore_ascii_case("auto") {
-                None
-            } else {
-                let version = value
-                    .get(..5)
-                    .filter(|prefix| prefix.eq_ignore_ascii_case("HTTP/"))
-                    .map_or(value, |_| &value[5..]);
-                Some(
-                    HttpVersion::from_str(&format!("HTTP/{version}"))
-                        .map_err(|_| refusal(name, value, "`auto`, `1.1`, `2` or `3`"))?,
-                )
-            }),
-            "bearer_token" => self.with_authorization(Authorization::bearer(value)),
-            "basic_auth" => {
-                let (user, password) = value
-                    .split_once(':')
-                    .ok_or_else(|| refusal(name, value, "`user:password`"))?;
-                self.with_authorization(Authorization::basic(user, password))
-            }
-            _ => self,
-        })
+                "max_pause" => self.with_max_pause(seconds(name, value)?),
+                "max_attempts" => self.with_max_attempts(count(name, value)?),
+                "max_redirects" => self.with_max_redirects(count(name, value)?),
+                "concurrency" => self.with_concurrency(
+                    usize::try_from(count(name, value)?)
+                        .map_err(|_| refusal(name, value, "a thread count"))?,
+                ),
+                "stream_batch_size" => self.with_stream_batch_size(
+                    usize::try_from(size(name, value)?)
+                        .map_err(|_| refusal(name, value, "a batch size that fits memory"))?,
+                ),
+                "page_limit" => {
+                    let limit = usize::try_from(count(name, value)?)
+                        .map_err(|_| refusal(name, value, "a page count"))?;
+                    self.with_page_limit((limit > 0).then_some(limit))
+                }
+                "follow_redirects" => self.with_follow_redirects(flag(name, value)?),
+                "read_environment" => self.with_read_environment(flag(name, value)?),
+                "cookies" => self.with_cookies(flag(name, value)?),
+                "max_body_size" => self.with_max_body_size(size(name, value)?),
+                "accept_encoding" | "accept_encodings" => {
+                    let mut codecs = Vec::new();
+                    for member in value.split(',') {
+                        let member = member.trim();
+                        if member.is_empty() {
+                            continue;
+                        }
+                        codecs.push(Codec::from_str(member).map_err(|_| {
+                            refusal(name, value, "content codings this crate decodes")
+                        })?);
+                    }
+                    self.with_accept_encodings(codecs)
+                }
+                "user_agent" => self.with_user_agent(value),
+                "proxy" | "proxy_url" | "proxy_uri" => self.with_proxy(value),
+                "ca_bundle" => self.with_ca_bundle(value),
+                "base_url" => self.with_base_url(
+                    Url::from_str(value).map_err(|_| refusal(name, value, "a URL"))?,
+                ),
+                "pagination" => self.with_pagination(
+                    Pagination::from_str(value)
+                        .map_err(|_| refusal(name, value, "a pagination spelling"))?,
+                ),
+                "records" => self.with_records(
+                    FieldPath::from_str(value).map_err(|_| refusal(name, value, "a field path"))?,
+                ),
+                "http_version" => self.with_http_version(if value.eq_ignore_ascii_case("auto") {
+                    None
+                } else {
+                    let version = value
+                        .get(..5)
+                        .filter(|prefix| prefix.eq_ignore_ascii_case("HTTP/"))
+                        .map_or(value, |_| &value[5..]);
+                    Some(
+                        HttpVersion::from_str(&format!("HTTP/{version}"))
+                            .map_err(|_| refusal(name, value, "`auto`, `1.1`, `2` or `3`"))?,
+                    )
+                }),
+                "bearer_token" => self.with_authorization(Authorization::bearer(value)),
+                "basic_auth" => {
+                    let (user, password) = value
+                        .split_once(':')
+                        .ok_or_else(|| refusal(name, value, "`user:password`"))?;
+                    self.with_authorization(Authorization::basic(user, password))
+                }
+                _ => return Ok((self, false)),
+            };
+        Ok((options, true))
     }
 
     /// The HTTP version asked for, as [`Self::http_version`] reads it;

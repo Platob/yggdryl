@@ -10,6 +10,7 @@ import pickle
 import struct
 import sys
 import unittest.mock
+import warnings
 import weakref
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -1356,3 +1357,21 @@ class TestCStreamIntake:
         written = handle.read_arrow_reader().read_all()
         assert written.schema.field("lookup").type.keys_sorted
         assert written.equals(source)
+
+
+def test_an_options_value_is_built_with_its_properties_by_name() -> None:
+    from yggdryl import UnknownPropertyWarning
+
+    csv = RecordOptions("text/csv", separator=";", header=False)
+    assert (csv.separator, csv.header) == (";", False)
+    assert RecordOptions.for_media_type("text/csv", trim=True).trim is True
+    text = TextOptions(rowheader=r"^(?<level>[A-Z]+) ", autotype=True)
+    assert (text.rowheader, text.autotype) == (r"^(?<level>[A-Z]+) ", True)
+    # A text media type takes the text properties, as a text read does.
+    assert RecordOptions("text/plain", start_rownum=1) is not None
+    with pytest.warns(UnknownPropertyWarning, match="'autotyp'.*'autotype'"):
+        TextOptions(autotyp=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert TextOptions(rowheader=...) == TextOptions()
+

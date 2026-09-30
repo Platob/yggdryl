@@ -303,8 +303,8 @@ impl PyAvroBlock {
         self.inner.count()
     }
 
-    /// Compressed payload bytes held by this block.
-    #[getter]
+    /// Compressed payload bytes held by this block; a method, as
+    /// `IOBase.size` is.
     fn size(&self) -> usize {
         self.inner.size()
     }

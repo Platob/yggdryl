@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 from collections.abc import Iterator
 from typing import Any
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -381,6 +382,24 @@ class TestRequestsShape:
         assert session.get("/echo").ok
         assert client.stats["requests"] == 1
 
+    def test_properties_cross_as_keywords_too(self, origin: str) -> None:
+        # The same `HttpOptions` properties the mapping names, by keyword:
+        # over the mapping, and under the named arguments.
+        session = Session(origin, options={"concurrency": 2}, concurrency=3, cookies=False)
+        assert session.concurrency == 3
+        client = Client(max_attempts=5)
+        assert client.session(origin, max_attempts=5).get("/echo").ok
+        with pytest.warns(
+            yggdryl.UnknownPropertyWarning,
+            match=r"HttpOptions has no settable property 'timout'.*did you mean 'timeout'",
+        ):
+            Client(timout=5)
+        # A mapping is often a whole catalog's bag, so its unknown names are
+        # ignored quietly, as the core reads them.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            Client({"warehouse": "s3://lake"})
+
     def test_a_session_over_a_client_refuses_another_pool_knob(self, origin: str) -> None:
         client = Client({"max_attempts": 5})
         # The client's own knobs, or none stated, are the client's.
@@ -403,7 +422,7 @@ class TestStreaming:
 
     def test_iter_content_reads_the_body_in_chunks(self, session: Session) -> None:
         response = session.get("/big", stream=True)
-        assert response.kind == "file"
+        assert response.kind() == "file"
         chunks = list(response.iter_content(64 * 1024))
         assert [len(chunk) for chunk in chunks][:1] == [64 * 1024]
         assert b"".join(chunks) == BIG

@@ -70,7 +70,7 @@ class TestCompressInto:
 
         # Both calls report bytes rather than nothing: the encoded size is what
         # landed, and the decoded size is what came out.
-        assert written == coded.size
+        assert written == coded.size()
         assert written < len(PAYLOAD)
         assert read == len(PAYLOAD)
         assert back.read_text() == PAYLOAD
@@ -110,7 +110,7 @@ class TestCompressInto:
 
         written = plain.compress_into(target, "zstd")
 
-        assert written == target.size
+        assert written == target.size()
         # The target records the coding it just received, which is what lets
         # the matching decode take no argument at all.
         assert target.codec == "zstd"
@@ -196,7 +196,7 @@ class TestCodedView:
         assert type(decoded).__name__ == "Gzip"
         assert decoded.media_type.base == source.media_type.base
         assert decoded.read_text() == plain
-        assert decoded.size == len(plain)
+        assert decoded.size() == len(plain)
         assert decoded.read_range_bytes(7, 5) == b"alpha"
         # Reads stream in bounded windows rather than materializing the value.
         assert b"".join(decoded.pstream_bytes(0, 8)) == plain.encode()

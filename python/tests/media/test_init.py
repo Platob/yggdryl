@@ -494,7 +494,7 @@ class TestAbsenceAndScope:
         # Closing published the bytes at their exact length, which is what
         # another reader needs to find the end of the stream.
         assert handle.closed
-        assert path.stat().st_size == IOBase(path).size
+        assert path.stat().st_size == IOBase(path).size()
 
 
 CSV_SCHEMA = pa.schema(
@@ -538,7 +538,7 @@ class TestCsv:
         assert (tmp_path / "trades.csv").read_bytes() == b"id,symbol\n1,AAPL\n2,\n"
         assert list(handle.read_records(options=options)) == CSV_ROWS
         assert handle.read_arrow_field(options=options).dtype[0].dtype == DataType("int64")
-        assert handle.row_size == 2 and handle.column_size == 2
+        assert handle.row_size() == 2 and handle.column_size() == 2
 
     def test_an_inferred_schema_types_each_column_from_its_sample(
         self, tmp_path: pathlib.Path
@@ -584,7 +584,7 @@ class TestCsv:
         assert gzip.decompress(stored) == b"id,symbol\n1,AAPL\n2,\n"
         # Identical calls on the way back; only the name says gzip.
         assert IOBase(tmp_path / "trades.csv.gz").read_arrow_field().dtype[0].name == "id"
-        assert IOBase(tmp_path / "trades.csv.gz").row_size == 2
+        assert IOBase(tmp_path / "trades.csv.gz").row_size() == 2
         assert IOBase(tmp_path / "trades.csv.gz").read_arrow_reader().read_all().num_rows == 2
         assert list(IOBase(tmp_path / "trades.csv.gz").read_records()) == CSV_ROWS
 
@@ -959,7 +959,7 @@ class TestParquetOptions:
             handle.overwrite_arrow_table(_table(), options=options)
             # Nothing on the read side names it: the footer records the codec.
             assert handle.read_arrow_reader().read_all().num_rows == ROW_COUNT
-            sizes.append(handle.size)
+            sizes.append(handle.size())
 
         assert sizes[0] > sizes[1] and sizes[0] > sizes[2], sizes
 

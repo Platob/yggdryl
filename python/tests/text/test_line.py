@@ -312,3 +312,12 @@ class TestFieldPathAlias:
         for text in ("price as", "price as one two", "as name"):
             with pytest.raises(ValueError, match="field path"):
                 FieldPath(text)
+
+
+def test_a_line_takes_its_text_options_by_keyword_too() -> None:
+    header = r"^(?<level>[A-Z]+) "
+    line = TextLine(0, "INFO started", rowheader=header)
+    assert line.captures == ("INFO",)
+    assert line == TextLine(0, "INFO started", options=TextOptions(rowheader=header))
+    with pytest.warns(yggdryl.UnknownPropertyWarning, match="'rowheadr'"):
+        TextLine(0, "INFO started", rowheadr=header)

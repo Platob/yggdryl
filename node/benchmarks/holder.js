@@ -240,7 +240,7 @@ benchmark('node:fs/read_range_4k', () => {
   }
 })
 
-benchmark('fs/size', () => IOBase.fromFs(handler, source).size)
+benchmark('fs/size', () => IOBase.fromFs(handler, source).size())
 benchmark('node:fs/size', () => fs.statSync(source).size)
 
 benchmark('fs/list_children', () => folder.iterdir())

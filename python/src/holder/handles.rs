@@ -320,11 +320,12 @@ fn s3_holder(
     key: Option<&Bound<'_, PyAny>>,
     provider: Option<&str>,
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
+    properties: Option<&Bound<'_, pyo3::types::PyDict>>,
     from_url: impl FnOnce(&str, S3Options) -> yggdryl::Result<Holder>,
     from_key: impl FnOnce(Provider, &str, &str, S3Options) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
-    let options = s3_options(options)?;
+    let options = s3_options(options, properties)?;
     let holder = match key {
         Some(key) => {
             let provider = provider.ok_or_else(|| {
@@ -358,20 +359,33 @@ fn s3_holder(
 /// anything else is ignored, so a catalog's properties can be handed over
 /// whole. Values are taken as their text, so `True` and `30` are as good as
 /// `"true"` and `"30"`.
-fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
-    let Some(options) = options else {
-        return Ok(S3Options::default());
-    };
-    let mut properties: Vec<(String, String)> = Vec::with_capacity(options.len());
-    for (name, value) in options {
-        if value.is_none() {
-            continue;
+/// The store options `options` - a mapping in any vocabulary the core reads,
+/// its unknown names ignored as a catalog's whole bag carries them - and
+/// then `properties`, the same knobs by keyword, a name no knob owns skipped
+/// with an `UnknownPropertyWarning`.
+fn s3_options(
+    options: Option<&Bound<'_, pyo3::types::PyDict>>,
+    properties: Option<&Bound<'_, pyo3::types::PyDict>>,
+) -> PyResult<S3Options> {
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    if let Some(options) = options {
+        pairs.reserve(options.len());
+        for (name, value) in options {
+            if value.is_none() {
+                continue;
+            }
+            pairs.push((name.str()?.extract()?, value.str()?.extract()?));
         }
-        properties.push((name.str()?.extract()?, value.str()?.extract()?));
     }
+    pairs.extend(crate::properties::property_pairs(
+        "S3Options",
+        properties,
+        S3Options::is_property,
+        &S3Options::PROPERTY_NAMES,
+    )?);
     // Nothing is contacted, so a value that will not parse is an argument
     // error rather than a store's refusal.
-    S3Options::from_properties(properties).map_err(value_error)
+    S3Options::from_properties(pairs).map_err(value_error)
 }
 
 #[pymethods]
@@ -388,18 +402,20 @@ impl PyS3Path {
     /// rest, in `PyIceberg`'s names, `PyArrow`'s, or each store's own
     /// environment names.
     #[new]
-    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None, **properties))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
+        properties: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         Ok(s3_holder(
             location,
             key,
             provider,
             options,
+            properties,
             yggdryl::s3::located_with,
             |provider, container, key, options| {
                 yggdryl::s3::path_at_with(provider, container, key, options).map(Holder::S3Path)
@@ -415,18 +431,20 @@ impl PyS3File {
     ///
     /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
-    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None, **properties))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
+        properties: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         Ok(s3_holder(
             location,
             key,
             provider,
             options,
+            properties,
             |url, options| yggdryl::s3::file_with(url, options).map(Holder::S3File),
             |provider, container, key, options| {
                 yggdryl::s3::file_at_with(provider, container, key, options).map(Holder::S3File)
@@ -442,18 +460,20 @@ impl PyS3Folder {
     ///
     /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
-    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None, **properties))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
+        properties: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         Ok(s3_holder(
             location,
             key,
             provider,
             options,
+            properties,
             |url, options| yggdryl::s3::folder_with(url, options).map(Holder::S3Folder),
             |provider, container, key, options| {
                 yggdryl::s3::folder_at_with(provider, container, key, options).map(Holder::S3Folder)

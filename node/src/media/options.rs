@@ -89,8 +89,13 @@ fn optional_byte_of(value: Either<String, Null>, name: &str) -> Result<Option<u8
 
 #[napi]
 impl JsRecordOptions {
-    /// Derive the options for the encoding a media type names.
-    #[napi(constructor)]
+    /// The options for the encoding `value` names, each of `properties` set
+    /// by its own setter - applied by the JavaScript class, as a record
+    /// call's property bag is.
+    #[napi(
+        constructor,
+        ts_args_type = "value: MediaTypeInput, properties?: Record<string, unknown> | null"
+    )]
     pub fn new(value: MediaTypeInput<'_>) -> Result<Self> {
         Self::for_media_type(value)
     }

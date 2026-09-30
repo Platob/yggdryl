@@ -461,7 +461,8 @@ impl PyIOBase {
     /// given, or the handle's own - by the property's own setter, so
     /// `read_arrow_reader(rowheader="...")` reads with the text options the
     /// handle already has. An `Ellipsis` value is skipped, the project's
-    /// spelling for an argument that was not given.
+    /// spelling for an argument that was not given, and a name no setter
+    /// owns is skipped with an `UnknownPropertyWarning`.
     fn resolve_options(
         &self,
         options: Option<&Bound<'_, PyAny>>,
@@ -482,7 +483,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Option<RecordOptions>> {
-        if options.is_none() && properties.is_none_or(PyDictMethods::is_empty) {
+        if options.is_none() && !crate::properties::given(properties) {
             return Ok(None);
         }
         self.resolve_options_with(options, properties, |this| {
@@ -504,30 +505,18 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
         default: impl FnOnce(&Self) -> PyResult<RecordOptions>,
     ) -> PyResult<RecordOptions> {
-        let Some(properties) = properties.filter(|properties| !properties.is_empty()) else {
-            return match options {
-                Some(options) => core_record_options_from_value(options),
-                None => default(self),
-            };
+        // The native value the call runs under, copied once; the properties
+        // land on it through each one's setter, with no Python object built.
+        let options = match options {
+            Some(options) => core_record_options_from_value(options)?,
+            None => default(self)?,
         };
-        let py = properties.py();
-        let held = match options {
-            Some(options)
-                if options.is_instance_of::<PyRecordOptions>()
-                    || options.is_instance_of::<PyTextOptions>() =>
-            {
-                options.call_method0("__copy__")?
+        match properties {
+            Some(properties) if !properties.is_empty() => {
+                crate::iomedia::fold_record_properties(options, properties)
             }
-            Some(options) => record_options_into_py(py, core_record_options_from_value(options)?)?,
-            None => record_options_into_py(py, default(self)?)?,
-        };
-        for (name, value) in properties.iter() {
-            if value.is(py.Ellipsis()) {
-                continue;
-            }
-            held.setattr(name.cast::<PyString>()?, value)?;
+            _ => Ok(options),
         }
-        core_record_options_from_value(&held)
     }
 
     /// Resolve and validate one explicit mode before touching an input value.
@@ -845,16 +834,32 @@ impl PyIOBase {
     }
 
     /// Resolve one `file`, `s3`, `s3a`, or `s3n` URI through the core parser.
+    ///
+    /// `options` is a mapping of filesystem options, and `properties` the same
+    /// options by name beside it - `IOBase.from_uri(uri, region="eu-west-1")`
+    /// - each winning over the mapping's. A keyword naming no option is
+    /// skipped with an `UnknownPropertyWarning`; a mapping key naming none is
+    /// refused, as the core refuses it.
     #[classmethod]
-    #[pyo3(signature = (uri, *, options = None))]
+    #[pyo3(signature = (uri, *, options = None, **properties))]
     fn from_uri(
         _cls: &Bound<'_, PyType>,
         py: Python<'_>,
         uri: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
         let uri = crate::uri::path_string_from_value(uri)?;
-        let options = filesystem_uri_options(options)?;
+        let mut options = filesystem_uri_options(options)?;
+        let given = crate::properties::property_pairs(
+            "the filesystem options",
+            properties,
+            yggdryl::fs::ResolvedFileSystemUri::is_option,
+            &yggdryl::fs::ResolvedFileSystemUri::OPTION_NAMES,
+        )?;
+        if !given.is_empty() {
+            options.get_or_insert_with(BTreeMap::new).extend(given);
+        }
         let resolved = yggdryl::fs::ResolvedFileSystemUri::from_uri(uri.clone(), options.as_ref())
             .map_err(crate::holder::fs::storage_error)?;
         let filesystem = resolved_arrow_filesystem(py, resolved.filesystem())?;
@@ -1072,7 +1077,9 @@ impl PyIOBase {
     }
 
     /// The number of bytes here, as `Path.stat().st_size`.
-    #[getter]
+    ///
+    /// A method rather than a property, as every answer that may ask storage
+    /// is: a debugger or an IDE evaluates a property to display the object.
     fn size(&self, py: Python<'_>) -> PyResult<u64> {
         let inner = self.inner()?;
         if let Some(bound) = inner.bound_location() {
@@ -1087,7 +1094,6 @@ impl PyIOBase {
 
     /// The exact core storage role: memory, file, directory, table,
     /// namespace, catalog, or unknown.
-    #[getter]
     fn kind(&self, py: Python<'_>) -> PyResult<&'static str> {
         let inner = self.inner()?;
         if let Some(bound) = inner.bound_location() {
@@ -1105,13 +1111,11 @@ impl PyIOBase {
     /// Schema-bearing encodings answer from metadata, and an opened handle
     /// retains that answer until close. Text counts its extractor stream
     /// without materializing Arrow batches.
-    #[getter]
     fn row_size(&self) -> PyResult<u64> {
         self.inner()?.row_size().map_err(value_error)
     }
 
     /// The number of columns in this media value's canonical struct field.
-    #[getter]
     fn column_size(&self) -> PyResult<usize> {
         self.inner()?.column_size().map_err(value_error)
     }
@@ -1975,7 +1979,6 @@ impl PyIOBase {
     /// A memory-mapped local file grows its mapping geometrically, so its
     /// capacity outruns the size a flush publishes; an in-memory buffer
     /// answers what it has room for before it grows again.
-    #[getter]
     fn capacity(&self) -> PyResult<u64> {
         Ok(self.inner()?.capacity())
     }
@@ -2037,19 +2040,38 @@ impl PyIOBase {
     ///
     /// The text handle is what comes back, and this handle is spent, as it is
     /// for every wrapper. Repeating the call replaces explicit options without
-    /// stacking another text wrapper.
-    #[pyo3(signature = (options = None))]
+    /// stacking another text wrapper. `properties` are set by their own
+    /// setters on a copy of `options` - or, when none are given, of the text
+    /// options the handle already has - so `into_text(autotype=True)` keeps a
+    /// row header it retained.
+    #[pyo3(signature = (options = None, **properties))]
     #[allow(clippy::wrong_self_convention)] // A pyclass method cannot consume its receiver.
     fn into_text(
         &mut self,
         py: Python<'_>,
         options: Option<PyRef<'_, PyTextOptions>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
+        // Folded before the handle is taken, so a refused property leaves it
+        // usable.
+        let options = match (options, properties) {
+            (options, Some(properties)) if !properties.is_empty() => {
+                let base = match options {
+                    Some(options) => options.inner.clone(),
+                    None => match self.inner()?.record_options() {
+                        Ok(RecordOptions::Text(text)) => *text,
+                        _ => yggdryl::text::TextOptions::new(),
+                    },
+                };
+                Some(crate::iomedia::fold_text_properties(base, properties)?)
+            }
+            (options, _) => options.map(|options| options.inner.clone()),
+        };
         let held = self.take()?;
         describe(
             py,
             match options {
-                Some(options) => held.into_text_with(options.inner.clone()),
+                Some(options) => held.into_text_with(options),
                 None => held.into_text(),
             },
         )
@@ -2937,8 +2959,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let asked =
-            options.is_some() || properties.is_some_and(|properties| !properties.is_empty());
+        let asked = options.is_some() || crate::properties::given(properties);
         let options = self.resolve_options(options, properties)?;
         let polars = py.import("polars")?;
         // The fast path hands the file to polars, which knows nothing about
@@ -2969,8 +2990,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let asked =
-            options.is_some() || properties.is_some_and(|properties| !properties.is_empty());
+        let asked = options.is_some() || crate::properties::given(properties);
         let options = self.resolve_options(options, properties)?;
         let dataset = py.import("pyarrow.dataset")?;
         // Same rule as `scan_polars`: the dataset scanner is handed the file

@@ -114,6 +114,15 @@ pub struct ResolvedFileSystemUri {
 }
 
 impl ResolvedFileSystemUri {
+    /// The option names [`Self::from_uri`] reads; any other is refused.
+    pub const OPTION_NAMES: [&'static str; OPTION_COUNT] = OPTION_NAMES;
+
+    /// Whether `name` is an option [`Self::from_uri`] reads.
+    #[must_use]
+    pub fn is_option(name: &str) -> bool {
+        OPTION_NAMES.contains(&name)
+    }
+
     /// Resolve `file`, `s3`, `s3a`, or `s3n` exactly once.
     ///
     /// S3 percent escapes remain literal characters in [`Self::path`] and
@@ -328,7 +337,9 @@ fn replace_option(target: &mut Option<String>, values: &BTreeMap<String, String>
     }
 }
 
-const OPTION_NAMES: [&str; 10] = [
+const OPTION_COUNT: usize = 10;
+
+const OPTION_NAMES: [&str; OPTION_COUNT] = [
     "access_key",
     "secret_key",
     "session_token",
@@ -344,7 +355,7 @@ const OPTION_NAMES: [&str; 10] = [
 fn validate_option_names(values: &BTreeMap<String, String>) -> Result<()> {
     if let Some(key) = values
         .keys()
-        .find(|key| !OPTION_NAMES.contains(&key.as_str()))
+        .find(|key| !ResolvedFileSystemUri::is_option(key))
     {
         return Err(invalid_option(key, "unknown S3 filesystem option"));
     }

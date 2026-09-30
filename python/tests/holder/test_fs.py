@@ -213,7 +213,7 @@ class TestConstruction:
 
         # Per the laziness contract nothing exists until something is written.
         assert not handle.exists()
-        assert handle.size == 0
+        assert handle.size() == 0
         assert handle.read_bytes() == b""
 
         handle.write_bytes(b"AAPL")
@@ -319,7 +319,7 @@ class TestBytesAndFolders:
     ) -> None:
         absent = IOBase.from_fs(local, f"{root}/nowhere/absent.arrows")
         assert absent.read_bytes() == b""
-        assert absent.size == 0
+        assert absent.size() == 0
         assert not absent.exists()
 
 

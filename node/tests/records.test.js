@@ -82,7 +82,7 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   assert.equal(options.batchRowSize, null)
 
   handle.overwriteArrowReader(BatchReader.from(trades()))
-  assert.ok(handle.size > 0)
+  assert.ok(handle.size() > 0)
   assert.ok(handle.readArrowField().equals(schema()))
 
   const reader = handle.readArrowReader()
@@ -160,7 +160,7 @@ test('parquet is chosen by the file name and nothing else', (t) => {
     .withMaxRowGroupSize(1)
     .withKeyValue('writer', 'node')
   file.overwriteArrowTable(trades(), declared)
-  assert.ok(file.size > 0)
+  assert.ok(file.size() > 0)
   assert.ok(file.readArrowField().equals(schema()))
   assert.equal(file.readArrowReader().intoTable().numRows, 2)
 
@@ -598,7 +598,7 @@ test('a setting one encoding has is absent on the others', (t) => {
       file.recordOptions().withCompression(compression),
     )
     assert.equal(file.readArrowReader().intoTable().numRows, 4_000, compression)
-    return file.size
+    return file.size()
   })
   assert.ok(sizes[0] > sizes[1], sizes.join())
 

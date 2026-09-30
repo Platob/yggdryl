@@ -20,9 +20,9 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 
 // Construction probes nothing; a write creates the file and its parents.
 const handle = new IOBase(path.join(root, 'nested', 'ticks.csv'))
-assert.equal(handle.kind, 'unknown')
+assert.equal(handle.kind(), 'unknown')
 handle.writeText('symbol,price\nAAPL,1\n')
-assert.equal(handle.kind, 'file')
+assert.equal(handle.kind(), 'file')
 assert.equal(handle.mediaType.toString(), 'text/csv')
 assert.equal(handle.url.scheme, 'file')
 
@@ -44,7 +44,7 @@ const { IOBase, MimeType } = require('yggdryl')
 
 const sniffed = IOBase.fromBytes(Buffer.from('{"symbol":"AAPL"}'))
 assert.ok(sniffed.mediaType.base.equals(MimeType.JSON))
-assert.equal(sniffed.kind, 'memory')
+assert.equal(sniffed.kind(), 'memory')
 assert.equal(sniffed.uri.scheme, 'mem')
 
 const csv = IOBase.fromBytes(Buffer.from('symbol,price\n'))
@@ -68,14 +68,14 @@ handle.writeBytes(Buffer.from('symbol,price\n'))
 assert.equal(handle.appendBytes(Buffer.from('AAPL,1\n')), 13)
 
 assert.equal(handle.readRangeBytes(13, 4).toString(), 'AAPL')
-// A footer is one ranged read off the size (a getter), never the whole value.
-assert.equal(handle.readRangeBytes(handle.size - 7, 7).toString(), 'AAPL,1\n')
+// A footer is one ranged read off the size (a method), never the whole value.
+assert.equal(handle.readRangeBytes(handle.size() - 7, 7).toString(), 'AAPL,1\n')
 assert.equal(handle.readRangeBytes(100, 4).length, 0) // past the end is empty
 assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
 
 // A write past the end zero-fills the gap.
 handle.pwrite(22, Buffer.from('!'))
-assert.equal(handle.size, 23)
+assert.equal(handle.size(), 23)
 assert.deepEqual([...handle.readRangeBytes(20, 3)], [0, 0, 0x21])
 
 assert.equal(handle.append('MSFT'), 23)
@@ -123,13 +123,13 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 // Absence reads as empty, and nothing is created by asking.
 const absent = new IOBase(path.join(root, 'sub', 'inner.bin'))
 assert.equal(absent.exists(), false)
-assert.equal(absent.size, 0)
+assert.equal(absent.size(), 0)
 assert.equal(absent.readBytes().length, 0)
 assert.equal(fs.existsSync(path.join(root, 'sub')), false)
 
 const day = new IOBase(path.join(root, 'day=2026-08-16'))
 day.mkdir()
-assert.equal(day.kind, 'directory')
+assert.equal(day.kind(), 'directory')
 assert.ok(day.isDir())
 
 // A folder holds no bytes of its own: byte writes are refused.
@@ -249,7 +249,7 @@ const plain = new IOBase(path.join(root, 'rows.json'))
 plain.writeBytes(Buffer.from('{"symbol":"AAPL"}'))
 
 const encoded = new IOBase(path.join(root, 'rows.json.gz'))
-assert.equal(plain.compressInto(encoded), encoded.size)
+assert.equal(plain.compressInto(encoded), encoded.size())
 assert.deepEqual([...encoded.readBytes().subarray(0, 2)], [0x1f, 0x8b])
 
 const decoded = IOBase.fromBytes()
@@ -571,8 +571,8 @@ has no S3 client for `IOBase.fromUri('s3://...')` (it reports `Unsupported`);
   value/record surfaces.
 - `joinpath('a', 'b.bin')` and `joinpath('a/b.bin')` name the same location
   whether or not `a` exists yet; a write creates the parents.
-- `size`, `kind`, `mediaType`, `codec`, `parent`, `partitions`, `url` are
-  getters; `opened()`, `closed()`, `exists()`, `isDir()`, `isFile()` are methods.
+- `mediaType`, `codec`, `parent`, `partitions`, `url` are getters; `size()`, `kind()`,
+  `opened()`, `closed()`, `exists()`, `isDir()`, `isFile()` are methods.
 - `copyInto` answers a `bigint`; `compressInto`/`decompressInto` a `number`.
 - `buffered(...)` returns the same handle (Python's spends it).
 - A handler-backed handle is bound to the JavaScript thread that supplied the

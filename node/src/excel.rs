@@ -197,14 +197,15 @@ impl JsCellRange {
         }
     }
 
-    /// How many rows the range spans.
-    #[napi(getter)]
+    /// How many rows the range spans; a method, as `IOBase.rowSize` is.
+    #[napi]
     pub fn row_size(&self) -> u32 {
         self.inner.row_size()
     }
 
-    /// How many columns the range spans.
-    #[napi(getter)]
+    /// How many columns the range spans; a method, as `IOBase.columnSize`
+    /// is.
+    #[napi]
     pub fn column_size(&self) -> u32 {
         self.inner.column_size()
     }

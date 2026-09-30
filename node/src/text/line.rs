@@ -328,7 +328,7 @@ impl JsTextLine {
     /// read's `body` column hold no null and no empty cell.
     #[napi(
         constructor,
-        ts_args_type = "index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions"
+        ts_args_type = "index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions | null, properties?: Record<string, unknown> | null"
     )]
     pub fn new(
         index: BigInt,

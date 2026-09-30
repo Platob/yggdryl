@@ -105,3 +105,11 @@ mod fs {
         assert!(!format!("{resolved:?}").contains("never-show-this"));
     }
 }
+
+#[test]
+fn an_option_is_a_name_the_resolver_reads() {
+    for name in ResolvedFileSystemUri::OPTION_NAMES {
+        assert!(ResolvedFileSystemUri::is_option(name), "{name}");
+    }
+    assert!(!ResolvedFileSystemUri::is_option("regoin"));
+}

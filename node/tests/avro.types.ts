@@ -51,7 +51,7 @@ const blocks: AvroBlocks<Trade> = avro.blocks<Trade>(bytes, options)
 const blockResult: IteratorResult<AvroBlock<Trade>> = blocks.next()
 if (!blockResult.done) {
   const blockCount: bigint = blockResult.value.count
-  const compressedSize: bigint = blockResult.value.size
+  const compressedSize: bigint = blockResult.value.size()
   const blockRows: Trade[] = blockResult.value.rows()
   void blockCount
   void compressedSize

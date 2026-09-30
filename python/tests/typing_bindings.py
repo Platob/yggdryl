@@ -594,7 +594,7 @@ byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
 )
 io_kind: Literal[
     "memory", "file", "directory", "table", "namespace", "catalog", "unknown"
-] = IOBase.from_bytes().kind
+] = IOBase.from_bytes().kind()
 cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_bytes(
     batch_size=3
 )
@@ -822,8 +822,8 @@ record_batches: pa.RecordBatchReader = record_handle.read_arrow_reader(
     options=record_options,
 )
 stored_root: Field = record_handle.read_arrow_field()
-logical_rows: int = record_handle.row_size
-logical_columns: int = record_handle.column_size
+logical_rows: int = record_handle.row_size()
+logical_columns: int = record_handle.column_size()
 io_capable: bool = record_handle.is_io()
 record_handle.overwrite_arrow_reader(record_batches, options=record_options)
 record_handle.append_arrow_reader(record_batches, options=record_options)
@@ -859,8 +859,8 @@ text_leading_fragment: Literal["keep", "drop", "error"] = (
 )
 text_max_record_byte_size: int | None = text_record_options.max_record_byte_size
 text_header: str | None = text_record_options.rowheader
-text_lstrip: str | None = text_record_options.lstrip
-text_rstrip: str | None = text_record_options.rstrip
+text_lstrip: list[str] = text_record_options.lstrip
+text_rstrip: list[str] = text_record_options.rstrip
 text_linesep: bytes | None = text_record_options.linesep
 text_autotype: bool = text_record_options.autotype
 text_timezone: Timezone | None = text_record_options.timezone
@@ -2439,3 +2439,9 @@ def _http_server_usage(folder: LocalFolder) -> None:
         client: str | None = proxied.requests[0]["client"] if proxied.requests else None
         peer: str | None = proxied.requests[0]["peer"] if proxied.requests else None
         assert public and client is None and peer is None
+
+# Option properties cross by keyword beside `options`, each typed as the
+# setter it lands on, so an IDE completes the names and mypy checks them.
+typed_record_options = RecordOptions("text/csv", separator=";", header=True)
+typed_text_options = TextOptions(rowheader="^(?<level>[A-Z]+) ", autotype=True)
+typed_absent_options = TextOptions(rowheader=...)
