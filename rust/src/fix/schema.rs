@@ -2121,8 +2121,14 @@ impl super::FixMsg {
                         carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
                     }
                 }
+                // A list holding nothing beside no count stated for it is
+                // the group absent, at the root as inside an occurrence: a
+                // table may read a null list of structs back as `[]`, and
+                // the group pushed from it would state its counter as zero.
                 Some(tag) => {
-                    if !value.is_null() {
+                    if !value.is_null()
+                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
+                    {
                         projected.push((
                             planned.counter.unwrap_or(tag),
                             column.clone(),
@@ -2131,7 +2137,9 @@ impl super::FixMsg {
                     }
                 }
                 None if planned.counter.is_some() => {
-                    if !value.is_null() {
+                    if !value.is_null()
+                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
+                    {
                         projected.push((
                             planned.counter.expect("the guarded counter"),
                             column.clone(),

@@ -1090,6 +1090,64 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     }
 }
 
+/// The same rule at the root of a row: `NoPartyIDs(453)=0` is stated and
+/// re-emits, and a `parties` column read back as `[]` where the row held
+/// null - its `nopartyids` still null, or no such column at all - is the
+/// group absent, so a message settled again from the row keeps its content
+/// code and its identity.
+#[test]
+fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
+    let (registry, reader) = reader();
+    let order = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|";
+    let absent = reader.sole_line(&[&order[..], b"10=0|"].concat()).unwrap();
+    let counted = reader
+        .sole_line(&[&order[..], b"453=0|10=0|"].concat())
+        .unwrap();
+    let wire = |message: &FixMsg| String::from_utf8(message.into_bytes(b'|')).unwrap();
+    assert!(wire(&counted).contains("|453=0|"), "{}", wire(&counted));
+    assert!(!wire(&absent).contains("453="), "{}", wire(&absent));
+
+    // Read without the content code, so each message is settled from what
+    // its row states; then without the count's column as well.
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
+        .expect("a currhashcode column");
+    let count_at = fixed.index_of("nopartyids").expect("a nopartyids column");
+    for dropped in [vec![hashcode_at], vec![hashcode_at, count_at]] {
+        let schema = StructType::from_fields(
+            fixed
+                .fields()
+                .iter()
+                .enumerate()
+                .filter(|(at, _)| !dropped.contains(at))
+                .map(|(_, column)| column.clone()),
+        )
+        .map(DataType::from)
+        .unwrap()
+        .required_field("fix");
+        let parties_at = schema.index_of("parties").expect("a parties column");
+        for (message, stated) in [(&absent, false), (&counted, true)] {
+            let written = message.into_row(&schema).unwrap();
+            let mut cells = written.as_sequence().unwrap().to_vec();
+            if cells[parties_at].is_null() {
+                cells[parties_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+            }
+            let read_back = Scalar::from_sequence(cells);
+            let columns = dropped.len();
+            for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
+                let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
+                assert_eq!(
+                    held.get_currhashcode(),
+                    message.get_currhashcode(),
+                    "{read}, {columns} column(s) dropped"
+                );
+                assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
+                assert_eq!(wire(&held).contains("|453="), stated, "{read}");
+            }
+        }
+    }
+}
+
 #[test]
 fn a_data_field_that_is_not_text_is_held_as_the_decode_a_row_can_hold() {
     let (registry, reader) = reader();

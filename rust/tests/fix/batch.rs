@@ -1028,30 +1028,31 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
     }
 }
 
-/// `row` as a table storing a null list as an empty one - PyIceberg's -
-/// reads it back: every party stating no `NoPartySubIDs(802)` group reads
+/// `row`, a record of `fields`, as a table storing a null list of structs
+/// as an empty one - PyIceberg's - reads it back: every group the row
+/// states no occurrence of, at the root and inside each occurrence, reads
 /// back stating `[]`.
-fn with_subgroups_emptied(schema: &yggdryl::Field, row: &Scalar) -> Scalar {
-    let parties_at = schema.index_of("parties").expect("a parties column");
-    let DataType::Serie(party) = schema.fields()[parties_at].dtype() else {
-        panic!("parties is a repeating group");
-    };
-    let subids_at = party.index_of("partysubids").expect("a partysubids member");
-    let mut cells = row.as_sequence().expect("a row").to_vec();
-    if let Some(parties) = cells[parties_at].as_sequence() {
-        let parties: Vec<Scalar> = parties
-            .iter()
-            .map(|party| {
-                let mut members = party.as_sequence().expect("a party").to_vec();
-                if members[subids_at].is_null() {
-                    members[subids_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+fn with_absent_groups_emptied(fields: &[yggdryl::Field], row: &Scalar) -> Scalar {
+    let cells = row.as_sequence().expect("a record");
+    Scalar::from_sequence(fields.iter().zip(cells).map(|(field, cell)| {
+        let (DataType::Serie(item) | DataType::LargeSerie(item)) = field.dtype() else {
+            return cell.clone();
+        };
+        if !matches!(item.dtype(), DataType::Struct(_)) {
+            return cell.clone();
+        }
+        match cell.as_sequence() {
+            Some(occurrences) => Scalar::from_sequence(occurrences.iter().map(|occurrence| {
+                if occurrence.is_null() {
+                    occurrence.clone()
+                } else {
+                    with_absent_groups_emptied(item.fields(), occurrence)
                 }
-                Scalar::from_sequence(members)
-            })
-            .collect();
-        cells[parties_at] = Scalar::from_sequence(parties);
-    }
-    Scalar::from_sequence(cells)
+            })),
+            None if cell.is_null() => Scalar::from_sequence(Vec::<Scalar>::new()),
+            None => cell.clone(),
+        }
+    }))
 }
 
 #[test]
@@ -1060,11 +1061,12 @@ fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_
     // twice as the session event its row header brackets - folded before the
     // walk, so settled again from its content - and once framed by the next
     // session, whose row keeps the content code the parse recorded. A table
-    // storing a null list as an empty one reads each party's absent
-    // `NoPartySubIDs(802)` back as `[]` beside a null count; a list holding
-    // nothing beside no stated count is the group absent, so the walk over
-    // the rows read back yields, message for message, the identity and the
-    // content code the walk over the rows written yields.
+    // storing a null list as an empty one reads every absent group back as
+    // `[]` beside a null count - each party's `NoPartySubIDs(802)`, and at
+    // the root every group a message states none of; a list holding nothing
+    // beside no stated count is the group absent, so the walk over the rows
+    // read back yields, message for message, the identity and the content
+    // code the walk over the rows written yields.
     let codec = codec();
     let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
         .with_media_type(
@@ -1091,12 +1093,9 @@ fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_
         .collect();
     let read_back: Vec<Scalar> = written
         .iter()
-        .map(|row| with_subgroups_emptied(&schema, row))
+        .map(|row| with_absent_groups_emptied(schema.fields(), row))
         .collect();
-    assert_ne!(
-        read_back, written,
-        "the capture states parties with no subgroup"
-    );
+    assert_ne!(read_back, written, "the capture states absent groups");
     let walk = |rows: Vec<Scalar>| -> Vec<(yggdryl::Uuid, u64)> {
         let batch = lay_out(&schema, &Scalar::from_sequence(rows));
         let rows = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
@@ -1116,10 +1115,10 @@ fn a_session_event_merged_from_rows_reading_an_absent_group_back_empty_writes_no
     // Two observations of one session event, each stating a party with no
     // `NoPartySubIDs(802)`, differing in what the merge fills, so their
     // content is merged. A table storing a null list as an empty one reads
-    // the absent subgroup back as `[]` beside a null count, and the merge
-    // writes no count for a group holding no occurrence that no observation
-    // counted: the merge over the rows read back is the merge over the rows
-    // written.
+    // the absent subgroup, and every absent group at the root, back as `[]`
+    // beside a null count, and the merge writes no count for a group holding
+    // no occurrence that no observation counted: the merge over the rows
+    // read back is the merge over the rows written.
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
     let captured = |body: &[u8], recdunix: i64| {
         let line = TextLine::from_bytes(
@@ -1159,9 +1158,9 @@ fn a_session_event_merged_from_rows_reading_an_absent_group_back_empty_writes_no
         .collect();
     let read_back: Vec<Scalar> = written
         .iter()
-        .map(|row| with_subgroups_emptied(&schema, row))
+        .map(|row| with_absent_groups_emptied(schema.fields(), row))
         .collect();
-    assert_ne!(read_back, written, "each party states no subgroup");
+    assert_ne!(read_back, written, "each observation states absent groups");
     let walk = |rows: Vec<Scalar>| -> Vec<FixMsg> {
         let batch = lay_out(&schema, &Scalar::from_sequence(rows));
         let rows = yggdryl::arrow::batch_reader(batch.schema(), [batch]);

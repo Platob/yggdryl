@@ -1037,6 +1037,41 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
             assert ("|802=0|" in held.into_text("|")) is stated
 
 
+def test_a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
+    seed_batch: FixRegistry,
+) -> None:
+    """The same rule at the root: ``453=0`` is stated, ``parties = []`` beside no count is not.
+
+    A ``parties`` column read back as ``[]`` where the row held null - its
+    ``nopartyids`` still null, or no such column at all - is the group absent.
+    """
+    codec = _fixed_batch(seed_batch)
+    order = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|"
+    absent = _one(codec, order + b"10=0|")
+    counted = _one(codec, order + b"453=0|10=0|")
+    assert "|453=0|" in counted.into_text("|")
+    assert "453=" not in absent.into_text("|")
+
+    wide = fix_schema(seed_batch)
+    for dropped in ({"currhashcode"}, {"currhashcode", "nopartyids"}):
+        narrow = Field(
+            "fix",
+            DataType.from_fields([column for column in wide if column.name not in dropped]),
+            nullable=False,
+        )
+        parties = narrow.index_of("parties")
+        for message, stated in ((absent, False), (counted, True)):
+            written = message.into_row(narrow).as_py()
+            read_back = copy.deepcopy(written)
+            if read_back[parties] is None:
+                read_back[parties] = []
+            for row in (written, read_back):
+                held = FixMsg.from_row(narrow, row, seed_batch)
+                assert held.currhashcode == message.currhashcode
+                assert held.curruuid == message.curruuid
+                assert ("|453=" in held.into_text("|")) is stated
+
+
 def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry) -> None:
     """``lifecycle`` over batches: the same schema in and out, nothing reparsed."""
     codec = _fixed_batch(seed_batch)
