@@ -229,7 +229,14 @@ Hold five facts:
 - `yggdryl market serve --capture` appends the capture's books to the first
   table every time it runs: prepare the table once, then serve it without the
   capture. The Iceberg table it makes of an absent folder needs the `iceberg`
-  feature, which the wheel's command has.
+  feature, which the wheel's command has. A capture is read with
+  `--registry`, default `config/fix` under the working directory - a yggdryl
+  checkout's committed dictionary; the wheel and the npm package ship none,
+  so an installed command passes `--registry <folder>` or refuses
+  (`expected a FIX dictionary at "file:///.../config/fix", got nothing`).
+- The command prints a refusal on stdout, one `✗` line, and exits `1`; only
+  the argument parser's own refusals go to stderr (exit `2`). `book.serve`
+  rejects with that `✗` line, then any stderr, as the error's message.
 
 ## Language references
 

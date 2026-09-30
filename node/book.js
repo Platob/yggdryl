@@ -7,10 +7,14 @@
 // `serve` runs the `yggdryl` binary - `YGGDRYL_BIN`, or the one on the path -
 // with `market serve` and the tables, bind, path and captures it is given, and
 // resolves once the endpoint the command prints first on its own line has
-// been read; a process that exits first, or cannot start, rejects with what
-// it wrote on stderr. Until then the caller holds only the promise, so its
-// `signal` ends the process and rejects, and a parent that exits first takes
-// the process with it. The display's own state lives in `book/app.js`.
+// been read. The command prints a refusal on stdout in the endpoint's place,
+// as a `✗` line after the report of what it warned about, and exits 1; the
+// argument parser writes its own on stderr and exits 2. A process that exits
+// first rejects with what it printed - that refusal, then its stderr - and
+// one that cannot start with the spawn error. Until then the caller holds
+// only the promise, so its `signal` ends the process and rejects, and a
+// parent that exits first takes the process with it. The display's own state
+// lives in `book/app.js`.
 
 const { spawn } = require('node:child_process')
 const { join } = require('node:path')
@@ -31,8 +35,15 @@ const assetFiles = Object.freeze([
   'favicon.svg',
 ])
 
-/** The most stderr kept from a process that failed, in bytes. */
-const STDERR_LIMIT = 64 * 1024
+/** The most kept of a refusal and of stderr from a process that failed, in characters each. */
+const OUTPUT_LIMIT = 64 * 1024
+
+/**
+ * A line of the warning report the command prints ahead of a refusal
+ * (`cli/src/warnings.rs`): its `!` count, one `·` note per warning, or one
+ * `::warning` workflow command each under `GITHUB_ACTIONS`.
+ */
+const WARNING = /^(?:! |· |::warning )/
 
 function tableSpec(table) {
   if (typeof table === 'string' && table !== '') return table
@@ -75,10 +86,17 @@ function serveArguments({ tables = [], bind = '127.0.0.1:0', path = '/', capture
  * logs folded into the first table), `bin` (`YGGDRYL_BIN`, else `yggdryl`),
  * `args` (further command-line arguments), `env`, `signal` (an `AbortSignal`
  * that ends the process whenever it aborts - `AbortSignal.timeout(ms)` bounds
- * the wait for the endpoint). Rejects with the process's stderr when it exits
- * before the endpoint, with the spawn error when it cannot start, and with an
- * `AbortError` quoting its stderr once the process `signal` ended has closed.
- * Until it resolves, the process is ended if this one exits.
+ * the wait for the endpoint). When the process exits before the endpoint, the
+ * rejection's message is what it printed: the refusal the command writes on
+ * stdout in the endpoint's place - its `✗` line, `✗ invalid record value at
+ * $.capture: a capture needs a table to land in: ...`, with any line the
+ * refusal runs on to - then its stderr, where the argument parser refuses;
+ * a process that printed neither rejects naming its exit status. It rejects
+ * with the spawn error when the process cannot start, with the line when its
+ * first is neither the endpoint, a refusal nor the warning report ahead of
+ * one, and with an `AbortError` quoting what it printed once the process
+ * `signal` ended has closed. Until it resolves, the process is ended if this
+ * one exits.
  */
 function serve(options = {}) {
   const { bin = process.env.YGGDRYL_BIN ?? 'yggdryl', env = process.env, signal } = options
@@ -86,13 +104,15 @@ function serve(options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, argv, { stdio: ['ignore', 'pipe', 'pipe'], env, windowsHide: true, signal })
     let stderr = ''
+    // The `✗` line the command printed in the endpoint's place, and every line after it.
+    let refusal = ''
     let settled = false
     let status = null
     // A parent that exits while it waits would leave the child to init, still running.
     const orphaned = () => child.kill()
     process.once('exit', orphaned)
     // `close` rather than `exit`: it fires once the stdio streams have ended,
-    // so the stderr a refusal wrote is whole when the rejection quotes it.
+    // so the refusal and the stderr are whole when the rejection quotes them.
     const exit = new Promise((done) => {
       child.once('close', (code, signal) => {
         process.removeListener('exit', orphaned)
@@ -109,7 +129,7 @@ function serve(options = {}) {
     }
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk) => {
-      if (stderr.length < STDERR_LIMIT) stderr += chunk
+      if (stderr.length < OUTPUT_LIMIT) stderr += chunk
     })
     const close = () => {
       if (status === null && child.exitCode === null && child.signalCode === null) child.kill()
@@ -118,8 +138,17 @@ function serve(options = {}) {
     const lines = createInterface({ input: child.stdout })
     lines.on('line', (line) => {
       if (settled) return
+      if (refusal !== '') {
+        if (refusal.length < OUTPUT_LIMIT) refusal += `\n${line.trimEnd()}`
+        return
+      }
       const text = line.trim()
-      if (text === '') return
+      // The command exits once its refusal is printed, so the rejection waits for the close.
+      if (text.startsWith('✗')) {
+        refusal = text
+        return
+      }
+      if (text === '' || WARNING.test(text)) return
       let endpoint
       try {
         endpoint = new URL(text).toString()
@@ -143,15 +172,20 @@ function serve(options = {}) {
       settle(reject, new Error(`cannot start ${bin}: ${cause.message}`, { cause }))
     })
     exit.then(({ code, signal }) => {
-      const detail = stderr.trim() ? `: ${stderr.trim()}` : ''
+      const printed = [refusal.trim(), stderr.trim()].filter((text) => text !== '').join('\n')
       if (cancelled !== null) {
+        const detail = printed === '' ? '' : `: ${printed}`
         const error = new Error(`yggdryl market serve was cancelled before printing its endpoint${detail}`, { cause: cancelled })
         error.name = 'AbortError'
         settle(reject, error)
         return
       }
+      if (printed !== '') {
+        settle(reject, new Error(printed))
+        return
+      }
       const reason = code !== null ? `exited with ${code}` : `ended by ${signal}`
-      settle(reject, new Error(`yggdryl market serve ${reason} before printing its endpoint${detail}`))
+      settle(reject, new Error(`yggdryl market serve ${reason} before printing its endpoint`))
     })
   })
 }

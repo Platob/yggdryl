@@ -66,10 +66,15 @@ export declare function serveArguments(options?: ServeArgumentsOptions): string[
 
 /**
  * Start `yggdryl market serve` and resolve once it has printed its endpoint
- * on its first non-empty stdout line. Rejects with the process's stderr when
- * it exits first, with the spawn error when it cannot start, and with an
- * `AbortError` quoting its stderr once the process `signal` ended has closed.
- * Until it resolves, the process is ended if this one exits.
+ * on its first non-empty stdout line. A process that exits first rejects with
+ * what it printed as the message: the refusal the command writes on stdout in
+ * the endpoint's place - its `✗` line and any line it runs on to - then its
+ * stderr, where the argument parser refuses; one that printed neither names
+ * its exit status. Rejects with the spawn error when it cannot start, with the
+ * line when its first is neither the endpoint, a refusal nor the warning
+ * report ahead of one, and with an `AbortError` quoting what it printed once
+ * the process `signal` ended has closed. Until it resolves, the process is
+ * ended if this one exits.
  *
  * @throws TypeError, before anything is spawned, for a table `serveArguments` cannot spell.
  */
