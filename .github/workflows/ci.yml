@@ -387,7 +387,8 @@ jobs:
           "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata xxhash "requests>=2.32"
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
-      # The script the release runs against every wheel it publishes. It lived
+      # The script the release runs against every wheel it publishes that a
+      # runner can import (docs/testing.md names the three it cannot). It lived
       # in a `release.yml` heredoc that nothing executed until a release ran,
       # which is how a renamed module reached 0.1.9 and stopped it. Running it
       # here costs a second and moves that failure to the pull request.

@@ -132,20 +132,23 @@ gives them back. It imports `yggdryl` from the environment and never
 source tree beside it - install a wheel first, which `maturin develop` also
 satisfies.
 
-The release runs it against every wheel it is about to publish, and CI's Python
-lane runs it against the wheel that job builds, under both PyArrow versions the
-binding supports. It lived in a `release.yml` heredoc until a renamed module
-reached 0.1.9 and stopped the release there, which is why it is a file both
-sides share. That release stopped quietly - the wheels failed, the two jobs
-below them were skipped rather than failed, and the version reached crates.io
-and npm without reaching PyPI or growing a tag. It was finished four commits
-later, from the tree `main` held by then, so 0.1.9's wheel is not built from
-the tree its crate and its npm package are: one number came to name two
+The release runs it against every wheel it is about to publish that a runner can
+import - each stable-ABI wheel but the Windows arm64 one, which has no PyArrow
+wheel to run against, and each CPython 3.10 wheel but the two musllinux ones,
+whose extension the release reads for initial-exec thread-locals instead - and
+CI's Python lane runs it against the wheel that job builds, under both PyArrow
+versions the binding supports. It lived in a `release.yml` heredoc until a
+renamed module reached 0.1.9 and stopped the release there, which is why it is a
+file both sides share. That release stopped quietly - the wheels failed, the two
+jobs below them were skipped rather than failed, and the version reached
+crates.io and npm without reaching PyPI or growing a tag. It was finished four
+commits later, from the tree `main` held by then, so 0.1.9's wheel is not built
+from the tree its crate and its npm package are: one number came to name two
 libraries, which is the whole reason the rules below exist. A release that was
-going to publish and did not now files an issue naming what each registry
-holds, and `preflight` refuses a branch push that would publish a
-version some registry already carries - the tag is what pins a tree, so a
-half-published version is finished from the commit it was built at.
+going to publish and did not now files an issue naming what each registry holds,
+and `preflight` refuses a branch push that would publish a version some registry
+already carries - the tag is what pins a tree, so a half-published version is
+finished from the commit it was built at.
 
 ## Exchange formats meet an outside implementation
 

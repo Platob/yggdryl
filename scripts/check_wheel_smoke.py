@@ -14,8 +14,9 @@ has the commit. Every lane that smokes a wheel failed the 0.1.9 run, PyPI
 never received it, and the tag that records a finished release was never cut.
 
 So it is a file, and both sides run it: the release, against each wheel it is
-about to publish, and ``ci.yml``'s Python lane, against the wheel that job
-already builds and installs. A rename now breaks the pull request that makes
+about to publish that a runner can import (``docs/testing.md`` names the three
+it cannot), and ``ci.yml``'s Python lane, against the wheel that job already
+builds and installs. A rename now breaks the pull request that makes
 it, which is the only place the cost of fixing it is small.
 
 It imports ``yggdryl`` and never ``python/yggdryl``: run it from anywhere,
