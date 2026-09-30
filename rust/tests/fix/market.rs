@@ -2074,6 +2074,39 @@ fn a_full_refresh_stating_no_entries_group_is_an_empty_snapshot() {
     assert_eq!(leaves[2].get_ticker(), Some("AAPL"));
 }
 
+/// A book message counting `NoMDEntries(268)=0` states its group holding
+/// no entry: a full refresh an empty snapshot of its scope, an incremental
+/// refresh no change. The fixed row has no column for the group, so its
+/// record keeps the count, and the message read back out of it re-emits
+/// the count and reads as the market data the parse reads as.
+#[test]
+fn a_book_message_counting_no_entries_reads_back_out_of_the_fixed_row_as_it_parsed() {
+    for (line, leaves) in [
+        (
+            &b"8=FIX.4.4|35=W|52=20260921-10:00:04|55=AAPL|268=0|10=0|"[..],
+            1,
+        ),
+        (
+            &b"8=FIX.4.4|35=X|52=20260921-10:00:04|55=AAPL|268=0|10=0|"[..],
+            0,
+        ),
+    ] {
+        let parsed = message(line);
+        let wire = String::from_utf8(parsed.into_bytes(b'|')).unwrap();
+        assert!(wire.contains("|268=0|"), "{wire}");
+        let schema = yggdryl::fix_schema(parsed.registry(), "fix").unwrap();
+        let row = parsed.into_row(&schema).unwrap();
+        let read_back =
+            FixMsg::from_row(Arc::clone(parsed.registry()), &schema, &row).expect("the row reads");
+        let rewritten = String::from_utf8(read_back.into_bytes(b'|')).unwrap();
+        assert!(rewritten.contains("|268=0|"), "{rewritten}");
+        assert_eq!(read_back.get_currhashcode(), parsed.get_currhashcode());
+        let market = parsed.into_market_data().unwrap();
+        assert_eq!(market.len(), leaves, "{wire}");
+        assert_eq!(read_back.into_market_data().unwrap(), market, "{wire}");
+    }
+}
+
 /// A full refresh stating no `NoMDEntries(268)` group.
 const NO_ENTRIES_GROUP: &[u8] = b"8=FIX.4.4|35=W|52=20260921-10:00:02|55=AAPL|10=0|";
 
@@ -2817,17 +2850,21 @@ mod internal {
 
     #[test]
     fn a_book_message_counting_no_entries_states_its_scope_empty_without_a_warning() {
-        // `NoMDEntries(268)=0` is no entry of the message - a count of zero
-        // states nothing - yet the row holding the group states the scope
-        // empty: an incremental refresh counting none changes nothing and
-        // says nothing, while one missing its group is excluded aloud. No
+        // `NoMDEntries(268)=0` states the group, holding no entry: an
+        // incremental refresh counting none changes nothing and says
+        // nothing, parsed or read back out of the fixed row whose record
+        // keeps the count, while one missing its group is excluded aloud. No
         // other test raises this warning, so its count is this test's.
         const MISSING: &str = "FIX incremental refresh excluded: it states no NoMDEntries group";
+        let counted = message(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=0|10=0|");
+        let schema = yggdryl::fix_schema(counted.registry(), "fix").unwrap();
+        let row = counted.into_row(&schema).unwrap();
+        let read_back =
+            FixMsg::from_row(std::sync::Arc::clone(counted.registry()), &schema, &row).unwrap();
         let before = count(SITE, MISSING, "NoMDEntries");
-        let leaves = message(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
-            .into_market_data()
-            .unwrap();
-        assert!(leaves.is_empty(), "no change");
+        for held in [counted, read_back] {
+            assert!(held.into_market_data().unwrap().is_empty(), "no change");
+        }
         assert_eq!(count(SITE, MISSING, "NoMDEntries"), before);
         let leaves = warns(MISSING, "NoMDEntries", || {
             message(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|10=0|")

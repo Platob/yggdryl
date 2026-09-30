@@ -344,6 +344,12 @@ impl Level {
     }
 
     /// Brings every scalar counter in step with the merged Serie it counts.
+    ///
+    /// A group holding no occurrence is stated by its count alone, so a
+    /// count is written for one only where the level already states it: an
+    /// empty list beside no count is the group absent - what a table storing
+    /// a null list as an empty one reads back - and a zero written beside it
+    /// would state a group no observation stated.
     fn sync_group_counts(&mut self, registry: &FixRegistry) -> Result<()> {
         for child in &mut self.children {
             if let Child::Group(_, occurrences) = child {
@@ -366,8 +372,16 @@ impl Level {
             let Some(field) = registry.get_field_by_tag(counter).map(stated_field) else {
                 continue;
             };
+            let at = self.position_of_field(Some(counter), field.name());
+            if count == 0
+                && at
+                    .and_then(|at| self.value_at(at))
+                    .is_none_or(Scalar::is_null)
+            {
+                continue;
+            }
             let value = field.scalar(Scalar::from(i64::try_from(count).unwrap_or(i64::MAX)))?;
-            match self.position_of_field(Some(counter), field.name()) {
+            match at {
                 Some(at) => self.children[at] = Child::Flat(field, value),
                 None => self.children.push(Child::Flat(field, value)),
             }

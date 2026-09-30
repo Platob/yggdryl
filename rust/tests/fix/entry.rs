@@ -257,7 +257,7 @@ mod residual {
     }
 
     #[test]
-    fn an_empty_group_states_nothing_with_or_without_its_projection() {
+    fn an_empty_group_without_its_projection_stays_whole_in_the_residual() {
         let registry = super::committed_registry();
         let schema = fix_schema(&registry, "fix").expect("the fixed row");
         // Use the dictionary's counter scalar and the fixed schema's group so
@@ -275,14 +275,14 @@ mod residual {
         )
         .expect("an empty party group");
 
-        // A group of no occurrence states nothing - a count of zero is the
-        // group absent - so the message has no entry for it and no row needs
-        // the arrival record: the full projection holds the empty occurrence
-        // list, and a projection dropping only `parties` its counter scalar.
-        assert!(message.entries().is_empty());
+        // The full group projection owns the counter entry, including the empty
+        // occurrence list, so no residual is needed.
         let full = message.into_row(&schema).expect("the full row");
         assert!(residual_keys(&full, &schema).is_empty());
 
+        // Dropping only `parties` leaves its counter scalar. That scalar cannot
+        // represent the group shape, even at zero occurrences, so the complete
+        // counter entry remains in the arrival record.
         let narrow = StructType::from_fields(
             schema
                 .fields()
@@ -294,14 +294,91 @@ mod residual {
         .expect("the narrowed row")
         .required_field("fix");
         let row = message.into_row(&narrow).expect("the narrow row");
-        assert!(residual_keys(&row, &narrow).is_empty());
+        assert_eq!(residual_keys(&row, &narrow), ["453:parties"]);
+        // A group of no occurrence states its count and nothing under it.
+        assert_eq!(residual_text(&row, &narrow, "453:parties"), "0");
 
-        // The counter left alone still counts none, and states no group.
-        let restored = FixMsg::from_row(registry, &narrow, &row).expect("the row reads");
+        let restored =
+            FixMsg::from_row(Arc::clone(&registry), &narrow, &row).expect("the row reads");
         assert_eq!(restored.by_tag(453).expect("NoPartyIDs").as_i128(), Some(0));
-        assert!(restored.entries().is_empty());
-        assert_eq!(restored.digest(), message.digest());
         assert_eq!(restored.into_row(&narrow).expect("the fixed point"), row);
+
+        // Dropping only the counter column leaves the empty list, and a list
+        // holding nothing states no count of its own - it is what a table
+        // storing a null list as an empty one reads an absent group back as -
+        // so the count stays in the record and the row read back states the
+        // group again.
+        let counter = registry.field_by_tag(453).expect("NoPartyIDs").name();
+        let uncounted = StructType::from_fields(
+            schema
+                .fields()
+                .iter()
+                .filter(|field| field.name() != counter)
+                .cloned(),
+        )
+        .map(DataType::from)
+        .expect("the uncounted row")
+        .required_field("fix");
+        let row = message.into_row(&uncounted).expect("the uncounted row");
+        assert_eq!(residual_keys(&row, &uncounted), ["453:parties"]);
+        assert_eq!(residual_text(&row, &uncounted, "453:parties"), "0");
+        let restored = FixMsg::from_row(registry, &uncounted, &row).expect("the row reads");
+        assert_eq!(restored.entries(), message.entries());
+        assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(restored.into_row(&uncounted).expect("the fixed point"), row);
+    }
+
+    #[test]
+    fn a_subgroup_counting_none_where_the_item_holds_no_counter_stays_in_the_record() {
+        let (registry, codec, schema) = reader();
+        let message = codec
+            .sole_line(b"8=FIX.4.4|35=D|11=A1|453=1|448=P1|447=D|452=1|802=0|10=0|")
+            .expect("one order");
+        // The fixed row, its party item holding `partysubids` without the
+        // counter beside it: the empty list states no count of its own, so
+        // the party cannot be represented whole and the group stays whole in
+        // the record, the count included.
+        let parties_at = schema.index_of("parties").expect("Parties");
+        let parties = &schema.fields()[parties_at];
+        let DataType::Serie(party) = parties.dtype() else {
+            panic!("parties is a repeating group");
+        };
+        let members = StructType::from_fields(
+            party
+                .fields()
+                .iter()
+                .filter(|member| member.name() != "nopartysubids")
+                .cloned(),
+        )
+        .map(DataType::from)
+        .expect("the uncounted party");
+        let mut party = Field::clone(party);
+        party.set_dtype(members).expect("the uncounted party");
+        let mut parties = parties.clone();
+        parties
+            .set_dtype(DataType::serie(party))
+            .expect("the uncounted parties");
+        let uncounted =
+            StructType::from_fields(schema.fields().iter().enumerate().map(|(at, column)| {
+                if at == parties_at {
+                    parties.clone()
+                } else {
+                    column.clone()
+                }
+            }))
+            .map(DataType::from)
+            .expect("the uncounted row")
+            .required_field("fix");
+        let row = message.into_row(&uncounted).expect("the row");
+        assert_eq!(residual_keys(&row, &uncounted), ["453:parties"]);
+        let restored = FixMsg::from_row(registry, &uncounted, &row).expect("the row reads");
+        assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+        assert!(
+            String::from_utf8(restored.into_bytes(b'|'))
+                .unwrap()
+                .contains("|452=1|802=0|")
+        );
+        assert_eq!(restored.into_row(&uncounted).expect("the fixed point"), row);
     }
 
     #[test]

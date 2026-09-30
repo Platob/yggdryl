@@ -1496,26 +1496,15 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
         forwardpoints: None,
         empty_snapshot: true,
     };
-    let empty_scope = || {
-        if msgtype == "W" {
-            vec![empty_snapshot()]
-        } else {
-            Vec::new()
-        }
-    };
-    // A group holding no occurrence is no entry - a count of zero states
-    // nothing - yet a row holding it is a book message stating its scope
-    // empty, `NoMDEntries(268)=0`, rather than one missing its group.
-    let holds_group = || {
-        message
-            .index_of_group(MD_ENTRIES)
-            .and_then(|at| values?.get(at))
-            .is_some_and(|held| !held.is_null())
-    };
     let occurrences = match group {
-        Some(group) if !group.entries().is_empty() => group.entries(),
-        Some(_) => return empty_scope(),
-        None if holds_group() => return empty_scope(),
+        Some(group) if group.entries().is_empty() => {
+            return if msgtype == "W" {
+                vec![empty_snapshot()]
+            } else {
+                Vec::new()
+            };
+        }
+        Some(group) => group.entries(),
         None if msgtype == "W" => {
             warned!(
                 "FIX full refresh states no NoMDEntries group; defaulted to an empty snapshot",
