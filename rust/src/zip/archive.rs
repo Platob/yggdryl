@@ -1726,9 +1726,8 @@ fn digest_failure(entry: &ZipEntry, digest: u32) -> Error {
 /// synthetic identity it reports for itself - so this only covers an outside
 /// implementation that answers none at all.
 fn unlocated() -> &'static Url {
-    static UNLOCATED: std::sync::LazyLock<Url> = std::sync::LazyLock::new(|| {
-        Url::from_str("mem://0/0x0").expect("the fallback identity is valid")
-    });
+    static UNLOCATED: std::sync::LazyLock<Url> =
+        std::sync::LazyLock::new(|| crate::hostname::memory_identity(0, std::ptr::null::<u8>()));
     &UNLOCATED
 }
 

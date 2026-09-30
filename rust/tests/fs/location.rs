@@ -7,7 +7,108 @@
 
 use std::sync::Arc;
 
-use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, mask_uri};
+use yggdryl::HOSTNAME;
+use yggdryl::fs::{BoundLocation, FileSystem, LocalFileSystem, MemoryFileSystem, mask_uri};
+
+use crate::counting_filesystem::CountingFileSystem;
+
+#[test]
+fn an_in_process_filesystem_names_this_machine_and_so_does_everything_bound_from_it() {
+    let host = HOSTNAME.as_str();
+    let location =
+        BoundLocation::new(Arc::new(MemoryFileSystem::new()), "bucket/table", None).unwrap();
+    assert_eq!(
+        location.diagnostic_url().to_string(),
+        format!("memory://{host}/bucket/table")
+    );
+    assert_eq!(location.diagnostic_url().hostname(), Some(host));
+
+    let child = location.child("data/part.parquet").unwrap();
+    assert_eq!(
+        child.diagnostic_url().to_string(),
+        format!("memory://{host}/bucket/table/data/part.parquet")
+    );
+    let parent = location.parent().unwrap().unwrap();
+    assert_eq!(
+        parent.diagnostic_url().to_string(),
+        format!("memory://{host}/bucket")
+    );
+
+    // A filesystem naming no scheme the grammar reads is `fs`, still here.
+    let foreign = BoundLocation::new(
+        Arc::new(CountingFileSystem::named("py::fsspec+memory")),
+        "a/b",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        foreign.diagnostic_url().to_string(),
+        format!("fs://{host}/a/b")
+    );
+    // A leading slash is the filesystem's own spelling of its root, not an
+    // empty first segment.
+    let rooted = BoundLocation::new(Arc::new(MemoryFileSystem::new()), "/bucket/x", None).unwrap();
+    assert_eq!(
+        rooted.diagnostic_url().to_string(),
+        format!("memory://{host}/bucket/x")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_local_filesystem_names_no_host_so_its_url_is_the_path() {
+    let location = BoundLocation::new(
+        Arc::new(LocalFileSystem::new()),
+        "/tmp/lake/trades.parquet",
+        None,
+    )
+    .unwrap();
+    let url = location.diagnostic_url();
+    // `file://<host>/...` is a share on another machine; this one has none.
+    assert_eq!(url.to_string(), "file:///tmp/lake/trades.parquet");
+    assert_eq!(url.hostname(), None);
+    assert_eq!(
+        url.clone().into_path().unwrap(),
+        std::path::PathBuf::from("/tmp/lake/trades.parquet")
+    );
+    // Arrow's own local filesystem calls itself `local`: the same machine.
+    let arrow = BoundLocation::new(
+        Arc::new(CountingFileSystem::named("local")),
+        "/tmp/lake",
+        None,
+    )
+    .unwrap();
+    assert_eq!(arrow.diagnostic_url().to_string(), "file:///tmp/lake");
+}
+
+#[test]
+fn a_store_names_its_bucket_as_the_host_and_its_root_the_published_endpoint() {
+    let s3: Arc<dyn FileSystem> = Arc::new(CountingFileSystem::named("s3"));
+    let location =
+        BoundLocation::new(Arc::clone(&s3), "bucket/year=2024/part-0.parquet", None).unwrap();
+    let url = location.diagnostic_url();
+    assert_eq!(url.to_string(), "s3://bucket/year=2024/part-0.parquet");
+    assert_eq!(
+        (url.bucket(), url.key()),
+        (Some("bucket"), Some("year=2024/part-0.parquet"))
+    );
+    let parent = location.parent().unwrap().unwrap();
+    assert_eq!(parent.diagnostic_url().to_string(), "s3://bucket/year=2024");
+    let bucket = BoundLocation::new(Arc::clone(&s3), "bucket", None).unwrap();
+    assert_eq!(bucket.diagnostic_url().bucket(), Some("bucket"));
+
+    // The store answers where it is configured to, never on this machine: a
+    // root naming no bucket is the store's own service.
+    for (name, url) in [
+        ("s3", "s3://s3.amazonaws.com/"),
+        ("gcs", "gcs://storage.googleapis.com/"),
+        ("abfs", "abfs://blob.core.windows.net/"),
+    ] {
+        let root = BoundLocation::new(Arc::new(CountingFileSystem::named(name)), "", None).unwrap();
+        assert_eq!(root.diagnostic_url().to_string(), url, "{name}");
+        assert_eq!(root.diagnostic_url().bucket(), None, "{name}");
+    }
+}
 
 #[test]
 fn a_dot_child_is_the_location_itself() {

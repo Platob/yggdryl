@@ -557,6 +557,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The row header a ULBridge log writes, so a caller reads a bridge
     // capture without spelling the expression a second time.
     module.add("ULBRIDGE_ROWHEADER", yggdryl::ULBRIDGE_ROWHEADER)?;
+    // The machine this process runs on, read once by the core: the host an
+    // in-process location and a buffer's identity name.
+    module.add("HOSTNAME", yggdryl::HOSTNAME.as_str())?;
     Ok(())
 }
 

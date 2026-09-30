@@ -10,6 +10,7 @@ const arrow = require('apache-arrow')
 
 const {
   Field,
+  HOSTNAME,
   IOBase,
   RecordOptions,
   TextOptions,
@@ -686,8 +687,10 @@ test('directory lifecycle operations remain distinct', () => {
 test('a handler-backed handle is an ordinary handle', () => {
   const handle = IOBase.fromFs(memory(), 'bucket/trades.parquet')
 
-  // The file system's own name is the scheme its locations carry.
-  assert.equal(handle.toString(), 'memory://bound/bucket/trades.parquet')
+  // The file system's own name is the scheme its locations carry, and a file
+  // system answering in this process is on this machine.
+  assert.equal(handle.toString(), `memory://${HOSTNAME}/bucket/trades.parquet`)
+  assert.equal(handle.url.hostname, HOSTNAME)
   assert.equal(handle.name, 'trades.parquet')
   assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
 
@@ -825,7 +828,7 @@ test('folders list, glob, and carry the file system', () => {
   assert.equal(leaf.parent.name, 'month=01')
   assert.equal(
     leaf.toString(),
-    'memory://bound/lake/year=2024/month=01/part-0.parquet',
+    `memory://${HOSTNAME}/lake/year=2024/month=01/part-0.parquet`,
   )
   assert.deepEqual(leaf.partitions, [
     { column: 'year', value: '2024' },
@@ -973,9 +976,9 @@ test('handler-backed framed text resets at every leaf', () => {
   assert.deepEqual(
     [...table.getChild('crosscode')],
     [
-      'memory://bound/bucket/logs/a.txt',
-      'memory://bound/bucket/logs/b.txt',
-      'memory://bound/bucket/logs/b.txt',
+      `memory://${HOSTNAME}/bucket/logs/a.txt`,
+      `memory://${HOSTNAME}/bucket/logs/b.txt`,
+      `memory://${HOSTNAME}/bucket/logs/b.txt`,
     ],
   )
   assert.deepEqual(

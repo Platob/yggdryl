@@ -66,6 +66,7 @@ pub mod graph;
 pub mod gzip;
 pub mod hashing;
 pub mod holder;
+mod hostname;
 #[cfg(feature = "http")]
 pub mod http;
 #[cfg(feature = "iceberg")]
@@ -190,6 +191,7 @@ pub use fix::{
     fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
     into_fix_document, is_crate_tag,
 };
+pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub use iobase::{
@@ -387,6 +389,7 @@ pub mod internals {
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
+    pub use crate::hostname::internals as hostname;
     #[cfg(feature = "http")]
     #[cfg(feature = "http3")]
     pub use crate::http::alt_svc::internals as http_alt_svc;

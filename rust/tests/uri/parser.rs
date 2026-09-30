@@ -431,6 +431,40 @@ fn slash_paths_and_backslash_relative_paths_receive_file_scheme() {
     );
 }
 
+#[cfg(not(windows))]
+#[test]
+fn a_file_url_naming_this_machine_is_a_local_path_rather_than_a_share() {
+    let host = yggdryl::HOSTNAME.as_str();
+    for spelled in [
+        "file://localhost/tmp/lake/ticks.csv".to_owned(),
+        "file://LOCALHOST/tmp/lake/ticks.csv".to_owned(),
+        format!("file://{host}/tmp/lake/ticks.csv"),
+    ] {
+        let path = Uri::from_str(&spelled).unwrap().into_path().unwrap();
+        assert_eq!(path, PathBuf::from("/tmp/lake/ticks.csv"), "{spelled}");
+        assert_eq!(
+            Url::from_str(&spelled).unwrap().into_path().unwrap(),
+            path,
+            "{spelled}"
+        );
+    }
+    // Another machine, or a port on this one, is still the share it spells.
+    assert_eq!(
+        Uri::from_str("file://server/share/ticks.csv")
+            .unwrap()
+            .into_path()
+            .unwrap(),
+        PathBuf::from("//server/share/ticks.csv")
+    );
+    // A path opening on two slashes names a server the authority does not.
+    assert!(
+        Uri::from_str("file://localhost//server/share")
+            .unwrap()
+            .into_path()
+            .is_err()
+    );
+}
+
 #[test]
 fn file_identifiers_round_trip_through_utf8_platform_paths() {
     let source = PathBuf::from(r"C:\Users\Ada Lovelace\café.arrow");

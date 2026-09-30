@@ -550,14 +550,13 @@ mod positional {
         let buffer = Buffer::from_bytes(b"bytes".to_vec());
         let identity = buffer.url().expect("a buffer always has an identity");
 
-        // The bytes are not stored anywhere, so this names the process and the
-        // allocation rather than a place on disk.
+        // The bytes are not stored anywhere, so this names the machine, the
+        // process and the allocation rather than a place on disk:
+        // `mem://<host>/<pid>/<address>`, never a process id for a host.
         assert_eq!(identity.scheme().as_str(), "mem");
-        assert_eq!(
-            identity.authority().as_str(),
-            std::process::id().to_string()
-        );
-        assert!(identity.path().as_str().contains("0x"), "{identity}");
+        assert_eq!(identity.authority().as_str(), yggdryl::HOSTNAME.as_str());
+        let pid = format!("/{}/0x", std::process::id());
+        assert!(identity.path().as_str().starts_with(&pid), "{identity}");
 
         // The identity is stable for one handle.
         assert_eq!(buffer.url(), Some(identity));

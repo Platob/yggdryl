@@ -461,7 +461,14 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
             "percent escapes cannot create a dot segment",
         ));
     }
-    if value.authority().is_empty() {
+    // `localhost` and this machine's own name are this machine (RFC 8089
+    // section 2), so the path is a local one: a platform path opening on
+    // `//localhost` would otherwise read as `/localhost`. Windows alone reads
+    // `\\localhost\share` as the share it names on this machine, so there a
+    // host stays the share it spells and the two directions stay inverses.
+    let here =
+        value.authority().is_empty() || (cfg!(not(windows)) && value.authority().is_this_machine());
+    if here {
         // With no authority to spell it, a path opening on two slashes would
         // come back out as `//server/share`: the UNC form, naming a host this
         // URI never carried. `Uri::from_path` cannot produce one, so refusing
@@ -490,7 +497,7 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
             && prefix[3] == b'/'
     });
 
-    if !authority.is_empty() {
+    if !here {
         let mut result = String::with_capacity(2 + authority.len() + path.len());
         result.push_str("//");
         result.push_str(&authority);
@@ -502,6 +509,11 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
     }
     if drive_path {
         return Ok(PathBuf::from(&path[1..]));
+    }
+    if path.is_empty() {
+        // `file://localhost` is this machine's root, as `file://server` is
+        // the root of that server.
+        return Ok(PathBuf::from("/"));
     }
     Ok(PathBuf::from(path.as_ref()))
 }

@@ -73,6 +73,10 @@ base64.workspace = true
 bytes = "1"
 # zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+# The machine's own name, read once into `HOSTNAME`: std has no call for it
+# and the crate denies `unsafe`. Its only dependencies - rustix on Unix,
+# windows-link on Windows - are already in the tree.
+gethostname = "1.1"
 half.workspace = true
 # HMAC-SHA256 and SHA-256 for AWS Signature Version 4: the two primitives the
 # S3 backend signs with, from the pure-Rust RustCrypto family.

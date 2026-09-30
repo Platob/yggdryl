@@ -418,7 +418,9 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 ### Addresses
 
-`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem:` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
+`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://<host>/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
+
+No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is this machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell. A buffer and a location on a filesystem that answers in this process name it. A local file names none: `file:///path` is this machine by RFC 8089, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment (`AWS_ENDPOINT_URL_S3`, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
 
 === "Rust"
 
@@ -434,9 +436,13 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     assert_eq!(IOBase::uri(&folder), IOBase::url(&folder).map(AsRef::<Uri>::as_ref));
     assert_eq!(IOBase::uri(&folder).unwrap().scheme().as_str(), "file");
 
-    // A buffer is not stored anywhere, so its address is an identity.
+    // A buffer is not stored anywhere, so its address is an identity - on
+    // this machine.
     let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
     assert_eq!(buffer.uri().unwrap().scheme().as_str(), "mem");
+    assert_eq!(buffer.url().unwrap().hostname(), Some(yggdryl::HOSTNAME.as_str()));
+    // A local file names no host: `file:///...` is this machine.
+    assert_eq!(IOBase::url(&folder).unwrap().hostname(), None);
     ```
 
 === "Python"
@@ -453,8 +459,14 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     assert isinstance(handle.uri, Url)
     assert handle.uri.scheme == "file"
 
-    # A buffer is addressed by its identity rather than by a place.
-    assert IOBase.from_bytes(b"symbol\n").uri.scheme == "mem"
+    # A buffer is addressed by its identity rather than by a place, on this
+    # machine; a local file names no host.
+    from yggdryl import HOSTNAME
+
+    buffer = IOBase.from_bytes(b"symbol\n")
+    assert buffer.uri.scheme == "mem"
+    assert buffer.url.hostname == HOSTNAME
+    assert handle.url.hostname is None
     ```
 
 === "JavaScript"
@@ -464,7 +476,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase } = require('yggdryl')
+    const { HOSTNAME, IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-uri-'))
     fs.writeFileSync(path.join(root, 'ticks.csv'), 'symbol\n')
@@ -473,6 +485,8 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     assert.equal(handle.uri.toString(), handle.url.toString())
     assert.equal(handle.uri.scheme, 'file')
     assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).uri.scheme, 'mem')
+    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).url.hostname, HOSTNAME)
+    assert.equal(handle.url.hostname, null)
     ```
 
 ### Laziness and kinds
@@ -3468,6 +3482,8 @@ A reader takes a handle, not a path, so one function runs over a file, a `Buffer
 ## Filesystems
 
 `yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam; `from_fs` binds a filesystem and an opaque path, which is never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally. `MemoryFileSystem` and `LocalFileSystem` ship as references; Python binds `pyarrow.fs`, JavaScript a synchronous handler protocol.
+
+A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and [`HOSTNAME`](#addresses) for every filesystem answering in this process (`memory://<host>/bucket/x`, a handler's `fs://<host>/...`).
 
 ```text
 trait FileSystem: Send + Sync {

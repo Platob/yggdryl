@@ -453,6 +453,14 @@ impl log::Log for Warnings {
     fn flush(&self) {}
 }
 
+/// The machine this process runs on, read once by the core: the host an
+/// in-process location and a buffer's identity name. `HOSTNAME` is where a
+/// caller reads it; this is the half that carries the text across.
+#[napi(js_name = "_hostnameNative", skip_typescript)]
+pub fn hostname_native() -> &'static str {
+    yggdryl::HOSTNAME.as_str()
+}
+
 /// Installs [`Warnings`] as the process's logger when the addon loads,
 /// unless something in the process already installed one.
 #[napi_derive::module_init]

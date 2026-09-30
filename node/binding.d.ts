@@ -179,6 +179,12 @@ import type { URL as NodeURL } from 'node:url'
 /** Many values as a schema-free run or the buffers of one field. */
 export type Serie = NativeSerie
 /** The public constructor converts each JavaScript row through Scalar. */
+/**
+ * The machine this process runs on, read once by the core: the host an
+ * in-process location and a buffer's identity name.
+ */
+export declare const HOSTNAME: string
+
 export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
   readonly prototype: Serie
   new(rows?: Iterable<unknown> | null): Serie

@@ -13,7 +13,7 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
-from yggdryl import IOBase, TextOptions
+from yggdryl import HOSTNAME, IOBase, TextOptions
 from yggdryl.coding import Gzip
 from yggdryl.holder import FsPath
 from yggdryl.media import Parquet
@@ -478,6 +478,25 @@ class TestCustomFilesystems:
         # The rows landed in the caller's own storage, not on any disk.
         assert "bucket/trades.parquet" in handler.files
         assert handle.read_arrow_reader().read_all().num_rows == 2
+
+    def test_a_location_names_the_machine_its_filesystem_answers_on(
+        self, local: pafs.LocalFileSystem, root: str
+    ) -> None:
+        # Arrow's local filesystem is this machine, which a file URL spells
+        # with no host at all.
+        handle = IOBase.from_fs(local, f"{root}/trades.bin")
+        assert str(handle.url) == pathlib.Path(root, "trades.bin").as_uri()
+        assert handle.url.hostname is None
+
+        # A filesystem answering in this process is on this machine, and so
+        # is every location listed or globbed beneath it: never a made-up host.
+        handler = MemoryHandler()
+        handler.files["lake/year=2024/part-0.parquet"] = b"PAR1"
+        folder = IOBase.from_fs(pafs.PyFileSystem(handler), "lake")
+        assert str(folder.url) == f"fs://{HOSTNAME}/lake"
+        for child in [*folder.iterdir(), *folder.glob("**/*.parquet")]:
+            assert child.url.hostname == HOSTNAME, child.url
+        assert HOSTNAME and HOSTNAME == HOSTNAME.lower()
 
     def test_a_custom_filesystem_lists_its_own_prefixes(self) -> None:
         handler = MemoryHandler()

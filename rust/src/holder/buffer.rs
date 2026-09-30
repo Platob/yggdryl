@@ -12,9 +12,10 @@ use crate::{IOBase, MediaType, MimeType, Result, Uri, Url};
 /// the final length is known.
 ///
 /// A buffer has no persisted location. [`IOBase::url`] reports a synthetic
-/// `mem:` identity naming this process and the allocation's address, which is
-/// enough to tell two live buffers apart in a log or an error without
-/// pretending the bytes live anywhere.
+/// `mem:` identity naming this machine as its host, then this process and the
+/// allocation's address - `mem://<host>/<pid>/<address>` - which is enough to
+/// tell two live buffers apart, on one machine or across several, in a log or
+/// an error without pretending the bytes live anywhere.
 ///
 /// [`IOBase::media_type`] is lazy: unless one is set explicitly, it is inferred
 /// from the stored bytes' leading signature the first time it is asked for, and
@@ -191,15 +192,10 @@ impl IOBase for Buffer {
 
     fn url(&self) -> Option<&Url> {
         // A buffer is not stored anywhere, so this is an identity rather than
-        // a location. `Url` requires a host for non-`file:` schemes, and the
-        // process id is the scope that makes an address unique.
+        // a location: the machine is its host, and the process id the scope
+        // that makes an address unique on it.
         Some(self.identity.get_or_init(|| {
-            let text = format!("mem://{}/{:p}", std::process::id(), self.bytes.as_ptr());
-            Url::from_str(&text).unwrap_or_else(|_| {
-                // Unreachable for a generated identity, but a panic here would
-                // turn a diagnostic accessor into a crash.
-                Url::from_str("mem://0/0x0").expect("the fallback identity is valid")
-            })
+            crate::hostname::memory_identity(std::process::id(), self.bytes.as_ptr())
         }))
     }
 
