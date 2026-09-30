@@ -825,14 +825,18 @@ impl JsIOBase {
     }
 
     /// The number of bytes here, as `fs.Stats.size`.
-    #[napi(getter)]
+    ///
+    /// A method rather than a getter, as every answer that may ask storage
+    /// is: a debugger or an inspector evaluates a getter to display the
+    /// object.
+    #[napi]
     pub fn size(&self) -> i64 {
         safe_js_count(self.inner.size())
     }
 
     /// The exact core storage role: memory, file, directory, table,
-    /// namespace, catalog, or unknown.
-    #[napi(getter)]
+    /// namespace, catalog, or unknown; a method, as [`Self::size`] is.
+    #[napi]
     pub fn kind(&self) -> String {
         self.inner.kind().as_str().to_owned()
     }
@@ -843,7 +847,7 @@ impl JsIOBase {
     /// cheap count when it has one and caches successful answers while the
     /// handle is open. Values beyond JavaScript's exact integer range saturate
     /// at `Number.MAX_SAFE_INTEGER`, as [`Self::size`] does.
-    #[napi(getter)]
+    #[napi]
     pub fn row_size(&self) -> Result<i64> {
         self.inner.row_size().map(safe_js_count).map_err(napi_error)
     }
@@ -852,7 +856,7 @@ impl JsIOBase {
     ///
     /// The core answers from schema metadata and caches successful answers
     /// while the handle is open; no JavaScript-side schema or count is kept.
-    #[napi(getter)]
+    #[napi]
     pub fn column_size(&self) -> Result<i64> {
         self.inner
             .column_size()

@@ -294,14 +294,13 @@ impl PyCellRange {
         PyCellRef::from_inner(self.inner.end())
     }
 
-    /// How many rows the range spans.
-    #[getter]
+    /// How many rows the range spans; a method, as `IOBase.row_size` is.
     fn row_size(&self) -> u32 {
         self.inner.row_size()
     }
 
-    /// How many columns the range spans.
-    #[getter]
+    /// How many columns the range spans; a method, as
+    /// `IOBase.column_size` is.
     fn column_size(&self) -> u32 {
         self.inner.column_size()
     }

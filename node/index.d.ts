@@ -155,8 +155,8 @@ export type JsArrowCastPlan = ArrowCastPlan
 export declare class AvroBlock {
   /** Return the row count declared by the block header. */
   get count(): bigint
-  /** Return the compressed payload size in bytes. */
-  get size(): bigint
+  /** The compressed payload size in bytes; a method, as `IOBase.size` is. */
+  size(): bigint
 }
 export type JsAvroBlock = AvroBlock
 
@@ -967,10 +967,13 @@ export declare class CellRange {
   get start(): CellRef
   /** The bottom-right cell. */
   get end(): CellRef
-  /** How many rows the range spans. */
-  get rowSize(): number
-  /** How many columns the range spans. */
-  get columnSize(): number
+  /** How many rows the range spans; a method, as `IOBase.rowSize` is. */
+  rowSize(): number
+  /**
+   * How many columns the range spans; a method, as `IOBase.columnSize`
+   * is.
+   */
+  columnSize(): number
   /** Whether the range runs to the last row of the grid. */
   isRowOpen(): boolean
   /** Whether the range runs to the last column of the grid. */
@@ -4127,13 +4130,19 @@ export declare class IOBase {
    * methods read the encoding off the handle rather than taking a format.
    */
   set mediaType(value: MediaTypeInput)
-  /** The number of bytes here, as `fs.Stats.size`. */
-  get size(): number
+  /**
+   * The number of bytes here, as `fs.Stats.size`.
+   *
+   * A method rather than a getter, as every answer that may ask storage
+   * is: a debugger or an inspector evaluates a getter to display the
+   * object.
+   */
+  size(): number
   /**
    * The exact core storage role: memory, file, directory, table,
-   * namespace, catalog, or unknown.
+   * namespace, catalog, or unknown; a method, as [`Self::size`] is.
    */
-  get kind(): string
+  kind(): string
   /**
    * The number of logical rows in this media value.
    *
@@ -4142,14 +4151,14 @@ export declare class IOBase {
    * handle is open. Values beyond JavaScript's exact integer range saturate
    * at `Number.MAX_SAFE_INTEGER`, as [`Self::size`] does.
    */
-  get rowSize(): number
+  rowSize(): number
   /**
    * The number of columns in this media value's logical root field.
    *
    * The core answers from schema metadata and caches successful answers
    * while the handle is open; no JavaScript-side schema or count is kept.
    */
-  get columnSize(): number
+  columnSize(): number
   /** The containing resource, as `path.dirname`. */
   get parent(): IOBase | null
   /** Resolve a child of this resource, as `path.join`. */
@@ -6450,8 +6459,12 @@ export type JsFsRandomAccessReader = RandomAccessReader
 
 /** The settings one record read or write takes. */
 export declare class RecordOptions {
-  /** Derive the options for the encoding a media type names. */
-  constructor(value: MediaTypeInput)
+  /**
+   * The options for the encoding `value` names, each of `properties` set
+   * by its own setter - applied by the JavaScript class, as a record
+   * call's property bag is.
+   */
+  constructor(value: MediaTypeInput, properties?: Record<string, unknown> | null)
   /** Infer from a native media wrapper or a media/extension string. */
   static from(value: MediaTypeInput): RecordOptions
   /** Derive the options for the encoding a media type names. */
@@ -8460,7 +8473,7 @@ export declare class TextLine {
    * nothing throws: a line is the line it holds, which is what lets a
    * read's `body` column hold no null and no empty cell.
    */
-  constructor(index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions)
+  constructor(index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions | null, properties?: Record<string, unknown> | null)
   /**
    * The physical line number within the object, from zero.
    *
@@ -8581,8 +8594,12 @@ export type JsTextLineIterator = TextLineIterator
 
 /** Flat settings for physical-line or framed `text/plain` records. */
 export declare class TextOptions {
-  /** Build default plain-text record settings. */
-  constructor()
+  /**
+   * Build default plain-text record settings, each of `properties` set by
+   * its own setter - applied by the JavaScript class, as a record call's
+   * property bag is.
+   */
+  constructor(properties?: Record<string, unknown> | null)
   /** Return the fixed `text/plain` media type. */
   get mimeType(): MimeType
   /** Return the declared root field, if any. */

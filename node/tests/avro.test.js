@@ -163,7 +163,7 @@ test('Avro blocks stay compressed and lazy until each block is requested', () =>
   const first = blocks.next()
   assert.equal(first.done, false)
   assert.equal(first.value.count, 2n)
-  assert.ok(first.value.size > 0n)
+  assert.ok(first.value.size() > 0n)
   assert.deepEqual(first.value.rows(), [
     { qty: 100, symbol: 'AAPL' },
     { qty: 25, symbol: 'MSFT' },

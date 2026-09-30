@@ -620,6 +620,20 @@ impl JsSession {
             .map_err(napi_error)
     }
 
+    /// Whether `name` is an `HttpOptions` property, as the core reads it:
+    /// what a session's property keys are checked against.
+    #[napi(js_name = "_isPropertyNative", skip_typescript)]
+    pub fn is_property_native(name: String) -> bool {
+        HttpOptions::is_property(&name)
+    }
+
+    /// The `HttpOptions` property names as the core spells them, what a
+    /// mistyped key is suggested against.
+    #[napi(js_name = "_propertyNamesNative", skip_typescript)]
+    pub fn property_names_native() -> Vec<&'static str> {
+        HttpOptions::PROPERTY_NAMES.to_vec()
+    }
+
     /// The process-wide default session the `http` doors send on.
     #[napi(factory, js_name = "_defaultNative", skip_typescript)]
     pub fn default_session() -> Self {

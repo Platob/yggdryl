@@ -340,7 +340,7 @@ class TestTheHttpRoles:
 
         answer = Response(200, {"content-type": "text/csv"}, b"a,b\n1,2\n")
         assert isinstance(answer, Response)
-        assert answer.kind == "memory"
+        assert answer.kind() == "memory"
         assert answer.read_bytes() == b"a,b\n1,2\n"
         assert str(answer.media_type) == "text/csv"
 
@@ -363,6 +363,26 @@ class TestTheObjectStoreRoles:
     None of this contacts a store: a store handle is described exactly as a
     local one is, so every assertion here is about what the name alone says.
     """
+
+    def test_store_options_cross_as_keywords_too(self) -> None:
+        import warnings
+
+        from yggdryl import UnknownPropertyWarning
+
+        # The knobs a mapping names, by keyword, in any vocabulary the core
+        # reads; a keyword no knob owns is heard, a mapping's is not.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            S3Path("s3://trades/lake/", region="eu-west-1", anonymous=True)
+            S3Path("s3://trades/lake/", options={"warehouse": "s3://lake"})
+        with pytest.warns(
+            UnknownPropertyWarning,
+            match=r"S3Options has no settable property 'regoin'.*did you mean 'region'",
+        ):
+            S3File("s3://trades/lake/part.parquet", regoin="eu-west-1")
+        # A value the knob cannot read is refused naming it.
+        with pytest.raises(ValueError, match="anonymous"):
+            S3Folder("s3://trades/lake/", anonymous="perhaps")
 
     def test_each_role_commits_to_what_it_is(self) -> None:
         assert isinstance(S3File("s3://trades/lake/part.parquet"), S3File)

@@ -46,6 +46,7 @@ from ._native import (
     StringEnum as StringEnum,
     StringParameters as StringParameters,
     Timezone as Timezone,
+    UnknownPropertyWarning as UnknownPropertyWarning,
     __version__ as __version__,
     combined as combined,
     refresh_logging as refresh_logging,

@@ -26,7 +26,7 @@ medium does the work before a byte is decoded.
 | options for this handle's encoding | `handle.record_options()?` | `handle.record_options()` | `handle.recordOptions()` |
 | options from a name or type, no handle | `RecordOptions::for_media_type(&url.media_type())?`, `RecordOptions::for_mime_type(&MimeType::PARQUET)?` | `RecordOptions("trades.parquet")` | `RecordOptions.from('trades.parquet')`, `RecordOptions.forMimeType(MimeType.ARROW_STREAM)` |
 | stored schema, no rows decoded | `read_arrow_field(&options)?` | `read_arrow_field()` | `readArrowField()` |
-| row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size`, `.column_size` | `.rowSize`, `.columnSize` |
+| row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size()`, `.column_size()` | `.rowSize()`, `.columnSize()` |
 | stream batches out | `read_arrow_reader(&options)?` -> `arrow::BatchReader` | `read_arrow_reader()` -> `pyarrow.RecordBatchReader` | `readArrowReader()` -> `BatchReader` of Arrow JS batches |
 | stream record columns out | `read_arrow(Some(&options))?` -> `SerieReader` | `read_arrow()` -> `SerieReader` | not bound |
 | rows out as native values | `read_arrow` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
@@ -88,7 +88,8 @@ medium does the work before a byte is decoded.
    failure; `0` is refused before any input is pulled.
 6. **`row_size`/`column_size`/`read_arrow_field` read metadata only.** They
    answer from a footer, a stream header or the manifests; `open()` caches the
-   answer until `close()`.
+   answer until `close()`. In Python and JavaScript they - and `size()`,
+   `kind()` - are methods, never properties: call them.
 7. **The name picks the encoding and the outer coding.** `.arrows` (IPC
    stream), `.arrow`/`.feather`/`.ipc` (IPC file), `.parquet`, `.avro`,
    `.csv`, `.tsv`, `.xlsx` (one worksheet of a workbook), `.txt`/`.log`, a table folder;
@@ -109,7 +110,12 @@ medium does the work before a byte is decoded.
 10. **Properties by name are copies.** `read_arrow_reader(rowheader=...)` /
     `readArrowReader({ rowheader })` set that property on a copy of the
     handle's (or the given) options; the handle's options are unchanged. Left
-    out (`...` / `undefined`) keeps the default; `None` / `null` clears.
+    out (`...` / `undefined`) keeps the default; `None` / `null` clears. A
+    name no setter owns (a typo, a read-only `mime_type`, another encoding's
+    setting) is skipped with an `UnknownPropertyWarning` naming the closest
+    property - escalate it with `warnings.simplefilter("error",
+    UnknownPropertyWarning)` in tests; in Node it is a process warning with
+    `code: 'YGGDRYL_UNKNOWN_PROPERTY'`.
 11. **JavaScript crosses as copied IPC.** One self-contained IPC stream per
     batch; write whole tables or readers, never rows in a loop. Python crosses
     the C Data Interface without copying.

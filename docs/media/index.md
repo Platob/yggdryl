@@ -315,6 +315,77 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert.equal(options.safe, true)
     ```
 
+#### Settings by name
+
+Every record read and write takes `options` and, beside it, the option properties by name - keywords in Python, a plain object in JavaScript (alone in the options position, or after an options value) - each set on a copy of the options by that property's own setter, so a value is checked exactly as an assignment is and the options passed in never change. A value not given (`...` in Python, `undefined` in JavaScript) is skipped; `None`/`null` is a value and clears. A name no setter of that options class owns is not an error: it is skipped with an `UnknownPropertyWarning` naming it and the closest property there is (within a third of its length), so a typo is heard without failing the call - a `warnings` category in Python that a filter can escalate, a process warning (`code: 'YGGDRYL_UNKNOWN_PROPERTY'`) in JavaScript, heard once per process per message. A read-only name (`mime_type`) and another encoding's setting (`rowheader` on CSV) name no settable property; a known name the encoding cannot honour is the setter's own refusal. The same holds for `TextOptions`, `TextLine`, the Iceberg calls and `IcebergOptions`, and an HTTP session's `HttpOptions` properties. Rust sets each property through its typed setter, and `HttpOptions::is_property`, `S3Options::is_property` and `ResolvedFileSystemUri::is_option` answer, from the readers themselves, which names their property doors take.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::http::HttpOptions;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::MimeType;
+
+    let mut options = RecordOptions::for_mime_type(&MimeType::CSV)?;
+    options.set_csv_separator(b';')?;
+    assert_eq!(options.csv_separator(), Some(b';'));
+
+    // The by-name door a URL's query and a catalog's properties reach.
+    assert!(HttpOptions::is_property("timeout"));
+    assert!(!HttpOptions::is_property("timout"));
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile
+    import warnings
+    from pathlib import Path
+
+    from yggdryl import IOBase, RecordOptions, UnknownPropertyWarning
+
+    handle = IOBase(Path(tempfile.mkdtemp()) / "trades.csv")
+    handle.write_bytes(b"symbol;price\nAAPL;187\n")
+
+    options = RecordOptions("text/csv")
+    table = handle.read_arrow_reader(options=options, separator=";").read_all()
+    assert table.column_names == ["symbol", "price"]
+    assert options.separator == ","  # set on a copy
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        handle.read_arrow_field(seperator=";")
+    assert issubclass(caught[0].category, UnknownPropertyWarning)
+    assert "did you mean 'separator'?" in str(caught[0].message)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, RecordOptions } = require('yggdryl')
+
+    const handle = new IOBase(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'csv-')), 'trades.csv'))
+    handle.writeText('symbol;price\nAAPL;187\n')
+
+    const options = new RecordOptions('text/csv')
+    const table = handle.readArrowReader(options, { separator: ';' }).intoTable()
+    assert.equal(table.numCols, 2)
+    assert.equal(options.separator, ',') // set on a copy
+
+    const heard = []
+    const listener = (warning) => heard.push(warning.message)
+    process.on('warning', listener)
+    handle.readArrowField({ seperator: ';' })
+    setImmediate(() => {
+      process.off('warning', listener)
+      assert.match(heard[0], /did you mean 'separator'\?/)
+    })
+    ```
+
 ## Arrow IPC
 
 The stream carries its schema. A narrower `field` is a column pushdown: skipped columns are never decoded. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers.
@@ -590,7 +661,7 @@ A read's `filter` skips every row group whose footer statistics rule it out befo
         # Nothing on the read side names the compression: the footer records it.
         read = handle.read_arrow_reader(options=options).read_all()
         assert read.num_rows == rows, compression
-        sizes.append(handle.size)
+        sizes.append(handle.size())
 
     assert sizes[0] > sizes[1] and sizes[0] > sizes[2], sizes
 
@@ -598,7 +669,7 @@ A read's `filter` skips every row group whose footer statistics rule it out befo
     coded = IOBase(root / "trades.parquet.gz")
     with pytest.raises(ValueError, match="parquet compresses"):
         coded.overwrite_arrow_table(table)
-    assert coded.size == 0
+    assert coded.size() == 0
     ```
 
 === "JavaScript"
@@ -631,7 +702,7 @@ A read's `filter` skips every row group whose footer statistics rule it out befo
       // Nothing on the read side names the compression: the footer records it.
       const read = handle.readArrowReader(options).intoTable()
       assert.equal(read.numRows, 1_024, compression)
-      sizes.push(handle.size)
+      sizes.push(handle.size())
     }
 
     assert.ok(sizes[0] > sizes[1] && sizes[0] > sizes[2], sizes.join())
@@ -639,7 +710,7 @@ A read's `filter` skips every row group whose footer statistics rule it out befo
     // A coding around the whole file is refused, and nothing is published.
     const coded = new IOBase(path.join(root, 'trades.parquet.gz'))
     assert.throws(() => coded.overwriteArrowTable(table), /parquet compresses/)
-    assert.equal(coded.size, 0)
+    assert.equal(coded.size(), 0)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

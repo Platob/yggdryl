@@ -183,8 +183,8 @@ impl JsAvroBlock {
         self.inner.count()
     }
 
-    /// Return the compressed payload size in bytes.
-    #[napi(getter)]
+    /// The compressed payload size in bytes; a method, as `IOBase.size` is.
+    #[napi]
     pub fn size(&self) -> u64 {
         self.inner.size() as u64
     }

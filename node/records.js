@@ -14,6 +14,7 @@
 // the intent-specific call redirects to the matching Rust primitive.
 
 const { arrow, ipcBytes } = require('./values.js')
+const optionProperties = require('./properties.js')
 
 function isBytes(value) {
   return (
@@ -74,6 +75,7 @@ function arrowKind(value) {
 function installRecords({
   BatchReader,
   Field,
+  IcebergOptions,
   IOBase,
   RecordOptions,
   SerieReader,
@@ -646,27 +648,15 @@ function installRecords({
   // rowheader })` with a copy of the given ones. Each property is set by its
   // own setter, so it is validated exactly as an assignment is, and an
   // `undefined` value is skipped: the project's spelling for an argument that
-  // was not given.
-  function isPropertyBag(value) {
-    return (
-      value !== null &&
-      typeof value === 'object' &&
-      Object.getPrototypeOf(value) === Object.prototype
-    )
-  }
+  // was not given. A name no setter of the options' class owns - a typo, a
+  // getter, a method - is skipped with an `UnknownPropertyWarning` naming the
+  // closest property, whatever its value, and never lands on the copy.
+  const { isPropertyBag } = optionProperties
 
-  function withProperties(settings, properties) {
-    if (!isPropertyBag(properties)) {
-      throw new TypeError(
-        'expected option properties as a plain object beside one options value, got ' +
-          (properties === null ? 'null' : typeof properties),
-      )
-    }
-    const entries = Object.entries(properties).filter(([, value]) => value !== undefined)
-    if (entries.length === 0) return settings
-    const copy = settings.clone()
-    for (const [name, value] of entries) copy[name] = value
-    return copy
+  function withProperties(settings, bag) {
+    return settings instanceof TextOptions
+      ? optionProperties.withProperties(settings, TextOptions, 'TextOptions', bag)
+      : optionProperties.withProperties(settings, RecordOptions, 'RecordOptions', bag)
   }
 
   // The options a property bag lands on: the ones given, or the handle's own.
@@ -1091,17 +1081,36 @@ function installRecords({
     return SerieReader.fromArrowReader(converted.reader, widened).intoArrowReader()
   }
 
+  const explicitOptions = Table.prototype._explicitOptionsNative
+  delete Table.prototype._explicitOptionsNative
+
+  // The per-call options an Iceberg call runs under. A property bag - beside
+  // the options, or alone in their place - is set on a copy of the options
+  // given, else of the table's own override, else of nothing set, by each
+  // field's own setter; a name no field owns is skipped with a warning.
+  function icebergCallOptions(table, options, bag) {
+    if (optionProperties.isPropertyBag(options)) {
+      bag = options
+      options = undefined
+    }
+    if (bag === undefined || bag === null) return options
+    const base =
+      options ?? (table ? explicitOptions.call(table) : null) ?? new IcebergOptions()
+    return optionProperties.withProperties(base, IcebergOptions, 'IcebergOptions', bag)
+  }
+
   // The writes that take rows widen them the way every other write here does,
-  // and pass the trailing per-call options through untouched. Forwarding it
-  // is not optional bookkeeping: a wrapper that drops the argument leaves a
-  // documented option silently doing nothing, which is worse than not having
-  // it at all.
+  // and pass the trailing per-call options through - with their properties
+  // set on a copy. Forwarding it is not optional bookkeeping: a wrapper that
+  // drops the argument leaves a documented option silently doing nothing,
+  // which is worse than not having it at all.
   for (const name of ['append', 'overwrite']) {
     const native = Table.prototype[name]
     Object.defineProperty(Table.prototype, name, {
       configurable: true,
-      value(batches, options) {
-        return native.call(this, icebergBatchReader(this, batches), options)
+      value(batches, options, properties) {
+        const settings = icebergCallOptions(this, options, properties)
+        return native.call(this, icebergBatchReader(this, batches), settings)
       },
     })
   }
@@ -1113,8 +1122,9 @@ function installRecords({
   if (overwriteWhere) {
     Object.defineProperty(Table.prototype, 'overwriteWhere', {
       configurable: true,
-      value(filters, batches, options) {
-        return overwriteWhere.call(this, filters, icebergBatchReader(this, batches), options)
+      value(filters, batches, options, properties) {
+        const settings = icebergCallOptions(this, options, properties)
+        return overwriteWhere.call(this, filters, icebergBatchReader(this, batches), settings)
       },
     })
   }
@@ -1123,8 +1133,9 @@ function installRecords({
   if (merge) {
     Object.defineProperty(Table.prototype, 'merge', {
       configurable: true,
-      value(batches, mergeBy, safe, options) {
-        return merge.call(this, icebergBatchReader(this, batches), mergeBy, safe, options)
+      value(batches, mergeBy, safe, options, properties) {
+        const settings = icebergCallOptions(this, options, properties)
+        return merge.call(this, icebergBatchReader(this, batches), mergeBy, safe, settings)
       },
     })
   }
@@ -1133,14 +1144,15 @@ function installRecords({
   if (mergeWhere) {
     Object.defineProperty(Table.prototype, 'mergeWhere', {
       configurable: true,
-      value(filters, batches, mergeBy, safe, options) {
+      value(filters, batches, mergeBy, safe, options, properties) {
+        const settings = icebergCallOptions(this, options, properties)
         return mergeWhere.call(
           this,
           filters,
           icebergBatchReader(this, batches),
           mergeBy,
           safe,
-          options,
+          settings,
         )
       },
     })
@@ -1157,6 +1169,11 @@ function installRecords({
       value(...args) {
         const at = name === 'scan' ? 0 : name === 'scanWhere' ? 1 : 2
         if (args.length > at) args[at] = optionalField(args[at])
+        // The options follow the projection; a property bag beside them.
+        if (args.length > at + 1) {
+          args[at + 1] = icebergCallOptions(this, args[at + 1], args[at + 2])
+          args.length = at + 2
+        }
         return native.apply(this, args)
       },
     })
@@ -1165,8 +1182,9 @@ function installRecords({
   const scanAt = Table.prototype.scanAt
   Object.defineProperty(Table.prototype, 'scanAt', {
     configurable: true,
-    value(snapshotId, filters, field, options) {
-      return scanAt.call(this, snapshotId, filters, optionalField(field), options)
+    value(snapshotId, filters, field, options, properties) {
+      const settings = icebergCallOptions(this, options, properties)
+      return scanAt.call(this, snapshotId, filters, optionalField(field), settings)
     },
   })
 
@@ -1186,11 +1204,12 @@ function installRecords({
       if (!native) continue
       Object.defineProperty(Tables.prototype, name, {
         configurable: true,
-        value(table, batches, options) {
+        value(table, batches, options, properties) {
           // An existing table declares the schema its rows are typed against;
           // a create-on-write names none yet, and the rows declare it.
           const stored = this.has(table) ? this.get(table) : null
-          return native.call(this, table, icebergBatchReader(stored, batches), options)
+          const settings = icebergCallOptions(null, options, properties)
+          return native.call(this, table, icebergBatchReader(stored, batches), settings)
         },
       })
     }
@@ -1212,7 +1231,7 @@ function installRecords({
     }
   }
 
-  return Object.freeze({ icebergBatchReader, intoField })
+  return Object.freeze({ icebergBatchReader, icebergCallOptions, intoField })
 }
 
 module.exports = { installRecords }

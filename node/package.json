@@ -33,6 +33,7 @@
     "book/",
     "defaults.js",
     "fields.js",
+    "properties.js",
     "*.node",
     "records.js",
     "values.js",

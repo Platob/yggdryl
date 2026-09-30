@@ -2146,6 +2146,15 @@ impl JsTable {
         self.inner.set_options(options.inner.clone());
     }
 
+    /// The explicit override this handle holds, if any: what a per-call
+    /// property bag with no options beside it is set on a copy of.
+    #[napi(js_name = "_explicitOptionsNative", skip_typescript)]
+    pub fn explicit_options_native(&self) -> Option<JsIcebergOptions> {
+        self.inner.explicit_options().map(|inner| JsIcebergOptions {
+            inner: inner.clone(),
+        })
+    }
+
     /// Resolve this table's effective options, field by field.
     ///
     /// Each field takes the nearest of three layers: the explicit override,

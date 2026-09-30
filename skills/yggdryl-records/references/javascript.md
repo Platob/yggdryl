@@ -50,7 +50,7 @@ source.overwriteArrowTable(
   }),
 )
 assert.equal(source.readArrowField().name, 'row')
-assert.deepEqual([source.rowSize, source.columnSize], [3, 2])
+assert.deepEqual([source.rowSize(), source.columnSize()], [3, 2])
 
 // Stream from one handle into another: nothing is collected on the way.
 const target = new IOBase(path.join(root, 'trades.parquet'))
@@ -206,7 +206,7 @@ const handle = IOBase.fromBytes()
 handle.mediaType = MimeType.ARROW_STREAM
 const table = new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) })
 for (const mode of ['overwrite', 'append']) handle.writeArrowTable(table, mode)
-assert.equal(handle.rowSize, 4)
+assert.equal(handle.rowSize(), 4)
 ```
 
 ## Bound memory on large writes
@@ -227,7 +227,7 @@ const table = new arrow.Table({
 })
 const handle = new IOBase(path.join(root, 'trades.parquet'))
 handle.overwriteArrowTable(table, { commitRowSize: 4 })
-assert.equal(handle.rowSize, 10)
+assert.equal(handle.rowSize(), 10)
 
 const sizes = [...handle.readArrowReader({ batchRowSize: 4 })].map((batch) => batch.numRows)
 assert.equal(sizes.reduce((a, b) => a + b, 0), 10)
@@ -261,7 +261,7 @@ const handle = new IOBase(path.join(root, 'trades.parquet'))
 handle.overwriteArrowTable(table, { compression: 'snappy', maxRowGroupSize: 250 })
 
 // rowSize and the statistics come from the footer, never from decoding rows.
-assert.equal(handle.rowSize, 1_000)
+assert.equal(handle.rowSize(), 1_000)
 assert.equal(handle.readParquetStatistics().row_groups.length, 4)
 assert.equal(handle.readArrowReader({ filter: 'id >= 900' }).intoTable().numRows, 100)
 
@@ -410,7 +410,7 @@ assert.deepEqual([...handle.readRecords({ field })], rows)
 
 // Undeclared, the header names the columns and the sample types them, every one nullable.
 assert.deepEqual(Array.from(handle.readArrowField().dtype, (child) => child.name), ['id', 'symbol'])
-assert.deepEqual([handle.rowSize, handle.columnSize], [3, 2])
+assert.deepEqual([handle.rowSize(), handle.columnSize()], [3, 2])
 
 // A `;` document another writer saved: the separator is a property of the read.
 fs.writeFileSync(path.join(root, 'eu.csv'), 'id;symbol\n1;AAPL\n2;\n')

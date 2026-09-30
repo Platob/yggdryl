@@ -860,3 +860,25 @@ fn an_encryption_shape_a_store_does_not_have_is_refused_when_the_client_is_built
     .expect_err("a refusal");
     assert!(refused.to_string().contains("Encryption::kms"), "{refused}");
 }
+
+#[test]
+fn a_property_is_a_name_the_reader_reads_in_any_vocabulary_it_accepts() {
+    // Every name the table lists is one, as are the PyIceberg, PyArrow and
+    // environment spellings of it; a catalog's own keys and a typo are not.
+    for name in S3Options::PROPERTY_NAMES {
+        assert!(S3Options::is_property(name), "{name}");
+    }
+    for name in [
+        "s3.region",
+        "AWS_REGION",
+        "s3.access-key-id",
+        "endpoint_override",
+        "adls.account-name",
+        "signer",
+    ] {
+        assert!(S3Options::is_property(name), "{name}");
+    }
+    for name in ["warehouse", "uri", "regoin", "catalog.token"] {
+        assert!(!S3Options::is_property(name), "{name}");
+    }
+}

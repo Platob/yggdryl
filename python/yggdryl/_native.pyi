@@ -8,6 +8,8 @@ from os import PathLike
 from types import EllipsisType
 from typing import IO, Any, ClassVar, Literal, Protocol, SupportsIndex, TypeVar, TypedDict, overload
 
+from typing_extensions import Unpack
+
 import builtins
 import pyarrow  # type: ignore[import-untyped]
 import pyarrow.fs  # type: ignore[import-untyped]
@@ -1038,7 +1040,6 @@ class AvroBlock:
     __hash__: ClassVar[None]  # type: ignore[assignment]
     @property
     def count(self) -> int: ...
-    @property
     def size(self) -> int: ...
     def rows(self) -> list[Any]: ...
     def __repr__(self) -> str: ...
@@ -2974,6 +2975,7 @@ class IOBase:
         uri: str | PathLike[str],
         *,
         options: Mapping[str, object] | None = None,
+        **properties: str | bool | None,
     ) -> IOBase: ...
     @classmethod
     def from_bytes(
@@ -3005,15 +3007,13 @@ class IOBase:
     def media_type(self, media_type: MediaType | MimeType | str) -> None: ...
     @property
     def codec(self) -> str | None: ...
-    @property
+    # Methods rather than properties, as every answer that may ask storage is:
+    # a debugger or an IDE evaluates a property to display the object.
     def size(self) -> int: ...
-    @property
     def kind(self) -> Literal[
         "memory", "file", "directory", "table", "namespace", "catalog", "unknown"
     ]: ...
-    @property
     def row_size(self) -> int: ...
-    @property
     def column_size(self) -> int: ...
     @property
     def parent(self) -> IOBase | None: ...
@@ -3106,7 +3106,6 @@ class IOBase:
     def clear(self) -> None: ...
     def remove(self, recursive: bool = False) -> None: ...
     def truncate(self, size: int) -> None: ...
-    @property
     def capacity(self) -> int: ...
     def reserve(self, capacity: int) -> None: ...
     def pread_exact(self, offset: int, length: int) -> bytes: ...
@@ -3119,7 +3118,9 @@ class IOBase:
         max_bytes: int | None = None,
         ttl: float | None = None,
     ) -> IOBase: ...
-    def into_text(self, options: TextOptions | None = None) -> IOBase: ...
+    def into_text(
+        self, options: TextOptions | None = None, **properties: Unpack[TextProperties]
+    ) -> IOBase: ...
     def into_media(self) -> IOBase: ...
     def into_coded(
         self,
@@ -3157,13 +3158,13 @@ class IOBase:
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Field: ...
     def read_arrow(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> SerieReader: ...
     def write_arrow(
         self,
@@ -3171,40 +3172,40 @@ class IOBase:
         mode: str = "overwrite",
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def read_arrow_reader(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> pyarrow.RecordBatchReader: ...
     def read_text_lines(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> TextLines: ...
     def overwrite_arrow_reader(
         self,
         reader: ArrowStreamReader,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_arrow_reader(
         self,
         reader: ArrowStreamReader,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_arrow_reader(
         self,
         reader: ArrowStreamReader,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_arrow_reader(
         self,
@@ -3212,28 +3213,28 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def overwrite_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_arrow_table(
         self,
@@ -3241,28 +3242,28 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def overwrite_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_arrow_batch(
         self,
@@ -3270,7 +3271,7 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     @overload
     def read_records(
@@ -3278,7 +3279,7 @@ class IOBase:
         cls: None = None,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Iterator[dict[str, Any]]: ...
     @overload
     def read_records(
@@ -3286,28 +3287,28 @@ class IOBase:
         cls: type[_RecordT],
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Iterator[_RecordT]: ...
     def overwrite_records(
         self,
         records: Iterable[Any],
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_records(
         self,
         records: Iterable[Any],
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_records(
         self,
         records: Iterable[Any],
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_records(
         self,
@@ -3315,53 +3316,53 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def cursor(self, position: int = 0) -> IOCursor: ...
     def scan_polars(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Any: ...
     def scan_arrow(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Any: ...
     def read_pandas(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Iterator[Any]: ...
     def read_pandas_frame(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Any: ...
     def overwrite_pandas(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_pandas(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_pandas(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_pandas(
         self,
@@ -3369,28 +3370,28 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def overwrite_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_pandas_frame(
         self,
@@ -3398,40 +3399,40 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def read_polars(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Iterator[Any]: ...
     def read_polars_frame(
         self,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> Any: ...
     def overwrite_polars(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_polars(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_polars(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_polars(
         self,
@@ -3439,28 +3440,28 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def overwrite_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def append_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def merge_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def write_polars_frame(
         self,
@@ -3468,7 +3469,7 @@ class IOBase:
         mode: IOMode,
         *,
         options: RecordOptionsLike | None = None,
-        **properties: object,
+        **properties: Unpack[RecordProperties],
     ) -> None: ...
     def __fspath__(self) -> str: ...
     def __len__(self) -> int: ...
@@ -3551,6 +3552,7 @@ class S3File(IOBase):
         *,
         provider: str | None = None,
         options: Mapping[str, object] | None = None,
+        **properties: object,
     ) -> None: ...
 
 class S3Folder(IOBase):
@@ -3563,6 +3565,7 @@ class S3Folder(IOBase):
         *,
         provider: str | None = None,
         options: Mapping[str, object] | None = None,
+        **properties: object,
     ) -> None: ...
 
 class S3Path(IOBase):
@@ -3575,6 +3578,7 @@ class S3Path(IOBase):
         *,
         provider: str | None = None,
         options: Mapping[str, object] | None = None,
+        **properties: object,
     ) -> None: ...
 
 HttpPairs = Mapping[str, object] | Iterable[tuple[str, object]]
@@ -3708,6 +3712,7 @@ class Session(IOBase):
         timeout: HttpTimeout | None = None,
         http_version: str | int | None = None,
         options: Mapping[str, object] | None = None,
+        **properties: object,
     ) -> None: ...
     def request(
         self,
@@ -3931,7 +3936,9 @@ class Pages(Iterator[Response]):
 class Client:
     """A connection pool and the transport knobs its sessions share."""
 
-    def __init__(self, options: Mapping[str, object] | None = None) -> None: ...
+    def __init__(
+        self, options: Mapping[str, object] | None = None, **properties: object
+    ) -> None: ...
     @property
     def stats(self) -> HttpStats: ...
     def session(
@@ -3943,6 +3950,7 @@ class Client:
         timeout: HttpTimeout | None = None,
         http_version: str | int | None = None,
         options: Mapping[str, object] | None = None,
+        **properties: object,
     ) -> Session: ...
 
 class Server:
@@ -4131,9 +4139,7 @@ class CellRange:
     def start(self) -> CellRef: ...
     @property
     def end(self) -> CellRef: ...
-    @property
     def row_size(self) -> int: ...
-    @property
     def column_size(self) -> int: ...
     def is_row_open(self) -> bool: ...
     def is_column_open(self) -> bool: ...
@@ -4331,12 +4337,77 @@ _RecordT = TypeVar("_RecordT")
 # Record settings, or the media type naming the encoding they belong to.
 RecordOptionsLike = RecordOptions | TextOptions | MediaType | MimeType | str
 
+class UnknownPropertyWarning(UserWarning):
+    """A keyword naming no property of the options it was given for; it was
+    ignored."""
+
+class TextProperties(TypedDict, total=False):
+    """The ``TextOptions`` properties a text door takes by name, each set on a
+    copy of the options by its own setter; ``...`` is an argument not given."""
+
+    name: str | EllipsisType
+    field: FieldLike | None | EllipsisType
+    safe: bool | EllipsisType
+    batch_row_size: int | None | EllipsisType
+    commit_row_size: int | None | EllipsisType
+    max_row_size: int | None | EllipsisType
+    row_offset: int | None | EllipsisType
+    max_byte_size: int | None | EllipsisType
+    level: int | EllipsisType
+    merge_by: SelectorLike | EllipsisType
+    select: SelectorLike | EllipsisType
+    filter: FilterLike | EllipsisType
+    plan: PlanLike | EllipsisType
+    timezone: Timezone | str | Any | None | EllipsisType
+    framing: bool | EllipsisType
+    leading_fragment: Literal["keep", "drop", "error"] | EllipsisType
+    max_record_byte_size: int | None | EllipsisType
+    start_rownum: int | None | EllipsisType
+    parse_mtime: bool | EllipsisType
+    rowheader: str | None | EllipsisType
+    lstrip: Sequence[str] | EllipsisType
+    rstrip: Sequence[str] | EllipsisType
+    linesep: str | bytes | bytearray | memoryview | None | EllipsisType
+    autotype: bool | EllipsisType
+    rename_columns: Mapping[str, str] | None | EllipsisType
+
+class RecordProperties(TextProperties, total=False):
+    """The option properties every record read and write takes by name,
+    each set on a copy of the options by its own setter - a text encoding's
+    by ``TextOptions``', every other by ``RecordOptions'``; ``...`` is an
+    argument not given, and a name no setter owns is skipped with an
+    ``UnknownPropertyWarning``."""
+
+    sheet: str | None | EllipsisType
+    range: CellRange | str | tuple[CellRef | str, CellRef | str] | None | EllipsisType
+    block_codec: str | EllipsisType
+    sync_marker: bytes | bytearray | memoryview | None | EllipsisType
+    compression: str | EllipsisType
+    max_row_group_size: int | EllipsisType
+    key_value_metadata: Mapping[str, str] | Iterable[tuple[str, str]] | EllipsisType
+    separator: str | bytes | EllipsisType
+    quote: str | bytes | None | EllipsisType
+    escape: str | bytes | None | EllipsisType
+    comment: str | bytes | None | EllipsisType
+    header: bool | EllipsisType
+    null_values: Iterable[str] | EllipsisType
+    trim: bool | EllipsisType
+    infer_row_size: int | EllipsisType
+
 class RecordOptions:
     """The settings one record read or write takes."""
 
-    def __init__(self, media_type: MediaType | MimeType | str) -> None: ...
+    def __init__(
+        self,
+        media_type: MediaType | MimeType | str,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
     @classmethod
-    def for_media_type(cls, media_type: MediaType | MimeType | str) -> RecordOptions: ...
+    def for_media_type(
+        cls,
+        media_type: MediaType | MimeType | str,
+        **properties: Unpack[RecordProperties],
+    ) -> RecordOptions: ...
     @staticmethod
     def _from_pickle(state: dict[str, Any]) -> RecordOptions: ...
     @property
@@ -4512,7 +4583,7 @@ class RecordOptions:
 class TextOptions:
     """Flat settings for physical-line and framed ``text/plain`` records."""
 
-    def __init__(self) -> None: ...
+    def __init__(self, **properties: Unpack[TextProperties]) -> None: ...
     @staticmethod
     def _from_pickle(state: dict[str, Any]) -> TextOptions: ...
     @property
@@ -4597,13 +4668,13 @@ class TextOptions:
     @rowheader.setter
     def rowheader(self, rowheader: str | None) -> None: ...
     @property
-    def lstrip(self) -> str | None: ...
+    def lstrip(self) -> list[str]: ...
     @lstrip.setter
-    def lstrip(self, lstrip: str | None) -> None: ...
+    def lstrip(self, lstrip: Sequence[str]) -> None: ...
     @property
-    def rstrip(self) -> str | None: ...
+    def rstrip(self) -> list[str]: ...
     @rstrip.setter
-    def rstrip(self, rstrip: str | None) -> None: ...
+    def rstrip(self, rstrip: Sequence[str]) -> None: ...
     @property
     def linesep(self) -> bytes | None: ...
     @linesep.setter
@@ -4725,6 +4796,7 @@ class TextLine:
         body: str | bytes | bytearray | memoryview,
         captures: Sequence[str | None] | None = None,
         options: TextOptions | None = None,
+        **properties: Unpack[TextProperties],
     ) -> None: ...
     @property
     def index(self) -> int: ...
@@ -4789,6 +4861,25 @@ def can_promote(
 ) -> None: ...
 def schema_from_json(name: str, document: Mapping[str, Any]) -> Field: ...
 def schema_into_json(schema: FieldLike) -> dict[str, Any]: ...
+
+class IcebergProperties(TypedDict, total=False):
+    """The ``IcebergOptions`` fields a per-call Iceberg method takes by name,
+    each set on a copy of the options for that call; ``...`` is an argument
+    not given, and a name no field owns is skipped with an
+    ``UnknownPropertyWarning``."""
+
+    commit_retries: int | EllipsisType
+    commit_min_backoff_ms: int | EllipsisType
+    commit_max_backoff_ms: int | EllipsisType
+    commit_total_timeout_ms: int | EllipsisType
+    target_file_size: int | EllipsisType
+    read_parallelism: int | EllipsisType
+    read_parallel_min_files: int | EllipsisType
+    read_parallel_min_file_size: int | EllipsisType
+    write_parallelism: int | EllipsisType
+    write_staging: str | PathLike[str] | EllipsisType
+    compact_after_commits: int | EllipsisType
+    data_mime_type: MimeType | str | EllipsisType
 
 class IcebergOptions:
     """Configuration for one table's commits, writes, and reads.
@@ -4957,6 +5048,7 @@ class Tables:
         data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> Table: ...
     def overwrite(
         self,
@@ -4964,6 +5056,7 @@ class Tables:
         data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> Table: ...
     def __repr__(self) -> str: ...
 
@@ -4994,6 +5087,7 @@ class Catalog:
         data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> Table: ...
     def overwrite(
         self,
@@ -5001,6 +5095,7 @@ class Catalog:
         data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> Table: ...
     def __repr__(self) -> str: ...
 
@@ -5063,6 +5158,7 @@ class Table:
         field: FieldLike | None = None,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> pyarrow.RecordBatchReader: ...
     def scan_where(
         self,
@@ -5070,6 +5166,7 @@ class Table:
         field: FieldLike | None = None,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> pyarrow.RecordBatchReader: ...
     def scan_ref(
         self,
@@ -5078,6 +5175,7 @@ class Table:
         field: FieldLike | None = None,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> pyarrow.RecordBatchReader: ...
     def scan_matching(
         self,
@@ -5092,6 +5190,7 @@ class Table:
         schema: FieldLike | None = None,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> pyarrow.RecordBatchReader: ...
     def plan(
         self, filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None
@@ -5119,12 +5218,14 @@ class Table:
         batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> None: ...
     def overwrite(
         self,
         batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> None: ...
     def overwrite_where(
         self,
@@ -5132,6 +5233,7 @@ class Table:
         batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> None: ...
     def merge(
         self,
@@ -5140,6 +5242,7 @@ class Table:
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> None: ...
     def merge_where(
         self,
@@ -5149,6 +5252,7 @@ class Table:
         *,
         safe: bool = True,
         options: IcebergOptions | None = None,
+        **properties: Unpack[IcebergProperties],
     ) -> None: ...
     def set_options(self, options: IcebergOptions) -> None: ...
     def options(self) -> IcebergOptions: ...
@@ -8164,6 +8268,8 @@ class CandleIterator(Iterator[Candle]):
         self,
         books: Iterable[BookEvent | MarketData],
         options: CandleOptions | int | str,
+        *,
+        timezone: Timezone | str | Any | None = None,
     ) -> None: ...
     @property
     def options(self) -> CandleOptions: ...

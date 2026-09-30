@@ -1199,6 +1199,8 @@ pub struct S3FileSystemOptions  (filesystem configuration extracted from an S3 U
 pub enum ResolvedFileSystem { Local, S3(S3FileSystemOptions) }  (which Arrow filesystem a URI selects)
   impl Clone, Debug, Eq, PartialEq for ResolvedFileSystem
 pub struct ResolvedFileSystemUri  (one URI resolved once into filesystem configuration and an opaque path)
+  pub const OPTION_NAMES: [&'static str; 10]  (the option names `from_uri` reads; any other is refused)
+  pub fn is_option(name: &str) -> bool
   pub fn from_uri(uri: impl Into<String>, options: Option<&BTreeMap<String, String>>) -> Result<Self>  (`file`, `s3`, `s3a` or `s3n` exactly once, every other scheme Unsupported; S3 percent escapes stay literal in `path` and `key`, while option values are URI-decoded because they configure the filesystem rather than name an object)
   pub const fn filesystem(&self) -> &ResolvedFileSystem
   pub fn path(&self) -> &str  (the exact opaque path to pass to the selected filesystem)
@@ -1921,6 +1923,8 @@ pub struct ZipPath
       with_container_creation, with_container_deletion, with_default_metadata,
       with_environment_prefix, with_environment_prefixes, with_environment,
       with_session, with_aws, with_google, with_azure, with_properties, under
+  pub const PROPERTY_NAMES: [&'static str; 47]  (this crate's own knob names, what a binding suggests a mistyped keyword against)
+  pub fn is_property(name: &str) -> bool  (whether `with_properties` reads `name` in any vocabulary it accepts, answered by the reader itself)
   pub fn endpoint, region, credentials, anonymous, path_style, part_size,
       multipart_threshold, list_page_size, max_attempts, timeout, connect_timeout,
       reads_environment, encryption, environment_prefixes, proxy,
@@ -2174,6 +2178,8 @@ pub struct ZipPath
   pub const DEFAULT_MAX_PAUSE: Duration
   pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
   pub fn with_properties<I, K, V>(self, properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
+  pub const PROPERTY_NAMES: [&'static str; 22]  (the property names as this crate spells them, what a binding suggests a mistyped keyword against)
+  pub fn is_property(name: &str) -> bool  (whether `with_properties` reads `name` in any spelling it accepts, answered by the reader itself)
   pub const fn with_http_version(self, http_version: Option<HttpVersion>) -> Self  (None negotiates: ALPN `h2` over TLS, HTTP/3 through `Alt-Svc`; Http2 speaks `h2c` to a plain origin; Http3 goes to QUIC directly; a proxied request speaks HTTP/1.1; refused by `Client::with_options` for a version the build lacks)
   pub fn with_base_url(self, base_url: Url) -> Self
   pub fn with_headers(self, headers: Headers) -> Self

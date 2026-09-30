@@ -621,7 +621,7 @@ def test_compressed_logs_stream_their_records_without_naming_the_coding(
 
         # The property counts through the same decoded stream, under the
         # options the handle infers for itself: physical lines, unframed.
-        assert source.row_size == 3
+        assert source.row_size() == 3
 
         # The decoded view reads the same records off the same bytes.
         coded = IOBase(tmp_path / name).into_coded()
@@ -642,7 +642,7 @@ def test_an_empty_or_absent_compressed_log_keeps_its_schema(
         reader = source.read_arrow_reader(options=options)
         assert reader.schema.names == EVENT_COLUMNS + ["body", "kind"], name
         assert reader.read_all().num_rows == 0, name
-        assert source.row_size == 0, name
+        assert source.row_size() == 0, name
 
 
 def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path) -> None:

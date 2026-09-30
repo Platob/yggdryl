@@ -2592,8 +2592,8 @@ export interface AvroContainer<T = unknown> {
 export interface AvroBlock<T = unknown> {
   /** Row count declared by the block header. */
   readonly count: bigint
-  /** Compressed payload size in bytes. */
-  readonly size: bigint
+  /** Compressed payload size in bytes; a method, as `IOBase.size` is. */
+  size(): bigint
   /** Decompress and decode this block through the iterator's reader schema. */
   rows(): T[]
 }
@@ -3665,8 +3665,6 @@ declare module './index' {
   interface IOBase extends Iterable<IOBase>, Disposable {
     openOutputStream(metadata?: OutputMetadata | null): ByteWriter
     openAppendStream(metadata?: OutputMetadata | null): ByteWriter
-    /** The storage role this handle currently addresses. */
-    kind: string
     /** Whether this handle exposes either its byte or record surface. */
     isIo(): boolean
     /** Resolve a child of this resource, as `path.join`. */
@@ -3884,21 +3882,23 @@ declare module './index' {
 
   interface Table {
     /** Append rows as a new snapshot, keeping everything already stored. */
-    append(rows: IcebergSource, options?: IcebergOptions | null): void
+    append(rows: IcebergSource, options?: IcebergOptions | IcebergProperties | null, properties?: IcebergProperties | null): void
     /** Replace every row with `rows` as a new snapshot. */
-    overwrite(rows: IcebergSource, options?: IcebergOptions | null): void
+    overwrite(rows: IcebergSource, options?: IcebergOptions | IcebergProperties | null, properties?: IcebergProperties | null): void
     /** Replace only the rows `filters` selects, keeping every other file. */
     overwriteWhere(
       filters: PartitionFilters | null | undefined,
       rows: IcebergSource,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): void
     /** Merge `rows` into the stored rows, matching on the `mergeBy` selector. */
     merge(
       rows: IcebergSource,
       mergeBy: Selector | Term | string | readonly string[],
       safe?: boolean | null,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): void
     /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector. */
     mergeWhere(
@@ -3906,18 +3906,21 @@ declare module './index' {
       rows: IcebergSource,
       mergeBy: Selector | Term | string | readonly string[],
       safe?: boolean | null,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): void
     /** Read the current snapshot, keeping the columns `field` names. */
     scan(
       field?: SchemaInput | null,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): BatchReader
     /** Read the rows matching `filters`, keeping the columns `field` names. */
     scanWhere(
       filters?: PartitionFilters | null,
       field?: SchemaInput | null,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): BatchReader
     /** Add a schema, make it current, and write a new metadata document. */
     evolveSchema(schema: SchemaInput): number
@@ -3930,14 +3933,26 @@ declare module './index' {
     append(
       name: string,
       rows: IcebergSource,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): Table
     /** Replace the named table's rows, creating it on first write. */
     overwrite(
       name: string,
       rows: IcebergSource,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): Table
+  }
+
+  /**
+   * Beside the named keys, every other key is an `HttpOptions` property -
+   * `maxAttempts`, `followRedirects`, `header.X-Api-Key` - read by the core
+   * under the named keys; a key the core reads no property by is skipped
+   * with an `UnknownPropertyWarning` process warning.
+   */
+  interface HttpSessionInit {
+    readonly [property: string]: unknown
   }
 
   interface Catalog {
@@ -3945,13 +3960,15 @@ declare module './index' {
     append(
       name: string,
       rows: IcebergSource,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): Table
     /** Replace the named table's rows, creating it on first write. */
     overwrite(
       name: string,
       rows: IcebergSource,
-      options?: IcebergOptions | null,
+      options?: IcebergOptions | IcebergProperties | null,
+      properties?: IcebergProperties | null,
     ): Table
   }
 
@@ -4014,6 +4031,26 @@ export type RecordOptionsInput = RecordOptions | TextOptions | MediaTypeInput
  * `undefined` value is skipped.
  */
 export type RecordProperties = { readonly [property: string]: unknown }
+/**
+ * `IcebergOptions` fields by name, set on a copy of the options one call runs
+ * under - the ones given beside them, else the table's own override, else
+ * nothing set - each by its own setter; a name no field owns is skipped with
+ * an `UnknownPropertyWarning` process warning.
+ */
+export type IcebergProperties = {
+  readonly commitRetries?: number
+  readonly commitMinBackoffMs?: number
+  readonly commitMaxBackoffMs?: number
+  readonly commitTotalTimeoutMs?: number
+  readonly targetFileSize?: number
+  readonly readParallelism?: number
+  readonly readParallelMinFiles?: number
+  readonly readParallelMinFileSize?: number
+  readonly writeParallelism?: number
+  readonly writeStaging?: string
+  readonly compactAfterCommits?: number
+  readonly dataMimeType?: MimeTypeInput
+}
 /** A partition spec, or the column names one would be built from. */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */
@@ -4508,7 +4545,11 @@ export type CandleOptionsInput = CandleOptions | string | bigint | number
  * itself.
  */
 export interface CandleIteratorConstructor {
-  new (books: Iterable<BookEvent | MarketData>, options: CandleOptionsInput): CandleIterator
+  new (
+    books: Iterable<BookEvent | MarketData>,
+    options: CandleOptionsInput,
+    timezone?: Timezone | string | null,
+  ): CandleIterator
   readonly prototype: CandleIterator
 }
 

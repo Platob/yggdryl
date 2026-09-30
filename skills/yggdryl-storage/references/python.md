@@ -47,14 +47,14 @@ from yggdryl.holder import Buffer
 sniffed = IOBase.from_bytes(b'{"symbol":"AAPL"}')
 assert type(sniffed) is Buffer
 assert str(sniffed.media_type.base) == "application/json"
-assert sniffed.kind == "memory"
+assert sniffed.kind() == "memory"
 assert sniffed.uri.scheme == "mem"
 
 csv = IOBase.from_bytes(b"symbol,price\n", capacity=4096)
 assert str(csv.media_type) == "application/octet-stream"
 csv.media_type = "text/csv"
 assert str(csv.media_type) == "text/csv"
-assert csv.capacity >= 4096
+assert csv.capacity() >= 4096
 ```
 
 ## Read a range, write at an offset, append
@@ -72,14 +72,14 @@ assert handle.append_bytes(b"AAPL,1\n") == 13
 
 assert handle.read_range_bytes(13, 4) == b"AAPL"
 assert handle.read_range_bytes(0, 6) == b"symbol"
-# A footer is one ranged read off the size (a property), never the whole value.
-assert handle.read_range_bytes(handle.size - 7, 7) == b"AAPL,1\n"
+# A footer is one ranged read off the size (a method), never the whole value.
+assert handle.read_range_bytes(handle.size() - 7, 7) == b"AAPL,1\n"
 assert handle.read_range_bytes(100, 4) == b""  # past the end is empty
 assert handle.read_range(0, 6, cls=str) == "symbol"
 
 # A write past the end zero-fills the gap.
 handle.pwrite(22, b"!")
-assert handle.size == 23
+assert handle.size() == 23
 assert handle.read_range_bytes(20, 3) == b"\0\0!"
 
 assert handle.append("MSFT") == 23
@@ -133,19 +133,19 @@ root = pathlib.Path(tempfile.mkdtemp())
 # Construction touches nothing; absence reads as empty.
 absent = IOBase(root / "sub" / "inner.bin")
 assert not absent.exists()
-assert absent.size == 0
+assert absent.size() == 0
 assert absent.read_bytes() == b""
 assert not (root / "sub").exists()
 
 location = LocalPath(root / "trades.bin")
-assert location.kind == "unknown"
+assert location.kind() == "unknown"
 location.write_bytes(b"AAPL")
 location.flush()
-assert location.kind == "file"
+assert location.kind() == "file"
 
 folder = LocalPath(root / "day=2026-08-16").mkdir()
 assert isinstance(folder, LocalFolder)
-assert folder.kind == "directory"
+assert folder.kind() == "directory"
 
 # A folder holds no bytes of its own: byte writes refused.
 try:
@@ -274,7 +274,7 @@ plain = IOBase(root / "rows.json")
 plain.write_bytes(b'{"symbol":"AAPL"}')
 
 stored = LocalPath(root / "rows.json.gz")  # stored bytes: the target a coding lands in
-assert plain.compress_into(stored) == stored.size
+assert plain.compress_into(stored) == stored.size()
 assert stored.read_bytes()[:2] == b"\x1f\x8b"
 coded = stored.into_coded()
 assert isinstance(coded, Gzip)
@@ -579,8 +579,8 @@ streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
   the old reference raises `ValueError("... consumed by a conversion")`.
 - `write_bytes`, `pwrite`, `append_bytes` take `bytes` only (borrowed, no
   copy); `append` also takes `str`, `bytearray`, `memoryview`, at a copy.
-- `size`, `kind`, `media_type`, `codec`, `parent`, `opened`, `closed` are
-  properties; `exists()`, `is_dir()`, `is_file()` are methods.
+- `media_type`, `codec`, `parent`, `opened`, `closed` are
+  properties; `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` are methods.
 - A folder handle keeps answering `is_dir()` after `remove()`; the parent's
   listing is what shows it gone.
 - `IOBase.from_uri("s3://...")` goes through `pyarrow.fs.S3FileSystem`;

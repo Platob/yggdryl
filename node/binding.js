@@ -271,8 +271,15 @@ delete binding.avroDumpsNative
 delete binding.ScalarIterator
 
 const { normalizeMetadata } = require('./fields.js')
+const optionProperties = require('./properties.js')
 
-function publicNativeClass(NativeClass, name, hiddenStatics, normalizeArgs = (args) => args) {
+function publicNativeClass(
+  NativeClass,
+  name,
+  hiddenStatics,
+  normalizeArgs = (args) => args,
+  finish = (instance) => instance,
+) {
   const PublicClass = function (...args) {
     if (new.target === undefined) {
       throw new TypeError(
@@ -280,7 +287,7 @@ function publicNativeClass(NativeClass, name, hiddenStatics, normalizeArgs = (ar
       )
     }
     const target = new.target === PublicClass ? NativeClass : new.target
-    return Reflect.construct(NativeClass, normalizeArgs(args), target)
+    return finish(Reflect.construct(NativeClass, normalizeArgs(args), target), args)
   }
   Object.defineProperty(PublicClass, 'name', { value: name })
   PublicClass.prototype = NativeClass.prototype
@@ -3522,13 +3529,26 @@ Object.defineProperties(IOBase.prototype, {
   },
   intoText: {
     configurable: true,
-    value(options) {
+    // `properties` are set by their own setters on a copy of `options` - or,
+    // when none are given, of the text options the handle already has - so
+    // `intoText({ autotype: true })` keeps a row header it retained.
+    value(options, properties) {
+      if (optionProperties.isPropertyBag(options)) {
+        properties = options
+        options = undefined
+      }
       if (
         options !== undefined &&
         options !== null &&
         !(options instanceof binding.TextOptions)
       ) {
         throw new TypeError('intoText options must be TextOptions or null')
+      }
+      if (properties !== undefined && properties !== null) {
+        const retained = this.recordOptions()
+        const base =
+          options ?? (retained instanceof binding.TextOptions ? retained : new binding.TextOptions())
+        options = optionProperties.withProperties(base, binding.TextOptions, 'TextOptions', properties)
       }
       nativeIOIntoText.call(this, options)
       return this
@@ -3710,6 +3730,59 @@ Object.defineProperty(Uri.prototype, 'joinPath', {
   },
 })
 
+// An options class takes its properties by name beside its own arguments -
+// `new RecordOptions('text/csv', { separator: ';' })`, `new TextOptions({
+// rowheader })` - each set by its own setter, as a record call's property bag
+// sets them, a name no setter owns skipped with an `UnknownPropertyWarning`.
+for (const [name, arity] of [
+  ['RecordOptions', 1],
+  ['TextOptions', 0],
+]) {
+  const NativeOptions = binding[name]
+  binding[name] = publicNativeClass(
+    NativeOptions,
+    name,
+    new Set(),
+    (args) => args.slice(0, arity),
+    (options, args) =>
+      args[arity] === undefined || args[arity] === null
+        ? options
+        : optionProperties.setProperties(options, NativeOptions, name, args[arity]),
+  )
+}
+
+// An Iceberg options value is built from its fields by name; a key no field
+// owns is heard rather than dropped, as the native plain-object input drops it.
+{
+  const NativeIcebergOptions = binding.IcebergOptions
+  binding.IcebergOptions = publicNativeClass(
+    NativeIcebergOptions,
+    'IcebergOptions',
+    new Set(),
+    (args) => {
+      if (optionProperties.isPropertyBag(args[0])) {
+        for (const key of Object.keys(args[0])) {
+          optionProperties.checkProperty(NativeIcebergOptions, 'IcebergOptions', key)
+        }
+      }
+      return args
+    },
+  )
+}
+
+// A line a caller builds takes the text options' properties the same way, on
+// a copy of the options it was given or of the defaults.
+binding.TextLine = publicNativeClass(binding.TextLine, 'TextLine', new Set(), (args) => {
+  if (args[4] === undefined || args[4] === null) return args.slice(0, 4)
+  const options = args[3] ?? new binding.TextOptions()
+  return [
+    args[0],
+    args[1],
+    args[2],
+    optionProperties.withProperties(options, binding.TextOptions, 'TextOptions', args[4]),
+  ]
+})
+
 const { BatchReader, RecordOptions, TextOptions } = binding
 // Runtime-only state used by the async record bridge. It is intentionally not
 // a fourth public write abstraction.
@@ -3719,9 +3792,10 @@ delete binding.ArrowWriteSession
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
 const { installRecords } = require('./records.js')
-const { icebergBatchReader, intoField } = installRecords({
+const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
   BatchReader,
   Field,
+  IcebergOptions: binding.IcebergOptions,
   IOBase,
   RecordOptions,
   SerieReader,
@@ -4055,14 +4129,14 @@ for (const name of ['append', 'overwrite']) {
   const native = binding.Catalog.prototype[name]
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
-    value(tableName, data, options) {
+    value(tableName, data, options, properties) {
       const tables = this.tables
       const stored = tables.has(tableName) ? tables.get(tableName) : null
       return native.call(
         this,
         tableName,
         icebergBatchReader(stored, data),
-        options,
+        icebergCallOptions(null, options, properties),
       )
     },
   })
@@ -4808,7 +4882,12 @@ const EventIterator = publicClass(
 // own error, so the completed buckets come first and the open one is
 // dropped, never closed as a candle.
 const nativeCandleIterator = NativeCandleIterator._candleIteratorNative
-const CandleIterator = publicClass(NativeCandleIterator, 'CandleIterator', (books, options) => {
+const CandleIterator = publicClass(NativeCandleIterator, 'CandleIterator', (books, options, timezone) => {
+  // A zone beside the options is the `CandleOptions` of both, the zone
+  // `CandleOptions` and `candles` take in the same place.
+  if (timezone !== undefined && timezone !== null) {
+    options = new NativeCandleOptions(options, timezone)
+  }
   const failed = {}
   const walk = nativeCandleIterator.call(
     NativeCandleIterator,
@@ -4898,10 +4977,7 @@ const graph = Object.freeze({
     // A zone beside the options, a spelling or a count is the
     // `CandleOptions` of both, as Python's `candles(books, interval,
     // timezone=None)` reads it.
-    if (timezone !== undefined && timezone !== null) {
-      options = new NativeCandleOptions(options, timezone)
-    }
-    return Array.from(new CandleIterator(books, options))
+    return Array.from(new CandleIterator(books, options, timezone))
   },
   ENTRY_ID: graphEntryId,
   ENTRY_REF_ID: graphEntryRefId,
@@ -5399,23 +5475,43 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   }
 
   const sessionKeys = ['headers', 'auth', 'timeout', 'httpVersion', 'options']
+  const isHttpProperty = NativeSession._isPropertyNative
+  const httpPropertyNames = NativeSession._propertyNamesNative().map((name) =>
+    name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()),
+  )
+
+  // Beside the named keys, every other key is an `HttpOptions` property -
+  // `maxAttempts`, `followRedirects`, `header.X-Api-Key` - read by the core
+  // in its own spelling, the named keys winning over them. A key the core
+  // reads no property by is skipped with an `UnknownPropertyWarning`.
+  function sessionProperties(options) {
+    const properties = []
+    for (const [key, value] of Object.entries(options)) {
+      if (sessionKeys.includes(key)) continue
+      const name = /^[a-z][A-Za-z0-9]*$/.test(key)
+        ? key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+        : key
+      if (!isHttpProperty(name)) {
+        optionProperties.warnUnknownProperty('HttpOptions', key, httpPropertyNames)
+        continue
+      }
+      if (value === undefined || value === null) continue
+      properties.push([name, String(value)])
+    }
+    return properties
+  }
 
   function sessionInit(options) {
     if (options === undefined || options === null) return undefined
     if (!isPlainObject(options)) throw new TypeError('session options must be a plain object')
-    for (const key of Object.keys(options)) {
-      if (!sessionKeys.includes(key)) {
-        throw new TypeError(
-          `unknown session option ${JSON.stringify(key)}; expected one of ${sessionKeys.join(', ')}`,
-        )
-      }
-    }
+    const properties = sessionProperties(options)
+    const given = httpPairs(options.options, 'options')
     return {
       headers: httpPairs(options.headers, 'headers'),
       auth: httpAuth(options.auth),
       timeout: options.timeout ?? undefined,
       httpVersion: httpVersionOf(options.httpVersion),
-      options: httpPairs(options.options, 'options'),
+      options: properties.length === 0 ? given : [...(given ?? []), ...properties],
     }
   }
 
@@ -5437,7 +5533,7 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   const Session = publicNativeClass(
     NativeSession,
     'Session',
-    new Set(['_defaultNative']),
+    new Set(['_defaultNative', '_isPropertyNative', '_propertyNamesNative']),
     (args) =>
       args.length === 0
         ? args

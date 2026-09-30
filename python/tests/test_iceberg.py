@@ -17,7 +17,7 @@ import time
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase, MimeType
+from yggdryl import DataType, Field, IOBase, MimeType, UnknownPropertyWarning
 from yggdryl.iceberg import (
     Catalog,
     Compaction,
@@ -1214,8 +1214,12 @@ class TestIcebergOptions:
         assert options.data_mime_type == MimeType.AVRO
         options.target_file_size = 1024
         assert options.target_file_size == 1024
-        with pytest.raises(TypeError, match="commit_retres"):
-            IcebergOptions(commit_retres=2)
+        # A keyword naming no field is skipped with a warning naming the one
+        # it most likely meant.
+        with pytest.warns(
+            UnknownPropertyWarning, match=r"'commit_retres'.*did you mean 'commit_retries'"
+        ):
+            assert IcebergOptions(commit_retres=2).commit_retries == 4
 
         # The write parallelism defaults to the read parallelism, resolves on
         # its own once set, and refuses zero naming its key.
@@ -1338,15 +1342,19 @@ class TestIcebergOptions:
         with pytest.raises(TypeError, match="expected IcebergOptions"):
             table.append(_rows(), options=RecordOptions("application/vnd.apache.parquet"))
 
-    def test_an_unknown_keyword_is_a_typeerror_naming_it(
-        self, table: Table
-    ) -> None:
-        with pytest.raises(
-            TypeError, match=r"append\(\) got an unexpected keyword argument"
-        ):
+    def test_a_keyword_is_an_option_for_this_call(self, table: Table) -> None:
+        # Set on a copy of the table's own override for this call alone.
+        table.append(_rows(), data_mime_type="avro")
+        table.append(_rows(10))
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO, MimeType.PARQUET}
+
+    def test_an_unknown_keyword_warns_naming_it(self, table: Table) -> None:
+        with pytest.warns(UnknownPropertyWarning, match="'data_fromat'"):
             table.append(_rows(), data_fromat="avro")
-        with pytest.raises(TypeError, match="parallelism"):
+        with pytest.warns(UnknownPropertyWarning, match="'parallelism'"):
             table.scan(parallelism=2)
+        assert {file.mime_type for file, _ in table.data_files()} == {MimeType.PARQUET}
 
     def test_set_options_stores_a_handle_wide_override(
         self, table: Table

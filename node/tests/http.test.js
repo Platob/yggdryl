@@ -153,7 +153,9 @@ function scratch() {
 
 test('refusals name what they refuse before anything goes out', () => {
   assert.throws(() => new http.Session(42), /baseUrl must be a string, a Url or a URL/)
-  assert.throws(() => new http.Session(undefined, { retries: 3 }), /unknown session option "retries"/)
+  // A key neither the session nor HttpOptions names warns and is skipped
+  // (`node/tests/properties.test.js`), rather than refusing the session.
+  assert.ok(new http.Session(undefined, { retries: 3 }))
   assert.throws(
     () => new http.Session(undefined, { options: { timeout: 'soon' } }),
     /timeout/,
@@ -475,7 +477,7 @@ test('an http URL is an IOBase reading records and ranges', () => {
 
   const blob = new http.Request('GET', `${origin}/blob`).intoIOBase()
   assert.deepEqual([...blob.readRangeBytes(250, 3)], [250, 0, 1])
-  assert.equal(blob.size, 100000)
+  assert.equal(blob.size(), 100000)
 
   // A request's IOBase carries its session and headers onto every read.
   const echoed = new http.Session(undefined, { headers: { 'X-Session': 's' } })
@@ -489,7 +491,7 @@ test('an http URL is an IOBase reading records and ranges', () => {
 
   // A session is the container over its base URL: a child is the GET of it.
   const container = new http.Session(`${origin}/`).intoIOBase()
-  assert.equal(container.kind, 'directory')
+  assert.equal(container.kind(), 'directory')
   assert.equal(container.joinpath('text').readText(), 'hello')
 })
 

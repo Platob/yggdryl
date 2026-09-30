@@ -292,7 +292,7 @@ test('a missing location is empty rather than an error', (t) => {
   assert.ok(!absent.exists())
   // Reads skip, so probing a location needs no existence check first.
   assert.equal(absent.readBytes().length, 0)
-  assert.equal(absent.size, 0)
+  assert.equal(absent.size(), 0)
 })
 
 test('buffered adds one reconfigurable native cache without changing identity', () => {
@@ -319,7 +319,7 @@ test('buffered adds one reconfigurable native cache without changing identity', 
   assert.strictEqual(handle.buffered({ pageSize: 128, ttlMs: 0 }), handle)
   handle.pwrite(64_000, Buffer.from('native-cache'))
   assert.equal(handle.readRangeBytes(64_000, 12).toString(), 'native-cache')
-  assert.equal(handle.size, bytes.length)
+  assert.equal(handle.size(), bytes.length)
 
   assert.throws(() => handle.buffered({ pageSize: -1 }), /pageSize/)
   assert.equal(handle.readRangeBytes(64_000, 12).toString(), 'native-cache')
@@ -341,16 +341,16 @@ test('open promotes record handles and retains media metadata until close', () =
 
   handle.open()
   assert.equal(handle.opened(), true)
-  assert.equal(handle.columnSize, 2)
+  assert.equal(handle.columnSize(), 2)
   const replacement = IOBase.fromBytes()
   replacement.mediaType = 'application/vnd.apache.arrow.stream'
   replacement.overwriteArrowTable(rows(true))
   filesystem.files.set('cache.arrows', replacement.readBytes())
-  assert.equal(handle.columnSize, 2)
+  assert.equal(handle.columnSize(), 2)
 
   handle.close()
   assert.equal(handle.closed(), true)
-  assert.equal(handle.columnSize, 3)
+  assert.equal(handle.columnSize(), 3)
 })
 
 test('a handle says whether it holds bytes or rows', (t) => {
@@ -438,9 +438,9 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
 
   const folder = new IOBase(path.join(root, 'empty'))
   folder.mkdir()
-  assert.equal(IOBase.fromBytes().kind, 'memory')
-  assert.equal(folder.kind, 'directory')
-  assert.equal(new IOBase(path.join(root, 'missing')).kind, 'unknown')
+  assert.equal(IOBase.fromBytes().kind(), 'memory')
+  assert.equal(folder.kind(), 'directory')
+  assert.equal(new IOBase(path.join(root, 'missing')).kind(), 'unknown')
   assert.equal(folder.isIo(), false)
   assert.equal(new IOBase(path.join(root, 'notes.txt')).isIo(), true)
 
@@ -450,11 +450,11 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   handle.overwriteArrowReader(
     BatchReader.from([first.batches[0], second.batches[0]]),
   )
-  assert.equal(handle.kind, 'file')
+  assert.equal(handle.kind(), 'file')
   assert.equal(handle.isIo(), true)
-  assert.equal(handle.rowSize, 4)
-  assert.equal(handle.columnSize, 2)
-  assert.ok(Number.isSafeInteger(handle.rowSize))
+  assert.equal(handle.rowSize(), 4)
+  assert.equal(handle.columnSize(), 2)
+  assert.ok(Number.isSafeInteger(handle.rowSize()))
 
   // A narrowed and limited read never changes whole-media dimensions.
   const narrowed = handle
@@ -464,14 +464,14 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   const selected = handle.readArrowReader(narrowed).intoTable()
   assert.equal(selected.numRows, 1)
   assert.equal(selected.numCols, 1)
-  assert.equal(handle.rowSize, 4)
-  assert.equal(handle.columnSize, 2)
+  assert.equal(handle.rowSize(), 4)
+  assert.equal(handle.columnSize(), 2)
 
   // A publication through this handle invalidates and repopulates its cache.
   handle.open()
   handle.overwriteArrowTable(rows([10n, 11n], ['XNAS', 'XNYS']))
-  assert.equal(handle.rowSize, 2)
-  assert.equal(handle.columnSize, 2)
+  assert.equal(handle.rowSize(), 2)
+  assert.equal(handle.columnSize(), 2)
   handle.close()
 
   // Open state keeps successful metadata answers stable across an external
@@ -481,24 +481,24 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   // tests there rather than pretending the OS permits it.
   if (process.platform !== 'win32') {
     handle.open()
-    assert.equal(handle.rowSize, 2)
-    assert.equal(handle.columnSize, 2)
+    assert.equal(handle.rowSize(), 2)
+    assert.equal(handle.columnSize(), 2)
     const replacement = path.join(root, 'replacement.arrows')
     new IOBase(replacement).overwriteArrowTable(wider([9n]))
     fs.renameSync(replacement, path.join(root, 'dimensions.arrows'))
-    assert.equal(handle.rowSize, 2)
-    assert.equal(handle.columnSize, 2)
+    assert.equal(handle.rowSize(), 2)
+    assert.equal(handle.columnSize(), 2)
     handle.close()
-    assert.equal(handle.rowSize, 1)
-    assert.equal(handle.columnSize, 3)
+    assert.equal(handle.rowSize(), 1)
+    assert.equal(handle.columnSize(), 3)
   }
 
   // An empty typed value reports zero rows without losing its schema.
   const empty = new IOBase(path.join(root, 'empty.arrows'))
   empty.overwriteArrowTable(rows([], []))
   empty.open()
-  assert.equal(empty.rowSize, 0)
-  assert.equal(empty.columnSize, 2)
+  assert.equal(empty.rowSize(), 0)
+  assert.equal(empty.columnSize(), 2)
   empty.close()
 })
 
@@ -567,7 +567,7 @@ test('a write creates and a read returns it', (t) => {
   assert.equal(handle.writeText('AAPL'), 4)
   assert.equal(handle.readText(), 'AAPL')
   assert.ok(handle.exists())
-  assert.equal(handle.size, 4)
+  assert.equal(handle.size(), 4)
 
   assert.equal(handle.writeBytes(Buffer.from('MSFT,1')), 6)
   assert.deepEqual(handle.readBytes(), Buffer.from('MSFT,1'))
@@ -620,7 +620,7 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   assert.deepEqual(binary.readRange(0, 2), Buffer.from([0xff, 0xfe]))
   assert.throws(() => binary.readRange(0, 2, { text: true }), /invalid utf-8/)
   handle.truncate(13)
-  assert.equal(handle.size, 13)
+  assert.equal(handle.size(), 13)
 
   handle.truncate(6)
   assert.equal(handle.readText(), 'SYMBOL')
@@ -686,7 +686,7 @@ test('a container streams its leaves end to end', (t) => {
   const folder = new IOBase(root)
   assert.equal(Buffer.concat([...folder.pstreamBytes()]).toString(), 'a1\na2b1\nc1\n')
   assert.equal(folder.readBytes().toString(), 'a1\na2b1\nc1\n')
-  assert.equal(folder.size, 0)
+  assert.equal(folder.size(), 0)
 
   // A position counts across leaves, and chunks are full across them.
   assert.deepEqual(
@@ -750,7 +750,7 @@ test('mkdir and touch bring a location into being', (t) => {
   const leaf = folder.joinpath('empty.arrows')
   leaf.touch()
   assert.ok(leaf.exists())
-  assert.equal(leaf.size, 0)
+  assert.equal(leaf.size(), 0)
 
   leaf.writeText('kept')
   leaf.touch()
@@ -765,7 +765,7 @@ test('a folder answers whether it is there now, not what it was built as', (t) =
   const folder = new IOBase(path.join(root, 'made'))
   folder.mkdir()
   assert.ok(folder.exists())
-  assert.equal(folder.kind, 'directory')
+  assert.equal(folder.kind(), 'directory')
 
   folder.remove(true)
   assert.equal(fs.existsSync(path.join(root, 'made')), false)
@@ -776,7 +776,7 @@ test('a folder joins through a child that does not exist yet', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const folder = new IOBase(root)
-  assert.equal(folder.kind, 'directory')
+  assert.equal(folder.kind(), 'directory')
 
   // Resolution is a name, never a stat that turns a missing `a` into a leaf
   // with no children.
@@ -839,14 +839,14 @@ test('a memory handle needs no location', () => {
   const handle = IOBase.fromBytes(Buffer.from('AAPL'))
 
   assert.equal(handle.readText(), 'AAPL')
-  assert.equal(handle.size, 4)
+  assert.equal(handle.size(), 4)
   // A buffer still has an identity, but not one the file system knows.
   assert.equal(handle.url.scheme, 'mem')
   assert.throws(() => handle.intoPath(), /only a file URI/)
   // A container is refused by the scheme that says no backend holds one, not
   // by the path conversion it would otherwise fall through to.
   assert.throws(() => handle.mkdir(), /filesystem "mem" does not support holding/)
-  assert.equal(IOBase.fromBytes().size, 0)
+  assert.equal(IOBase.fromBytes().size(), 0)
 })
 
 test('a leaf knows the partitions above it', (t) => {
@@ -1240,7 +1240,7 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
   // The target's own name declares the coding, so gzip is never named twice.
   const coded = new IOBase(path.join(root, 'trades.json.gz'))
   const written = plain.compressInto(coded)
-  assert.equal(written, coded.size)
+  assert.equal(written, coded.size())
   assert.deepEqual(zlib.gunzipSync(coded.readBytes()), Buffer.from('{"id":1}'))
 
   const back = new IOBase(path.join(root, 'back.json'))
@@ -1250,7 +1250,7 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
   // A buffer has no name to declare anything, so it is told - and what it was
   // told is recorded on its media type, so reading it back needs no argument.
   const memory = IOBase.fromBytes()
-  assert.equal(plain.compressInto(memory, 'gzip', 9), memory.size)
+  assert.equal(plain.compressInto(memory, 'gzip', 9), memory.size())
   assert.equal(memory.codec, 'gzip')
   assert.equal(memory.decompressInto(IOBase.fromBytes()), 8)
 

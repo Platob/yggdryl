@@ -331,7 +331,7 @@ test('zero write limits never inspect any representation source', (t) => {
           assert.ok(handle.readArrowField().equals(declared))
           assert.equal(rowsOf(handle).numRows, 0)
         } else {
-          assert.equal(handle.size, 0)
+          assert.equal(handle.size(), 0)
         }
       }
     }

@@ -131,8 +131,8 @@ class TestRecordPath:
         assert inferred.column("id").to_pylist() == [1.0, 2.0, 3.0]
         assert inferred.column("symbol").to_pylist() == ["AAPL", None, "MSFT"]
         assert handle.read_arrow_reader(field=trades().schema).read_all() == trades()
-        assert handle.row_size == 3
-        assert handle.column_size == 4
+        assert handle.row_size() == 3
+        assert handle.column_size() == 4
 
     def test_the_options_address_a_sheet_and_a_range(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "book.xlsx")
@@ -205,21 +205,21 @@ class TestCellRange:
         closed = CellRange("C3:A1")
         assert str(closed) == "A1:C3"
         assert (closed.start, closed.end) == (CellRef("A1"), CellRef("C3"))
-        assert (closed.row_size, closed.column_size) == (3, 3)
+        assert (closed.row_size(), closed.column_size()) == (3, 3)
         assert not closed.is_row_open() and not closed.is_column_open()
         assert CellRange((CellRef("C3"), "A1")) == closed
         assert CellRange(("A1", "C3")) == closed
 
         columns = CellRange("A:C")
         assert columns.is_row_open()
-        assert columns.row_size == MAX_ROWS
+        assert columns.row_size() == MAX_ROWS
         assert str(columns) == "A:C"
         rows = CellRange("3:5")
         assert rows.is_column_open()
         assert str(rows) == "3:5"
         assert str(CellRange("A3:F")) == "A3:F"
-        assert CellRange.all().row_size == MAX_ROWS
-        assert CellRange.all().column_size == MAX_COLUMNS
+        assert CellRange.all().row_size() == MAX_ROWS
+        assert CellRange.all().column_size() == MAX_COLUMNS
         assert repr(closed) == "CellRange('A1:C3')"
 
     def test_containment_and_iteration_walk_the_cells_row_by_row(self) -> None:

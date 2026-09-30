@@ -335,3 +335,30 @@ fn with_properties_layers_onto_what_was_set_and_a_zero_page_limit_clears_it() {
     assert_eq!(options.max_attempts(), 9);
     assert_eq!(options.page_limit(), None);
 }
+
+#[test]
+fn a_property_is_a_name_the_reader_reads_in_any_spelling_it_accepts() {
+    // Every name the table lists is one, as are the aliases and the
+    // header prefix; a catalog's own keys and a typo are not.
+    for name in HttpOptions::PROPERTY_NAMES {
+        assert!(HttpOptions::is_property(name), "{name}");
+    }
+    for name in [
+        "request-timeout",
+        "CONNECT_TIMEOUT",
+        "proxy_url",
+        "header.X-Api-Key",
+    ] {
+        assert!(HttpOptions::is_property(name), "{name}");
+    }
+    for name in ["warehouse", "uri", "timout", "header"] {
+        assert!(!HttpOptions::is_property(name), "{name}");
+    }
+    // A name it answers `false` for is one a read ignores.
+    assert_eq!(
+        HttpOptions::from_properties([("timout", "5")])
+            .expect("options")
+            .timeout(),
+        HttpOptions::DEFAULT_TIMEOUT
+    );
+}

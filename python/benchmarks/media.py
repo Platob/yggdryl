@@ -105,12 +105,12 @@ def _materialized(handle: IOBase, field: object | None) -> int:
 
 def _write_stream() -> object:
     SINK_STREAM.overwrite_arrow_reader(TABLE.to_reader())
-    return SINK_STREAM.size
+    return SINK_STREAM.size()
 
 
 def _write_file() -> object:
     SINK_FILE.overwrite_arrow_reader(TABLE.to_reader())
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _read_stream_whole() -> object:
@@ -236,7 +236,7 @@ COMMIT_MERGE_OPTIONS.merge_by = ["id"]
 def _prepare_existing() -> object:
     """Reset append/merge benchmarks outside their measured operation."""
     SINK_FILE.overwrite_arrow_table(TABLE)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _arrow_input(shape: str) -> object:
@@ -261,7 +261,7 @@ def _write_shape(intent: str, shape: str, *, commit: bool = False) -> object:
         method(source, options=MERGE_OPTIONS)
     else:
         method(source)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _write_frame(intent: str, package: str, whole: bool) -> object:
@@ -273,7 +273,7 @@ def _write_frame(intent: str, package: str, whole: bool) -> object:
         method(source, options=MERGE_OPTIONS)
     else:
         method(source)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _read_pandas_frame() -> object:
@@ -290,7 +290,7 @@ def _read_records() -> object:
 
 def _write_class_records() -> object:
     SINK_FILE.overwrite_records(CLASS_ROWS)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _write_declared_class_records() -> object:
@@ -298,7 +298,7 @@ def _write_declared_class_records() -> object:
     options = SINK_FILE.record_options()
     options.field = TradeRow.into_field()
     SINK_FILE.overwrite_records(CLASS_ROWS, options=options)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _read_class_records() -> object:
@@ -331,19 +331,19 @@ def _stamped_column_as_py() -> object:
 
 
 def _fresh_row_size() -> object:
-    return IOBase(ROOT / "trades.parquet").row_size
+    return IOBase(ROOT / "trades.parquet").row_size()
 
 
 def _fresh_column_size() -> object:
-    return IOBase(ROOT / "trades.parquet").column_size
+    return IOBase(ROOT / "trades.parquet").column_size()
 
 
 def _cached_row_size() -> object:
-    return FILE.row_size
+    return FILE.row_size()
 
 
 def _cached_column_size() -> object:
-    return FILE.column_size
+    return FILE.column_size()
 
 
 def _record_options() -> object:
@@ -379,7 +379,7 @@ def _is_io() -> object:
 
 
 def _kind() -> object:
-    return FILE.kind
+    return FILE.kind()
 
 
 def _write_shape_mode(mode: str, shape: str) -> object:
@@ -389,7 +389,7 @@ def _write_shape_mode(mode: str, shape: str) -> object:
         method(source, mode, options=MERGE_OPTIONS)
     else:
         method(source, mode)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 def _write_frame_mode(mode: str, package: str, whole: bool) -> object:
@@ -401,7 +401,7 @@ def _write_frame_mode(mode: str, package: str, whole: bool) -> object:
         method(source, mode, options=MERGE_OPTIONS)
     else:
         method(source, mode)
-    return SINK_FILE.size
+    return SINK_FILE.size()
 
 
 INTENT_BENCHMARKS = tuple(

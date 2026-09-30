@@ -105,9 +105,77 @@ impl S3Options {
             if value.is_empty() {
                 continue;
             }
-            self = self.read(&canonical(name), name, value, &mut parts)?;
+            self = self.read(&canonical(name), name, value, &mut parts)?.0;
         }
         parts.apply(self)
+    }
+
+    /// The names of the knobs [`Self::with_properties`] reads, in this
+    /// crate's own vocabulary - the PyIceberg, PyArrow and environment
+    /// spellings it also reads aside. What a binding suggests a mistyped
+    /// keyword against.
+    pub const PROPERTY_NAMES: [&'static str; 47] = [
+        "endpoint",
+        "region",
+        "access_key_id",
+        "secret_access_key",
+        "session_token",
+        "anonymous",
+        "path_style",
+        "timeout",
+        "connect_timeout",
+        "profile",
+        "role_arn",
+        "role_session_name",
+        "external_id",
+        "mfa_serial",
+        "source_profile",
+        "credential_source",
+        "web_identity_token_file",
+        "sso_start_url",
+        "sso_region",
+        "sso_account_id",
+        "sso_role_name",
+        "sso_session",
+        "config_file",
+        "shared_credentials_file",
+        "credential_process",
+        "ca_bundle",
+        "use_fips_endpoint",
+        "use_dualstack_endpoint",
+        "sts_regional_endpoints",
+        "sts_endpoint",
+        "ec2_metadata_disabled",
+        "ec2_metadata_service_endpoint",
+        "metadata_service_timeout",
+        "metadata_service_num_attempts",
+        "sse_type",
+        "sse_key",
+        "sse_md5",
+        "project",
+        "user_project",
+        "credentials_file",
+        "access_token",
+        "account_name",
+        "account_key",
+        "sas_token",
+        "tenant_id",
+        "client_id",
+        "client_secret",
+    ];
+
+    /// Whether `name` is a knob [`Self::with_properties`] reads, in any of
+    /// the vocabularies and spellings it accepts: a name it answers `false`
+    /// for is one it ignores.
+    ///
+    /// Answered by the reader itself - a known name either takes a probe
+    /// value or refuses it, and only an unknown one falls through - so the
+    /// answer can never disagree with what a read does.
+    #[must_use]
+    pub fn is_property(name: &str) -> bool {
+        Self::default()
+            .read(&canonical(name), name, "x", &mut Parts::default())
+            .map_or(true, |(_, known)| known)
     }
 
     /// The knobs the process environment names, under this one's prefixes.
@@ -253,9 +321,10 @@ impl S3Options {
         Self::default().with_properties(properties)
     }
 
-    /// Apply one property, or collect it for something assembled from several.
+    /// Apply one property, or collect it for something assembled from
+    /// several, answering whether `key` is one this reads.
     #[allow(clippy::too_many_lines)]
-    fn read(self, key: &str, name: &str, value: &str, parts: &mut Parts) -> Result<Self> {
+    fn read(self, key: &str, name: &str, value: &str, parts: &mut Parts) -> Result<(Self, bool)> {
         let mut options = self;
         match key {
             // --- where the store is -----------------------------------------
@@ -524,9 +593,9 @@ impl S3Options {
             // silent omission here would be found out at the store.
             "signer" | "signer_uri" | "signer_endpoint" => return Err(unsupported(name)),
             // Everything else belongs to something that is not a store.
-            _ => {}
+            _ => return Ok((options, false)),
         }
-        Ok(options)
+        Ok((options, true))
     }
 }
 

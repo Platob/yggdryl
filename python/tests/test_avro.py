@@ -152,7 +152,7 @@ def test_block_iterator_stays_lazy_and_fuses_after_exhaustion() -> None:
     assert blocks.get("source") == "python"
     block = next(blocks)
     assert block.count == 2
-    assert block.size > 0
+    assert block.size() > 0
     assert block.rows() == rows
     with pytest.raises(StopIteration):
         next(blocks)

@@ -42,8 +42,13 @@ impl JsTextOptions {
 
 #[napi]
 impl JsTextOptions {
-    /// Build default plain-text record settings.
-    #[napi(constructor)]
+    /// Build default plain-text record settings, each of `properties` set by
+    /// its own setter - applied by the JavaScript class, as a record call's
+    /// property bag is.
+    #[napi(
+        constructor,
+        ts_args_type = "properties?: Record<string, unknown> | null"
+    )]
     pub fn new() -> Self {
         Self::from_core(CoreTextOptions::new())
     }

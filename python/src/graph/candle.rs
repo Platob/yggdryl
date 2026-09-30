@@ -443,12 +443,18 @@ impl PyCandleIterator {
     /// Opens a candle walk over `books` - `BookEvent`s, or `MarketData`
     /// holding one, sorted by their instant; a regression is refused -
     /// bucketed by `options`: a `CandleOptions`, or an `int` of nanoseconds
-    /// or a spelling such as `"1m"` aligned to UTC. The candles of a bucket
-    /// are yielded in cross-code order when the stream moves past it and at
-    /// its end; an empty bucket yields none.
+    /// or a spelling such as `"1m"`, aligned to `timezone` where one is given
+    /// - the zone `CandleOptions` and `candles` take by the same name. The
+    /// candles of a bucket are yielded in cross-code order when the stream
+    /// moves past it and at its end; an empty bucket yields none.
     #[new]
-    fn new(books: &Bound<'_, PyAny>, options: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Self::over(books, candle_options_of(options, None)?)
+    #[pyo3(signature = (books, options, *, timezone = None))]
+    fn new(
+        books: &Bound<'_, PyAny>,
+        options: &Bound<'_, PyAny>,
+        timezone: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        Self::over(books, candle_options_of(options, timezone)?)
     }
 
     #[classattr]

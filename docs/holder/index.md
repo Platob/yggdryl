@@ -73,7 +73,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
     handle.write_bytes(b"AAPL,1\n")
     assert type(handle) is Buffer
     assert handle.read_bytes() == b"AAPL,1\n"
-    assert handle.kind == "memory"
+    assert handle.kind() == "memory"
     ```
 
 ### Variants
@@ -195,7 +195,7 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
     # decided what it is yet - and nothing is created.
     plain = root / "yggdryl-generic-child.bin"
     assert type(plain) is LocalPath
-    assert plain.size == 0
+    assert plain.size() == 0
 
     # Composition is applied wherever a handle is described, children included.
     records = root.joinpath("yggdryl-generic-child.arrows")
@@ -276,7 +276,7 @@ Everything else is pre-implemented: a folder holds no bytes of its own - `pread`
     # A container holds no bytes of its own; an empty one streams nothing, and
     # byte writes are refused.
     assert folder.read_bytes() == b""
-    assert folder.size == 0
+    assert folder.size() == 0
     try:
         folder.pwrite(0, b"x")
         raise AssertionError("a directory accepted bytes")
@@ -286,14 +286,14 @@ Everything else is pre-implemented: a folder holds no bytes of its own - `pread`
     # Truncating to zero is the write that brings a container into being.
     folder.truncate(0)
     assert path.is_dir()
-    assert folder.kind == "directory"
+    assert folder.kind() == "directory"
     assert str(folder.media_type) == "inode/directory"
     assert list(folder.ls()) == []
 
     # A location that arrived from outside answers by looking at what is there.
-    assert LocalPath(root).kind == "directory"
+    assert LocalPath(root).kind() == "directory"
     undecided = LocalPath(root / "yggdryl-docs-io-undecided")
-    assert undecided.kind == "unknown"
+    assert undecided.kind() == "unknown"
     assert undecided.read_bytes() == b""
 
     # A leaf is not a container: it lists nothing and resolves no child.
@@ -393,7 +393,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     handle = IOBase.from_bytes()
     handle.pwrite(0, b"symbol,price\n")
     handle.pwrite(13, b"AAPL,1\n")
-    assert handle.size == 20
+    assert handle.size() == 20
 
     # Two reads at different offsets, in any order: there is no shared cursor.
     assert handle.read_range_bytes(13, 4) == b"AAPL"
@@ -409,7 +409,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
     const handle = IOBase.fromBytes()
     handle.pwrite(0, Buffer.from('symbol,price\n'))
     handle.pwrite(13, Buffer.from('AAPL,1\n'))
-    assert.equal(handle.size, 20)
+    assert.equal(handle.size(), 20)
 
     // Two reads at different offsets, in any order: there is no shared cursor.
     assert.equal(handle.readRangeBytes(13, 4).toString(), 'AAPL')
@@ -477,7 +477,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 ### Laziness and kinds
 
-Constructing touches nothing, a read of something absent is empty, and a write creates the resource and any missing parent, so probing a location needs no existence check.
+Constructing touches nothing, a read of something absent is empty, and a write creates the resource and any missing parent, so probing a location needs no existence check. What may ask the storage is a call in every language: `size()`, `kind()`, `row_size()`/`rowSize()` and `column_size()`/`columnSize()` are methods in Python and JavaScript, never properties or getters, so an IDE, a debugger or an inspector displaying a handle issues no request.
 
 === "Rust"
 
@@ -535,7 +535,7 @@ Constructing touches nothing, a read of something absent is empty, and a write c
     assert not handle.exists()
 
     # Reading something absent yields nothing rather than raising.
-    assert handle.size == 0
+    assert handle.size() == 0
     assert handle.read_bytes() == b""
 
     # Writing creates the resource, and any parent it needs; the write settles the kind.
@@ -564,7 +564,7 @@ Constructing touches nothing, a read of something absent is empty, and a write c
     assert.ok(!handle.exists())
 
     // Reading something absent yields nothing rather than throwing.
-    assert.equal(handle.size, 0)
+    assert.equal(handle.size(), 0)
     assert.equal(handle.readBytes().length, 0)
 
     // Writing creates the resource, and any parent it needs; the write settles the kind.
@@ -780,7 +780,7 @@ A container streams its leaves. A folder, a location ending in `/` and a glob su
     assert list(logs.pstream_bytes(1, 2)) == [b"1\n"]
 
     # No positional bytes of its own.
-    assert folder.size == 0
+    assert folder.size() == 0
     ```
 
 === "JavaScript"
@@ -808,7 +808,7 @@ A container streams its leaves. A folder, a location ending in `/` and a glob su
     assert.deepEqual([...logs.pstreamBytes(1, 2)].map((part) => part.toString()), ['1\n'])
 
     // No positional bytes of its own.
-    assert.equal(folder.size, 0)
+    assert.equal(folder.size(), 0)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -983,7 +983,7 @@ fn applied_codec(&self) -> Codec                                                
     assert stored.codec == "gzip"
 
     # The target's name already said gzip, so nothing here repeats it.
-    assert plain.compress_into(stored) == stored.size
+    assert plain.compress_into(stored) == stored.size()
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
 
     decoded = LocalPath(root / "roundtrip.json")
@@ -1033,7 +1033,7 @@ fn applied_codec(&self) -> Codec                                                
     assert.equal(encoded.codec, 'gzip')
 
     // The target's name already said gzip, so nothing here repeats it.
-    assert.equal(plain.compressInto(encoded), encoded.size)
+    assert.equal(plain.compressInto(encoded), encoded.size())
     assert.deepEqual([...encoded.readBytes().subarray(0, 2)], [0x1f, 0x8b])
 
     const decoded = new IOBase(path.join(root, 'roundtrip.json'))
@@ -1583,7 +1583,7 @@ cargo bench --bench media --features parquet -- io_scalar
 
 ## Records
 
-One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=`, JavaScript a trailing `options?`. A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
+One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=` and each of its properties by keyword, JavaScript a trailing `options?` and a plain object of its properties ([settings by name](../media/index.md#settings-by-name)). A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
 
 === "Rust"
 
@@ -3059,7 +3059,7 @@ LocalPath::new(path).as_directory() / as_file()    // state the role before anyt
 
     # A container: no bytes of its own, only children - and it streams its leaves.
     folder = LocalFolder(root)
-    assert folder.size == 0
+    assert folder.size() == 0
     assert len(list(folder.ls())) == 2
     assert folder.read_bytes() == b"a"
 
@@ -3068,8 +3068,8 @@ LocalPath::new(path).as_directory() / as_file()    // state the role before anyt
     assert leaf.read_bytes() == b"a"
 
     # A location: it answers by looking at what is actually there.
-    assert LocalPath(root).kind == "directory"
-    assert LocalPath(root / "a.bin").kind == "file"
+    assert LocalPath(root).kind() == "directory"
+    assert LocalPath(root / "a.bin").kind() == "file"
     ```
 
 ### Well-known roots
@@ -3157,19 +3157,19 @@ A byte write settles an `Unknown` location as a file; `as_directory` (Python `mk
 
     # Nothing is there, so nothing has decided what it is.
     location = LocalPath(root / "trades.bin")
-    assert location.kind == "unknown"
+    assert location.kind() == "unknown"
 
     # A byte write settles it: an undecided location becomes a file.
     location.write_bytes(b"AAPL")
     location.flush()
-    assert location.kind == "file"
+    assert location.kind() == "file"
     assert location.read_bytes() == b"AAPL"
 
     # To settle it the other way, say so before writing. The container is a
     # different role, so it is a different handle, not the one that made it.
     container = LocalPath(root / "day=2026-08-16").mkdir()
     assert isinstance(container, LocalFolder)
-    assert container.kind == "directory"
+    assert container.kind() == "directory"
     ```
 
 ### Walking the tree
@@ -3372,11 +3372,11 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
     # Writing past the mapping remaps at a larger capacity instead of failing.
     bulk = bytes(256 * 1024)
     leaf.append_bytes(bulk)
-    assert leaf.size == 6 + len(bulk)
+    assert leaf.size() == 6 + len(bulk)
 
     # Flushing publishes the logical length, so the file is the bytes, not the mapping.
     leaf.flush()
-    assert path.stat().st_size == leaf.size
+    assert path.stat().st_size == leaf.size()
     ```
 
 Copy the bytes into a [`Buffer`](#buffer) when the file may change underneath you; `copy_into` streams in chunks and carries the media type.
@@ -3576,7 +3576,7 @@ FsFile::from_path(Arc<dyn FileSystem>, path, uri: Option<String>) -> Result<FsFi
 
     stored = FsPath(filesystem, "bucket/trades.txt.gz")
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
-    assert handle.info().size == stored.size
+    assert handle.info().size == stored.size()
     ```
 
 ### Resolve a URI once
@@ -3803,7 +3803,7 @@ S3File::stats() -> StatsSnapshot                // the requests that actually we
 
     # The same class, the same methods: the scheme picks the backend.
     part = IOBase("s3://trades/lake/year=2026/part.parquet")
-    footer = part.read_range_bytes(part.size - 8, 8)
+    footer = part.read_range_bytes(part.size() - 8, 8)
     blob = IOBase("gs://trades/lake/year=2026/part.parquet")
 
     # Or the role by name - one class for all three stores, with `provider`
@@ -3822,7 +3822,7 @@ S3File::stats() -> StatsSnapshot                // the requests that actually we
     const { IOBase } = require('yggdryl')
 
     const part = new IOBase('s3://trades/lake/year=2026/part.parquet')
-    const footer = part.readRangeBytes(part.size - 8, 8)
+    const footer = part.readRangeBytes(part.size() - 8, 8)
     const blob = new IOBase('abfss://lake@trades.dfs.core.windows.net/part.parquet')
     ```
 
@@ -4438,7 +4438,7 @@ The request count is the contract, asserted by `rust/tests/http/request.rs` and 
         trades = IOBase(str(server.url_of("/lake/trades.json")))
         assert type(trades) is http.Request
         trades.open()  # one HEAD, cached while open
-        assert trades.size == 19  # no request
+        assert trades.size() == 19  # no request
         assert trades.read_range_bytes(0, 8) == b'[{"id":1'  # one ranged GET
         trades.close()
         assert server.request_count == 2
@@ -4462,7 +4462,7 @@ The request count is the contract, asserted by `rust/tests/http/request.rs` and 
     // The scheme picks the backend: an http URL is the resource it names.
     const trades = new IOBase(new URL('lake/trades.json', server.url.toString()).toString())
     trades.open() // one HEAD, cached while open
-    assert.equal(trades.size, 19) // no request
+    assert.equal(trades.size(), 19) // no request
     assert.deepEqual(trades.readRangeBytes(0, 8), Buffer.from('[{"id":1'))
     trades.close()
     assert.equal(server.requestCount, 2)
@@ -5440,7 +5440,7 @@ assert_eq!(handle.size(), payload.len() as u64);
     # under the cache, never a second cache.
     inner = twice.into_handle()
     assert type(inner) is Buffer
-    assert inner.size == 128
+    assert inner.size() == 128
     ```
 
 ```rust

@@ -693,7 +693,7 @@ test('a handler-backed handle is an ordinary handle', () => {
 
   // Per the laziness contract nothing was created, so nothing is there.
   assert.ok(!handle.exists())
-  assert.equal(handle.size, 0)
+  assert.equal(handle.size(), 0)
   assert.equal(handle.readBytes().length, 0)
 })
 
@@ -776,11 +776,11 @@ test('a size crosses as an exact bigint', (t) => {
   fs.writeFileSync(path.join(root, 'sized.bin'), 'symbol,price')
 
   // Both handlers preserve the filesystem's 64-bit size.
-  assert.equal(IOBase.fromFs(local(), path.join(root, 'sized.bin')).size, 12)
+  assert.equal(IOBase.fromFs(local(), path.join(root, 'sized.bin')).size(), 12)
 
   const handler = memory()
   handler.files.set('bucket/sized.bin', Buffer.from('symbol,price'))
-  assert.equal(IOBase.fromFs(handler, 'bucket/sized.bin').size, 12)
+  assert.equal(IOBase.fromFs(handler, 'bucket/sized.bin').size(), 12)
 
   // A length no length can be is refused rather than truncated. A whole
   // write is the handler's own one output stream and asks for no size, so
@@ -850,7 +850,7 @@ test('a missing location reads empty rather than throwing', (t) => {
     path.join(root, 'nowhere', 'absent.arrows'),
   )
   assert.ok(!absent.exists())
-  assert.equal(absent.size, 0)
+  assert.equal(absent.size(), 0)
   assert.equal(absent.readBytes().length, 0)
   assert.deepEqual([...absent.ls(true)], [])
   // Removing what was never there is what was asked for.

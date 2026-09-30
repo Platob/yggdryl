@@ -42,10 +42,10 @@ const boundUri: string | null = handle.boundUri
 const maskedUri: string | null = handle.maskedUri
 const name: string = handle.name
 const mediaType: MediaType = handle.mediaType
-const size: number = handle.size
-const kind: string = handle.kind
-const rowSize: number = handle.rowSize
-const columnSize: number = handle.columnSize
+const size: number = handle.size()
+const kind: string = handle.kind()
+const rowSize: number = handle.rowSize()
+const columnSize: number = handle.columnSize()
 const parent: IOBase | null = handle.parent
 const joined: IOBase = handle.joinpath('year=2024', 'month=01')
 const joinedArray: IOBase = handle.joinpath(['year=2024', 'month=01'])

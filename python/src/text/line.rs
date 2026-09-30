@@ -362,7 +362,9 @@ impl PyTextLine {
     /// The body is the whole line, its row header included: the options are
     /// what the line reads itself by - the header expression, the entry
     /// separators, the framing - and a line built under none reads itself
-    /// under `TextOptions()`. Every reading resolves on its first ask, once.
+    /// under `TextOptions()`. `properties` are set on a copy of those options
+    /// by their own setters, as every options-taking door sets them. Every
+    /// reading resolves on its first ask, once.
     ///
     /// A capture states what a row header matched about the line, in the
     /// order the header declares them, and `None` is a capture it declared
@@ -378,18 +380,25 @@ impl PyTextLine {
     /// holds, which is what lets a read's `body` column hold no null and no
     /// empty cell.
     #[new]
-    #[pyo3(signature = (index, body, captures=None, options=None))]
+    #[pyo3(signature = (index, body, captures=None, options=None, **properties))]
     fn new(
         index: u64,
         body: &Bound<'_, PyAny>,
         captures: Option<Vec<Option<String>>>,
         options: Option<PyRef<'_, PyTextOptions>>,
+        properties: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<Self> {
         let page = page_from_value(
             body,
             "a line body must be str, bytes, bytearray, or memoryview",
         )?;
-        let options = Arc::new(options.map_or_else(TextOptions::new, |held| held.inner.clone()));
+        let options = options.map_or_else(TextOptions::new, |held| held.inner.clone());
+        let options = Arc::new(match properties {
+            Some(properties) if !properties.is_empty() => {
+                crate::iomedia::fold_text_properties(options, properties)?
+            }
+            _ => options,
+        });
         let mut line = TextLine::from_bytes(index, page, options).map_err(value_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());

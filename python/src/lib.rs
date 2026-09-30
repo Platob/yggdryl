@@ -47,6 +47,7 @@ mod iomedia;
 mod marketdatakind;
 mod media;
 mod parameters;
+mod properties;
 mod protocol;
 mod scalar;
 mod serie;
@@ -533,6 +534,12 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     register_classes(module)?;
     register_functions(module)?;
+    module.add(
+        "UnknownPropertyWarning",
+        module
+            .py()
+            .get_type::<crate::properties::UnknownPropertyWarning>(),
+    )?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     // The reserved Arrow schema metadata key that carries per-field dictionary
     // IDs across the C Data Interface, which has no slot for them.
