@@ -70,30 +70,13 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 
 /// Hold the resource `url` names, on the store its scheme selects.
 ///
-/// The scheme is what says which backend a location belongs to. An `http` or
-/// `https` URL is the `GET` of that resource on a default session; any S3
-/// URL - `s3`, `s3a`, or `s3n`, which name one protocol - reaches the native
-/// S3 backend; everything else stays local, exactly as it did. Construction
-/// touches nothing on any of them.
+/// The core's one dispatcher decides: an `http` or `https` URL is the `GET` of
+/// that resource, an object-store URL the native store, a `file:` URL whose
+/// fragment names an archive member that member, anything else local - and a
+/// scheme no backend speaks is refused by that scheme. Construction touches
+/// nothing on any of them.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
-    if url.scheme().is_http() {
-        return yggdryl::http::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
-    }
-    if url.scheme().is_object_store() {
-        return yggdryl::s3::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
-    }
-    if !url.is_local() {
-        // A location whose scheme no backend speaks is refused by that scheme,
-        // not by the path conversion it would otherwise fall through to: an
-        // Amazon S3 Tables table names a resource a catalog reads, and saying
-        // "only a file URI can be converted to a platform path" would name the
-        // wrong thing entirely.
-        return Err(value_error(yggdryl::Error::unsupported(
-            "holding a location of this scheme",
-            url.scheme().as_str(),
-        )));
-    }
-    Holder::local(url.clone().into_path().map_err(value_error)?)
+    Holder::from_url(url, std::iter::empty::<(&str, &str)>())
         .map_err(crate::holder::fs::storage_error)
 }
 

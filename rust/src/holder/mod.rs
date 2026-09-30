@@ -131,6 +131,10 @@ pub enum Holder {
     /// keep that media wrapper (and its opened-session metadata cache) without
     /// changing from the one `Holder` surface.
     Media(Box<crate::media::Media>),
+    /// An identifier - a URL, a URN, an ARN - holding the handle it names,
+    /// resolved through [`Self::from_url`] on the first operation that needs
+    /// one: building it touches nothing, and even the backend is chosen late.
+    Uri(Uri),
 }
 
 impl Holder {
@@ -174,6 +178,7 @@ impl Holder {
             Self::Coded(inner) => inner.handle().exists(),
             Self::Text(inner) => inner.handle().exists(),
             Self::Media(inner) => inner.handle().exists(),
+            Self::Uri(inner) => inner.held().is_ok_and(Self::exists),
         }
     }
 
@@ -195,6 +200,8 @@ impl Holder {
             #[cfg(feature = "s3")]
             Self::S3File(file) => file.byte_stream(position, batch_size),
             Self::ZipLeaf(leaf) => leaf.byte_stream(position, batch_size),
+            // The handle it names keeps its own sequential read.
+            Self::Uri(uri) => uri.into_held()?.into_byte_stream(position, batch_size),
             other => crate::ByteStream::from_reader(crate::Cursor::at(other, position), batch_size),
         }
     }
@@ -698,6 +705,7 @@ impl Holder {
             Self::Coded(inner) => inner.as_io(),
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
+            Self::Uri(inner) => inner,
         }
     }
 
@@ -732,6 +740,7 @@ impl Holder {
             Self::Coded(inner) => inner.as_io_mut(),
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
+            Self::Uri(inner) => inner,
         }
     }
 
@@ -766,6 +775,7 @@ impl Holder {
             Self::Coded(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
+            Self::Uri(inner) => inner,
         }
     }
 
@@ -800,6 +810,7 @@ impl Holder {
             Self::Coded(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
+            Self::Uri(inner) => inner,
         }
     }
 }
@@ -1073,6 +1084,34 @@ impl TryFrom<&Url> for Holder {
     fn try_from(url: &Url) -> Result<Self> {
         let none: [(&str, &str); 0] = [];
         Self::from_url(url, none)
+    }
+}
+
+impl From<Uri> for Holder {
+    /// Hold what `uri` names, resolved on first use.
+    fn from(value: Uri) -> Self {
+        Self::Uri(value)
+    }
+}
+
+impl From<Url> for Holder {
+    /// Hold the location `url` names, resolved on first use.
+    fn from(value: Url) -> Self {
+        Self::Uri(value.into_uri())
+    }
+}
+
+impl From<crate::Urn> for Holder {
+    /// Hold the location a name resolves to, on first use.
+    fn from(value: crate::Urn) -> Self {
+        Self::Uri(value.into_uri())
+    }
+}
+
+impl From<crate::Arn> for Holder {
+    /// Hold the resource an ARN names, resolved on first use.
+    fn from(value: crate::Arn) -> Self {
+        Self::Uri(value.into_uri())
     }
 }
 

@@ -101,23 +101,15 @@ pub(crate) type LocationOrFileSystemInput<'a> = Either7<
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
 
-/// Build a local handle for the location a `Url` names.
+/// Hold the resource `url` names, on the store its scheme selects.
+///
+/// The core's one dispatcher decides: an `http` or `https` URL is the request
+/// that reads and writes the resource, an object-store URL the native store,
+/// a `file:` URL whose fragment names an archive member that member, anything
+/// else local - and a scheme no backend speaks is refused by that scheme.
+/// Construction touches nothing on any of them.
 fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
-    // The scheme is what says which backend a location belongs to, so this is
-    // the one place that decides. Any object-store URL - the three S3
-    // spellings, Google's two, Azure's five - reaches the native object
-    // backend, an `http` or `https` URL the request that reads and writes the
-    // resource; everything else stays local. Construction touches nothing on
-    // any of them.
-    if url.scheme().is_object_store() {
-        return yggdryl::s3::located(&url.to_string()).map_err(napi_error);
-    }
-    if url.scheme().is_http() {
-        return yggdryl::http::located_with(&url.to_string(), HttpOptions::default())
-            .map_err(napi_error);
-    }
-    non_local_scheme(url)?;
-    Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
+    Holder::from_url(url, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
 }
 
 /// Hold `url` as a container, on the store its scheme selects.

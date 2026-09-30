@@ -6,6 +6,8 @@ mod arn;
 mod authority;
 #[path = "uri/datatype.rs"]
 mod datatype;
+#[path = "uri/handle.rs"]
+mod handle;
 #[path = "uri/mod_.rs"]
 mod mod_;
 #[path = "uri/parameters.rs"]

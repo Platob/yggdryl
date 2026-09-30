@@ -28,6 +28,7 @@ mod authority;
 mod datatype;
 mod extensions;
 mod glob;
+mod handle;
 mod hive;
 mod parameters;
 mod parser;
@@ -66,6 +67,22 @@ use path::file_name_from_path;
 /// is `pub(super)`, so this names it rather than linking it: a caller cannot
 /// reach it, and `cargo doc` under `-D warnings` refuses a public page that
 /// points at a private item.
+///
+/// A `Uri` is also a handle: it implements [`IOBase`](crate::IOBase) and
+/// [`IOMedia`](crate::IOMedia) over the storage it names, resolved through
+/// [`locator`](Self::locator) and [`Holder::from_url`] on the first operation
+/// that needs it - a URN or an ARN through the location it names - and kept
+/// for this value's life. Building one touches nothing. The resolved handle is
+/// held beside the components the way the rendering is, so it is no part of
+/// the value either, and a clone or any change to a component starts
+/// unresolved. A relative `file:` identifier resolves against the working
+/// directory of that first use. Where a method of the value and one of the
+/// handle share a name - [`media_type`](Self::media_type),
+/// [`set_media_type`](Self::set_media_type), [`parent`](Self::parent) - the
+/// value's is what a method call reaches, and the handle's is spelled through
+/// the trait: `IOBase::media_type(&uri)`.
+///
+/// [`Holder::from_url`]: crate::holder::Holder::from_url
 pub struct Uri {
     scheme: Scheme,
     authority: Authority,
@@ -74,6 +91,7 @@ pub struct Uri {
     query: Option<SmolStr>,
     fragment: Option<SmolStr>,
     rendered: OnceLock<Str>,
+    held: OnceLock<Box<crate::holder::Holder>>,
 }
 
 impl Clone for Uri {
@@ -86,6 +104,7 @@ impl Clone for Uri {
             query: self.query.clone(),
             fragment: self.fragment.clone(),
             rendered: OnceLock::new(),
+            held: OnceLock::new(),
         }
     }
 }
@@ -205,6 +224,7 @@ impl Uri {
             query,
             fragment,
             rendered: OnceLock::new(),
+            held: OnceLock::new(),
         })
     }
 
@@ -477,6 +497,7 @@ impl Uri {
     pub(super) fn state_path(&mut self, path: UriPath) {
         self.path = path;
         self.rendered = OnceLock::new();
+        self.held = OnceLock::new();
     }
 
     /// Return the required scheme component.

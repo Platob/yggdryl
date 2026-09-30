@@ -2470,6 +2470,7 @@ pub enum Holder
   HttpSession(crate::http::Session), HttpRequest(crate::http::Request), HttpResponse(crate::http::Response), HttpStream(crate::http::Stream)  (behind the `http` feature)
   ZipNode(crate::zip::ZipNode), ZipPath(crate::zip::ZipPath), ZipLeaf(crate::zip::ZipLeaf)
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
+  Uri(Uri)  (an identifier holding what it names, resolved through from_url on first use; From<Uri>, From<Url>, From<Urn>, From<Arn>)
   pub fn exists(&self) -> bool  (each role's own answer; a buffer always, a wrapper its handle's)
   pub const fn buffer(buffer: Buffer) -> Self
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -6565,7 +6566,7 @@ pub struct Authority(SmolStr);
   pub fn parents(&self) -> Parents
   pub fn stable_hash(&self) -> u64
   pub struct Parents
-  pub struct Uri
+  pub struct Uri  (also a handle: impl IOBase and IOMedia over what it names, resolved through Holder::from_url on first use - rust/src/uri/handle.rs)
   pub fn from_parts( scheme: Scheme, authority: Authority, path: UriPath, query: Option<SmolStr>, fragment: Option<SmolStr>, ) -> Result<Self>
   pub fn from_str(value: &str) -> Result<Self>
   pub fn from_path(value: impl AsRef<Path>) -> Result<Self>
@@ -6723,6 +6724,10 @@ pub struct Authority(SmolStr);
   pub fn remove_extension(&mut self) -> bool
   pub fn clear_extensions(&mut self) -> bool
   pub fn stable_hash(&self) -> u64
+
+### yggdryl::uri::handle  [rust/src/uri/handle.rs]  (an identifier as a handle: the storage it names, resolved through Holder::from_url on the first operation that needs it and kept for the value's life; a name lends no url)
+impl IOBase for Uri
+impl IOMedia for Uri
 
 ### yggdryl::uri::datatype  [rust/src/uri/datatype.rs]  (the `uri` family: one leaf per shape an identifier takes - `url`, a location, and `urn`, a name - each value held behind one Arc, stored as Utf8 under the extension name `yggdryl.url` / `yggdryl.urn`, every text cell parsed and canonicalized on the way in, a cell reading as neither refused by field and row)
 pub enum UriType  (#[non_exhaustive]; Url (the default), Urn; Copy; the payload of DataType::Uri(UriType))
