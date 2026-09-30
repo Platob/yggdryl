@@ -507,9 +507,12 @@ assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got 
 the display's files, `serveArguments(options)` the argument vector `yggdryl
 market serve` takes, and `serve(options)` spawns the command - `bin` from
 `YGGDRYL_BIN`, else `yggdryl` on the path - resolving `{ endpoint, process,
-close() }` once it has printed its endpoint - or rejecting with the stderr
-of a process that exits first, and with an `AbortError` once an aborted
-`signal` (`AbortSignal.timeout(ms)`) has ended it. A table is
+close() }` once it has printed its endpoint. A process that exits first
+rejects with what it printed as the message: the command's refusal, the `✗`
+line it prints on stdout in the endpoint's place (`✗ invalid record value at
+$.capture: ...`), then its stderr, where the argument parser refuses; an
+aborted `signal` (`AbortSignal.timeout(ms)`) rejects with an `AbortError`
+once it has ended the process. A table is
 `'name=location'`, a location or `{ name, location }`; `capture` folds FIX
 bridge logs into the first table before serving.
 
@@ -526,7 +529,7 @@ assert.deepEqual(
   ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:8080', '--path', '/', '--capture', 'bridge.log'],
 )
 // `serve` runs that vector and hands back the endpoint to open, or rejects with
-// what the command wrote on stderr before it printed one:
+// the refusal the command printed in its place - its `✗` line, then any stderr:
 //   const { endpoint, close } = await book.serve({ tables: 'books=/data/books' })
 assert.equal(typeof book.serve, 'function')
 ```

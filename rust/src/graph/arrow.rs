@@ -26,7 +26,9 @@
 //! execution, a dated one the event; a `TRAD` row is a trade and a `BOOK`
 //! row a book or a snapshot control, and both must be dated - a dated
 //! `BOOK` row is a book where it states its `alive` entries, even none, and
-//! a snapshot control where its `alive` cell is null.
+//! a snapshot control where its `alive` cell is null, or holds no entry
+//! beside the `curruuid` a snapshot control derives: a table may store a
+//! null list as an empty one.
 
 use std::iter::FusedIterator;
 use std::sync::Arc;
@@ -1917,8 +1919,12 @@ impl Landed {
 
     /// A dated `BOOK` row: a book where it states its `alive` entries -
     /// none is a statement too - and a snapshot control where the cell is
-    /// null. A batch that landed no `alive` column says neither, and the
-    /// row is refused rather than typed.
+    /// null. A table may store a null list as an empty one - PyIceberg
+    /// reads a null list of structs back as `[]` - so a row whose `alive`
+    /// holds no entry is the snapshot control where the `curruuid` it
+    /// states is the one that control derives, which no book shares: a
+    /// book's identity folds in its sides. A batch that landed no `alive`
+    /// column says neither, and the row is refused rather than typed.
     fn dated_book(&self, row: usize, path: &Path<'_>) -> Result<MarketData> {
         let Some(alive) = &self.alive else {
             return Err(invalid(
@@ -1927,11 +1933,20 @@ impl Landed {
                  got none",
             ));
         };
-        if alive.list.range(row).is_some() {
-            self.book(row, path).map(MarketData::from)
-        } else {
-            self.snapshot(row, path).map(MarketData::from)
+        let entries = alive.list.range(row);
+        if entries.as_ref().is_none_or(std::ops::Range::is_empty) {
+            let (control, claims) = self.snapshot_control(row, path)?;
+            let states_control = matches!(
+                claims.curruuid,
+                Claim::Stated(stated) if stated == control.get_curruuid()
+            );
+            if entries.is_none() || states_control {
+                return self
+                    .checked_snapshot(row, control, claims, path)
+                    .map(MarketData::from);
+            }
         }
+        self.book(row, path).map(MarketData::from)
     }
 
     /// The instant a dated leaf requires.
@@ -2021,13 +2036,31 @@ impl Landed {
         Ok(trade)
     }
 
-    fn snapshot(&self, row: usize, path: &Path<'_>) -> Result<SnapshotEvent> {
+    /// The snapshot control a row's event and market facts and its scope
+    /// make, beside the identities the row claims, neither checked.
+    fn snapshot_control(
+        &self,
+        row: usize,
+        path: &Path<'_>,
+    ) -> Result<(SnapshotEvent, IdentityClaims)> {
         let mut event = MarketEventFacts::default();
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path)?;
         let control = SnapshotEvent::from_control(event, self.control(row).unwrap_or_default());
+        Ok((control, claims))
+    }
+
+    /// `control`, once every identity and fact its row states is the one
+    /// it derives.
+    fn checked_snapshot(
+        &self,
+        row: usize,
+        control: SnapshotEvent,
+        claims: IdentityClaims,
+        path: &Path<'_>,
+    ) -> Result<SnapshotEvent> {
         claims.validate(&control, path)?;
         self.check_event(row, &control, path)?;
         self.check_market(row, &control, path)?;

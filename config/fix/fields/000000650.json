@@ -25,7 +25,7 @@
     "metadata": {
       "FIX:tag": "65002",
       "FIX:transient": "false",
-      "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed.",
+      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
       "display": "ExecUnix"
     }
   },
@@ -58,7 +58,7 @@
       ],
       "FIX:tag": "65004",
       "FIX:transient": "false",
-      "description": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed.",
+      "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
       "display": "CreaUnix"
     }
   },
@@ -142,7 +142,7 @@
     "metadata": {
       "FIX:tag": "65010",
       "FIX:transient": "false",
-      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated.",
+      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the four-letter code of its side, BUYS:ORD-1, on an order, a quote or an execution, and as given on one of side UNKN and on every other kind; its chain's once followed.",
       "display": "CrossCode"
     }
   },
@@ -194,7 +194,7 @@
     "metadata": {
       "FIX:tag": "65014",
       "FIX:transient": "false",
-      "description": "The event's place among the events of its instant: 0 for the first its stream hands over there, one more for each next.",
+      "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
       "display": "SeqNum"
     }
   },
@@ -215,7 +215,7 @@
     "metadata": {
       "FIX:tag": "65015",
       "FIX:transient": "false",
-      "description": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
+      "description": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
       "display": "SrcUuids"
     }
   },
@@ -228,7 +228,7 @@
     "metadata": {
       "FIX:codeset": "msgcatcodeset",
       "FIX:tag": "65016",
-      "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; a row stating one is the row's word.",
+      "description": "The business category of the message type, as the member of the marketdatakind enum: the dictionary's FIX:msgcat for the type, UNKN where it files none; an execution report its order's ORDR, or its quote's QUOT where it names a QuoteID, where it reports no fill or once the parse split its fill off as an EXEC, and a batch entry the parse split off its item's; a row stating one is the row's word.",
       "display": "MsgCat"
     }
   },
@@ -364,7 +364,7 @@
         "instrument[exchange]"
       ],
       "FIX:tag": "65027",
-      "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one; a bridge's INSTRUMENT[EXCHANGE] states it.",
+      "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC or a Reuters mnemonic resolving to one, and XXXX for a currency pair naming none; a bridge's INSTRUMENT[EXCHANGE] states it.",
       "display": "MicCode"
     }
   },
@@ -390,7 +390,7 @@
       "FIX:codeset": "statecodeset",
       "FIX:tag": "65029",
       "FIX:transient": "false",
-      "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed.",
+      "description": "The state the message reached, as the code of a lifecycle-sorted enum: FILLED on an execution the parse split off; otherwise the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed, and a row stating one is the row's word.",
       "display": "State"
     }
   },

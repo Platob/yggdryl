@@ -1028,6 +1028,165 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
     }
 }
 
+/// `row`, a record of `fields`, as a table storing a null list of structs
+/// as an empty one - PyIceberg's - reads it back: every group the row
+/// states no occurrence of, at the root and inside each occurrence, reads
+/// back stating `[]`.
+fn with_absent_groups_emptied(fields: &[yggdryl::Field], row: &Scalar) -> Scalar {
+    let cells = row.as_sequence().expect("a record");
+    Scalar::from_sequence(fields.iter().zip(cells).map(|(field, cell)| {
+        let (DataType::Serie(item) | DataType::LargeSerie(item)) = field.dtype() else {
+            return cell.clone();
+        };
+        if !matches!(item.dtype(), DataType::Struct(_)) {
+            return cell.clone();
+        }
+        match cell.as_sequence() {
+            Some(occurrences) => Scalar::from_sequence(occurrences.iter().map(|occurrence| {
+                if occurrence.is_null() {
+                    occurrence.clone()
+                } else {
+                    with_absent_groups_emptied(item.fields(), occurrence)
+                }
+            })),
+            None if cell.is_null() => Scalar::from_sequence(Vec::<Scalar>::new()),
+            None => cell.clone(),
+        }
+    }))
+}
+
+#[test]
+fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_written() {
+    // The bridge logs one execution report at two hops of one conversation:
+    // twice as the session event its row header brackets - folded before the
+    // walk, so settled again from its content - and once framed by the next
+    // session, whose row keeps the content code the parse recorded. A table
+    // storing a null list as an empty one reads every absent group back as
+    // `[]` beside a null count - each party's `NoPartySubIDs(802)`, and at
+    // the root every group a message states none of; a list holding nothing
+    // beside no stated count is the group absent, so the walk over the rows
+    // read back yields, message for message, the identity and the content
+    // code the walk over the rows written yields.
+    let codec = codec();
+    let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
+        .with_media_type(
+            yggdryl::Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+    let mut options = yggdryl::text::TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(yggdryl::Timezone::UTC);
+    options.start_rownum = Some(1);
+    let messages: Vec<FixMsg> = yggdryl::text::read_text_lines(&source, &options)
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .filter_map(|line| codec.parse_text_line(&line).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .collect();
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let written: Vec<Scalar> = messages
+        .iter()
+        .map(|message| message.into_row(&schema).unwrap())
+        .collect();
+    let read_back: Vec<Scalar> = written
+        .iter()
+        .map(|row| with_absent_groups_emptied(schema.fields(), row))
+        .collect();
+    assert_ne!(read_back, written, "the capture states absent groups");
+    let walk = |rows: Vec<Scalar>| -> Vec<(yggdryl::Uuid, u64)> {
+        let batch = lay_out(&schema, &Scalar::from_sequence(rows));
+        let rows = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        codec
+            .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+            .map(|message| {
+                let message = message.expect("a walked message");
+                (message.get_curruuid(), message.get_currhashcode())
+            })
+            .collect()
+    };
+    assert_eq!(walk(read_back), walk(written));
+}
+
+#[test]
+fn a_session_event_merged_from_rows_reading_an_absent_group_back_empty_writes_no_count() {
+    // Two observations of one session event, each stating a party with no
+    // `NoPartySubIDs(802)`, differing in what the merge fills, so their
+    // content is merged. A table storing a null list as an empty one reads
+    // the absent subgroup, and every absent group at the root, back as `[]`
+    // beside a null count, and the merge writes no count for a group holding
+    // no occurrence that no observation counted: the merge over the rows
+    // read back is the merge over the rows written.
+    let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
+    let captured = |body: &[u8], recdunix: i64| {
+        let line = TextLine::from_bytes(
+            recdunix as u64,
+            TextBytes::from_bytes(body).unwrap(),
+            Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![
+            Some(TextBytes::from_bytes(b"SESSION-A").unwrap()),
+            Some(TextBytes::from_bytes(b"CONTEXT-A").unwrap()),
+            Some(TextBytes::from_bytes(b"7").unwrap()),
+        ])
+        .unwrap()
+        .with_handle_mtime(recdunix);
+        codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+    };
+    let observations = [
+        captured(
+            b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|453=1|448=X|447=D|452=1|10=0|",
+            100,
+        ),
+        captured(
+            b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|38=5|453=1|448=X|447=D|452=1|10=0|",
+            200,
+        ),
+    ];
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let written: Vec<Scalar> = observations
+        .iter()
+        .map(|message| message.into_row(&schema).unwrap())
+        .collect();
+    let read_back: Vec<Scalar> = written
+        .iter()
+        .map(|row| with_absent_groups_emptied(schema.fields(), row))
+        .collect();
+    assert_ne!(read_back, written, "each observation states absent groups");
+    let walk = |rows: Vec<Scalar>| -> Vec<FixMsg> {
+        let batch = lay_out(&schema, &Scalar::from_sequence(rows));
+        let rows = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        codec
+            .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+            .collect::<yggdryl::Result<_>>()
+            .unwrap()
+    };
+    let merged = walk(written.clone());
+    assert_eq!(merged.len(), 1, "one session event");
+    // Read back whole, or one observation read back beside one written.
+    for rows in [
+        read_back.clone(),
+        vec![written[0].clone(), read_back[1].clone()],
+        vec![read_back[0].clone(), written[1].clone()],
+    ] {
+        let again = walk(rows);
+        assert_eq!(again.len(), 1, "one session event");
+        assert_eq!(again[0].get_currhashcode(), merged[0].get_currhashcode());
+        assert_eq!(again[0].get_curruuid(), merged[0].get_curruuid());
+        let wire = String::from_utf8(again[0].into_bytes(b'|')).unwrap();
+        assert!(wire.contains("|38=5|"), "the merged content: {wire}");
+        assert!(!wire.contains("802="), "{wire}");
+    }
+}
+
 #[test]
 fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);

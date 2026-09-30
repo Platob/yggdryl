@@ -821,11 +821,15 @@ impl InstantSequence {
                 .iter()
                 .any(|source| moved.iter().any(|(from, _)| from == source))
             {
+                // The newest move from a source is the one this message
+                // names: twins at one instant share one identity before
+                // their places, and each split message follows its own.
                 let renamed = named
                     .iter()
                     .map(|source| {
                         moved
                             .iter()
+                            .rev()
                             .find(|(from, _)| from == source)
                             .map_or(*source, |(_, to)| *to)
                     })
@@ -1179,7 +1183,9 @@ pub trait Event: Element {
     }
 
     /// Where this event stands among the events of its instant: zero for
-    /// the first its stream handed over there, one more for each next.
+    /// the first of each run its stream handed over at that instant - one
+    /// event after another, with no other instant between - one more for
+    /// each next.
     fn get_seqnum(&self) -> u64;
 
     /// Records where this event stands among the events of its instant.

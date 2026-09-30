@@ -4343,3 +4343,48 @@ fn a_message_split_off_another_names_the_identity_its_place_gave_it() {
         }
     }
 }
+
+#[test]
+fn a_message_split_off_one_of_three_twins_names_its_own_report() {
+    let codec = codec();
+    // Three identical fill reports at one instant share one identity
+    // before their places: 0, 2 and 4, each followed by the execution the
+    // parse split off it, which names the report it came from - never an
+    // earlier twin.
+    let fill = "8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|";
+    let three = fill.repeat(3);
+    let one_line: Vec<yggdryl::FixMsg> = codec
+        .parse_line(three.as_bytes())
+        .expect("a row")
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    for threads in [1, 4] {
+        let three_lines: Vec<yggdryl::FixMsg> = codec
+            .clone()
+            .with_threads(threads)
+            .parse_lines([fill, fill, fill])
+            .collect::<yggdryl::Result<_>>()
+            .expect("the messages");
+        for parsed in [&one_line, &three_lines] {
+            assert_eq!(parsed.len(), 6);
+            let places: Vec<u64> = parsed.iter().map(Event::get_seqnum).collect();
+            assert_eq!(places, [0, 1, 2, 3, 4, 5]);
+            let reports = [0, 2, 4].map(|at| parsed[at].get_curruuid());
+            assert_eq!(
+                reports
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                3,
+                "three places, three identities"
+            );
+            for (report, split) in [(0, 1), (2, 3), (4, 5)] {
+                assert_eq!(
+                    parsed[split].get_srcuuids(),
+                    [parsed[report].get_curruuid()],
+                    "the execution at place {split} names the report at place {report}"
+                );
+            }
+        }
+    }
+}

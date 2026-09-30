@@ -1443,7 +1443,9 @@ impl JsFixMsg {
     }
 
     /// The message's place among the messages of its instant: zero for the
-    /// first its stream hands over there, one more for each next.
+    /// first of each run the parse hands over at that instant, with no other
+    /// instant between, one more for each next; once walked, the place its
+    /// content took there.
     #[napi(getter)]
     pub fn seqnum(&self) -> Result<f64> {
         exact_f64(self.inner.get_seqnum(), "seqnum")
@@ -1493,8 +1495,9 @@ impl JsFixMsg {
     }
 
     /// The sorted unique identities of the elements this one was read from:
-    /// the text line it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never its chain: no walk moves it.
+    /// the text line it was parsed out of, and for a message the parse split
+    /// off another that message's identity beside its sources; none for one
+    /// parsed from raw bytes. Provenance, never its chain: no walk moves it.
     #[napi(getter)]
     pub fn srcuuids(&self) -> Vec<String> {
         sources_view(&self.inner)

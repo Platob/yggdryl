@@ -59,7 +59,9 @@ mod version;
 
 /// The extension's allocator: decoded Arrow buffers are large and short
 /// lived, and mimalloc reuses their pages where the system allocator maps
-/// fresh ones for every batch.
+/// fresh ones for every batch. On musl it is built with local-dynamic
+/// thread-locals (`python/Cargo.toml`): musl's loader refuses an
+/// initial-exec one in a module `import` opens with `dlopen`.
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

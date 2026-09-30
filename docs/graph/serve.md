@@ -11,7 +11,7 @@
 | `BookTable` | one served table: `name()` (what every route's `table` parameter states) and `holder()` (the location the books are read from) | `Debug` | - |
 | `BookQuery` | one question about one ticker's books: `table`, `ticker`, `from`, `to` (nanoseconds UTC, `to` exclusive), `timezone`, `interval` (`None` a minute in `timezone`), `side` (`None` both); `from_parameters(&Parameters)` reads it off a query string, `candle_options()` answers how the candles are bucketed | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | - |
 
-All in `graph::serve`, under the `http` feature, re-exported as `yggdryl::graph::{BookQuery, BookService, BookServiceOptions, BookTable}`. A table is any record location a [`Holder`](../holder/index.md#handles) reads books from - an Iceberg folder (the `iceberg` feature), an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it, `marketdatakind = 'BOOK'`, the ticker and the instants pushed into the location's own [record options](../holder/index.md#column-pushdown), so a store that prunes on them prunes; the `BOOK` rows come back as `BookEvent`s through [`MarketData::from_arrow_reader`](market-data.md#arrow), sorted by their instant. Where the location declares no field, the read declares the [`marketdata` row](market-data.md#columns): a CSV leaf, whose cells state no nested type, reads them as the row types them, and an empty or absent store - a zero-byte leaf, a file removed while serving - is the empty reading, no ticker listed and every ticker a `404`, rather than a failure. Nothing is cached: every request reads the table as it stands.
+All in `graph::serve`, under the `http` feature, re-exported as `yggdryl::graph::{BookQuery, BookService, BookServiceOptions, BookTable}`. A table is any record location a [`Holder`](../holder/index.md#handles) reads books from - an Iceberg folder (the `iceberg` feature), an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it, `marketdatakind = 'BOOK'`, the ticker and the instants pushed into the location's own [record options](../holder/index.md#column-pushdown), so a store that prunes on them prunes; the `BOOK` rows come back as `BookEvent`s through [`MarketData::from_arrow_reader`](market-data.md#arrow), sorted by their instant. Where the location declares no field, the read declares the [`marketdata` row](market-data.md#columns): a CSV leaf, whose cells state no nested type, reads them as the row types them, and an empty or absent store - a zero-byte leaf, a file removed while serving, a folder holding no leaf or not there yet - is the empty reading, no ticker listed and every ticker a `404`, rather than a failure; a folder whose leaves no record encoding reads keeps that refusal, a `500`. Nothing is cached: every request reads the table as it stands.
 
 ## The command
 
@@ -24,12 +24,12 @@ yggdryl market serve [TABLE...] [--bind 127.0.0.1:8080] [--path /] [--snapshot-m
 
 | Argument | Default | States |
 | --- | --- | --- |
-| `TABLE` | none | a table to serve, `name=location` or a location alone named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder; a `://` URL goes through `Holder::from_url`. A path where nothing is yet is taken as a folder - the one a capture makes a table of. Two tables of one name are refused, since a route's `table` names one |
+| `TABLE` | none | a table to serve, `name=location` or a location alone named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder; a `://` URL goes through `Holder::from_url`. A path where nothing is yet is taken as a folder - the one a capture makes a table of; served with no capture, it is a table holding no book, and nothing is created. Two tables of one name are refused, since a route's `table` names one |
 | `--bind` | `127.0.0.1:8080` | the address to listen on; port `0` takes a free one |
 | `--path` | `/` | the path the display answers under: its page is `<path>/index.html`, which `<path>` itself sends a browser to, and the routes stand under `<path>/api` |
 | `--snapshot-millis` | `0` | the [grid](book.md#book-fold) a capture's books are folded on before they land, milliseconds: a positive one adds the whole live book at every tick the capture crosses, zero only the books its instants touch |
 | `--capture` | none, repeatable | a FIX bridge log folded into the *first* table before serving: its lines read under `--rowheader` and `--timezone`, [walked](../fix/lifecycle.md) as the chains they belong to, folded into books through `FixCodec::market_data` and `BookIterator`, and appended as `BOOK` rows through the table's own record options - an Iceberg folder through its table, a leaf under its encoding. Every capture is read before any lands, and they land in one append - one commit on an Iceberg table |
-| `--registry` | `config/fix` | the FIX [dictionary](../fix/store.md) a capture is read with |
+| `--registry` | `config/fix` | the FIX [dictionary](../fix/store.md) a capture is read with, a folder resolved against the working directory: the default is the dictionary a yggdryl checkout commits, and neither the wheel nor the npm package ships one, so a command installed from a registry names the folder it keeps one in. Read only where a capture is |
 | `--rowheader` | `yggdryl::ULBRIDGE_ROWHEADER` | the row header every capture line opens with, a regex of named captures ([ULBridge](../fix/capture.md)) |
 | `--timezone` | `UTC` | the zone the bridge's clock writes its lines in; an IANA zone this build has rules for, or a fixed offset |
 | `--max-body` | `16777216` | the largest request body accepted, bytes |
@@ -49,7 +49,7 @@ In run order: every argument is read - `--path` by the server's own path grammar
 | `--capture` naming a location the URL grammar refuses, or a capture that cannot be read - refused before any capture lands | the location, or the capture's own refusal |
 | `--snapshot-millis` that is no count, `--read-timeout` outside 1 to 86400, `--forwarded-header` naming no forwarded field (`X-Real-IP`), `--bind` on an address that cannot be taken | the argument, or the socket |
 
-A refusal is printed on stdout in place of the endpoint, which is how `node/book.js`'s `serve()` reads it back into its rejection.
+A refusal is printed on stdout in place of the endpoint, after the report of anything the core warned about, as one `✗` line - `✗ invalid record value at $.capture: a capture needs a table to land in: expected a TABLE beside --capture, got none` - running on to further lines where its reason does (a `--rowheader` regex error points at the pattern), and the command exits `1`. What the argument parser refuses itself - a value that is no count, out of range or no forwarded field, an argument the command does not take - it writes on stderr instead, clap's `error: invalid value '0' for '--read-timeout <SECONDS>': ...`, and exits `2`. `node/book.js`'s `serve()` rejects with that refusal, then that stderr, as its error's message.
 
 ## Routes
 
@@ -62,7 +62,7 @@ No answer carries what authenticates a location: a table's `url` and the text of
 | `tables` | - | `[{"name","url"}]`, each location without its user information and its query, `url` null for a location that has none |
 | `timezones` | - | `["UTC", ...]`: `UTC`, then every zone this build has rules for (`Timezone::registered()`) by name - the place zones `tz` reads, which reads their aliases and fixed offsets besides. A display offers these rather than its runtime's own list, which names zones this build has no rules for |
 | `tickers` | `table` | `[{"ticker","crosscode","from","to","books"}]` ordered by ticker, `from` the whole second the first book stands in and `to` the whole second after the last, both UTC, so `[from, to)` holds every book and a display passes them straight back as a range - the first or the last instant `i64` nanoseconds hold where that second lies past them, `1677-09-21T00:12:43.145224192Z` and `2262-04-11T23:47:16.854775807Z`; a book stating no ticker is not listed, since no query can name it, and an empty or absent table lists none. One projected scan, `select ticker, crosscode, currunix where marketdatakind = 'BOOK'` |
-| `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, `interval` the effective spelling, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books,executions,volume}` with each reading `{open,high,low,close}` or null - [`Candle`](candle.md) cell for cell, the books folded by [`CandleIterator`](candle.md#the-fold) under `interval` aligned to `tz`. A known ticker with no book in range answers `"candles": []`; an unknown one is `404` |
+| `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, `interval` the effective spelling, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books,executions,volume}` with each reading `{open,high,low,close}` or null - [`Candle`](candle.md) cell for cell, the books folded by [`CandleIterator`](candle.md#the-fold) under `interval` aligned to `tz`. A candle's `volume` counts a trade once over it and the candle just before it ([volume](candle.md#volume)): a trade stated again only after a candle that did not name it counts again, so the volumes of candles further apart need not add up to what traded. A known ticker with no book in range answers `"candles": []`; an unknown one is `404` |
 | `book` | `table`, `ticker`, `at`, `tz` | the last book at or before `at`: `{currunix,ticker,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,alive,deltas,executions,bidlimits,asklimits}` - `imbalance` over the first level, `alive`, `deltas` and `executions` the counts of its entries (the entries are `events`), each side `[{price,quantity,uuids,tradable}]` best first ([`Limit`](book.md#limits)); none there yet is `404` (`expected a book at "books/ACME at or before <instant>", got nothing`) |
 | `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`: for every book of the ticker in `[from, to)`, in instant order, one row per alive entry (role `alive`), per delta applied since the book before (`delta`) and per execution at its instant (`execution`), each an object keyed by the fifty-one names of `BookService::events_field()` - `bookunix`, `role`, then `marketdatakind` and every flat column of the [`marketdata` row](market-data.md#columns), the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits` left out - at most `limit` rows, `truncated` saying whether more were kept back. The bound is pushed into the read: one projected scan of the range's `currunix` finds the instant by which its earliest `limit + 1` books stand, and only the books up to it are read and built - that count doubled while they state no more than `limit` rows on `side` and the range holds more - so a request holds at most `limit + 1` books and instants whatever its range, a table stored in no instant order included |
 | `audit.csv`, `audit.csv.gz`, `audit.csv.zst` | `table`, `ticker`, `from`, `to`, `tz`, `side` | the same rows unbounded, as [the download](#the-audit-download) |
@@ -99,7 +99,7 @@ The display is vanilla ES modules with no framework, no CDN and no build step: e
 
 The chart is focusable: `ArrowLeft`/`ArrowRight` move the hover to the neighbouring bucket, `Home`/`End` to the first and last, `Enter` or `Space` selects it, `Escape` clears the hover, and a live readout beside the canvas states the hovered candle in text; a skip link leads to it, and a `404` on the book route renders as an empty state naming it rather than an error.
 
-`node/book.js`, CommonJS, is the package's door to all of it:
+`node/book.js`, CommonJS and declared for TypeScript by `node/book.d.ts`, is the package's door to all of it, `require('yggdryl/book')`:
 
 ```text
 book.assets                    // the absolute `book/` folder
@@ -108,7 +108,7 @@ book.serveArguments(options)   // the argument vector of { tables, bind = '127.0
 book.serve(options)            // spawns `yggdryl market serve` with it -> Promise<{ endpoint, process, close() }>; `signal` cancels
 ```
 
-A table is `'name=location'`, a location or `{ name, location }`. `serve` runs `bin` - `YGGDRYL_BIN`, else `yggdryl` on the path - under `env`, resolves once the endpoint line is read from stdout, and rejects with the process's stderr when it exits first, with the spawn error when it cannot start, with the line when it is no URL, or with an `AbortError` quoting the stderr once an aborted `signal` has ended the process - `AbortSignal.timeout(ms)` bounds the wait. Until it resolves, the process ends with its parent.
+A table is `'name=location'`, a location or `{ name, location }`. `serve` runs `bin` - `YGGDRYL_BIN`, else `yggdryl` on the path - under `env` and resolves once the endpoint line is read from stdout. A process that exits first rejects with what it printed as the error's message: the command's [refusal](#the-command) - its `✗` line and any line the refusal runs on to - then its stderr, where the argument parser refuses; one that printed neither rejects with `yggdryl market serve exited with <code> before printing its endpoint`. `serve` rejects with the spawn error when the process cannot start, with the line when the first one is neither the endpoint, a refusal nor the warning report ahead of one, and with an `AbortError` quoting what it printed once an aborted `signal` has ended the process - `AbortSignal.timeout(ms)` bounds the wait. Until it resolves, the process ends with its parent.
 
 ## Examples
 
@@ -250,23 +250,25 @@ What the package ships beside its binding, and the argument vector `serve()` spa
 
 ## The ULBridge capture, served
 
-One command serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`: an absent folder becomes an Iceberg table, the capture's eight books land in it, and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
+One command, run from the root of a yggdryl checkout, serves the FIX bridge capture the crate's tests read, `rust/tests/fix/ulbridge.log`, read with the dictionary the checkout commits, `config/fix`: an absent folder becomes an Iceberg table, the capture's eight books land in it, and the display answers on a free port. The bridge's clock writes Zurich time, so the lines are read under `--timezone Europe/Zurich`; the routes render in whatever `tz` a question states.
 
 ```bash
-yggdryl market serve books=/tmp/books --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich --bind 127.0.0.1:0
+yggdryl market serve books=/tmp/books --registry config/fix --capture rust/tests/fix/ulbridge.log --timezone Europe/Zurich --bind 127.0.0.1:0
 ```
 
 ```text
-http://127.0.0.1:37081/
+http://127.0.0.1:34385/
 · table books over file:///tmp/books, created
 · capture rust/tests/fix/ulbridge.log: 8 books into books
 ```
 
+Both paths are the checkout's: neither the wheel nor the npm package ships a FIX dictionary or this capture. The command a registry install puts on the path - `pip install yggdryl`'s, which `book.serve` spawns - passes `--registry` the folder it keeps a dictionary in, a copy of a checkout's `config/fix`, and `--capture` its own bridge log; outside a checkout and without `--registry`, it refuses before it binds, `✗ expected a FIX dictionary at "file:///<working directory>/config/fix", got nothing`. Below, the port is the one this run took, and every answer is one line, wrapped here.
+
 The table it serves, and the tickers the table holds, each with the range that holds its books:
 
 ```bash
-curl http://127.0.0.1:37081/api/tables
-curl 'http://127.0.0.1:37081/api/tickers?table=books'
+curl http://127.0.0.1:34385/api/tables
+curl 'http://127.0.0.1:34385/api/tickers?table=books'
 ```
 
 ```json
@@ -282,16 +284,16 @@ curl 'http://127.0.0.1:37081/api/tickers?table=books'
  {"books":1,"crosscode":"XAU/USD","from":"2026-08-14T14:52:55.000000000Z","ticker":"XAU/USD","to":"2026-08-14T14:52:56.000000000Z"}]
 ```
 
-Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, one execution of `300`:
+Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, and one execution that traded `235` - its last quantity, out of an order of `300` ([volume](candle.md#volume)):
 
 ```bash
-curl 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich&interval=1h'
+curl 'http://127.0.0.1:34385/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich&interval=1h'
 ```
 
 ```json
 {"candles":[{"ask":null,"askqty":null,"bid":{"close":"72.3","high":"72.3","low":"72.3","open":"72.3"},"bidqty":"50","books":2,
              "end":"2026-08-14T15:00:00.000000000+02:00[Europe/Zurich]","executions":1,"mid":null,"spread":null,
-             "start":"2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]","volume":"300"}],
+             "start":"2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]","volume":"235"}],
  "from":"2026-08-14T00:00:00.000000000+02:00[Europe/Zurich]","interval":"1h","table":"books","ticker":"HOLN","timezone":"Europe/Zurich",
  "to":"2026-08-15T00:00:00.000000000+02:00[Europe/Zurich]"}
 ```
@@ -299,7 +301,7 @@ curl 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14
 The book standing at the end of the day: one entry alive, the bid level it makes, no ask:
 
 ```bash
-curl 'http://127.0.0.1:37081/api/book?table=books&ticker=HOLN&at=2026-08-15T00:00:00&tz=Europe/Zurich'
+curl 'http://127.0.0.1:34385/api/book?table=books&ticker=HOLN&at=2026-08-15T00:00:00&tz=Europe/Zurich'
 ```
 
 ```json
@@ -309,10 +311,10 @@ curl 'http://127.0.0.1:37081/api/book?table=books&ticker=HOLN&at=2026-08-15T00:0
  "imbalance":"1","iscrossed":false,"islocked":false,"midpoint":null,"spread":null,"ticker":"HOLN"}
 ```
 
-The audit of the day, gzip-coded and named after the ticker and the range in UTC; the header line and one row per entry, delta and execution, cut to their first 120 characters here:
+The audit of the day, gzip-coded and named after the ticker and the range in UTC; the header line and one row per entry, delta and execution, cut to their first 120 characters here. Its `content-length` is this checkout's: a row's `srcuuids` are the UUIDs of the capture lines its message was read from, and a line's UUID derives from the URL of the log it was read from, so a checkout standing elsewhere compresses to a few bytes more or fewer:
 
 ```bash
-curl -D - -o audit.csv.gz 'http://127.0.0.1:37081/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
+curl -s -D - -o audit.csv.gz 'http://127.0.0.1:34385/api/audit.csv.gz?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich'
 gunzip -c audit.csv.gz | head -3 | cut -c1-120
 gunzip -c audit.csv.gz | wc -l
 ```
@@ -323,8 +325,8 @@ cache-control: no-store
 content-disposition: attachment; filename="audit-HOLN-20260813T220000Z-20260814T220000Z.csv.gz"
 content-length: 1928
 content-type: application/gzip
-date: Tue, 29 Sep 2026 20:50:04 GMT
-server: yggdryl/0.1.18
+date: Wed, 30 Sep 2026 04:58:57 GMT
+server: yggdryl/0.1.19
 
 bookunix,role,marketdatakind,currunix,creaunix,recdunix,exprunix,prevunix,snapunix,curruuid,crossuuid,crosscode,currhash
 2026-08-14T12:46:39.743000000Z,delta,ORDR,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46:39.743000000Z,2026-08-14T12:46
@@ -335,8 +337,8 @@ bookunix,role,marketdatakind,currunix,creaunix,recdunix,exprunix,prevunix,snapun
 A question the route cannot read is `400` naming the parameter - here a range whose `to` is not after its `from`:
 
 ```bash
-curl -s -D - 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich' | head -1
-curl -s 'http://127.0.0.1:37081/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
+curl -s -D - 'http://127.0.0.1:34385/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich' | head -1
+curl -s 'http://127.0.0.1:34385/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-14T00:00:00&tz=Europe/Zurich'
 ```
 
 ```text
@@ -347,7 +349,7 @@ HTTP/1.1 400 Bad Request
 The display itself answers at the endpoint:
 
 ```bash
-curl -s -D - -o /dev/null http://127.0.0.1:37081/ | head -5
+curl -s -D - -o /dev/null http://127.0.0.1:34385/ | head -5
 ```
 
 ```text
@@ -355,10 +357,10 @@ HTTP/1.1 200 OK
 cache-control: no-cache
 content-length: 4881
 content-type: text/html; charset=utf-8
-date: Tue, 29 Sep 2026 20:50:04 GMT
+date: Wed, 30 Sep 2026 04:58:57 GMT
 ```
 
-`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of eight rows - that the same command serves again without the capture, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
+`/tmp/books` is now an Iceberg table - `metadata/v1.metadata.json`, `v2.metadata.json`, `version-hint.text`, a manifest list, a manifest and one Parquet file of eight rows - that `yggdryl market serve books=/tmp/books` serves again from any folder, since with no capture it reads no dictionary, and that a Node program starts through `book.serve({ tables: 'books=/tmp/books' })`.
 
 ## Edges
 

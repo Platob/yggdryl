@@ -6070,7 +6070,7 @@ ulbridge[034]:0.entry[57]	t460 product=5
 ulbridge[034]:0.entry[58]	t470 countryofissue=CH
 ulbridge[034]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[034]:0.field.currunix	"2026-08-14T12:46:39.762000000Z"
-ulbridge[034]:0.field.execunix	"2026-08-14T00:00:00.000000000Z"
+ulbridge[034]:0.field.execunix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.recdunix	"2026-08-14T14:46:39.770000000Z"
 ulbridge[034]:0.field.creaunix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.exprunix	"2026-08-14T16:25:00.000000000Z"
@@ -6219,7 +6219,7 @@ ulbridge[034]:1.entry[57]	t460 product=5
 ulbridge[034]:1.entry[58]	t470 countryofissue=CH
 ulbridge[034]:1.entry[59]	t2897 currencycodesource=6
 ulbridge[034]:1.field.currunix	"2026-08-14T12:46:39.762000000Z"
-ulbridge[034]:1.field.execunix	"2026-08-14T00:00:00.000000000Z"
+ulbridge[034]:1.field.execunix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:1.field.recdunix	"2026-08-14T14:46:39.770000000Z"
 ulbridge[034]:1.field.creaunix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:1.field.exprunix	"2026-08-14T16:25:00.000000000Z"

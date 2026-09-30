@@ -2018,7 +2018,9 @@ impl PyFixMsg {
     }
 
     /// The message's place among the messages of its instant: zero for the
-    /// first its stream hands over there, one more for each next.
+    /// first of each run the parse hands over at that instant, with no other
+    /// instant between, one more for each next; once walked, the place its
+    /// content took there.
     #[getter]
     fn seqnum(&self) -> u64 {
         self.inner.get_seqnum()
@@ -2068,8 +2070,9 @@ impl PyFixMsg {
     }
 
     /// The identities of the elements this one was read from: the text line
-    /// it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never its chain: no walk moves it.
+    /// it was parsed out of, and for a message the parse split off another
+    /// that message's identity beside its sources; none for one parsed from
+    /// raw bytes. Provenance, never its chain: no walk moves it.
     #[getter]
     fn srcuuids(&self) -> Vec<PyScalar> {
         self.inner

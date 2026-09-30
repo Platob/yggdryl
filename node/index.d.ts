@@ -333,7 +333,8 @@ export declare class BookEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */
@@ -682,7 +683,7 @@ export type JsFsByteWriter = ByteWriter
  * One OHLC of one book over one bucket: what the books of one cross code
  * whose instants fell in `[start, end)` read at their best bid, their best
  * ask, their midpoint and their spread, the quantities resting at the
- * touch when the bucket closed, and what executed in it. Built by
+ * touch when the bucket closed, and what traded in it. Built by
  * `CandleIterator`, or read back from a row through `fromScalar`.
  */
 export declare class Candle {
@@ -732,13 +733,21 @@ export declare class Candle {
    */
   get askqty(): string | null
   /**
-   * The exact sum of the quantities the bucket's executions state, as
-   * decimal text; `'0'` where none did.
+   * What traded in the bucket, as decimal text: each trade its executions
+   * report counted once within the bucket, at the largest last quantity
+   * any of its executions states - one stating none adds nothing - a
+   * trade being named by the `TRADEID`, `TRADEREPORTID`, `TVTIC` and
+   * `EXECID` its executions state, else by the base of the cross code; a
+   * trade stated again in the next bucket adds there only what it states
+   * past what was counted; `'0'` where nothing traded.
    */
   get volume(): string
   /** How many books folded into the bucket. */
   get books(): number
-  /** How many executions the folded books carried. */
+  /**
+   * How many executions the folded books carried, a trade they carried
+   * twice counted twice.
+   */
   get executions(): number
   /**
    * The candle as the named struct of its cells - the flat row
@@ -1772,7 +1781,8 @@ export declare class ExecutionEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */
@@ -3071,7 +3081,9 @@ export declare class FixMsg {
   get state(): string
   /**
    * The message's place among the messages of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run the parse hands over at that instant, with no other
+   * instant between, one more for each next; once walked, the place its
+   * content took there.
    */
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
@@ -3093,8 +3105,9 @@ export declare class FixMsg {
   get snapunix(): bigint | null
   /**
    * The sorted unique identities of the elements this one was read from:
-   * the text line it was parsed out of, and none for one parsed from bytes. Provenance,
-   * never its chain: no walk moves it.
+   * the text line it was parsed out of, and for a message the parse split
+   * off another that message's identity beside its sources; none for one
+   * parsed from raw bytes. Provenance, never its chain: no walk moves it.
    */
   get srcuuids(): Array<string>
   /**
@@ -5361,7 +5374,8 @@ export declare class OrderEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */
@@ -6225,7 +6239,8 @@ export declare class QuoteEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */
@@ -7599,7 +7614,8 @@ export declare class SnapshotEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */
@@ -8855,7 +8871,8 @@ export declare class TradeEvent {
   get state(): string
   /**
    * Its place among the events of its instant: zero for the
-   * first its stream hands over there, one more for each next.
+   * first of each run its stream hands over at that instant, with
+   * no other instant between, one more for each next.
    */
   get seqnum(): number
   /** When this was created, where known. */

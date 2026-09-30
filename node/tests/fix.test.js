@@ -2523,6 +2523,86 @@ let committedRegistry
     assert.throws(() => fix.FixMsg.fromRow(schema, { nosuchcolumn: 1 }, registry))
   })
 
+  test('a group counting none is stated, and a list read back empty is not', () => {
+    // `802=0` is the counter stating zero beside the empty list, and re-emits;
+    // PyIceberg reads a null list of structs back as `[]` beside a null
+    // counter, which states nothing: each row read back and settled again from
+    // its content is the message the parse wrote (`rust/tests/fix/msg.rs`).
+    const registry = seed()
+    const reader = fixedCodec(registry)
+    const party = '8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|'
+    const absent = reader.parseFixLine(Buffer.from(`${party}10=0|`))
+    const counted = reader.parseFixLine(Buffer.from(`${party}802=0|10=0|`))
+    assert.notEqual(counted.currhashcode, absent.currhashcode)
+    assert.ok(!counted.digest().equals(absent.digest()))
+    assert.ok(counted.intoText('|').includes('|452=1|802=0|'))
+    assert.ok(!absent.intoText('|').includes('802='))
+
+    // A row that does not record its content code is settled from what it
+    // states, so the fixed row is read without that column.
+    const wide = fix.schema(registry)
+    const columns = []
+    for (let at = 0; at < wide.fieldLen; at += 1) {
+      if (wide.fieldAt(at).name !== 'currhashcode') columns.push(wide.fieldAt(at))
+    }
+    const narrow = fields.struct('fix', columns, { nullable: false })
+    const parties = narrow.indexOf('parties')
+    const item = narrow.fieldByPath('parties').fieldAt(0)
+    const subids = item.indexOf('partysubids')
+    const count = item.indexOf('nopartysubids')
+    for (const [message, stated] of [[absent, false], [counted, true]]) {
+      const written = message.intoRow(narrow).asJs()
+      assert.equal(written[parties][0][count] !== null, stated, 'the count')
+      assert.equal(written[parties][0][subids] !== null, stated, 'the subgroup')
+      const readBack = written.slice()
+      readBack[parties] = written[parties].map((occurrence) => {
+        const emptied = occurrence.slice()
+        emptied[subids] = []
+        return emptied
+      })
+      for (const row of [written, readBack]) {
+        const held = fix.FixMsg.fromRow(narrow, row, registry)
+        assert.equal(held.currhashcode, message.currhashcode)
+        assert.equal(held.curruuid, message.curruuid)
+        assert.equal(held.intoText('|').includes('|802=0|'), stated)
+      }
+    }
+  })
+
+  test('a root group counting none is stated, and a list read back empty is not', () => {
+    // The same rule at the root: `453=0` is stated, and a `parties` column
+    // read back as `[]` where the row held null - its `nopartyids` still null,
+    // or no such column at all - is the group absent (`rust/tests/fix/msg.rs`).
+    const registry = seed()
+    const reader = fixedCodec(registry)
+    const order = '8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|'
+    const absent = reader.parseFixLine(Buffer.from(`${order}10=0|`))
+    const counted = reader.parseFixLine(Buffer.from(`${order}453=0|10=0|`))
+    assert.ok(counted.intoText('|').includes('|453=0|'))
+    assert.ok(!absent.intoText('|').includes('453='))
+
+    const wide = fix.schema(registry)
+    for (const dropped of [['currhashcode'], ['currhashcode', 'nopartyids']]) {
+      const columns = []
+      for (let at = 0; at < wide.fieldLen; at += 1) {
+        if (!dropped.includes(wide.fieldAt(at).name)) columns.push(wide.fieldAt(at))
+      }
+      const narrow = fields.struct('fix', columns, { nullable: false })
+      const parties = narrow.indexOf('parties')
+      for (const [message, stated] of [[absent, false], [counted, true]]) {
+        const written = message.intoRow(narrow).asJs()
+        const readBack = written.slice()
+        if (readBack[parties] === null) readBack[parties] = []
+        for (const row of [written, readBack]) {
+          const held = fix.FixMsg.fromRow(narrow, row, registry)
+          assert.equal(held.currhashcode, message.currhashcode)
+          assert.equal(held.curruuid, message.curruuid)
+          assert.equal(held.intoText('|').includes('|453='), stated)
+        }
+      }
+    }
+  })
+
   test("a capture's own columns lead the row", () => {
     const registry = seed()
     // Nullable, because a message parsed on its own states none of them and a
@@ -4103,6 +4183,20 @@ let committedRegistry
     assert.deepEqual(sourced.srcuuids, [line.curruuid])
     assert.equal(sourced.currhashcode, walkedPair[0].currhashcode)
     assert.deepEqual(walkedPair[0].srcuuids, [])
+  })
+
+  test('a message split off one of three twins names its own report', () => {
+    const codec = reading(seed(), { defaultSendingTime: SENDING })
+    // Three identical fill reports at one instant share one identity before
+    // their places; each execution the parse splits off names the report it
+    // came from, never an earlier twin.
+    const fill = '8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|'
+    const parsed = [...codec.parseLines([fill, fill, fill])]
+    assert.deepEqual(parsed.map((message) => message.seqnum), [0, 1, 2, 3, 4, 5])
+    assert.equal(new Set([0, 2, 4].map((at) => parsed[at].curruuid)).size, 3)
+    for (const [report, split] of [[0, 1], [2, 3], [4, 5]]) {
+      assert.deepEqual(parsed[split].srcuuids, [parsed[report].curruuid])
+    }
   })
 
   test('the stream is lazy, pulls one message at a time and throws what its source throws', () => {

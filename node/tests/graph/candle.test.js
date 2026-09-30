@@ -24,8 +24,8 @@ function quote(unix, ticker, code, side, price, quantity, state = 'NEW') {
   return new graph.QuoteEvent(unix, { crosscode: code, ticker, side, price, quantity, state })
 }
 
-function execution(unix, ticker, code, side, quantity) {
-  return new graph.ExecutionEvent(unix, { crosscode: code, ticker, side, price: '100', quantity, state: 'FILLED' })
+function execution(unix, ticker, code, side, lastqty) {
+  return new graph.ExecutionEvent(unix, { crosscode: code, ticker, side, price: '100', lastqty, state: 'FILLED' })
 }
 
 function books(operations) {
@@ -173,6 +173,43 @@ test('a one-sided book states no mid or spread', () => {
   assert.equal(candle.books, 2)
   assert.equal(candle.executions, 0)
   assert.equal(candle.volume, '0')
+})
+
+test('the volume counts each trade once at what it traded', () => {
+  // The order's quantity; what the fill traded is its last quantity.
+  const fill = (unix, code, side, lastqty, altids = {}) => new graph.ExecutionEvent(unix, {
+    crosscode: code, ticker: 'ACME', side, price: '100', quantity: 600, lastqty, state: 'FILLED', altids,
+  })
+  // A fill delivered twice under one `EXECID`, the two sides of a trade
+  // under one `TRADEID`, and a fill stating no last quantity, which adds
+  // nothing whatever its order's quantity: six executions, three trades.
+  const [candle] = candles([
+    fill(10n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
+    fill(10n * SECOND, 'X-2', 'BUY', 57, { EXECID: 'X-2' }),
+    fill(11n * SECOND, 'X-2', 'BUY', 57, { EXECID: 'X-2' }),
+    fill(20n * SECOND, 'S-1', 'BUY', 100, { EXECID: 'S-1', TRADEID: 'T-1' }),
+    fill(20n * SECOND, 'S-2', 'SELL', 100, { EXECID: 'S-2', TRADEID: 'T-1' }),
+    fill(30n * SECOND, 'X-3', 'SELL', undefined),
+  ], '1m')
+  assert.deepEqual([candle.books, candle.executions, candle.volume], [4, 6, '178'])
+
+  // A trade report's two sides named by its `TRADEREPORTID` alone, and a
+  // fill naming its `EXECID` and the trade's `TRADEID` delivered again
+  // naming the `EXECID` alone: two trades.
+  const [named] = candles([
+    fill(10n * SECOND, 'SX-B', 'BUY', 100, { EXECID: 'SX-B', TRADEREPORTID: 'TR-1' }),
+    fill(10n * SECOND, 'SX-S', 'SELL', 100, { EXECID: 'SX-S', TRADEREPORTID: 'TR-1' }),
+    fill(20n * SECOND, 'E-1', 'BUY', 57, { EXECID: 'E-1', TRADEID: 'T-1' }),
+    fill(21n * SECOND, 'E-1', 'BUY', 57, { EXECID: 'E-1' }),
+  ], '1m')
+  assert.deepEqual([named.executions, named.volume], [4, '157'])
+
+  // Delivered again in the next minute, a fill adds nothing there.
+  const [first, second] = candles([
+    fill(10n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
+    fill(70n * SECOND, 'X-1', 'BUY', 21, { EXECID: 'X-1' }),
+  ], '1m')
+  assert.deepEqual([first.volume, second.volume], ['21', '0'])
 })
 
 test('a reading a later book lacks keeps the earlier ones', () => {

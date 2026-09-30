@@ -648,19 +648,47 @@ impl BookService {
     /// type, such as a CSV leaf, reads them as the row types them, and an
     /// empty or absent store reads as the empty stream of that row rather
     /// than of no column.
-    fn read_options(table: &BookTable) -> Result<RecordOptions> {
-        let options = table.holder.record_options()?;
+    ///
+    /// `None` for a folder holding no leaf - an empty one, one holding only
+    /// folders, one not there yet: a container answers the encoding of the
+    /// leaves beneath it, so one holding none has no encoding to answer,
+    /// and nothing is stored to read. A folder holding leaves no encoding
+    /// reads keeps the refusal. The listing that tells the two apart is
+    /// made only once the encoding is refused.
+    fn read_options(table: &BookTable) -> Result<Option<RecordOptions>> {
+        let options = match table.holder.record_options() {
+            Ok(options) => options,
+            Err(refused) => {
+                let holds_nothing = table.holder.is_container()
+                    && table
+                        .holder
+                        .children_where(&[], false)?
+                        .next()
+                        .transpose()?
+                        .is_none();
+                return if holds_nothing {
+                    Ok(None)
+                } else {
+                    Err(refused)
+                };
+            }
+        };
         if options.declared().is_some() {
-            return Ok(options);
+            return Ok(Some(options));
         }
-        Ok(options.with_field(MarketData::field()?))
+        Ok(Some(options.with_field(MarketData::field()?)))
     }
 
     /// The rows of `table` `filter` keeps, read through the table's own
-    /// record options so a store that prunes on the filter prunes.
+    /// record options so a store that prunes on the filter prunes; the
+    /// empty stream of the `marketdata` row where the table holds no leaf.
     fn read(table: &BookTable, filter: &Filter) -> Result<BatchReader> {
-        let options = Self::read_options(table)?.with_filter(filter)?;
-        table.holder.read_arrow_reader(&options)
+        match Self::read_options(table)? {
+            Some(options) => table
+                .holder
+                .read_arrow_reader(&options.with_filter(filter)?),
+            None => nothing(MarketData::field()?),
+        }
     }
 
     /// The books of `table` `filter` keeps, in stored order, one at a time;
@@ -691,18 +719,20 @@ impl BookService {
     /// The rows `filter` keeps of `table`, projected onto `columns` of the
     /// `marketdata` row - one projected read, which a store keeping its
     /// columns apart answers without reading the rest - as record columns
-    /// of the struct `book` of them.
+    /// of the struct `book` of them; none where the table holds no leaf.
     fn projected(table: &BookTable, filter: &Filter, columns: Vec<Field>) -> Result<SerieReader> {
         let select = Selector::new(
             columns
                 .iter()
                 .map(|column| Projection::column(column.name())),
         );
-        let options = Self::read_options(table)?
-            .with_filter(filter)?
-            .with_select(select)?;
         let root = DataType::Struct(StructType::from_fields(columns)?).required_field("book");
-        let reader = table.holder.read_arrow_reader(&options)?;
+        let reader = match Self::read_options(table)? {
+            Some(options) => table
+                .holder
+                .read_arrow_reader(&options.with_filter(filter)?.with_select(select)?)?,
+            None => nothing(root.clone())?,
+        };
         Ok(SerieReader::from_arrow_reader(
             Some(&root),
             reader,
@@ -1252,6 +1282,12 @@ impl RecordBatchReader for EventRows {
 // ------------------------------------------------------------------------
 // The filters
 // ------------------------------------------------------------------------
+
+/// The empty stream of the rows `root` states: what a table holding no leaf
+/// reads as.
+fn nothing(root: Field) -> Result<BatchReader> {
+    Ok(crate::arrow::batch_reader(root.into_arrow_schema()?, []))
+}
 
 /// A projected read answering columns other than the ones it asked for:
 /// what no store answers, since the read casts onto the columns it names.

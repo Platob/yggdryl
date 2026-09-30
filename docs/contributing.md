@@ -28,6 +28,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     npm run --prefix node build:debug
     node --test node/tests/<file>.test.js          # the loop, while you write
     npm run --prefix node test:package:debug
+    cargo build --locked -p yggdryl-cli            # the command node/tests/book.test.js spawns
     npm test --prefix node
     ```
 

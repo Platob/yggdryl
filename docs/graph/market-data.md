@@ -193,7 +193,7 @@ Three enums - `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_co
 | `QUOT` | `Quote` | `QuoteEvent` |
 | `EXEC` | `Execution` | `ExecutionEvent` |
 | `TRAD` | refused at `$[i].marketdatakind`: `expected a dated TRAD row, got currunix null` | `TradeEvent`; a null `executions` is refused at `$[i].executions` |
-| `BOOK` | refused at `$[i].marketdatakind`: `expected a dated BOOK row, got currunix null` | `BookEvent` where `alive` is non-null - an empty list included - and `SnapshotEvent` where it is null; a batch with no `alive` column is refused at `$[i].alive`: `expected the alive column that tells a book_event from a snapshot_event, got none` |
+| `BOOK` | refused at `$[i].marketdatakind`: `expected a dated BOOK row, got currunix null` | `BookEvent` where `alive` is non-null - an empty list included - and `SnapshotEvent` where it is null, or empty beside the `curruuid` a snapshot control derives, which no book shares: a table may store a null list as an empty one, as PyIceberg does; a batch with no `alive` column is refused at `$[i].alive`: `expected the alive column that tells a book_event from a snapshot_event, got none` |
 | another member, or null | refused at `$[i].marketdatakind`: `expected ORDR, QUOT, EXEC, TRAD or BOOK, got ACCT` (`got null`) | the same |
 
 A nested row names its leaf the same way: `alive` and `deltas` items must be `ORDR` or `QUOT` (`expected ORDR or QUOT on a book, got EXEC`), and an `executions` item `EXEC` or null.
@@ -363,7 +363,7 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
 | --- | --- | --- |
 | `orders`, `quotes`, `executions` | `select * exclude (alive, deltas, executions, bidlimits, asklimits) where marketdatakind = 'ORDR'`, `'QUOT'` and `'EXEC'` likewise | the category's leaves, undated and dated: the 48 flat columns |
 | `trades` | `select * exclude (...), unnest(executions) as execution where marketdatakind = 'TRAD'` | one row per execution, in the trade's held order: the trade's flat columns, then `execution.<column>` per operation-row column |
-| `books` | `select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null` | one row per book - a snapshot control states no `alive` - its entries, deltas and levels kept nested |
+| `books` | `select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null` | one row per book - a snapshot control states no `alive` - its entries, deltas and levels kept nested; over a table that stores a null list as an empty one a snapshot control's row is kept too, holding no entry, since only the reader can tell it by its identity |
 | `lifecycle` | `select * exclude (...) where crosscode = '<crosscode>' order by currunix` | every leaf of one chain in event order, tied instants by arrival; bounded to the one chain the `where` kept (the ordering collects); an order's, a quote's or an execution's chain is named by the code stored under its side, `BUYS:O-1001` |
 
 | Key | Rule |

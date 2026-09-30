@@ -2136,7 +2136,9 @@ impl FixMsg {
     /// When the fields say the message executed. Execution time is not the
     /// message time: it is stated directly by the crate column, then by
     /// FIX's execution-specific timestamp, a regulatory execution member, a
-    /// bridge's event timestamp, or the transaction time of an actual trade.
+    /// bridge's event timestamp, or the transaction time of an actual trade
+    /// where it states a clock - a `TransactTime(60)` stating a day alone
+    /// dates no execution, as it dates no event ([`Self::transact_unix`]).
     /// Corrections and cancels do not make their transaction clock an
     /// execution clock.
     fn stated_execution_instant(&self) -> Option<i64> {
@@ -2153,6 +2155,7 @@ impl FixMsg {
                 self.reports_execution()
                     .then(|| self.execution_instant(by_tag(60)))
                     .flatten()
+                    .filter(|unix| unix.rem_euclid(NANOS_PER_DAY) != 0)
             })
     }
 
@@ -2834,10 +2837,11 @@ impl FixMsg {
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
         // differently - a group one reading declares whole and another
-        // states member by member is one group, and a child stating null
-        // says nothing at all - so a code taken off the row's storage would
-        // make a message read back out of a row a different message. The
-        // entries are what the message says, and they are what this feeds.
+        // states member by member is one group, and a child stating null or
+        // a list holding nothing beside no stated count says nothing at all
+        // - so a code taken off the row's storage would make a message read
+        // back out of a row a different message. The entries are what the
+        // message says, and they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
     }
@@ -3021,7 +3025,9 @@ impl FixMsg {
 
     /// The row read as a tree: one entry per child it states, a group's
     /// occurrences and a component's members nested under the entry that
-    /// heads them; nothing for a child stating null.
+    /// heads them; nothing for a child stating null, nor for a list holding
+    /// nothing that no counter beside it states a count for - a group of no
+    /// occurrence is stated by its count.
     ///
     /// Derived on the first ask and kept until a write, so a consumer
     /// walking the message twice pays once and a stream that never asks
@@ -4177,7 +4183,16 @@ fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
 /// child through [`entry_of`], except the counter scalar beside the group
 /// it counts - at the root, in a component, in an occurrence alike - since
 /// a group's count is the group entry's own value and the counter child
-/// states nothing the entries do not already.
+/// states nothing the entries do not already; and except a list holding
+/// nothing that no counter beside it states the count of.
+///
+/// A group holding no occurrence is stated by its count alone: the parse
+/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
+/// empty list, which is the group's entry and re-emits. An empty list with
+/// no count stated beside it is the group absent - a table may store a null
+/// list as an empty one, and PyIceberg reads a null list of structs back as
+/// `[]` - so a row read back and settled again feeds its content code, its
+/// digest and the delivery a lifecycle folds it by as the parse did.
 fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
     let counters: Vec<i32> = fields
         .iter()
@@ -4191,11 +4206,14 @@ fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Ve
                 .0
                 .is_some_and(|tag| counters.contains(&tag))
     };
+    let unstated = |child: &Field, value: &Scalar| {
+        super::schema::is_unstated_group(registry, child, value, fields, values)
+    };
     let mut entries = Vec::new();
     for entry in fields
         .iter()
         .zip(values)
-        .filter(|(child, _)| !counted(child))
+        .filter(|(child, value)| !counted(child) && !unstated(child, value))
         .filter_map(|(child, value)| entry_of(registry, child, value))
     {
         // Sized once, on the first entry, for every child there is: a level

@@ -222,10 +222,21 @@ jobs:
     # elsewhere. `pythons` is every CPython the wheels claim, and the smoke
     # test installs them into each one; 3.12 is listed last so it is the
     # default `python` the job's own scripts run under. `smoke: false` marks
-    # the targets whose wheels cannot install on their own build host - musl
-    # wheels on a glibc runner - or where PyArrow, the hard runtime
-    # dependency, publishes no wheel to install against; the build is still
-    # shipped so the platform works the day its stack does.
+    # the target where PyArrow, the hard runtime dependency, publishes no
+    # wheel to install against; the build is still shipped so the platform
+    # works the day its stack does.
+    #
+    # A `musl` row smokes its wheels in musl CPythons from uv, run on the
+    # glibc runner by the musl loader the row installs. Those rows once
+    # smoked nothing, and 0.1.13 to 0.1.18 - every release since mimalloc
+    # became the allocator - shipped musllinux wheels no musl interpreter
+    # could import: mimalloc's thread-locals were initial-exec, which musl's
+    # loader refuses in a module it opens with `dlopen` (python/Cargo.toml).
+    # Their `pythons` leave out 3.10: uv's musl CPython 3.10 loads extension
+    # modules named `-linux-musl`, and a cp310 musllinux wheel - PyArrow's
+    # as much as this one - carries the `-linux-gnu` name the musllinux
+    # image's CPython 3.10 gives it, so neither imports there. The 3.10
+    # wheel is held to the fix by reading its extension instead.
     #
     # Both macOS targets build on Apple silicon. x86_64 is a cross build
     # there that pyo3 and maturin treat as native: a Mac CPython describes
@@ -303,8 +314,12 @@ jobs:
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11
             pythons: |
+              3.11
+              3.13
+              3.14
               3.12
-            smoke: false
+            smoke: true
+            musl: true
           - label: musllinux-aarch64
             runner: ubuntu-24.04-arm
             target: aarch64
@@ -312,8 +327,12 @@ jobs:
             manylinux: musllinux_1_2
             interpreters: 3.10 3.11
             pythons: |
+              3.11
+              3.13
+              3.14
               3.12
-            smoke: false
+            smoke: true
+            musl: true
           - label: macos-x86_64
             runner: macos-14
             target: x86_64
@@ -490,12 +509,40 @@ jobs:
               ), f"{wheel} carries {scripts}"
               print(f"{wheel} carries {scripts[0]}")
           EOF
+      # musl's loader refuses an initial-exec thread-local in a module it
+      # opens with `dlopen`, and what holds one is its relocations: the five
+      # `R_X86_64_TPOFF64` or `R_AARCH64_TLS_TPREL64` the 0.1.13 to 0.1.18
+      # musllinux extensions carried for mimalloc's thread-locals. The
+      # `STATIC_TLS` flag is no evidence - x86_64's GNU ld writes it beside
+      # them and the aarch64 image's writes none. The smoke test below
+      # imports the stable-ABI wheel; this reads every wheel's extension,
+      # the 3.10 one the smoke test cannot import included.
+      - name: The musl extensions hold no initial-exec thread-local
+        if: matrix.musl
+        shell: bash
+        run: |
+          for wheel in dist/*.whl; do
+            unpacked="$RUNNER_TEMP/tls/$(basename "$wheel" .whl)"
+            mkdir -p "$unpacked"
+            unzip -q -o "$wheel" 'yggdryl/_native*.so' -d "$unpacked"
+            initial=$(readelf -rW "$unpacked"/yggdryl/_native*.so \
+              | grep -cE 'R_(X86_64_TPOFF(32|64)|AARCH64_TLS_TPREL(64)?) ' || true)
+            echo "$wheel: $initial initial-exec TLS relocation(s)"
+            [ "$initial" -eq 0 ]
+          done
       # Every CPython the wheels claim installs one and runs the smoke test in
       # an environment of its own: 3.10 its version-specific wheel, 3.11 to
       # 3.14 the one stable-ABI wheel, which is what proves that wheel loads
       # on interpreters newer than the one that built it. On the macOS x86_64
       # row each is a self-contained x86_64 CPython from uv under Rosetta 2,
-      # because the x64 ones setup-python installs do not start there.
+      # because the x64 ones setup-python installs do not start there. On a
+      # musl row each is a musl CPython from uv, started by the musl loader
+      # installed first and held to musl by its own `HOST_GNU_TYPE`; PyArrow
+      # publishes musllinux wheels from 20.0 on, so the whole smoke test runs
+      # there.
+      - name: Install the musl loader
+        if: matrix.smoke && matrix.musl
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends musl
       - name: Smoke test the wheels
         if: matrix.smoke
         shell: bash
@@ -505,6 +552,8 @@ jobs:
             spec=$version
             if [ "${{ matrix.rosetta }}" = true ]; then
               spec="cpython-$version-macos-x86_64-none"
+            elif [ "${{ matrix.musl }}" = true ]; then
+              spec="cpython-$version-linux-${{ matrix.target }}-musl"
             fi
             venv="$RUNNER_TEMP/smoke-$version"
             uv venv --seed --python "$spec" "$venv"
@@ -513,6 +562,9 @@ jobs:
             "$python" -c "import platform, sys; print(sys.version, platform.machine()); assert '%d.%d' % sys.version_info[:2] == '$version'"
             if [ "${{ matrix.rosetta }}" = true ]; then
               "$python" -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
+            fi
+            if [ "${{ matrix.musl }}" = true ]; then
+              "$python" -c 'import sysconfig; host = sysconfig.get_config_var("HOST_GNU_TYPE"); assert host.endswith("-musl"), host'
             fi
             "$python" -m pip install "pyarrow>=18" "typing_extensions>=4.4" --only-binary ":all:"
             "$python" -m pip install --no-index --find-links dist yggdryl

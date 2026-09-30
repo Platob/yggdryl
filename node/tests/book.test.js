@@ -7,7 +7,7 @@
 
 const assert = require('node:assert/strict')
 const test = require('node:test')
-const { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } = require('node:fs')
+const { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const { pathToFileURL } = require('node:url')
@@ -1001,7 +1001,7 @@ test('serve rejects cleanly when the binary is absent', async () => {
   })
 })
 
-test('serve resolves on the endpoint line, and rejects with stderr or a line that is no URL', { skip: process.platform === 'win32' && 'a shell script stands in for the binary' }, async () => {
+test('serve resolves on the endpoint line, and rejects with the refusal printed, its stderr, or a line that is no URL', { skip: process.platform === 'win32' && 'a shell script stands in for the binary' }, async () => {
   const folder = mkdtempSync(join(tmpdir(), 'yggdryl-book-'))
   const script = (name, body) => {
     const path = join(folder, name)
@@ -1018,8 +1018,33 @@ test('serve resolves on the endpoint line, and rejects with stderr or a line tha
     assert.equal(status.signal, 'SIGTERM')
     assert.deepEqual(await started.close(), status, 'closing twice answers the same status')
 
-    const refusing = script('refusing', 'echo "a capture needs a table to land in" >&2\nexit 2')
-    await assert.rejects(book.serve({ bin: refusing, capture: ['x.log'] }), /yggdryl market serve exited with 2 before printing its endpoint: a capture needs a table to land in/)
+    // The command's own refusal: a `✗` line on stdout, after the warning report, and exit 1.
+    const refusing = script(
+      'refusing',
+      [
+        'echo "! 1 warning(s) while reading: what a file states that the reader could not keep as stated"',
+        'echo "· a declaration the reader dropped"',
+        'echo "✗ invalid record value at \$.capture: a capture needs a table to land in"',
+        'echo "  a second line of the same refusal"',
+        'exit 1',
+      ].join('\n'),
+    )
+    await assert.rejects(book.serve({ bin: refusing, capture: ['x.log'] }), (error) => {
+      assert.equal(error.message, '✗ invalid record value at $.capture: a capture needs a table to land in\n  a second line of the same refusal')
+      return true
+    })
+    // The workflow form of the warning report is passed over the same way, and stderr follows the refusal.
+    const annotated = script('annotated', 'echo "::warning title=fix reader::dropped"\necho "✗ refused" && echo "a note on stderr" >&2\nexit 1')
+    await assert.rejects(book.serve({ bin: annotated }), (error) => {
+      assert.equal(error.message, '✗ refused\na note on stderr')
+      return true
+    })
+    // The argument parser's refusal is on stderr alone.
+    const parser = script('parser', 'echo "error: invalid value \'0\' for \'--read-timeout <SECONDS>\'" >&2\nexit 2')
+    await assert.rejects(book.serve({ bin: parser }), (error) => {
+      assert.equal(error.message, "error: invalid value '0' for '--read-timeout <SECONDS>'")
+      return true
+    })
 
     const babbling = script('babbling', 'echo "hello"\nexec sleep 30')
     await assert.rejects(book.serve({ bin: babbling, tables: ['b=/tmp/b'] }), /expected the endpoint on the first line of yggdryl market serve, got "hello"/)
@@ -1029,6 +1054,31 @@ test('serve resolves on the endpoint line, and rejects with stderr or a line tha
   } finally {
     rmSync(folder, { recursive: true, force: true })
   }
+})
+
+/**
+ * The `yggdryl` a Cargo build of `cli/` leaves in the workspace's target folder
+ * (`cargo build -p yggdryl-cli`), or `YGGDRYL_BIN`; null when neither is there.
+ */
+function builtCommand() {
+  if (process.env.YGGDRYL_BIN) return process.env.YGGDRYL_BIN
+  const target = process.env.CARGO_TARGET_DIR ?? join(__dirname, '..', '..', 'target')
+  const bin = join(target, 'debug', process.platform === 'win32' ? 'yggdryl.exe' : 'yggdryl')
+  return existsSync(bin) ? bin : null
+}
+
+test('serve rejects with the refusal the command itself prints on stdout', { skip: builtCommand() === null && 'no yggdryl built: `cargo build -p yggdryl-cli` or YGGDRYL_BIN' }, async () => {
+  const bin = builtCommand()
+  // A capture with nothing to land in is refused before a port is taken.
+  await assert.rejects(book.serve({ bin, capture: ['bridge.log'] }), (error) => {
+    assert.equal(error.message, '✗ invalid record value at $.capture: a capture needs a table to land in: expected a TABLE beside --capture, got none')
+    return true
+  })
+  // What the argument parser refuses it writes on stderr, and that is the message.
+  await assert.rejects(book.serve({ bin, args: ['--read-timeout', '0'] }), (error) => {
+    assert.match(error.message, /^error: invalid value '0' for '--read-timeout <SECONDS>': 0 is not in 1\.\.=86400\n/)
+    return true
+  })
 })
 
 /** Whether the process `pid` is alive. */

@@ -58,16 +58,16 @@ def quote(
 
 
 def execution(
-    unix: int, ticker: str, code: str, side: str, quantity: int | None
+    unix: int, ticker: str, code: str, side: str, lastqty: int | None
 ) -> graph.ExecutionEvent:
-    """One execution of `ticker` going by `code`, stating `quantity` where given one."""
+    """One fill of `ticker` going by `code`, stating what it traded as its `lastqty` where given one."""
     return graph.ExecutionEvent(
         unix,
         crosscode=code,
         ticker=ticker,
         side=side,
         price=D("100"),
-        quantity=quantity,
+        lastqty=lastqty,
         state="FILLED",
     )
 
@@ -254,6 +254,63 @@ class TestCandleIterator:
         assert candle.askqty is None
         assert (candle.books, candle.executions, candle.volume.as_py()) == (2, 0, D(0))
         assert candle.as_py()["askopen"] is None
+
+    def test_the_volume_counts_each_trade_once_at_what_it_traded(self) -> None:
+        def fill(
+            unix: int, code: str, side: str, lastqty: int | None, **altids: str
+        ) -> graph.ExecutionEvent:
+            # The order's quantity; what the fill traded is its last quantity.
+            return graph.ExecutionEvent(
+                unix,
+                crosscode=code,
+                ticker="ACME",
+                side=side,
+                price=D("100"),
+                quantity=600,
+                lastqty=lastqty,
+                state="FILLED",
+                altids=altids,
+            )
+
+        # A fill delivered twice under one `EXECID`, the two sides of a trade
+        # under one `TRADEID`, and a fill stating no last quantity, which adds
+        # nothing whatever its order's quantity: six executions, three trades.
+        (candle,) = candles(
+            [
+                fill(10 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
+                fill(10 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
+                fill(11 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
+                fill(20 * SECOND, "S-1", "BUY", 100, EXECID="S-1", TRADEID="T-1"),
+                fill(20 * SECOND, "S-2", "SELL", 100, EXECID="S-2", TRADEID="T-1"),
+                fill(30 * SECOND, "X-3", "SELL", None),
+            ],
+            "1m",
+        )
+        assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 6, D(178))
+
+        # A trade report's two sides named by its `TRADEREPORTID` alone, and a
+        # fill naming its `EXECID` and the trade's `TRADEID` delivered again
+        # naming the `EXECID` alone: two trades.
+        (candle,) = candles(
+            [
+                fill(10 * SECOND, "SX-B", "BUY", 100, EXECID="SX-B", TRADEREPORTID="TR-1"),
+                fill(10 * SECOND, "SX-S", "SELL", 100, EXECID="SX-S", TRADEREPORTID="TR-1"),
+                fill(20 * SECOND, "E-1", "BUY", 57, EXECID="E-1", TRADEID="T-1"),
+                fill(21 * SECOND, "E-1", "BUY", 57, EXECID="E-1"),
+            ],
+            "1m",
+        )
+        assert (candle.executions, candle.volume.as_py()) == (4, D(157))
+
+        # Delivered again in the next minute, a fill adds nothing there.
+        first, second = candles(
+            [
+                fill(10 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
+                fill(70 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
+            ],
+            "1m",
+        )
+        assert (first.volume.as_py(), second.volume.as_py()) == (D(21), D(0))
 
     def test_a_reading_a_later_book_lacks_keeps_the_earlier_ones(self) -> None:
         # The ask side empties at the second book: the ask, the mid and the

@@ -700,6 +700,73 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
     assert_eq!(actual[0].kind(), MarketKind::SnapshotEvent);
 }
 
+/// `batch` as a table storing a null list as an empty one reads it back -
+/// PyIceberg reads a null list of structs back as `[]`: every null cell of
+/// every list column an empty list.
+fn with_null_lists_emptied(batch: &RecordBatch) -> RecordBatch {
+    let columns = batch
+        .columns()
+        .iter()
+        .map(|column| match column.as_any().downcast_ref::<ListArray>() {
+            Some(list) if list.null_count() > 0 => {
+                let arrow_schema::DataType::List(item) = list.data_type() else {
+                    unreachable!("a list array is a list");
+                };
+                for row in 0..list.len() {
+                    if list.is_null(row) {
+                        assert_eq!(list.value_length(row), 0, "a null list spans nothing");
+                    }
+                }
+                Arc::new(ListArray::new(
+                    Arc::clone(item),
+                    list.offsets().clone(),
+                    Arc::clone(list.values()),
+                    None,
+                )) as ArrayRef
+            }
+            _ => Arc::clone(column),
+        })
+        .collect();
+    let fields: Vec<arrow_schema::Field> = batch
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.as_ref().clone())
+        .collect();
+    RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
+}
+
+#[test]
+fn every_leaf_reads_back_where_a_table_stores_a_null_list_as_an_empty_one() {
+    // A snapshot control states no `alive` entries and a book states its
+    // entries, even none; read back empty, a control is told from an empty
+    // book by the identity it states - a book's folds in its sides - with
+    // or without a scope.
+    let mut unscoped = OrderEvent::at(13);
+    unscoped.set_crosscode("W-13".to_owned());
+    unscoped.finalize();
+    let mut expected = every_leaf();
+    expected.push(MarketData::from(SnapshotEvent::snapshot(&unscoped, None)));
+    let batch = written(expected.clone());
+    let emptied = with_null_lists_emptied(&batch);
+    assert_ne!(emptied, batch, "some leaf leaves a list null");
+    let alive = emptied.column_by_name("alive").unwrap();
+    assert_eq!(alive.null_count(), 0);
+    let actual = read(batch_reader(emptied.schema(), [emptied.clone()])).unwrap();
+    assert_eq!(
+        actual.iter().map(MarketData::kind).collect::<Vec<_>>(),
+        expected.iter().map(MarketData::kind).collect::<Vec<_>>()
+    );
+    for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
+        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+    }
+    assert_eq!(
+        actual[11].as_snapshot_event().unwrap().book().scope,
+        None,
+        "the unscoped control"
+    );
+}
+
 #[test]
 fn a_trade_requires_its_executions() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);

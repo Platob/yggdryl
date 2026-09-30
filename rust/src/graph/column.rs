@@ -75,8 +75,9 @@ pub enum EventColumn {
     CrossHashCode,
     /// The identity of the event this one follows, where it follows one.
     PrevUuid,
-    /// The event's place among the events of its instant: 0 for the first
-    /// its stream hands over there, one more for each next; null at 0.
+    /// Where the event stands in what it was read from, null at 0: a text
+    /// line's row number under `start_rownum`, a parsed or walked event's
+    /// place among the events of its instant.
     SeqNum,
     /// The identities this event was read from: provenance, never its chain.
     SrcUuids,
@@ -184,7 +185,7 @@ impl EventColumn {
             }
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
             Self::SeqNum => {
-                "The event's place among the events of its instant: 0 for the first its stream hands over there, one more for each next."
+                "Where the event stands in what it was read from, null at 0: a text line's row number under start_rownum, a parsed or walked event's place among the events of its instant."
             }
             Self::SrcUuids => {
                 "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."

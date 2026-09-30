@@ -824,6 +824,33 @@ pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<
     }
 }
 
+/// Whether `value`, held by the child `field` of the level `fields` and
+/// `values` make, is a list holding nothing that no counter of that level
+/// states a count for: no entry, the group absent.
+///
+/// A group holding no occurrence is stated by its count alone - the parse
+/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
+/// empty list, which is the group's entry - while a table may store a null
+/// list as an empty one: PyIceberg reads a null list of structs back as
+/// `[]`, its counter still null.
+pub(super) fn is_unstated_group(
+    registry: &FixRegistry,
+    field: &Field,
+    value: &crate::Scalar,
+    fields: &[Field],
+    values: &[crate::Scalar],
+) -> bool {
+    matches!(field.dtype(), DataType::Serie(_) | DataType::LargeSerie(_))
+        && value.as_serie().is_some_and(crate::Serie::is_empty)
+        && !tag_and_counter(registry, field).1.is_some_and(|counter| {
+            fields.iter().zip(values).any(|(held, stated)| {
+                !stated.is_null()
+                    && !held.dtype().is_nested()
+                    && tag_and_counter(registry, held).0 == Some(counter)
+            })
+        })
+}
+
 /// A digest of one root's shape: its children's names, datatype
 /// identifiers and nullability, nested children included, and never their
 /// metadata, which is verified by content wherever the digest is believed.
@@ -1460,7 +1487,10 @@ fn covers_members(
             return false;
         }
         owned[word] |= mask;
-        if !covers_entry(registry, &fields[index], &values[index], entry) {
+        // An empty list beside no count stated for it represents no entry.
+        if is_unstated_group(registry, &fields[index], &values[index], fields, values)
+            || !covers_entry(registry, &fields[index], &values[index], entry)
+        {
             return false;
         }
     }
@@ -2091,8 +2121,14 @@ impl super::FixMsg {
                         carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
                     }
                 }
+                // A list holding nothing beside no count stated for it is
+                // the group absent, at the root as inside an occurrence: a
+                // table may read a null list of structs back as `[]`, and
+                // the group pushed from it would state its counter as zero.
                 Some(tag) => {
-                    if !value.is_null() {
+                    if !value.is_null()
+                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
+                    {
                         projected.push((
                             planned.counter.unwrap_or(tag),
                             column.clone(),
@@ -2101,7 +2137,9 @@ impl super::FixMsg {
                     }
                 }
                 None if planned.counter.is_some() => {
-                    if !value.is_null() {
+                    if !value.is_null()
+                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
+                    {
                         projected.push((
                             planned.counter.expect("the guarded counter"),
                             column.clone(),
@@ -2419,7 +2457,18 @@ impl super::FixMsg {
                         {
                             continue;
                         }
+                        // A group holding no occurrence is stated by its
+                        // count alone: an empty list with no counter column
+                        // stating it represents no entry, so a stated zero
+                        // stays in the record.
                         if !source_field.dtype().is_nested()
+                            || is_unstated_group(
+                                self.registry(),
+                                column,
+                                &values[index],
+                                columns,
+                                values,
+                            )
                             || !covers_entry(self.registry(), column, &values[index], entry)
                         {
                             continue;

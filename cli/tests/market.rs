@@ -625,6 +625,69 @@ fn serve_prints_its_endpoint_first_and_answers_the_display_and_the_api() {
 }
 
 #[test]
+#[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
+fn serve_answers_an_empty_or_absent_folder_as_a_table_of_no_books() {
+    // A folder with nothing in it and a path where nothing is: served with
+    // no capture, each is a table holding no book, and reading it creates
+    // nothing.
+    let root = isolated("empty");
+    std::fs::create_dir_all(root.join("empty")).expect("isolated test folder");
+    let absent = root.join("absent");
+    let mut serve = command();
+    serve
+        .args(["market", "serve", "--bind", "127.0.0.1:0"])
+        .arg(format!("empty={}", root.join("empty").display()))
+        .arg(format!("absent={}", absent.display()));
+    let (served, endpoint, notes) = started(serve, 2);
+    for (note, table) in notes.iter().zip(["empty", "absent"]) {
+        assert!(
+            note.starts_with(&format!("· table {table} over file://"))
+                && !note.ends_with(", created"),
+            "{notes:?}"
+        );
+    }
+    assert_display(&endpoint);
+    for table in ["empty", "absent"] {
+        let tickers = served_as(
+            &endpoint,
+            &format!("api/tickers?table={table}"),
+            "application/json",
+        )
+        .text()
+        .expect("JSON");
+        assert_eq!(tickers, "[]", "{table}");
+        let range =
+            format!("table={table}&ticker=ACME&from=2026-01-05T10:00:00Z&to=2026-01-05T10:02:00Z");
+        for leaf in ["candles", "events", "audit.csv"] {
+            let url = Url::from_str(&endpoint)
+                .expect("a URL")
+                .join_reference(&format!("api/{leaf}?{range}"))
+                .expect("the reference resolves");
+            let answer = get(&url.to_string());
+            assert_eq!(answer.status(), Status::NOT_FOUND, "{url}");
+            let error = answer.scalar().expect("JSON");
+            assert_eq!(
+                error.as_struct().expect("an object")["error"],
+                Scalar::from(format!(
+                    "expected a ticker at \"{table}/ACME\", got nothing"
+                )),
+                "{url}"
+            );
+        }
+        let url = Url::from_str(&endpoint)
+            .expect("a URL")
+            .join_reference(&format!(
+                "api/book?table={table}&ticker=ACME&at=2026-01-05T10:01:00Z"
+            ))
+            .expect("the reference resolves");
+        assert_eq!(get(&url.to_string()).status(), Status::NOT_FOUND, "{url}");
+    }
+    drop(served);
+    assert!(!absent.exists(), "a reading creates nothing");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn serve_refuses_an_address_it_cannot_bind() {
     let root = books_root();
     refused(

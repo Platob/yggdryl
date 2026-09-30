@@ -177,7 +177,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     its occurrences. A key the dictionary does not resolve is no field: it
     lands in the row's `metadata` under its own spelling, and a row read back
     restores it, so the wire re-emits it. `write_arrow_reader` rebuilds each
-    message from the row and refuses a batch with no `fixentries`.
+    message from the row and refuses a batch with no `fixentries`. A group
+    holding no occurrence is stated by its count alone: `802=0` is an entry
+    and re-emits, while `[]` beside a null counter - what a table such as
+    PyIceberg reads an absent list back as - states nothing, so a row read
+    back keeps its `currhashcode` and folds with the delivery it was.
 13. The derived fills and the retired-field restatements are native code: a
     registry carries no rule of its own, and nothing in `FIX:` metadata
     changes how a field is filled.

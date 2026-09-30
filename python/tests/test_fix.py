@@ -994,6 +994,84 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed_batch)
 
 
+def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
+    seed_batch: FixRegistry,
+) -> None:
+    """A group of no occurrence is stated by its count alone.
+
+    ``802=0`` is the counter stating zero beside the empty list and re-emits;
+    PyIceberg reads a null list of structs back as ``[]`` beside a null
+    counter, which states nothing: each row read back and settled again from
+    its content is the message the parse wrote.
+    """
+    codec = _fixed_batch(seed_batch)
+    party = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|"
+    absent = _one(codec, party + b"10=0|")
+    counted = _one(codec, party + b"802=0|10=0|")
+    assert counted.currhashcode != absent.currhashcode
+    assert counted.digest() != absent.digest()
+    assert "|452=1|802=0|" in counted.into_text("|")
+    assert "802=" not in absent.into_text("|")
+
+    # A row that does not record its content code is settled from what it states.
+    wide = fix_schema(seed_batch)
+    narrow = Field(
+        "fix",
+        DataType.from_fields([column for column in wide if column.name != "currhashcode"]),
+        nullable=False,
+    )
+    parties = narrow.index_of("parties")
+    party_item = narrow.field_by_path("parties").dtype.field_at(0)
+    subids = party_item.index_of("partysubids")
+    count = party_item.index_of("nopartysubids")
+    for message, stated in ((absent, False), (counted, True)):
+        written = message.into_row(narrow).as_py()
+        assert (written[parties][0][count] is not None) is stated
+        assert (written[parties][0][subids] is not None) is stated
+        read_back = copy.deepcopy(written)
+        read_back[parties][0][subids] = []
+        for row in (written, read_back):
+            held = FixMsg.from_row(narrow, row, seed_batch)
+            assert held.currhashcode == message.currhashcode
+            assert held.curruuid == message.curruuid
+            assert ("|802=0|" in held.into_text("|")) is stated
+
+
+def test_a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
+    seed_batch: FixRegistry,
+) -> None:
+    """The same rule at the root: ``453=0`` is stated, ``parties = []`` beside no count is not.
+
+    A ``parties`` column read back as ``[]`` where the row held null - its
+    ``nopartyids`` still null, or no such column at all - is the group absent.
+    """
+    codec = _fixed_batch(seed_batch)
+    order = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|"
+    absent = _one(codec, order + b"10=0|")
+    counted = _one(codec, order + b"453=0|10=0|")
+    assert "|453=0|" in counted.into_text("|")
+    assert "453=" not in absent.into_text("|")
+
+    wide = fix_schema(seed_batch)
+    for dropped in ({"currhashcode"}, {"currhashcode", "nopartyids"}):
+        narrow = Field(
+            "fix",
+            DataType.from_fields([column for column in wide if column.name not in dropped]),
+            nullable=False,
+        )
+        parties = narrow.index_of("parties")
+        for message, stated in ((absent, False), (counted, True)):
+            written = message.into_row(narrow).as_py()
+            read_back = copy.deepcopy(written)
+            if read_back[parties] is None:
+                read_back[parties] = []
+            for row in (written, read_back):
+                held = FixMsg.from_row(narrow, row, seed_batch)
+                assert held.currhashcode == message.currhashcode
+                assert held.curruuid == message.curruuid
+                assert ("|453=" in held.into_text("|")) is stated
+
+
 def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry) -> None:
     """``lifecycle`` over batches: the same schema in and out, nothing reparsed."""
     codec = _fixed_batch(seed_batch)
@@ -3563,6 +3641,20 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
         lines[2].curruuid.as_py(),
         parsed[2].curruuid.as_py(),
     }
+
+
+def test_a_message_split_off_one_of_three_twins_names_its_own_report(seed: FixRegistry) -> None:
+    """Twins at one instant: each split execution names the report it came from."""
+    codec = _fixed(seed)
+    # Three identical fill reports share one identity before their places;
+    # each execution the parse splits off names its own report, never an
+    # earlier twin.
+    fill = b"8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|"
+    parsed = list(codec.parse_lines([fill, fill, fill]))
+    assert [message.seqnum for message in parsed] == [0, 1, 2, 3, 4, 5]
+    assert len({parsed[at].curruuid for at in (0, 2, 4)}) == 3
+    for report, split in ((0, 1), (2, 3), (4, 5)):
+        assert parsed[split].srcuuids == [parsed[report].curruuid]
 
 
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
