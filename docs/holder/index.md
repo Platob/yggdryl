@@ -5030,7 +5030,7 @@ cargo bench -p yggdryl --bench holder --features http3 -- http_ --noplot
 - On loopback HTTP/1.1 is the fastest version per request. HTTP/2 and HTTP/3 carry every thread's requests over one connection per origin, driven by the private runtime, so each request costs a hop between the calling thread and the runtime that eight parallel HTTP/1.1 connections do not; what they buy is one connection and one handshake where the round trip is long, which loopback never shows. The `slow fan-out` rows, where the origin's wait dominates, are the same on all three.
 
 ```bash
-python/.venv/bin/python -m maturin develop --release -m python/Cargo.toml
+VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop --release -m python/Cargo.toml
 python/.venv/bin/python python/benchmarks/http_session.py
 ```
 

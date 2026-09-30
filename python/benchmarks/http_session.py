@@ -2,8 +2,8 @@
 
 Run against a release extension::
 
-    python -m maturin develop --release -m python/Cargo.toml
-    python python/benchmarks/http_session.py
+    VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop --release -m python/Cargo.toml
+    python/.venv/bin/python python/benchmarks/http_session.py
 
 The origin is ``yggdryl.http.Server`` in a process of its own - native
 threads, so it never competes with either client for the interpreter and

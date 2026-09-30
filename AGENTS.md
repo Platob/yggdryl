@@ -170,7 +170,7 @@ passes.
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features s3` | only when the change is under that gate |
-| the Python view redirects | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built; maturin finds the environment it installs into by `VIRTUAL_ENV` or a `.venv` in the working folder or above it, never by the interpreter running it, so the root needs the variable |
+| the Python view redirects | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built; maturin finds the environment it installs into by `VIRTUAL_ENV`, `CONDA_PREFIX` or a `.venv` in the working folder or above it, never by the interpreter running it, so the root needs the variable |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language under `docs/` and `skills/` - there is no per-page filter, so this is a pre-push check, not a loop |
@@ -1754,7 +1754,7 @@ and not a silent update.
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
 | Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/yggdryl` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
-| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
+| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, the `yggdryl` command built so the book tests drive it rather than skip, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
 | Documentation examples | every fenced block under `docs/` and `skills/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
 
@@ -1957,6 +1957,7 @@ Before pushing a Node change, the audit and the files the build generates:
 ```bash
 npm run --prefix node test:package:debug                 # build + loader/type audit + package files
 git diff --exit-code -- node/index.js node/index.d.ts    # generated loader and declarations current
+cargo build --locked -p yggdryl-cli                      # the command node/tests/book.test.js spawns
 npm test --prefix node                                   # node --test plus tsc --noEmit
 node scripts/build_docs_playground.js --check            # generated docs manifests not stale
 node scripts/build_docs_fix.js --check

@@ -78,7 +78,7 @@ Python development:
 ```console
 python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
-python/.venv/Scripts/python -m maturin develop --manifest-path python/Cargo.toml
+VIRTUAL_ENV=python/.venv python/.venv/Scripts/python -m maturin develop --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
 python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```

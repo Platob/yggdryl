@@ -27,6 +27,7 @@ Every check runs from the repository root, which owns the Cargo workspace.
     ```bash
     npm ci --prefix node
     npm run --prefix node build:debug
+    cargo build --locked -p yggdryl-cli   # the command node/tests/book.test.js spawns
     npm test --prefix node
     ```
 
