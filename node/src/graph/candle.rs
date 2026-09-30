@@ -47,7 +47,7 @@ fn reading_of(held: Option<Ohlc>) -> Option<CandleReading> {
 /// One OHLC of one book over one bucket: what the books of one cross code
 /// whose instants fell in `[start, end)` read at their best bid, their best
 /// ask, their midpoint and their spread, the quantities resting at the
-/// touch when the bucket closed, and what executed in it. Built by
+/// touch when the bucket closed, and what traded in it. Built by
 /// `CandleIterator`, or read back from a row through `fromScalar`.
 #[napi(js_name = "Candle")]
 #[derive(Clone)]
@@ -151,8 +151,10 @@ impl JsCandle {
         decimal_text(self.inner.askqty)
     }
 
-    /// The exact sum of the quantities the bucket's executions state, as
-    /// decimal text; `'0'` where none did.
+    /// What traded in the bucket, as decimal text: each trade its executions
+    /// report counted once, at the last quantity - else the quantity - it
+    /// traded, a trade being named by `TRADEID`, else `EXECID`, else the
+    /// base of the cross code; `'0'` where nothing traded.
     #[napi(getter)]
     pub fn volume(&self) -> String {
         self.inner.volume.to_string()
@@ -164,7 +166,8 @@ impl JsCandle {
         exact_f64(self.inner.books, "books")
     }
 
-    /// How many executions the folded books carried.
+    /// How many executions the folded books carried, a trade they carried
+    /// twice counted twice.
     #[napi(getter)]
     pub fn executions(&self) -> Result<f64> {
         exact_f64(self.inner.executions, "executions")

@@ -25,7 +25,7 @@ use crate::{Failed, Pulled, python_failure, python_hash, value_error};
 /// One OHLC of one book over one bucket: what the books of one cross code
 /// whose instants fell in `[start, end)` read at their best bid, their best
 /// ask, their midpoint and their spread, the quantities resting at the touch
-/// when the bucket closed, and what executed in it. Immutable; built by
+/// when the bucket closed, and what traded in it. Immutable; built by
 /// `CandleIterator`, `candles` or `from_scalar`.
 #[pyclass(
     name = "Candle",
@@ -136,14 +136,17 @@ impl PyCandle {
         self.inner.books
     }
 
-    /// How many executions the folded books carried.
+    /// How many executions the folded books carried, a trade they carried
+    /// twice counted twice.
     #[getter]
     fn executions(&self) -> u64 {
         self.inner.executions
     }
 
-    /// The exact sum of the quantities those executions state, as a decimal;
-    /// one stating none adds nothing.
+    /// What traded in the bucket, as a decimal: each trade those executions
+    /// report counted once, at the last quantity - else the quantity - it
+    /// traded, a trade being named by `TRADEID`, else `EXECID`, else the
+    /// base of the cross code.
     #[getter]
     fn volume(&self) -> PyScalar {
         decimal_scalar(self.inner.volume)

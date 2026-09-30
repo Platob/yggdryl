@@ -4,12 +4,14 @@
 //! its field, its scalar, the options that bucket instants in a zone and
 //! the walk that folds books into candles.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{BookEvent, Element, Event, Market};
+use super::market::unsided_crosscode;
+use super::{BookEvent, Element, Event, ExecutionEvent, Market, Operation};
 use crate::arrow::BatchReader;
 use crate::text::expected_got;
 use crate::{
@@ -68,6 +70,15 @@ const NAMES: [&str; 25] = [
 
 /// The path a refusal of the stream's order or range is located at.
 const BOOK_UNIX: &str = "$.book.currunix";
+
+/// The alternate identifier every side of one trade states - FIX's
+/// `TradeID(1003)`, which a trade report's parse leaves on each execution
+/// it splits off - so it names the trade the sides are one of.
+const TRADE_ID: &str = "TRADEID";
+
+/// The alternate identifier every statement of one execution states - FIX's
+/// `ExecID(17)` - so a fill delivered twice names one execution.
+const EXEC_ID: &str = "EXECID";
 
 /// One reading's open, high, low and close over a bucket.
 ///
@@ -133,7 +144,7 @@ impl Ohlc {
 /// One OHLC of one book over one bucket: what the books of one cross code
 /// whose instants fell in `[start, end)` read at their best bid, their best
 /// ask, their midpoint and their spread, the quantities resting at the
-/// touch when the bucket closed, and what executed in it.
+/// touch when the bucket closed, and what traded in it.
 ///
 /// A candle is a value of its own rather than a datatype: its datatype is
 /// the struct [`Self::field`] declares, its scalar the named struct
@@ -165,10 +176,24 @@ pub struct Candle {
     pub askqty: Option<Decimal>,
     /// How many books folded into the bucket.
     pub books: u64,
-    /// How many executions the folded books carried.
+    /// How many executions the folded books carried, a trade they carried
+    /// twice counted twice.
     pub executions: u64,
-    /// The exact sum of the quantities those executions state, one stating
-    /// none adding nothing.
+    /// What traded in the bucket: the exact sum, over the trades those
+    /// executions report, of the quantity each traded - an execution's
+    /// [`Market::get_lastqty`], else its [`Market::get_quantity`], one
+    /// stating neither adding nothing - each trade counted once, at the
+    /// largest quantity any of its executions states.
+    ///
+    /// An execution reports the trade its [`Operation::get_altids`] name
+    /// under `TRADEID`, which every side of one trade states; else the
+    /// execution they name under `EXECID`, which every statement of one fill
+    /// states; else the base of its cross code, which the two sides of one
+    /// identifier share (`BUYS:X`, `SELL:X`). So the two sides of a trade
+    /// report and a fill delivered twice count once, while fills naming
+    /// nothing in common - even at one instant, price and quantity - are
+    /// trades of their own. A candle knows the trades of its own bucket
+    /// only: one stated again in a later bucket counts there too.
     pub volume: Decimal,
 }
 
@@ -665,6 +690,40 @@ impl Bucket {
     }
 }
 
+/// The trade an execution reports, as [`Candle::volume`] names it: every
+/// execution naming one trade is a statement of it.
+#[derive(Debug, Eq, Hash, PartialEq)]
+enum Trade {
+    /// The trade identifier every side of it states: `TRADEID`.
+    Traded(SmolStr),
+    /// The execution every statement of it names: `EXECID`, else the base
+    /// of its cross code.
+    Executed(SmolStr),
+}
+
+impl Trade {
+    /// The trade `execution` reports.
+    fn of(execution: &ExecutionEvent) -> Self {
+        let altids = execution.get_altids();
+        match altids.get(TRADE_ID) {
+            Some(trade) => Self::Traded(SmolStr::new(trade)),
+            None => Self::Executed(SmolStr::new(
+                altids
+                    .get(EXEC_ID)
+                    .unwrap_or_else(|| unsided_crosscode(execution.get_crosscode())),
+            )),
+        }
+    }
+}
+
+/// The refusal of a volume `sum` spells past `decimal`.
+fn past_decimal(sum: SmolStr) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$.candle.volume"),
+        reason: expected_got("a volume within decimal", sum),
+    }
+}
+
 /// The candle of one cross code as it is folded.
 #[derive(Debug)]
 struct Fold {
@@ -678,6 +737,11 @@ struct Fold {
     books: u64,
     executions: u64,
     volume: Decimal,
+    /// The quantity each trade of the bucket counts at: one entry per
+    /// distinct trade the books reported with a quantity, held so a later
+    /// statement of one adds only what it states past it, and dropped with
+    /// the fold when the bucket closes.
+    trades: HashMap<Trade, Decimal>,
 }
 
 impl Fold {
@@ -694,11 +758,12 @@ impl Fold {
             books: 0,
             executions: 0,
             volume: Decimal::ZERO,
+            trades: HashMap::new(),
         }
     }
 
     /// Folds one more book: its readings, its touch quantities, its
-    /// executions and their volume.
+    /// executions and what they traded.
     fn fold(&mut self, book: &BookEvent) -> Result<()> {
         Ohlc::folded(&mut self.bid, book.best_price(Side::Buy));
         Ohlc::folded(&mut self.ask, book.best_price(Side::Sell));
@@ -708,17 +773,37 @@ impl Fold {
         self.askqty = book.best_quantity(Side::Sell);
         self.books += 1;
         self.executions += book.executions().len() as u64;
-        for quantity in book.executions().iter().filter_map(Market::get_quantity) {
-            self.volume =
-                self.volume
+        book.executions()
+            .iter()
+            .try_for_each(|execution| self.traded(execution))
+    }
+
+    /// Counts what `execution` traded into the volume: the first statement
+    /// of its trade adds its quantity, a later one what it states past the
+    /// largest before it, any other nothing.
+    fn traded(&mut self, execution: &ExecutionEvent) -> Result<()> {
+        let Some(quantity) = execution.get_lastqty().or_else(|| execution.get_quantity()) else {
+            return Ok(());
+        };
+        let volume = self.volume;
+        match self.trades.entry(Trade::of(execution)) {
+            Entry::Vacant(slot) => {
+                self.volume = volume
                     .checked_add(quantity)
-                    .ok_or_else(|| Error::InvalidRecord {
-                        path: SmolStr::new_static("$.candle.volume"),
-                        reason: expected_got(
-                            "a volume within decimal",
-                            format_smolstr!("{} + {quantity}", self.volume),
-                        ),
+                    .ok_or_else(|| past_decimal(format_smolstr!("{volume} + {quantity}")))?;
+                slot.insert(quantity);
+            }
+            Entry::Occupied(mut slot) if quantity > *slot.get() => {
+                let counted = *slot.get();
+                self.volume = quantity
+                    .checked_sub(counted)
+                    .and_then(|raised| volume.checked_add(raised))
+                    .ok_or_else(|| {
+                        past_decimal(format_smolstr!("{volume} + ({quantity} - {counted})"))
                     })?;
+                slot.insert(quantity);
+            }
+            Entry::Occupied(_) => {}
         }
         Ok(())
     }
@@ -748,7 +833,9 @@ impl Fold {
 /// Books must arrive sorted by [`Event::get_currunix`]; a regression is
 /// refused at `$.book.currunix`. The candles of a bucket are emitted, in
 /// cross-code order, when the stream moves past the bucket and at its end;
-/// an empty bucket yields no candle. An error - the source's, a regression,
+/// an empty bucket yields no candle. The open bucket holds one fold per
+/// cross code, each with the trades its books reported ([`Candle::volume`]),
+/// until the bucket closes. An error - the source's, a regression,
 /// an instant the zone cannot read, a volume past `decimal` - ends the walk
 /// after the candles of every bucket the stream moved past: the bucket that
 /// was open is dropped rather than emitted incomplete, the error is the last

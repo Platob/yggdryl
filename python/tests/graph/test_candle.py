@@ -255,6 +255,39 @@ class TestCandleIterator:
         assert (candle.books, candle.executions, candle.volume.as_py()) == (2, 0, D(0))
         assert candle.as_py()["askopen"] is None
 
+    def test_the_volume_counts_each_trade_once_at_what_it_traded(self) -> None:
+        def fill(
+            unix: int, code: str, side: str, lastqty: int | None, **altids: str
+        ) -> graph.ExecutionEvent:
+            # The order's quantity; what the fill traded is its last quantity.
+            return graph.ExecutionEvent(
+                unix,
+                crosscode=code,
+                ticker="ACME",
+                side=side,
+                price=D("100"),
+                quantity=600,
+                lastqty=lastqty,
+                state="FILLED",
+                altids=altids,
+            )
+
+        # A fill delivered twice under one `EXECID`, the two sides of a trade
+        # under one `TRADEID`, and a fill stating no last quantity, which
+        # counts the order's: six executions, four trades.
+        (candle,) = candles(
+            [
+                fill(10 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
+                fill(10 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
+                fill(11 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
+                fill(20 * SECOND, "S-1", "BUY", 100, EXECID="S-1", TRADEID="T-1"),
+                fill(20 * SECOND, "S-2", "SELL", 100, EXECID="S-2", TRADEID="T-1"),
+                fill(30 * SECOND, "X-3", "SELL", None),
+            ],
+            "1m",
+        )
+        assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 6, D(778))
+
     def test_a_reading_a_later_book_lacks_keeps_the_earlier_ones(self) -> None:
         # The ask side empties at the second book: the ask, the mid and the
         # spread keep what the first book read, the touch quantities are the

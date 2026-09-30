@@ -284,7 +284,7 @@ curl 'http://127.0.0.1:34385/api/tickers?table=books'
  {"books":1,"crosscode":"XAU/USD","from":"2026-08-14T14:52:55.000000000Z","ticker":"XAU/USD","to":"2026-08-14T14:52:56.000000000Z"}]
 ```
 
-Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, one execution of `300`:
+Holcim's day as hourly candles in Zurich - a naive `from` and `to` are Zurich wall clocks - is one candle, the `14:00` bucket, whose two books read a bid of `72.3` and no ask, and one execution that traded `235` - its last quantity, out of an order of `300` ([volume](candle.md#volume)):
 
 ```bash
 curl 'http://127.0.0.1:34385/api/candles?table=books&ticker=HOLN&from=2026-08-14T00:00:00&to=2026-08-15T00:00:00&tz=Europe/Zurich&interval=1h'
@@ -293,7 +293,7 @@ curl 'http://127.0.0.1:34385/api/candles?table=books&ticker=HOLN&from=2026-08-14
 ```json
 {"candles":[{"ask":null,"askqty":null,"bid":{"close":"72.3","high":"72.3","low":"72.3","open":"72.3"},"bidqty":"50","books":2,
              "end":"2026-08-14T15:00:00.000000000+02:00[Europe/Zurich]","executions":1,"mid":null,"spread":null,
-             "start":"2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]","volume":"300"}],
+             "start":"2026-08-14T14:00:00.000000000+02:00[Europe/Zurich]","volume":"235"}],
  "from":"2026-08-14T00:00:00.000000000+02:00[Europe/Zurich]","interval":"1h","table":"books","ticker":"HOLN","timezone":"Europe/Zurich",
  "to":"2026-08-15T00:00:00.000000000+02:00[Europe/Zurich]"}
 ```

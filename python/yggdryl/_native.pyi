@@ -8063,7 +8063,7 @@ class Candle:
     What the books of one cross code whose instants fell in ``[start, end)``
     read at their best bid, their best ask, their midpoint and their spread,
     the quantities resting at the touch when the bucket closed, and what
-    executed in it. Immutable; built by ``CandleIterator``, ``candles`` or
+    traded in it. Immutable; built by ``CandleIterator``, ``candles`` or
     ``from_scalar``, never directly.
     """
 
@@ -8095,10 +8095,11 @@ class Candle:
     @property
     def books(self) -> int: ...
     @property
-    def executions(self) -> int: ...
+    def executions(self) -> int:
+        """How many executions the books carried, a trade they carried twice counted twice."""
     @property
     def volume(self) -> Scalar:
-        """The exact sum of the quantities the executions state, as a decimal."""
+        """What traded, as a decimal: each trade once, at its last quantity, else its quantity."""
     @staticmethod
     def field() -> Field:
         """The required struct ``candle`` every candle row is laid out under."""

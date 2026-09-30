@@ -2,10 +2,12 @@
 //! options that align buckets to a zone, the walk that emits candles and
 //! the Arrow face a candle has.
 
+use std::collections::BTreeMap;
+
 use smol_str::SmolStr;
 use yggdryl::graph::{
     BookEvent, BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent,
-    Market, MarketData, Ohlc, QuoteEvent,
+    Market, MarketData, Ohlc, Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
 use yggdryl::{ArrowCastOptions, Decimal, Scalar, Serie, Timezone};
 
@@ -62,6 +64,42 @@ fn execution(unix: i64, ticker: &str, code: &str, side: &str, quantity: Option<i
     let mut execution = MarketData::from(ExecutionEvent::from(&order));
     execution.finalize();
     execution
+}
+
+/// One finalized fill of `ACME` going by `code` on `side`: the order's
+/// `quantity` and the `lastqty` the fill traded where it is given them, and
+/// the alternate identifiers `altids` name it by.
+fn fill(
+    unix: i64,
+    code: &str,
+    side: &str,
+    (quantity, lastqty): (Option<i64>, Option<i64>),
+    altids: &[(&str, &str)],
+) -> ExecutionEvent {
+    let mut fill = ExecutionEvent::at(unix);
+    fill.set_crosscode(code.to_owned());
+    fill.set_ticker(Some(SmolStr::new("ACME")));
+    fill.set_side(yggdryl::Side::read(side).unwrap());
+    fill.set_price(Some(Decimal::from_int(100)));
+    fill.set_quantity(quantity.map(Decimal::from_int));
+    fill.set_lastqty(lastqty.map(Decimal::from_int));
+    fill.set_state(yggdryl::State::read("Filled").unwrap());
+    for (key, id) in altids {
+        assert!(fill.insert_altid(key, id).unwrap());
+    }
+    fill.finalize();
+    fill
+}
+
+/// The minute candles `fills` fold into, as `(executions, volume)` each.
+fn traded(fills: Vec<ExecutionEvent>) -> Vec<(u64, Decimal)> {
+    candles(
+        fills.into_iter().map(MarketData::from).collect(),
+        CandleOptions::new(MINUTE).unwrap(),
+    )
+    .iter()
+    .map(|candle| (candle.executions, candle.volume))
+    .collect()
 }
 
 /// The books `operations` fold into, in stream order.
@@ -292,6 +330,232 @@ fn a_one_sided_book_states_no_mid_or_spread() {
     assert_eq!(
         (candle.books, candle.executions, candle.volume),
         (2, 0, Decimal::ZERO)
+    );
+}
+
+#[test]
+fn the_volume_is_what_each_fill_traded() {
+    // An order of 300 filled 235 - the Holcim fill of the bridge capture -
+    // traded 235: its last quantity, never the order's own. A fill stating
+    // no last quantity counts the quantity it states, and one stating
+    // neither adds nothing.
+    assert_eq!(
+        traded(vec![
+            fill(10 * SECOND, "E1", "Buy", (Some(300), Some(235)), &[]),
+            fill(20 * SECOND, "E2", "Buy", (Some(4), None), &[]),
+            fill(30 * SECOND, "E3", "Sell", (None, None), &[]),
+        ]),
+        [(3, Decimal::from_int(239))]
+    );
+}
+
+#[test]
+fn a_fill_delivered_twice_counts_once() {
+    // The ABB order of the bridge capture: three fills of one order at one
+    // instant, the second delivered again - one `ExecID(17)`, the same 57 -
+    // in a later book of the same minute. Four executions, three trades.
+    let abb = |unix: i64, exec: &str, lastqty: i64| {
+        fill(
+            unix,
+            exec,
+            "Buy",
+            (Some(600), Some(lastqty)),
+            &[("EXECID", exec), ("ORDERID", "00079132557GLXC0")],
+        )
+    };
+    let fills = vec![
+        abb(10 * SECOND, "00064703457GBYZ0", 21),
+        abb(10 * SECOND, "00064703467GBYZ0", 57),
+        abb(10 * SECOND, "00064703468GBYZ0", 75),
+        abb(11 * SECOND, "00064703467GBYZ0", 57),
+    ];
+    let folded = books(fills.iter().cloned().map(MarketData::from).collect());
+    assert_eq!(
+        folded
+            .iter()
+            .map(|book| book.executions().len())
+            .collect::<Vec<_>>(),
+        [3, 1],
+        "the book holds the fill twice"
+    );
+    assert_eq!(traded(fills.clone()), [(4, Decimal::from_int(153))]);
+
+    // A candle knows its own bucket's trades: delivered again a minute
+    // later, the fill counts in that minute too.
+    let mut later = fills;
+    later.push(abb(70 * SECOND, "00064703467GBYZ0", 57));
+    assert_eq!(
+        traded(later),
+        [(4, Decimal::from_int(153)), (1, Decimal::from_int(57))]
+    );
+}
+
+#[test]
+fn the_sides_of_one_trade_count_once() {
+    // A trade report's parse splits one execution off per side, each under
+    // its own `SideExecID(1427)` and the trade's `TradeID(1003)`, which
+    // names the trade before the execution identifiers do.
+    let side = |unix: i64, side: &str, exec: &str, trade: &str, lastqty: i64| {
+        fill(
+            unix,
+            exec,
+            side,
+            (None, Some(lastqty)),
+            &[("EXECID", exec), ("TRADEID", trade)],
+        )
+    };
+    assert_eq!(
+        traded(vec![
+            side(10 * SECOND, "Buy", "S-1", "T-1", 100),
+            side(10 * SECOND, "Sell", "S-2", "T-1", 100),
+        ]),
+        [(2, Decimal::from_int(100))]
+    );
+
+    // A buyer against two sellers counts at the largest quantity any side
+    // states, whichever book states it first: a later side stating more
+    // raises the trade, one stating less adds nothing.
+    assert_eq!(
+        traded(vec![
+            side(10 * SECOND, "Sell", "S-3", "T-2", 60),
+            side(20 * SECOND, "Buy", "S-4", "T-2", 100),
+            side(30 * SECOND, "Sell", "S-5", "T-2", 40),
+        ]),
+        [(3, Decimal::from_int(100))]
+    );
+
+    // With no alternate identifier, the two sides of one identifier -
+    // `BUYS:X-1` and `SELL:X-1` - are one trade; fills naming nothing in
+    // common are two, even at one instant, price and quantity, and a
+    // `TRADEID` and an `EXECID` spelled alike name two.
+    let bare = |side: &str, code: &str| fill(10 * SECOND, code, side, (None, Some(50)), &[]);
+    let crossed = vec![bare("Buy", "X-1"), bare("Sell", "X-1")];
+    assert_eq!(
+        crossed
+            .iter()
+            .map(Element::get_crosscode)
+            .collect::<Vec<_>>(),
+        ["BUYS:X-1", "SELL:X-1"]
+    );
+    assert_eq!(traded(crossed), [(2, Decimal::from_int(50))]);
+    assert_eq!(
+        traded(vec![bare("Buy", "X-2"), bare("Buy", "X-3")]),
+        [(2, Decimal::from_int(100))]
+    );
+    assert_eq!(
+        traded(vec![
+            fill(
+                10 * SECOND,
+                "X-4",
+                "Buy",
+                (None, Some(10)),
+                &[("EXECID", "Z")]
+            ),
+            fill(
+                10 * SECOND,
+                "X-5",
+                "Buy",
+                (None, Some(10)),
+                &[("TRADEID", "Z")]
+            ),
+        ]),
+        [(2, Decimal::from_int(20))]
+    );
+}
+
+#[test]
+fn a_composite_trade_counts_once_where_its_sides_name_it() {
+    // A book lists a `TradeEvent`'s executions as its own: sides naming the
+    // trade count it once, sides naming nothing in common twice.
+    let mut root = OrderEvent::at(10 * SECOND);
+    root.set_crosscode("T-9".to_owned());
+    root.set_ticker(Some(SmolStr::new("ACME")));
+    let composite = |named: bool| {
+        let altids: &[(&str, &str)] = if named { &[("TRADEID", "T-9")] } else { &[] };
+        let trade = TradeEvent::from_parts(
+            &root,
+            vec![
+                fill(10 * SECOND, "E-BUYS", "Buy", (None, Some(30)), altids),
+                fill(10 * SECOND, "E-SELL", "Sell", (None, Some(30)), altids),
+            ],
+        )
+        .unwrap();
+        candles(
+            vec![MarketData::from(trade)],
+            CandleOptions::new(MINUTE).unwrap(),
+        )
+        .iter()
+        .map(|candle| (candle.executions, candle.volume))
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(composite(true), [(2, Decimal::from_int(30))]);
+    assert_eq!(composite(false), [(2, Decimal::from_int(60))]);
+}
+
+#[test]
+fn the_bridge_capture_counts_what_each_fill_traded_once() {
+    use yggdryl::holder::Buffer;
+    use yggdryl::text::{TextOptions, read_text_lines};
+    use yggdryl::{FixCodec, FixRegistry, Url};
+
+    // The capture read as `yggdryl market serve --capture` reads it: its
+    // lines under the bridge's row header in Zurich time, walked, folded
+    // into books one per event, then hourly candles in UTC.
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry =
+        FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(root).unwrap()).unwrap();
+    let mut reading = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .unwrap()
+        .with_timezone(zurich());
+    reading.start_rownum = Some(1);
+    reading.parse_mimetype = true;
+    let codec = FixCodec::new(std::sync::Arc::new(registry)).with_capture_names(
+        reading
+            .capture_names()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>(),
+    );
+    let log = Buffer::from_bytes(include_bytes!("../fix/ulbridge.log").to_vec())
+        .with_media_type(Url::from_str("file:///ulbridge.log").unwrap().media_type());
+    let walked = codec
+        .lifecycle(codec.parse_text_lines(read_text_lines(&log, &reading).unwrap()))
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    let books = BookIterator::new(codec.market_data(walked), 0)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    let hourly = CandleIterator::new(
+        books.into_iter().map(Ok),
+        CandleOptions::from_spelling("1h").unwrap(),
+    )
+    .map(|candle| {
+        let candle = candle.unwrap();
+        (
+            candle.crosscode.to_string(),
+            (candle.executions, candle.volume.to_string()),
+        )
+    })
+    .collect::<BTreeMap<_, _>>();
+    // Holcim's order of 300 filled 235; ABB's four executions are three
+    // fills - 21, 57 and 75 - the 57 delivered twice under one `ExecID`;
+    // `1605`'s order of 3,000,000 filled 24,000; the gold trade capture's
+    // one side states a last quantity of zero.
+    let expected = [
+        ("1605", (1, "24000")),
+        ("2454", (0, "0")),
+        ("ABBN.S", (4, "153")),
+        ("EXAMPLECO.S", (1, "36")),
+        ("HOLN", (1, "235")),
+        ("XAU/USD", (1, "0")),
+    ];
+    assert_eq!(
+        hourly,
+        expected
+            .into_iter()
+            .map(|(code, (executions, volume))| (code.to_owned(), (executions, volume.to_owned())))
+            .collect::<BTreeMap<_, _>>()
     );
 }
 
