@@ -14,7 +14,8 @@ use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, StructType, UnionMode,
+    ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, SortOptions, StructType,
+    UnionMode,
 };
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
@@ -125,6 +126,44 @@ fn states_column() -> Serie {
         (0..ROWS).map(|index| Scalar::from(if index / 8 % 2 == 0 { "open" } else { "closed" })),
     )
     .expect("a run-end column")
+}
+
+/// `ROWS` 64-bit values in a fixed shuffle - a linear congruential walk of
+/// the row positions - as a column holding its buffer alone, so a sort has
+/// work to do and an in-place sort rewrites a buffer it owns.
+fn shuffled_column() -> Serie {
+    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let values: Vec<i64> = (0..ROWS)
+        .map(|_| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            i64::try_from(state >> 33).expect("31 bits fit i64")
+        })
+        .collect();
+    Serie::from_arrow_array(
+        Some(&price_field()),
+        Arc::new(Int64Array::from(values)),
+        ArrowCastOptions::new(),
+    )
+    .expect("an int64 column")
+}
+
+/// `ROWS` venue codes cycling through sixteen, as a UTF-8 column.
+fn venues_column() -> Serie {
+    const VENUES: [&str; 16] = [
+        "XNAS", "XNYS", "XPAR", "XLON", "XETR", "XAMS", "XBRU", "XMIL", "XSWX", "XTKS", "XHKG",
+        "XASX", "XTSE", "XMAD", "XSTO", "XCSE",
+    ];
+    let values: Vec<&str> = (0..ROWS)
+        .map(|index| VENUES[(index * 7 + index / 3) % VENUES.len()])
+        .collect();
+    Serie::from_arrow_array(
+        Some(&Field::new("venue", DataType::utf8(), false)),
+        Arc::new(StringArray::from(values)),
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 column")
 }
 
 /// One nullable union of an identifier and a symbol, in `mode`.
@@ -291,6 +330,51 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+
+    // Ordering. A primitive column sorts its native slice, a string column
+    // goes through the row format; `as_sorted` on a column held alone sorts
+    // where it stands, so its distance from `into_sorted` is the take it
+    // does not do; `partition_by` over the sorted keys cuts zero-copy slices.
+    for (name, column) in [("int64", shuffled_column()), ("utf8", venues_column())] {
+        group.bench_function(format!("sort_indices/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&column)
+                    .sort_indices(SortOptions::default())
+                    .expect("an order")
+            });
+        });
+        group.bench_function(format!("into_sorted/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&column)
+                    .into_sorted(SortOptions::default())
+                    .expect("sorted")
+            });
+        });
+        group.bench_function(format!("as_sorted/{name}"), |bencher| {
+            bencher.iter_batched(
+                || column.clone().into_reversed(),
+                |mut held| {
+                    held.as_sorted(SortOptions::default())
+                        .expect("sorted in place");
+                    held.len()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.bench_function(format!("into_unique/{name}"), |bencher| {
+            bencher.iter(|| black_box(&column).into_unique().expect("unique"));
+        });
+        let keys = venues_column()
+            .into_sorted(SortOptions::default())
+            .expect("sorted keys");
+        group.bench_function(format!("partition_by/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&column)
+                    .partition_by(black_box(&keys))
+                    .expect("sixteen groups")
+            });
+        });
+    }
 
     // A union push: a sparse one splices every member over the new row, a
     // dense one lands the payload on its own member.

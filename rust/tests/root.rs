@@ -155,8 +155,12 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
+#[path = "root/serie_slice.rs"]
+mod serie_slice;
 #[path = "root/side.rs"]
 mod side;
+#[path = "root/sort_options.rs"]
+mod sort_options;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]

@@ -15,6 +15,7 @@ Many [`Serie`](serie.md) columns under one [`Field`](field.md), in order and hel
 | Join | `into_serie` is the one join, and it is spelled as one: no chunk is the empty column of the field, one chunk is itself, and several are concatenated once and landed with no row read |
 | Cast | `cast(target, options)` is one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied to every chunk; a chunked serie already under the target is itself, its chunks shared |
 | Stream | `SerieReader::from_chunked` reads the chunks as a stream, one record column per chunk, nothing cast, copied or read |
+| Order, uniqueness, partitions | the [verbs a `Serie` answers](serie.md#sorting-uniqueness-and-partitions), across the chunks: `is_sorted` reads each chunk and every chunk edge with no join; `into_reversed`, `into_filtered` and `partition_by` work chunk by chunk and keep the chunks apart; `sort_indices`, `is_unique`, `unique_count`, `into_sorted`, `into_unique` and `into_taken` are the one join then the verb, answering a chunked serie of one chunk; `memory_size` sums the chunks; the `as_*` writes replace the chunks in place |
 | Bindings | Rust, Python and JavaScript. Python crosses the C Data Interface and shares buffers: a `pyarrow.ChunkedArray`'s chunks and a `pyarrow.Table`'s batches are kept as chunks, and go back out as a `ChunkedArray` and a `Table`. JavaScript crosses as copied IPC: an Apache Arrow JS `Vector`'s `Data` are the chunks, and so are a `Table`'s batches. `field_ref`, `from_serie_reader` (Python reaches it through `ChunkedSerie.from_`), the `ChunkedRows` iterator type and `Hash` are Rust only: the Python class is mutable and unhashable |
 
 One verb, three spellings, where the runtimes name the Arrow values differently:
@@ -266,6 +267,64 @@ The chunks are columns of the one field, lent in order; a chunk may hold no row,
     const ids = ChunkedSerie.empty(root).child('id')
     assert.equal(ids.numChunks, 0)
     assert.ok(ids.field.equals(Field.from('id: int64 not null')))
+    ```
+
+## Sorting, uniqueness and partitions
+
+A chunked serie answers what a [`Serie`](serie.md#sorting-uniqueness-and-partitions) answers, and says which verbs need the rows together. `is_sorted` reads each chunk and compares the last row of one with the first of the next, so no chunk is joined; `into_reversed`, `into_filtered` and `partition_by` work chunk by chunk and keep the chunks apart, a mask or a key serie as long as the whole being cut to each chunk's window; `sort_indices`, `is_unique`, `unique_count`, `into_sorted`, `into_unique` and `into_taken` must see every row at once, so they are the one join then the verb, and the chunked serie they answer is one chunk. Keys held as a chunked serie join first with `into_serie`.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array};
+    use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SortOptions};
+
+    let field = Field::new("price", DataType::Int64, false);
+    let first: ArrayRef = Arc::new(Int64Array::from(vec![3, 1]));
+    let second: ArrayRef = Arc::new(Int64Array::from(vec![2, 3]));
+    let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+
+    // Each chunk is sorted; the edge between them is not.
+    assert!(!prices.is_sorted(SortOptions::default()));
+    assert!(prices.slice(2, 2)?.is_sorted(SortOptions::default()));
+
+    // The one join, then the verb: one chunk back.
+    let sorted = prices.into_sorted(SortOptions::default())?;
+    assert_eq!((sorted.num_chunks(), sorted.rows()), (1, [1_i64, 2, 3, 3].map(Scalar::from).to_vec()));
+    assert_eq!(prices.unique_count(), 3);
+    assert_eq!(prices.into_unique()?.len(), 3);
+
+    // Chunk by chunk, kept apart.
+    let reversed = prices.into_reversed();
+    assert_eq!((reversed.num_chunks(), reversed.rows()), (2, [3_i64, 2, 1, 3].map(Scalar::from).to_vec()));
+    let mask = Serie::new([true, false, true, true].map(Scalar::from).to_vec());
+    assert_eq!(prices.into_filtered(&mask)?.num_chunks(), 2);
+    let venues = Serie::new(["a", "b", "b", "a"].map(Scalar::from).to_vec());
+    let groups = prices.partition_by(&venues)?;
+    assert_eq!(groups.len(), 2);
+    assert_eq!((groups[0].0.clone(), groups[0].1.num_chunks()), (Scalar::from("a"), 2));
+    assert_eq!(groups[0].1.rows(), [3_i64, 3].map(Scalar::from).to_vec());
+
+    // In place, chaining, and the field kept.
+    let mut held = prices.clone();
+    held.as_sorted(SortOptions::descending())?.as_unique()?;
+    assert_eq!(held.rows(), [3_i64, 2, 1].map(Scalar::from).to_vec());
+    assert_eq!(held.field(), &field);
+    assert!(held.memory_size() > 0);
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only.
     ```
 
 ## Arrow: a chunked array and a table
@@ -607,6 +666,7 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
 - What is zero copy: a clone is a pointer bump per chunk beside two vectors, the chunks and their ends; `slice`, `child`, `child_at`, `children`, `items` and `get_child_by_path` build the same two vectors per selection - `children` per child, beside the vector holding them - slicing only the two chunks at a window's edges, and never touch a row; with no chunk, a selection reads its field off the empty column of the field, built once per call. `into_arrow_arrays` is one array handle per chunk; an identity plan shares every chunk's buffers.
 - What allocates: `into_serie` concatenates the chunks once, into one new set of buffers (one chunk is itself, shared); `scalar` and `get` build one row, `rows` and `iter` every row they reach, each time - and in Python and JavaScript iteration builds every row before it hands out the first, as a `Serie`'s does; `cast` builds new buffers wherever the plan is not the identity.
 - `into_serie` refuses a join Arrow's concatenation would panic on: a dictionary whose vocabularies it gathers whole - view text, fixed-width bytes or nested values, or any dictionary below a fixed-size serie or a union - past the largest key of its width, naming its path: `joining 2 chunks of "item" gathers 200 dictionary values at $, past the largest int8 key (127)`. Plain text and primitive vocabularies are merged instead, and one vocabulary shared by every chunk is never gathered twice.
+- `is_sorted` builds one row per side of each chunk edge and nothing else; `partition_by` keys its groups across the chunks by the key values, so a key's group holds one chunk per chunk that contributed. `into_filtered` and `partition_by` refuse a mask or key serie of another length than the whole, naming the field. `into_taken` names rows across the whole, so it joins first.
 - `push_chunk` compiles one plan per call, like `Serie::cast`: a loop of foreign chunks goes through `from_series`, which compiles once per run of chunks under one source field.
 - The field is not identity: two chunked series of one field and the same rows cut differently are equal, and so are a chunked serie and a `Serie` of the same rows under another field or width.
 - Python: `ChunkedSerie` is mutable - `push_chunk` - so it is unhashable, and `copy.copy`, `copy.deepcopy` and a pickle share or keep its chunks and its field. `ChunkedSerie.from_(reader)` takes a native `SerieReader` - `from_serie_reader`: its chunks the record columns it yields under its own root, none landed again - and drains it: iterating the reader afterwards yields nothing, and handing it over again is refused. A chunkless `pyarrow.ChunkedArray` with no field is `empty` of the field the core gives the empty array of its type. `Serie.from_` of a `pyarrow.ChunkedArray` or a `ChunkedSerie` is the joined column, `into_serie`. `into_numpy` copies, because NumPy has no null mask: it is `pyarrow`'s `ChunkedArray.to_numpy(zero_copy_only=False)`, a null becoming `nan`.

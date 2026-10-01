@@ -29,13 +29,13 @@ use arrow_array::types::{
     TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt8Type, UInt16Type,
     UInt32Type, UInt64Type,
 };
-use arrow_array::{Array, ArrayRef, ArrowPrimitiveType, PrimitiveArray};
+use arrow_array::{Array, ArrayRef, ArrowNativeTypeOp, ArrowPrimitiveType, PrimitiveArray};
 use arrow_buffer::NullBuffer;
 
 use super::{Serie, require_range, require_row, require_window};
 use crate::serie::value::Reading;
 use crate::value::SerieValue;
-use crate::{Field, Result, Scalar};
+use crate::{Field, Result, Scalar, SortOptions};
 
 /// The invariant a canonical row carries into a write: it lays out as the
 /// field's own array, because the field's contract already rewrote it.
@@ -209,6 +209,140 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
         builder.append_array(other.array());
         self.values = builder.finish();
         true
+    }
+
+    /// The row positions of `range` in sorted order, stable, under
+    /// `options`: a typed sort over the values buffer, the absent rows
+    /// gathered to the end `options` names.
+    ///
+    /// One allocation, the answer; no value is built.
+    pub(crate) fn sort_indices(&self, range: Range<usize>, options: SortOptions) -> Vec<u32> {
+        let values = self.values.values();
+        let present = |index: usize| self.values.is_valid(index);
+        let absent = self.values.null_count();
+        let mut order: Vec<u32> = Vec::with_capacity(range.len());
+        if options.is_nulls_first() {
+            order.extend(
+                range
+                    .clone()
+                    .filter(|index| !present(*index))
+                    .map(|index| index as u32),
+            );
+        }
+        let first_present = order.len();
+        order.extend(
+            range
+                .clone()
+                .filter(|index| present(*index))
+                .map(|index| index as u32),
+        );
+        // Stable: equal rows keep their order, so the sort is one every leaf
+        // answers alike; its scratch is the one allocation beside the answer.
+        order[first_present..].sort_by(|left, right| {
+            let step = values[*left as usize].compare(values[*right as usize]);
+            if options.is_descending() {
+                step.reverse()
+            } else {
+                step
+            }
+        });
+        if !options.is_nulls_first() && absent > 0 {
+            order.extend(
+                range
+                    .filter(|index| !present(*index))
+                    .map(|index| index as u32),
+            );
+        }
+        order
+    }
+
+    /// Sort rows `range` in place under `options`: the native slice sorted
+    /// where it stands, the absent rows gathered to the end `options`
+    /// names, the validity bits of the range rewritten as one run.
+    ///
+    /// Nothing is allocated when the column holds its buffer alone; a
+    /// shared or foreign buffer is copied once by the builder, as every
+    /// write copies it.
+    pub(crate) fn sort_in_place(&mut self, range: Range<usize>, options: SortOptions) {
+        let nulls = self.values.nulls().cloned();
+        let mut builder = self.take_builder();
+        let (values, validity) = builder.slices_mut();
+        let window = &mut values[range.clone()];
+        let len = window.len();
+        let present = match &nulls {
+            Some(nulls) if nulls.null_count() > 0 => {
+                // Compact the present values to the front, in order, so the
+                // sort runs over them alone.
+                let mut write = 0;
+                for read in 0..len {
+                    if nulls.is_valid(range.start + read) {
+                        window[write] = window[read];
+                        write += 1;
+                    }
+                }
+                write
+            }
+            _ => len,
+        };
+        // Unstable, because two natives that compare equal are one value
+        // and nothing tells them apart; what stability would keep, the
+        // buffer cannot show, and the unstable sort allocates no scratch.
+        let sorted = &mut window[..present];
+        if options.is_descending() {
+            sorted.sort_unstable_by(|left, right| right.compare(*left));
+        } else {
+            sorted.sort_unstable_by(|left, right| left.compare(*right));
+        }
+        let absent = len - present;
+        if absent > 0 {
+            if options.is_nulls_first() {
+                window.rotate_right(absent);
+            }
+            if let Some(bits) = validity {
+                let (first_absent, last_absent) = if options.is_nulls_first() {
+                    (range.start, range.start + absent)
+                } else {
+                    (range.start + present, range.end)
+                };
+                for index in range.clone() {
+                    if (first_absent..last_absent).contains(&index) {
+                        arrow_buffer::bit_util::unset_bit(bits, index);
+                    } else {
+                        arrow_buffer::bit_util::set_bit(bits, index);
+                    }
+                }
+            }
+        }
+        self.values = builder.finish();
+    }
+
+    /// Reverse rows `range` in place: the native slice reversed where it
+    /// stands, the validity bits of the range reversed with it.
+    pub(crate) fn reverse_in_place(&mut self, range: Range<usize>) {
+        let mut builder = self.take_builder();
+        let (values, validity) = builder.slices_mut();
+        values[range.clone()].reverse();
+        if let Some(bits) = validity {
+            let (mut low, mut high) = (range.start, range.end);
+            while low + 1 < high {
+                high -= 1;
+                let (left, right) = (
+                    arrow_buffer::bit_util::get_bit(bits, low),
+                    arrow_buffer::bit_util::get_bit(bits, high),
+                );
+                if left != right {
+                    if right {
+                        arrow_buffer::bit_util::set_bit(bits, low);
+                        arrow_buffer::bit_util::unset_bit(bits, high);
+                    } else {
+                        arrow_buffer::bit_util::unset_bit(bits, low);
+                        arrow_buffer::bit_util::set_bit(bits, high);
+                    }
+                }
+                low += 1;
+            }
+        }
+        self.values = builder.finish();
     }
 }
 

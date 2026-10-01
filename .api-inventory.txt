@@ -3881,6 +3881,14 @@ pub struct MimeType(MimeTypeWire);
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
+### yggdryl::root::sort_options  [rust/src/sort_options.rs]  (the direction of an ordering and where its absent rows go; re-exported at the root)
+pub struct SortOptions  (Clone, Copy, Debug, Default - ascending, nulls last, Arrow's and the plan's default - Eq, Hash, Ord; Display the suffix the plan's ordering writes after its key, ` desc`, ` nulls first`, both, or empty; FromStr of that suffix, asc/desc and nulls first/last in either order, case folded, a stray or repeated word refused by name)
+  pub const fn ascending() -> Self
+  pub const fn descending() -> Self
+  pub const fn with_nulls_first(self, nulls_first: bool) -> Self
+  pub const fn is_descending(&self) -> bool
+  pub const fn is_nulls_first(&self) -> bool
+
 ### yggdryl::root::scheme  [rust/src/scheme.rs]
 pub struct Scheme(SchemeWire);
   pub const HTTP: Self = Self(SchemeWire::Http);
@@ -4216,6 +4224,70 @@ pub struct Element<'a>
   pub fn child(&self, namespace: Option<&str>, local: &str) -> Option<Element<'_>>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
+
+### yggdryl::root::serie_slice  [rust/src/serie_slice.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
+pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &SerieSlice)
+  pub const fn len(&self) -> usize
+  pub const fn is_empty(&self) -> bool
+  pub const fn offset(&self) -> usize  (the serie row the window starts at)
+  pub const fn serie(&self) -> &'a Serie  (the whole)
+  pub fn field(&self) -> Option<&'a Field>
+  pub fn dtype(&self) -> Result<DataType>  (a column's, read off the field; a run's agreed out of the window's rows)
+  pub fn null_count(&self) -> usize  (none where the column holds no absent row, else one validity read per window row, no row built; a run walks its values)
+  pub fn is_null(&self, index: usize) -> Result<bool>  (window-relative; refuses past the window naming the serie and both counts)
+  pub fn scalar(&self, index: usize) -> Result<Scalar>
+  pub fn get(&self, index: usize) -> Option<Cow<'a, Scalar>>
+  pub fn iter(&self) -> SerieSliceRows<'a>
+  pub fn rows(&self) -> Cow<'a, [Scalar]>  (lent for a run, built once for a column)
+  pub fn memory_size(&self) -> usize
+  pub fn window(&self, offset: usize, length: usize) -> Result<Self>  (a narrower window, rebased onto the serie)
+  pub fn into_serie(&self) -> Serie  (Serie::slice: zero copy for a column, the window's values copied for a run)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (what the sliced serie answers, and so for the rest of the ordering verbs)
+  pub fn is_unique(&self) -> bool
+  pub fn unique_count(&self) -> usize
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_unique(&self) -> Result<Serie>
+  pub fn into_reversed(&self) -> Serie
+  pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
+pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of SerieSlice answered directly and through as_window; Display and Debug as SerieSlice)
+  pub fn as_window(&self) -> SerieSlice<'_>  (the borrowed read-only view)
+  pub const fn len(&self) -> usize
+  pub const fn is_empty(&self) -> bool
+  pub const fn offset(&self) -> usize
+  pub fn serie(&self) -> &Serie
+  pub fn field(&self) -> Option<&Field>
+  pub fn dtype(&self) -> Result<DataType>
+  pub fn null_count(&self) -> usize
+  pub fn is_null(&self, index: usize) -> Result<bool>
+  pub fn scalar(&self, index: usize) -> Result<Scalar>
+  pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>>
+  pub fn iter(&self) -> SerieSliceRows<'_>
+  pub fn rows(&self) -> Cow<'_, [Scalar]>
+  pub fn memory_size(&self) -> usize
+  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>
+  pub fn into_serie(&self) -> Serie
+  pub fn is_sorted(&self, options: SortOptions) -> bool
+  pub fn is_unique(&self) -> bool
+  pub fn unique_count(&self) -> usize
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_unique(&self) -> Result<Serie>
+  pub fn into_reversed(&self) -> Serie
+  pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
+  pub fn set(&mut self, index: usize, value: Scalar) -> Result<()>  (Serie::set on the rebased row; refuses past the window)
+  pub fn fill(&mut self, value: Scalar) -> Result<()>  (the value proved once, written as clones over the window)
+  pub fn swap(&mut self, left: usize, right: usize) -> Result<()>  (two reads, two sets)
+  pub fn copy_from(&mut self, other: &SerieSlice<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
+  pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()>  (Serie::splice on the rebased range, only when rows.len() == range.len(): a window never grows or shrinks what it views)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column held alone sorts the window of its native slice where it stands, a run its values, any other leaf writes the sorted rows back through splice)
+  pub fn as_reversed(&mut self) -> Result<&mut Self>
+  pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>  (exactly as many indices as the window, window-relative; refused by name otherwise)
+pub struct SerieSliceRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 
 ### yggdryl::soap  [rust/src/soap/mod.rs]
 pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -5535,6 +5607,25 @@ pub struct ProtocolField<'field>
   pub const fn is_column(&self) -> bool
   pub fn into_run(self) -> Run  (a run answers itself; a column builds its rows once)
   pub fn into_arrow_array(&self) -> Option<ArrayRef>  (None for a run; shares buffers)
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Self>  (the row positions in sorted order as a uint32 column named index, stable: a primitive column over its native slice, any other column through Arrow's row format, a run or a layout the format refuses through the values' own order; absent rows gathered to the end the options name; refuses more rows than one uint32 index column addresses)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (one pass over adjacent rows through Arrow's comparator over the buffers, the values' order for a run or a layout it refuses)
+  pub fn is_unique(&self) -> bool  (one hash set over the row format's bytes or the values, an absent row one value; stops at the first repeat)
+  pub fn unique_count(&self) -> usize
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Self>  (sort_indices then the take; a new serie under the same field, this one untouched)
+  pub fn into_unique(&self) -> Result<Self>  (the first occurrence of every value in first-occurrence order, the field kept)
+  pub fn into_reversed(&self) -> Self  (one take for a column, a copy for a run)
+  pub fn into_taken(&self, indices: &Self) -> Result<Self>  (the rows an integer column or run of any width names, in that order; refuses an absent, non-integer, negative or out-of-range index naming the serie and the index)
+  pub fn into_filtered(&self, mask: &Self) -> Result<Self>  (the rows a boolean column or run of the same length keeps, an absent mask row keeping nothing; refuses another length or a non-boolean row by name)
+  pub fn partition_by(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>>  (one (key, rows) per distinct key of a serie of the same length, in first-occurrence order, an absent key one value; sorted keys cut every group as a zero-copy slice, other keys take each group once)
+  pub fn partition_by_paths(&self, paths: &[FieldPath]) -> Result<Vec<(Scalar, Self)>>  (a record column's rows grouped by the cells the paths reach, keyed by the run of those cells in path order; refuses a run, a non-record column, no path or a path reaching no column)
+  pub fn memory_size(&self) -> usize  (a column's buffers as its own slice counts them, a run's values as the row estimator charges them)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column holding its buffer alone sorts the native slice where it stands and rewrites its validity, a run its values; any other leaf replaces its buffers by the kernel's one copy; a refusal leaves the serie as it was)
+  pub fn as_unique(&mut self) -> Result<&mut Self>
+  pub fn as_reversed(&mut self) -> Result<&mut Self>  (a primitive column held alone reverses the native slice and its validity bits where they stand)
+  pub fn as_taken(&mut self, indices: &Self) -> Result<&mut Self>
+  pub fn as_filtered(&mut self, mask: &Self) -> Result<&mut Self>
+  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
+  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>>
   pub fn require_arrow_array(&self) -> Result<ArrayRef>  (refuses a run by name)
   pub fn slice(&self, offset: usize, length: usize) -> Result<Self>  (zero copy for a column, offsets rebased; a run copies its window; refuses past the end)
   pub fn child(&self, name: &str) -> Option<&Self>  (a record column's child by exact name)
@@ -5599,6 +5690,22 @@ pub struct ProtocolField<'field>
   pub fn cast(&self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (already under target: a clone; otherwise one ArrowCastPlan compiled and applied to every chunk)
   pub fn into_arrow_arrays(&self) -> Vec<ArrayRef>  (each chunk's buffers, shared)
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one batch per chunk under one schema built once: a record's chunks are its batches, any other field's chunks each the one column of a row root, as Serie::into_arrow_batch crosses one; a record chunk holding an absent row refused)
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>  (the one join, then Serie::sort_indices)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (every chunk sorted and every chunk edge in order, one row built per side of each edge, no join)
+  pub fn is_unique(&self) -> bool  (the one join, then Serie::is_unique)
+  pub fn unique_count(&self) -> usize
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Self>  (the one join then the sort: a chunked serie of one chunk under the field)
+  pub fn into_unique(&self) -> Result<Self>  (one chunk)
+  pub fn into_reversed(&self) -> Self  (the chunks reversed, each reversed, kept apart)
+  pub fn into_taken(&self, indices: &Serie) -> Result<Self>  (indices name rows across the whole: the one join then the take, one chunk)
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Self>  (a mask as long as the whole, cut to each chunk's window and applied per chunk, the chunks kept apart; refuses another length naming the field)
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Self)>>  (keys as long as the whole, cut per chunk; one (key, rows) per distinct key in first-occurrence order across the chunks, each group's chunks what each chunk contributed, kept apart; chunked keys join first with into_serie)
+  pub fn memory_size(&self) -> usize  (the chunks summed)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: into_sorted replacing the chunks; a refusal leaves the serie as it was)
+  pub fn as_unique(&mut self) -> Result<&mut Self>
+  pub fn as_reversed(&mut self) -> Result<&mut Self>  (the chunks reversed, each reversed where it stands)
+  pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>
+  pub fn as_filtered(&mut self, mask: &Serie) -> Result<&mut Self>
   impl PartialEq<Serie> for ChunkedSerie
   impl PartialEq<ChunkedSerie> for Serie
   impl PartialOrd<Serie> for ChunkedSerie
