@@ -347,6 +347,205 @@ mod internal {
             );
         }
     }
+
+    /// A time partition value is the period every row's source falls in, so
+    /// it bounds the source column as a range and a predicate on the source
+    /// prunes by it - a file by its tuple, a manifest by its summary.
+    mod period_tests {
+        use yggdryl::iceberg::{
+            DataFile, FieldSummary, ManifestContent, ManifestFile, PartitionField, PartitionSpec,
+            Transform,
+        };
+        use yggdryl::internals::iceberg_scan::{
+            conjuncts, file_bounds, file_residual, identity_column, manifest_bounds,
+            period_column_name,
+        };
+        use yggdryl::{DataType, Field, Filter, Scalar, StructType, TimeUnit, Timezone};
+
+        /// `ts` (field 1), a required naive microsecond timestamp, and
+        /// `day` (field 2), a nullable date.
+        fn schema() -> Field {
+            let mut schema = StructType::from_fields([
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+                DataType::date32().nullable_field("day"),
+            ])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+            yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+            schema
+        }
+
+        /// `qhour(ts)` then `week(day)`.
+        fn spec() -> PartitionSpec {
+            PartitionSpec {
+                spec_id: 0,
+                fields: vec![
+                    PartitionField {
+                        source_id: 1,
+                        field_id: 1000,
+                        name: "ts_qhour".into(),
+                        transform: Transform::QuarterHour,
+                    },
+                    PartitionField {
+                        source_id: 2,
+                        field_id: 1001,
+                        name: "day_week".into(),
+                        transform: Transform::Week,
+                    },
+                ],
+            }
+        }
+
+        fn residual(filter: &str, qhour: Option<i32>, week: Option<i32>) -> Option<Vec<usize>> {
+            let schema = schema();
+            let file = DataFile {
+                record_count: 4,
+                partition: vec![
+                    qhour.map_or(Scalar::Null, Scalar::from),
+                    week.map_or(Scalar::Null, Scalar::from),
+                ],
+                ..DataFile::default()
+            };
+            let filter: Filter = filter.parse().unwrap();
+            let conjuncts = conjuncts(&schema, &filter).unwrap();
+            file_residual(&file_bounds(&file, &spec(), &schema), &conjuncts)
+        }
+
+        #[test]
+        fn a_file_is_bounded_by_the_period_its_tuple_names() {
+            // Quarter hour 5 is 01:15 to 01:30 of 1970-01-01; a conjunct the
+            // period settles is dropped, one it cannot stays for the rows,
+            // and one it excludes excludes the file.
+            assert_eq!(
+                residual("ts >= '1970-01-01T01:15:00'", Some(5), Some(0)),
+                Some(vec![])
+            );
+            assert_eq!(
+                residual("ts <= '1970-01-01T01:29:59.999999'", Some(5), Some(0)),
+                Some(vec![])
+            );
+            assert_eq!(
+                residual("ts = '1970-01-01T01:20:00'", Some(5), Some(0)),
+                Some(vec![0])
+            );
+            assert_eq!(
+                residual("ts < '1970-01-01T01:15:00'", Some(5), Some(0)),
+                None
+            );
+            assert_eq!(
+                residual("ts > '1970-01-01T01:29:59.999999'", Some(5), Some(0)),
+                None
+            );
+            assert_eq!(
+                residual(
+                    "ts between '1970-01-01T01:00:00' and '1970-01-01T01:14:59'",
+                    Some(5),
+                    Some(0)
+                ),
+                None
+            );
+            // Week 0 is Monday 1969-12-29 through Sunday 1970-01-04.
+            assert_eq!(
+                residual(
+                    "day between '1969-12-29' and '1970-01-04'",
+                    Some(5),
+                    Some(0)
+                ),
+                Some(vec![])
+            );
+            assert_eq!(residual("day > '1970-01-04'", Some(5), Some(0)), None);
+            assert_eq!(residual("day = '1969-12-28'", Some(5), Some(0)), None);
+            assert_eq!(
+                residual("day = '1970-01-01'", Some(5), Some(0)),
+                Some(vec![0])
+            );
+            // A null period is a null source in every row.
+            assert_eq!(residual("day is null", Some(5), None), Some(vec![]));
+            assert_eq!(residual("day = '1970-01-01'", Some(5), None), None);
+            assert_eq!(residual("day is not null", Some(5), Some(0)), Some(vec![]));
+        }
+
+        #[test]
+        fn a_manifest_is_bounded_by_the_periods_its_summary_spans() {
+            let manifest = ManifestFile {
+                manifest_path: "metadata/periods.avro".into(),
+                manifest_length: 128,
+                partition_spec_id: 0,
+                content: ManifestContent::Data,
+                sequence_number: 1,
+                min_sequence_number: 1,
+                added_snapshot_id: 7,
+                added_files_count: Some(3),
+                existing_files_count: Some(0),
+                deleted_files_count: Some(0),
+                added_rows_count: Some(12),
+                existing_rows_count: Some(0),
+                deleted_rows_count: Some(0),
+                partitions: vec![
+                    // Quarter hours 5 through 7: 01:15 up to 02:00.
+                    FieldSummary {
+                        contains_null: false,
+                        contains_nan: None,
+                        lower_bound: Some(5_i32.to_le_bytes().to_vec()),
+                        upper_bound: Some(7_i32.to_le_bytes().to_vec()),
+                    },
+                    FieldSummary {
+                        contains_null: true,
+                        contains_nan: None,
+                        lower_bound: None,
+                        upper_bound: None,
+                    },
+                ],
+                key_metadata: None,
+                first_row_id: None,
+            };
+            let schema = schema();
+            let bounds = manifest_bounds(&manifest, &spec(), &schema);
+            let prunes = |filter: &str| {
+                let filter: Filter = filter.parse().unwrap();
+                conjuncts(&schema, &filter)
+                    .unwrap()
+                    .iter()
+                    .all(|conjunct| conjunct.statistics_prune(&bounds))
+            };
+            assert!(!prunes("ts < '1970-01-01T01:15:00'"));
+            assert!(!prunes("ts >= '1970-01-01T02:00:00'"));
+            assert!(prunes("ts >= '1970-01-01T01:59:59'"));
+            assert!(prunes("ts = '1970-01-01T01:45:00'"));
+            assert!(prunes("ts < '1970-01-01T01:15:00.000001'"));
+            // A summary with no bounds and a null states nothing to prune by.
+            assert!(prunes("day is null"));
+            assert!(prunes("day = '1970-01-01'"));
+        }
+
+        #[test]
+        fn a_period_column_is_its_source_and_an_identity_is_not_one() {
+            let schema = schema();
+            assert_eq!(
+                period_column_name(&spec(), 0, &schema).as_deref(),
+                Some("ts")
+            );
+            assert_eq!(
+                period_column_name(&spec(), 1, &schema).as_deref(),
+                Some("day")
+            );
+            assert!(identity_column(&spec(), 0, &schema).is_none());
+            let mut bucketed = spec();
+            bucketed.fields[0].transform = Transform::Bucket(8);
+            bucketed.fields[1].transform = Transform::Identity;
+            assert_eq!(period_column_name(&bucketed, 0, &schema), None);
+            assert_eq!(period_column_name(&bucketed, 1, &schema), None);
+            assert_eq!(
+                identity_column(&bucketed, 1, &schema).map(Field::name),
+                Some("day")
+            );
+        }
+    }
 }
 
 mod iceberg {

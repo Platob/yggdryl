@@ -341,3 +341,284 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&path);
     }
 }
+
+/// The time transforms: the specification's four and this crate's own five,
+/// each one name, its aliases, its source types and the grammar function
+/// that spells it.
+mod time_transforms {
+    use yggdryl::expression::Function;
+    use yggdryl::iceberg::{PartitionField, PartitionSpec, Transform};
+    use yggdryl::{DataType, TimeUnit, Timezone};
+
+    const FIVE: [(Transform, &str, &[&str]); 5] = [
+        (Transform::Minute, "minute", &["minutes"]),
+        (Transform::QuarterHour, "qhour", &["qhours", "quarter_hour"]),
+        (Transform::HalfHour, "hhour", &["hhours", "half_hour"]),
+        (Transform::Week, "week", &["weeks"]),
+        (Transform::Quarter, "quarter", &["quarters"]),
+    ];
+
+    fn timestamp() -> DataType {
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        }
+    }
+
+    #[test]
+    fn each_spells_one_name_and_reads_its_aliases() {
+        for (transform, name, aliases) in FIVE {
+            assert_eq!(transform.to_string(), name);
+            assert_eq!(Transform::from_str(name).unwrap(), transform);
+            for alias in aliases {
+                assert_eq!(Transform::from_str(alias).unwrap(), transform, "{alias}");
+            }
+            assert!(!transform.is_invertible(), "{name}");
+        }
+        // Spark's DDL spells the standard four in the plural too.
+        for (plural, transform) in [
+            ("years", Transform::Year),
+            ("months", Transform::Month),
+            ("days", Transform::Day),
+            ("hours", Transform::Hour),
+        ] {
+            assert_eq!(Transform::from_str(plural).unwrap(), transform);
+            assert_ne!(transform.to_string(), plural, "the singular is written");
+        }
+        let error = Transform::from_str("fortnight").unwrap_err().to_string();
+        for name in ["minute", "qhour", "hhour", "week", "quarter"] {
+            assert!(error.contains(name), "{error}");
+        }
+    }
+
+    #[test]
+    fn result_types_are_int32_over_what_each_accepts() {
+        for (transform, name, _) in FIVE {
+            assert_eq!(
+                transform.result_type(&timestamp()).unwrap(),
+                DataType::Int32,
+                "{name}"
+            );
+        }
+        for transform in [Transform::Week, Transform::Quarter] {
+            assert_eq!(
+                transform.result_type(&DataType::date32()).unwrap(),
+                DataType::Int32
+            );
+        }
+        for transform in [
+            Transform::Minute,
+            Transform::QuarterHour,
+            Transform::HalfHour,
+        ] {
+            let error = transform
+                .result_type(&DataType::date32())
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("a timestamp"), "{error}");
+            assert!(error.contains(&transform.to_string()), "{error}");
+            assert!(error.contains("date32"), "{error}");
+        }
+        for (transform, name, _) in FIVE {
+            let error = transform
+                .result_type(&DataType::Int64)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(name), "{error}");
+            assert!(error.contains("int64"), "{error}");
+        }
+        let error = Transform::Week
+            .result_type(&DataType::utf8())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("a date or a timestamp"), "{error}");
+    }
+
+    #[test]
+    fn the_nine_time_transforms_are_the_nine_epoch_functions() {
+        for (transform, function) in [
+            (Transform::Year, Function::Years),
+            (Transform::Month, Function::Months),
+            (Transform::Day, Function::Days),
+            (Transform::Hour, Function::Hours),
+            (Transform::Minute, Function::Minutes),
+            (Transform::QuarterHour, Function::QuarterHours),
+            (Transform::HalfHour, Function::HalfHours),
+            (Transform::Week, Function::Weeks),
+            (Transform::Quarter, Function::Quarters),
+        ] {
+            assert_eq!(transform.function(), Some(function.clone()), "{transform}");
+            assert_eq!(
+                Transform::from_function(&function),
+                Some(transform),
+                "{function}"
+            );
+        }
+        for transform in [
+            Transform::Identity,
+            Transform::Bucket(4),
+            Transform::Truncate(2),
+            Transform::Void,
+            Transform::Unknown,
+        ] {
+            assert_eq!(transform.function(), None, "{transform}");
+        }
+        // A calendar part is a field of a date, never a period since the
+        // epoch, so it spells no transform.
+        for function in [
+            Function::Year,
+            Function::Month,
+            Function::Day,
+            Function::Hour,
+            Function::Truncate,
+            Function::Lower,
+        ] {
+            assert_eq!(Transform::from_function(&function), None, "{function}");
+        }
+    }
+
+    #[test]
+    fn a_spec_of_the_five_is_writable_and_round_trips_its_document() {
+        let spec = PartitionSpec {
+            spec_id: 3,
+            fields: FIVE
+                .iter()
+                .enumerate()
+                .map(|(offset, (transform, name, _))| PartitionField {
+                    source_id: 1,
+                    field_id: 1000 + i32::try_from(offset).unwrap(),
+                    name: format!("ts_{name}").into(),
+                    transform: *transform,
+                })
+                .collect(),
+        };
+        spec.require_writable().unwrap();
+        let document = spec.clone().into_json().unwrap();
+        let text = yggdryl::json::into_utf8(&document).unwrap();
+        for (_, name, _) in FIVE {
+            assert!(text.contains(&format!("\"{name}\"")), "{text}");
+        }
+        assert_eq!(PartitionSpec::from_json(&document).unwrap(), spec);
+    }
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The partition value each time transform computes, reached through the
+    //! write plan a commit resolves.
+
+    use yggdryl::iceberg::{PartitionField, PartitionSpec, Transform, assign_field_ids};
+    use yggdryl::internals::iceberg_partition::{PartitionTransform, write_transforms};
+    use yggdryl::{DataType, Scalar, StructType, TimeUnit, Timezone};
+
+    fn plan(transform: Transform, source: DataType) -> (PartitionSpec, PartitionTransform) {
+        let mut schema = StructType::from_fields([source.required_field("at")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 1,
+                field_id: 1000,
+                name: format!("at_{transform}").into(),
+                transform,
+            }],
+        };
+        let partition = spec.partition_field(&schema).unwrap();
+        let mut transforms = write_transforms(&spec, &schema, &partition).unwrap();
+        (spec, transforms.remove(0))
+    }
+
+    fn micros(count: i64) -> Scalar {
+        Scalar::datetime64(count, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
+    }
+
+    #[test]
+    fn a_date_floors_to_its_week_and_quarter() {
+        // 1969-12-28 is week -1, Monday 1969-12-29 week 0, 1970-01-04 the
+        // last day of week 0, 1970-01-05 week 1.
+        let (_, week) = plan(Transform::Week, DataType::date32());
+        for (days, expected) in [(-4, -1), (-3, 0), (-1, 0), (0, 0), (3, 0), (4, 1)] {
+            assert_eq!(
+                week.partition_value(Scalar::date32(days)).unwrap(),
+                Scalar::from(expected),
+                "{days}"
+            );
+        }
+        // 1970-03-31 is quarter 0, 1970-04-01 quarter 1, 1969-12-31 quarter -1.
+        let (_, quarter) = plan(Transform::Quarter, DataType::date32());
+        for (days, expected) in [(89, 0), (90, 1), (-1, -1), (0, 0)] {
+            assert_eq!(
+                quarter.partition_value(Scalar::date32(days)).unwrap(),
+                Scalar::from(expected),
+                "{days}"
+            );
+        }
+        let (_, year) = plan(Transform::Year, DataType::date32());
+        assert_eq!(
+            year.partition_value(Scalar::date32(-1)).unwrap(),
+            Scalar::from(-1)
+        );
+        assert_eq!(year.partition_value(Scalar::Null).unwrap(), Scalar::Null);
+    }
+
+    #[test]
+    fn an_instant_floors_to_every_period() {
+        // 2017-11-16T22:31:08, the instant Apache Iceberg's own fixtures use.
+        let at = 1_510_871_468_000_000_i64;
+        for (transform, count, expected) in [
+            (Transform::Minute, 59_999_999, Scalar::from(0)),
+            (Transform::Minute, 60_000_000, Scalar::from(1)),
+            (Transform::Minute, -1, Scalar::from(-1)),
+            (Transform::QuarterHour, 899_999_999, Scalar::from(0)),
+            (Transform::QuarterHour, 900_000_000, Scalar::from(1)),
+            (Transform::QuarterHour, -1, Scalar::from(-1)),
+            (Transform::HalfHour, 1_799_999_999, Scalar::from(0)),
+            (Transform::HalfHour, 1_800_000_000, Scalar::from(1)),
+            (Transform::HalfHour, -1, Scalar::from(-1)),
+            (Transform::Week, at, Scalar::from(2498)),
+            (Transform::Week, -1, Scalar::from(0)),
+            (Transform::Quarter, at, Scalar::from(191)),
+            (Transform::Quarter, -1, Scalar::from(-1)),
+            (Transform::Hour, at, Scalar::from(419_686)),
+            (Transform::Hour, -1, Scalar::from(-1)),
+            (Transform::Day, at, Scalar::date32(17_486)),
+            (Transform::Day, -1, Scalar::date32(-1)),
+            (Transform::Month, at, Scalar::from(574)),
+            (Transform::Year, at, Scalar::from(47)),
+            (Transform::Year, -1, Scalar::from(-1)),
+        ] {
+            let (_, plan) = plan(
+                transform,
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                },
+            );
+            assert_eq!(
+                plan.partition_value(micros(count)).unwrap(),
+                expected,
+                "{transform} of {count}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_partition_path_renders_the_period_number() {
+        let (spec, plan) = plan(
+            Transform::QuarterHour,
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::NAIVE,
+            },
+        );
+        let value = plan.partition_value(micros(1_510_871_468_000_000)).unwrap();
+        assert_eq!(spec.partition_path(&[value]).unwrap(), "at_qhour=1678746");
+        assert_eq!(
+            spec.partition_path(&[Scalar::Null]).unwrap(),
+            "at_qhour=null"
+        );
+    }
+}

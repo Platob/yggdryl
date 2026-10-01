@@ -139,6 +139,92 @@ The closed function set, and its one door: a user-defined function is registered
     assert.throws(() => term.bind(rows), /docs\.double/)
     ```
 
+## Calendar parts and epoch periods
+
+Two families read a temporal, and they answer different questions. The four *calendar parts* - `year(x)`, `month(x)`, `day(x)`, `hour(x)` - read a field off the date: 2024, 1 through 12, 1 through 31, 0 through 23. The nine *epoch periods* - `years(x)`, `quarters(x)`, `months(x)`, `weeks(x)`, `days(x)`, `hours(x)`, `hhours(x)`, `qhours(x)`, `minutes(x)` - count the whole periods from the Unix epoch to the value, floored, so an instant before 1970 is in a negative period rather than the one after it: `years('1969-12-31')` is `-1`. They are spelled in the plural as Spark's Iceberg DDL spells them, each is one [Iceberg partition transform](../media/index.md#iceberg) (`qhours(ts)` is the `qhour` transform of `ts`), and each is monotone over its argument, so a range on `x` prunes a filter on `years(x)` by the same statistics.
+
+| Function | Argument | Answers |
+| --- | --- | --- |
+| `years(x)` | date or timestamp | `int32` years since 1970 |
+| `quarters(x)` | date or timestamp | `int32` quarters since 1970-Q1 |
+| `months(x)` | date or timestamp | `int32` months since 1970-01 |
+| `weeks(x)` | date or timestamp | `int32` weeks since Monday 1969-12-29; every week starts on a Monday as an ISO 8601 week does |
+| `days(x)` | date or timestamp | `date32`, the UTC day |
+| `hours(x)` | timestamp | `int32` hours since the epoch |
+| `hhours(x)` (`half_hours`) | timestamp | `int32` half hours since the epoch |
+| `qhours(x)` (`quarter_hours`) | timestamp | `int32` quarter hours since the epoch |
+| `minutes(x)` | timestamp | `int32` minutes since the epoch |
+
+A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Selector, StructType, TimeUnit, Timezone};
+
+    let root = Field::new(
+        "rows",
+        DataType::from(StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        }
+        .required_field("ts")])?),
+        false,
+    );
+    let selector: Selector = "year(ts) as calendar, years(ts) as y, weeks(ts) as w, qhours(ts) as q, days(ts) as d".parse()?;
+    let published = selector.apply_field(&root)?;
+    assert_eq!(published.fields()[1].dtype(), &DataType::Int32);
+    assert_eq!(published.fields()[4].dtype(), &DataType::date32());
+
+    // 2017-11-16T22:31:08: the calendar year is 2017, the 47th year since 1970.
+    let row = Scalar::from_sequence([Scalar::datetime64(1_510_871_468_000_000, TimeUnit::Microsecond, Timezone::NAIVE)?]);
+    let answered = selector.apply_scalar(&root, &row)?;
+    let cells = answered.as_sequence().expect("a row");
+    assert_eq!(cells[0], Scalar::from(2017));
+    assert_eq!(cells[1], Scalar::from(47));
+    assert_eq!(cells[2], Scalar::from(2498));
+    assert_eq!(cells[3], Scalar::from(1_678_746));
+    assert_eq!(cells[4], Scalar::date32(17_486));
+
+    // Before the epoch, a period is negative: the last day of 1969 is year -1.
+    let before = Scalar::from_sequence([Scalar::datetime64(-1, TimeUnit::Microsecond, Timezone::NAIVE)?]);
+    let cells = selector.apply_scalar(&root, &before)?;
+    assert_eq!(cells.as_sequence().expect("a row")[1], Scalar::from(-1));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field, Selector
+
+    root = Field("rows", "struct<ts:timestamp(us)>", False)
+    selector = Selector("year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d")
+    assert str(selector) == "year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d"
+    assert selector.names == ["calendar", "y", "q", "d"]
+
+    published = selector.apply_field(root)
+    assert published.dtype["y"].dtype == DataType("int32")
+    assert published.dtype["q"].dtype == DataType("int32")
+    assert published.dtype["d"].dtype == DataType("date32")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Selector } = require('yggdryl')
+
+    const root = new Field('rows', 'struct<ts:timestamp(us)>', false)
+    const selector = new Selector('year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d')
+    assert.equal(selector.toString(), 'year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d')
+    assert.deepEqual(selector.names, ['calendar', 'y', 'q', 'd'])
+
+    const published = selector.applyField(root)
+    assert.equal(String(published.dtype.getFieldAt(1).dtype), 'int32')
+    assert.equal(String(published.dtype.getFieldAt(2).dtype), 'int32')
+    assert.equal(String(published.dtype.getFieldAt(3).dtype), 'date32')
+    ```
+
 ## The signature is a field
 
 A parameter with a Python default, or a Rust field carrying `FUNCTION:default`, is optional, and a call may leave it out; every parameter after a defaulted one has to carry a default too. The default is stored as the literal the grammar spells - `1`, `'EUR'`, `date32 '2024-01-01'` - and read back cast to the parameter's datatype. `FunctionSignature::as_field` writes `namespace.name` as a struct of the parameters with `FUNCTION:returns = "<dtype> null|not null"`, and `from_field` reads it back, so a signature travels like any schema.

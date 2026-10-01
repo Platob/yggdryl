@@ -29,8 +29,8 @@ use iceberg_official::spec::{
     SortOrder as OfficialSortOrder, StatisticsFile as OfficialStatisticsFile,
     Summary as OfficialSummary, TableMetadataBuildResult as OfficialTableMetadataBuildResult,
     TableMetadataBuilder as OfficialTableMetadataBuilder,
-    TableProperties as OfficialTableProperties, Transform as OfficialTransform,
-    Type as OfficialType, UnboundPartitionSpec as OfficialUnboundPartitionSpec,
+    TableProperties as OfficialTableProperties, Type as OfficialType,
+    UnboundPartitionSpec as OfficialUnboundPartitionSpec,
 };
 use smol_str::{SmolStr, format_smolstr};
 
@@ -2447,13 +2447,12 @@ fn scalar_by_str<'a>(values: &'a [Scalar], key: &str, expected: &str) -> Option<
 fn official_partition_spec(spec: &PartitionSpec) -> Result<OfficialUnboundPartitionSpec> {
     let mut builder = OfficialUnboundPartitionSpec::builder();
     for field in &spec.fields {
-        let transform = field
-            .transform
-            .to_string()
-            .parse::<OfficialTransform>()
-            .map_err(Error::from_iceberg)?;
         builder = builder
-            .add_partition_field(field.source_id, &field.name, transform)
+            .add_partition_field(
+                field.source_id,
+                &field.name,
+                field.transform.into_official(),
+            )
             .map_err(Error::from_iceberg)?;
     }
     Ok(builder.build())
@@ -2470,7 +2469,7 @@ fn partition_specs_compatible(left: &PartitionSpec, right: &PartitionSpec) -> bo
 }
 
 fn official_sort_order(order: &SortOrder) -> Result<OfficialSortOrder> {
-    let document = order.clone().into_json()?;
+    let document = super::official::bridge_sort_order(&order.clone().into_json()?)?;
     let bytes = crate::json::into_bytes(&document)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
@@ -2803,8 +2802,7 @@ fn ensure_unique<T: Copy + Eq + std::hash::Hash + fmt::Debug>(
 fn validate_partition_spec_history(specs: &[PartitionSpec], schemas: &[Field]) -> Result<()> {
     for spec in specs {
         spec.validate_shape()?;
-        let document = spec.clone().into_json()?;
-        let official: OfficialUnboundPartitionSpec = official_from_scalar(&document)?;
+        let official = official_partition_spec(spec)?;
         let mut last_error = None;
         let mut matched = false;
         for schema in schemas {

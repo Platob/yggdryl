@@ -770,6 +770,41 @@ fn function_field(
             }
             DataType::Int32
         }
+        Function::Years
+        | Function::Quarters
+        | Function::Months
+        | Function::Weeks
+        | Function::Days
+        | Function::Hours
+        | Function::HalfHours
+        | Function::QuarterHours
+        | Function::Minutes => {
+            let period = function
+                .epoch_period()
+                .expect("the nine epoch functions were just matched");
+            // A date has no clock, so a sub-day period over one is refused
+            // here rather than answered null for every row.
+            let accepted = match temporal_parts(unwrap_dictionary(&first)) {
+                Some((0, _)) => period.takes_date(),
+                Some((2, _)) => true,
+                _ => false,
+            };
+            if !accepted {
+                return Err(typing_error(format_smolstr!(
+                    "expected {} for {}, got {first}",
+                    if period.takes_date() {
+                        "a date or a timestamp"
+                    } else {
+                        "a timestamp"
+                    },
+                    function.as_str()
+                )));
+            }
+            match period {
+                super::eval::EpochPeriod::Day => DataType::date32(),
+                _ => DataType::Int32,
+            }
+        }
         Function::Truncate => first.clone(),
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Unnest => unreachable!("an unnest returned above"),
