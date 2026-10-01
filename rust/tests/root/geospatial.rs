@@ -43,6 +43,30 @@ fn every_spelling_of_the_geospatial_pair_parses_and_round_trips() {
             "geography('EPSG:4326', 'KARNEY')",
             "geography(\"EPSG:4326\",\"karney\")",
         ),
+        // Iceberg's Java implementation writes the CRS bare, and its spec's
+        // examples do too: the words, numbers and colons run together.
+        ("geometry(OGC:CRS84)", "geometry"),
+        ("geometry(srid:4326)", "geometry(\"srid:4326\")"),
+        ("geometry(EPSG:4326)", "geometry(\"EPSG:4326\")"),
+        (
+            "geometry(projjson:crs_prop)",
+            "geometry(\"projjson:crs_prop\")",
+        ),
+        (
+            "geometry(urn:ogc:def:crs:EPSG::4326)",
+            "geometry(\"urn:ogc:def:crs:EPSG::4326\")",
+        ),
+        ("geometry(4326)", "geometry(\"4326\")"),
+        ("geography(OGC:CRS84, spherical)", "geography"),
+        ("geography(srid:4326,spherical)", "geography(\"srid:4326\")"),
+        (
+            "geography(EPSG:4326, karney)",
+            "geography(\"EPSG:4326\",\"karney\")",
+        ),
+        (
+            "struct<g: geometry(srid:4326)>",
+            "struct(field(\"g\",geometry(\"srid:4326\"),nullable=true,metadata={}))",
+        ),
     ] {
         let parsed: DataType = spelling.parse().unwrap_or_else(|error| {
             panic!("{spelling} must parse: {error}");
@@ -78,6 +102,17 @@ fn adversarial_geospatial_spellings_are_refused_by_name() {
 
     // An unterminated CRS string fails at a byte position.
     assert!("geometry('EPSG:4326".parse::<DataType>().is_err());
+
+    // A bare CRS runs over words, numbers and colons with no space between
+    // them, so one that stops at a colon names nothing and asks for quotes.
+    for source in ["geometry(srid:)", "geometry(srid: 4326)"] {
+        let error = source.parse::<DataType>().unwrap_err().to_string();
+        assert!(
+            error.contains("after the colon, got \"srid:\"; quote a name"),
+            "{source}: {error}"
+        );
+    }
+    assert!("geometry(srid 4326)".parse::<DataType>().is_err());
 
     // An empty CRS names nothing; the absent spelling fills the default.
     let error = "geometry('')".parse::<DataType>().unwrap_err().to_string();

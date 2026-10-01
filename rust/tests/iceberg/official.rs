@@ -71,3 +71,22 @@ fn v1_direct_manifests_read_the_same_as_a_column() -> yggdryl::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn a_schema_document_stating_no_id_keeps_its_v3_columns() -> yggdryl::Result<()> {
+    // The official model reads an absent `schema-id` as its default and writes
+    // that default back, so the bridge has to key the v3 types the same way:
+    // keyed by the absence, they came back as the `binary` placeholder.
+    for id in ["", r#""schema-id":0,"#, r#""schema-id":7,"#] {
+        let document = yggdryl::json::from_utf8(&format!(
+            r#"{{"type":"struct",{id}"fields":[
+                {{"id":1,"name":"later","required":false,"type":"unknown"}},
+                {{"id":2,"name":"payload","required":false,"type":"variant"}}
+            ]}}"#
+        ))?;
+        let schema = yggdryl::iceberg::schema_from_json("row", &document)?;
+        assert_eq!(schema.fields()[0].dtype(), &DataType::Null, "{id}");
+        assert_eq!(schema.fields()[1].dtype(), &DataType::Variant, "{id}");
+    }
+    Ok(())
+}

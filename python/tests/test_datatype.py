@@ -1619,6 +1619,56 @@ def test_a_serie_layout_still_reads_the_list_spelling_it_had(
     assert DataType._serie(layout, item, length) == dtype
 
 
+@pytest.mark.parametrize(
+    ("iceberg", "canonical"),
+    [
+        ("timestamptz", 'datetime64(us,"UTC")'),
+        ("timestamp_ns", "datetime64(ns)"),
+        ("timestamptz_ns", 'datetime64(ns,"UTC")'),
+        ("fixed[16]", "fixed_binary(16)"),
+        ("fixed(16)", "fixed_binary(16)"),
+        ("unknown", "null"),
+        ("decimal(9, 2)", "decimal32(9,2)"),
+        ("list<fixed[16]>", "serie<fixed_binary(16)>"),
+        ("map<string, fixed[16]>", "map<utf8, fixed_binary(16)>"),
+        ("geometry(srid:4326)", "geometry('srid:4326')"),
+        ("geography(OGC:CRS84, spherical)", "geography"),
+    ],
+)
+def test_an_iceberg_type_string_reads_as_the_datatype_it_names(
+    iceberg: str, canonical: str
+) -> None:
+    # Iceberg's schema documents and its reference implementations' renderings
+    # parse straight through the core grammar, nested at any depth.
+    assert DataType.from_str(iceberg) == DataType(canonical)
+    assert DataType(iceberg) == DataType(canonical)
+    assert Field("values", iceberg) == Field("values", canonical)
+
+
+def test_the_iceberg_struct_rendering_reads_field_ids_and_nullability() -> None:
+    assert DataType.from_str("timestamptz") == DataType.from_str('datetime64(us, "UTC")')
+    assert DataType.from_str("fixed[16]") == DataType.from_str("fixed_size_binary(16)")
+    assert DataType.from_str("list<fixed[16]>") == DataType.from_str(
+        "list<fixed_size_binary(16)>"
+    )
+    nested = DataType.from_str("struct<a: timestamptz, b: fixed[16]>")
+    assert [field.name for field in nested] == ["a", "b"]
+
+    # Java's `toString` and pyiceberg's `str`: `<id>: <name>: optional|required <type>`.
+    row = DataType.from_str("struct<1: a: optional timestamptz, 2: b: required fixed[16]>")
+    assert [field.name for field in row] == ["a", "b"]
+    assert [field.nullable for field in row] == [True, False]
+    assert [field.parquet_field_id for field in row] == [1, 2]
+    assert DataType.from_str(str(row)) == row
+
+    with pytest.raises(ValueError, match="Snowflake's TIMESTAMP_TZ"):
+        DataType.from_str("timestamp_tz")
+    with pytest.raises(ValueError, match="expected a zone, as stated at byte 0, got none"):
+        DataType.from_str("timestamptz without time zone")
+    with pytest.raises(ValueError, match="which state their unit"):
+        DataType.from_str("timestamp_ns(3)")
+
+
 def test_the_serie_factories_are_the_package_names_for_the_five_layouts() -> None:
     # `yggdryl.serie` is the factory, as `yggdryl.string` is: the module of
     # the same name is reached by its import path.

@@ -16,7 +16,9 @@
 
 use std::collections::BTreeMap;
 
-use iceberg_official::spec::{Schema as OfficialSchema, TableMetadata as OfficialTableMetadata};
+use iceberg_official::spec::{
+    DEFAULT_SCHEMA_ID, Schema as OfficialSchema, TableMetadata as OfficialTableMetadata,
+};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result, Scalar};
@@ -43,13 +45,19 @@ impl V1SnapshotManifests {
 /// The v3 column types the official model has no spelling for, keyed by the
 /// schema they were read from and the identifier of the slot that held them.
 ///
+/// The schema is keyed by [`schema_id`], which reads an absent `schema-id`
+/// as the official default: the official model writes that default back, so
+/// a key the bridge took from the absence must be the one the restore reads
+/// from the default, or a standalone schema document would lose its
+/// `unknown` and `variant` columns to the placeholder.
+///
 /// The slot is a field's `id`, a list's `element-id`, or a map's `key-id` or
 /// `value-id`. The schema half of the key is what keeps a promotion honest: a
 /// later schema that promoted an `unknown` column to `binary` - which v3
 /// allows, `unknown` promotes to anything - must read back as `binary`, and
 /// only the schema that spelled `unknown` gets it back.
 #[derive(Default)]
-pub(super) struct V3Types(BTreeMap<(Option<i64>, i64), SmolStr>);
+pub(super) struct V3Types(BTreeMap<(i64, i64), SmolStr>);
 
 impl V3Types {
     fn is_empty(&self) -> bool {
@@ -150,9 +158,18 @@ fn restore_v3_types(document: &Scalar, types: &V3Types) -> Result<Scalar> {
     Ok(restored)
 }
 
+/// The id one schema object goes by: its own, or the official default the
+/// official model reads and writes in place of an absent one.
+fn schema_id(schema: &Scalar) -> i64 {
+    schema
+        .get_key_str("schema-id")
+        .and_then(Scalar::as_i64)
+        .unwrap_or(i64::from(DEFAULT_SCHEMA_ID))
+}
+
 /// Bridge one schema object: the placeholder goes in, the spelling is kept.
 fn bridge_schema(schema: &Scalar, types: &mut V3Types) -> Result<Scalar> {
-    let schema_id = schema.get_key_str("schema-id").and_then(Scalar::as_i64);
+    let schema_id = schema_id(schema);
     walk_v3_types(schema, &mut |id, name| {
         if is_bridged_v3_type(name) {
             types.0.insert((schema_id, id), SmolStr::new(name));
@@ -164,7 +181,7 @@ fn bridge_schema(schema: &Scalar, types: &mut V3Types) -> Result<Scalar> {
 
 /// Restore one schema object: the spelling comes back where it was.
 fn restore_schema(schema: &Scalar, types: &V3Types) -> Result<Scalar> {
-    let schema_id = schema.get_key_str("schema-id").and_then(Scalar::as_i64);
+    let schema_id = schema_id(schema);
     walk_v3_types(schema, &mut |id, name| {
         if name != V3_PLACEHOLDER {
             return None;

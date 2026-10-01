@@ -249,6 +249,9 @@ mod leaves {
             ("binary(16)", "sized_binary(16)"),
             ("fixed_binary(16)", "fixed_binary(16)"),
             ("FixedSizeBinary(16)", "fixed_binary(16)"),
+            ("fixed[16]", "fixed_binary(16)"),
+            ("fixed(16)", "fixed_binary(16)"),
+            ("FIXED[16]", "fixed_binary(16)"),
             ("largebinary", "large_binary"),
             ("BinaryView", "binary_view"),
             ("large_binary_view", "large_binary_view"),
@@ -314,6 +317,13 @@ mod leaves {
 
         // A bare fixed spelling is a question rather than a declaration.
         assert!(DataType::from_str("fixed_size_binary").is_err());
+        for source in ["fixed", "fixed[]", "fixed[0]"] {
+            assert!(DataType::from_str(source).is_err(), "{source}");
+        }
+        assert_eq!(
+            BytesType::from_spelling("fixed"),
+            Some(BytesType::FixedBinary(1))
+        );
 
         // Which offsets and whether it is viewed are the leaf's, and answered
         // without a match.

@@ -26,12 +26,27 @@ count a UTC instant and rides as the zone's canonical name.
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
 | `datetime64(us)` | naive, microseconds; both parameters default | `datetime64`, `timestamp`, `timestamp_ntz`, `timestamp(6)`, `timestamp without time zone`, `datetime64(us, None)` |
-| `datetime64(us,"UTC")` | UTC, microseconds | `datetime64(us, UTC)`, `timestamp_ltz`, `timestamp with time zone`, `datetime64(us, Some(UTC))`, `datetime64(us, timezone=UTC)` |
+| `datetime64(us,"UTC")` | UTC, microseconds | `datetime64(us, UTC)`, `timestamptz`, `timestamp_ltz`, `timestamp with time zone`, `datetime64(us, Some(UTC))`, `datetime64(us, timezone=UTC)` |
+| `datetime64(ns)` | naive, nanoseconds | `timestamp_ns`, `timestamp(9)` |
+| `datetime64(ns,"UTC")` | UTC, nanoseconds | `timestamptz_ns`, `timestamptz(9)` |
 | `datetime64(ns,"Europe/Paris")` | a named zone | `datetime64(9, Europe/Paris)`, any spelling [`Timezone`](timezone.md) canonicalizes |
 
 The zone is quoted in the canonical spelling and may be bare in the grammar; a
 precision reads as the unit it needs, as [`time(p)`](time.md) does, and `Some` /
-`None` are Arrow's own `Debug` form. FIX's date and timestamp names resolve
+`None` are Arrow's own `Debug` form.
+
+`timestamptz`, `timestamp_ns` and `timestamptz_ns` are Iceberg's names;
+`timestamptz` is PostgreSQL's and DuckDB's too, and `timestamp_ns` DuckDB's.
+`timestamp_ns` and `timestamptz_ns` state their
+unit and take no precision. Every statement about the zone - the keyword's,
+a zone parameter, a trailing `with time zone` or `without time zone` - is held
+to the ones before it: `timestamptz`, `timestamp_ltz` and
+`timestamp_with_time_zone` state a zone and refuse `None` or
+`without time zone`, `timestamp_ntz` states none and refuses one, and
+`timestamp(us, UTC) without time zone` is refused at the suffix.
+`with time zone` after a named zone agrees and keeps it. `[]` after any of
+them is the serie of it. `timestamp_tz` is refused by name: Snowflake's
+`TIMESTAMP_TZ` keeps an offset beside every value, which no column zone states. FIX's date and timestamp names resolve
 here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
 `LocalMktDate` to `datetime64(ns)` at that day's midnight - and the
 [datatype page](../datatype.md) lists the whole logical vocabulary.
@@ -50,7 +65,7 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     assert_eq!(DataTypeId::DateTime64.as_u8(), 0x31);
     assert_eq!(naive.kind(), DataTypeKind::Temporal);
 
-    // The grammar: the crate's spelling, Arrow's, SQL's and Spark's.
+    // The grammar: the crate's spelling, Arrow's, SQL's, Spark's and Iceberg's.
     assert_eq!(DataType::from_str("timestamp")?, naive);
     assert_eq!(DataType::from_str("datetime64")?, naive);
     assert_eq!(DataType::from_str("timestamp_ntz")?, naive);
@@ -59,6 +74,14 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     assert_eq!(DataType::from_str("timestamp_ltz")?, utc);
     assert_eq!(DataType::from_str("datetime64(us, UTC)")?, utc);
     assert_eq!(DataType::from_str("timestamp(9) with time zone")?.to_string(), "datetime64(ns,\"UTC\")");
+    assert_eq!(DataType::from_str("timestamptz")?, utc);
+    assert_eq!(DataType::from_str("timestamp_ns")?.to_string(), "datetime64(ns)");
+    assert_eq!(DataType::from_str("timestamptz_ns")?.to_string(), "datetime64(ns,\"UTC\")");
+
+    // A keyword that states a fact refuses a parameter saying otherwise.
+    assert!(DataType::from_str("timestamptz without time zone").is_err());
+    assert!(DataType::from_str("timestamp_ns(3)").is_err());
+    assert!(DataType::from_str("timestamp_tz").is_err());
 
     // The leaf reads both parameters back, and restates one at a time.
     let leaf = naive.datetime_type().expect("a datetime datatype");
@@ -93,6 +116,9 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     assert DataType("timestamp") == DataType("datetime64(us)")
     assert DataType("timestamp_ntz") == DataType("datetime64")
     assert DataType("timestamp_ltz") == DataType('datetime64(us,"UTC")')
+    assert DataType("timestamptz") == DataType('datetime64(us,"UTC")')
+    assert DataType("timestamp_ns") == DataType("datetime64(ns)")
+    assert DataType("timestamptz_ns") == DataType('datetime64(ns,"UTC")')
     assert DataType("datetime64(ns, UTC)") == DataType('datetime64(ns,"UTC")')
     assert str(DataType("timestamp(6)")) == "datetime64(us)"
     assert DataType("datetime64(ns)").id == "datetime64"
@@ -109,6 +135,10 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
 
     with pytest.raises(ValueError, match="temporal resolution"):
         DataType("datetime64(year_month)")
+    with pytest.raises(ValueError, match="expected a zone, as stated at byte 0, got none"):
+        DataType("timestamptz without time zone")
+    with pytest.raises(ValueError, match="Snowflake's TIMESTAMP_TZ"):
+        DataType("timestamp_tz")
     ```
 
 === "JavaScript"
@@ -120,6 +150,9 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     // One leaf, two parameters, every spelling of it.
     assert.ok(DataType.from('timestamp').equals(DataType.from('datetime64(us)')))
     assert.ok(DataType.from('timestamp_ltz').equals(DataType.from('datetime64(us,"UTC")')))
+    assert.ok(DataType.from('timestamptz').equals(DataType.from('datetime64(us,"UTC")')))
+    assert.equal(DataType.from('timestamp_ns').toString(), 'datetime64(ns)')
+    assert.equal(DataType.from('timestamptz_ns').toString(), 'datetime64(ns,"UTC")')
     assert.ok(DataType.from('datetime64(us,UTC)').equals(DataType.from('datetime64(us,"UTC")')))
     assert.equal(DataType.from('timestamp(6)').toString(), 'datetime64(us)')
     assert.equal(new DataType('datetime64(ns)').id, 'datetime64')
@@ -128,6 +161,7 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     // A naive instant is not the same datatype as a zoned one.
     assert.ok(!DataType.from('datetime64(ns)').equals(DataType.from('datetime64(ns,"UTC")')))
     assert.throws(() => new DataType('datetime64(year_month)'))
+    assert.throws(() => DataType.from('timestamp_ns(3)'), /which state their unit/)
     ```
 
 ## Field

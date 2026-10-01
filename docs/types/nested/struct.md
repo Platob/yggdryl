@@ -19,7 +19,16 @@ Named children in declaration order: the one collection of fields the crate has,
 `StructType` is the collection; `DataType::from` is the datatype over it. The
 collection dereferences to `&[Field]`, so everything a caller does with a slice
 reads the same through it. `struct` and `row` are the two keywords, and the
-SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
+SQL, Hive, Spark and Iceberg spellings parse into the same canonical
+`struct(...)`.
+
+Iceberg's reference implementations render a struct as
+`struct<1: at: optional timestamptz, 2: key: required fixed[16]>`: the number
+leading a member is its field id, kept under `PARQUET:field_id` as the Iceberg
+schema reader keeps it, and `optional` or `required` before the type is its
+nullability - a suffix saying the opposite is refused. A member's ` (doc)`
+suffix is refused: whitespace is no part of the grammar, so the text cannot be
+told from a parameter list, and a dump is parsed with it stripped.
 
 === "Rust"
 
@@ -54,6 +63,12 @@ SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
     assert_eq!(DataType::from_str("row(id bigint, tags array<string>)")?, parsed);
     assert_eq!(DataType::from_str(&parsed.to_string())?, parsed);
     assert!(parsed.to_string().starts_with("struct(field(\"id\",int64"));
+
+    // Iceberg's rendering: a field id, and the nullability before the type.
+    let iceberg = DataType::from_str("struct<1: at: optional timestamptz, 2: key: required fixed[16]>")?;
+    let key = &iceberg.as_fields().expect("a struct")[1];
+    assert!(!key.is_nullable());
+    assert_eq!(key.parquet_field_id()?, Some(2));
     ```
 
 === "Python"
@@ -85,6 +100,11 @@ SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
     parsed = DataType("struct<id:bigint,tags:array<string>>")
     assert DataType("row(id bigint, tags array<string>)") == parsed
     assert DataType(str(parsed)) == parsed
+
+    # Iceberg's rendering: a field id, and the nullability before the type.
+    iceberg = DataType("struct<1: at: optional timestamptz, 2: key: required fixed[16]>")
+    assert iceberg["key"].nullable is False
+    assert iceberg["key"].parquet_field_id == 2
     ```
 
 === "JavaScript"
@@ -114,6 +134,11 @@ SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
     const parsed = DataType.from('struct<id:bigint,tags:array<string>>')
     assert.ok(DataType.from('row(id bigint, tags array<string>)').equals(parsed))
     assert.ok(DataType.from(parsed.toString()).equals(parsed))
+
+    // Iceberg's rendering: a field id, and the nullability before the type.
+    const iceberg = DataType.from('struct<1: at: optional timestamptz, 2: key: required fixed[16]>')
+    assert.equal(iceberg.field('key').nullable, false)
+    assert.equal(iceberg.field('key').parquetFieldId, 2)
     ```
 
 ## Field

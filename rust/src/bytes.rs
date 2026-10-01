@@ -1094,7 +1094,8 @@ impl BytesType {
     pub fn from_spelling(word: &str) -> Option<Self> {
         match word {
             "binary" | "bytes" | "varbinary" | "blob" | "bytea" => Some(Self::Binary),
-            "fixedbinary" | "fixedsizebinary" => Some(Self::FixedBinary(1)),
+            // Iceberg's `fixed[16]` is exactly this leaf.
+            "fixedbinary" | "fixedsizebinary" | "fixed" => Some(Self::FixedBinary(1)),
             "largebinary" => Some(Self::LargeBinary),
             "binaryview" => Some(Self::BinaryView),
             "largebinaryview" => Some(Self::LargeBinaryView),

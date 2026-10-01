@@ -62,8 +62,22 @@ pub(crate) fn parser_benchmarks(criterion: &mut Criterion) {
     group.bench_function("logical_row", |bencher| {
         bencher.iter(|| DataType::from_str(black_box(FIX_ROW)).expect("the FIX row must parse"));
     });
+    group.bench_function("iceberg_row", |bencher| {
+        bencher.iter(|| {
+            DataType::from_str(black_box(ICEBERG_ROW)).expect("the Iceberg row must parse")
+        });
+    });
     group.finish();
 }
+
+/// One row as Iceberg's reference implementations render it: a field id and
+/// a nullability per member, its primitives in Iceberg's own names, nested.
+const ICEBERG_ROW: &str = concat!(
+    "struct<1: id: required long, 2: at: optional timestamptz, ",
+    "3: ns: optional timestamptz_ns, 4: key: required fixed[16], ",
+    "5: px: optional decimal(9, 2), 6: tags: optional list<string>, ",
+    "7: attrs: optional map<string, fixed[16]>, 8: later: optional unknown>"
+);
 
 /// One row declared in FIX's own datatype names, across the four families a
 /// registration resolves into: an ASCII width, a decimal, a temporal, and an

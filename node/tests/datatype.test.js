@@ -696,6 +696,46 @@ test('a serie layout still reads the list spelling it had', () => {
   }
 })
 
+// Each Iceberg type string and the datatype its existing spelling names.
+const ICEBERG_SPELLINGS = [
+  ['timestamptz', 'datetime64(us,"UTC")'],
+  ['timestamp_ns', 'datetime64(ns)'],
+  ['timestamptz_ns', 'datetime64(ns,"UTC")'],
+  ['fixed[16]', 'fixed_binary(16)'],
+  ['fixed(16)', 'fixed_binary(16)'],
+  ['unknown', 'null'],
+  ['decimal(9, 2)', 'decimal32(9,2)'],
+  ['list<fixed[16]>', 'serie<fixed_binary(16)>'],
+  ['map<string, fixed[16]>', 'map<utf8, fixed_binary(16)>'],
+  ['geometry(srid:4326)', "geometry('srid:4326')"],
+  ['geography(OGC:CRS84, spherical)', 'geography'],
+]
+
+test('an Iceberg type string reads as the datatype it names', () => {
+  // Iceberg's schema documents and its reference implementations' renderings
+  // parse straight through the core grammar, nested at any depth.
+  for (const [iceberg, canonical] of ICEBERG_SPELLINGS) {
+    assert.ok(DataType.from(iceberg).equals(DataType.from(canonical)), iceberg)
+    assert.ok(DataType.fromString(iceberg).equals(DataType.from(canonical)), iceberg)
+    assert.ok(new Field('values', iceberg).equals(new Field('values', canonical)), iceberg)
+  }
+
+  // Java's `toString` and pyiceberg's `str`: `<id>: <name>: optional|required <type>`.
+  const row = DataType.from('struct<1: a: optional timestamptz, 2: b: required fixed[16]>')
+  assert.equal(row.field('a').nullable, true)
+  assert.equal(row.field('b').nullable, false)
+  assert.equal(row.field('a').parquetFieldId, 1)
+  assert.equal(row.field('b').parquetFieldId, 2)
+  assert.ok(DataType.from(row.toString()).equals(row))
+
+  assert.throws(() => DataType.from('timestamp_tz'), /Snowflake's TIMESTAMP_TZ/)
+  assert.throws(
+    () => DataType.from('timestamptz without time zone'),
+    /expected a zone, as stated at byte 0, got none/,
+  )
+  assert.throws(() => DataType.from('timestamp_ns(3)'), /which state their unit/)
+})
+
 test('the internal serie factory reads either spelling of a layout', () => {
   // The factory is hidden from the public DataType, so the child holds the
   // native class before the package replaces it.

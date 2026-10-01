@@ -1,6 +1,6 @@
 ---
 name: yggdryl-types
-description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin/forex codes, the side, marketdatakind and state enums, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
+description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, Iceberg, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin/forex codes, the side, marketdatakind and state enums, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
 ---
 
 # Types: DataType, Field, Scalar
@@ -58,7 +58,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
 | engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
 
-Every spelling the grammar reads - Arrow, SQL, Hive, Spark and FIX names, the
+Every spelling the grammar reads - Arrow, SQL, Hive, Spark, Iceberg and FIX names, the
 string and byte leaves, the legacy `list` words - is in
 [references/spellings.md](references/spellings.md).
 
@@ -160,8 +160,9 @@ string and byte leaves, the legacy `list` words - is in
 - `utf8(32)` is `sized_utf8(32)` (a maximum); `char(8)` is `fixed_utf8(8)`
   (NUL-padded width); `large_utf8(64)` and `duration(ms)` are refused. A bound
   counts **bytes**: `sized_utf8(4)` refuses `Grüß`.
-- `timestamp` is `datetime64(us)` (naive wall clock); `timestamp_ltz` is
-  `datetime64(us,"UTC")`. A naive `datetime` into a zoned column, or an
+- `timestamp` is `datetime64(us)` (naive wall clock); `timestamp_ltz` and
+  Iceberg's `timestamptz` are `datetime64(us,"UTC")`, `timestamp_ns` and
+  `timestamptz_ns` the nanosecond pair; `timestamp_tz` is refused. A naive `datetime` into a zoned column, or an
   offset-carrying text into a naive one, is refused.
 - A code is not a string: `ccy` is its own datatype (`kind == "code"`,
   `string_parameters is None`), not `fixed_ascii(3)`; `isin`, `cusip`,

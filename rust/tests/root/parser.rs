@@ -903,3 +903,208 @@ mod generic {
         assert!(Field::from_str(&rejected).is_err());
     }
 }
+
+mod iceberg {
+    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
+
+    fn parse(source: &str) -> DataType {
+        DataType::from_str(source).unwrap_or_else(|error| panic!("{source}: {error}"))
+    }
+
+    fn refusal(source: &str) -> String {
+        DataType::from_str(source).expect_err(source).to_string()
+    }
+
+    fn structure(fields: impl IntoIterator<Item = Field>) -> DataType {
+        StructType::from_fields(fields.into_iter().collect::<Vec<_>>())
+            .map(DataType::from)
+            .unwrap()
+    }
+
+    #[test]
+    fn unknown_is_the_null_datatype() {
+        assert_eq!(parse("unknown"), DataType::Null);
+        assert_eq!(parse("UNKNOWN").to_string(), "null");
+    }
+
+    #[test]
+    fn a_separator_inside_timestamptz_is_snowflakes_word_and_refused_by_name() {
+        for source in [
+            "timestamp_tz",
+            "TIMESTAMP_TZ",
+            "timestamp-tz",
+            "timestamp_tz_ns",
+            "time_stamptz",
+        ] {
+            let error = refusal(source);
+            assert!(
+                error.contains("Snowflake's TIMESTAMP_TZ"),
+                "{source}: {error}"
+            );
+            assert!(error.contains("at byte 0:"), "{source}: {error}");
+        }
+        let error = refusal("struct<a: timestamp_tz>");
+        assert!(error.contains("at byte 10:"), "{error}");
+
+        // A separator before or after the word is the fold's to drop.
+        for source in ["_timestamptz", "-timestamptz", "timestamptz_"] {
+            assert_eq!(parse(source), parse("timestamptz"), "{source}");
+        }
+    }
+
+    #[test]
+    fn iceberg_type_strings_nest_inside_every_composite() {
+        let instant = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
+        let fixed = DataType::fixed_binary(16).unwrap();
+        let item = |dtype: DataType| DataType::serie(Field::new("item", dtype, true));
+
+        // The spelling a schema dump writes is the datatype the existing
+        // spelling already names.
+        assert_eq!(parse("timestamptz"), parse("datetime64(us, \"UTC\")"));
+        assert_eq!(parse("fixed[16]"), parse("fixed_size_binary(16)"));
+        assert_eq!(
+            parse("list<fixed[16]>"),
+            parse("list<fixed_size_binary(16)>")
+        );
+
+        assert_eq!(parse("list<fixed[16]>"), item(fixed.clone()));
+        assert_eq!(parse("fixed[16][]"), item(fixed.clone()));
+        assert_eq!(
+            parse("map<string, fixed[16]>"),
+            DataType::map_of(DataType::utf8(), fixed.clone(), false).unwrap()
+        );
+        assert_eq!(
+            parse("struct<a: timestamptz, b: fixed[16]>"),
+            structure([
+                Field::new("a", instant.clone(), true),
+                Field::new("b", fixed.clone(), true),
+            ])
+        );
+        assert_eq!(
+            parse(
+                "list<struct<trdregtimestamp: timestamptz, px: decimal(9, 2), at: timestamptz_ns, later: unknown>>"
+            ),
+            item(structure([
+                Field::new("trdregtimestamp", instant, true),
+                Field::new("px", DataType::decimal(9, 2).unwrap(), true),
+                Field::new(
+                    "at",
+                    DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+                    true,
+                ),
+                Field::new("later", DataType::Null, true),
+            ]))
+        );
+    }
+
+    #[test]
+    fn the_reference_struct_rendering_reads_field_ids_and_nullability() {
+        // Java's `Types.StructType.toString` and pyiceberg's `str`: each member
+        // `<id>: <name>: optional|required <type>`, the id its Parquet field id.
+        let parsed = parse(
+            "struct<1: a: optional timestamptz, 2: b: required fixed[16], \
+             3: c: optional list<struct<4: x: required int>>>",
+        );
+        let expected = structure([
+            Field::new(
+                "a",
+                DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+                true,
+            )
+            .with_parquet_field_id(1),
+            Field::new("b", DataType::fixed_binary(16).unwrap(), false).with_parquet_field_id(2),
+            Field::new(
+                "c",
+                DataType::serie(Field::new(
+                    "item",
+                    structure([Field::new("x", DataType::Int32, false).with_parquet_field_id(4)]),
+                    true,
+                )),
+                true,
+            )
+            .with_parquet_field_id(3),
+        ]);
+        assert_eq!(parsed, expected);
+        assert_eq!(parse(&parsed.to_string()), parsed);
+
+        // Either half stands alone.
+        assert_eq!(
+            parse("struct<a: optional int, b: required long>"),
+            structure([
+                Field::new("a", DataType::Int32, true),
+                Field::new("b", DataType::Int64, false),
+            ])
+        );
+        assert_eq!(
+            parse("struct<7: a: int>"),
+            structure([Field::new("a", DataType::Int32, true).with_parquet_field_id(7)])
+        );
+
+        // The words keep their places: a member named `1`, `optional`,
+        // `required` or `field` is still that name, and SQL's unseparated
+        // `row(required int)` names its member `required`.
+        for (source, name, nullable, id) in [
+            ("struct<1: int>", "1", true, None),
+            ("struct<1: 2: optional int>", "2", true, Some(1)),
+            (
+                "struct<1: required: optional int>",
+                "required",
+                true,
+                Some(1),
+            ),
+            ("struct<optional: int>", "optional", true, None),
+            ("struct<required: int>", "required", true, None),
+            ("row(required int)", "required", true, None),
+            ("struct<field: int>", "field", true, None),
+            ("struct<5: field: required int>", "field", false, Some(5)),
+            ("struct<a: required int not null>", "a", false, None),
+            ("struct<a: optional int?>", "a", true, None),
+            // The renderings write a name bare even when a digit leads it.
+            (
+                "struct<1: 24h_volume: optional int>",
+                "24h_volume",
+                true,
+                Some(1),
+            ),
+            ("struct<2fa: int>", "2fa", true, None),
+        ] {
+            let mut field = Field::new(name, DataType::Int32, nullable);
+            if let Some(id) = id {
+                field.set_parquet_field_id(id);
+            }
+            assert_eq!(parse(source), structure([field]), "{source}");
+        }
+        // The explicit form still opens with the word.
+        assert_eq!(
+            parse("struct<field(\"a\", int32, false)>"),
+            structure([Field::new("a", DataType::Int32, false)])
+        );
+
+        // A nullability stated twice must agree, and an id is a Parquet field id.
+        for (source, reason) in [
+            (
+                "struct<a: optional int not null>",
+                "agrees with the optional stated at byte 10, got required",
+            ),
+            (
+                "struct<a: required int?>",
+                "agrees with the required stated at byte 10, got optional",
+            ),
+            (
+                "struct<-1: a: int>",
+                "expected a field id from 0 to 2147483647, got -1",
+            ),
+            (
+                "struct<2147483648: a: int>",
+                "expected a field id from 0 to 2147483647, got 2147483648",
+            ),
+        ] {
+            let error = refusal(source);
+            assert!(error.contains(reason), "{source}: {error}");
+        }
+
+        // A member's doc is free text no grammar can tell from a parameter
+        // list, so it is refused.
+        assert!(DataType::from_str("struct<1: a: optional int (the doc)>").is_err());
+    }
+}

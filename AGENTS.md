@@ -318,7 +318,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | --- | --- |
 | `<name>.rs` | one shared trait, enum, value or type each, re-exported from the crate root; a type file holds its datatype, its field and its scalar in that order ([One type, one file](#one-type-one-file)) |
 | `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary |
-| `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, a family being the range of identifier bytes it owns (`DataTypeKind::range`, `contains`), `parser.rs` the canonical display and the Arrow, SQL, Hive and Spark parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
+| `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, a family being the range of identifier bytes it owns (`DataTypeKind::range`, `contains`), `parser.rs` the canonical display and the Arrow, SQL, Hive, Spark and Iceberg parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
 | `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<SCHEME>:<property>` map and its validation, `protocol.rs` the borrowed protocol views |
 | `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
 | `value/` | what a datatype, a field and a value each owe the root that holds them, and what the leaves of one family share: the `Value` contract, `DataTypeValue` (its `kind` the family whose range its `id` is in), `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the leaf contracts `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue`, `EnumValue` and `NestedValue` - declared here, implemented beside each leaf - and `SerieValue`, what every column leaf of `Serie` owes, its `id` and `kind` its field's, with `Children::Column`/`ColumnRows` walking a column's rows as `Cow`; a family is no type - it is the `DataTypeId` byte range its `DataTypeKind` owns, and a value is its leaf; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
@@ -875,7 +875,9 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 - `DataType::from_str` and `Field::from_str` are the recursive schema grammars;
   bindings pass expressions straight through. Accept canonical plus common
-  Arrow/SQL/Hive/Spark forms under an explicit recursion limit.
+  Arrow/SQL/Hive/Spark/Iceberg forms under an explicit recursion limit; an
+  Iceberg type string reads as the datatype `PrimitiveType::into_dtype` maps
+  it to, which `rust/tests/iceberg/types.rs` pins.
 - `DataType::LOGICAL_NAMES` is the one fallback registry: FIX Latest datatype
   vocabulary plus `mic`, each name resolving to the closest core datatype and
   displaying as it - no variant, no second spelling. Never register a word the
@@ -1582,8 +1584,8 @@ declares.
   written short because plain binary is exactly the storage a bounded column
   fills, while `large_binary(16)` says so rather than silently narrowing.
   Bytes are never padded, so a fixed value is exactly its width. `bytes`,
-  `blob`, `bytea`, `varbinary(n)` and `fixed_size_binary(n)` are accepted
-  spellings and render as the canonical ones; `BytesType::from_spelling`,
+  `blob`, `bytea`, `varbinary(n)`, `fixed_size_binary(n)` and Iceberg's
+  `fixed[n]` are accepted spellings and render as the canonical ones; `BytesType::from_spelling`,
   `with_bound` and `with_declared_bound` are the one table and the one rule
   the grammar and both bindings read.
 - **`Bytes` is the payload; the variant is the leaf.** Every byte `Scalar`

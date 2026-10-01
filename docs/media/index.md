@@ -2414,6 +2414,12 @@ The benchmark is `cargo bench -p yggdryl --bench media -- excel`, timing the rec
 ## Iceberg
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
+Iceberg's type strings - `timestamptz`, `fixed[16]`, `list<fixed[16]>`, the
+`struct<1: a: optional long>` its reference implementations render - are
+[datatype spellings](../types/datatype.md): each primitive reads as the
+datatype the table reader maps it to, and a struct member keeps its id and
+nullability. A list's or map's string carries no element id or element
+nullability, so its child is the grammar's nullable `item`.
 
 A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
 

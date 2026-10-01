@@ -8,7 +8,7 @@ Errors are `yggdryl::Error` (`?` into `Box<dyn Error>`), typed and located.
 ## Parse a datatype once and read it back
 
 `DataType::from_str` is an inherent method (no `FromStr` import needed) that
-reads every Arrow, SQL, Hive, Spark and FIX spelling; `Display` is the one
+reads every Arrow, SQL, Hive, Spark, Iceberg and FIX spelling; `Display` is the one
 canonical text and round-trips. `id()` is the exact leaf, `kind()` its family.
 
 ```rust

@@ -148,4 +148,69 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&v2);
         let _ = std::fs::remove_dir_all(&v3);
     }
+
+    #[test]
+    fn the_datatype_grammar_reads_every_iceberg_primitive_and_member_as_the_reader_does() {
+        // `PrimitiveType::into_dtype` is the one Iceberg mapping, and the
+        // grammar reads each name a schema document or a dump writes as the
+        // datatype that mapping answers, so a type string never needs
+        // translating before `DataType::from_str`.
+        for name in [
+            "boolean",
+            "int",
+            "long",
+            "float",
+            "double",
+            "decimal(9, 2)",
+            "decimal(9,2)",
+            "decimal(38, 18)",
+            "date",
+            "time",
+            "timestamp",
+            "timestamptz",
+            "timestamp_ns",
+            "timestamptz_ns",
+            "unknown",
+            "variant",
+            "string",
+            "uuid",
+            "fixed[16]",
+            "fixed(16)",
+            "binary",
+        ] {
+            let mapped = PrimitiveType::from_str(name)
+                .and_then(PrimitiveType::into_dtype)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(
+                DataType::from_str(name).unwrap_or_else(|error| panic!("{name}: {error}")),
+                mapped,
+                "{name}"
+            );
+        }
+
+        // The reference implementations' struct rendering reads as the schema
+        // reader reads the document it renders: one id and one nullability
+        // per column, the id under `PARQUET:field_id`.
+        let document = yggdryl::json::from_utf8(
+            r#"{
+                "type": "struct",
+                "fields": [
+                    {"id": 1, "name": "at", "required": false, "type": "timestamptz"},
+                    {"id": 2, "name": "key", "required": true, "type": "fixed[16]"},
+                    {"id": 3, "name": "px", "required": false, "type": "decimal(9, 2)"},
+                    {"id": 4, "name": "later", "required": false, "type": "unknown"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(
+            &DataType::from_str(
+                "struct<1: at: optional timestamptz, 2: key: required fixed[16], \
+                 3: px: optional decimal(9, 2), 4: later: optional unknown>"
+            )
+            .unwrap(),
+            schema.dtype()
+        );
+    }
 }

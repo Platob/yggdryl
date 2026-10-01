@@ -23,7 +23,8 @@ defaults Parquet and Iceberg v3 share. The algorithm field is never absent on a
 geography and never present on a [geometry](geometry.md), so a bare `geography`
 is a complete declaration. Both defaults display as nothing, and the algorithm
 is written only when it is not `spherical` - `geography("EPSG:4326")` is a
-non-default reference system read with default edges.
+non-default reference system read with default edges. The reference system
+may be bare, as Iceberg writes it: `geography(srid:4326, spherical)`.
 
 === "Rust"
 
@@ -47,6 +48,7 @@ non-default reference system read with default edges.
     let vincenty = DataType::geography(None, Some(EdgeAlgorithm::Vincenty))?;
     assert_eq!(vincenty.to_string(), "geography(\"OGC:CRS84\",\"vincenty\")");
     assert_eq!(DataType::from_str("geography('OGC:CRS84', 'vincenty')")?, vincenty);
+    assert_eq!(DataType::from_str("geography(OGC:CRS84, vincenty)")?, vincenty);
     assert_eq!(
         DataType::geography(Some("EPSG:4326"), None)?.to_string(),
         "geography(\"EPSG:4326\")"
@@ -78,6 +80,7 @@ non-default reference system read with default edges.
     vincenty = DataType.geography("OGC:CRS84", "vincenty")
     assert str(vincenty) == 'geography("OGC:CRS84","vincenty")'
     assert DataType(str(vincenty)) == vincenty
+    assert DataType("geography(OGC:CRS84, vincenty)") == vincenty
     assert str(DataType.geography("EPSG:4326")) == 'geography("EPSG:4326")'
 
     # An unknown algorithm reports the accepted vocabulary.
@@ -103,6 +106,7 @@ non-default reference system read with default edges.
     const vincenty = DataType.geography('OGC:CRS84', 'vincenty')
     assert.equal(vincenty.toString(), 'geography("OGC:CRS84","vincenty")')
     assert.ok(DataType.fromString(vincenty.toString()).equals(vincenty))
+    assert.ok(DataType.fromString('geography(OGC:CRS84, vincenty)').equals(vincenty))
     assert.equal(DataType.geography('EPSG:4326').toString(), 'geography("EPSG:4326")')
 
     // An unknown algorithm reports the accepted vocabulary.

@@ -4620,7 +4620,7 @@ pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBin
   pub fn extension_json(self) -> String  // {"layout":"sized_binary","max":16}
   pub fn from_extension_json(value: &str) -> Result<Self>  (fixed only on the fixed leaf; a max makes the leaf sized whichever unbounded shape was named)
   pub fn from_str(value: &str) -> Result<Self>  (from_spelling over the folded text)
-  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, sizedbinary, ...)
+  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, fixed, sizedbinary, ...)
   pub fn scalar(self, payload: impl Into<Bytes>) -> Result<Scalar>  (the value door: a fixed leaf needs len == width exactly, a sized one at most its maximum; answers the leaf's own Scalar variant, the number kept)
 impl From<BytesType> for DataType  (the leaf's own variant, unchecked; DataType::bytes validates)
 impl TryFrom<&DataType> for BytesType
