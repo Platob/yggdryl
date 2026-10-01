@@ -991,9 +991,7 @@ macro_rules! define_field_types {
         #[doc = concat!(
             "The parameter-free datatype of a [`DataType::",
             stringify!($variant),
-            "`](crate::DataType::",
-            stringify!($variant),
-            ") field."
+            "`] field."
         )]
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
