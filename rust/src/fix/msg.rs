@@ -1851,7 +1851,7 @@ impl FixMsg {
                     Ccy::new(&held)
                         .inspect_err(|_| {
                             self.unread(
-                                "FIX currency defaulted to none: the stated currency is no ISO 4217 code",
+                                "FIX currency defaulted to none: the stated currency is no currency code (US-ASCII, at most eight bytes)",
                                 tag,
                                 &held,
                             );
@@ -4096,7 +4096,9 @@ struct InstrumentKey {
 
 /// The first `{ISIN}_{MIC}_{CCY}` a security identifier under a key ending
 /// `INSTRUMENTID` spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` -
-/// shaped twelve, four and three ASCII alphanumerics, each part unchecked
+/// shaped twelve and four ASCII alphanumerics and a currency of one up to
+/// [`crate::CCY_WIDTH`] ASCII alphanumerics - `_USDT` as well as `_CHF` -
+/// each part unchecked
 /// until its own type reads it.
 fn instrument_key(ids: &SecurityIds) -> Option<InstrumentKey> {
     ids.iter().find_map(|id| {
@@ -4106,16 +4108,18 @@ fn instrument_key(ids: &SecurityIds) -> Option<InstrumentKey> {
         let tail = id.code().rsplit(';').next()?;
         let mut parts = tail.split('_');
         let (isin, mic, ccy) = (parts.next()?, parts.next()?, parts.next()?);
-        let shaped = |part: &str, width: usize| {
-            part.len() == width && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        let shaped = |part: &str, widths: std::ops::RangeInclusive<usize>| {
+            widths.contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
         };
-        (parts.next().is_none() && shaped(isin, 12) && shaped(mic, 4) && shaped(ccy, 3)).then(
-            || InstrumentKey {
-                isin: isin.to_owned(),
-                mic: mic.to_owned(),
-                ccy: ccy.to_owned(),
-            },
-        )
+        (parts.next().is_none()
+            && shaped(isin, 12..=12)
+            && shaped(mic, 4..=4)
+            && shaped(ccy, 1..=crate::CCY_WIDTH))
+        .then(|| InstrumentKey {
+            isin: isin.to_owned(),
+            mic: mic.to_owned(),
+            ccy: ccy.to_owned(),
+        })
     })
 }
 

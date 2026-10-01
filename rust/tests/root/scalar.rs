@@ -1397,7 +1397,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(<bytes::Bytes as Value>::from_scalar(&view), Some(&bytes));
 
     let currency = yggdryl::Ccy::new("USD").unwrap();
-    assert_eq!(<yggdryl::Ccy as CodeValue>::WIDTH, 3);
+    assert_eq!(<yggdryl::Ccy as CodeValue>::WIDTH, 8);
     assert_eq!(CodeValue::as_str(&currency), "USD");
     assert_eq!(Value::dtype(&currency).unwrap(), DataType::Ccy);
 

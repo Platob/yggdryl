@@ -549,8 +549,8 @@ impl JsDataType {
     /// The parameters a string datatype declares, `null` for every other.
     ///
     /// The registered codes are not strings - a currency is an identity over
-    /// ISO 4217 that stores as the text it is - so they answer `null` here
-    /// and `codeWidth` instead.
+    /// ISO 4217 codes and digital-asset tickers that stores as the text it
+    /// is - so they answer `null` here and `codeWidth` instead.
     #[napi(getter)]
     pub fn string_parameters(&self) -> Option<StringParameters> {
         self.inner
@@ -592,10 +592,11 @@ impl JsDataType {
     /// The most bytes a registered code's value may be, `null` for every
     /// other datatype.
     ///
-    /// The number its standard fixes - three for a currency, six for a CFI
-    /// classification - and a maximum rather than a layout: a code stores as
-    /// the text it is, so `fixedByteWidth` answers `null` and this answers
-    /// the bound its values are held to.
+    /// The number its standard fixes - eight for a currency, ISO 4217's three
+    /// letters or a digital-asset ticker, six for a CFI classification - and
+    /// a maximum rather than a layout: a code stores as the text it is, so
+    /// `fixedByteWidth` answers `null` and this answers the bound its values
+    /// are held to.
     #[napi(getter)]
     pub fn code_width(&self) -> Option<u32> {
         self.inner

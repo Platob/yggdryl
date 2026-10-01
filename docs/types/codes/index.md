@@ -2,7 +2,7 @@
 
 The thirteen registered codes: an identity over a published registry, the width its standard fixes, and the Arrow extension name that identity rides.
 
-A code is not a string with a charset - a currency is ISO 4217 the way a [URL](../../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is, Arrow's `Utf8` under the code's own extension name, held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](../text/string.md).
+A code is not a string with a charset - a currency is ISO 4217's, or a digital-asset ticker's, the way a [URL](../../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is, Arrow's `Utf8` under the code's own extension name, held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](../text/string.md).
 
 ## Contract
 
@@ -25,7 +25,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 | Page | Registry | Most bytes | Arrow extension |
 | --- | --- | ---: | --- |
-| [Ccy](ccy.md) | ISO 4217 | 3 | `yggdryl.ccy` |
+| [Ccy](ccy.md) | ISO 4217, or a digital-asset ticker | 8 | `yggdryl.ccy` |
 | [Country](country.md) | ISO 3166-1 alpha-2 | 2 | `yggdryl.country` |
 | [MIC](mic.md) | ISO 10383 market identifier | 4 | `yggdryl.mic` |
 | [CFI](cfi.md) | ISO 10962 classification | 6 | `yggdryl.cfi` |
@@ -57,16 +57,16 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert_eq!(currency.code_name(), Some("ccy"));
     // The width bounds a value; a code stores as its text, so it names no
     // fixed layout.
-    assert_eq!(currency.code_width(), Some(3));
+    assert_eq!(currency.code_width(), Some(8));
     assert_eq!(currency.fixed_byte_width(), None);
     assert!(currency.string_parameters().is_none());
-    assert_ne!(currency, DataType::fixed_ascii(3)?);
+    assert_ne!(currency, DataType::fixed_ascii(8)?);
 
     assert_eq!(
         DataType::CODES,
         &[
             ("country", DataType::Country, 2),
-            ("ccy", DataType::Ccy, 3),
+            ("ccy", DataType::Ccy, 8),
             ("mic", DataType::Mic, 4),
             ("cfi", DataType::Cfi, 6),
             ("isin", DataType::Isin, 12),
@@ -104,14 +104,14 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert currency.code_name == "ccy"
     # The width bounds a value; a code stores as its text, so it names no
     # fixed layout.
-    assert currency.code_width == 3
+    assert currency.code_width == 8
     assert currency.fixed_byte_width is None
     assert currency.string_parameters is None
-    assert currency != DataType.fixed_ascii(3)
+    assert currency != DataType.fixed_ascii(8)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "ccy", "mic", "cfi", "isin", "cusip", "sedol",
              "timeinforce", "bbg", "figi", "unit", "ric", "forex")] == [
-        ("country", 2), ("ccy", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
+        ("country", 2), ("ccy", 8), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("timeinforce", 8), ("bbg", 32),
         ("figi", 12), ("unit", 32), ("ric", 32), ("forex", 7),
     ]
@@ -138,14 +138,14 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(currency.kind, 'code')
     // The width bounds a value; a code stores as its text, so it names no
     // fixed layout.
-    assert.equal(currency.codeWidth, 3)
+    assert.equal(currency.codeWidth, 8)
     assert.equal(currency.fixedByteWidth, null)
     assert.equal(currency.stringParameters, null)
-    assert.ok(!currency.equals(DataType.fixedAscii(3)))
+    assert.ok(!currency.equals(DataType.fixedAscii(8)))
     assert.deepEqual(
       ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'timeinforce', 'bbg', 'figi', 'unit', 'ric', 'forex']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 8, 32, 12, 32, 32, 7],
+      [2, 8, 4, 6, 12, 9, 7, 8, 32, 12, 32, 32, 7],
     )
 
     // A value is the text, and carries its identity.
@@ -270,7 +270,9 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert_eq!(ascii4.ascii_packed(b"USD")?, 0x5553_4400);
     assert_eq!(ascii4.ascii_packed(b"USD\0")?, 0x5553_4400);
     assert_eq!(ascii4.ascii_value(0x5553_4400)?, "USD");
-    assert_eq!(DataType::Ccy.ascii_packed(b"USD")?, 0x0055_5344);
+    // A code pads to its own width: a currency may hold eight bytes, so
+    // `USD` is the top three bytes of a big-endian `i64`.
+    assert_eq!(DataType::Ccy.ascii_packed(b"USD")?, 0x5553_4400_0000_0000);
     // Sixteen bytes fill the whole `i128`; a wider width has no packed code.
     assert_eq!(
         DataType::fixed_ascii(16)?.ascii_packed(b"US0378331005")?,
@@ -328,7 +330,8 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert ascii4.ascii_packed("USD") == 0x55534400
     assert ascii4.ascii_packed("USD\x00") == 0x55534400
     assert ascii4.ascii_value(0x55534400) == "USD"
-    assert DataType("ccy").ascii_packed("USD") == 0x555344
+    # A code pads to its own width: a currency may hold eight bytes.
+    assert DataType("ccy").ascii_packed("USD") == 0x5553_4400_0000_0000
     # Sixteen bytes fill the whole 128-bit integer, which Python holds natively.
     assert DataType.fixed_ascii(16).ascii_packed("US0378331005") == (
         0x55533033373833333130303500000000
@@ -386,7 +389,8 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert.equal(ascii4.asciiPacked('USD'), 0x55534400n)
     assert.equal(ascii4.asciiPacked('USD\0'), 0x55534400n)
     assert.equal(ascii4.asciiValue(0x55534400n), 'USD')
-    assert.equal(new DataType('ccy').asciiPacked('USD'), 0x555344n)
+    // A code pads to its own width: a currency may hold eight bytes.
+    assert.equal(new DataType('ccy').asciiPacked('USD'), 0x5553440000000000n)
     // Sixteen bytes fill the whole 128-bit integer, so every code is a bigint.
     assert.equal(
       DataType.fixedAscii(16).asciiPacked('US0378331005'),
@@ -450,9 +454,9 @@ subclasses for a vocabulary of its own: `Ccy`, `Country`, `Mic` and `Cfi`;
     ```python
     from yggdryl.enums import CCY, fixed_ascii
 
-    # A member is its value's own storage bytes, read big-endian: three ASCII
-    # letters of a currency are three bytes of an integer.
-    assert int(CCY.USD) == 0x555344
+    # A member is its value's own storage bytes, read big-endian: a currency
+    # pads to the eight bytes it may hold, so `USD` leads an eight-byte integer.
+    assert int(CCY.USD) == 0x5553_4400_0000_0000
     assert str(CCY.USD) == "USD"
 
     class Venue(fixed_ascii(4)):
@@ -504,7 +508,7 @@ crate's own [`FOREX`](forex.md#the-forex-security-identifier) key.
 - Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md) and [Forex](forex.md) are the exceptions, because their value door gates the space rather than holding it, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> the row and the column, never the default, for a code exactly as for a string ([Cast](../cast.md#required-columns)).
 - [Merged](../field.md#merging-two-schemas) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string. Narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
-- `ccy` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
+- `ccy` beside `country` -> `sized_ascii(8)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
 - A code shares no fixed width with anything, because its own width bounds variable text: beside `fixed_size_binary(n)` -> `binary` in either direction.
 - Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](../datatype.md) to `string`/`utf8`. Every registered code, not a subset: the listing each of these paths reads is `DataType::CODES`, through `DataType::is_code` and `DataType::code_width`, so a code cannot be spellable in one and unspellable in the next.
 - Parquet -> the `String` logical type and the byte-array bounds that come with it, so a planner reads statistics over the codes themselves and a reader outside this crate gets a column it can already use.

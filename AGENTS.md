@@ -1436,7 +1436,8 @@ to any of the eighteen leaves or to what a string declares.
   (`with_charset`). `string_parameters` reads back for every string, which is
   what makes "which charset is this column in" one question. The thirteen
   registered codes are not strings: a currency is an identity over ISO 4217
-  that stores as the text it is, so it is `DataType::Ccy`, kind `Code`,
+  codes and digital-asset tickers, at most eight bytes, that stores as the
+  text it is, so it is `DataType::Ccy`, kind `Code`,
   answers `is_code` and `code_width`, and never `string_parameters`.
   `code_width` is a maximum rather than a layout, so `fixed_byte_width`
   answers `None` for a code.

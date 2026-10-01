@@ -44,7 +44,8 @@ code_value!(Country, Country, COUNTRY_WIDTH);
 // code stores like.
 //
 // The widths are the ones the standards fix: two bytes for ISO 3166-1's
-// country code, three for ISO 4217's currency, four for ISO 10383's market
+// country code, eight for a currency - ISO 4217's three letters or a
+// digital-asset ticker past them - four for ISO 10383's market
 // identifier, six for ISO 10962's classification, and for the three
 // securities identifiers twelve for ISO 6166's ISIN, nine for a CUSIP and
 // seven for a SEDOL, each closed by its own check digit.

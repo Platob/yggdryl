@@ -15,7 +15,7 @@ One string datatype in eighteen real leaves: six shapes in each of the three cha
 | Bindings | `Str` is Rust only; Python and JavaScript read a value as a [`Scalar`](../scalar.md) and the declaration as the frozen `StringParameters` |
 
 The thirteen [registered codes](../codes/index.md) are not strings: a currency is
-an identity over ISO 4217 that stores as the text it is, so it is
+an identity over ISO 4217's codes and the digital-asset tickers past them that stores as the text it is, so it is
 `DataType::Ccy`, kind `Code`, answers `code_width`, and never
 `string_parameters`.
 

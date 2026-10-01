@@ -531,14 +531,15 @@ test('the url factory builds a validated, canonical location column', () => {
 })
 
 test('the registered codes build their own datatype at their own width', () => {
-  // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six,
-  // ISO 6166 twelve, a CUSIP nine and a SEDOL seven, and a Bloomberg
+  // ISO 3166-1 is two letters, ISO 10383 four, ISO 10962 six, ISO 6166
+  // twelve, a CUSIP nine and a SEDOL seven, a currency ISO 4217's three
+  // letters or a digital-asset ticker of at most eight bytes, and a Bloomberg
   // identifier and a RIC at most thirty-two: each factory builds the code,
   // held to that width, never the ASCII width that would hold the same text
   // without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
-    ['ccy', [fields.ccy('settlement_ccy'), 3]],
+    ['ccy', [fields.ccy('settlement_ccy'), 8]],
     ['mic', [fields.mic('venue'), 4]],
     ['cfi', [fields.cfi('classification'), 6]],
     ['isin', [fields.isin('instrument'), 12]],
@@ -560,12 +561,23 @@ test('the registered codes build their own datatype at their own width', () => {
   }
 
   assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
+  assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 8).dtype))
   // A securities identifier is closed by its own check digit, and a column
   // of them holds the canonical spelling: a cast lets in an identifier the
   // check digit closes, in upper case; a typo or a lower-case spelling is
   // null under the safe default and a refusal naming the row when strict.
   const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
   const strict = { safe: false }
+  // A currency is ISO 4217's three letters or a digital-asset ticker up to
+  // the eight-byte bound, its case kept; nine bytes are none.
+  assert.deepEqual(
+    [...castArray(fields.ccy('sid'), utf8(['USD', 'USDT', 'stETH', 'BABYDOGE', 'TOOLONGCCY']))],
+    ['USD', 'USDT', 'stETH', 'BABYDOGE', null],
+  )
+  assert.throws(
+    () => castArray(fields.ccy('sid'), utf8(['TOOLONGCCY']), strict),
+    /at most 8 bytes/,
+  )
   assert.deepEqual(
     [...castArray(fields.cusip('sid'), utf8(['037833100', '037833101', '38259p508']))],
     ['037833100', null, null],

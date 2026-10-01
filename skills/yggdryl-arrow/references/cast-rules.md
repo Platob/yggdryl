@@ -61,7 +61,7 @@ may arrive absent, and the finished batch is checked again.
 | --- | --- |
 | `uint64` <-> `int64` <-> `float64` <-> `fixed_size_binary(8)` (same byte width) | the bytes reinterpreted, value buffer shared; `u64::MAX` reads `-1` and back |
 | Different widths (`uint32` -> `int64`) | ordinary conversion, range-checked |
-| Rule-governed target (fixed string, code, UUID, version) | the target's rule still runs: four bytes are not a currency |
+| Rule-governed target (fixed string, code, UUID, version) | the target's rule still runs: bytes past `0x7F` are not a currency |
 | Required target over source nulls | refused by path, exactly as under `value` |
 
 ## Conversions worth knowing

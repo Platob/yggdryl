@@ -985,7 +985,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
 
     // A message spelling a column's name with a value its datatype cannot
     // hold: five bytes under `SecurityExchange(207)`, which is a four-byte
-    // MIC, and four letters under `Currency(15)`, which is three.
+    // MIC, and ten under `Currency(15)`, which is held to eight.
     let root = StructType::from_fields([
         DataType::utf8().nullable_field("securityexchange"),
         DataType::utf8().nullable_field("currency"),
@@ -998,7 +998,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
         root,
         Scalar::from_struct([
             ("securityexchange", Scalar::from("XLONX")),
-            ("currency", Scalar::from("EURO")),
+            ("currency", Scalar::from("TOOLONGCCY")),
         ])
         .unwrap(),
     )

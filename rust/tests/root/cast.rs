@@ -2158,12 +2158,16 @@ mod typed {
 
         #[test]
         fn a_code_answers_safe_and_strict_exactly_as_a_string_does() {
-            let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EURO"), None]));
+            let text: ArrayRef = Arc::new(StringArray::from(vec![
+                Some("USD"),
+                Some("TOOLONGCCY"),
+                None,
+            ]));
             let refused = cast_dtype(DataType::Ccy, Arc::clone(&text), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
-            assert!(refused.contains("at most 3 bytes"), "{refused}");
+            assert!(refused.contains("at most 8 bytes"), "{refused}");
 
             let lenient = cast_into(
                 &Field::new("ccy", DataType::Ccy, true),
@@ -3401,7 +3405,14 @@ mod certification {
 
     #[test]
     fn the_code_ingest_writes_only_registered_members() {
-        let codes = text(&[Some("USD"), Some("usd"), Some("EURO"), Some(""), None]);
+        let codes = text(&[
+            Some("USD"),
+            Some("usd"),
+            Some("EURO"),
+            Some("TOOLONGCCY"),
+            Some(""),
+            None,
+        ]);
         for target in [
             DataType::Ccy,
             DataType::Country,

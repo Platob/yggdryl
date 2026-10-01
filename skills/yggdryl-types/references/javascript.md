@@ -284,9 +284,11 @@ assert.throws(() => bounded.scalar('EURO!'), /at most 4 bytes/)
 
 const ccy = new DataType('ccy')
 assert.equal(ccy.kind, 'code')
-assert.equal(ccy.codeWidth, 3)
+assert.equal(ccy.codeWidth, 8)
 assert.equal(ccy.stringParameters, null)
 assert.equal(ccy.scalar('USD').kind, 'ccy')
+assert.equal(ccy.scalar('USDT').asJs(), 'USDT')               // a ticker, up to eight bytes
+assert.throws(() => ccy.scalar('BABYDOGES'), /at most 8 bytes/)
 assert.ok(!ccy.scalar('USD').equals(Scalar.from('USD')))   // not a string
 assert.throws(() => new DataType('isin').scalar('US0378331006'), /check digit/)
 // A currency pair: every spelling a feed writes, one stored `CCY/CCY`.

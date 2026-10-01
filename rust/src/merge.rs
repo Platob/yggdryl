@@ -635,15 +635,15 @@ fn text_parameters(dtype: &DataType) -> Option<StringType> {
 ///
 /// Widening never answers a code: a code names fewer values than the width it
 /// is bounded by, so the type holding both sides is the plain one - `ccy`
-/// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
+/// beside `ascii(8)` is `ascii(8)`. Narrowing asks the opposite question, for
 /// the tightest type that names both, and there the code is the answer
 /// whenever the other side is at least as general: `ccy` beside `utf8`
-/// or `ascii(3)` narrows to `ccy`, and only a side narrower still, such
-/// as `ascii(2)`, outranks it.
+/// or `ascii(8)` narrows to `ccy`, and only a side narrower still, such
+/// as `ascii(3)`, outranks it.
 ///
 /// Two *different* codes are the one pair neither direction answers with a
 /// code, because neither standard names the other's values: a currency merged
-/// with a country is `ascii(3)` widening and `ascii(2)` narrowing, never one
+/// with a country is `ascii(8)` widening and `ascii(2)` narrowing, never one
 /// standard's code carrying the other's values.
 fn merge_text(
     left: (&DataType, StringType),

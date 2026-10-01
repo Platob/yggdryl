@@ -687,6 +687,12 @@ fn the_shipped_native_plan_fills_quotes_pegs_contract_amounts_and_currency_sourc
     assert_eq!(held.by_tag(839).unwrap(), super::decimal("100.25"));
     assert_eq!(held.by_tag(1146).unwrap(), super::decimal("1"));
     assert_eq!(text(&held, 2897).as_deref(), Some("6"));
+
+    // A digital-asset ticker is a currency ISO 4217 does not list, so no
+    // source is stated for it - neither ISO 4217's `6` nor any other.
+    let held = settled(&reader, b"8=FIX.4.4|35=S|15=USDT|188=1.25|10=0|");
+    assert_eq!(text(&held, 15).as_deref(), Some("USDT"));
+    assert_eq!(text(&held, 2897).as_deref(), None);
 }
 
 /// The committed dictionary, owned, for the cases that edit a field.

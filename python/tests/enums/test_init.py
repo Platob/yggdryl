@@ -358,10 +358,14 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
         assert declared.as_enum().name == declared.__name__
         assert declared.into_field(spelling).dtype == declared.dtype()
 
-    # ISO 3166-1 is two bytes, ISO 4217 three and ISO 10962 six, so each packs
-    # with none of the padding a wider width would have stored.
+    # ISO 3166-1 is two bytes and ISO 10962 six, so each packs with none of the
+    # padding a wider width would have stored; a currency is ISO 4217's three
+    # letters or a ticker of up to eight bytes, so it packs padded to eight.
     assert int(COUNTRY.US) == 0x5553
-    assert int(CCY.USD) == 0x555344
+    assert int(CCY.USD) == 0x5553_4400_0000_0000 == 6148332683081547776
+    assert int(CCY.EUR) == 0x4555_5200_0000_0000 == 4995989521590910976
+    assert int(CCY.JPY) == 0x4A50_5900_0000_0000 == 5354877813478391808
+    assert int(CCY.USD) == DataType.fixed_ascii(8).ascii_packed("USD")
     assert int(MIC.XPAR) == DataType.fixed_ascii(4).ascii_packed("XPAR")
     assert int(CFI.ESVUFR) == 0x455356554652
     assert str(CFI.ESVUFR) == "ESVUFR"
@@ -371,9 +375,19 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     assert MIC.from_str("XLIT") is MIC("XLIT")
     assert "XLIT" not in MIC.__members__
 
+    # The declared currencies are ISO 4217's, never a gate: a digital-asset
+    # ticker up to the eight-byte bound reads back as a member of its own, and
+    # nine bytes are no currency.
+    assert CCY.from_str("USDT").into_str() == "USDT"
+    assert "USDT" not in CCY.__members__
+    assert CCY.from_str("BABYDOGE").into_str() == "BABYDOGE"
+    assert int(CCY.from_str("BABYDOGE")) == 0x4241_4259_444F_4745
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        CCY.from_str("TOOLONGCCY")
+
     # A declaration reads back as the class that wrote it, over the code's
-    # datatype: `ccy` and `fixed_ascii(3)` are both three bytes and are not the
-    # same vocabulary base.
+    # datatype: `ccy` and `fixed_ascii(8)` pack the same integers and are not
+    # the same vocabulary base.
     recovered = AsciiCode.from_field(Field.from_arrow(CCY.into_field("ccy").into_arrow()))
     assert recovered.__name__ == "CCY"
     assert recovered.dtype() == DataType("ccy")

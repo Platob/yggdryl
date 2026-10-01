@@ -65,7 +65,7 @@ def country(name: str, *, nullable: bool = True, metadata: MetadataInput = None)
 
 
 def ccy(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CcyField:
-    """ISO 4217, the three-letter currency code."""
+    """The currency code: ISO 4217's three letters, or a digital-asset ticker, at most eight bytes."""
 
     return new_field(CcyField, name, _CCY, nullable, metadata)
 
@@ -147,7 +147,8 @@ def forex(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -
     """A currency pair, ``CCY/CCY``: two ISO 4217 codes, the base then the quote.
 
     Stored as its canonical text, ``EUR/USD``, whichever spelling - ``EURUSD``,
-    ``eur-usd`` - a value arrives in.
+    ``eur-usd`` - a value arrives in. A digital-asset ticker is a ``ccy`` but
+    no leg, so ``BTC/USDT`` is no pair.
     """
 
     return new_field(ForexField, name, _FOREX, nullable, metadata)

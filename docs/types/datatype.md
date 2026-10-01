@@ -176,7 +176,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Ccy` | String | `ccy` | ISO 4217 alpha-3, at most 3 bytes |
+| `Ccy` | String | `ccy` | ISO 4217 alpha-3 or a digital-asset ticker, at most 8 bytes |
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |

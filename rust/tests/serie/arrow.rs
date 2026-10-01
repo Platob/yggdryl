@@ -512,13 +512,13 @@ fn a_required_child_under_a_null_record_row_is_admitted() {
 fn a_value_the_fields_contract_refuses_is_refused_at_the_door_naming_the_row() {
     // A code rides Arrow's own text layout, so the layout admits any text
     // and the door reads each row once through the field's contract.
-    let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR", "EURO"]));
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR", "TOOLONGCCY"]));
     let refusal = Serie::from_arrow_array(
         Some(&Field::new("ccy", DataType::Ccy, false)),
         Arc::clone(&text),
         strict(),
     )
-    .expect_err("EURO is not a registered currency");
+    .expect_err("a currency is at most eight bytes");
     let shown = refusal.to_string();
     assert!(shown.contains("ccy"), "names the column: {shown}");
     assert!(shown.contains("row 2"), "names the row: {shown}");
@@ -602,9 +602,9 @@ fn from_scalars_proves_the_rows_once_and_lays_them_out_once() {
     assert!(refusal.to_string().contains("price"));
     let refusal = Serie::from_scalars(
         Field::new("ccy", DataType::Ccy, false),
-        [Scalar::from("USD"), Scalar::from("EURO")],
+        [Scalar::from("USD"), Scalar::from("TOOLONGCCY")],
     )
-    .expect_err("EURO is not a registered currency");
+    .expect_err("a currency is at most eight bytes");
     assert!(refusal.to_string().contains("ccy"), "{refusal}");
 }
 

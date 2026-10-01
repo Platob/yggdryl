@@ -101,12 +101,12 @@ mod rows {
         // A value that does not fit the resolved datatype is refused by that
         // datatype, never by the name that spelled it.
         let refused = yggdryl::json::from_utf8_with_field(
-            r#"{"ccy":"EURO!","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04T00:00:00","seq":1}"#,
+            r#"{"ccy":"TOOLONGCCY","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04T00:00:00","seq":1}"#,
             &row,
         )
         .unwrap_err()
         .to_string();
-        assert!(refused.contains("at most 3 bytes"), "{refused}");
+        assert!(refused.contains("at most 8 bytes"), "{refused}");
     }
 
     #[test]

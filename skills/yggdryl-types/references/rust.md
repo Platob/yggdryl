@@ -330,9 +330,11 @@ let slot = DataType::fixed_ascii(4)?.scalar("USD")?;
 assert_eq!(slot, Scalar::FixedAsciiString(Str::new("USD"), 4));
 
 let ccy = DataType::ccy();
-assert_eq!(ccy.code_width(), Some(3));
+assert_eq!(ccy.code_width(), Some(8));
 assert!(ccy.string_parameters().is_none());
 assert_eq!(ccy.scalar("USD")?.kind(), "ccy");
+assert_eq!(ccy.scalar("USDT")?.as_str(), Some("USDT")); // a ticker, up to eight bytes
+assert!(ccy.scalar("BABYDOGES").is_err());
 assert_ne!(ccy.scalar("USD")?, Scalar::from("USD")); // a code is not a string
 assert!(DataType::Isin.scalar("US0378331006").is_err()); // check digit
 // A currency pair: every spelling a feed writes, one stored `CCY/CCY`.

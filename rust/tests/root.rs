@@ -27,6 +27,8 @@ mod bytes;
 mod bytestream;
 #[path = "root/cast.rs"]
 mod cast;
+#[path = "root/ccy.rs"]
+mod ccy;
 #[path = "root/cfi.rs"]
 mod cfi;
 #[path = "root/charset.rs"]

@@ -663,11 +663,12 @@ mod fields {
         assert!(StringField::try_new("ccy", DataType::Ccy, false).is_err());
 
         // The code/width boundary is the one the markers exist for: a currency
-        // and a `fixed_ascii(3)` are the same three bytes and are not each other.
+        // and a `fixed_ascii(8)` hold the same eight bytes and are not each
+        // other.
         assert_eq!(CcyField::unit("ccy", false).dtype(), &DataType::Ccy);
         assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
         assert_eq!(MicField::unit("venue", true).dtype(), &DataType::Mic);
-        assert!(CcyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
+        assert!(CcyField::try_new("ccy", DataType::fixed_ascii(8).unwrap(), false).is_err());
         // Six bytes against eight: the confusion a width/code mix-up produces.
         assert!(CfiField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
@@ -685,7 +686,8 @@ mod fields {
             FieldScalar::new(&ccy.to_field(), "USD").unwrap().as_str(),
             Some("USD")
         );
-        assert!(FieldScalar::new(&ccy.to_field(), "EURO").is_err());
+        assert!(FieldScalar::new(&ccy.to_field(), "USDT").is_ok());
+        assert!(FieldScalar::new(&ccy.to_field(), "TOOLONGCCY").is_err());
         let cfi = CfiField::unit("classification", false);
         assert!(FieldScalar::new(&cfi.to_field(), "ESVUFR").is_ok());
     }

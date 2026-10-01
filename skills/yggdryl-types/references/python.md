@@ -333,8 +333,11 @@ with pytest.raises(ValueError):
     DataType("sized_utf8(4)").scalar("Grüß")           # six bytes of UTF-8
 
 ccy = DataType("ccy")
-assert (ccy.kind, ccy.code_width, ccy.string_parameters) == ("code", 3, None)
+assert (ccy.kind, ccy.code_width, ccy.string_parameters) == ("code", 8, None)
 assert ccy.scalar("USD").kind == "ccy"
+assert ccy.scalar("USDT").as_py() == "USDT"            # a ticker, up to eight bytes
+with pytest.raises(ValueError, match="at most 8 bytes"):
+    ccy.scalar("BABYDOGES")
 assert ccy.scalar("USD") != Scalar.from_("USD")        # a code is not a string
 with pytest.raises(ValueError, match="check digit"):
     DataType("isin").scalar("US0378331006")

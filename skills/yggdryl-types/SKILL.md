@@ -165,7 +165,9 @@ string and byte leaves, the legacy `list` words - is in
   `timestamptz_ns` the nanosecond pair; `timestamp_tz` is refused. A naive `datetime` into a zoned column, or an
   offset-carrying text into a naive one, is refused.
 - A code is not a string: `ccy` is its own datatype (`kind == "code"`,
-  `string_parameters is None`), not `fixed_ascii(3)`; `isin`, `cusip`,
+  `string_parameters is None`), not `fixed_ascii(8)`, and holds ISO 4217's
+  three letters or a digital-asset ticker (`USDT`, `BABYDOGE`) of at most eight
+  bytes, case kept; `isin`, `cusip`,
   `sedol`, `figi` check their digit; these four and `bbg`, `ric` have no
   default value (`default_scalar()` raises), so a record that omits such a
   required child is refused rather than defaulted - make the child nullable
@@ -185,7 +187,8 @@ string and byte leaves, the legacy `list` words - is in
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
   `marketdatakind` code is an integer, never the text `"10"`.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
-  currencies, however a feed spells it. A symbol with a tenor or a RIC
+  currencies, however a feed spells it; a digital-asset ticker is a `ccy` but no
+  leg, so `BTC/USDT` is no `forex`. A symbol with a tenor or a RIC
   suffix (`EUR/USD 1M`, `EURUSD=`) is no `forex` value; reading one is
   `FxSymbol::from_symbol`, Rust-only.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers

@@ -2,7 +2,8 @@
 
 Each class is the Python spelling of one registered code in the datatype
 grammar: `country` is ISO 3166-1 alpha-2 in at most two bytes, `ccy` is
-ISO 4217 in three, `mic` is ISO 10383 in four, and `cfi` is ISO 10962 in six.
+ISO 4217's three letters or a digital-asset ticker in at most eight, `mic` is
+ISO 10383 in four, and `cfi` is ISO 10962 in six.
 A member *is* the integer its code packs into - its bytes padded to that width
 - so the same code is the same integer in every process, whatever a column
 stores it as.
@@ -61,10 +62,13 @@ class COUNTRY(Country):
 
 
 class CCY(Ccy):
-    """ISO 4217, the three-letter currency code.
+    """The ISO 4217 currency codes, the declared vocabulary of `ccy`.
 
     The `ccy` datatype stores as the text it is, so a currency column
-    holds `USD` and nothing else - no padding to write and none to trim.
+    holds `USD` as `USD` - no padding to write and none to trim. The
+    declared members are ISO 4217's; the datatype also holds a digital-asset
+    ticker of up to eight bytes (`USDT`, `1INCH`), which reads back as a member
+    of its own, the vocabulary being open rather than a gate.
     """
 
     AED = "AED"

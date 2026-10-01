@@ -330,6 +330,7 @@ A pair has no neutral member, so the empty text is refused at the value door rat
 - The value stream and a digest feed the canonical text under the code's own identifier: `eurusd` and `EUR/USD` hash alike, and a `forex` and a [`bbg`](bbg.md) of the same text are two values.
 - `ascii_packed` pads a pair into seven bytes, exactly as `fixed_ascii(7)` does.
 - Nothing partial about a pair, so [`merge_with`](index.md#the-code-family-value) keeps this one.
+- A digital-asset ticker is a [`ccy`](ccy.md#digital-asset-tickers) but no leg: both legs are ISO 4217 codes the crate lists, so `BTC/USDT` is no `forex`.
 - No vocabulary: no listing ships under `forex`, and no Python code class declares one.
 
 ## Commands

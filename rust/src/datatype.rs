@@ -157,7 +157,8 @@ pub enum DataType {
     SizedCp1252String(u32),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
-    /// ISO 4217: a currency code, three ASCII bytes.
+    /// A currency code: ISO 4217's three letters or a digital-asset ticker,
+    /// at most eight ASCII bytes.
     Ccy,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     Mic,
@@ -342,7 +343,7 @@ impl DataType {
     /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
     /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);
     ///
-    /// assert!(DataType::Ccy.scalar("EURO").is_err());
+    /// assert!(DataType::Ccy.scalar("TOOLONGCCY").is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -1647,7 +1648,7 @@ mod arrow {
                     crate::enums::enum_extension_name(held.id()).map(|name| (name, String::new()))
                 }
                 // A code carries its own name, so the identity survives Arrow:
-                // three bytes under `yggdryl.ccy` read back a currency.
+                // the same text under `yggdryl.ccy` reads back a currency.
                 code => crate::code_extension_name(code).map(|name| (name, String::new())),
             }
         }
