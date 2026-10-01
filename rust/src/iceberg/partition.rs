@@ -6,10 +6,25 @@
 //! [`Url::hive_partitions`](crate::Url::hive_partitions) already reads, so a
 //! table this module writes is also a lake the rest of the crate can walk.
 //!
-//! Apache Iceberg validates transform/source pairs and computes non-identity
-//! partition values. Yggdryl keeps its Arrow 59 arrays at the I/O boundary and
-//! passes one typed scalar at a time through that implementation while grouping
-//! rows for its own data-file writer.
+//! Apache Iceberg validates the standard transform/source pairs and computes
+//! a bucket or a truncation. Every time transform - the specification's
+//! `year`, `month`, `day` and `hour`, and this crate's own `minute`, `qhour`,
+//! `hhour`, `week` and `quarter` - is computed here through the one
+//! [`EpochPeriod`] the expression grammar's `years(x)` through `minutes(x)`
+//! read, so a partition value and a filter cannot disagree about a period.
+//! Yggdryl keeps its Arrow 59 arrays at the I/O boundary and passes one typed
+//! scalar at a time through that implementation while grouping rows for its
+//! own data-file writer.
+//!
+//! The five transforms of this crate's own have no spelling in the official
+//! model, which refuses a name it does not know. They cross it as a bucket
+//! whose count no table can state - `bucket[2147483649]` through
+//! `bucket[2147483653]`, above the `i32::MAX` [`Transform::result_type`]
+//! refuses - because a bucket is accepted on every date and timestamp source,
+//! answers the same `int32` a period does, and each count is its own
+//! transform to the official duplicate check. [`Transform::into_official`]
+//! and [`Transform::from_official`] are the two halves, and every document
+//! handed to the official model is rewritten through them in `official.rs`.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -22,6 +37,8 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::expression::Function;
+use crate::expression::eval::{EpochPeriod, epoch_value};
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -38,12 +55,20 @@ pub(super) const SPEC_ID: &str = "spec-id";
 
 /// How a source column value becomes a partition value.
 ///
+/// The specification's transforms and five of this crate's own, each
+/// spelled by its name - `qhour` for a quarter hour - with the plural the
+/// Spark DDL writes read as an alias; a reader that does not know the five
+/// reads them as `unknown` and prunes nothing by them, which is what the
+/// specification says of an unknown transform.
+///
 /// ```
 /// use yggdryl::iceberg::Transform;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// assert_eq!(Transform::from_str("bucket[16]")?, Transform::Bucket(16));
 /// assert_eq!(Transform::Bucket(16).to_string(), "bucket[16]");
+/// assert_eq!(Transform::from_str("qhours")?, Transform::QuarterHour);
+/// assert_eq!(Transform::QuarterHour.to_string(), "qhour");
 ///
 /// // Invertibility is distinct from write support: bucket values are
 /// // computed by Apache Iceberg even though they cannot restore the source.
@@ -69,6 +94,17 @@ pub enum Transform {
     Day,
     /// Hours since 1970-01-01T00, from a timestamp.
     Hour,
+    /// Minutes since 1970-01-01T00:00, from a timestamp; `minute`.
+    Minute,
+    /// Quarter hours since the epoch, from a timestamp; `qhour`.
+    QuarterHour,
+    /// Half hours since the epoch, from a timestamp; `hhour`.
+    HalfHour,
+    /// Monday-start weeks since Monday 1969-12-29, from a date or
+    /// timestamp; `week`.
+    Week,
+    /// Quarters since 1970-Q1, from a date or timestamp; `quarter`.
+    Quarter,
     /// Always null, which is how a spec retires a partition field.
     Void,
     /// A transform retained for metadata compatibility but not interpreted.
@@ -91,11 +127,135 @@ impl Transform {
         matches!(self, Self::Identity | Self::Void)
     }
 
+    /// The grammar function spelling this transform, for the nine that one
+    /// spells: `years(x)` for `year` through `minutes(x)` for `minute`.
+    ///
+    /// `Identity`, `Bucket`, `Truncate`, `Void` and `Unknown` have none.
+    ///
+    /// ```
+    /// use yggdryl::expression::Function;
+    /// use yggdryl::iceberg::Transform;
+    ///
+    /// assert_eq!(Transform::QuarterHour.function(), Some(Function::QuarterHours));
+    /// assert_eq!(Transform::from_function(&Function::Weeks), Some(Transform::Week));
+    /// assert_eq!(Transform::Bucket(4).function(), None);
+    /// assert_eq!(Transform::from_function(&Function::Year), None);
+    /// ```
+    pub const fn function(self) -> Option<Function> {
+        Some(match self {
+            Self::Year => Function::Years,
+            Self::Month => Function::Months,
+            Self::Day => Function::Days,
+            Self::Hour => Function::Hours,
+            Self::Minute => Function::Minutes,
+            Self::QuarterHour => Function::QuarterHours,
+            Self::HalfHour => Function::HalfHours,
+            Self::Week => Function::Weeks,
+            Self::Quarter => Function::Quarters,
+            Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
+                return None;
+            }
+        })
+    }
+
+    /// The transform a grammar function spells, the inverse of
+    /// [`Self::function`]: the nine epoch functions and no other.
+    pub const fn from_function(function: &Function) -> Option<Self> {
+        Some(match function {
+            Function::Years => Self::Year,
+            Function::Months => Self::Month,
+            Function::Days => Self::Day,
+            Function::Hours => Self::Hour,
+            Function::Minutes => Self::Minute,
+            Function::QuarterHours => Self::QuarterHour,
+            Function::HalfHours => Self::HalfHour,
+            Function::Weeks => Self::Week,
+            Function::Quarters => Self::Quarter,
+            _ => return None,
+        })
+    }
+
+    /// The period a time transform floors its source to, for the nine.
+    pub(super) const fn epoch_period(self) -> Option<EpochPeriod> {
+        Some(match self {
+            Self::Year => EpochPeriod::Year,
+            Self::Month => EpochPeriod::Month,
+            Self::Day => EpochPeriod::Day,
+            Self::Hour => EpochPeriod::Hour,
+            Self::Minute => EpochPeriod::Minute,
+            Self::QuarterHour => EpochPeriod::QuarterHour,
+            Self::HalfHour => EpochPeriod::HalfHour,
+            Self::Week => EpochPeriod::Week,
+            Self::Quarter => EpochPeriod::Quarter,
+            Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
+                return None;
+            }
+        })
+    }
+
+    /// Whether this is one of the five transforms the official model has no
+    /// spelling for, which cross it as a reserved bucket count.
+    pub(super) const fn is_bridged(self) -> bool {
+        matches!(
+            self,
+            Self::Minute | Self::QuarterHour | Self::HalfHour | Self::Week | Self::Quarter
+        )
+    }
+
+    /// The official transform this one crosses the Apache model as.
+    ///
+    /// The standard transforms are themselves; the five of this crate's own
+    /// are each a bucket of a reserved count (see the module documentation).
+    pub(super) const fn into_official(self) -> OfficialTransform {
+        match self {
+            Self::Identity => OfficialTransform::Identity,
+            Self::Bucket(count) => OfficialTransform::Bucket(count),
+            Self::Truncate(width) => OfficialTransform::Truncate(width),
+            Self::Year => OfficialTransform::Year,
+            Self::Month => OfficialTransform::Month,
+            Self::Day => OfficialTransform::Day,
+            Self::Hour => OfficialTransform::Hour,
+            Self::Minute => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 1),
+            Self::QuarterHour => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 2),
+            Self::HalfHour => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 3),
+            Self::Week => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 4),
+            Self::Quarter => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 5),
+            Self::Void => OfficialTransform::Void,
+            Self::Unknown => OfficialTransform::Unknown,
+        }
+    }
+
+    /// The transform an official one spells, the inverse of
+    /// [`Self::into_official`]: a reserved bucket count reads as the
+    /// transform it carried.
+    pub(super) const fn from_official(transform: OfficialTransform) -> Self {
+        match transform {
+            OfficialTransform::Identity => Self::Identity,
+            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 1 => Self::Minute,
+            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 2 => {
+                Self::QuarterHour
+            }
+            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 3 => Self::HalfHour,
+            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 4 => Self::Week,
+            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 5 => Self::Quarter,
+            OfficialTransform::Bucket(count) => Self::Bucket(count),
+            OfficialTransform::Truncate(width) => Self::Truncate(width),
+            OfficialTransform::Year => Self::Year,
+            OfficialTransform::Month => Self::Month,
+            OfficialTransform::Day => Self::Day,
+            OfficialTransform::Hour => Self::Hour,
+            OfficialTransform::Void => Self::Void,
+            OfficialTransform::Unknown => Self::Unknown,
+        }
+    }
+
     /// Return the datatype a partition value has, given its source column.
     ///
     /// # Errors
     ///
-    /// Returns an error when the transform cannot apply to the source type.
+    /// Returns an error when the transform cannot apply to the source type:
+    /// a sub-day period needs a timestamp, a week or a quarter a date or a
+    /// timestamp, and the standard transforms what Apache Iceberg accepts.
     pub fn result_type(self, source: &DataType) -> Result<DataType> {
         self.validate_parameter()?;
         if self == Self::Void {
@@ -104,8 +264,29 @@ impl Transform {
         if self == Self::Unknown {
             return Ok(DataType::utf8());
         }
+        if self.is_bridged() {
+            let period = self
+                .epoch_period()
+                .expect("a bridged transform is a period");
+            let accepted = match source {
+                DataType::DateTime64 { .. } => true,
+                DataType::Date32 => period.takes_date(),
+                _ => false,
+            };
+            if !accepted {
+                return Err(invalid(format_smolstr!(
+                    "expected {} as the source of the {self} transform, got {source}",
+                    if period.takes_date() {
+                        "a date or a timestamp"
+                    } else {
+                        "a timestamp"
+                    }
+                )));
+            }
+            return Ok(DataType::Int32);
+        }
 
-        let transform = official_transform(self);
+        let transform = self.into_official();
         let input = OfficialType::Primitive(official_primitive_type(source)?);
         transform.result_type(&input).map_err(Error::from_iceberg)?;
 
@@ -113,7 +294,13 @@ impl Transform {
             Self::Identity | Self::Truncate(_) => source.clone(),
             Self::Day => DataType::date32(),
             Self::Bucket(_) | Self::Year | Self::Month | Self::Hour => DataType::Int32,
-            Self::Void | Self::Unknown => unreachable!("returned above"),
+            Self::Minute
+            | Self::QuarterHour
+            | Self::HalfHour
+            | Self::Week
+            | Self::Quarter
+            | Self::Void
+            | Self::Unknown => unreachable!("returned above"),
         })
     }
 
@@ -142,10 +329,15 @@ impl FromStr for Transform {
         let trimmed = value.trim();
         match trimmed {
             "identity" => return Ok(Self::Identity),
-            "year" => return Ok(Self::Year),
-            "month" => return Ok(Self::Month),
-            "day" => return Ok(Self::Day),
-            "hour" => return Ok(Self::Hour),
+            "year" | "years" => return Ok(Self::Year),
+            "month" | "months" => return Ok(Self::Month),
+            "day" | "days" => return Ok(Self::Day),
+            "hour" | "hours" => return Ok(Self::Hour),
+            "minute" | "minutes" => return Ok(Self::Minute),
+            "qhour" | "qhours" | "quarter_hour" => return Ok(Self::QuarterHour),
+            "hhour" | "hhours" | "half_hour" => return Ok(Self::HalfHour),
+            "week" | "weeks" => return Ok(Self::Week),
+            "quarter" | "quarters" => return Ok(Self::Quarter),
             "void" => return Ok(Self::Void),
             "unknown" => return Ok(Self::Unknown),
             _ => {}
@@ -161,7 +353,7 @@ impl FromStr for Transform {
             position: 0,
             reason: format_smolstr!(
                 "expected an Iceberg transform (identity, bucket[n], truncate[w], year, month, \
-                 day, hour, void, unknown), got {trimmed:?}"
+                 day, hour, minute, qhour, hhour, week, quarter, void, unknown), got {trimmed:?}"
             ),
         })
     }
@@ -177,11 +369,23 @@ impl fmt::Display for Transform {
             Self::Month => formatter.write_str("month"),
             Self::Day => formatter.write_str("day"),
             Self::Hour => formatter.write_str("hour"),
+            Self::Minute => formatter.write_str("minute"),
+            Self::QuarterHour => formatter.write_str("qhour"),
+            Self::HalfHour => formatter.write_str("hhour"),
+            Self::Week => formatter.write_str("week"),
+            Self::Quarter => formatter.write_str("quarter"),
             Self::Void => formatter.write_str("void"),
             Self::Unknown => formatter.write_str("unknown"),
         }
     }
 }
+
+/// The bucket count above which the official model carries the five
+/// transforms it has no spelling for: `i32::MAX + 1`, so the count after it
+/// stands for `minute`, then `qhour`, `hhour`, `week` and `quarter`. A real
+/// bucket count is at most `i32::MAX` ([`Transform::result_type`] refuses a
+/// larger one), so no table can state a reserved one.
+const BRIDGE_BUCKET_BASE: u32 = 1 << 31;
 
 /// Read `[n]` or `(n)` after a transform keyword.
 fn bracketed(rest: &str, keyword: &str) -> Result<u32> {
@@ -513,12 +717,14 @@ impl PartitionSpec {
                     result.dtype()
                 )));
             }
+            // A bucket and a truncation are the official scalar functions;
+            // every time transform floors its count here.
             let function = match field.transform {
-                Transform::Identity | Transform::Void => None,
-                transform => Some(
-                    create_transform_function(&official_transform(transform))
+                transform @ (Transform::Bucket(_) | Transform::Truncate(_)) => Some(
+                    create_transform_function(&transform.into_official())
                         .map_err(Error::from_iceberg)?,
                 ),
+                _ => None,
             };
             transforms.push(PartitionTransform {
                 path,
@@ -762,10 +968,12 @@ impl PartitionTransform {
     /// [`Self::partition_value`] once per distinct key rather than once per
     /// row, which is only the same partition when equal keys can never compute
     /// two values. The source column itself has that property for every
-    /// transform. A timestamp under a calendar transform has a coarser one -
-    /// the UTC hour for `hour`, the UTC day for `day`, `month` and `year` -
-    /// because every instant of one day computes one day, month and year, so
-    /// a column of distinct instants still keys a handful of groups. `void`
+    /// transform. A timestamp under a time transform has a coarser one - the
+    /// period itself for a fixed-length one (`minute`, `qhour`, `hhour`,
+    /// `hour`, `day`), the UTC day for the calendar ones (`week`, `month`,
+    /// `quarter`, `year`), which are not aligned to the epoch - because every
+    /// instant of one day computes one week, month, quarter and year, so a
+    /// column of distinct instants still keys a handful of groups. `void`
     /// computes null whatever the row holds, so it keys nothing.
     ///
     /// # Errors
@@ -782,13 +990,15 @@ impl PartitionTransform {
         };
         use arrow_schema::TimeUnit as ArrowTimeUnit;
 
-        let (seconds, unit) = match (self.transform, source.data_type()) {
-            (Transform::Void, _) => return Ok(None),
-            (Transform::Hour, arrow_schema::DataType::Timestamp(unit, _)) => (3_600, *unit),
-            (
-                Transform::Day | Transform::Month | Transform::Year,
-                arrow_schema::DataType::Timestamp(unit, _),
-            ) => (86_400, *unit),
+        let (seconds, unit) = match (
+            self.transform.epoch_period(),
+            self.transform,
+            source.data_type(),
+        ) {
+            (_, Transform::Void, _) => return Ok(None),
+            (Some(period), _, arrow_schema::DataType::Timestamp(unit, _)) => {
+                (period.seconds().unwrap_or(86_400), *unit)
+            }
             _ => return Ok(Some(std::sync::Arc::clone(source))),
         };
         let step = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit)).unwrap_or(1)
@@ -811,7 +1021,9 @@ impl PartitionTransform {
         Ok(Some(std::sync::Arc::new(keys)))
     }
 
-    /// Compute one partition value through Apache Iceberg's scalar transform.
+    /// Compute one partition value: a time transform through the crate's own
+    /// period arithmetic, a bucket or a truncation through Apache Iceberg's
+    /// scalar transform.
     pub(super) fn partition_value(&self, value: Scalar) -> Result<Scalar> {
         if value.is_null() || self.transform == Transform::Void {
             return Ok(Scalar::Null);
@@ -820,51 +1032,42 @@ impl PartitionTransform {
             return Ok(value);
         }
 
-        // The official literal implementation unwraps Date32 calendar
-        // conversion. Core calendar arithmetic is total over i32 day counts,
-        // so keep caller-controlled extremes out of that panic path.
-        if let Scalar::Date32(date) = &value {
-            let days = date.count();
-            let (year, month, _) = crate::timezone::civil_from_days(i64::from(days));
-            let month = i32::try_from(month).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a calendar month fitting i32, got {month}"
-                ))
-            })?;
-            return match self.transform {
-                Transform::Year => Ok(Scalar::from(year - 1970)),
-                Transform::Month => Ok(Scalar::from((year - 1970) * 12 + month - 1)),
-                Transform::Day => Ok(Scalar::date32(days)),
-                _ => self.official_value(Scalar::date32(days)),
+        // Every time transform floors its source's count to the UTC period,
+        // as the specification and the Java implementation do. iceberg-rust
+        // 0.10 truncates a count before the epoch toward zero first, which
+        // moves the last second of a day before 1970 into the next day - and
+        // a write keys every instant of one UTC day together, so one row
+        // would label the whole day. Flooring here is also total over the
+        // i32 day range the official literal path unwraps a calendar on.
+        if let Some(period) = self.transform.epoch_period() {
+            let value = match &value {
+                Scalar::Date32(_) | Scalar::DateTime64(_) => epoch_value(period, &value),
+                _ => {
+                    let count = super::value::single_value(&value, self.source.dtype())
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
+                        .map(i64::from_le_bytes);
+                    match (count, self.source.dtype()) {
+                        (Some(count), DataType::DateTime64 { unit, timezone }) => {
+                            epoch_value(period, &Scalar::datetime64(count, *unit, *timezone)?)
+                        }
+                        _ => {
+                            return Err(invalid(format_smolstr!(
+                                "expected a date or timestamp scalar for the {} transform, got {}",
+                                self.transform,
+                                value.kind()
+                            )));
+                        }
+                    }
+                }
             };
-        }
-
-        // `day` over an instant floors its count to the UTC day, as the
-        // specification and the Java implementation do. iceberg-rust 0.10
-        // truncates a count before the epoch toward zero first, which moves
-        // the last second of a day before 1970 into the next day - and a
-        // write keys every instant of one UTC day together, so one row would
-        // label the whole day.
-        if self.transform == Transform::Day
-            && let DataType::DateTime64 { unit, .. } = self.source.dtype()
-        {
-            let count = super::value::single_value(&value, self.source.dtype())
-                .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
-                .map(i64::from_le_bytes)
-                .ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "expected a timestamp scalar for the day transform, got {}",
-                        value.kind()
-                    ))
-                })?;
-            let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
-            let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a day number fitting i32, got {}",
-                    count.div_euclid(per_day)
-                ))
-            })?;
-            return Ok(Scalar::date32(days));
+            if value.is_null() {
+                return Err(invalid(format_smolstr!(
+                    "expected the {} transform of a {} value to fit int32",
+                    self.transform,
+                    self.source.dtype()
+                )));
+            }
+            return Ok(value);
         }
 
         self.official_value(value)
@@ -893,20 +1096,6 @@ impl PartitionTransform {
                 ))
             })?;
         scalar_from_official(&transformed, self.result.dtype())
-    }
-}
-
-fn official_transform(transform: Transform) -> OfficialTransform {
-    match transform {
-        Transform::Identity => OfficialTransform::Identity,
-        Transform::Bucket(count) => OfficialTransform::Bucket(count),
-        Transform::Truncate(width) => OfficialTransform::Truncate(width),
-        Transform::Year => OfficialTransform::Year,
-        Transform::Month => OfficialTransform::Month,
-        Transform::Day => OfficialTransform::Day,
-        Transform::Hour => OfficialTransform::Hour,
-        Transform::Void => OfficialTransform::Void,
-        Transform::Unknown => OfficialTransform::Unknown,
     }
 }
 

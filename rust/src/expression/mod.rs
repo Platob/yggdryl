@@ -365,6 +365,36 @@ pub enum Function {
     Day,
     /// The clock hour, 0 through 23.
     Hour,
+    /// `years(x)` - whole years since 1970, the Iceberg `year` transform.
+    ///
+    /// The four calendar parts above read a field off a date; the nine epoch
+    /// functions from here to [`Self::Minutes`] count the whole periods from
+    /// the Unix epoch to it, floored, so an instant before 1970 lands in its
+    /// own period (`years('1969-12-31')` is `-1`). They are spelled in the
+    /// plural as Spark's Iceberg DDL spells them, and each is one partition
+    /// transform of an Iceberg table.
+    Years,
+    /// `quarters(x)` - quarters since 1970-Q1, the `quarter` transform.
+    Quarters,
+    /// `months(x)` - months since 1970-01, the `month` transform.
+    Months,
+    /// `weeks(x)` - Monday-start weeks since Monday 1969-12-29, the `week`
+    /// transform; every week starts on a Monday as an ISO 8601 week does.
+    Weeks,
+    /// `days(x)` - the UTC day of a date or an instant as a `date32`, the
+    /// `day` transform.
+    Days,
+    /// `hours(x)` - hours since the epoch, from an instant; the `hour`
+    /// transform.
+    Hours,
+    /// `hhours(x)` - half hours since the epoch; the `hhour` transform.
+    #[serde(rename = "hhours")]
+    HalfHours,
+    /// `qhours(x)` - quarter hours since the epoch; the `qhour` transform.
+    #[serde(rename = "qhours")]
+    QuarterHours,
+    /// `minutes(x)` - minutes since the epoch; the `minute` transform.
+    Minutes,
     /// `truncate(value, unit_or_width)` - a temporal floored to a unit, or a
     /// number floored to a multiple.
     Truncate,
@@ -403,7 +433,7 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 29] = [
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -417,6 +447,15 @@ impl Function {
         Self::Month,
         Self::Day,
         Self::Hour,
+        Self::Years,
+        Self::Quarters,
+        Self::Months,
+        Self::Weeks,
+        Self::Days,
+        Self::Hours,
+        Self::HalfHours,
+        Self::QuarterHours,
+        Self::Minutes,
         Self::Truncate,
         Self::Coalesce,
         Self::IfNull,
@@ -444,6 +483,15 @@ impl Function {
             Self::Month => "month",
             Self::Day => "day",
             Self::Hour => "hour",
+            Self::Years => "years",
+            Self::Quarters => "quarters",
+            Self::Months => "months",
+            Self::Weeks => "weeks",
+            Self::Days => "days",
+            Self::Hours => "hours",
+            Self::HalfHours => "hhours",
+            Self::QuarterHours => "qhours",
+            Self::Minutes => "minutes",
             Self::Truncate => "truncate",
             Self::Coalesce => "coalesce",
             Self::IfNull => "if_null",
@@ -476,6 +524,15 @@ impl Function {
             "month" => Self::Month,
             "day" | "dayofmonth" => Self::Day,
             "hour" => Self::Hour,
+            "years" => Self::Years,
+            "quarters" => Self::Quarters,
+            "months" => Self::Months,
+            "weeks" => Self::Weeks,
+            "days" => Self::Days,
+            "hours" => Self::Hours,
+            "hhours" | "half_hours" => Self::HalfHours,
+            "qhours" | "quarter_hours" => Self::QuarterHours,
+            "minutes" => Self::Minutes,
             "truncate" | "trunc" | "date_trunc" => Self::Truncate,
             "coalesce" => Self::Coalesce,
             "if_null" | "ifnull" | "nvl" | "isnull" => Self::IfNull,
@@ -513,6 +570,32 @@ impl Function {
     #[must_use]
     pub fn is_calendar(&self) -> bool {
         matches!(self, Self::Year | Self::Month | Self::Day | Self::Hour)
+    }
+
+    /// Return whether this function counts whole periods since the epoch.
+    ///
+    /// These are the nine of [`Self::Years`] through [`Self::Minutes`]: each
+    /// floors a temporal to a period and is monotone over it, which is what
+    /// lets a range on the argument prune through the function.
+    #[must_use]
+    pub fn is_epoch(&self) -> bool {
+        self.epoch_period().is_some()
+    }
+
+    /// The period an epoch function floors to, for the nine that do.
+    pub(crate) const fn epoch_period(&self) -> Option<eval::EpochPeriod> {
+        Some(match self {
+            Self::Years => eval::EpochPeriod::Year,
+            Self::Quarters => eval::EpochPeriod::Quarter,
+            Self::Months => eval::EpochPeriod::Month,
+            Self::Weeks => eval::EpochPeriod::Week,
+            Self::Days => eval::EpochPeriod::Day,
+            Self::Hours => eval::EpochPeriod::Hour,
+            Self::HalfHours => eval::EpochPeriod::HalfHour,
+            Self::QuarterHours => eval::EpochPeriod::QuarterHour,
+            Self::Minutes => eval::EpochPeriod::Minute,
+            _ => return None,
+        })
     }
 
     /// Every function name this grammar accepts, for an error message.

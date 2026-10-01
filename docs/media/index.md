@@ -2419,6 +2419,27 @@ A table lives in one folder: `metadata/` and `data/`, no catalog required.
 
 A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
 
+A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; five more are this crate's own, and a reader that does not know them reads them as `unknown` and prunes nothing by them, which is what the specification says of an unknown transform. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter. A `bucket` or a `truncate` prunes nothing. The plural is Spark's DDL spelling and is read as an alias; the singular is written.
+
+| Transform | Aliases read | Source | Partition value | Grammar function | Whose |
+| --- | --- | --- | --- | --- | --- |
+| `identity` | | any primitive | the value | | specification |
+| `bucket[n]` | `bucket(n)` | int, long, decimal, date, time, timestamp, string, uuid, fixed, binary | `int32` hash bucket | | specification |
+| `truncate[w]` | `truncate(w)` | int, long, decimal, string, binary | the value shortened | | specification |
+| `year` | `years` | date, timestamp | `int32` years since 1970 | `years(x)` | specification |
+| `month` | `months` | date, timestamp | `int32` months since 1970-01 | `months(x)` | specification |
+| `day` | `days` | date, timestamp | `date32` the UTC day | `days(x)` | specification |
+| `hour` | `hours` | timestamp | `int32` hours since the epoch | `hours(x)` | specification |
+| `minute` | `minutes` | timestamp | `int32` minutes since the epoch | `minutes(x)` | this crate |
+| `qhour` | `qhours`, `quarter_hour` | timestamp | `int32` quarter hours since the epoch | `qhours(x)` | this crate |
+| `hhour` | `hhours`, `half_hour` | timestamp | `int32` half hours since the epoch | `hhours(x)` | this crate |
+| `week` | `weeks` | date, timestamp | `int32` Monday-start weeks since Monday 1969-12-29 | `weeks(x)` | this crate |
+| `quarter` | `quarters` | date, timestamp | `int32` quarters since 1970-Q1 | `quarters(x)` | this crate |
+| `void` | | any | null | | specification |
+| `unknown` | | any | not computed; a spec holding one is not written to | | specification |
+
+In the table's metadata the five cross the Apache Iceberg model this crate validates with as reserved bucket counts above `i32::MAX` and come back as themselves; the metadata and manifest files on disk spell the names above, so another writer of this crate reads them, and `Transform::function` / `Transform::from_function` map a transform to its grammar function and back for a partition declaration spelled as an expression.
+
 === "Rust"
 
     ```rust

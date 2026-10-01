@@ -312,3 +312,80 @@ mod fixed_leaves {
         }
     }
 }
+
+/// The nine epoch functions type by the period they floor to: a date takes
+/// a period of a day or longer, a timestamp every period, and nothing else
+/// takes one.
+mod epoch_functions {
+    use yggdryl::{DataType, Field, Selector, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::date32().nullable_field("d"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("t"),
+            DataType::utf8().nullable_field("s"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    fn typed(text: &str) -> yggdryl::Result<Field> {
+        let selector: Selector = text.parse()?;
+        let field = selector.apply_field(&schema())?;
+        Ok(field.fields()[0].clone())
+    }
+
+    #[test]
+    fn a_period_answers_int32_and_the_day_a_date() {
+        for text in [
+            "years(d)",
+            "quarters(d)",
+            "months(d)",
+            "weeks(d)",
+            "years(t)",
+            "quarters(t)",
+            "months(t)",
+            "weeks(t)",
+            "hours(t)",
+            "hhours(t)",
+            "qhours(t)",
+            "minutes(t)",
+        ] {
+            let field = typed(text).unwrap();
+            assert_eq!(field.dtype(), &DataType::Int32, "{text}");
+        }
+        assert_eq!(typed("days(d)").unwrap().dtype(), &DataType::date32());
+        assert_eq!(typed("days(t)").unwrap().dtype(), &DataType::date32());
+        // A nullable argument makes a nullable answer; a required one does not.
+        assert!(typed("weeks(d)").unwrap().is_nullable());
+        assert!(!typed("weeks(t)").unwrap().is_nullable());
+    }
+
+    #[test]
+    fn a_sub_day_period_over_a_date_and_any_period_over_text_are_refused() {
+        for (text, expected) in [
+            ("hours(d)", "a timestamp"),
+            ("hhours(d)", "a timestamp"),
+            ("qhours(d)", "a timestamp"),
+            ("minutes(d)", "a timestamp"),
+            ("years(s)", "a date or a timestamp"),
+            ("days(s)", "a date or a timestamp"),
+            ("qhours(s)", "a timestamp"),
+        ] {
+            let error = typed(text).unwrap_err().to_string();
+            assert!(error.contains(expected), "{text}: {error}");
+            assert!(
+                error.contains(&text[..text.find('(').unwrap()]),
+                "{text}: {error}"
+            );
+        }
+        for text in ["years()", "years(d, t)"] {
+            assert!(typed(text).is_err(), "{text}");
+        }
+    }
+}

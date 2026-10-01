@@ -4,21 +4,29 @@
 //! Arrow 58 types never cross this module; Yggdryl keeps Arrow 59, `IOBase`,
 //! and data-file writes.
 //!
-//! Two shapes the official 0.10.1 model does not represent are bridged
+//! Three shapes the official 0.10.1 model does not represent are bridged
 //! across it rather than refused: a v1 snapshot's direct `manifests` array
-//! travels as a private manifest-list path ([`V1SnapshotManifests`]), and
-//! the v3 column types `unknown` and `variant` - which its `PrimitiveType`
-//! has no variant for - travel as `binary` under their own field identifiers
-//! ([`V3Types`]). Both are restored on the way back, so the crate's own
-//! schema serde is what spells the two names and the official model still
-//! validates everything else about the column: its identifier, its name,
-//! its requiredness, and its place in the tree.
+//! travels as a private manifest-list path ([`V1SnapshotManifests`]), the
+//! v3 column types `unknown` and `variant` - which its `PrimitiveType` has
+//! no variant for - travel as `binary` under their own field identifiers
+//! ([`V3Types`]), and the five partition transforms of this crate's own -
+//! `minute`, `qhour`, `hhour`, `week`, `quarter`, which its `Transform`
+//! refuses by name - travel as the reserved bucket counts
+//! [`Transform::into_official`] spells, in every partition spec and sort
+//! order ([`bridge_transforms`]). All three are restored on the way back, so
+//! the crate's own serde is what spells the names and the official model
+//! still validates everything else: a column's identifier, name,
+//! requiredness and place in the tree, a spec's source and its uniqueness.
 
 use std::collections::BTreeMap;
 
-use iceberg_official::spec::{Schema as OfficialSchema, TableMetadata as OfficialTableMetadata};
+use iceberg_official::spec::{
+    Schema as OfficialSchema, TableMetadata as OfficialTableMetadata,
+    Transform as OfficialTransform,
+};
 use smol_str::{SmolStr, format_smolstr};
 
+use super::partition::Transform;
 use crate::{Error, Result, Scalar};
 
 /// Direct manifest paths retained by v1 snapshots while the official metadata
@@ -91,6 +99,7 @@ pub(super) fn parse_table_metadata(
 ) -> Result<(OfficialTableMetadata, V1SnapshotManifests, V3Types)> {
     let (bridged, v1_manifests) = bridge_v1_manifests(document)?;
     let (bridged, v3_types) = bridge_v3_types(&bridged)?;
+    let bridged = bridge_transforms(&bridged)?;
     let bytes = crate::json::into_bytes(&bridged)?;
     let metadata = serde_json::from_slice(&bytes)?;
     Ok((metadata, v1_manifests, v3_types))
@@ -105,7 +114,144 @@ pub(super) fn table_metadata_document(
 ) -> Result<Scalar> {
     let document = crate::json::from_bytes(&serde_json::to_vec(metadata)?)?;
     let document = restore_v1_manifests(&document, v1_manifests)?;
-    restore_v3_types(&document, v3_types)
+    let document = restore_v3_types(&document, v3_types)?;
+    restore_transforms(&document)
+}
+
+/// The official spelling of one transform name, when the official model has
+/// none of its own for it: the five crate transforms as reserved buckets.
+fn bridge_transform_name(name: &str) -> Option<SmolStr> {
+    let transform = Transform::from_str(name).ok()?;
+    transform
+        .is_bridged()
+        .then(|| SmolStr::new(transform.into_official().to_string()))
+}
+
+/// The crate spelling of one transform name the official model wrote, when
+/// it is a reserved bucket carrying one of the five.
+fn restore_transform_name(name: &str) -> Option<SmolStr> {
+    let transform = Transform::from_official(name.parse::<OfficialTransform>().ok()?);
+    transform
+        .is_bridged()
+        .then(|| SmolStr::new(transform.to_string()))
+}
+
+/// Rewrite every transform of every partition spec and sort order in a
+/// metadata document into the official spelling.
+///
+/// The rewrite is a bijection on names, so nothing is remembered: a spec the
+/// official builder adds or re-numbers restores by its spelling alone.
+pub(super) fn bridge_transforms(document: &Scalar) -> Result<Scalar> {
+    walk_transforms(document, &bridge_transform_name)
+}
+
+/// Put every bridged transform name of a metadata document back.
+pub(super) fn restore_transforms(document: &Scalar) -> Result<Scalar> {
+    walk_transforms(document, &restore_transform_name)
+}
+
+/// The official reading of one partition spec document, when it needs one.
+///
+/// A manifest carries its spec in its Avro header as the v1 bare field array
+/// or a spec object, and the official manifest reader parses it; this is
+/// what that reader is handed instead of a document spelling one of the five.
+/// `None` says the document already reads as it is.
+pub(super) fn bridged_partition_spec(document: &Scalar) -> Result<Option<Scalar>> {
+    if document.as_serie().is_some() {
+        return rewrite_fields(document, &bridge_transform_name);
+    }
+    let Some(fields) = document.get_key_str("fields") else {
+        return Ok(None);
+    };
+    let Some(replaced) = rewrite_fields(fields, &bridge_transform_name)? else {
+        return Ok(None);
+    };
+    with_name(document, "fields", replaced).map(Some)
+}
+
+/// The official reading of one sort order document.
+pub(super) fn bridge_sort_order(document: &Scalar) -> Result<Scalar> {
+    let Some(fields) = document.get_key_str("fields") else {
+        return Ok(document.clone());
+    };
+    match rewrite_fields(fields, &bridge_transform_name)? {
+        Some(replaced) => with_name(document, "fields", replaced),
+        None => Ok(document.clone()),
+    }
+}
+
+/// Rewrite the transform names under `partition-specs`, a v1 bare
+/// `partition-spec` and `sort-orders`, through `rename`.
+fn walk_transforms(document: &Scalar, rename: &dyn Fn(&str) -> Option<SmolStr>) -> Result<Scalar> {
+    let mut rewritten = document.clone();
+    for key in ["partition-specs", "sort-orders"] {
+        if let Some(entries) = document.get_key_str(key)
+            && let Some(replaced) = rewrite_entries(entries, rename)?
+        {
+            rewritten = with_name(&rewritten, key, replaced)?;
+        }
+    }
+    if let Some(fields) = document.get_key_str("partition-spec")
+        && let Some(replaced) = rewrite_fields(fields, rename)?
+    {
+        rewritten = with_name(&rewritten, "partition-spec", replaced)?;
+    }
+    Ok(rewritten)
+}
+
+/// Rewrite the `fields` of every spec or order of an array, answering the
+/// array only when a name changed.
+fn rewrite_entries(
+    entries: &Scalar,
+    rename: &dyn Fn(&str) -> Option<SmolStr>,
+) -> Result<Option<Scalar>> {
+    let Some(entries) = entries.as_serie() else {
+        return Ok(None);
+    };
+    let mut changed = false;
+    let mut replaced = Vec::with_capacity(entries.len());
+    for entry in entries.iter() {
+        match entry
+            .get_key_str("fields")
+            .map(|fields| rewrite_fields(fields, rename))
+            .transpose()?
+            .flatten()
+        {
+            Some(fields) => {
+                changed = true;
+                replaced.push(with_name(&entry, "fields", fields)?);
+            }
+            None => replaced.push(entry.into_owned()),
+        }
+    }
+    Ok(changed.then(|| Scalar::from_sequence(replaced)))
+}
+
+/// Rewrite the `transform` of every field of an array, answering the array
+/// only when a name changed.
+fn rewrite_fields(
+    fields: &Scalar,
+    rename: &dyn Fn(&str) -> Option<SmolStr>,
+) -> Result<Option<Scalar>> {
+    let Some(fields) = fields.as_serie() else {
+        return Ok(None);
+    };
+    let mut changed = false;
+    let mut replaced = Vec::with_capacity(fields.len());
+    for field in fields.iter() {
+        match field
+            .get_key_str("transform")
+            .and_then(Scalar::as_str)
+            .and_then(rename)
+        {
+            Some(renamed) => {
+                changed = true;
+                replaced.push(with_name(&field, "transform", Scalar::from(renamed))?);
+            }
+            None => replaced.push(field.into_owned()),
+        }
+    }
+    Ok(changed.then(|| Scalar::from_sequence(replaced)))
 }
 
 /// Replace every `unknown` and `variant` column of every schema in a metadata

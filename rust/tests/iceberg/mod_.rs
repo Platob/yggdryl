@@ -8816,3 +8816,167 @@ mod staging_transaction {
         let _ = std::fs::remove_dir_all(&path);
     }
 }
+
+/// A table partitioned by one of this crate's own transforms: written by
+/// quarter hour, read back through the metadata and the manifests a reopened
+/// table reads, and pruned by the periods its files and manifests name.
+mod time_partitions {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, TimestampMicrosecondArray};
+
+    use super::{
+        FormatVersion, LocalFolder, PartitionField, PartitionSpec, Table, Transform,
+        assign_field_ids, root,
+    };
+    use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::NAIVE,
+            }
+            .required_field("ts"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    fn batch(schema: &Field, ids: &[i64], seconds: &[i64]) -> RecordBatch {
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        RecordBatch::try_new(
+            arrow,
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(
+                    seconds
+                        .iter()
+                        .map(|second| second * 1_000_000)
+                        .collect::<Vec<_>>(),
+                )) as ArrayRef,
+            ],
+        )
+        .unwrap()
+    }
+
+    fn rows(reader: yggdryl::arrow::BatchReader) -> usize {
+        reader.map(|batch| batch.unwrap().num_rows()).sum()
+    }
+
+    #[test]
+    fn a_table_partitioned_by_quarter_hour_writes_one_file_per_period_and_reads_back() {
+        let path = root("quarter-hour-partitions");
+        let schema = schema();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 2,
+                field_id: 1000,
+                name: "ts_qhour".into(),
+                transform: Transform::QuarterHour,
+            }],
+        };
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        // Five instants over three quarter hours of 1970-01-01: 00:00,
+        // 00:14:59, 00:15, 00:30 and 00:44:59.
+        let first = batch(&schema, &[1, 2, 3, 4, 5], &[0, 899, 900, 1800, 2699]);
+        table
+            .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
+            .unwrap();
+        // One more commit an hour in, so the manifest list has a second
+        // summary to prune.
+        let second = batch(&schema, &[6], &[3600]);
+        table
+            .commit_append(yggdryl::arrow::batch_reader(second.schema(), [second]))
+            .unwrap();
+
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let mut files: Vec<(Vec<Scalar>, i64, String)> = reopened
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, spec)| {
+                assert_eq!(spec.fields[0].transform, Transform::QuarterHour);
+                (
+                    file.partition,
+                    file.record_count,
+                    file.file_path.to_string(),
+                )
+            })
+            .collect();
+        files.sort();
+        assert_eq!(files.len(), 4, "one data file per quarter hour: {files:?}");
+        for ((partition, count, file_path), (expected, expected_count)) in
+            files.iter().zip([(0, 2), (1, 1), (2, 2), (4, 1)])
+        {
+            assert_eq!(partition, &vec![Scalar::from(expected)]);
+            assert_eq!(*count, expected_count, "{file_path}");
+            assert!(
+                file_path.contains(&format!("ts_qhour={expected}/")),
+                "{file_path}"
+            );
+        }
+        assert_eq!(rows(reopened.scan(None).unwrap()), 6);
+
+        // The second manifest holds only quarter hour 4, so a predicate
+        // before 00:15 never opens it; of the first manifest's three files,
+        // the tuple excludes two.
+        let early = reopened
+            .plan_matching("ts < '1970-01-01T00:15:00'")
+            .unwrap();
+        assert_eq!(early.tasks.len(), 1);
+        assert_eq!(early.manifests_skipped(), 1);
+        assert_eq!(early.manifests_read, 1);
+        assert_eq!(early.files_skipped(), 2);
+        assert_eq!(early.record_count().unwrap(), 2);
+        // Every row of the one file is in the period, so no residual is
+        // left for its rows.
+        assert!(early.tasks[0].residual.is_empty());
+
+        // A range reaching into the third quarter hour keeps two files of
+        // the first manifest and the whole second one.
+        let late = reopened
+            .plan_matching("ts >= '1970-01-01T00:30:00'")
+            .unwrap();
+        assert_eq!(late.tasks.len(), 2);
+        assert_eq!(late.manifests_skipped(), 0);
+        assert_eq!(late.files_skipped(), 2);
+        assert_eq!(
+            rows(
+                reopened
+                    .scan_matching("ts >= '1970-01-01T00:30:00'", None)
+                    .unwrap()
+            ),
+            3
+        );
+        // An instant between two periods matches nothing, and says so
+        // before a data file is opened.
+        let none = reopened
+            .plan_matching("ts >= '1970-01-01T00:45:00' and ts < '1970-01-01T01:00:00'")
+            .unwrap();
+        assert_eq!(none.tasks.len(), 0);
+        assert_eq!(none.manifests_skipped(), 2);
+        assert_eq!(none.files_skipped(), 0);
+        assert_eq!(
+            rows(
+                reopened
+                    .scan_matching("ts = '1970-01-01T00:14:59'", None)
+                    .unwrap()
+            ),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}

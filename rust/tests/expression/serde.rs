@@ -86,3 +86,22 @@ mod grammar {
         assert_eq!(Filter::from_json(&legacy).unwrap(), filter, "{legacy}");
     }
 }
+
+/// The two epoch functions whose variant is not their name serialize under
+/// the name, so a stored term reads in any language's parser as it prints.
+mod epoch_function_tags {
+    use yggdryl::Term;
+
+    #[test]
+    fn the_tag_is_the_spelling() {
+        for (text, tag) in [("qhours(t)", "qhours"), ("hhours(t)", "hhours")] {
+            let term: Term = text.parse().unwrap();
+            let document = term.clone().into_json().unwrap();
+            let encoded = document.as_str();
+            assert!(encoded.contains(tag), "{encoded}");
+            assert!(!encoded.contains("quarter_hours"), "{encoded}");
+            assert!(!encoded.contains("half_hours"), "{encoded}");
+            assert_eq!(Term::from_json(&document).unwrap(), term);
+        }
+    }
+}
