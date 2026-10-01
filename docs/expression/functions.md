@@ -11,7 +11,7 @@ The closed function set, and its one door: a user-defined function is registered
 | Signature | a struct `Field` named `namespace.name`: one child per parameter in position order, a parameter carrying `FUNCTION:default` optional, the return as the `FUNCTION:returns` property; `as_field` and `from_field` are lossless |
 | Call | arguments bound by position, defaults filled, each cast to its parameter through `DataType::cast_scalar`; a null meeting a parameter declared `not null` answers null without a call; the answer is cast to the declared return |
 | Tiers | the scalar tier calls `call`; the vectorized tier calls `call_arrow(arguments, rows, output)`, each argument one landed [`Serie`](../types/serie.md) and the answer the `Serie` of `output`, whose default reads each row off the argument columns, runs `call` on it and lays the answers out once; the statistics tier never learns a user function, so a filter over one reads the rows |
-| Stored | a call over plain columns is a column's `TRANSFORM:function` and `TRANSFORM:sources` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
+| Stored | a call over plain columns is a column's `TRANSFORM:function` and `TRANSFORM:by` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
 | Registry | process-wide, one implementation per qualified name, the latest registration wins; an unregistered name is refused where it is typed or bound, never silently null |
 | Bindings | Python `@user_defined_function` and `@user_defined_filter` in `yggdryl.expression`; JavaScript parses and prints the spelling and refuses it at bind |
 
@@ -111,10 +111,10 @@ The closed function set, and its one door: a user-defined function is registered
     assert big.where("size").apply_arrow_batch(batch).column("ccy").to_pylist() == ["c"]
     assert Filter("docs.big(size)").apply_records([{"size": 5, "ccy": "x"}], rows).collect() == [{"size": 5, "ccy": "x"}]
 
-    # A stored column derives by function and sources.
+    # A stored column derives by function and the terms it reads.
     stored = Selector("docs.double(size) as doubled").into_field(rows)
     assert stored.dtype["doubled"].transform["function"] == "docs.double"
-    assert stored.dtype["doubled"].transform["sources"] == '["size"]'
+    assert stored.dtype["doubled"].transform["by"] == '["size"]'
 
     for function in (double, shout, big):
         assert function.unregister()

@@ -4,7 +4,7 @@ use std::slice;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::metadata::{parse_source_list, render_source_list};
+use crate::metadata::{parse_by_list, parse_by_term, render_by_list};
 use crate::protocol::{DigestField, DigestFieldMut};
 use crate::{DataType, DigestAlgorithm, Error, Field, Result, StructType};
 
@@ -12,11 +12,11 @@ use crate::txhash::{TIME, UNIT};
 
 const ALGORITHM: &str = "algorithm";
 const ROLE: &str = "role";
-const SOURCES: &str = "sources";
+const BY: &str = "by";
 pub(crate) const DIGEST_ALGORITHM_KEY: &str = "DIGEST:algorithm";
 pub(crate) const DIGEST_ROLE_KEY: &str = "DIGEST:role";
 pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
-pub(crate) const DIGEST_SOURCES_KEY: &str = "DIGEST:sources";
+pub(crate) const DIGEST_BY_KEY: &str = "DIGEST:by";
 
 /// Return whether a holder's storage carries this algorithm's exact width.
 ///
@@ -95,25 +95,29 @@ impl DigestField<'_> {
         any_holder(self.as_field().fields())
     }
 
-    /// Parses the ordered sources this holder selects relative to its Struct.
+    /// Parses the ordered terms this holder reads, relative to its Struct.
     ///
-    /// The list is answered as it is stored, `"*"` included: that spelling is
-    /// the whole selection - every field of the Struct the holder does not
-    /// hold, in declaration order - and it is what an absent property means
-    /// too. `Some([])` is an explicit empty selection, so absence and an empty
-    /// JSON array remain distinct.
+    /// Each entry is the canonical text of one term of the expression
+    /// grammar: a bare column path - `id`, `line.price` - feeds that column's
+    /// own buffers, and any other term - `lower(symbol)`, `price * size` - is
+    /// bound once against the Struct and evaluated per batch into the value
+    /// fed. The list is answered as it is stored, `"*"` included: that
+    /// spelling is the whole selection - every field of the Struct the holder
+    /// does not hold, in declaration order - and it is what an absent
+    /// property means too. `Some([])` is an explicit empty selection, so
+    /// absence and an empty JSON array remain distinct.
     ///
-    /// A source states no metadata on the field it names. That is the whole
-    /// point of naming it here: a schema declares one holder and the fields it
-    /// reads stay ordinary columns.
+    /// A term states no metadata on the field it reads. That is the whole
+    /// point of naming it here: a schema declares one holder and the fields
+    /// it reads stay ordinary columns.
     ///
     /// # Errors
     ///
-    /// Returns an error naming `DIGEST:sources` when stored metadata is not a
-    /// JSON array of unique non-empty strings, or names `"*"` beside a path.
-    pub fn sources(&self) -> Result<Option<Vec<String>>> {
-        self.get(SOURCES)
-            .map(|stored| parse_source_list(DIGEST_SOURCES_KEY, stored))
+    /// Returns an error naming `DIGEST:by` when stored metadata is not a JSON
+    /// array of unique non-empty texts, or names `"*"` beside a term.
+    pub fn by(&self) -> Result<Option<Vec<String>>> {
+        self.get(BY)
+            .map(|stored| parse_by_list(DIGEST_BY_KEY, stored))
             .transpose()
     }
 
@@ -219,46 +223,76 @@ impl DigestFieldMut<'_> {
         self.remove(ALGORITHM)
     }
 
-    /// Records the ordered sources this holder selects relative to its Struct.
+    /// Records the ordered terms this holder reads, relative to its Struct.
     ///
-    /// Order is hash-significant. `["*"]` selects every field of the Struct
-    /// this holder does not hold, which is also what storing nothing means.
-    /// Empty input stores `[]`, the explicit empty sequence, so it is not the
-    /// same as [`Self::remove_sources`].
+    /// Each entry is an expression text, stored as the grammar spells it -
+    /// `LOWER(symbol)` as `lower(symbol)`, a column keeping its spelling and
+    /// resolving case-insensitively where it binds - or `"*"`. Order is
+    /// hash-significant. `["*"]`
+    /// selects every field of the Struct this holder does not hold, which is
+    /// also what storing nothing means. Empty input stores `[]`, the explicit
+    /// empty sequence, so it is not the same as [`Self::remove_by`].
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut holder = DataType::UInt64.required_field("row_digest");
+    /// holder.as_digest_mut().set_holder()?;
+    /// holder.as_digest_mut().set_by(["id", "LOWER(symbol)"])?;
+    ///
+    /// assert_eq!(holder.get_metadata("DIGEST:by"), Some(r#"["id","lower(symbol)"]"#));
+    /// assert_eq!(
+    ///     holder.as_digest().by()?,
+    ///     Some(vec!["id".to_owned(), "lower(symbol)".to_owned()])
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when this field is not a holder, when a source is
-    /// empty or repeated, or when `"*"` travels beside a named path, leaving
-    /// the field unchanged.
-    pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()>
+    /// Returns an error when this field is not a holder, when an entry is
+    /// empty, repeated or not a term, or when `"*"` travels beside a term,
+    /// leaving the field unchanged.
+    pub fn set_by<I, P>(&mut self, by: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
         if !self.as_protocol().is_holder() {
-            return Err(self.rejected(SOURCES, "requires DIGEST:role=holder".into()));
+            return Err(self.rejected(BY, "requires DIGEST:role=holder".into()));
         }
-        self.insert(SOURCES, render_source_list(DIGEST_SOURCES_KEY, sources)?)
+        let entries = by
+            .into_iter()
+            .map(|entry| {
+                let entry = entry.as_ref();
+                if entry == crate::metadata::ALL_COLUMNS {
+                    return Ok(entry.to_owned());
+                }
+                parse_by_term(DIGEST_BY_KEY, entry).map(|term| term.to_string())
+            })
+            .collect::<Result<Vec<String>>>()?;
+        self.insert(BY, render_by_list(DIGEST_BY_KEY, entries)?)
             .map(|_| ())
     }
 
-    /// Removes the explicit source selection, which selects every field again.
-    pub fn remove_sources(&mut self) -> Option<String> {
-        self.remove(SOURCES)
+    /// Removes the explicit selection, which selects every field again.
+    pub fn remove_by(&mut self) -> Option<String> {
+        self.remove(BY)
     }
 
     /// Removes this field's explicit digest role.
     ///
     /// # Errors
     ///
-    /// Returns an error when holder-owned algorithm, source, time, or unit
+    /// Returns an error when holder-owned algorithm, `by`, time, or unit
     /// metadata is present, leaving the field unchanged. Remove those first.
     pub fn remove_role(&mut self) -> Result<Option<String>> {
         if self.has_holder_properties() {
             return Err(self.rejected(
                 ROLE,
-                "cannot remove holder role while DIGEST:algorithm, DIGEST:sources, DIGEST:time, or DIGEST:unit is present"
+                "cannot remove holder role while DIGEST:algorithm, DIGEST:by, DIGEST:time, or DIGEST:unit is present"
                     .into(),
             ));
         }
@@ -267,7 +301,7 @@ impl DigestFieldMut<'_> {
 
     fn has_holder_properties(&self) -> bool {
         self.contains_key(ALGORITHM)
-            || self.contains_key(SOURCES)
+            || self.contains_key(BY)
             || self.contains_key(TIME)
             || self.contains_key(UNIT)
     }
@@ -285,9 +319,9 @@ impl Field {
     /// Returns the struct children a row digest reads by default.
     ///
     /// That is every child except a digest holder, in declaration order, which
-    /// is exactly what a holder's `DIGEST:sources` of `["*"]` names and what
-    /// storing no sources at all means. A holder naming its own sources
-    /// selects from these same children; nothing marks them.
+    /// is exactly what a holder's `DIGEST:by` of `["*"]` names and what
+    /// storing no `by` at all means. A holder naming its own terms reads
+    /// these same children; nothing marks them.
     pub fn digest_fields(&self) -> DigestFields<'_> {
         DigestFields::new(self.fields())
     }

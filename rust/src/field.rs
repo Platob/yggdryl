@@ -1387,9 +1387,10 @@ macro_rules! field_leaves {
             }
 
             for_each_well_known_protocol!(field_protocol_accessors);
-            #[doc = concat!("Delegates to [`FieldOf::", stringify!(validate), "`].")]
+            #[doc = concat!("Delegates to [`FieldOf::", stringify!(validate), "`], then refuses a struct whose `FIELD:partition` marks contradict its `PARTITION:by` declaration.")]
             pub fn validate(&self) -> Result<()> {
-                match self { $($(Self::$variant(field) => field.validate(),)+)+ }
+                match self { $($(Self::$variant(field) => field.validate(),)+)+ }?;
+                self.validate_partition_declaration()
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(validate_bounded), "`].")]
             pub fn validate_bounded(&self) -> Result<()> {
@@ -2144,8 +2145,9 @@ mod arrow {
         /// - `cast` reconciles the batch to this root first - the columns it
         ///   declares, in its order and its types, missing ones materialized as
         ///   their canonical defaults.
-        /// - `partition` fills the derived columns, so a value computed from
-        ///   another column exists before anything hashes it.
+        /// - `transform` fills the derived columns - a derived partition column
+        ///   among them - so a value computed from another column exists before
+        ///   anything hashes it.
         /// - `digest` fills the holders last, over the rows as they finally stand.
         ///
         /// Each protocol leaves a column holding anything but its canonical
@@ -2165,13 +2167,11 @@ mod arrow {
         /// use std::sync::Arc;
         ///
         /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
-        /// use yggdryl::expression::Function;
         /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
-        /// year.as_partition_mut().set_sources(["event"])?;
-        /// year.as_partition_mut().set_transform(Function::Year)?;
+        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
         /// let mut stored = DataType::UInt64.nullable_field("row_digest");
         /// stored.as_digest_mut().set_holder()?;
         /// let root = DataType::from(StructType::from_fields([
@@ -2230,13 +2230,11 @@ mod arrow {
         ///
         /// ```
         /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-        /// use yggdryl::expression::Function;
         /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
-        /// year.as_partition_mut().set_sources(["event"])?;
-        /// year.as_partition_mut().set_transform(Function::Year)?;
+        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
         /// let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
         ///     .required_field("row");
         ///

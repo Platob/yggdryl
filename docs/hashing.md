@@ -19,7 +19,7 @@
 | Value feed | `write_bytes` is a total prefix-free feed: one [`DataTypeId`](types/datatype.md) tag byte, then the family's canonical form, integers little-endian ([Encoding](#encoding)); `as_value_bytes` is the payload alone - no tag, no length - borrowed, never allocating, `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](types/field.md), [`Uri`](uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
 | Row digests | `row_digests` hashes the selected values as one `Scalar::Serie` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
-| Holders | A holder's `DIGEST:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `DIGEST:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
+| Holders | A holder's `DIGEST:by` names the terms it reads relative to its own Struct - a bare column fed from its buffers, any other term computed per batch - `["*"]` and absence both meaning every field except a `DIGEST:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
 | `TxHash` | `unit`, `unix`, `digest`; the digest is exactly what `xxhash` answers for the same bytes, so `txhash` defines no second hash. Spelled `<unix>@<unit>:<algorithm>:<hex>`, `from_str` the exact inverse; two units or two algorithms are never equal |
 | TxHash bytes | The instant as a big-endian `i64`, then the digest's canonical bytes: 12, 16, or 24 bytes for XXH32, the two 64-bit algorithms, XXH3-128. Stored as `fixed_size_binary[12|16|24]`; sixteen bytes imply XXH3-64, the project default |
 | Order | A value compares unit, then signed count, then digest, and never normalizes instants across units. Its bytes sort by time only within one unit, one algorithm, and one sign range: every negative count sorts after every nonnegative one ([Order](#order-and-uuidv7-projection)) |
@@ -535,7 +535,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     let quantity = Field::new("quantity", DataType::Int64, false);
     let mut holder = Field::new("row_digest", DataType::UInt64, false);
     holder.as_digest_mut().set_holder()?;
-    holder.as_digest_mut().set_sources(["symbol"])?;
+    holder.as_digest_mut().set_by(["symbol"])?;
     let root = DataType::from(StructType::from_fields([symbol.clone(), quantity.clone(), holder])?)
         .required_field("row");
 
@@ -554,7 +554,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     let filled = state.apply_arrow_batch(&root, batch, false)?;
     assert_eq!(state.as_u64(), running, "filling does not consume the state");
 
-    // `DIGEST:sources` narrows the fill to `symbol`, under the state's seed.
+    // `DIGEST:by` narrows the fill to `symbol`, under the state's seed.
     let mut expected = Xxh3::with_seed(7);
     expected.write_scalar(&Scalar::from_sequence([Scalar::from("AAPL")]));
     let cells = filled.column(2).as_primitive::<UInt64Type>();
@@ -579,7 +579,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
 
     holder = Field("row_digest", "uint64", nullable=False)
     holder.digest.set_holder()
-    holder.digest.sources = ["symbol"]
+    holder.digest["by"] = '["symbol"]'
     root = Field(
         "row",
         DataType.from_fields(
@@ -615,7 +615,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     
     const holder = new Field('row_digest', 'uint64', false, {
       'DIGEST:role': 'holder',
-      'DIGEST:sources': '["symbol"]',
+      'DIGEST:by': '["symbol"]',
     })
     const root = new Field(
       'row',
@@ -643,9 +643,9 @@ Each visible row is framed as an ordered `Scalar::Serie` and streamed through th
 
 | Holder setting | Effect |
 | --- | --- |
-| `DIGEST:sources` | canonical JSON array of unique non-empty paths, for example `["id","line.price"]`; its order is the feed order, and it states nothing on the fields it names |
-| Source syntax | relative to the containing Struct: an exact whole field name wins, then dots descend through Struct fields only |
-| `["*"]` or no `DIGEST:sources` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a path is refused |
+| `DIGEST:by` | canonical JSON array of unique non-empty expression texts, for example `["id","line.price","lower(symbol)"]`; its order is the feed order, and it states nothing on the fields it reads |
+| Entry syntax | a bare path is relative to the containing Struct - an exact whole field name wins, then dots descend through Struct fields only - and feeds the column's own buffers; any other term is bound once against the Struct when the plan is compiled, computed once per batch, and fed as the value it computes, a Struct value as a Struct cell is |
+| `["*"]` or no `DIGEST:by` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a term is refused |
 | Selected nested Struct with one direct holder | feeds that holder's digest payload instead of hashing the Struct again, which is the bypass a nested holder earns |
 | `DIGEST:algorithm` | `xxh32`, `xxh64`, `xxh3-64`, or `xxh3-128`; it must fit the holder's storage mapping |
 | `DIGEST:time`, `DIGEST:unit` | the holder stores an instant in front of its digest and is a `fixed_size_binary` of the coupled width; [Coupled holders](#coupled-holders) owns the layout |
@@ -661,7 +661,7 @@ Each visible row is framed as an ordered `Scalar::Serie` and streamed through th
 | Any schema | every field except a `DIGEST:role=holder`, in schema order |
 | Only holders | the empty sequence, for every row |
 
-`row_digests` reads a batch, not a holder, so it always takes that whole selection; narrowing is a holder's `DIGEST:sources` and belongs to `apply_arrow_batch`. Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](types/protocol.md) answer the same set without hashing a batch.
+`row_digests` reads a batch, not a holder, so it always takes that whole selection; narrowing is a holder's `DIGEST:by` and belongs to `apply_arrow_batch`. Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](types/protocol.md) answer the same set without hashing a batch.
 
 `row_digests` always uses its `algorithm` argument and the selection above. `column_digests` is the single-column form, each answer the cell's own value with no row framing.
 
@@ -1205,7 +1205,7 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
 
 ## Coupled holders
 
-A holder naming `DIGEST:time` stores the instant it names in front of its digest. Everything else about it is the [digest holder contract](#digest-holders-and-row-digests): `DIGEST:sources` narrows what the digest reads, the instant column included by default; `DIGEST:algorithm` or the storage width picks the algorithm; a written cell is preserved unless forced.
+A holder naming `DIGEST:time` stores the instant it names in front of its digest. Everything else about it is the [digest holder contract](#digest-holders-and-row-digests): `DIGEST:by` narrows what the digest reads, the instant column included by default; `DIGEST:algorithm` or the storage width picks the algorithm; a written cell is preserved unless forced.
 
 === "Rust"
 
@@ -1319,7 +1319,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 | `DIGEST:time` | one field path relative to the containing Struct, resolved as a source is; the field must be a datetime, a date, or an integer, never a holder |
 | `DIGEST:unit` | `s`, `ms`, `us`, or `ns`, canonicalized on write; refused without `DIGEST:time`; absent means microseconds |
 | storage | `fixed_size_binary[12]` for XXH32, `[16]` for XXH64 or XXH3-64, `[24]` for XXH3-128; `DIGEST:algorithm` must fit it |
-| the instant column | feeds the digest like any other column unless `DIGEST:sources` leaves it out |
+| the instant column | feeds the digest like any other column unless `DIGEST:by` leaves it out |
 | a null instant | a nullable holder stores null; a required holder refuses, naming the row |
 | removal order | `remove_unit`, then `remove_time`, then `remove_role`; each refuses while what depends on it stands |
 | Bindings | Python takes and answers `pyarrow` arrays for every column function and fills through `field.apply_arrow_batch` or a `TxHasher`; JavaScript fills through `TxHasher.applyArrowBatch` |
@@ -1350,9 +1350,10 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - An `ascii`, `sized_ascii(n)`, `fixed_ascii(n)`, `sized_utf8(n)` or `cp1252` cell holding the same characters -> one digest; every string is one value and feeds the `utf8` tag.
 - A `ccy` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
-- Holder-local `DIGEST:sources` or `DIGEST:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
+- Holder-local `DIGEST:by` or `DIGEST:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
 - A path through a serie, map, or union -> that value is selected whole, never traversed.
-- A holder, or `DIGEST:sources`/`DIGEST:algorithm`, under a serie, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
+- A holder, or `DIGEST:by`/`DIGEST:algorithm`, under a serie, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
+- A `DIGEST:by` term that does not bind against its Struct -> refused when the plan is built, naming the holder and the term.
 - A holder that selects itself or another holder in the same Struct -> refused.
 - A Struct with several direct holders -> ambiguous; name the intended nested holder by a path.
 - A holder column missing from the batch -> added in the position the root declares.

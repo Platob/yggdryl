@@ -161,22 +161,33 @@ impl<H: IOBase> Table<H> {
     /// by hand still numbers first with [`super::assign_field_ids`], because
     /// a spec names its source columns by identifier.
     ///
-    /// The table's default sort order is [`SortOrder::for_spec`]: the spec's
-    /// source columns ascending, nulls first, and the unsorted order zero when
-    /// the spec partitions nothing. [`Self::create_sorted`] takes another.
+    /// The table's default sort order is the one the schema declares as its
+    /// `SORT:by` ([`SortOrder::from_schema`]), else [`SortOrder::for_spec`]:
+    /// the spec's source columns ascending, nulls first, and the unsorted
+    /// order zero when the spec partitions nothing. [`Self::create_sorted`]
+    /// takes another.
     ///
     /// # Errors
     ///
     /// Returns a conflict when the handle already contains a table, or an
     /// error when the handle is not a container, the schema is not a non-null
-    /// struct root, or the metadata document cannot be written.
+    /// struct root, a declared order names what no sort field holds, or the
+    /// metadata document cannot be written.
     pub fn create(
         root: H,
         format_version: FormatVersion,
-        schema: Field,
+        mut schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
-        let order = SortOrder::for_spec(&spec);
+        let order = if schema.as_sort().declares_order() {
+            // An order names its columns by identifier, so the schema is
+            // numbered here exactly as the metadata document numbers it.
+            let start = super::last_column_id(&schema)?.saturating_add(1);
+            super::assign_field_ids(&mut schema, start)?;
+            SortOrder::from_schema(1, &schema)?
+        } else {
+            SortOrder::for_spec(&spec)
+        };
         Self::create_sorted(root, format_version, schema, spec, order)
     }
 
@@ -3098,6 +3109,11 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
 }
 
 /// Order one partition group's rows by the table's default sort order.
+///
+/// Rows already in that order are handed back as they are: one comparison
+/// pass over the key columns finds out, and a group that arrived sorted -
+/// the common case for a stream written in event order - is neither
+/// permuted nor copied.
 fn sorted(batch: RecordBatch, sort: &[SortColumnSpec]) -> Result<RecordBatch> {
     if batch.num_rows() < 2 {
         return Ok(batch);
@@ -3111,8 +3127,41 @@ fn sorted(batch: RecordBatch, sort: &[SortColumnSpec]) -> Result<RecordBatch> {
             })
         })
         .collect::<Result<_>>()?;
+    if is_sorted(&columns)? {
+        return Ok(batch);
+    }
     let indices = lexsort_to_indices(&columns, None).map_err(Error::Arrow)?;
     arrow_select::take::take_record_batch(&batch, &indices).map_err(Error::Arrow)
+}
+
+/// Return whether rows are already in lexical order over the key columns,
+/// each under its own direction and nulls placement.
+///
+/// One comparator per column, built once, and one adjacent-row comparison
+/// per row: nothing is allocated per row and no row is built.
+fn is_sorted(columns: &[SortColumn]) -> Result<bool> {
+    let comparators = columns
+        .iter()
+        .map(|column| {
+            arrow_ord::ord::make_comparator(
+                column.values.as_ref(),
+                column.values.as_ref(),
+                column.options.unwrap_or_default(),
+            )
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Error::Arrow)?;
+    let rows = columns.first().map_or(0, |column| column.values.len());
+    for row in 1..rows {
+        for compare in &comparators {
+            match compare(row - 1, row) {
+                std::cmp::Ordering::Less => break,
+                std::cmp::Ordering::Equal => {}
+                std::cmp::Ordering::Greater => return Ok(false),
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Read one column through top-level and nested Struct arrays.

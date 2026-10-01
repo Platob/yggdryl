@@ -4,6 +4,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
+use yggdryl::SortOptions;
 use yggdryl::expression::{Expression, Selector, Term};
 use yggdryl::expression::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
 use yggdryl::{DataType, Field, Scalar, StructType, Url};
@@ -354,6 +355,36 @@ fn an_ordering_key_spells_its_direction_and_where_nulls_go() {
         built.to_string(),
         "select * from t order by a, b desc limit 3"
     );
+}
+
+#[test]
+fn an_ordering_key_is_read_from_text_and_carries_its_sort_options() {
+    let key: Ordering = "price DESC nulls first".parse().unwrap();
+    assert_eq!(key.term(), &Term::column("price"));
+    assert_eq!(
+        key.options(),
+        SortOptions::descending().with_nulls_first(true)
+    );
+    assert_eq!(key.to_string(), "price desc nulls first");
+    assert_eq!(key, Ordering::desc(Term::column("price")).nulls_first(true));
+    assert_eq!(
+        "lower(b) asc nulls last".parse::<Ordering>().unwrap(),
+        Ordering::new(
+            Term::call(yggdryl::expression::Function::Lower, [Term::column("b")]),
+            SortOptions::default()
+        )
+    );
+    for text in ["", "price desc nulls", "price, size", "price desc desc"] {
+        assert!(text.parse::<Ordering>().is_err(), "{text:?}");
+    }
+    // The document keeps the two facts flat beside the term.
+    let document = serde_json::to_value(&key).unwrap();
+    assert_eq!(document["descending"], serde_json::json!(true));
+    assert_eq!(document["nulls_first"], serde_json::json!(true));
+    assert_eq!(serde_json::from_value::<Ordering>(document).unwrap(), key);
+    let plain = serde_json::to_value(Ordering::asc(Term::column("a"))).unwrap();
+    assert_eq!(plain.get("descending"), None);
+    assert_eq!(plain.get("nulls_first"), None);
 }
 
 #[test]

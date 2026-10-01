@@ -2446,6 +2446,51 @@ A partition spec names one transform per field, `Transform` in Rust. The specifi
 
 In the table's metadata the three cross the Apache Iceberg model this crate validates with as reserved bucket counts above `i32::MAX` - `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]`, `week` as `bucket[4294967295]` - and come back as themselves; the metadata and manifest files on disk spell the names above, never the bucket, so another writer of this crate reads them. `Transform::from_term` and `Transform::into_term` map a grammar call to its transform and back - `minutes(ts, 15)` is `minutes[15]` - for a partition declaration spelled as an expression; `Transform::function` / `Transform::from_function` are the parameter-free half of that mapping (Rust-only).
 
+A table is also created from what its schema declares. `PartitionSpec::from_schema` reads the root's [`PARTITION:by`](../types/protocol.md#partition-columns) - a bare column an identity field, an epoch function over a column its transform, `truncate(col, w)` a truncation, each named by its alias or by the convention (`ts_minutes`, `name_truncate`), anything else refused by name - and `Table::create` reads the root's [`SORT:by`](../types/protocol.md#sort-order) as the default sort order, `SortOrder::for_spec` where it declares none. The declarations are written on the root rather than through `with_partition_by`, because a derived partition value lives in the manifest and not in the rows. `Table::schema()` reports both keys back, `mark_partitions` writing the spec's fields the grammar can spell (a `bucket` has no spelling and is left out) and the default order its keys, so a reopened table says how it partitions and sorts. A partition group whose rows already arrive in the table's order is written as it arrived.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SortOrder, Table, Transform, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, StructType, TimeUnit, Timezone};
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+        DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    ])?)
+    .required_field("row");
+    schema.as_partition_mut().set_by_texts(["venue", "minutes(ts, 15)"])?;
+    schema.as_sort_mut().set_by_texts(["ts desc", "id"])?;
+    assign_field_ids(&mut schema, 1)?;
+
+    let spec = PartitionSpec::from_schema(1, &schema)?;
+    assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+    assert_eq!(spec.fields[1].name, "ts_minutes");
+    assert_eq!(SortOrder::from_schema(1, &schema)?.fields.len(), 2);
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-declared");
+    let _ = std::fs::remove_dir_all(&path);
+    let table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
+    assert_eq!(table.metadata().default_sort_order()?.fields[0].direction, "desc");
+    assert_eq!(table.schema()?.get_metadata("PARTITION:by"), Some(r#"["venue","minutes(ts, 15)"]"#));
+    assert_eq!(table.schema()?.get_metadata("SORT:by"), Some(r#"["ts desc","id"]"#));
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    !!! note "Rust-only"
+        Creating a table from a schema's `PARTITION:by` and `SORT:by` is Rust-only; Python's
+        `Table.create` takes the identity partition columns by name.
+
+=== "JavaScript"
+
+    !!! note "Rust-only"
+        Creating a table from a schema's `PARTITION:by` and `SORT:by` is Rust-only;
+        JavaScript's `Table.create` takes the identity partition columns by name.
+
 === "Rust"
 
     ```rust

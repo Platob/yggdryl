@@ -215,15 +215,15 @@ mod grammar {
             plan.fields()[1].get_metadata("TRANSFORM:expression"),
             Some("i + 1")
         );
-        // A call over plain columns is stored as the function and its sources,
-        // the shape a signature and a partition spec share.
+        // A call over plain columns is stored as the function and the columns
+        // it reads, the shape a signature reads.
         assert_eq!(plan.fields()[2].get_metadata("TRANSFORM:expression"), None);
         assert_eq!(
             plan.fields()[2].get_metadata("TRANSFORM:function"),
             Some("lower")
         );
         assert_eq!(
-            plan.fields()[2].get_metadata("TRANSFORM:sources"),
+            plan.fields()[2].get_metadata("TRANSFORM:by"),
             Some(r#"["s"]"#)
         );
         assert!(plan.as_transform().declares_derivation());
@@ -273,36 +273,55 @@ mod grammar {
     }
 
     #[test]
-    fn a_partition_declaration_is_a_transform() {
-        let mut year = DataType::Int32.nullable_field("year");
-        year.as_partition_mut().set_sources(["event"]).unwrap();
-        year.as_partition_mut()
-            .set_transform(yggdryl::expression::Function::Year)
-            .unwrap();
+    fn a_derived_partition_column_is_a_transform() {
+        // A derived entry of `PARTITION:by` materializes as a `TRANSFORM:`
+        // column, marked as a partition, and reads back as a declaration.
+        let rows = DataType::from(
+            StructType::from_fields([DataType::date32().required_field("event")]).unwrap(),
+        )
+        .required_field("row")
+        .with_partition_by(["years(event)".parse().unwrap()])
+        .unwrap();
+        let year = rows.get_field_by_path("event_year").unwrap().clone();
+        assert!(year.is_partition());
+        assert_eq!(year.get_metadata("TRANSFORM:function"), Some("years"));
+        assert_eq!(year.get_metadata("TRANSFORM:by"), Some(r#"["event"]"#));
         assert!(year.as_transform().is_derived());
         assert_eq!(
             year.as_transform()
                 .term()
                 .unwrap()
                 .map(|term| term.to_string()),
-            Some("year(event)".to_owned())
+            Some("years(event)".to_owned())
         );
-        // An explicit term answers first, so a plan can override the pair.
+        assert_eq!(
+            Selector::from_field(&rows).to_string(),
+            "event date32 not null, years(event) as event_year int32 not null with (\"FIELD:partition\" = 'true')"
+        );
+        // A function with no `by` beside it is an incomplete declaration.
+        let mut bare = DataType::Int32.nullable_field("year");
+        bare.as_transform_mut().insert("function", "years").unwrap();
+        let error = bare.as_transform().term().unwrap_err().to_string();
+        assert!(error.contains("TRANSFORM:by"), "{error}");
+        // An explicit term answers first, and removing it leaves an ordinary
+        // column.
+        let mut year = year;
         year.as_transform_mut()
-            .set_term(&"year(event) + 1".parse().unwrap())
+            .set_term(&"years(event) + 1".parse().unwrap())
             .unwrap();
+        assert_eq!(year.get_metadata("TRANSFORM:function"), None);
         assert_eq!(
             year.as_transform()
                 .term()
                 .unwrap()
                 .map(|term| term.to_string()),
-            Some("year(event) + 1".to_owned())
+            Some("years(event) + 1".to_owned())
         );
         assert_eq!(
             year.as_transform_mut().remove_term(),
-            Some("year(event) + 1".to_owned())
+            Some("years(event) + 1".to_owned())
         );
-        assert!(year.as_transform().is_derived());
+        assert!(!year.as_transform().is_derived());
     }
 
     #[test]

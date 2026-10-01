@@ -85,7 +85,7 @@ pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
-    TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS, TRANSFORM_SOURCES_KEY,
+    TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
     TransformPlan, canonicalize_transform_expression, canonicalize_transform_function,
 };
 pub use user::{

@@ -8,7 +8,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::metadata::FIELD_PARTITION_KEY;
+use crate::expression::{Function, Projection, Term};
+use crate::metadata::{FIELD_PARTITION_KEY, PARTITION_BY_KEY};
 
 use crate::Scalar;
 use crate::invalid;
@@ -939,13 +940,28 @@ impl Field {
             .filter(|field| !names.contains(&field.name()))
             .cloned()
             .collect();
-        // The root's metadata describes the rows, not the columns, so it stays.
-        Self::from_parts(
+        // The root's metadata describes the rows, not the columns, so it
+        // stays - except the partition entries naming a column that is
+        // leaving, which would declare a partition on nothing.
+        let mut root = Self::from_parts(
             self.name(),
             DataType::from(StructType::from_fields(kept)?),
             self.is_nullable(),
-            self.metadata_iter(),
-        )
+            self.metadata_iter()
+                .filter(|(key, _)| *key != PARTITION_BY_KEY),
+        )?;
+        if let Some(by) = self.as_partition().by()? {
+            let remaining: Vec<Projection> = by
+                .into_iter()
+                .filter(|entry| {
+                    partition_column_name(entry).is_ok_and(|name| !names.contains(&name.as_str()))
+                })
+                .collect();
+            if !remaining.is_empty() {
+                root.as_partition_mut().set_by(remaining)?;
+            }
+        }
+        Ok(root)
     }
 
     /// Returns whether this field carries the values a path spells out.
@@ -1032,7 +1048,9 @@ impl Field {
     /// Returns this struct root without the columns a path spells out.
     ///
     /// This is what a partitioned write stores in a leaf: the declared schema
-    /// minus the columns the directory names already carry.
+    /// minus the columns the directory names already carry, and minus the
+    /// `PARTITION:by` declaration, which is the folder's rather than the
+    /// leaf's.
     ///
     /// # Errors
     ///
@@ -1041,19 +1059,24 @@ impl Field {
     pub fn without_partition_fields(&self) -> Result<Self> {
         self.require_struct()?;
         let names: Vec<&str> = self.partition_field_names().collect();
-        if names.is_empty() {
+        if names.is_empty() && !self.as_partition().declares_partition() {
             // Subtracting nothing is the field itself, and a clone of a field
             // shares its metadata, children, and populated Arrow projection.
             return Ok(self.clone());
         }
-        self.without_fields(&names)
+        let mut stored = self.without_fields(&names)?;
+        stored.as_partition_mut().remove_by();
+        Ok(stored)
     }
 
     /// Returns this struct root with the named children marked as partitions.
     ///
-    /// A name this root does not carry is an error rather than a silent
-    /// omission: a partition column nobody stores is a layout the writer would
-    /// have produced without ever saying which column went missing.
+    /// This is [`Self::with_partition_by`] over the names as bare columns:
+    /// every named column is an identity partition, the declaration is
+    /// stored as `PARTITION:by`, and no column is derived. A name this root
+    /// does not carry is an error rather than a silent omission: a partition
+    /// column nobody stores is a layout the writer would have produced
+    /// without ever saying which column went missing.
     ///
     /// ```
     /// use yggdryl::DataType;
@@ -1068,6 +1091,7 @@ impl Field {
     /// .with_partition_fields(&["year"])?;
     ///
     /// assert_eq!(schema.partition_field_names().collect::<Vec<_>>(), ["year"]);
+    /// assert_eq!(schema.get_metadata("PARTITION:by"), Some(r#"["year"]"#));
     /// assert_eq!(schema.without_partition_fields()?.field_len(), 1);
     /// # Ok(())
     /// # }
@@ -1078,23 +1102,107 @@ impl Field {
     /// Returns an error when this is not a struct or a name is not one of its
     /// children.
     pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self> {
+        self.with_partition_by(names.iter().map(|name| Projection::column(*name)))
+    }
+
+    /// Returns this struct root partitioned by `by`: the declaration stored
+    /// as `PARTITION:by`, every identity entry's column marked, and every
+    /// derived entry materialized as a marked column computed from the rows.
+    ///
+    /// A bare column - `venue` - is an identity partition: the column must
+    /// exist and is marked `FIELD:partition`. Any other entry - `years(ts)`,
+    /// `minutes(ts, 15)`, `truncate(name, 4) as prefix` - is a derived
+    /// partition: a child named by the alias, else by `{source}_{function}`
+    /// with the function in Iceberg's singular - `ts_year`, `ts_day`,
+    /// `ts_minutes`, `name_truncate` - is added, or re-declared where it
+    /// exists, typed by the term over this struct, carrying the term as its
+    /// [`TRANSFORM:`](crate::TransformField) declaration and the mark. A
+    /// column marked before and no longer declared is unmarked, so the marks
+    /// are exactly the declaration's. An empty `by` removes the declaration.
+    ///
+    /// The layout reads the marks and the derived columns' terms: a
+    /// partitioned folder spells every marked column in its paths, computing
+    /// a derived one through [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
+    /// before it writes, and an Iceberg table reads the declaration into its
+    /// spec ([`PartitionSpec::from_schema`](crate::iceberg::PartitionSpec::from_schema)).
+    ///
+    /// ```
+    /// use yggdryl::{DataType, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let rows = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    ///     DataType::utf8().required_field("name"),
+    /// ])?)
+    /// .required_field("row");
+    ///
+    /// let partitioned = rows.with_partition_by([
+    ///     "venue".parse()?,
+    ///     "minutes(ts, 15)".parse()?,
+    ///     "truncate(name, 4) as prefix".parse()?,
+    /// ])?;
+    ///
+    /// assert_eq!(
+    ///     partitioned.get_metadata("PARTITION:by"),
+    ///     Some(r#"["venue","minutes(ts, 15)","truncate(name, 4) as prefix"]"#)
+    /// );
+    /// assert_eq!(
+    ///     partitioned.partition_field_names().collect::<Vec<_>>(),
+    ///     ["venue", "ts_minutes", "prefix"]
+    /// );
+    /// let derived = partitioned.get_field_by_path("ts_minutes").expect("the derived column");
+    /// assert_eq!(derived.dtype(), &DataType::Int32);
+    /// assert_eq!(
+    ///     derived.as_transform().term()?.map(|term| term.to_string()),
+    ///     Some("minutes(ts, 15)".to_owned())
+    /// );
+    /// assert_eq!(partitioned.partition_by()?.len(), 3);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this is not a struct, an identity entry names a
+    /// column it does not have, two entries publish one name, a derived
+    /// entry has no alias and is not a function over a column, or a term
+    /// cannot be typed against this struct.
+    pub fn with_partition_by(&self, by: impl IntoIterator<Item = Projection>) -> Result<Self> {
         self.require_struct()?;
-        for name in names {
-            if self.dtype().get_field_by_name(name).is_none() {
+        let by: Vec<Projection> = by.into_iter().collect();
+        let mut names: Vec<SmolStr> = Vec::with_capacity(by.len());
+        let mut derived: Vec<(SmolStr, Term)> = Vec::new();
+        for entry in &by {
+            let name = partition_column_name(entry)?;
+            if names.contains(&name) {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$.{name}"),
-                    reason: crate::text::expected_got(
-                        format_args!("a column of {:?} to partition on", self.name()),
-                        format_args!("{name:?}"),
+                    reason: format_smolstr!(
+                        "expected every partition entry to publish its own name, got {name:?} twice"
                     ),
                 });
             }
+            if is_identity_partition(entry) {
+                if self.dtype().get_field_by_name(&name).is_none() {
+                    return Err(Error::InvalidRecord {
+                        path: format_smolstr!("$.{name}"),
+                        reason: crate::text::expected_got(
+                            format_args!("a column of {:?} to partition on", self.name()),
+                            format_args!("{name:?}"),
+                        ),
+                    });
+                }
+            } else {
+                derived.push((name.clone(), entry.term().clone()));
+            }
+            names.push(name);
         }
-        let children: Vec<Self> = self
+        let mut children: Vec<Self> = self
             .fields()
             .iter()
             .map(|child| {
-                let partition = names.contains(&child.name());
+                let partition = names.iter().any(|name| name == child.name());
                 if partition == child.is_partition() {
                     child.clone()
                 } else {
@@ -1102,12 +1210,93 @@ impl Field {
                 }
             })
             .collect();
-        Self::from_parts(
+        for (name, term) in derived {
+            let mut child = Projection::aliased(term.clone(), name.clone())
+                .field(self)?
+                .with_partition(true);
+            child.as_transform_mut().set_term(&term)?;
+            match children.iter().position(|held| held.name() == name) {
+                Some(index) => children[index] = child,
+                None => children.push(child),
+            }
+        }
+        let mut root = Self::from_parts(
             self.name(),
             DataType::from(StructType::from_fields(children)?),
             self.is_nullable(),
-            self.metadata_iter(),
-        )
+            self.metadata_iter()
+                .filter(|(key, _)| *key != PARTITION_BY_KEY),
+        )?;
+        if by.is_empty() {
+            return Ok(root);
+        }
+        root.as_partition_mut().set_by(by)?;
+        Ok(root)
+    }
+
+    /// Returns the projections this struct's rows partition by, in order.
+    ///
+    /// The `PARTITION:by` declaration where the root carries one; the marked
+    /// columns, each a bare column, where it carries none - a layout read off
+    /// a folder marks its columns without declaring them, and the marks are
+    /// then the declaration. Empty for a struct that partitions nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this is not a struct, or the stored declaration
+    /// does not parse.
+    pub fn partition_by(&self) -> Result<Vec<Projection>> {
+        self.require_struct()?;
+        if let Some(by) = self.as_partition().by()? {
+            return Ok(by);
+        }
+        Ok(self
+            .partition_field_names()
+            .map(Projection::column)
+            .collect())
+    }
+
+    /// Refuse a `PARTITION:by` declaration the `FIELD:partition` marks
+    /// contradict, naming both.
+    ///
+    /// The declaration says how rows partition and the marks say which
+    /// columns a layout spells out, and a mark the declaration does not
+    /// account for is the contradiction: a column marked as a partition
+    /// that the declaration names neither as an identity entry nor as a
+    /// derived one. The other way round is not: a declared column may be
+    /// unmarked, or missing altogether - a lake leaf stores the rows minus
+    /// the partition columns under the whole declaration, and an Iceberg
+    /// table keeps a derived entry's value in its manifest and declares no
+    /// column for it - because [`Self::with_partition_by`] is what turns a
+    /// declaration into marks, and it is asked for. A struct declaring
+    /// nothing is checked for nothing, whatever it marks.
+    pub(crate) fn validate_partition_declaration(&self) -> Result<()> {
+        if !self.is_struct() {
+            return Ok(());
+        }
+        let Some(by) = self.as_partition().by()? else {
+            return Ok(());
+        };
+        let names = by
+            .iter()
+            .map(partition_column_name)
+            .collect::<Result<Vec<SmolStr>>>()?;
+        for marked in self.partition_field_names() {
+            if !names.iter().any(|name| name == marked) {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$.{marked}"),
+                    reason: format_smolstr!(
+                        "expected the FIELD:partition marks to agree with PARTITION:by [{}], got \
+                         the marked column {marked:?} the declaration does not name",
+                        by.iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Replaces the struct child at `index`, cache-aware.
@@ -1294,6 +1483,68 @@ impl Field {
                 ),
             }),
         }
+    }
+}
+
+/// Whether a partition entry is an identity partition: a bare column under
+/// its own name.
+fn is_identity_partition(entry: &Projection) -> bool {
+    entry
+        .term()
+        .as_column()
+        .is_some_and(|column| entry.alias().is_none_or(|alias| alias == column))
+}
+
+/// The name a partition entry's column has: the alias, the column of an
+/// identity entry, or `{source}_{function}` for a function over a column -
+/// the function in Iceberg's singular, `ts_year` for `years(ts)`, `ts_day`,
+/// `ts_minutes` whatever the step, `name_truncate`.
+///
+/// This is the one naming rule a partition declaration has, read by
+/// [`Field::with_partition_by`], by the marks check and by an Iceberg spec.
+///
+/// # Errors
+///
+/// Returns an error for a derived entry with no alias that is not a
+/// function over a column, which nothing can name.
+pub(crate) fn partition_column_name(entry: &Projection) -> Result<SmolStr> {
+    if let Some(alias) = entry.alias() {
+        return Ok(SmolStr::new(alias));
+    }
+    if let Some(column) = entry.term().as_column() {
+        return Ok(SmolStr::new(column));
+    }
+    if let Term::Function(function, arguments) = entry.term()
+        && let Some(source) = arguments
+            .first()
+            .and_then(Term::as_path)
+            .and_then(|segments| segments.iter().rev().find_map(FieldSegment::as_name))
+    {
+        return Ok(format_smolstr!(
+            "{source}_{}",
+            partition_function_word(function)
+        ));
+    }
+    Err(Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: format_smolstr!(
+            "expected an alias for the partition entry `{entry}`, which is not a function over a column and names no column of its own"
+        ),
+    })
+}
+
+/// The word a derived partition column carries for its function: Iceberg's
+/// singular transform name for the epoch functions, the function's own name
+/// otherwise.
+fn partition_function_word(function: &Function) -> &str {
+    match function {
+        Function::Years => "year",
+        Function::Months => "month",
+        Function::Days => "day",
+        Function::Hours => "hour",
+        Function::Weeks => "week",
+        Function::Quarters => "quarter",
+        other => other.as_str(),
     }
 }
 

@@ -41,7 +41,8 @@ use iceberg_official::transform::{BoxedTransformFunction, create_transform_funct
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::eval::{EpochPeriod, epoch_value};
-use crate::expression::{Function, Literal, Term};
+use crate::expression::{FieldSegment, Function, Literal, Projection, Term};
+use crate::structure::partition_column_name;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -658,21 +659,66 @@ impl PartitionSpec {
         Ok(Self { spec_id, fields })
     }
 
-    /// Build a spec from the columns a schema already marks as partitions.
+    /// Build a spec from what a schema declares it partitions by.
     ///
-    /// A [`Field`] says which of its children a path spells out, so a caller
-    /// who declared that on the schema does not declare it again here. The
-    /// marked columns become identity partition fields in declaration order,
-    /// and a schema that marks none produces the unpartitioned spec.
+    /// [`Field::partition_by`] is the declaration - the `PARTITION:by`
+    /// entries, or the marked columns where the schema declares none - and
+    /// each entry is one spec field, in order: a bare column an identity
+    /// partition; an epoch function over a column - `years(ts)`, `days(ts)`,
+    /// `minutes(ts, 15)` - the transform [`Transform::from_term`] reads;
+    /// `truncate(col, w)` with a whole-number width [`Transform::Truncate`].
+    /// The spec field is named by the entry's alias, else by the convention
+    /// [`Field::with_partition_by`] names a derived column by (`ts_year`,
+    /// `ts_minutes`, `name_truncate`). A schema declaring nothing produces
+    /// the unpartitioned spec.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
+    /// use yggdryl::{DataType, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut schema = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    /// ])?)
+    /// .required_field("row")
+    /// .with_partition_by(["venue".parse()?, "minutes(ts, 15)".parse()?])?;
+    /// assign_field_ids(&mut schema, 1)?;
+    ///
+    /// let spec = PartitionSpec::from_schema(1, &schema)?;
+    /// assert_eq!(spec.fields.len(), 2);
+    /// assert_eq!(spec.fields[0].transform, Transform::Identity);
+    /// assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+    /// assert_eq!(spec.fields[1].name, "ts_minutes");
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when the field is not a struct root, or when a marked
-    /// column carries no field identifier.
+    /// Returns an error when the field is not a struct root, when a source
+    /// column is missing or carries no field identifier, or when an entry is
+    /// not a transform a spec can hold, naming the entry.
     pub fn from_schema(spec_id: i32, schema: &Field) -> Result<Self> {
         schema.require_struct()?;
-        let columns: Vec<&str> = schema.partition_field_names().collect();
-        Self::identity(spec_id, schema, &columns)
+        let mut fields = Vec::new();
+        for (offset, entry) in schema.partition_by()?.iter().enumerate() {
+            let (source, transform) = partition_entry(schema, entry)?;
+            let source_id = source.parquet_field_id()?.ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a PARQUET:field_id on the partition source {:?}; call \
+                     assign_field_ids first",
+                    source.name()
+                ))
+            })?;
+            fields.push(PartitionField {
+                source_id,
+                field_id: FIRST_PARTITION_ID + i32::try_from(offset).unwrap_or_default(),
+                name: partition_column_name(entry)?,
+                transform,
+            });
+        }
+        Ok(Self { spec_id, fields })
     }
 
     /// Read a spec back off the partition tuple it describes.
@@ -716,12 +762,19 @@ impl PartitionSpec {
         Ok(Self { spec_id, fields })
     }
 
-    /// Return `schema` with the columns this spec partitions on marked.
+    /// Return `schema` with the columns this spec partitions on marked and
+    /// the spec declared as its `PARTITION:by`.
     ///
     /// Only an identity transform marks a column: it is the one transform whose
     /// partition value *is* the column's value, so it is the only one a path can
-    /// spell and a reader can invert. A schema carrying the marks says how it is
-    /// laid out without a spec beside it.
+    /// spell and a reader can invert. The declaration names every field the
+    /// expression grammar can spell - an identity as its column, a time
+    /// transform as its epoch function, a truncation as `truncate(col, w)`,
+    /// each aliased where the spec's name is not the convention's - so a
+    /// schema carrying it says how the table partitions without a spec beside
+    /// it, and [`Self::from_schema`] reads the spec back. A `bucket`, a `void`
+    /// and an `unknown` field have no spelling and are left out of the
+    /// declaration; the spec itself keeps them.
     ///
     /// # Errors
     ///
@@ -729,20 +782,46 @@ impl PartitionSpec {
     /// column is missing from it.
     pub fn mark_partitions(&self, schema: &Field) -> Result<Field> {
         let mut columns = Vec::with_capacity(self.fields.len());
+        let mut by = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
-            if field.transform != Transform::Identity {
-                continue;
-            }
             // A spec can name a column of a nested struct, which no path spells
             // out and no top-level marker describes; such a field is left alone.
             let Some(source) = schema.field_by_parquet_field_id(field.source_id) else {
                 continue;
             };
-            if schema.dtype().get_field_by_name(source.name()).is_some() {
+            if schema.dtype().get_field_by_name(source.name()).is_none() {
+                continue;
+            }
+            if field.transform == Transform::Identity {
                 columns.push(source.name());
             }
+            let column = Term::column(source.name());
+            let term = match field.transform {
+                Transform::Identity => column,
+                Transform::Truncate(width) => Term::call(
+                    Function::Truncate,
+                    [column, Term::literal(i64::from(width))],
+                ),
+                transform => match transform.into_term(column) {
+                    Some(term) => term,
+                    None => continue,
+                },
+            };
+            let entry = Projection::new(term);
+            let entry = if partition_column_name(&entry)? == field.name {
+                entry
+            } else {
+                entry.with_alias(field.name.clone())
+            };
+            by.push(entry);
         }
-        schema.with_partition_fields(&columns)
+        let mut marked = schema.with_partition_fields(&columns)?;
+        if by.is_empty() {
+            marked.as_partition_mut().remove_by();
+        } else {
+            marked.as_partition_mut().set_by(by)?;
+        }
+        Ok(marked)
     }
 
     /// Return whether this spec places every file in one partition.
@@ -1290,6 +1369,70 @@ fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scala
             "expected an Iceberg partition value of type {dtype}, got {value}"
         ))
     })
+}
+
+/// Read one `PARTITION:by` entry as the column it reads and the transform it
+/// spells: an identity, an epoch function the grammar maps to a transform,
+/// or `truncate(col, w)`; anything else is refused by name.
+fn partition_entry<'schema>(
+    schema: &'schema Field,
+    entry: &Projection,
+) -> Result<(&'schema Field, Transform)> {
+    let refuse = |reason: &str| {
+        invalid(format_smolstr!(
+            "expected an Iceberg partition transform - a column, an epoch function over one, or \
+             truncate(column, width) - got `{entry}`: {reason}"
+        ))
+    };
+    let term = entry.term();
+    if let Some(path) = term.as_path() {
+        return Ok((source_of(schema, path, &refuse)?, Transform::Identity));
+    }
+    let Term::Function(function, arguments) = term else {
+        return Err(refuse("not a function over a column"));
+    };
+    let Some(source) = arguments.first().and_then(Term::as_path) else {
+        return Err(refuse("the first argument is not a column"));
+    };
+    let source = source_of(schema, source, &refuse)?;
+    if let Some(transform) = Transform::from_term(term) {
+        return Ok((source, transform));
+    }
+    if *function == Function::Truncate {
+        let width = arguments
+            .get(1)
+            .and_then(Term::as_literal)
+            .map(Literal::value)
+            .and_then(Scalar::as_i64)
+            .and_then(|width| u32::try_from(width).ok())
+            .filter(|width| *width > 0);
+        return match width {
+            Some(width) => Ok((source, Transform::Truncate(width))),
+            None => Err(refuse("truncate takes a positive whole-number width")),
+        };
+    }
+    Err(refuse("not a transform a spec can hold"))
+}
+
+/// The schema column a path of struct children names, top level first.
+fn source_of<'schema>(
+    schema: &'schema Field,
+    path: &[FieldSegment],
+    refuse: &dyn Fn(&str) -> Error,
+) -> Result<&'schema Field> {
+    let mut current = schema;
+    for segment in path {
+        let FieldSegment::Field(name) = segment else {
+            return Err(refuse(
+                "a source is a column or a struct child, never an element",
+            ));
+        };
+        current = current
+            .dtype()
+            .get_field_by_name(name)
+            .ok_or_else(|| refuse(&format!("no column {name:?} to partition on")))?;
+    }
+    Ok(current)
 }
 
 /// Find the schema column one partition field reads.

@@ -222,8 +222,9 @@ pub use protocol::{
     IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
     PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
-    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
-    SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
+    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SortField,
+    SortFieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, TransformField,
+    TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
 pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows};

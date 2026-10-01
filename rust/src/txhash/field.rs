@@ -3,7 +3,7 @@
 //! `DIGEST:time` names the field whose instant leads the stored bytes, and
 //! `DIGEST:unit` states the clock resolution that instant is counted in,
 //! microseconds when absent. Both live on the holder, beside its algorithm
-//! and sources, so the field they read carries no metadata at all.
+//! and its `by` terms, so the field they read carries no metadata at all.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -40,7 +40,7 @@ fn parse_digest_unit(value: &str) -> Result<TimeUnit> {
 /// Accept a stored time path: one non-empty field path, never the
 /// select-everything spelling.
 pub(crate) fn validate_digest_time(value: &str) -> Result<()> {
-    if value.is_empty() || value == crate::metadata::ALL_SOURCES {
+    if value.is_empty() || value == crate::metadata::ALL_COLUMNS {
         return Err(Error::InvalidMetadataValue {
             key: SmolStr::new_static(DIGEST_TIME_KEY),
             reason: format_smolstr!("expected one non-empty field path, got {value:?}"),
@@ -75,7 +75,7 @@ impl DigestField<'_> {
     ///
     /// A holder naming one stores an instant in front of its digest, and its
     /// storage is a `fixed_size_binary` of the coupled width. The path is
-    /// relative to the holder's Struct, spelled the way `DIGEST:sources` are.
+    /// relative to the holder's Struct, a dotted path and never a term.
     pub fn time(&self) -> Option<&str> {
         self.get(TIME)
     }

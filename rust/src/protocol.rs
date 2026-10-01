@@ -14,7 +14,7 @@
 //! `display`, `location` and `PARQUET:field_id` - stays on [`Field`].
 
 use std::borrow::Cow;
-use std::cmp::Ordering;
+use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut, Index};
@@ -23,7 +23,7 @@ use std::str::FromStr;
 use smol_str::SmolStr;
 
 use crate::Field;
-use crate::expression::{Function, Term};
+use crate::expression::{Ordering, Projection};
 use crate::metadata::{
     HTTP_ACCEPT_ENCODING_KEY, HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY,
     HTTP_CACHE_CONTROL_KEY, HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY,
@@ -606,178 +606,219 @@ impl HttpFieldMut<'_> {
 }
 
 // ------------------------------------------------------------------------
-// The `PARTITION:` declaration: how a column derives its value, in the shape
-// an Iceberg partition spec has.
+// The `PARTITION:` and `SORT:` declarations: how a struct's rows partition
+// and the order they keep, each one `by` list on the struct field.
 //
-// A partition column declares its derivation as the pair `PARTITION:sources`
-// and `PARTITION:transform` - one function over one source path. The pair is
-// what a spec is read from and written to; the derivation itself is read
-// through the [`transform`](crate::TransformField::term) protocol, which
-// answers this pair where no `TRANSFORM:expression` is declared, so a column
-// derives one way whichever protocol declared it.
+// `PARTITION:by` holds the projections rows partition by, in order - a bare
+// column an identity partition, a term a derived one, an alias naming the
+// derived column - and `SORT:by` the `order by` keys rows are sorted by.
+// Both are stored as JSON arrays of canonical expression texts, read back
+// through the grammar that wrote them, and [`Field::with_partition_by`]
+// is what turns the first into the marks and the derived columns a layout
+// reads.
 // ------------------------------------------------------------------------
 
-/// The partition property naming how a column derives its value.
-const TRANSFORM: &str = "transform";
-
-/// The partition property naming the fields a column derives its value from.
-const SOURCES: &str = "sources";
+/// The property holding the ordered list a `PARTITION:` or a `SORT:`
+/// declaration is.
+const BY: &str = "by";
 
 impl<'field> PartitionField<'field> {
-    /// Parses the field paths this column derives its value from.
+    /// Parses the projections this struct's rows partition by, in order.
     ///
-    /// The shape is the one every `sources` property has, the
-    /// [digest holder's](crate::DigestField::sources) included: a JSON array
-    /// of dotted paths, spelled the way [`Field::get_field_by_path`](crate::Field::get_field_by_path) and the
-    /// expression grammar both spell one, so a partition column can read a
-    /// struct child as easily as a top-level one.
-    ///
-    /// One source is every transform this crate evaluates today, and
-    /// [`Self::term`] is where a longer list is refused; the list shape
-    /// is what leaves room for the transforms that read more than one column.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming `PARTITION:sources` when the stored text is not
-    /// that array.
-    pub fn sources(&self) -> Result<Option<Vec<String>>> {
-        self.get(SOURCES)
-            .map(|stored| crate::metadata::parse_source_list(&self.key(SOURCES), stored))
-            .transpose()
-    }
-
-    /// Parses how this column derives its value from that field.
-    ///
-    /// The vocabulary is the expression grammar's own [`Function`] set, which
-    /// is what keeps one implementation behind a derived partition column and
-    /// behind a predicate over the same value. An absent transform is the
-    /// identity: the source value unchanged.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the stored text names no function, or names one
-    /// that cannot take a single argument.
-    pub fn transform(&self) -> Result<Option<Function>> {
-        self.get(TRANSFORM)
-            .map(|stored| crate::metadata::parse_partition_transform(&self.key(TRANSFORM), stored))
-            .transpose()
-    }
-
-    /// Returns the term that fills this column, if it declares one.
-    ///
-    /// `None` is a column no `PARTITION:sources` names, which is every column
-    /// a directory spells out rather than derives. The
-    /// [`transform`](crate::TransformField::term) protocol reads this, so a
-    /// partition column derives exactly as a `TRANSFORM:expression` does.
+    /// A bare column - `venue` - is an identity partition on that column; a
+    /// term - `years(ts)`, `truncate(name, 4) as prefix` - is a derived
+    /// partition, published under its alias or the convention
+    /// [`Field::with_partition_by`] names. `None` is a struct declaring
+    /// nothing here; [`Field::partition_by`] answers the marked columns
+    /// then.
     ///
     /// ```
-    /// use yggdryl::DataType;
-    /// use yggdryl::expression::Function;
+    /// use yggdryl::{DataType, StructType, TimeUnit, Timezone};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut year = DataType::Int32.nullable_field("year");
-    /// year.as_partition_mut().set_sources(["event"])?;
-    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let mut row = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    /// ])?)
+    /// .required_field("row");
+    /// row.as_partition_mut().set_by_texts(["venue", "Years(ts)"])?;
     ///
-    /// assert_eq!(year.as_partition().sources()?, Some(vec!["event".to_owned()]));
-    /// assert_eq!(year.get_metadata("PARTITION:sources"), Some(r#"["event"]"#));
-    /// assert_eq!(year.get_metadata("PARTITION:transform"), Some("year"));
-    /// assert_eq!(
-    ///     year.as_partition().term()?.map(|value| value.to_string()),
-    ///     Some("year(event)".to_owned()),
-    /// );
+    /// assert_eq!(row.get_metadata("PARTITION:by"), Some(r#"["venue","years(ts)"]"#));
+    /// let declared = row.as_partition().by()?.expect("a declaration");
+    /// assert_eq!(declared[1].to_string(), "years(ts)");
+    /// assert!(row.as_partition().declares_partition());
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when a transform is declared with no sources beside
-    /// it, when the list does not name exactly one - the only shape a
-    /// transform of one argument reads - or when the transform is not such a
-    /// function.
-    pub fn term(&self) -> Result<Option<Term>> {
-        let Some(sources) = self.sources()? else {
-            if self.contains_key(TRANSFORM) {
-                return Err(self.invalid_sources(smol_str::format_smolstr!(
-                    "expected a {} beside {}, got none",
-                    self.key(SOURCES),
-                    self.key(TRANSFORM)
-                )));
-            }
-            return Ok(None);
-        };
-        // One source is every transform this crate evaluates today; the list
-        // is what a transform reading more than one column will grow into.
-        let [source] = sources.as_slice() else {
-            return Err(self.invalid_sources(crate::text::expected_got(
-                "exactly one source, the only shape a transform reads today",
-                format_args!("{} of them", sources.len()),
-            )));
-        };
-        let mut segments = source.split('.');
-        let root = segments.next().unwrap_or_default();
-        let read = segments.fold(Term::column(root), Term::child);
-        Ok(Some(match self.transform()? {
-            Some(function) => Term::call(function, [read]),
-            None => read,
-        }))
+    /// Returns an error naming `PARTITION:by` when the stored text is not a
+    /// JSON array of terms with optional aliases.
+    pub fn by(&self) -> Result<Option<Vec<Projection>>> {
+        let key = self.key(BY);
+        self.get(BY)
+            .map(|stored| {
+                crate::metadata::parse_by_list(&key, stored)?
+                    .iter()
+                    .map(|entry| crate::metadata::parse_by_projection(&key, entry))
+                    .collect()
+            })
+            .transpose()
     }
 
-    /// Returns whether this column declares a derivation, complete or not.
+    /// Returns whether this struct declares how its rows partition, well
+    /// formed or not.
     ///
-    /// Answered on the stored properties rather than the parsed term, so a
+    /// Answered on the stored property rather than the parsed list, so a
     /// malformed declaration still reports as one and is refused where it is
     /// read.
     #[must_use]
-    pub fn is_derived(&self) -> bool {
-        self.contains_key(SOURCES) || self.contains_key(TRANSFORM)
-    }
-
-    /// Name the full source key a declaration was refused under.
-    fn invalid_sources(&self, reason: smol_str::SmolStr) -> Error {
-        Error::InvalidMetadataValue {
-            key: smol_str::SmolStr::new(self.key(SOURCES)),
-            reason,
-        }
+    pub fn declares_partition(&self) -> bool {
+        self.contains_key(BY)
     }
 }
 
 impl PartitionFieldMut<'_> {
-    /// Records the field paths this column derives its value from.
+    /// Records the projections this struct's rows partition by, in order.
     ///
-    /// The list is stored in the one canonical spelling every `sources`
-    /// property has. One path is every transform this crate evaluates today,
-    /// and [`PartitionField::term`] is where a longer list is refused -
-    /// storing one states the intent without pretending it runs.
+    /// The list is stored canonically: each projection as its own text. The
+    /// declaration alone marks nothing; [`Field::with_partition_by`] is what
+    /// marks the identity columns and materializes the derived ones.
     ///
     /// # Errors
     ///
-    /// Returns an error when a path is empty or repeated, or when the property
-    /// write fails the validation every metadata write goes through, leaving
-    /// the field unchanged. Both writes here fail the same way.
-    pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()>
+    /// Returns an error when an entry is repeated, declares a datatype or
+    /// metadata, or the property write fails the validation every metadata
+    /// write goes through, leaving the field unchanged.
+    pub fn set_by(&mut self, by: impl IntoIterator<Item = Projection>) -> Result<()> {
+        self.set_by_texts(by.into_iter().map(|projection| projection.to_string()))
+    }
+
+    /// Records the projections this struct's rows partition by, each as the
+    /// text the grammar reads: `venue`, `years(ts)`, `truncate(name, 4) as prefix`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an entry does not parse as a term with an
+    /// optional alias, or [`Self::set_by`]'s rule refuses it, leaving the
+    /// field unchanged.
+    pub fn set_by_texts<I, P>(&mut self, by: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
-        let rendered = crate::metadata::render_source_list(&self.key(SOURCES), sources)?;
-        self.insert(SOURCES, rendered)?;
+        let key = self.key(BY);
+        let entries = by
+            .into_iter()
+            .map(|entry| {
+                crate::metadata::parse_by_projection(&key, entry.as_ref())
+                    .map(|projection| projection.to_string())
+            })
+            .collect::<Result<Vec<String>>>()?;
+        self.insert(BY, crate::metadata::render_by_list(&key, entries)?)?;
         Ok(())
     }
 
-    /// Records how this column derives its value from that field.
+    /// Removes the declaration, answering the text it held.
+    pub fn remove_by(&mut self) -> Option<String> {
+        self.remove(BY)
+    }
+}
+
+impl<'field> SortField<'field> {
+    /// Parses the `order by` keys this struct's rows keep, most significant
+    /// first.
     ///
-    /// The function is stored in its canonical spelling, so a dialect alias a
-    /// caller resolved reads back as the one name the grammar owns.
+    /// Each entry is one key of the plan grammar - `ts`, `price desc`,
+    /// `venue desc nulls first` - which is what
+    /// [`Plan::from_field`](crate::expression::Plan::from_field) moves into
+    /// its `order by` section and an Iceberg table's default sort order is
+    /// read from. `None` is a struct declaring no order.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, SortOptions, StructType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Float64.nullable_field("price"),
+    /// ])?)
+    /// .required_field("row");
+    /// row.as_sort_mut().set_by_texts(["venue", "price DESC nulls first"])?;
+    ///
+    /// assert_eq!(row.get_metadata("SORT:by"), Some(r#"["venue","price desc nulls first"]"#));
+    /// let keys = row.as_sort().by()?.expect("an order");
+    /// assert_eq!(keys[1].term().to_string(), "price");
+    /// assert_eq!(keys[1].options(), SortOptions::descending().with_nulls_first(true));
+    /// assert!(row.as_sort().declares_order());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// [`Self::set_sources`] carries the rule, and a function that cannot take
-    /// a single argument is refused before anything is written.
-    pub fn set_transform(&mut self, transform: Function) -> Result<()> {
-        self.insert(TRANSFORM, transform.as_str())?;
+    /// Returns an error naming `SORT:by` when the stored text is not a JSON
+    /// array of `order by` keys.
+    pub fn by(&self) -> Result<Option<Vec<Ordering>>> {
+        let key = self.key(BY);
+        self.get(BY)
+            .map(|stored| {
+                crate::metadata::parse_by_list(&key, stored)?
+                    .iter()
+                    .map(|entry| crate::metadata::parse_by_ordering(&key, entry))
+                    .collect()
+            })
+            .transpose()
+    }
+
+    /// Returns whether this struct declares an order, well formed or not.
+    #[must_use]
+    pub fn declares_order(&self) -> bool {
+        self.contains_key(BY)
+    }
+}
+
+impl SortFieldMut<'_> {
+    /// Records the `order by` keys this struct's rows keep, most significant
+    /// first, each stored as the text the grammar writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a key is repeated, or the property write fails
+    /// the validation every metadata write goes through, leaving the field
+    /// unchanged.
+    pub fn set_by(&mut self, by: impl IntoIterator<Item = Ordering>) -> Result<()> {
+        self.set_by_texts(by.into_iter().map(|ordering| ordering.to_string()))
+    }
+
+    /// Records the `order by` keys this struct's rows keep, each as the text
+    /// the grammar reads: `ts`, `price desc`, `venue desc nulls first`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an entry does not parse as an `order by` key,
+    /// or [`Self::set_by`]'s rule refuses it, leaving the field unchanged.
+    pub fn set_by_texts<I, P>(&mut self, by: I) -> Result<()>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<str>,
+    {
+        let key = self.key(BY);
+        let entries = by
+            .into_iter()
+            .map(|entry| {
+                crate::metadata::parse_by_ordering(&key, entry.as_ref())
+                    .map(|ordering| ordering.to_string())
+            })
+            .collect::<Result<Vec<String>>>()?;
+        self.insert(BY, crate::metadata::render_by_list(&key, entries)?)?;
         Ok(())
+    }
+
+    /// Removes the declaration, answering the text it held.
+    pub fn remove_by(&mut self) -> Option<String> {
+        self.remove(BY)
     }
 }
 
@@ -1519,13 +1560,13 @@ impl PartialEq for ProtocolField<'_> {
 impl Eq for ProtocolField<'_> {}
 
 impl PartialOrd for ProtocolField<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for ProtocolField<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.as_properties().cmp(&other.as_properties())
     }
 }
@@ -1875,13 +1916,13 @@ macro_rules! protocol_field_types {
         impl Eq for $view<'_> {}
 
         impl PartialOrd for $view<'_> {
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
                 Some(self.cmp(other))
             }
         }
 
         impl Ord for $view<'_> {
-            fn cmp(&self, other: &Self) -> Ordering {
+            fn cmp(&self, other: &Self) -> cmp::Ordering {
                 self.0.cmp(&other.0)
             }
         }

@@ -2766,7 +2766,7 @@ let _ = std::fs::remove_dir_all(&root);
 
 ### Derived partition columns
 
-A column can also be computed from another column of the same rows. The [`PARTITION:`](../types/protocol.md) view declares it: `PARTITION:sources` names the field it reads, `PARTITION:transform` the [expression](../expression/grammar.md) function, identity when absent. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone.
+A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone, and a partitioned write runs it before it cuts the rows by their directories.
 
 === "Rust"
 
@@ -2774,14 +2774,12 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-    use yggdryl::expression::Function;
     use yggdryl::{DataType, StructType};
 
-    let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut().set_sources(["event"])?;
-    year.as_partition_mut().set_transform(Function::Year)?;
-    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-        .required_field("row");
+    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+        .required_field("row")
+        .with_partition_by(["year(event) as year".parse()?])?;
+    assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
     let batch = RecordBatch::try_from_iter([(
         "event",
@@ -2799,9 +2797,10 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     // The declaration is one term, which is also what a predicate over the
     // same value binds against.
     assert_eq!(
-        root.field_at(1)?.as_partition().term()?.map(|read| read.to_string()),
+        root.field_at(1)?.as_transform().term()?.map(|read| read.to_string()),
         Some("year(event)".to_owned()),
     );
+    assert_eq!(root.get_metadata("PARTITION:by"), Some(r#"["year(event) as year"]"#));
     ```
 
 === "Python"
@@ -2812,11 +2811,11 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     from yggdryl import DataType, Field
 
     year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "dayofmonth"
+    year.transform["expression"] = "DayOfMonth(event)"
+    year.set_partition(True)
 
     # A dialect alias resolves on the way in, so one name is stored.
-    assert year.partition.transform == "day"
+    assert year.transform["expression"] == "day(event)"
 
     root = Field(
         "row",
@@ -2825,11 +2824,15 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     )
     batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
 
-    filled = root.partition.apply_arrow_batch(batch)
+    filled = root.transform.apply_arrow_batch(batch)
 
     assert filled.column_names == ["event", "year"]
     assert filled.column("year").to_pylist() == [1, 1]
     ```
+
+    !!! note "Rust-only"
+        `with_partition_by` is Rust-only; Python declares a derived partition column as its
+        transform and its mark, as above.
 
 ## Call counts
 

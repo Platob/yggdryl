@@ -106,7 +106,7 @@ pub use state::{Xxh3, Xxh32, Xxh64, Xxh128};
 pub use stream::{DigestReader, DigestWriter};
 
 pub(crate) use field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    DIGEST_ALGORITHM_KEY, DIGEST_BY_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY,
     canonicalize_digest_algorithm,
 };
 pub(crate) use state::{low_32, low_64};

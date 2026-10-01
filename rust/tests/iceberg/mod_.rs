@@ -9250,3 +9250,219 @@ mod time_partitions {
         let _ = std::fs::remove_dir_all(&path);
     }
 }
+
+mod declared_schema {
+    //! A table created from what its schema declares: `PARTITION:by` as
+    //! its spec, `SORT:by` as its default order, both reported back on
+    //! `Table::schema()` and after a reopen.
+
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray};
+
+    use super::{FormatVersion, LocalFolder, PartitionSpec, Table, Transform, root};
+    use yggdryl::iceberg::IcebergOptions;
+    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
+
+    /// The rows with both declarations on the root and nothing materialized:
+    /// an Iceberg table keeps a derived partition's value in its manifest,
+    /// so the declaration is written on the root rather than through
+    /// `with_partition_by`, which would add the column to the rows.
+    fn declared() -> Field {
+        let mut rows = DataType::from(
+            StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        rows.as_partition_mut()
+            .set_by_texts(["venue", "minutes(ts, 15)"])
+            .unwrap();
+        rows.as_sort_mut()
+            .set_by_texts(["ts desc nulls first", "id"])
+            .unwrap();
+        rows
+    }
+
+    fn batch(ids: &[i64], venues: &[&str], seconds: &[i64]) -> RecordBatch {
+        RecordBatch::try_from_iter([
+            (
+                "id",
+                Arc::new(Int64Array::from(ids.to_vec())) as arrow_array::ArrayRef,
+            ),
+            ("venue", Arc::new(StringArray::from(venues.to_vec()))),
+            (
+                "ts",
+                Arc::new(TimestampMicrosecondArray::from(
+                    seconds.iter().map(|s| s * 1_000_000).collect::<Vec<_>>(),
+                )),
+            ),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn a_table_is_created_from_the_declarations_and_reports_them_back() {
+        let path = root("declared-schema");
+        let schema = declared();
+        // The schema is numbered by the create, so the spec is read off it
+        // there too: nothing is declared twice.
+        let mut numbered = schema.clone();
+        yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
+        let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec.clone(),
+        )
+        .unwrap();
+        assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+        assert_eq!(spec.fields[1].name, "ts_minutes");
+        // A derived partition column is the manifest's, not the schema's.
+        assert_eq!(table.schema().unwrap().field_len(), 3);
+
+        let order = table.metadata().default_sort_order().unwrap();
+        assert_eq!(order.fields.len(), 2);
+        assert_eq!(order.fields[0].source_id, 3);
+        assert_eq!(order.fields[0].direction, "desc");
+        assert_eq!(order.fields[0].null_order, "nulls-first");
+        assert_eq!(order.fields[1].source_id, 1);
+        assert_eq!(order.fields[1].direction, "asc");
+
+        let reported = table.schema().unwrap();
+        assert_eq!(
+            reported.get_metadata("PARTITION:by"),
+            Some(r#"["venue","minutes(ts, 15)"]"#)
+        );
+        assert_eq!(
+            reported.get_metadata("SORT:by"),
+            Some(r#"["ts desc nulls first","id"]"#)
+        );
+        assert_eq!(
+            reported.partition_field_names().collect::<Vec<_>>(),
+            ["venue"]
+        );
+
+        // Rows land in one file per venue and quarter hour, sorted by the
+        // declared order.
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_target_file_size_bytes(1)
+                .unwrap(),
+        );
+        let rows = batch(
+            &[1, 2, 3, 4],
+            &["X", "X", "X", "Y"],
+            &[100, 1_000, 950, 100],
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let mut directories: Vec<String> = table
+            .data_files()
+            .unwrap()
+            .iter()
+            .map(|(file, _)| {
+                let path = file.file_path.as_str();
+                let start = path.find("data/").unwrap() + 5;
+                path[start..].rsplit_once('/').unwrap().0.to_owned()
+            })
+            .collect();
+        directories.sort();
+        directories.dedup();
+        assert_eq!(
+            directories,
+            [
+                "venue=X/ts_minutes=0",
+                "venue=X/ts_minutes=1",
+                "venue=Y/ts_minutes=0"
+            ]
+        );
+        let ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids.len(), 4);
+
+        // Reopening reads both declarations off the document.
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reported = reopened.schema().unwrap();
+        assert_eq!(
+            reported.get_metadata("PARTITION:by"),
+            Some(r#"["venue","minutes(ts, 15)"]"#)
+        );
+        assert_eq!(
+            reported.get_metadata("SORT:by"),
+            Some(r#"["ts desc nulls first","id"]"#)
+        );
+        assert_eq!(
+            PartitionSpec::from_schema(1, reported).unwrap(),
+            *reopened.metadata().default_spec().unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_group_already_in_the_declared_order_is_written_as_it_arrived() {
+        let path = root("declared-sorted");
+        let mut schema = declared();
+        schema.as_sort_mut().set_by_texts(["id"]).unwrap();
+        let mut numbered = schema.clone();
+        yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
+        let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
+        for ids in [[1_i64, 2, 3], [3, 1, 2]] {
+            let rows = batch(&ids, &["X"; 3], &[100; 3]);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+                .unwrap();
+        }
+        // Both commits read back in the declared order, whether the rows
+        // arrived sorted and were kept, or arrived unsorted and were sorted.
+        let ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, [1, 2, 3, 1, 2, 3]);
+        for (file, _) in table.data_files().unwrap() {
+            assert_eq!(file.sort_order_id, Some(1));
+        }
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}

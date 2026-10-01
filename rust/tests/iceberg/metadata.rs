@@ -379,3 +379,99 @@ fn a_v1_or_v2_table_takes_no_v3_type_through_evolution_either() {
         }
     }
 }
+
+mod declared_order {
+    //! A sort order read from, and written as, a schema's `SORT:by`.
+
+    use yggdryl::expression::Ordering;
+    use yggdryl::iceberg::{SortField, SortOrder, Transform, assign_field_ids};
+    use yggdryl::{DataType, Field, SortOptions, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        let mut schema = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+                DataType::Float64.nullable_field("price"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    #[test]
+    fn a_declaration_reads_as_an_order_and_an_order_writes_its_keys() {
+        let mut declared = schema();
+        declared
+            .as_sort_mut()
+            .set_by_texts(["venue", "days(ts) desc", "price desc nulls first"])
+            .unwrap();
+        let order = SortOrder::from_schema(1, &declared).unwrap();
+        assert_eq!(
+            order,
+            SortOrder {
+                order_id: 1,
+                fields: vec![
+                    SortField {
+                        source_id: 1,
+                        transform: Transform::Identity,
+                        direction: "asc".into(),
+                        null_order: "nulls-last".into(),
+                    },
+                    SortField {
+                        source_id: 2,
+                        transform: Transform::Day,
+                        direction: "desc".into(),
+                        null_order: "nulls-last".into(),
+                    },
+                    SortField {
+                        source_id: 3,
+                        transform: Transform::Identity,
+                        direction: "desc".into(),
+                        null_order: "nulls-first".into(),
+                    },
+                ],
+            }
+        );
+        let keys = order.into_orderings(&schema()).unwrap();
+        assert_eq!(keys, declared.as_sort().by().unwrap().unwrap());
+        assert_eq!(
+            keys[2],
+            Ordering::new(
+                "price".parse().unwrap(),
+                SortOptions::descending().with_nulls_first(true)
+            )
+        );
+        // A schema declaring nothing is the unsorted order; a bucket has no
+        // key to spell and is refused by name on the way out.
+        assert_eq!(
+            SortOrder::from_schema(1, &schema()).unwrap(),
+            SortOrder::unsorted()
+        );
+        let bucketed = SortOrder {
+            order_id: 2,
+            fields: vec![SortField {
+                source_id: 1,
+                transform: Transform::Bucket(4),
+                direction: "asc".into(),
+                null_order: "nulls-last".into(),
+            }],
+        };
+        let error = bucketed.into_orderings(&schema()).unwrap_err().to_string();
+        assert!(error.contains("bucket[4]"), "{error}");
+        for entry in ["lower(venue)", "truncate(venue, 0)", "absent desc"] {
+            let mut declared = schema();
+            declared.as_sort_mut().set_by_texts([entry]).unwrap();
+            let error = SortOrder::from_schema(1, &declared)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(entry), "{entry}: {error}");
+        }
+    }
+}

@@ -770,3 +770,141 @@ mod internal {
         );
     }
 }
+
+mod declared {
+    //! A spec read from, and written as, a schema's `PARTITION:by`.
+
+    use yggdryl::iceberg::{PartitionField, PartitionSpec, Transform, assign_field_ids};
+    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        let mut schema = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+                DataType::utf8().required_field("name"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    #[test]
+    fn a_declaration_reads_as_a_spec_and_a_spec_writes_its_declaration() {
+        let declared = schema()
+            .with_partition_by([
+                "venue".parse().unwrap(),
+                "minutes(ts, 15)".parse().unwrap(),
+                "truncate(name, 4) as prefix".parse().unwrap(),
+            ])
+            .unwrap();
+        let spec = PartitionSpec::from_schema(3, &declared).unwrap();
+        assert_eq!(
+            spec,
+            PartitionSpec {
+                spec_id: 3,
+                fields: vec![
+                    PartitionField::identity(1, 1000, "venue"),
+                    PartitionField {
+                        source_id: 2,
+                        field_id: 1001,
+                        name: "ts_minutes".into(),
+                        transform: Transform::Minutes(15),
+                    },
+                    PartitionField {
+                        source_id: 3,
+                        field_id: 1002,
+                        name: "prefix".into(),
+                        transform: Transform::Truncate(4),
+                    },
+                ],
+            }
+        );
+
+        // The spec marks the identity column and declares every field it
+        // can spell, aliased where its name is not the convention's.
+        let marked = spec.mark_partitions(&schema()).unwrap();
+        assert_eq!(
+            marked.partition_field_names().collect::<Vec<_>>(),
+            ["venue"]
+        );
+        assert_eq!(
+            marked.get_metadata("PARTITION:by"),
+            Some(r#"["venue","minutes(ts, 15)","truncate(name, 4) as prefix"]"#)
+        );
+        assert_eq!(PartitionSpec::from_schema(3, &marked).unwrap(), spec);
+
+        // A spec field named off the convention keeps its name as an alias.
+        let renamed = PartitionSpec {
+            spec_id: 1,
+            fields: vec![
+                PartitionField::identity(1, 1000, "v"),
+                PartitionField {
+                    source_id: 2,
+                    field_id: 1001,
+                    name: "ts_day".into(),
+                    transform: Transform::Day,
+                },
+                PartitionField {
+                    source_id: 2,
+                    field_id: 1002,
+                    name: "ts_bucket".into(),
+                    transform: Transform::Bucket(8),
+                },
+            ],
+        };
+        let marked = renamed.mark_partitions(&schema()).unwrap();
+        assert_eq!(
+            marked.get_metadata("PARTITION:by"),
+            Some(r#"["venue as v","days(ts)"]"#),
+            "a bucket has no spelling and is left out of the declaration"
+        );
+        // Unpartitioned marks nothing and declares nothing.
+        let plain = PartitionSpec::unpartitioned()
+            .mark_partitions(&schema())
+            .unwrap();
+        assert_eq!(plain.get_metadata("PARTITION:by"), None);
+        assert!(
+            PartitionSpec::from_schema(0, &plain)
+                .unwrap()
+                .is_unpartitioned()
+        );
+    }
+
+    #[test]
+    fn an_entry_no_spec_can_hold_is_refused_by_name() {
+        for entry in ["lower(name)", "truncate(name, 0)", "years(ts) + 1 as k"] {
+            let declared = schema()
+                .with_partition_by([entry.parse().unwrap()])
+                .unwrap();
+            let error = PartitionSpec::from_schema(1, &declared)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("Iceberg partition transform"),
+                "{entry}: {error}"
+            );
+            assert!(
+                error.contains(entry.split(" as ").next().unwrap()),
+                "{entry}: {error}"
+            );
+        }
+        // A source with no field identifier is refused as it always was.
+        let unnumbered = DataType::from(
+            StructType::from_fields([DataType::utf8().required_field("venue")]).unwrap(),
+        )
+        .required_field("row")
+        .with_partition_fields(&["venue"])
+        .unwrap();
+        let error = PartitionSpec::from_schema(1, &unnumbered)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("assign_field_ids"), "{error}");
+    }
+}
