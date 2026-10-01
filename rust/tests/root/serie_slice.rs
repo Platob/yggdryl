@@ -63,7 +63,7 @@ fn a_window_reads_through_the_serie_window_relative_on_both_leaves() {
         );
         assert_eq!(window.iter().count(), 3);
         assert_eq!(
-            window.iter().rev().next().map(|row| row.into_owned()),
+            window.iter().next_back().map(|row| row.into_owned()),
             Some(Scalar::from(4_i64))
         );
         assert_eq!((&window).into_iter().len(), 3);
