@@ -25,7 +25,7 @@ column below), so compare `DataType` values, never the text you wrote.
 
 | Canonical | Also parsed as |
 | --- | --- |
-| `null` | `void`, `unknown` (Iceberg) |
+| `null` | `void` |
 | `boolean` | `bool` |
 | `int8` | `tinyint`, `byte` |
 | `int16` | `smallint`, `short` |
@@ -147,7 +147,7 @@ The same number rule holds: `large_binary(16)` is refused.
 | `mediatype` | `content_type` | MIME type + charset + content codings |
 | `url`, `urn` | - | locations and names (see `yggdryl-uri`) |
 | `geometry`, `geography` | `geometry("EPSG:3857")`, `geography("OGC:CRS84","vincenty")`, Iceberg's bare `geometry(srid:4326)`, `geography(OGC:CRS84, vincenty)` | WKB payload; the default CRS `OGC:CRS84` and edges `spherical` display as nothing |
-| `variant` | - | the Parquet Variant datatype; **not** a union |
+| `variant` | Iceberg's `unknown` | the Parquet Variant datatype; **not** a union. A type string cannot declare an Iceberg column `unknown`: the table's field carries `ICEBERG:type = unknown` |
 
 Not spellings: `json`, `jsonb`.
 

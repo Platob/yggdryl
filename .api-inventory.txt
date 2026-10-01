@@ -2785,6 +2785,7 @@ impl<'field> IcebergField<'field>
   pub fn schema_id(&self) -> Result<Option<i32>>
   pub fn identifier_field_ids(&self) -> Result<Vec<i32>>
   pub fn doc(&self) -> Option<&'field str>
+  pub fn is_unknown(&self) -> bool  (the column is Iceberg's `unknown`, read as a variant)
   pub fn initial_default(&self) -> Result<Option<Scalar>>
   pub fn write_default(&self) -> Result<Option<Scalar>>
   pub fn spec_id(&self) -> Result<Option<i32>>
@@ -2794,6 +2795,7 @@ impl<'field> IcebergField<'field>
   pub fn set_schema_id(&mut self, id: i32) -> Result<()>
   pub fn set_identifier_field_ids(&mut self, ids: &[i32]) -> Result<()>
   pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()>
+  pub fn set_unknown(&mut self, unknown: bool) -> Result<()>
   pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()>
   pub fn set_write_default(&mut self, value: &Scalar) -> Result<()>
   pub fn set_spec_id(&mut self, id: i32) -> Result<()>

@@ -89,6 +89,13 @@ const TIMESTAMP_NANOS: u8 = 18;
 const TIMESTAMP_NTZ_NANOS: u8 = 19;
 const UUID: u8 = 20;
 
+/// Whether one value payload is the variant null: a cell that is present and
+/// holds no value, which reads as absent wherever an absent cell would.
+#[cfg(feature = "iceberg")]
+pub(crate) fn is_null_value(value: &[u8]) -> bool {
+    value == [PRIMITIVE | (NULL << 2)]
+}
+
 /// The longest string whose length the short-string header folds in.
 const SHORT_STRING_MAX: usize = 63;
 

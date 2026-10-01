@@ -15,7 +15,7 @@ One bit of logic, and the `null` datatype beside it: the two variants that carry
 
 ## DataType
 
-Two parameterless variants, so the enum is the constructor. `bool` and `void` are the second spellings, and Iceberg's `unknown` - a column every value of which is null - is a third spelling of `null`.
+Two parameterless variants, so the enum is the constructor. `bool` and `void` are the second spellings.
 
 === "Rust"
 
@@ -31,7 +31,6 @@ Two parameterless variants, so the enum is the constructor. `bool` and `void` ar
     assert_eq!(DataType::from_str("bool")?, DataType::Boolean);
     assert_eq!(DataType::from_str("void")?, DataType::Null);
     assert_eq!(DataType::from_str("void")?.to_string(), "null");
-    assert_eq!(DataType::from_str("unknown")?, DataType::Null);
     ```
 
 === "Python"
@@ -48,7 +47,6 @@ Two parameterless variants, so the enum is the constructor. `bool` and `void` ar
     assert DataType("bool") == DataType("boolean")
     assert DataType("void") == DataType("null")
     assert str(DataType("void")) == "null"
-    assert DataType("unknown") == DataType("null")
     ```
 
 === "JavaScript"
@@ -63,7 +61,6 @@ Two parameterless variants, so the enum is the constructor. `bool` and `void` ar
 
     assert.ok(DataType.from('bool').equals(DataType.from('boolean')))
     assert.equal(DataType.from('void').toString(), 'null')
-    assert.equal(DataType.from('unknown').toString(), 'null')
     ```
 
 ## Field

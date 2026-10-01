@@ -146,7 +146,8 @@ mod promotions {
 mod schema_updates {
 
     use super::{
-        DataType, FormatVersion, SchemaUpdate, current_schema_id_mut, metadata, schemas_mut,
+        DataType, FormatVersion, PartitionSpec, SchemaUpdate, TableMetadata, current_schema_id_mut,
+        metadata, schemas_mut,
     };
     use yggdryl::StructType;
 
@@ -312,6 +313,65 @@ mod schema_updates {
         assert!(message.contains("utf8"), "{message}");
         assert!(message.contains("int32"), "{message}");
         assert!(message.contains("symbol"), "{message}");
+    }
+
+    #[test]
+    fn update_type_promotes_an_unknown_column_to_any_type_and_clears_it() {
+        // v3's one promotion no datatype answers: an `unknown` column - a
+        // variant its field declares `unknown` - stores nothing, so it
+        // becomes any type, a variant included, and is `unknown` no longer.
+        let document = yggdryl::json::from_utf8(
+            r#"{"type":"struct","schema-id":0,"fields":[
+                {"id":1,"name":"id","required":true,"type":"long"},
+                {"id":2,"name":"later","required":false,"type":"unknown"},
+                {"id":3,"name":"payload","required":false,"type":"variant"}
+            ]}"#,
+        )
+        .unwrap();
+        let schema = yggdryl::iceberg::schema_from_json("row", &document).unwrap();
+        for dtype in [DataType::Int64, DataType::binary(), DataType::Variant] {
+            let mut metadata = TableMetadata::new(
+                FormatVersion::V3,
+                "file:///tmp/unknown-promotion",
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+            update.update_type("later", dtype.clone());
+            let evolved = update.into_field().unwrap();
+            let later = evolved.get_field("later").unwrap();
+            assert_eq!(later.dtype(), &dtype);
+            assert!(!later.as_iceberg().is_unknown(), "{dtype}");
+            assert_eq!(later.parquet_field_id().unwrap(), Some(2));
+
+            let id = metadata.add_schema(evolved).unwrap();
+            assert_eq!(id, 1, "{dtype}");
+            metadata.set_current_schema(id).unwrap();
+            let committed = metadata
+                .current_schema()
+                .unwrap()
+                .get_field("later")
+                .unwrap();
+            assert_eq!(committed.dtype(), &dtype);
+            assert!(!committed.as_iceberg().is_unknown(), "{dtype}");
+        }
+
+        // A variant that never was `unknown` promotes to nothing else.
+        let metadata = TableMetadata::new(
+            FormatVersion::V3,
+            "file:///tmp/variant-promotion",
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.update_type("payload", DataType::binary());
+        let message = update.into_field().unwrap_err().to_string();
+        assert!(
+            message.contains("variant") && message.contains("payload"),
+            "{message}"
+        );
     }
 
     #[test]

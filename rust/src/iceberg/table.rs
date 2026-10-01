@@ -3276,35 +3276,223 @@ fn write_data_file(
     Ok(file)
 }
 
-/// Drop the `unknown` columns from what a data file stores.
+/// Store each `unknown` column as the spec keeps one out of data files.
 ///
-/// The spec keeps an `unknown` column out of data files - every value it
-/// holds is null - and a scan restores it from the schema. A schema with none
-/// hands the batches back untouched.
+/// A top-level `unknown` column is left out of the file, and the scan restores
+/// it from the schema as null. One inside a struct, a list or a map has a
+/// slot its parent's layout keeps, and stores Arrow's null column there -
+/// never a variant group, which a promoted column could not read back. Each
+/// slot is read first, because an `unknown` column holds no value and one
+/// written into it would be lost here rather than stored: a cell is absent or
+/// the variant null, or the write is refused naming the column and the value.
+/// A schema with none hands the batches back untouched, unread.
 fn stored_columns(schema: &Field, batches: Vec<RecordBatch>) -> Result<(Field, Vec<RecordBatch>)> {
-    let omitted: Vec<&str> = schema
-        .fields()
-        .iter()
-        .filter(|field| field.dtype() == &DataType::Null)
-        .map(Field::name)
-        .collect();
-    if omitted.is_empty() {
+    if !schema.fields().iter().any(holds_unknown) {
         return Ok((schema.clone(), batches));
     }
-    let stored = schema.without_fields(&omitted)?;
-    let batches = batches
-        .into_iter()
-        .map(|batch| {
-            let kept: Vec<usize> = (0..batch.num_columns())
-                .filter(|index| {
-                    let name = batch.schema().field(*index).name().clone();
-                    !omitted.iter().any(|omit| *omit == name)
-                })
-                .collect();
-            batch.project(&kept).map_err(Error::Arrow)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok((stored, batches))
+    let mut slots = Vec::new();
+    let mut kept = Vec::with_capacity(schema.field_len());
+    for field in schema.fields() {
+        unknown_slots(field, field.name().to_owned(), &mut slots);
+        if !field.as_iceberg().is_unknown() {
+            kept.push(stored_slots(field)?);
+        }
+    }
+    let mut stored = schema.clone();
+    stored.set_dtype(DataType::from(StructType::from_fields(kept)?))?;
+    let arrow = crate::arrow::arrow_schema_from_field(&stored)?;
+
+    // One pass per batch lays out its stored columns and gathers each slot's
+    // arrays, so every slot is read through one plan across the batches.
+    let mut held: Vec<Vec<ArrayRef>> = vec![Vec::with_capacity(batches.len()); slots.len()];
+    let mut stored_batches = Vec::with_capacity(batches.len());
+    for batch in &batches {
+        let mut gathered = held.iter_mut();
+        let mut columns = Vec::with_capacity(arrow.fields().len());
+        for field in schema.fields() {
+            let column = batch.column_by_name(field.name()).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected the table column {:?} in a batch cast to the table schema",
+                    field.name()
+                ))
+            })?;
+            let target = arrow.field_with_name(field.name()).ok();
+            let data = stored_data(
+                field,
+                target.map(|target| target.data_type()),
+                column.to_data(),
+                &mut gathered,
+            )?;
+            if target.is_some() {
+                columns.push(arrow_array::make_array(data));
+            }
+        }
+        stored_batches.push(RecordBatch::try_new(
+            std::sync::Arc::clone(&arrow),
+            columns,
+        )?);
+    }
+    for ((path, field), arrays) in slots.iter().zip(held) {
+        let column = crate::ChunkedSerie::from_arrow_arrays(
+            Some(field),
+            arrays,
+            ArrowCastOptions::default(),
+        )?;
+        for chunk in column.chunks() {
+            require_no_value(chunk, path)?;
+        }
+    }
+    Ok((stored, stored_batches))
+}
+
+/// Whether a column is `unknown` or holds one at any depth.
+fn holds_unknown(field: &Field) -> bool {
+    field.as_iceberg().is_unknown()
+        || (0..field.dtype().field_len())
+            .filter_map(|index| field.dtype().get_field_at(index))
+            .any(holds_unknown)
+}
+
+/// Every `unknown` slot of one column, depth first, with the path that names
+/// it: the order [`stored_data`] meets them in.
+fn unknown_slots<'field>(
+    field: &'field Field,
+    path: String,
+    out: &mut Vec<(String, &'field Field)>,
+) {
+    if field.as_iceberg().is_unknown() {
+        out.push((path, field));
+        return;
+    }
+    for child in
+        (0..field.dtype().field_len()).filter_map(|index| field.dtype().get_field_at(index))
+    {
+        if holds_unknown(child) {
+            unknown_slots(child, format!("{path}.{}", child.name()), out);
+        }
+    }
+}
+
+/// One column as its data file declares it: each `unknown` slot inside it
+/// is Arrow's null column.
+fn stored_slots(field: &Field) -> Result<Field> {
+    if !holds_unknown(field) {
+        return Ok(field.clone());
+    }
+    let mut stored = field.clone();
+    if field.as_iceberg().is_unknown() {
+        stored.set_dtype(DataType::Null)?;
+        stored.as_iceberg_mut().set_unknown(false)?;
+        return Ok(stored);
+    }
+    let mut dtype = field.dtype().clone();
+    for index in 0..field.dtype().field_len() {
+        if let Some(child) = field.dtype().get_field_at(index) {
+            if holds_unknown(child) {
+                dtype.set_field_at(index, stored_slots(child)?)?;
+            }
+        }
+    }
+    stored.set_dtype(dtype)?;
+    Ok(stored)
+}
+
+/// One column's data in the layout [`stored_slots`] declares, `target` its
+/// Arrow datatype - `None` for a column the file leaves out.
+///
+/// Each `unknown` slot's array is handed to the next of `gathered` and stored
+/// as the null array of its length; every other buffer is shared.
+fn stored_data(
+    field: &Field,
+    target: Option<&arrow_schema::DataType>,
+    data: arrow_data::ArrayData,
+    gathered: &mut std::slice::IterMut<'_, Vec<ArrayRef>>,
+) -> Result<arrow_data::ArrayData> {
+    if field.as_iceberg().is_unknown() {
+        let len = data.len();
+        if let Some(arrays) = gathered.next() {
+            arrays.push(arrow_array::make_array(data));
+        }
+        return Ok(arrow_data::ArrayData::new_null(
+            &arrow_schema::DataType::Null,
+            len,
+        ));
+    }
+    if !holds_unknown(field) {
+        return Ok(data);
+    }
+    let mut children = Vec::with_capacity(data.child_data().len());
+    for (index, child) in data.child_data().iter().enumerate() {
+        let child_target = target.and_then(|target| arrow_child_type(target, index));
+        children.push(match field.dtype().get_field_at(index) {
+            Some(child_field) => stored_data(child_field, child_target, child.clone(), gathered)?,
+            None => child.clone(),
+        });
+    }
+    let Some(target) = target else {
+        return Ok(data);
+    };
+    data.into_builder()
+        .data_type(target.clone())
+        .child_data(children)
+        .build()
+        .map_err(Error::Arrow)
+}
+
+/// The Arrow datatype of child `index` of a nested Arrow datatype, in the
+/// order its array data holds the children.
+fn arrow_child_type(
+    dtype: &arrow_schema::DataType,
+    index: usize,
+) -> Option<&arrow_schema::DataType> {
+    use arrow_schema::DataType as Arrow;
+    match dtype {
+        Arrow::Struct(fields) => fields.get(index).map(|field| field.data_type()),
+        Arrow::List(item)
+        | Arrow::LargeList(item)
+        | Arrow::ListView(item)
+        | Arrow::LargeListView(item)
+        | Arrow::FixedSizeList(item, _)
+        | Arrow::Map(item, _) => (index == 0).then(|| item.data_type()),
+        Arrow::Union(fields, _) => fields.iter().nth(index).map(|(_, field)| field.data_type()),
+        Arrow::RunEndEncoded(run_ends, values) => match index {
+            0 => Some(run_ends.data_type()),
+            1 => Some(values.data_type()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Refuse a value in one landed `unknown` slot.
+///
+/// `path` names the column the way its schema nests it, for the refusal.
+fn require_no_value(column: &crate::Serie, path: &str) -> Result<()> {
+    let Some(leaf) = column.as_variant() else {
+        return Ok(());
+    };
+    for row in 0..column.len() {
+        let (Some(metadata), Some(value)) = (leaf.metadata(row), leaf.value(row)) else {
+            continue;
+        };
+        if crate::variant::is_null_value(value) {
+            continue;
+        }
+        // The value is named as JSON spells it, bounded; one that does not
+        // decode is still a value.
+        let held = crate::Variant::new(metadata.to_vec(), value.to_vec())
+            .and_then(|variant| variant.scalar())
+            .and_then(|scalar| crate::json::into_utf8(&scalar))
+            .map_or_else(
+                |_| SmolStr::new_static("a value"),
+                |text| format_smolstr!("{}", crate::text::elide_to(&text, 64)),
+            );
+        return Err(invalid(format_smolstr!(
+            "expected only nulls in the unknown column {path:?} (an unknown column holds no \
+             value; promote it to a type first), got {held}"
+        )));
+    }
+    Ok(())
 }
 
 /// The columns every top-level identity partition field reads, in spec order.

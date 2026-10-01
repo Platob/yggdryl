@@ -1786,7 +1786,7 @@ mod typed {
     }
 
     #[test]
-    fn a_variant_casts_only_from_its_own_storage() {
+    fn a_variant_casts_only_from_its_own_storage_or_a_column_of_nulls() {
         let field = VariantField::new("payload", yggdryl::VariantType, true);
         let storage = variant_storage_array(2);
 
@@ -1801,6 +1801,26 @@ mod typed {
         assert!(cast.as_variant().is_some());
         let identity = cast.require_arrow_array().unwrap();
         assert!(identity.to_data().ptr_eq(&storage.to_data()));
+
+        // A column of nulls holds no value to encode, so it lands absent in a
+        // nullable variant column - and is refused by a required one.
+        let nulls: ArrayRef = Arc::new(arrow_array::NullArray::new(3));
+        let cast = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            Arc::clone(&nulls),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        assert_eq!(cast.len(), 3);
+        assert_eq!(cast.null_count(), 3);
+        let leaf = cast.as_variant().unwrap();
+        assert!((0..3).all(|row| leaf.value(row).is_none()));
+        let required = VariantField::new("payload", yggdryl::VariantType, false);
+        let refused =
+            Serie::from_arrow_array(Some(&required.to_field()), nulls, ArrowCastOptions::new())
+                .unwrap_err()
+                .to_string();
+        assert!(refused.contains("payload"), "{refused}");
 
         // Anything else refuses by name: the column holds the two binaries
         // the encoding is, which a caller writes with `Variant::encode`.

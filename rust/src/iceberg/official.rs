@@ -8,17 +8,16 @@
 //! across it rather than refused: a v1 snapshot's direct `manifests` array
 //! travels as a private manifest-list path ([`V1SnapshotManifests`]), and
 //! the v3 column types `unknown` and `variant` - which its `PrimitiveType`
-//! has no variant for - travel as `binary` under their own field identifiers
-//! ([`V3Types`]). Both are restored on the way back, so the crate's own
-//! schema serde is what spells the two names and the official model still
-//! validates everything else about the column: its identifier, its name,
-//! its requiredness, and its place in the tree.
+//! has no variant for - travel as a placeholder width of their own
+//! ([`UNKNOWN_PLACEHOLDER`], [`VARIANT_PLACEHOLDER`]). Both are restored on
+//! the way back by their spelling alone, so the crate's own schema serde is
+//! what spells the two names and the official model still validates
+//! everything else about the column: its identifier, its name, its
+//! requiredness, its defaults, and its place in the tree.
 
 use std::collections::BTreeMap;
 
-use iceberg_official::spec::{
-    DEFAULT_SCHEMA_ID, Schema as OfficialSchema, TableMetadata as OfficialTableMetadata,
-};
+use iceberg_official::spec::{Schema as OfficialSchema, TableMetadata as OfficialTableMetadata};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result, Scalar};
@@ -42,48 +41,70 @@ impl V1SnapshotManifests {
     }
 }
 
-/// The v3 column types the official model has no spelling for, keyed by the
-/// schema they were read from and the identifier of the slot that held them.
+/// What an `unknown` column crosses the official boundary as.
 ///
-/// The schema is keyed by [`schema_id`], which reads an absent `schema-id`
-/// as the official default: the official model writes that default back, so
-/// a key the bridge took from the absence must be the one the restore reads
-/// from the default, or a standalone schema document would lose its
-/// `unknown` and `variant` columns to the placeholder.
-///
-/// The slot is a field's `id`, a list's `element-id`, or a map's `key-id` or
-/// `value-id`. The schema half of the key is what keeps a promotion honest: a
-/// later schema that promoted an `unknown` column to `binary` - which v3
-/// allows, `unknown` promotes to anything - must read back as `binary`, and
-/// only the schema that spelled `unknown` gets it back.
-#[derive(Default)]
-pub(super) struct V3Types(BTreeMap<(i64, i64), SmolStr>);
+/// The official model reads any `fixed[n]` as a primitive, its width a `u64`,
+/// and checks nothing about a column that the width would answer. A width
+/// past `u32::MAX` is one no document this crate reads can state, so each
+/// bridged type takes one of those of its own: the official model then sees
+/// `unknown`, `variant` and `binary` as three types - a schema changing one
+/// into another is a new schema, and its promotion rules judge the change -
+/// and the spelling alone says which type a slot stands for, so a schema the
+/// official builder adds restores like one it read.
+const UNKNOWN_PLACEHOLDER: &str = "fixed[18446744073709551615]";
 
-impl V3Types {
-    fn is_empty(&self) -> bool {
-        self.0.is_empty()
+/// What a `variant` column crosses the official boundary as.
+///
+/// [`UNKNOWN_PLACEHOLDER`] carries the rule.
+const VARIANT_PLACEHOLDER: &str = "fixed[18446744073709551614]";
+
+/// The two placeholder widths, as the official model reads them.
+const PLACEHOLDER_WIDTHS: [u64; 2] = [u64::MAX, u64::MAX - 1];
+
+/// The placeholder one v3 type name crosses as, or `None` for every other
+/// name.
+///
+/// A name that would read back as a placeholder is refused rather than
+/// passed through, or a document spelling that width would come back
+/// spelling `unknown` or `variant`.
+fn bridged_spelling(name: &str) -> Result<Option<&'static str>> {
+    match name {
+        "unknown" => return Ok(Some(UNKNOWN_PLACEHOLDER)),
+        "variant" => return Ok(Some(VARIANT_PLACEHOLDER)),
+        _ => {}
     }
+    // The official reading of a width, trimmed and parsed as its own
+    // deserializer does: what it reads is what it would write back.
+    if let Some(width) = name
+        .starts_with("fixed")
+        .then(|| name.trim_start_matches("fixed[").trim_end_matches(']'))
+        .and_then(|width| width.parse::<u64>().ok())
+    {
+        if PLACEHOLDER_WIDTHS.contains(&width) {
+            return Err(invalid(format_smolstr!(
+                "expected a fixed width of at most {}, got {name:?}",
+                u32::MAX
+            )));
+        }
+    }
+    Ok(None)
 }
 
-/// What a bridged v3 type crosses the official boundary as.
-///
-/// A binary placeholder is accepted wherever a primitive is, and the two
-/// bridged types are never partition sources, sort sources, or identifier
-/// columns, so nothing the official model validates reads the placeholder's
-/// own semantics.
-const V3_PLACEHOLDER: &str = "binary";
-
-/// Return whether one bare type name is a v3 spelling the official crate
-/// cannot parse.
-fn is_bridged_v3_type(name: &str) -> bool {
-    matches!(name, "unknown" | "variant")
+/// The v3 type name one placeholder stands for, or `None` for every other
+/// name.
+fn restored_spelling(name: &str) -> Option<&'static str> {
+    match name {
+        UNKNOWN_PLACEHOLDER => Some("unknown"),
+        VARIANT_PLACEHOLDER => Some("variant"),
+        _ => None,
+    }
 }
 
 /// Parse, normalize, and serialize one table metadata document with the
 /// official implementation.
 pub(super) fn normalize_table_metadata(document: &Scalar) -> Result<Scalar> {
-    let (metadata, v1_manifests, v3_types) = parse_table_metadata(document)?;
-    table_metadata_document(&metadata, &v1_manifests, &v3_types)
+    let (metadata, v1_manifests) = parse_table_metadata(document)?;
+    table_metadata_document(&metadata, &v1_manifests)
 }
 
 /// Validate one table metadata document with the official implementation.
@@ -96,12 +117,12 @@ pub(super) fn validate_table_metadata(document: &Scalar) -> Result<()> {
 /// snapshot shape and the v3 column types its current model rejects.
 pub(super) fn parse_table_metadata(
     document: &Scalar,
-) -> Result<(OfficialTableMetadata, V1SnapshotManifests, V3Types)> {
+) -> Result<(OfficialTableMetadata, V1SnapshotManifests)> {
     let (bridged, v1_manifests) = bridge_v1_manifests(document)?;
-    let (bridged, v3_types) = bridge_v3_types(&bridged)?;
+    let bridged = rewrite_schemas(&bridged, &mut bridge_schema)?;
     let bytes = crate::json::into_bytes(&bridged)?;
     let metadata = serde_json::from_slice(&bytes)?;
-    Ok((metadata, v1_manifests, v3_types))
+    Ok((metadata, v1_manifests))
 }
 
 /// Serialize official metadata and restore the direct v1 manifest arrays and
@@ -109,110 +130,63 @@ pub(super) fn parse_table_metadata(
 pub(super) fn table_metadata_document(
     metadata: &OfficialTableMetadata,
     v1_manifests: &V1SnapshotManifests,
-    v3_types: &V3Types,
 ) -> Result<Scalar> {
     let document = crate::json::from_bytes(&serde_json::to_vec(metadata)?)?;
     let document = restore_v1_manifests(&document, v1_manifests)?;
-    restore_v3_types(&document, v3_types)
+    rewrite_schemas(&document, &mut restore_schema)
 }
 
-/// Replace every `unknown` and `variant` column of every schema in a metadata
-/// document with the placeholder, remembering where each was.
-fn bridge_v3_types(document: &Scalar) -> Result<(Scalar, V3Types)> {
-    let mut types = V3Types::default();
-    let mut bridged = document.clone();
+/// Rewrite every schema a metadata document holds - its `schemas` and the
+/// v1 `schema` - through one schema rewrite.
+fn rewrite_schemas(
+    document: &Scalar,
+    rewrite: &mut dyn FnMut(&Scalar) -> Result<Scalar>,
+) -> Result<Scalar> {
+    let mut rewritten = document.clone();
     if let Some(schemas) = document.get_key_str("schemas").and_then(Scalar::as_serie) {
         let mut replaced = Vec::with_capacity(schemas.len());
         for schema in schemas.iter() {
-            replaced.push(bridge_schema(&schema, &mut types)?);
+            replaced.push(rewrite(&schema)?);
         }
-        bridged = with_name(&bridged, "schemas", Scalar::from_sequence(replaced))?;
+        rewritten = with_name(&rewritten, "schemas", Scalar::from_sequence(replaced))?;
     }
     if let Some(schema) = document.get_key_str("schema") {
-        let replaced = bridge_schema(schema, &mut types)?;
-        bridged = with_name(&bridged, "schema", replaced)?;
+        let replaced = rewrite(schema)?;
+        rewritten = with_name(&rewritten, "schema", replaced)?;
     }
-    Ok((bridged, types))
+    Ok(rewritten)
 }
 
-/// Put every remembered `unknown` and `variant` back in place.
-fn restore_v3_types(document: &Scalar, types: &V3Types) -> Result<Scalar> {
-    if types.is_empty() {
-        return Ok(document.clone());
-    }
-    let mut restored = document.clone();
-    if let Some(schemas) = document
-        .get_key_str("schemas")
-        .and_then(Scalar::as_sequence)
-    {
-        let mut replaced = Vec::with_capacity(schemas.len());
-        for schema in schemas {
-            replaced.push(restore_schema(schema, types)?);
-        }
-        restored = with_name(&restored, "schemas", Scalar::from_sequence(replaced))?;
-    }
-    if let Some(schema) = document.get_key_str("schema") {
-        let replaced = restore_schema(schema, types)?;
-        restored = with_name(&restored, "schema", replaced)?;
-    }
-    Ok(restored)
+/// Bridge one schema object: each v3 type goes in as its placeholder.
+fn bridge_schema(schema: &Scalar) -> Result<Scalar> {
+    walk_v3_types(schema, &mut bridged_spelling)
 }
 
-/// The id one schema object goes by: its own, or the official default the
-/// official model reads and writes in place of an absent one.
-fn schema_id(schema: &Scalar) -> i64 {
-    schema
-        .get_key_str("schema-id")
-        .and_then(Scalar::as_i64)
-        .unwrap_or(i64::from(DEFAULT_SCHEMA_ID))
-}
-
-/// Bridge one schema object: the placeholder goes in, the spelling is kept.
-fn bridge_schema(schema: &Scalar, types: &mut V3Types) -> Result<Scalar> {
-    let schema_id = schema_id(schema);
-    walk_v3_types(schema, &mut |id, name| {
-        if is_bridged_v3_type(name) {
-            types.0.insert((schema_id, id), SmolStr::new(name));
-            return Some(SmolStr::new_static(V3_PLACEHOLDER));
-        }
-        None
-    })
-}
-
-/// Restore one schema object: the spelling comes back where it was.
-fn restore_schema(schema: &Scalar, types: &V3Types) -> Result<Scalar> {
-    let schema_id = schema_id(schema);
-    walk_v3_types(schema, &mut |id, name| {
-        if name != V3_PLACEHOLDER {
-            return None;
-        }
-        types.0.get(&(schema_id, id)).cloned()
-    })
+/// Restore one schema object: each placeholder comes back as its v3 type.
+fn restore_schema(schema: &Scalar) -> Result<Scalar> {
+    walk_v3_types(schema, &mut |name| Ok(restored_spelling(name)))
 }
 
 /// Rewrite the bare type names of one struct object's field tree.
 ///
-/// `rename` sees every typed slot with its identifier - a field, a list
-/// element, a map key or value - and answers the name to write in its place,
-/// or `None` to leave the slot as it is. Nested structs recurse; an object
-/// without `fields` is returned untouched.
+/// `rename` sees every typed slot's bare type name - a field's, a list
+/// element's, a map key's or value's - and answers the name to write in its
+/// place, or `None` to leave the slot as it is. Nested structs recurse; an
+/// object without `fields` is returned untouched.
 fn walk_v3_types(
     object: &Scalar,
-    rename: &mut dyn FnMut(i64, &str) -> Option<SmolStr>,
+    rename: &mut dyn FnMut(&str) -> Result<Option<&'static str>>,
 ) -> Result<Scalar> {
     let Some(fields) = object.get_key_str("fields").and_then(Scalar::as_serie) else {
         return Ok(object.clone());
     };
     let mut replaced = Vec::with_capacity(fields.len());
     for field in fields.iter() {
-        let (Some(id), Some(type_json)) = (
-            field.get_key_str("id").and_then(Scalar::as_i64),
-            field.get_key_str("type"),
-        ) else {
+        let Some(type_json) = field.get_key_str("type") else {
             replaced.push(field.into_owned());
             continue;
         };
-        let type_json = walk_v3_type(type_json, id, rename)?;
+        let type_json = walk_v3_type(type_json, rename)?;
         replaced.push(with_name(&field, "type", type_json)?);
     }
     with_name(object, "fields", Scalar::from_sequence(replaced))
@@ -221,11 +195,10 @@ fn walk_v3_types(
 /// Rewrite one typed slot, recursing into the nested types.
 fn walk_v3_type(
     type_json: &Scalar,
-    id: i64,
-    rename: &mut dyn FnMut(i64, &str) -> Option<SmolStr>,
+    rename: &mut dyn FnMut(&str) -> Result<Option<&'static str>>,
 ) -> Result<Scalar> {
     if let Some(name) = type_json.as_str() {
-        return Ok(match rename(id, name) {
+        return Ok(match rename(name)? {
             Some(renamed) => Scalar::from(renamed),
             None => type_json.clone(),
         });
@@ -233,28 +206,19 @@ fn walk_v3_type(
     match type_json.get_key_str("type").and_then(Scalar::as_str) {
         Some("struct") => walk_v3_types(type_json, rename),
         Some("list") => {
-            let (Some(element_id), Some(element)) = (
-                type_json.get_key_str("element-id").and_then(Scalar::as_i64),
-                type_json.get_key_str("element"),
-            ) else {
+            let Some(element) = type_json.get_key_str("element") else {
                 return Ok(type_json.clone());
             };
-            let element = walk_v3_type(element, element_id, rename)?;
+            let element = walk_v3_type(element, rename)?;
             with_name(type_json, "element", element)
         }
         Some("map") => {
             let mut rewritten = type_json.clone();
-            if let (Some(key_id), Some(key)) = (
-                type_json.get_key_str("key-id").and_then(Scalar::as_i64),
-                type_json.get_key_str("key"),
-            ) {
-                rewritten = with_name(&rewritten, "key", walk_v3_type(key, key_id, rename)?)?;
+            if let Some(key) = type_json.get_key_str("key") {
+                rewritten = with_name(&rewritten, "key", walk_v3_type(key, rename)?)?;
             }
-            if let (Some(value_id), Some(value)) = (
-                type_json.get_key_str("value-id").and_then(Scalar::as_i64),
-                type_json.get_key_str("value"),
-            ) {
-                rewritten = with_name(&rewritten, "value", walk_v3_type(value, value_id, rename)?)?;
+            if let Some(value) = type_json.get_key_str("value") {
+                rewritten = with_name(&rewritten, "value", walk_v3_type(value, rename)?)?;
             }
             Ok(rewritten)
         }
@@ -379,15 +343,14 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
 /// Parse, normalize, and serialize one schema document with the official
 /// implementation.
 pub(super) fn normalize_schema(document: &Scalar) -> Result<Scalar> {
-    let mut types = V3Types::default();
-    let bridged = bridge_schema(document, &mut types)?;
+    let bridged = bridge_schema(document)?;
     let bytes = crate::json::into_bytes(&bridged)?;
     let schema: OfficialSchema = serde_json::from_slice(&bytes)?;
     let mut identifier_ids: Vec<i32> = schema.identifier_field_ids().collect();
     identifier_ids.sort_unstable();
 
     let normalized = crate::json::from_bytes(&serde_json::to_vec(&schema)?)?;
-    let normalized = restore_schema(&normalized, &types)?;
+    let normalized = restore_schema(&normalized)?;
     if identifier_ids.is_empty() {
         return Ok(normalized);
     }
@@ -409,19 +372,24 @@ pub(super) fn validate_schema(document: &Scalar) -> Result<()> {
 /// a document spelling `unknown` or `variant`. `None` says the document
 /// already reads as it is.
 pub(super) fn bridged_schema(document: &Scalar) -> Result<Option<Scalar>> {
-    let mut types = V3Types::default();
-    let bridged = bridge_schema(document, &mut types)?;
-    Ok((!types.is_empty()).then_some(bridged))
+    let mut renamed = false;
+    let bridged = walk_v3_types(document, &mut |name| {
+        let spelling = bridged_spelling(name)?;
+        renamed |= spelling.is_some();
+        Ok(spelling)
+    })?;
+    Ok(renamed.then_some(bridged))
 }
 
 /// Parse one schema document into the official model, the two v3 types
 /// bridged as placeholders.
 ///
 /// What comes back is the official crate's own reading, so a caller asking it
-/// about a bridged column sees `binary`; every other question - identifiers,
-/// names, requiredness, defaults, nesting - is answered as it is.
+/// about a bridged column sees its placeholder width; every other question -
+/// identifiers, names, requiredness, defaults, nesting - is answered as it
+/// is.
 pub(super) fn parse_schema(document: &Scalar) -> Result<OfficialSchema> {
-    let bridged = bridge_schema(document, &mut V3Types::default())?;
+    let bridged = bridge_schema(document)?;
     let bytes = crate::json::into_bytes(&bridged)?;
     Ok(serde_json::from_slice(&bytes)?)
 }

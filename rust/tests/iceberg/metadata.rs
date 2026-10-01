@@ -11,7 +11,7 @@ use smol_str::SmolStr;
 use yggdryl::iceberg::{
     FormatVersion, PartitionSpec, Snapshot, SnapshotRef, SortOrder, TableMetadata,
 };
-use yggdryl::{DataType, Scalar, StructType};
+use yggdryl::{DataType, Field, Scalar, StructType};
 
 fn document(version: FormatVersion) -> Scalar {
     let schema = StructType::from_fields([DataType::Int64.required_field("id")])
@@ -177,4 +177,205 @@ fn every_historical_layout_must_bind_to_a_retained_schema() {
         .to_string();
     assert!(message.contains("sort order 1"), "{message}");
     assert!(message.contains("retained schema"), "{message}");
+}
+
+/// A v3 table's metadata over one column of each v3 type beside a `long`
+/// and a `binary`, read from the document that spells them.
+fn v3_types_metadata(version: FormatVersion) -> TableMetadata {
+    let document = yggdryl::json::from_utf8(
+        r#"{"type":"struct","schema-id":0,"fields":[
+            {"id":1,"name":"id","required":true,"type":"long"},
+            {"id":2,"name":"later","required":false,"type":"unknown"},
+            {"id":3,"name":"payload","required":false,"type":"variant"},
+            {"id":4,"name":"tags","required":false,"type":{"type":"list","element-id":5,"element":"unknown","element-required":false}},
+            {"id":6,"name":"bytes","required":false,"type":"binary"}
+        ]}"#,
+    )
+    .unwrap();
+    let schema = yggdryl::iceberg::schema_from_json("row", &document).unwrap();
+    TableMetadata::new(
+        version,
+        "file:///tmp/v3-types",
+        schema,
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap()
+}
+
+/// The current schema with one column replaced by `column`, its id kept.
+fn with_column(metadata: &TableMetadata, column: Field) -> Field {
+    let mut schema = metadata.current_schema().unwrap().clone();
+    let mut column = column;
+    let id = schema
+        .get_field(column.name())
+        .and_then(|field| field.parquet_field_id().unwrap())
+        .unwrap();
+    column.set_parquet_field_id(id);
+    let name = column.name().to_owned();
+    schema.set_field(name.as_str(), column).unwrap();
+    schema
+}
+
+/// The type the current schema's metadata document spells for one column.
+fn spelled(metadata: &TableMetadata, name: &str) -> String {
+    let document = metadata.clone().into_json().unwrap();
+    let current = document
+        .get_key_str("current-schema-id")
+        .and_then(Scalar::as_i64)
+        .unwrap();
+    let schema = document
+        .get_key_str("schemas")
+        .unwrap()
+        .iter()
+        .find(|schema| schema.get_key_str("schema-id").and_then(Scalar::as_i64) == Some(current))
+        .unwrap()
+        .into_owned();
+    let field = schema
+        .get_key_str("fields")
+        .unwrap()
+        .iter()
+        .find(|field| field.get_key_str("name").and_then(Scalar::as_str) == Some(name))
+        .unwrap()
+        .into_owned();
+    yggdryl::json::into_utf8(field.get_key_str("type").unwrap()).unwrap()
+}
+
+#[test]
+fn a_schema_evolution_keeps_every_unknown_and_variant_column_as_it_is() {
+    // Adding a column is a new schema the official builder numbers, and each
+    // v3 type it keeps comes back spelled as it was - never as the binary
+    // the official model once read both as.
+    let mut metadata = v3_types_metadata(FormatVersion::V3);
+    let mut schema = metadata.current_schema().unwrap().clone();
+    let mut fields = schema.fields().to_vec();
+    fields.push(DataType::utf8().nullable_field("note"));
+    schema
+        .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
+        .unwrap();
+    let id = metadata.add_schema(schema).unwrap();
+    assert_eq!(id, 1);
+    metadata.set_current_schema(id).unwrap();
+
+    let current = metadata.current_schema().unwrap();
+    let later = current.get_field("later").unwrap();
+    assert_eq!(later.dtype(), &DataType::Variant);
+    assert!(later.as_iceberg().is_unknown());
+    let payload = current.get_field("payload").unwrap();
+    assert_eq!(payload.dtype(), &DataType::Variant);
+    assert!(!payload.as_iceberg().is_unknown());
+    let element = current.get_field("tags").unwrap().get_field_at(0).unwrap();
+    assert!(element.as_iceberg().is_unknown());
+    assert_eq!(spelled(&metadata, "later"), r#""unknown""#);
+    assert_eq!(spelled(&metadata, "payload"), r#""variant""#);
+    assert_eq!(spelled(&metadata, "bytes"), r#""binary""#);
+    let text = yggdryl::json::into_utf8(&metadata.clone().into_json().unwrap()).unwrap();
+    assert!(!text.contains("fixed["), "{text}");
+
+    // A reopened document reads the same.
+    let reopened = TableMetadata::from_json(&metadata.into_json().unwrap()).unwrap();
+    assert!(
+        reopened
+            .current_schema()
+            .unwrap()
+            .get_field("later")
+            .unwrap()
+            .as_iceberg()
+            .is_unknown()
+    );
+}
+
+#[test]
+fn an_unknown_column_promotes_to_any_type_as_a_new_schema() {
+    // Each promotion is a change the official model sees, so it is a new
+    // schema rather than the current one handed back unchanged.
+    let mut promoted_binary = v3_types_metadata(FormatVersion::V3);
+    let schema = with_column(&promoted_binary, DataType::binary().nullable_field("later"));
+    let id = promoted_binary.add_schema(schema).unwrap();
+    assert_eq!(id, 1);
+    promoted_binary.set_current_schema(id).unwrap();
+    let later = promoted_binary
+        .current_schema()
+        .unwrap()
+        .get_field("later")
+        .unwrap();
+    assert_eq!(later.dtype(), &DataType::binary());
+    assert!(!later.as_iceberg().is_unknown());
+    assert_eq!(spelled(&promoted_binary, "later"), r#""binary""#);
+
+    // To variant: the datatype stays, the declaration goes.
+    let mut promoted_variant = v3_types_metadata(FormatVersion::V3);
+    let schema = with_column(&promoted_variant, DataType::Variant.nullable_field("later"));
+    let id = promoted_variant.add_schema(schema).unwrap();
+    assert_eq!(id, 1);
+    promoted_variant.set_current_schema(id).unwrap();
+    let later = promoted_variant
+        .current_schema()
+        .unwrap()
+        .get_field("later")
+        .unwrap();
+    assert_eq!(later.dtype(), &DataType::Variant);
+    assert!(!later.as_iceberg().is_unknown());
+    assert_eq!(spelled(&promoted_variant, "later"), r#""variant""#);
+}
+
+#[test]
+fn nothing_else_changes_into_or_out_of_the_v3_types() {
+    let mut unknown = DataType::Variant.nullable_field("payload");
+    unknown.as_iceberg_mut().set_unknown(true).unwrap();
+    let mut bytes_unknown = DataType::Variant.nullable_field("bytes");
+    bytes_unknown.as_iceberg_mut().set_unknown(true).unwrap();
+    for (column, from, to) in [
+        (
+            DataType::binary().nullable_field("payload"),
+            "variant",
+            "binary",
+        ),
+        (unknown, "variant", "unknown"),
+        (
+            DataType::Variant.nullable_field("bytes"),
+            "binary",
+            "variant",
+        ),
+        (bytes_unknown, "binary", "unknown"),
+    ] {
+        let mut metadata = v3_types_metadata(FormatVersion::V3);
+        let schema = with_column(&metadata, column);
+        let message = metadata.add_schema(schema).unwrap_err().to_string();
+        assert!(message.contains("promotion"), "{from} to {to}: {message}");
+    }
+}
+
+#[test]
+fn a_v1_or_v2_table_takes_no_v3_type_through_evolution_either() {
+    let document = r#"{"type":"struct","schema-id":0,"fields":[
+        {"id":1,"name":"id","required":true,"type":"long"}
+    ]}"#;
+    let schema =
+        yggdryl::iceberg::schema_from_json("row", &yggdryl::json::from_utf8(document).unwrap())
+            .unwrap();
+    for version in [FormatVersion::V1, FormatVersion::V2] {
+        for (column, spelling) in [
+            (DataType::Variant.nullable_field("later"), "variant"),
+            (DataType::Null.nullable_field("later"), "unknown"),
+        ] {
+            let mut metadata = TableMetadata::new(
+                version,
+                "file:///tmp/v2-evolution",
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            let mut evolved = schema.clone();
+            let mut fields = evolved.fields().to_vec();
+            fields.push(column);
+            evolved
+                .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
+                .unwrap();
+            let message = metadata.add_schema(evolved).unwrap_err().to_string();
+            assert!(
+                message.contains("later") && message.contains(spelling) && message.contains("v3"),
+                "{version:?} {spelling}: {message}"
+            );
+        }
+    }
 }

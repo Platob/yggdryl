@@ -1138,8 +1138,12 @@ impl<'a> Parser<'a> {
         let keyword = normalized(&word);
 
         let value = match keyword.as_str() {
-            // Iceberg v3's `unknown` is a column every value of which is null.
-            "null" | "void" | "unknown" => DataType::Null,
+            "null" | "void" => DataType::Null,
+            // Iceberg v3's `unknown` reads as `PrimitiveType::into_dtype` maps
+            // it: the variant that holds whatever the column is promoted to.
+            // A datatype cannot say the column is still `unknown`; the
+            // Iceberg schema a table reads states that on the field.
+            "unknown" => DataType::Variant,
             "boolean" | "bool" => DataType::Boolean,
             "int8" | "tinyint" | "byte" => DataType::Int8,
             "int16" | "smallint" | "short" => DataType::Int16,

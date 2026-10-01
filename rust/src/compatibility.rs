@@ -723,7 +723,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
 fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
     match dtype {
-        // `unknown` is Iceberg's always-null primitive.
+        // A column of nulls is what Iceberg's always-null `unknown` spells.
         D::Null
         | D::Boolean
         | D::Int32

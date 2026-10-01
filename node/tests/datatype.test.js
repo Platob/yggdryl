@@ -703,7 +703,7 @@ const ICEBERG_SPELLINGS = [
   ['timestamptz_ns', 'datetime64(ns,"UTC")'],
   ['fixed[16]', 'fixed_binary(16)'],
   ['fixed(16)', 'fixed_binary(16)'],
-  ['unknown', 'null'],
+  ['unknown', 'variant'],
   ['decimal(9, 2)', 'decimal32(9,2)'],
   ['list<fixed[16]>', 'serie<fixed_binary(16)>'],
   ['map<string, fixed[16]>', 'map<utf8, fixed_binary(16)>'],

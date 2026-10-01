@@ -11,7 +11,10 @@
 //! Type changes are the other half of the contract. A reader must be able to
 //! widen every stored value into the new type, so only the promotions the
 //! Iceberg specification lists are legal, and [`can_promote`] is the one
-//! place that list lives.
+//! place that list lives. The one promotion a datatype cannot answer is v3's
+//! `unknown` to any type: an `unknown` column reads as a variant its field
+//! declares `unknown` ([`IcebergField::is_unknown`](crate::IcebergField::is_unknown)),
+//! it stores no value to widen, and promoting it clears the declaration.
 //!
 //! ```
 //! use yggdryl::iceberg::{
@@ -227,7 +230,9 @@ impl SchemaUpdate {
     }
 
     /// Record a type promotion on the column at `path`, checked against
-    /// [`can_promote`] when the update is applied.
+    /// [`can_promote`] when the update is applied - except an `unknown`
+    /// column, which v3 promotes to any type and which is `unknown` no longer
+    /// once promoted.
     pub fn update_type(&mut self, path: &str, dtype: DataType) {
         self.ops.push(Op::UpdateType {
             path: SmolStr::new(path),
@@ -376,7 +381,14 @@ fn apply_type(schema: &mut Field, path: &str, dtype: DataType) -> Result<()> {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
             return Err(missing_column(target, children, path));
         };
-        can_promote(children[index].dtype(), &dtype).map_err(|error| match error {
+        let column = &mut children[index];
+        // An `unknown` column stores nothing to read back, so v3 promotes it
+        // to any type - a variant included - and it is `unknown` no longer.
+        if column.as_iceberg().is_unknown() {
+            column.set_dtype(dtype)?;
+            return column.as_iceberg_mut().set_unknown(false);
+        }
+        can_promote(column.dtype(), &dtype).map_err(|error| match error {
             Error::Codec {
                 format,
                 position,
@@ -388,7 +400,7 @@ fn apply_type(schema: &mut Field, path: &str, dtype: DataType) -> Result<()> {
             },
             other => other,
         })?;
-        children[index].set_dtype(dtype)
+        column.set_dtype(dtype)
     })
 }
 

@@ -2419,7 +2419,7 @@ Iceberg's type strings - `timestamptz`, `fixed[16]`, `list<fixed[16]>`, the
 [datatype spellings](../types/datatype.md): each primitive reads as the
 datatype the table reader maps it to, and a struct member keeps its id and
 nullability. A list's or map's string carries no element id or element
-nullability, so its child is the grammar's nullable `item`.
+nullability, so its child is the grammar's nullable `item`. A v3 `variant` and a v3 `unknown` both read as [`variant`](../types/variant.md); only a table's schema declares a column `unknown`, which it keeps out of its data files and reads back as nulls. A v1 or v2 table refuses both.
 
 A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
 
@@ -2556,7 +2556,7 @@ A scan decodes its files side by side once two of at least 64 KiB qualify (`read
 
 ### Iceberg schema evolution
 
-A `SchemaUpdate` records column operations - add, rename, drop, promote - and one commit replays them onto the schema that commit attempt reads, so a commit beaten by another writer rebases onto the winner's schema rather than overwriting it. Field IDs are kept and a dropped one is never reused; promotions are `int32 -> int64`, `float32 -> float64` and same-scale decimal widening. The commit answers the schema id it made current, and an update that recorded nothing writes nothing and answers the current one.
+A `SchemaUpdate` records column operations - add, rename, drop, promote - and one commit replays them onto the schema that commit attempt reads, so a commit beaten by another writer rebases onto the winner's schema rather than overwriting it. Field IDs are kept and a dropped one is never reused; promotions are `int32 -> int64`, `float32 -> float64`, same-scale decimal widening and, on a v3 table, an `unknown` column to any type, which clears its [`unknown` declaration](../types/variant.md#edges); any other change into or out of `unknown`, `variant` or `binary` is refused. The commit answers the schema id it made current, and an update that recorded nothing writes nothing and answers the current one.
 
 === "Rust"
 

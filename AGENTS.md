@@ -1331,7 +1331,8 @@ change to `iceberg/`.
   residuals by row filtering, report read/skipped counts, and keep parallel scans
   in plan order - they differ from sequential only in speed.
 - `SchemaUpdate` owns evolution: preserve field IDs and never reuse dropped ones;
-  promotions are Int32->Int64, Float32->Float64, and same-scale decimal widening;
+  promotions are Int32->Int64, Float32->Float64, same-scale decimal widening,
+  and v3's `unknown` - a variant its field declares `unknown` - to any type;
   validate loaded metadata and every commit.
 - `Table` answers the same `IOMedia` surface as a leaf - a table format is a
   media wrapper, not a second record API.

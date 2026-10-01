@@ -922,9 +922,12 @@ mod iceberg {
     }
 
     #[test]
-    fn unknown_is_the_null_datatype() {
-        assert_eq!(parse("unknown"), DataType::Null);
-        assert_eq!(parse("UNKNOWN").to_string(), "null");
+    fn unknown_is_the_variant_datatype() {
+        // Iceberg's `unknown` reads as `PrimitiveType::into_dtype` maps it:
+        // the variant that holds whatever the column is promoted to.
+        assert_eq!(parse("unknown"), DataType::Variant);
+        assert_eq!(parse("UNKNOWN").to_string(), "variant");
+        assert_eq!(parse("void"), DataType::Null);
     }
 
     #[test]
@@ -992,7 +995,7 @@ mod iceberg {
                     DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
                     true,
                 ),
-                Field::new("later", DataType::Null, true),
+                Field::new("later", DataType::Variant, true),
             ]))
         );
     }

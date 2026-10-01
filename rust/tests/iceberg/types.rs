@@ -1,7 +1,7 @@
 //! `rust/src/iceberg/types.rs`: the Iceberg contract a caller has:
 //! expression-driven scans, partition keys as the primary keys, sorted data
 //! files, parallel partition writes, and the v3 `unknown` and `variant`
-//! types.
+//! types, both read as the variant column.
 //!
 //! Everything here reaches the crate through `yggdryl::`; the plan counts and
 //! grouping the crate alone can see are pinned in
@@ -29,34 +29,29 @@ mod iceberg {
     }
 
     #[test]
-    fn unknown_is_the_null_column_and_variant_is_the_semi_structured_one() {
-        // The type mapping, both directions, and why the two are not one thing:
-        // `unknown` has no values, `variant` has values that carry their type.
-        assert_eq!(
-            PrimitiveType::from_str("unknown")
-                .unwrap()
-                .into_dtype()
-                .unwrap(),
-            DataType::Null
-        );
-        assert_eq!(
-            PrimitiveType::from_str("variant")
-                .unwrap()
-                .into_dtype()
-                .unwrap(),
-            DataType::Variant
-        );
-        assert_eq!(
-            PrimitiveType::from_dtype(&DataType::Null)
-                .unwrap()
-                .to_string(),
-            "unknown"
-        );
+    fn unknown_and_variant_both_read_as_the_variant_column() {
+        // Both v3 spellings read as the variant datatype; what keeps an
+        // `unknown` column `unknown` is its field's declaration, which a
+        // datatype cannot carry.
+        for name in ["unknown", "variant"] {
+            assert_eq!(
+                PrimitiveType::from_str(name).unwrap().into_dtype().unwrap(),
+                DataType::Variant,
+                "{name}"
+            );
+        }
         assert_eq!(
             PrimitiveType::from_dtype(&DataType::Variant)
                 .unwrap()
                 .to_string(),
             "variant"
+        );
+        // A column of nulls is the datatype a caller may state `unknown` in.
+        assert_eq!(
+            PrimitiveType::from_dtype(&DataType::Null)
+                .unwrap()
+                .to_string(),
+            "unknown"
         );
 
         let document: Scalar = yggdryl::json::from_utf8(
@@ -68,8 +63,12 @@ mod iceberg {
         )
         .unwrap();
         let schema = schema_from_json("row", &document).unwrap();
-        assert_eq!(schema.fields()[1].dtype(), &DataType::Null);
-        assert_eq!(schema.fields()[2].dtype(), &DataType::Variant);
+        let (later, payload) = (&schema.fields()[1], &schema.fields()[2]);
+        assert_eq!(later.dtype(), &DataType::Variant);
+        assert!(later.as_iceberg().is_unknown());
+        assert_eq!(later.get_metadata("ICEBERG:type"), Some("unknown"));
+        assert_eq!(payload.dtype(), &DataType::Variant);
+        assert!(!payload.as_iceberg().is_unknown());
         assert_eq!(schema_into_json(&schema).unwrap(), document);
 
         // A v2 table refuses either by name.
@@ -87,7 +86,9 @@ mod iceberg {
             "{message}"
         );
 
-        // A v3 table stores the variant, omits the unknown, and reads both back.
+        // A v3 table stores the variant, omits the unknown, and reads both
+        // back: the unknown as a variant column of nulls, whatever null type
+        // it was written in.
         let v3 = root("v3-types-v3");
         let mut table = Table::create(
             LocalFolder::new(&v3).unwrap(),
@@ -97,17 +98,136 @@ mod iceberg {
         )
         .unwrap();
         let arrow = schema.into_arrow_schema().unwrap();
-        let arrow_schema::DataType::Struct(children) = arrow.field(2).data_type() else {
+        let payload = variant_payload(
+            arrow.field(2),
+            &[Scalar::from(12_i64), Scalar::from("twelve")],
+        );
+        let input = Arc::new(arrow_schema::Schema::new(vec![
+            arrow.field(0).clone(),
+            arrow_schema::Field::new("later", arrow_schema::DataType::Null, true),
+            arrow.field(2).clone(),
+        ]));
+        let batch = RecordBatch::try_new(
+            input,
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])),
+                Arc::new(NullArray::new(2)),
+                Arc::clone(&payload),
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        let mut reader = table.scan(None).unwrap();
+        let read = reader.next().unwrap().unwrap();
+        assert_eq!(
+            read.schema().field(1).data_type(),
+            arrow.field(1).data_type()
+        );
+        assert_eq!(read.column(1).logical_null_count(), 2);
+        assert_eq!(read.column(2), &payload);
+
+        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
+        let stored = reopened.schema().unwrap();
+        assert!(stored.fields()[1].as_iceberg().is_unknown());
+        assert_eq!(stored.fields()[1].dtype(), &DataType::Variant);
+        assert!(!stored.fields()[2].as_iceberg().is_unknown());
+        reopened.metadata().validate().unwrap();
+
+        let _ = std::fs::remove_dir_all(&v2);
+        let _ = std::fs::remove_dir_all(&v3);
+    }
+
+    #[test]
+    fn an_unknown_column_takes_only_nulls_and_refuses_a_value_by_name() {
+        let document: Scalar = yggdryl::json::from_utf8(
+            r#"{"type":"struct","schema-id":0,"fields":[
+            {"id":1,"name":"id","required":true,"type":"long"},
+            {"id":2,"name":"later","required":false,"type":"unknown"}
+        ]}"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        let path = root("unknown-values");
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let arrow = schema.into_arrow_schema().unwrap();
+        let batch = |later: arrow_array::ArrayRef| {
+            RecordBatch::try_new(
+                Arc::clone(&arrow),
+                vec![Arc::new(Int64Array::from(vec![1, 2])), later],
+            )
+            .unwrap()
+        };
+
+        // An absent cell and the variant null are both no value.
+        let nulls = variant_payload(arrow.field(1), &[Scalar::Null, Scalar::Null]);
+        let absent = arrow_array::new_null_array(arrow.field(1).data_type(), 2);
+        for later in [nulls, absent] {
+            table
+                .commit_append(yggdryl::arrow::batch_reader(
+                    Arc::clone(&arrow),
+                    [batch(later)],
+                ))
+                .unwrap();
+        }
+        let read: usize = table
+            .scan(None)
+            .unwrap()
+            .map(|batch| {
+                let batch = batch.unwrap();
+                assert_eq!(batch.column(1).logical_null_count(), batch.num_rows());
+                batch.num_rows()
+            })
+            .sum();
+        assert_eq!(read, 4);
+
+        // A value would be dropped with the column, so it is refused instead,
+        // and nothing is committed.
+        let snapshot = table
+            .current_snapshot()
+            .map(|snapshot| snapshot.snapshot_id);
+        let value = variant_payload(arrow.field(1), &[Scalar::Null, Scalar::from(7_i64)]);
+        let message = table
+            .commit_append(yggdryl::arrow::batch_reader(
+                Arc::clone(&arrow),
+                [batch(value)],
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("later") && message.contains("unknown") && message.contains('7'),
+            "{message}"
+        );
+        assert_eq!(
+            table
+                .current_snapshot()
+                .map(|snapshot| snapshot.snapshot_id),
+            snapshot
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// One variant column holding each value's encoding, a bare null as the
+    /// variant null.
+    fn variant_payload(field: &arrow_schema::Field, values: &[Scalar]) -> arrow_array::ArrayRef {
+        let arrow_schema::DataType::Struct(children) = field.data_type() else {
             panic!(
                 "a variant lays out as the struct of its two binaries, got {}",
-                arrow.field(2).data_type()
+                field.data_type()
             );
         };
-        let variants = [
-            yggdryl::Variant::encode(&Scalar::from(12_i64)).unwrap(),
-            yggdryl::Variant::encode(&Scalar::from("twelve")).unwrap(),
-        ];
-        let payload = arrow_array::StructArray::new(
+        let variants: Vec<yggdryl::Variant> = values
+            .iter()
+            .map(|value| yggdryl::Variant::encode(value).unwrap())
+            .collect();
+        Arc::new(arrow_array::StructArray::new(
             children.clone(),
             vec![
                 Arc::new(BinaryArray::from_iter_values(
@@ -118,35 +238,7 @@ mod iceberg {
                 )) as arrow_array::ArrayRef,
             ],
             None,
-        );
-        let batch = RecordBatch::try_new(
-            Arc::clone(&arrow),
-            vec![
-                Arc::new(Int64Array::from(vec![1, 2])),
-                Arc::new(NullArray::new(2)),
-                Arc::new(payload),
-            ],
-        )
-        .unwrap();
-        table
-            .commit_append(yggdryl::arrow::batch_reader(
-                batch.schema(),
-                [batch.clone()],
-            ))
-            .unwrap();
-        let mut reader = table.scan(None).unwrap();
-        let read = reader.next().unwrap().unwrap();
-        assert_eq!(read, batch);
-        assert_eq!(read.column(1).logical_null_count(), 2);
-
-        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
-        let stored = reopened.schema().unwrap();
-        assert_eq!(stored.fields()[1].dtype(), &DataType::Null);
-        assert_eq!(stored.fields()[2].dtype(), &DataType::Variant);
-        reopened.metadata().validate().unwrap();
-
-        let _ = std::fs::remove_dir_all(&v2);
-        let _ = std::fs::remove_dir_all(&v3);
+        ))
     }
 
     #[test]
@@ -203,14 +295,20 @@ mod iceberg {
             }"#,
         )
         .unwrap();
-        let schema = schema_from_json("row", &document).unwrap();
-        assert_eq!(
-            &DataType::from_str(
-                "struct<1: at: optional timestamptz, 2: key: required fixed[16], \
-                 3: px: optional decimal(9, 2), 4: later: optional unknown>"
-            )
-            .unwrap(),
-            schema.dtype()
-        );
+        let mut schema = schema_from_json("row", &document).unwrap();
+        let rendered = DataType::from_str(
+            "struct<1: at: optional timestamptz, 2: key: required fixed[16], \
+             3: px: optional decimal(9, 2), 4: later: optional unknown>",
+        )
+        .unwrap();
+        // A type string has no slot for the declaration that keeps a column
+        // `unknown`: it reads the variant, which only a schema document
+        // declares `unknown`.
+        assert!(schema.fields()[3].as_iceberg().is_unknown());
+        assert!(!rendered.get_field(3).unwrap().as_iceberg().is_unknown());
+        let mut later = schema.fields()[3].clone();
+        later.as_iceberg_mut().set_unknown(false).unwrap();
+        schema.set_field("later", later).unwrap();
+        assert_eq!(&rendered, schema.dtype());
     }
 }
