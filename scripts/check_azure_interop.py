@@ -122,6 +122,10 @@ def provision_azurite() -> subprocess.Popen[bytes]:
             "--location",
             str(data),
             "--silent",
+            # azure-storage-blob sends the newest service version it knows,
+            # which can be newer than the newest Azurite knows; the version
+            # check is Azurite's, and the exchange is about what both send.
+            "--skipApiVersionCheck",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

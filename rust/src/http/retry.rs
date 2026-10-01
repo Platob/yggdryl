@@ -48,6 +48,9 @@ impl Default for RetryBudget {
 
 impl RetryBudget {
     /// Take the price of one retry, or refuse it.
+    // `try_update` is this method's name from Rust 1.99; the 1.85 floor has
+    // only `fetch_update`.
+    #[allow(deprecated)]
     pub(crate) fn withdraw(&self) -> bool {
         self.tokens
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
@@ -57,6 +60,9 @@ impl RetryBudget {
     }
 
     /// Put `tokens` back, never above where the budget started.
+    // `try_update` is this method's name from Rust 1.99; the 1.85 floor has
+    // only `fetch_update`.
+    #[allow(deprecated)]
     pub(crate) fn refund(&self, tokens: i64) {
         let _ = self
             .tokens

@@ -134,6 +134,9 @@ impl Listener {
                     return;
                 };
                 inner.connections.fetch_add(1, Ordering::Relaxed);
+                // `try_update` is this method's name from Rust 1.99; the 1.85
+                // floor has only `fetch_update`.
+                #[allow(deprecated)]
                 let admitted = inner
                     .live
                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |open| {
