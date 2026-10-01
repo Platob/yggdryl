@@ -117,6 +117,13 @@ Every verb answers on both leaves; only its cost differs.
 | `truncate(len)`, `clear()`, `extend(rows)`, `resize(len, v)` | `clear` keeps the field; `resize` proves `v` once and writes the clones |
 | `extend_from_serie(other)` | two columns whose datatypes agree and whose nullability fits append buffer to buffer with no row read; anything else reads `other`'s rows - one layout under two datatypes, a `duration32` column beside a `duration64` one of the same unit, is not agreement |
 | `set_child(child)`, `set_cell(path, i, v)` | a record column only: replace or add a child of `len` rows; write one cell `path` deep in place, every level row-aligned |
+| `sort_indices(options)` | the row positions in sorted order as a `uint32` column named `index`, stable; `options` is a [`SortOptions`](#sorting-uniqueness-and-partitions): direction and where absent rows go |
+| `is_sorted(options)`, `is_unique()`, `unique_count()` | one pass over adjacent rows; one hash set over the rows, an absent row one value |
+| `into_sorted(options)`, `into_unique()`, `into_reversed()`, `into_taken(indices)`, `into_filtered(mask)` | a new serie in that state under the same field, this one untouched: `indices` an integer column or run of any width, `mask` a boolean column or run of the same length, an absent mask row keeping nothing |
+| `as_sorted(options)`, `as_unique()`, `as_reversed()`, `as_taken(indices)`, `as_filtered(mask)` | the same, in place, answering `&mut Self` so calls chain; a refusal leaves the serie as it was |
+| `partition_by(keys)`, `partition_by_paths(paths)` | the rows grouped by a key serie of the same length, or a record column's rows by the cells `paths` reach: one `(key, rows)` per distinct key in first-occurrence order, an absent key one value |
+| `memory_size()` | the bytes the rows occupy: a column's buffers as its own slice counts them, a run's values as the row estimator charges them |
+| `window(offset, length)`, `window_mut(offset, length)` | a [`SerieSlice`](serie-slice.md) / `SerieSliceMut` reading and writing through this serie, window-relative; refused past the end |
 
 Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
 
@@ -154,6 +161,16 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `SerieReader::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
 | `cast` | one plan compiled per call; a column already under the target is a clone |
 | `from_default` | one row laid out through the field's default, then repeated by index |
+| `sort_indices`, `into_sorted` | a primitive column sorts its native slice (stable, the sort's scratch and the index column the allocations); any other column goes through Arrow's row format - one buffer of the rows' bytes - and a run through the values' own order; `into_sorted` is the order and one take |
+| `is_sorted` | one pass through Arrow's comparator over the buffers, two allocations for the boxed comparator and no row built; the values' order for a run or a layout the comparator refuses, one row per side |
+| `is_unique`, `unique_count`, `into_unique` | the row format and one hash set over its bytes, or one set over the values; `into_unique` adds the mask and one filter |
+| `into_reversed`, `into_taken`, `into_filtered` | one kernel pass over the buffers - a take, a filter - for a column, landed proven; a copy of the chosen values for a run |
+| `as_sorted`, `as_reversed` on a primitive column held alone | the native slice sorted or reversed where it stands, absent rows gathered to the end the options name, the validity bits rewritten: Arrow's builder handshake and never a row; a shared buffer copied once |
+| `as_sorted`, `as_unique`, `as_reversed`, `as_taken`, `as_filtered` elsewhere | the kernel's one copy replaces the buffers; a run rewrites its values in place when it holds them alone |
+| `partition_by` on sorted keys | one comparator pass over the keys and one zero-copy `slice` per group |
+| `partition_by` on unsorted keys | one map over the row format's bytes (or the values) and one take per group |
+| `memory_size` | a walk of the column's buffers, no row read; a run walks its values |
+| `window`, `window_mut` | two words beside a reference, nothing moved; a read through it is one bounds check more than the serie's own, a write exactly the serie's own on the rebased row |
 
 ## Use
 
@@ -303,6 +320,99 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
     assert_eq!(leaf.offsets().as_ref(), &[0, 4, 8]);
     assert_eq!(leaf.payload().as_slice(), b"AAPLMSFT");
     assert_eq!(leaf.value(1), Some("MSFT"));
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only.
+    ```
+
+## Sorting, uniqueness and partitions
+
+Every leaf answers the same verbs through one ladder: a primitive column sorts its native slice, every other column goes through Arrow's row format where the type has one and the values' own total order elsewhere, and a run sorts its values. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, exactly what Arrow's sort and the plan's `order by` key default to; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, FieldPath, Scalar, Serie, SortOptions, StructType};
+
+    let prices = Serie::from_arrow_array(
+        Some(&Field::new("price", DataType::Int64, true)),
+        Arc::new(Int64Array::from(vec![Some(3), None, Some(1), Some(3)])) as ArrayRef,
+        ArrowCastOptions::new(),
+    )?;
+
+    // The order as positions: stable, absences last unless told otherwise.
+    let order = prices.sort_indices(SortOptions::default())?;
+    assert_eq!(order.rows().to_vec(), [2_u32, 0, 3, 1].map(Scalar::from));
+    let first = SortOptions::descending().with_nulls_first(true);
+    assert_eq!(first.to_string(), " desc nulls first");
+    assert_eq!(prices.sort_indices(first)?.rows().to_vec(), [1_u32, 0, 3, 2].map(Scalar::from));
+
+    // The reads answer a new serie; the serie is as it was.
+    let sorted = prices.into_sorted(SortOptions::default())?;
+    assert!(sorted.is_sorted(SortOptions::default()));
+    assert_eq!(sorted.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64), Scalar::from(3_i64), Scalar::Null]);
+    assert_eq!(prices.scalar(0)?, Scalar::from(3_i64));
+    assert!(!prices.is_unique());
+    assert_eq!(prices.unique_count(), 3);
+    assert_eq!(prices.into_unique()?.len(), 3);
+    assert_eq!(prices.into_reversed().scalar(0)?, Scalar::from(3_i64));
+    let picked = Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]);
+    assert_eq!(prices.into_taken(&picked)?.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
+    let mask = Serie::new(vec![Scalar::from(true), Scalar::Null, Scalar::from(false), Scalar::from(true)]);
+    assert_eq!(prices.into_filtered(&mask)?.len(), 2);
+
+    // The writes bring the serie into the state in place and chain: a
+    // primitive column holding its buffer alone sorts where it stands.
+    let mut held = prices.clone();
+    held.as_sorted(SortOptions::default())?.as_unique()?.as_reversed()?;
+    assert_eq!(held.rows().to_vec(), vec![Scalar::Null, Scalar::from(3_i64), Scalar::from(1_i64)]);
+    assert_eq!(held.field(), prices.field());
+
+    // Partitions: one group per distinct key, in first-occurrence order;
+    // sorted keys cut every group as a zero-copy slice.
+    let venues = Serie::from_arrow_array(
+        Some(&Field::new("venue", DataType::utf8(), false)),
+        Arc::new(StringArray::from(vec!["XNAS", "XNYS", "XNAS", "XNYS"])) as ArrayRef,
+        ArrowCastOptions::new(),
+    )?;
+    let groups = prices.partition_by(&venues)?;
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].0, Scalar::from("XNAS"));
+    assert_eq!(groups[0].1.rows().to_vec(), vec![Scalar::from(3_i64), Scalar::from(1_i64)]);
+
+    // A record column partitions by the cells its paths reach, keyed by
+    // the run of those cells.
+    let root = Field::new(
+        "quote",
+        DataType::from(StructType::from_fields([
+            Field::new("venue", DataType::utf8(), false),
+            Field::new("side", DataType::utf8(), false),
+        ])?),
+        false,
+    );
+    let quotes = Serie::from_scalars(root, [
+        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]),
+        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("S")]),
+        Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]),
+    ])?;
+    let paths = ["venue".parse::<FieldPath>()?, "side".parse()?];
+    let groups = quotes.partition_by_paths(&paths)?;
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].0, Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from("B")]));
+    assert_eq!(groups[0].1.len(), 2);
+    assert!(quotes.memory_size() > 0);
     ```
 
 === "Python"
@@ -1566,6 +1676,10 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - `cast` compiles one plan per call: a loop holds an [`ArrowCastPlan`](cast.md#compiled-plans) or a `SerieReader` instead. A column already under the target is itself, and a run is refused, because it lays out no buffers for a plan to read.
 - A list, list-view or map array that was sliced crosses with its offsets rebased onto the items it reaches; a `serie_view` column's write compacts, so the written column's offsets are contiguous.
 - A dictionary write interns into its vocabulary and moves keys in place, so a vocabulary that outgrows its key width is refused by name before anything moves; a run-end write folds equal neighbours into one run, so a column built by writes alone never holds two equal runs side by side, while an Arrow array that does crosses in as it is; a dense union write other than an append is a rebuild, so write such a column in bulk.
+- `sort_indices` sorts the storage, not the value's spelling: a code by its text, an enum by its code, a dictionary by its values, a float in IEEE total order. A run sorts by the values' own order. Both are stable, so equal rows keep their order; a serie of more rows than one `uint32` index column addresses is refused by name.
+- `into_taken` refuses an index that is absent, not an integer, negative or past the end, naming the serie and the index: `index 0 is Null, which names no row of the 3 price holds`; `into_filtered` and `partition_by` refuse a mask or key serie of another length by name, and a mask row that is neither a boolean nor absent.
+- `as_sorted` and `as_reversed` rewrite a primitive column's buffer where it stands only while the column holds it alone; a clone shares it, so the first write copies it once and the two go their own way. `as_unique`, `as_taken` and `as_filtered` always replace the buffers by the kernel's one copy. A run sorts its shared slice in place when it is the only holder.
+- `partition_by_paths` is a record column's verb: a run or any other column is refused by name, as is an empty path list or a path reaching no column. The key of a group is the run of the reached cells in path order, so one path keys by a one-cell run.
 - `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `SerieReader`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one, and hold them as one chunk per batch with [`ChunkedSerie::from_arrow_reader`](chunked-serie.md), which keeps the batches rather than joining them.
 - `from_arrow_batch`, `from_arrow_reader` and `SerieReader` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
 - In Python every array, batch or stream from outside is validated to its buffers' invariants off the GIL before a row is read, so invalid offsets are a `ValueError` naming the slot and never a fault; a stream whose schema is no record is refused by `Serie.from_` and `SerieReader.from_`, naming `ChunkedSerie.from_(pyarrow.chunked_array(obj))`, and a requested schema a capsule consumer asks for is applied by `Serie.cast`'s default safe cast, so a value a nullable target cannot hold is null and one a required target cannot hold is refused by name.
@@ -1588,9 +1702,9 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- serie
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- serie sort_options
     cargo test --features "internals parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test serie
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- sequence column leaf
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- sequence column leaf ordering
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- structured::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^serie/'
     ```

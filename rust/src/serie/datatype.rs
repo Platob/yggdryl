@@ -300,6 +300,12 @@ impl Run {
     pub fn into_inner(self) -> Arc<[Scalar]> {
         self.0
     }
+
+    /// Borrow the values to rewrite them where they stand: in place when
+    /// this run holds them alone, copied once when it does not.
+    pub(crate) fn make_mut(&mut self) -> &mut [Scalar] {
+        Arc::make_mut(&mut self.0)
+    }
 }
 
 impl fmt::Display for Run {

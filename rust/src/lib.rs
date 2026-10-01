@@ -121,8 +121,10 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
+mod serie_slice;
 pub mod side;
 pub mod soap;
+mod sort_options;
 pub mod state;
 pub mod string;
 pub mod structure;
@@ -224,6 +226,8 @@ pub use protocol::{
     SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
+pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows};
+pub use sort_options::SortOptions;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;

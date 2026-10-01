@@ -67,10 +67,11 @@ use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
 };
 use crate::serie::{
-    Proof, Resolved, Rows, compare_rows, hash_rows, land, proven_row, require_window,
+    Proof, Resolved, Rows, compare_rows, compare_values, hash_rows, land, proven_row,
+    require_window,
 };
 use crate::value::Children;
-use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader};
+use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
 
 /// The invariant every chunk carries: it is a column, and its field is the
 /// collection's, so its buffers and its field are always there to lend.
@@ -618,6 +619,280 @@ impl ChunkedSerie {
         }
         let field = Self::field_of(&chunks, || Arc::new(target.clone()));
         Ok(Self::from_landed(field, chunks))
+    }
+
+    // --------------------------------------------------------------------
+    // Ordering, uniqueness and grouping: what a `Serie` answers, across
+    // the chunks - per chunk where a chunk alone can answer, and through
+    // the one join where the rows must be seen together.
+    // --------------------------------------------------------------------
+
+    /// The row positions in sorted order under `options`, over every
+    /// chunk, as a `uint32` column named `index`: the one join, then
+    /// [`Serie::sort_indices`].
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_serie`]'s refusal and [`Serie::sort_indices`]'s.
+    pub fn sort_indices(&self, options: SortOptions) -> crate::Result<Serie> {
+        self.into_serie()?.sort_indices(options)
+    }
+
+    /// Whether the rows are in sorted order under `options` across the
+    /// chunks: every chunk sorted, and at every chunk edge the last row of
+    /// one no greater than the first of the next - one row built per side
+    /// of each edge, and no join.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, SortOptions};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2, 3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// assert!(prices.is_sorted(SortOptions::default()));
+    /// assert!(!prices.is_sorted(SortOptions::descending()));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn is_sorted(&self, options: SortOptions) -> bool {
+        if !self.chunks.iter().all(|chunk| chunk.is_sorted(options)) {
+            return false;
+        }
+        let mut edges = self.chunks.iter().filter(|chunk| !chunk.is_empty());
+        let Some(mut before) = edges.next() else {
+            return true;
+        };
+        for chunk in edges {
+            let last = proven_row(before, before.len() - 1);
+            let first = proven_row(chunk, 0);
+            if compare_values(&last, &first, options) == Ordering::Greater {
+                return false;
+            }
+            before = chunk;
+        }
+        true
+    }
+
+    /// Whether no two rows across the chunks hold one value: the one
+    /// join, then [`Serie::is_unique`]; a join the chunks refuse - a
+    /// dictionary whose gathered vocabulary outgrows its key - walks the
+    /// rows into one set instead, one row built per row.
+    pub fn is_unique(&self) -> bool {
+        match self.into_serie() {
+            Ok(joined) => joined.is_unique(),
+            Err(_) => {
+                // `Scalar`'s hash reads canonical content only, never the
+                // interior-mutable caches a datatype holds.
+                #[allow(clippy::mutable_key_type)]
+                let mut seen: std::collections::HashSet<Scalar> =
+                    std::collections::HashSet::with_capacity(self.len());
+                self.iter().all(|row| seen.insert(row))
+            }
+        }
+    }
+
+    /// How many distinct values the rows hold across the chunks: the one
+    /// join, then [`Serie::unique_count`], or the rows walked into one set
+    /// where the join is refused, as [`Self::is_unique`] walks them.
+    pub fn unique_count(&self) -> usize {
+        match self.into_serie() {
+            Ok(joined) => joined.unique_count(),
+            Err(_) => {
+                #[allow(clippy::mutable_key_type)]
+                let seen: std::collections::HashSet<Scalar> = self.iter().collect();
+                seen.len()
+            }
+        }
+    }
+
+    /// The rows in sorted order under `options`, as a chunked serie of one
+    /// chunk: the one join, then the sort.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_serie`]'s refusal and [`Serie::into_sorted`]'s.
+    pub fn into_sorted(&self, options: SortOptions) -> crate::Result<Self> {
+        let sorted = self.into_serie()?.into_sorted(options)?;
+        Ok(Self::from_landed(Arc::clone(&self.field), vec![sorted]))
+    }
+
+    /// The first occurrence of every value across the chunks, as a chunked
+    /// serie of one chunk: the one join, then [`Serie::into_unique`].
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_serie`]'s refusal and [`Serie::into_unique`]'s.
+    pub fn into_unique(&self) -> crate::Result<Self> {
+        let unique = self.into_serie()?.into_unique()?;
+        Ok(Self::from_landed(Arc::clone(&self.field), vec![unique]))
+    }
+
+    /// The rows in reverse order: the chunks reversed, each reversed, kept
+    /// apart.
+    pub fn into_reversed(&self) -> Self {
+        let chunks = self.chunks.iter().rev().map(Serie::into_reversed).collect();
+        Self::from_landed(Arc::clone(&self.field), chunks)
+    }
+
+    /// The rows `indices` names, in that order, as a chunked serie of one
+    /// chunk: the one join, then [`Serie::into_taken`]. `indices` is an
+    /// integer column or run naming rows across the chunks.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_serie`]'s refusal and [`Serie::into_taken`]'s.
+    pub fn into_taken(&self, indices: &Serie) -> crate::Result<Self> {
+        let taken = self.into_serie()?.into_taken(indices)?;
+        Ok(Self::from_landed(Arc::clone(&self.field), vec![taken]))
+    }
+
+    /// The rows `mask` keeps, chunk by chunk and kept apart: `mask` is a
+    /// boolean column or run as long as the whole, cut to each chunk's
+    /// window - zero copy for a column mask - and applied to that chunk
+    /// alone.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the field when `mask` is another length,
+    /// and [`Serie::into_filtered`]'s refusal.
+    pub fn into_filtered(&self, mask: &Serie) -> crate::Result<Self> {
+        if mask.len() != self.len() {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(self.field.name()),
+                reason: smol_str::format_smolstr!(
+                    "a mask of {} rows cannot filter the {} rows {} holds",
+                    mask.len(),
+                    self.len(),
+                    self.field.name()
+                ),
+            });
+        }
+        let mut chunks = Vec::with_capacity(self.chunks.len());
+        let mut start = 0;
+        for chunk in &self.chunks {
+            let window = mask.slice(start, chunk.len())?;
+            chunks.push(chunk.into_filtered(&window)?);
+            start += chunk.len();
+        }
+        Ok(Self::from_landed(Arc::clone(&self.field), chunks))
+    }
+
+    /// The rows grouped by `keys`, a serie as long as the whole: one
+    /// `(key, rows)` per distinct key in order of first occurrence, each
+    /// group's rows a chunked serie whose chunks are what each chunk
+    /// contributed, kept apart - so sorted keys cut every group as zero-copy
+    /// slices of the chunks. Keys held as a chunked serie join first with
+    /// [`Self::into_serie`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the field when `keys` is another length,
+    /// and [`Serie::partition_by`]'s refusal.
+    pub fn partition_by(&self, keys: &Serie) -> crate::Result<Vec<(Scalar, Self)>> {
+        if keys.len() != self.len() {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(self.field.name()),
+                reason: smol_str::format_smolstr!(
+                    "{} keys cannot partition the {} rows {} holds",
+                    keys.len(),
+                    self.len(),
+                    self.field.name()
+                ),
+            });
+        }
+        let mut groups: Vec<(Scalar, Vec<Serie>)> = Vec::new();
+        // `Scalar`'s hash reads canonical content only, never the
+        // interior-mutable caches a datatype holds, so the key is stable.
+        #[allow(clippy::mutable_key_type)]
+        let mut group_of: std::collections::HashMap<Scalar, usize> =
+            std::collections::HashMap::new();
+        let mut start = 0;
+        for chunk in &self.chunks {
+            let window = keys.slice(start, chunk.len())?;
+            for (key, rows) in chunk.partition_by(&window)? {
+                let next = groups.len();
+                let group = *group_of.entry(key.clone()).or_insert(next);
+                if group == next {
+                    groups.push((key, Vec::new()));
+                }
+                groups[group].1.push(rows);
+            }
+            start += chunk.len();
+        }
+        Ok(groups
+            .into_iter()
+            .map(|(key, chunks)| (key, Self::from_landed(Arc::clone(&self.field), chunks)))
+            .collect())
+    }
+
+    /// The bytes the rows occupy: every chunk's, as its own slice counts
+    /// them.
+    pub fn memory_size(&self) -> usize {
+        self.chunks.iter().map(Serie::memory_size).sum()
+    }
+
+    /// Sort the rows in place under `options`, answering this serie so
+    /// calls chain: [`Self::into_sorted`], one chunk, replacing the chunks.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_sorted`]'s refusal, which leaves this serie as it was.
+    pub fn as_sorted(&mut self, options: SortOptions) -> crate::Result<&mut Self> {
+        *self = self.into_sorted(options)?;
+        Ok(self)
+    }
+
+    /// Keep the first occurrence of every value, in place, answering this
+    /// serie: [`Self::into_unique`], one chunk, replacing the chunks.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_unique`]'s refusal, which leaves this serie as it was.
+    pub fn as_unique(&mut self) -> crate::Result<&mut Self> {
+        *self = self.into_unique()?;
+        Ok(self)
+    }
+
+    /// Reverse the rows in place, answering this serie: the chunks
+    /// reversed, each reversed where it stands.
+    ///
+    /// # Errors
+    ///
+    /// Never, in practice: the signature matches the other `as_*` writes.
+    pub fn as_reversed(&mut self) -> crate::Result<&mut Self> {
+        self.chunks.reverse();
+        for chunk in &mut self.chunks {
+            chunk.as_reversed()?;
+        }
+        *self = Self::from_landed(Arc::clone(&self.field), std::mem::take(&mut self.chunks));
+        Ok(self)
+    }
+
+    /// Keep the rows `indices` names, in place, answering this serie:
+    /// [`Self::into_taken`], one chunk, replacing the chunks.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_taken`]'s refusal, which leaves this serie as it was.
+    pub fn as_taken(&mut self, indices: &Serie) -> crate::Result<&mut Self> {
+        *self = self.into_taken(indices)?;
+        Ok(self)
+    }
+
+    /// Keep the rows `mask` keeps, in place and chunk by chunk, answering
+    /// this serie.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_filtered`]'s refusal, which leaves this serie as it was.
+    pub fn as_filtered(&mut self, mask: &Serie) -> crate::Result<&mut Self> {
+        *self = self.into_filtered(mask)?;
+        Ok(self)
     }
 
     /// Every chunk's buffers as one Arrow array each, shared.

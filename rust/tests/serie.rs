@@ -24,6 +24,8 @@ mod layout;
 mod mapping;
 #[path = "serie/null.rs"]
 mod null;
+#[path = "serie/order.rs"]
+mod order;
 #[path = "serie/primitive.rs"]
 mod primitive;
 #[path = "serie/runend.rs"]
