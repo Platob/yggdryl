@@ -6962,15 +6962,25 @@ export declare class RecordOptions {
   get maxByteSize(): number | null
   /** Set the bound on the result rows' Arrow in-memory bytes. */
   set maxByteSize(maxByteSize: number | undefined | null)
-  /** Rows published per streamed-write commit, when one is set. */
-  get commitRowSize(): number | null
   /**
-   * Set the streamed-write publication cadence.
+   * Whole batches published per streamed-write commit, when one is set.
+   *
+   * A positive count publishes every that many batches of the shaped
+   * stream, then the final remainder; a batch is one the source yields,
+   * cut by `batchRowSize` where records are converted, never by the
+   * cadence. `null` is the destination's own cadence: a file or folder
+   * publishes once after the source ends, an Iceberg table each time the
+   * batches it holds reach its target file size.
+   */
+  get commitBatchNum(): number | null
+  /**
+   * Set the streamed-write publication cadence, in whole batches.
    *
    * Zero is retained so the write preflight can reject it before touching a
-   * one-shot JavaScript source. `null` restores one publication at the end.
+   * one-shot JavaScript source. `null` restores the destination's own
+   * cadence.
    */
-  set commitRowSize(commitRowSize: number | undefined | null)
+  set commitBatchNum(commitBatchNum: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -7196,8 +7206,8 @@ export declare class RecordOptions {
   withMaxRowSize(maxRowSize: number): RecordOptions
   /** Return these options with a bound on the result rows' Arrow bytes. */
   withMaxByteSize(maxByteSize: number): RecordOptions
-  /** Return these options with a streamed-write publication cadence. */
-  withCommitRowSize(commitRowSize: number): RecordOptions
+  /** Return these options with a publication every `commitBatchNum` batches. */
+  withCommitBatchNum(commitBatchNum: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with the keys a write matches stored rows on. */
@@ -9073,10 +9083,10 @@ export declare class TextOptions {
   get batchRowSize(): number | null
   /** Set or clear the row-per-batch bound. */
   set batchRowSize(size: number | undefined | null)
-  /** Return the streamed-write commit cadence. */
-  get commitRowSize(): number | null
-  /** Set or clear the streamed-write commit cadence. */
-  set commitRowSize(value: number | undefined | null)
+  /** Return the streamed-write commit cadence, in whole batches. */
+  get commitBatchNum(): number | null
+  /** Set or clear the streamed-write commit cadence, in whole batches. */
+  set commitBatchNum(value: number | undefined | null)
   /** Return the total result-row bound. */
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
@@ -9211,8 +9221,8 @@ export declare class TextOptions {
   withSafe(safe: boolean): TextOptions
   /** Return a copy with a row-per-batch bound. */
   withBatchRowSize(size: number): TextOptions
-  /** Return a copy with a streamed-write commit cadence. */
-  withCommitRowSize(rows: number): TextOptions
+  /** Return a copy publishing every `commitBatchNum` batches. */
+  withCommitBatchNum(batches: number): TextOptions
   /** Return a copy skipping the given leading result rows. */
   withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */

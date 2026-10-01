@@ -289,10 +289,10 @@ function installRecords({
     })
   }
 
+  // Each chunk is one batch of `batchRowSize` records; a commit cadence counts
+  // these batches whole in the core and never cuts one.
   function recordChunker(settings, defaultBatchRowSize) {
     const rowSize = settings.batchRowSize ?? defaultBatchRowSize
-    const cadence = settings.commitRowSize
-    let rowsToCommit = cadence
     // The rows the limit seam keeps are the ones after its skip, so
     // conversion stops once both are covered.
     let remainingRows =
@@ -364,17 +364,12 @@ function installRecords({
 
     function nextRowSize() {
       let size = rowSize
-      if (rowsToCommit !== null) size = Math.min(size, rowsToCommit)
       if (remainingRows !== null) size = Math.min(size, remainingRows)
       return size
     }
 
     function accepted(rows) {
       if (remainingRows !== null) remainingRows -= rows
-      if (rowsToCommit !== null) {
-        rowsToCommit -= rows
-        if (rowsToCommit === 0) rowsToCommit = cadence
-      }
     }
 
     function sync(iterator) {
@@ -984,7 +979,7 @@ function installRecords({
       return publish(converted.reader, converted.settings)
     }
     const asynchronous = needsAwait(rows)
-    if (asynchronous && settings.commitRowSize !== null) {
+    if (asynchronous && settings.commitBatchNum !== null) {
       return awaitedCommittedRecordsWrite(
         handle,
         rows,

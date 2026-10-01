@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records and the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -16,7 +16,7 @@ stream in which only the current batch is alive.
 Hold one model: **the options are the query.** `field` declares and casts,
 `select` projects, `filter` prunes (row groups, partition leaves, Iceberg
 manifests) and then filters rows, `max_row_size` stops pulling, `merge_by`
-keys an upsert, `commit_row_size` bounds a write. Put them on the call and the
+keys an upsert, `commit_batch_num` bounds a write. Put them on the call and the
 medium does the work before a byte is decoded.
 
 ## Choose the door
@@ -83,9 +83,12 @@ medium does the work before a byte is decoded.
 4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
    matches null and the last arrival wins. Merge holds only the stored side in
    memory; `merge_by` absent is a refusal, never an overwrite.
-5. **Bound memory with `commit_row_size`.** Unset publishes once at the end;
-   `N` publishes every `N` rows and the committed prefix survives a later
-   failure; `0` is refused before any input is pulled.
+5. **Bound memory with `commit_batch_num`.** It counts whole batches, never
+   cutting one: `N` publishes every `N` batches and the committed prefix
+   survives a later failure; `0` is refused before any input is pulled. Unset
+   is the destination's own cadence - a file or folder publishes once at the
+   end, an Iceberg table each time its held batches reach the target file
+   size. Native rows are cut into batches by `batch_row_size`.
 6. **`row_size`/`column_size`/`read_arrow_field` read metadata only.** They
    answer from a footer, a stream header or the manifests; `open()` caches the
    answer until `close()`. In Python and JavaScript they - and `size()`,
@@ -211,9 +214,9 @@ medium does the work before a byte is decoded.
   caches metadata; open the table again.
 - Collecting a Parquet read to count rows or learn the schema: `row_size`
   and `read_arrow_field` answer from the footer.
-- `commit_row_size` on an Iceberg write: every commit is a snapshot, so a
-  small `N` leaves many snapshots; expire them (`expire_snapshots`) or commit
-  once.
+- `commit_batch_num` on an Iceberg write: every commit is a snapshot, so a
+  small `N` leaves many snapshots; expire them (`expire_snapshots`) or leave
+  it unset to commit per target file size.
 - Building an Arrow JS `Int64` vector from `number`s: use `bigint` (`1n`).
   Native row writes unify `number` and `bigint` rows of one column instead:
   `[{ id: 1 }, { id: 2n }]` is one `int64` column, the integral `number` read

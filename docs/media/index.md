@@ -260,7 +260,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     options = RecordOptions("trades.parquet")
     options.field = schema
     options.batch_row_size = 1024
-    options.commit_row_size = 10_000
+    options.commit_batch_num = 10
 
     assert str(options.mime_type) == "application/vnd.apache.parquet"
     assert options.name == "row"
@@ -268,7 +268,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert options.select.is_all
     assert options.filter.is_always_true
     assert options.batch_row_size == 1024
-    assert options.commit_row_size == 10_000
+    assert options.commit_batch_num == 10
 
     # A setting one encoding has reads as None on an encoding that has none.
     assert options.max_row_group_size == 1_048_576
@@ -2424,6 +2424,8 @@ nullability. A list's or map's string carries no element id or element
 nullability, so its child is the grammar's nullable `item`. A v3 `variant` and a v3 `unknown` both read as [`variant`](../types/variant.md); only a table's schema declares a column `unknown`, which it keeps out of its data files and reads back as nulls. A v1 or v2 table refuses both.
 
 A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
+
+A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
 
 A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more are this crate's own, and a reader that does not know them reads them as `unknown` and prunes nothing by them, which is what the specification says of an unknown transform. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter. A `bucket` or a `truncate` prunes nothing. The plural is Spark's DDL spelling and is read as an alias of a transform with no parameter; the singular is written. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has no other spelling: `minutes[0]` and a bare `minutes` are refused by name.
 

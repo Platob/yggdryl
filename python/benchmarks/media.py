@@ -15,10 +15,10 @@ Parquet footer and projected-WKB statistics additionally measure the core
 The intent matrix measures reader, table, record-batch, records, pandas, and
 polars adapters under overwrite, append, and merge. Append and merge reset a
 bounded stored table before each timed call; setup is outside the measurement.
-The reader and native-row paths are also measured with an 8,192-row publication
-cadence, exposing the cost of durable prefixes beside the one-publication
-default. A frame library that is not installed is left out rather than reported
-as zero.
+The reader and native-row paths are also fed 1,024-row batches under an
+eight-batch publication cadence - eight publications of 8,192 rows each -
+exposing the cost of durable prefixes beside a file's one-publication default.
+A frame library that is not installed is left out rather than reported as zero.
 """
 
 from __future__ import annotations
@@ -226,10 +226,18 @@ _STAMP = datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc)
 RECORD_BATCH = TABLE.combine_chunks().to_batches(max_chunksize=ROW_COUNT)[0]
 MERGE_OPTIONS = SINK_FILE.record_options()
 MERGE_OPTIONS.merge_by = ["id"]
+# A cadence counts whole batches, so the committed paths are fed batches small
+# enough that one publication spans several of them: eight 1,024-row batches
+# per publication, eight publications in all.
+COMMIT_BATCH_ROWS = 1_024
+COMMIT_BATCH_NUM = BATCH_SIZE // COMMIT_BATCH_ROWS
+COMMIT_BATCHES = tuple(TABLE.to_batches(max_chunksize=COMMIT_BATCH_ROWS))
 COMMIT_OPTIONS = SINK_FILE.record_options()
-COMMIT_OPTIONS.commit_row_size = BATCH_SIZE
+COMMIT_OPTIONS.batch_row_size = COMMIT_BATCH_ROWS
+COMMIT_OPTIONS.commit_batch_num = COMMIT_BATCH_NUM
 COMMIT_MERGE_OPTIONS = SINK_FILE.record_options()
-COMMIT_MERGE_OPTIONS.commit_row_size = BATCH_SIZE
+COMMIT_MERGE_OPTIONS.batch_row_size = COMMIT_BATCH_ROWS
+COMMIT_MERGE_OPTIONS.commit_batch_num = COMMIT_BATCH_NUM
 COMMIT_MERGE_OPTIONS.merge_by = ["id"]
 
 
@@ -253,7 +261,12 @@ def _arrow_input(shape: str) -> object:
 
 def _write_shape(intent: str, shape: str, *, commit: bool = False) -> object:
     method = getattr(SINK_FILE, f"{intent}_{shape}")
-    source = _arrow_input(shape)
+    if commit and shape == "arrow_reader":
+        source: object = pa.RecordBatchReader.from_batches(
+            SCHEMA, iter(COMMIT_BATCHES)
+        )
+    else:
+        source = _arrow_input(shape)
     if commit:
         options = COMMIT_MERGE_OPTIONS if intent == "merge" else COMMIT_OPTIONS
         method(source, options=options)
@@ -418,7 +431,7 @@ INTENT_BENCHMARKS = tuple(
 
 COMMIT_BENCHMARKS = tuple(
     Benchmark(
-        f"parquet {intent} {shape.replace('_', ' ')} commit {BATCH_SIZE}",
+        f"parquet {intent} {shape.replace('_', ' ')} commit {COMMIT_BATCH_NUM} batches",
         lambda intent=intent, shape=shape: _write_shape(intent, shape, commit=True),
         ROW_COUNT,
         "row",

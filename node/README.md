@@ -367,16 +367,17 @@ computed fresh after `close()`; JavaScript keeps no parallel count or schema.
 Counts saturate at `Number.MAX_SAFE_INTEGER` rather than becoming imprecise.
 
 Record iterables cross in bounded IPC chunks (`options.batchRowSize`, or
-65,536 rows). Synchronous iterables are pulled lazily through one native reader. With
-no `options.commitRowSize`, async iterables spool those bounded chunks to a
-private temporary file before the one native write, preserving one publication
-while bounding memory; the spool is removed on success or failure.
+65,536 rows), each chunk one batch. Synchronous iterables are pulled lazily through one native reader. With
+no `options.commitBatchNum`, async iterables spool those bounded chunks to a
+private temporary file before the one native write, preserving the
+destination's own cadence while bounding memory; the spool is removed on
+success or failure.
 
-With a positive `options.commitRowSize`, synchronous and asynchronous chunks
-end at the exact cadence boundary even when it does not divide
-`batchRowSize`.
+A positive `options.commitBatchNum` publishes every that many whole batches,
+then the remainder; a cadence never cuts a batch, so a chunk is the unit it
+counts.
 The async path alternates one awaited chunk with one opaque Rust-session push,
-so every complete prefix is visible before the next source pull and a later
+so every complete cadence is visible before the next source pull and a later
 failure drops only the incomplete cadence. Global row and byte limits remain
 one operation-wide budget. A zero limit does not inspect the source: append is
 a synchronous no-op, overwrite publishes an explicitly typed empty value, and

@@ -1,6 +1,6 @@
 # yggdryl-records in JavaScript
 
-`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, rowOffset, commitRowSize, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
+`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, rowOffset, commitBatchNum, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
 
 ## Which encoding will this handle use?
 
@@ -211,7 +211,7 @@ assert.equal(handle.rowSize(), 4)
 
 ## Bound memory on large writes
 
-`commitRowSize: N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batchRowSize` bounds the batches a Parquet read yields.
+`commitBatchNum: N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and records are cut into batches by `batchRowSize`. Unset is the destination's own cadence - a file or folder commits once, an Iceberg table each time its held batches reach the target file size; `0` is refused before any input is pulled. `batchRowSize` bounds the batches a Parquet read yields.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -226,14 +226,16 @@ const table = new arrow.Table({
   id: arrow.vectorFromArray(Array.from({ length: 10 }, (_, index) => BigInt(index)), new arrow.Int64()),
 })
 const handle = new IOBase(path.join(root, 'trades.parquet'))
-handle.overwriteArrowTable(table, { commitRowSize: 4 })
+// Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+const batches = new arrow.Table([0, 4, 8].flatMap((start) => table.slice(start, start + 4).batches))
+handle.overwriteArrowTable(batches, { commitBatchNum: 2 })
 assert.equal(handle.rowSize(), 10)
 
 const sizes = [...handle.readArrowReader({ batchRowSize: 4 })].map((batch) => batch.numRows)
 assert.equal(sizes.reduce((a, b) => a + b, 0), 10)
 assert.ok(Math.max(...sizes) <= 4)
 
-assert.throws(() => handle.overwriteArrowTable(table, { commitRowSize: 0 }), /commit_row_size/)
+assert.throws(() => handle.overwriteArrowTable(table, { commitBatchNum: 0 }), /commit_batch_num/)
 
 fs.rmSync(root, { recursive: true, force: true })
 ```

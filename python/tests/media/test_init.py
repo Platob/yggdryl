@@ -298,7 +298,7 @@ class TestOptions:
         options.name = "trade"
         options.safe = True
         options.batch_row_size = 1
-        options.commit_row_size = 2
+        options.commit_batch_num = 2
         options.level = 9
         options.merge_by = ["id"]
 
@@ -306,12 +306,12 @@ class TestOptions:
             options.name,
             options.safe,
             options.batch_row_size,
-            options.commit_row_size,
+            options.commit_batch_num,
             options.level,
             options.merge_by.names,
         ) == ("trade", True, 1, 2, 9, ["id"])
-        options.commit_row_size = None
-        assert options.commit_row_size is None
+        options.commit_batch_num = None
+        assert options.commit_batch_num is None
         # Options carry no field until one is declared.
         assert options.field is None
         options.field = SCHEMA

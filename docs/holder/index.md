@@ -2270,15 +2270,15 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 ### Commit cadence
 
-`commit_row_size` is the one publication boundary of a streamed write, applied after shaping.
+`commit_batch_num` is the one publication boundary of a streamed write, applied after shaping. It counts whole batches - a batch is one the shaped stream yields, cut by `batch_row_size` and `batch_byte_size` where a row adapter built it, never by the cadence - and an empty batch counts for nothing.
 
-| `commit_row_size` | publication |
+| `commit_batch_num` | publication |
 | --- | --- |
-| unset | once, when the source ends |
-| `N > 0` | every complete group of `N` rows, then the remainder; a committed prefix survives a later failure |
+| unset | the destination's own cadence: a leaf or a plain folder once, when the source ends; an Iceberg table each time the batches it holds reach its target file size (`write.target-file-size-bytes`), then the remainder |
+| `N > 0` | every `N` batches, then the remainder; a committed prefix survives a later failure |
 | `0` | rejected before any input is pulled |
 
-A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg).
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
 ### Absent and unknown
 

@@ -240,7 +240,7 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "=" in COMPARISONS
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
-    assert len(FUNCTIONS) == 20
+    assert len(FUNCTIONS) == 27
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"

@@ -54,6 +54,18 @@ impl JsRecordOptions {
     }
 }
 
+/// A `commitBatchNum` value as the batch count the core counts: an exact
+/// integer in this platform's range. Zero is kept, so the write preflight
+/// refuses it by name before a one-shot source is touched.
+pub(crate) fn batch_count(batches: f64) -> Result<usize> {
+    let batches = crate::exact_u64(batches, "commitBatchNum")?;
+    usize::try_from(batches).map_err(|_| {
+        napi_error(format!(
+            "commitBatchNum {batches} exceeds this platform's batch-count range"
+        ))
+    })
+}
+
 /// A CSV role byte as the one-character string JavaScript spells it.
 fn byte_text(byte: u8) -> String {
     char::from(byte).to_string()
@@ -144,7 +156,7 @@ impl JsRecordOptions {
     pub fn require_write_preflight(&self, intent: String) -> Result<u32> {
         let mode = IOMode::from_str(&intent).map_err(napi_error)?;
         self.inner.require_write_mode(mode).map_err(napi_error)?;
-        self.inner.require_commit_row_size().map_err(napi_error)?;
+        self.inner.require_commit_batch_num().map_err(napi_error)?;
         self.inner.require_write_limits().map_err(napi_error)?;
         u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
@@ -275,31 +287,32 @@ impl JsRecordOptions {
         Ok(())
     }
 
-    /// Rows published per streamed-write commit, when one is set.
+    /// Whole batches published per streamed-write commit, when one is set.
+    ///
+    /// A positive count publishes every that many batches of the shaped
+    /// stream, then the final remainder; a batch is one the source yields,
+    /// cut by `batchRowSize` where records are converted, never by the
+    /// cadence. `null` is the destination's own cadence: a file or folder
+    /// publishes once after the source ends, an Iceberg table each time the
+    /// batches it holds reach its target file size.
     #[napi(getter)]
-    pub fn commit_row_size(&self) -> Option<f64> {
+    pub fn commit_batch_num(&self) -> Option<f64> {
         #[allow(clippy::cast_precision_loss)]
-        self.inner.commit_row_size().map(|rows| rows as f64)
+        self.inner.commit_batch_num().map(|batches| batches as f64)
     }
 
-    /// Set the streamed-write publication cadence.
+    /// Set the streamed-write publication cadence, in whole batches.
     ///
     /// Zero is retained so the write preflight can reject it before touching a
-    /// one-shot JavaScript source. `null` restores one publication at the end.
+    /// one-shot JavaScript source. `null` restores the destination's own
+    /// cadence.
     #[napi(setter)]
-    pub fn set_commit_row_size(&mut self, commit_row_size: Option<f64>) -> Result<()> {
-        let rows = match commit_row_size {
-            Some(rows) => {
-                let rows = crate::exact_u64(rows, "commitRowSize")?;
-                Some(usize::try_from(rows).map_err(|_| {
-                    napi_error(format!(
-                        "commitRowSize {rows} exceeds this platform's row-count range"
-                    ))
-                })?)
-            }
+    pub fn set_commit_batch_num(&mut self, commit_batch_num: Option<f64>) -> Result<()> {
+        let batches = match commit_batch_num {
+            Some(batches) => Some(crate::media::options::batch_count(batches)?),
             None => None,
         };
-        self.inner.set_commit_row_size(rows);
+        self.inner.set_commit_batch_num(batches);
         Ok(())
     }
 
@@ -887,11 +900,11 @@ impl JsRecordOptions {
         Ok(options)
     }
 
-    /// Return these options with a streamed-write publication cadence.
+    /// Return these options with a publication every `commitBatchNum` batches.
     #[napi]
-    pub fn with_commit_row_size(&self, commit_row_size: f64) -> Result<Self> {
+    pub fn with_commit_batch_num(&self, commit_batch_num: f64) -> Result<Self> {
         let mut options = self.clone();
-        options.set_commit_row_size(Some(commit_row_size))?;
+        options.set_commit_batch_num(Some(commit_batch_num))?;
         Ok(options)
     }
 

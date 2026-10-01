@@ -55,7 +55,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 ## Limits and edges
 
 - `row_offset` skips leading result rows first; `max_row_size` then counts result rows, `max_byte_size` their uncompressed Arrow bytes; all three apply last and stop pulling. `0` is a valid read (schema, no batch); a non-zero byte bound yields at least one row. On a write, a limit truncates the input and never pulls past it.
-- `commit_row_size`: unset commits once; `N` publishes every `N` rows then the remainder; `0` is refused. A plain folder publishes each leaf on its own; Iceberg commits a snapshot.
+- `commit_batch_num`: counts whole batches and never cuts one; `N` publishes every `N` batches then the remainder; `0` is refused. Unset is the destination's cadence: a leaf or a plain folder commits once, an Iceberg table each time its held batches reach the target file size (`write.target-file-size-bytes`). A plain folder publishes each leaf on its own; Iceberg commits a snapshot.
 - Merge: keys by Arrow row format (null matches null, last arrival wins); holds only the stored side in memory. Iceberg merge keys are the identity partition columns plus `merge_by`; a table with neither is refused; merge on format v3 is refused.
 - Parquet reads copy the bytes they keep into reader-owned memory, so rewriting the file while a reader lives is safe.
 - Iceberg: promotions are `int32 -> int64`, `float32 -> float64`, same-scale decimal widening, and v3's `unknown` to any type; field IDs are preserved and never reused; append and metadata-only commits rebase on conflict, overwrite/merge/compact restore state and report the conflict.

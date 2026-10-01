@@ -203,10 +203,13 @@ Record writes name both their Python representation and intent:
 `overwrite_arrow_reader`, `append_arrow_table`, `merge_arrow_batch`,
 and the corresponding `*_records`, pandas, and polars adapters all redirect to
 the same streamed Rust pipeline. Every call takes one keyword-only `options=`
-value. Set `options.commit_row_size = N` to publish each complete group of `N`
-incoming rows plus the final remainder; leave it as `None` for one publication
-after successful end of input. A later failure leaves completed groups visible
-by design, and zero is rejected before a one-shot Python input is inspected.
+value. Set `options.commit_batch_num = N` to publish every `N` whole batches
+of the stream plus the final remainder - Python rows are converted
+`batch_row_size` rows to a batch, and a cadence never cuts one; leave it as
+`None` for the destination's own cadence: a file or folder publishes once after
+successful end of input, an Iceberg table each time the batches it holds reach
+its target file size. A later failure leaves completed cadences visible by
+design, and zero is rejected before a one-shot Python input is inspected.
 
 For configured intent, the same representations expose `write_*` with the
 canonical `(input, mode, *, options=None)` order. `mode` is required and is one
