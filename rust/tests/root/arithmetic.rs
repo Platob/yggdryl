@@ -235,3 +235,31 @@ fn operator_traits_are_checked_and_do_not_concatenate() {
     );
     assert!((Scalar::from("a") - Scalar::from("b")).is_err());
 }
+
+#[test]
+fn sqrt_private_kernel_requires_float64_and_preserves_ieee() {
+    use yggdryl::internals::arithmetic::checked_sqrt;
+    assert_eq!(checked_sqrt(&Scalar::Null).unwrap(), Scalar::Null);
+    assert_eq!(
+        checked_sqrt(&Scalar::from(4.0_f64)).unwrap(),
+        Scalar::from(2.0_f64)
+    );
+    assert!(
+        checked_sqrt(&Scalar::from(-1.0_f64))
+            .unwrap()
+            .as_f64()
+            .unwrap()
+            .is_nan()
+    );
+    assert_eq!(
+        checked_sqrt(&Scalar::from(f64::INFINITY)).unwrap(),
+        Scalar::from(f64::INFINITY)
+    );
+    assert!(matches!(
+        checked_sqrt(&Scalar::from(4_i64)),
+        Err(Error::InvalidArithmetic {
+            operation: "square root",
+            ..
+        })
+    ));
+}

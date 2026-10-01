@@ -2553,6 +2553,29 @@ mod scalars {
             self.text.as_str()
         }
 
+        /// Borrow the UTF-8 window between Unicode scalar positions.
+        ///
+        /// Indices are zero-based `char` positions, not UTF-16 code units or
+        /// grapheme clusters. This only scans; the caller owns the result.
+        pub(crate) fn char_window(text: &str, from: usize, until: usize) -> &str {
+            if from >= until {
+                return "";
+            }
+            let (mut start, mut end) = (None, None);
+            for (position, (byte, _)) in text.char_indices().enumerate() {
+                if position == from {
+                    start = Some(byte);
+                }
+                if position == until {
+                    end = Some(byte);
+                    break;
+                }
+            }
+            let start = start.unwrap_or(text.len());
+            let end = end.unwrap_or(text.len());
+            if start >= end { "" } else { &text[start..end] }
+        }
+
         /// Borrow the shared storage without copying the text.
         ///
         /// The storage is the crate's ordinary compact string, so a name, a key

@@ -7,6 +7,7 @@
 //! bounds a streamed write, so those three reach `yggdryl::internals`.
 
 use std::sync::Arc;
+use yggdryl::RecordHeader;
 
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
@@ -241,7 +242,7 @@ fn record_options_have_complete_value_traits_and_stable_hashes() {
     assert_eq!(options.stable_hash(), equal.stable_hash());
     for changed in [
         excel.clone().with_sheet("Quotes"),
-        excel.clone().with_header(false),
+        excel.clone().with_header(RecordHeader::None),
         excel.clone().with_range("A3:F".parse().unwrap()),
         excel.clone().with_batch_row_size(3),
     ] {
@@ -615,10 +616,10 @@ fn the_enum_mirrors_the_limits_of_the_encoding_it_holds() {
     assert_eq!(inner.max_byte_size, Some(1024));
     // Everything else is the workbook's default: the first sheet, a header
     // row, the whole grid.
-    assert_eq!(inner.sheet, None);
-    assert!(inner.header);
-    assert_eq!(inner.range, None);
-    assert_eq!(inner.cells(), yggdryl::excel::CellRange::all());
+    assert_eq!(inner.sheet(), None);
+    assert_eq!(inner.header, RecordHeader::Source);
+    assert_eq!(inner.range(), None);
+    assert_eq!(inner.cells().unwrap(), yggdryl::excel::CellRange::all());
 }
 
 #[test]
@@ -733,22 +734,22 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.header(), Some(true));
+    assert_eq!(options.header(), Some(RecordHeader::Source));
     assert_eq!(options.excel_range(), None);
 
     options.set_excel_sheet(Some("Trades")).unwrap();
-    options.set_header(false).unwrap();
+    options.set_header(RecordHeader::None).unwrap();
     let range: yggdryl::excel::CellRange = "B2:D9".parse().unwrap();
     options.set_excel_range(Some(range)).unwrap();
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.header(), Some(false));
+    assert_eq!(options.header(), Some(RecordHeader::None));
     assert_eq!(options.excel_range(), Some(range));
     let RecordOptions::Excel(inner) = &options else {
         panic!("an xlsx handle names the workbook encoding");
     };
-    assert_eq!(inner.sheet.as_deref(), Some("Trades"));
-    assert!(!inner.header);
-    assert_eq!(inner.cells(), range);
+    assert_eq!(inner.sheet(), Some("Trades"));
+    assert_eq!(inner.header, RecordHeader::None);
+    assert_eq!(inner.cells().unwrap(), range);
 
     // A name Excel refuses is refused by the setter, which leaves the sheet
     // it had.
@@ -793,24 +794,32 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
 }
 
 #[test]
-fn excel_only_setters_reject_another_inferred_encoding() {
+fn record_setters_reject_another_inferred_encoding() {
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
     assert_eq!(options.excel_sheet(), None);
     assert_eq!(options.header(), None);
     assert_eq!(options.excel_range(), None);
-    for (error, path, setting) in [
+    for (error, path, encoding, setting) in [
         (
             options.set_excel_sheet(Some("Trades")).unwrap_err(),
             "$.sheet",
+            "Excel",
             "a worksheet",
+        ),
+        (
+            options.set_header(RecordHeader::None).unwrap_err(),
+            "$.header",
+            "CSV or Excel",
+            "a header",
         ),
         (
             options
                 .set_excel_range(Some("A1:B2".parse().unwrap()))
                 .unwrap_err(),
             "$.range",
+            "Excel",
             "a cell range",
         ),
     ] {
@@ -821,7 +830,7 @@ fn excel_only_setters_reject_another_inferred_encoding() {
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid record value at {path}: expected Excel options to set {setting}, \
+                "invalid record value at {path}: expected {encoding} options to set {setting}, \
                  got application/vnd.apache.arrow.stream options"
             )
         );
@@ -1139,4 +1148,324 @@ fn a_write_onto_a_stored_not_null_column_refuses_and_leaves_the_resource() {
         })
         .collect();
     assert_eq!(kept, [7]);
+}
+
+#[test]
+fn result_field_preserves_identity_metadata_and_binds_source_or_result_clauses() {
+    let mut child = DataType::Int64.required_field("id");
+    child.set_comment("source child metadata").unwrap();
+    let mut source = StructType::from_fields([child])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("records");
+    source.set_comment("source root metadata").unwrap();
+    let options = IpcOptions::new();
+    assert_eq!(options.result_field(source.clone()).unwrap(), source);
+
+    let selected = options.with_select("id as key").unwrap();
+    for filter in ["id > 0", "key > 0"] {
+        let options = selected.clone().with_filter(filter).unwrap();
+        let output = options.result_field(source.clone()).unwrap();
+        assert_eq!(output.fields().len(), 1);
+        assert_eq!(output.fields()[0].name(), "key");
+        assert_eq!(output.fields()[0].dtype(), &DataType::Int64);
+        // The field resolver and the real expression reader use the same
+        // binding order without needing any source rows.
+        let reader = yggdryl::arrow::batch_reader(source.clone().into_arrow_schema().unwrap(), []);
+        let reader = options.apply_arrow_expressions(reader).unwrap();
+        assert_eq!(output.into_arrow_schema().unwrap(), reader.schema());
+    }
+    for options in [
+        IpcOptions::new().with_select("missing").unwrap(),
+        IpcOptions::new().with_filter("missing > 0").unwrap(),
+        selected.with_filter("missing > 0").unwrap(),
+    ] {
+        let error = options.result_field(source.clone()).unwrap_err();
+        match error {
+            yggdryl::Error::InvalidRecord { path, reason } => {
+                assert!(!path.is_empty());
+                assert!(reason.contains("missing"), "{reason}");
+            }
+            error => panic!("expected a located schema binding error, got {error}"),
+        }
+    }
+}
+
+#[test]
+fn selection_scalar_record_options_exposes_typed_selection_only_for_excel() {
+    use yggdryl::excel::ExcelSelection;
+    let mut options = RecordOptions::from(ExcelOptions::new());
+    let selected = ExcelSelection::from_scalar(
+        &yggdryl::from_json_scalar(r#"{"sheet":"Data","range":"A1:B2"}"#).unwrap(),
+    )
+    .unwrap();
+    options.set_excel_selection(selected.clone()).unwrap();
+    assert_eq!(options.excel_selection(), Some(&selected));
+    assert_eq!(options.excel_sheet(), Some("Data"));
+    assert_eq!(options.excel_range(), Some("A1:B2".parse().unwrap()));
+
+    let mut other = RecordOptions::Ipc(IpcOptions::new());
+    let before = other.clone();
+    assert_eq!(other.excel_selection(), None);
+    let message = other.set_excel_selection(selected).unwrap_err().to_string();
+    assert!(message.contains("$.selection"), "{message}");
+    assert_eq!(other, before);
+}
+
+#[test]
+fn selection_scalar_typed_null_setters_preserve_inactive_arm() {
+    use yggdryl::excel::ExcelSelection;
+    let mut table = RecordOptions::from(ExcelOptions::new().with_table("Orders"));
+    let original = table.clone();
+    table.set_excel_sheet(None).unwrap();
+    table.set_excel_range(None).unwrap();
+    assert_eq!(table, original);
+    let mut worksheet = RecordOptions::from(
+        ExcelOptions::new()
+            .with_sheet("Data")
+            .with_range("B2:C4".parse().unwrap()),
+    );
+    let original = worksheet.clone();
+    worksheet.set_excel_table(None).unwrap();
+    assert_eq!(worksheet, original);
+    assert_eq!(
+        worksheet.excel_selection(),
+        Some(&ExcelSelection::Worksheet {
+            sheet: Some("Data".into()),
+            range: Some("B2:C4".parse().unwrap()),
+        })
+    );
+}
+
+#[test]
+fn csv_rows_one_is_source_for_quoted_multiline_write_and_read() {
+    use arrow_array::StringArray;
+    use yggdryl::csv::CsvOptions;
+
+    let field = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("note"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let mut source_bytes = None;
+    for header in [RecordHeader::Source, RecordHeader::Rows(1)] {
+        let mut options = RecordOptions::Csv(CsvOptions::new());
+        options.set_header(header).unwrap();
+        assert_eq!(options.header(), Some(RecordHeader::Source));
+
+        let batch = RecordBatch::try_new(
+            field.clone().into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])),
+                Arc::new(StringArray::from(vec!["alpha\n\"quoted\", beta", "plain"])),
+            ],
+        )
+        .unwrap();
+        let mut held = Buffer::new()
+            .with_media_type(Url::from_str("file:///quoted.csv").unwrap().media_type());
+        held.overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &options,
+        )
+        .unwrap();
+        let bytes = held.as_slice().to_vec();
+        assert!(
+            std::str::from_utf8(&bytes)
+                .unwrap()
+                .contains("\"alpha\n\"\"quoted\"\", beta\""),
+            "{bytes:?}"
+        );
+        if let Some(source) = &source_bytes {
+            assert_eq!(&bytes, source);
+        } else {
+            source_bytes = Some(bytes);
+        }
+
+        let rows = held
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>();
+        assert_eq!(rows.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+        let notes = rows
+            .iter()
+            .flat_map(|batch| {
+                let column = batch
+                    .column_by_name("note")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                (0..batch.num_rows())
+                    .map(|row| column.value(row).to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(notes, ["alpha\n\"quoted\", beta", "plain"]);
+    }
+}
+
+#[test]
+fn generic_header_policy_refusals_are_located_and_atomic() {
+    use yggdryl::csv::CsvOptions;
+
+    let mut csv = RecordOptions::Csv(CsvOptions::new());
+    let original = csv.clone();
+    for header in [
+        RecordHeader::Rows(0),
+        RecordHeader::Rows(2),
+        RecordHeader::Infer,
+    ] {
+        let error = csv.set_header(header).unwrap_err();
+        let yggdryl::Error::InvalidRecord { path, reason } = error else {
+            panic!("expected located CSV refusal for {header:?}, got {error}");
+        };
+        assert_eq!(path.as_str(), "$.header");
+        assert!(
+            reason.contains("CSV") && reason.contains("header"),
+            "{reason}"
+        );
+        assert_eq!(csv, original);
+    }
+
+    let mut excel = RecordOptions::Excel(ExcelOptions::new());
+    excel.set_header(RecordHeader::Rows(2)).unwrap();
+    assert_eq!(excel.header(), Some(RecordHeader::Rows(2)));
+    excel.set_header(RecordHeader::Infer).unwrap();
+    assert_eq!(excel.header(), Some(RecordHeader::Infer));
+    let before_grid = excel.clone();
+    let error = excel.set_header(RecordHeader::Rows(1_048_577)).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected a located grid refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.header");
+    assert!(reason.contains("1048576"), "{reason}");
+    assert_eq!(excel, before_grid);
+
+    let mut named = RecordOptions::Excel(ExcelOptions::new().with_table("Quantities"));
+    let before_table = named.clone();
+    let error = named.set_header(RecordHeader::Rows(1)).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected a located named-table refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.header");
+    assert!(reason.contains("tableColumn"), "{reason}");
+    assert_eq!(named, before_table);
+}
+
+#[test]
+fn excel_selection_setter_table_refuses_rows_header_atomically() {
+    let mut by_table = RecordOptions::Excel(ExcelOptions::new().with_header(RecordHeader::Rows(2)));
+    let before = by_table.clone();
+    let error = by_table.set_excel_table(Some("Quantities")).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located header refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.header");
+    assert!(reason.contains("tableColumn"), "{reason}");
+    assert_eq!(by_table, before);
+}
+
+#[test]
+fn excel_selection_setter_typed_table_refuses_rows_header_atomically() {
+    use yggdryl::excel::ExcelSelection;
+    let mut by_selection =
+        RecordOptions::Excel(ExcelOptions::new().with_header(RecordHeader::Rows(2)));
+    let before = by_selection.clone();
+    let error = by_selection
+        .set_excel_selection(ExcelSelection::Table {
+            name: "Quantities".into(),
+        })
+        .unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located header refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.header");
+    assert!(reason.contains("tableColumn"), "{reason}");
+    assert_eq!(by_selection, before);
+}
+
+#[test]
+fn excel_selection_setter_typed_empty_table_refuses_atomically() {
+    use yggdryl::excel::ExcelSelection;
+    let mut empty = RecordOptions::Excel(ExcelOptions::new());
+    let before_empty = empty.clone();
+    let error = empty
+        .set_excel_selection(ExcelSelection::Table { name: "".into() })
+        .unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located empty-table refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.selection.table");
+    assert!(reason.contains("nonempty"), "{reason}");
+    assert_eq!(empty, before_empty);
+}
+
+#[test]
+fn excel_selection_setter_typed_invalid_sheet_refuses_atomically() {
+    use yggdryl::excel::ExcelSelection;
+    let mut options = RecordOptions::Excel(ExcelOptions::new());
+    let before = options.clone();
+    let error = options
+        .set_excel_selection(ExcelSelection::Worksheet {
+            sheet: Some("Q1/Q2".into()),
+            range: None,
+        })
+        .unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located sheet-name refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.selection.sheet");
+    assert!(reason.contains("Q1/Q2"), "{reason}");
+    assert_eq!(options, before);
+    options
+        .set_excel_selection(ExcelSelection::Worksheet {
+            sheet: Some("Data".into()),
+            range: None,
+        })
+        .unwrap();
+    assert_eq!(options.excel_sheet(), Some("Data"));
+}
+
+#[test]
+fn excel_selection_setter_typed_invalid_range_refuses_atomically() {
+    use yggdryl::excel::{CellRange, CellRef, ExcelSelection};
+    let outside = CellRange::new(CellRef::new(1_048_576, 0), CellRef::new(1_048_576, 0));
+    let mut options = RecordOptions::Excel(ExcelOptions::new());
+    let before = options.clone();
+    let error = options
+        .set_excel_selection(ExcelSelection::Worksheet {
+            sheet: None,
+            range: Some(outside),
+        })
+        .unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located range refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.selection.range");
+    assert!(reason.contains("1048576"), "{reason}");
+    assert_eq!(options, before);
+}
+
+#[test]
+fn excel_selection_setter_range_refuses_out_of_grid_atomically() {
+    use yggdryl::excel::{CellRange, CellRef};
+    let outside = CellRange::new(CellRef::new(0, 16_384), CellRef::new(0, 16_384));
+    let mut options = RecordOptions::Excel(ExcelOptions::new());
+    let before = options.clone();
+    let error = options.set_excel_range(Some(outside)).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located range refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.range");
+    assert!(reason.contains("16384"), "{reason}");
+    assert_eq!(options, before);
+    let edge = CellRange::new(
+        CellRef::new(1_048_575, 16_383),
+        CellRef::new(1_048_575, 16_383),
+    );
+    options.set_excel_range(Some(edge)).unwrap();
+    assert_eq!(options.excel_range(), Some(edge));
 }

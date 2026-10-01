@@ -13,6 +13,8 @@ mod iceberg;
 #[cfg(feature = "parquet")]
 #[path = "media/io.rs"]
 mod io;
+#[path = "media/options.rs"]
+mod options;
 #[path = "media/xmla.rs"]
 mod xmla;
 
@@ -43,6 +45,7 @@ criterion_group!(
     avro::resolution::resolution_benchmarks,
     csv::csv_benchmarks,
     excel::excel_benchmarks,
+    options::options_benchmarks,
     io_benchmarks,
     iceberg_benchmarks,
     xmla::xmla_benchmarks,

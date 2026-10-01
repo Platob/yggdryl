@@ -21,8 +21,8 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::holder::Holder;
-use crate::media::RecordOptions;
-use crate::{Error, Field, IOBase, IOKind, IOMedia, MimeType, Result, Url};
+use crate::media::{IORecordOptions, RecordOptions};
+use crate::{Error, Field, Filter, IOBase, IOKind, IOMedia, MimeType, Result, Selector, Url};
 
 /// One catalog: a name and the container its tables live under.
 #[derive(Debug)]
@@ -346,7 +346,9 @@ impl Table {
     ///
     /// Returns a read, decoding or schema failure.
     pub fn field(&self) -> Result<Field> {
-        let options = self.record_options()?;
+        let mut options = self.record_options()?;
+        options.set_filter(Filter::always_true());
+        options.set_select(Selector::all());
         self.holder.read_arrow_field(&options)
     }
 

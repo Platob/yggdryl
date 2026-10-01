@@ -4,9 +4,11 @@
 //! A `<c>` element states a reference (`r="B2"`), a type (`t`), a style
 //! (`s`) and its content - a `<v>` value, an `<is>` inline string, an `<f>`
 //! formula. Reading resolves those facts once into a [`Cell`]: the shared
-//! string an `s` cell indexes is its text, the style is the
-//! [`NumberFormat`] its `numFmtId` classifies as, and the number, the text,
-//! the boolean or the date the content spells is the cell's one [`Scalar`].
+//! string an `s` cell indexes is its text, the style is its [`StyleId`] and
+//! the [`NumberFormat`] its `numFmtId` classifies as, the formula is one
+//! shared [`Formula`], an error is its [`ExcelError`], and the number, the
+//! text, the boolean or the date the content spells is the cell's one
+//! [`Scalar`].
 //! A cell built from a value states the facts that value spells, so a
 //! [`Sheet`](super::Sheet) writes it back without deciding anything again.
 //!
@@ -23,6 +25,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar, Str, TemporalKind, TimeUnit, Timezone};
 
+use super::formula::Formula;
+use super::style::StyleId;
 use super::styles::NumberFormat;
 
 /// The most rows a worksheet holds: `1_048_576`.
@@ -107,7 +111,7 @@ impl DateSystem {
     }
 
     /// The last serial this system spells, 9999-12-31.
-    const fn last_serial(self) -> i64 {
+    pub(crate) const fn last_serial(self) -> i64 {
         match self {
             Self::Year1900 => LAST_SERIAL_1900,
             Self::Year1904 => LAST_SERIAL_1904,
@@ -294,39 +298,25 @@ impl DateSystem {
                 })?;
             Ok((whole, nanos.rem_euclid(1_000_000) as f64 / 1_000_000.0))
         };
-        Ok(Some(match value {
-            Scalar::Date32(_) | Scalar::Date64(_) => {
-                let (whole, _) = millis(value)?;
-                (self.serial_from_millis(whole)?, NumberFormat::Date)
+        let Some(format) = value
+            .temporal_unit()
+            .zip(value.temporal_timezone())
+            .and_then(|(unit, zone)| NumberFormat::of_temporal(value.id(), unit, zone.is_naive()))
+        else {
+            return Ok(None);
+        };
+        let (whole, rest) = millis(value)?;
+        let serial = match format {
+            NumberFormat::Date => self.serial_from_millis(whole)?,
+            NumberFormat::DateTime | NumberFormat::DateTimeFraction => {
+                self.serial_from_millis(whole)? + rest / DAY_MILLIS as f64
             }
-            Scalar::DateTime64(held) if held.timezone().is_naive() => {
-                let format = if matches!(held.unit(), TimeUnit::Second) {
-                    NumberFormat::DateTime
-                } else {
-                    NumberFormat::DateTimeFraction
-                };
-                let (whole, rest) = millis(value)?;
-                (
-                    self.serial_from_millis(whole)? + rest / DAY_MILLIS as f64,
-                    format,
-                )
+            NumberFormat::Time | NumberFormat::Duration => {
+                (whole as f64 + rest) / DAY_MILLIS as f64
             }
-            Scalar::Time32(_) | Scalar::Time64(_) => {
-                let (whole, rest) = millis(value)?;
-                (
-                    (whole as f64 + rest) / DAY_MILLIS as f64,
-                    NumberFormat::Time,
-                )
-            }
-            Scalar::Duration32(_) | Scalar::Duration64(_) => {
-                let (whole, rest) = millis(value)?;
-                (
-                    (whole as f64 + rest) / DAY_MILLIS as f64,
-                    NumberFormat::Duration,
-                )
-            }
-            _ => return Ok(None),
-        }))
+            NumberFormat::General => return Ok(None),
+        };
+        Ok(Some((serial, format)))
     }
 }
 
@@ -400,8 +390,8 @@ impl CellRef {
             reason: format_smolstr!(
                 "expected a cell within {MAX_ROWS} rows and {MAX_COLUMNS} columns (A1 to \
                  XFD{MAX_ROWS}), got row {} column {}",
-                self.row + 1,
-                self.column + 1
+                u64::from(self.row) + 1,
+                u64::from(self.column) + 1
             ),
         })
     }
@@ -613,6 +603,58 @@ impl CellRange {
         (self.start.row..=self.end.row).flat_map(move |row| {
             (self.start.column..=self.end.column).map(move |column| CellRef::new(row, column))
         })
+    }
+
+    /// How many cells the rectangle holds.
+    #[must_use]
+    pub(crate) const fn cell_count(self) -> u64 {
+        self.row_size() as u64 * self.column_size() as u64
+    }
+
+    /// Whether the two rectangles share a cell.
+    #[must_use]
+    pub(crate) const fn intersects(self, other: Self) -> bool {
+        self.start.row <= other.end.row
+            && other.start.row <= self.end.row
+            && self.start.column <= other.end.column
+            && other.start.column <= self.end.column
+    }
+
+    /// Whether `other` lies wholly inside the rectangle.
+    #[must_use]
+    pub(crate) const fn encloses(self, other: Self) -> bool {
+        self.contains(other.start) && self.contains(other.end)
+    }
+
+    /// The whole rows `rows`, which name one row at least.
+    #[must_use]
+    pub(crate) const fn of_rows(rows: std::ops::Range<u32>) -> Self {
+        Self {
+            start: CellRef::new(rows.start, 0),
+            end: CellRef::new(rows.end - 1, MAX_COLUMNS - 1),
+        }
+    }
+
+    /// The whole columns `columns`, which name one column at least.
+    #[must_use]
+    pub(crate) const fn of_columns(columns: std::ops::Range<u32>) -> Self {
+        Self {
+            start: CellRef::new(0, columns.start),
+            end: CellRef::new(MAX_ROWS - 1, columns.end - 1),
+        }
+    }
+
+    /// The rectangle of the same size with `target` its top-left cell; the
+    /// caller keeps it on the grid.
+    #[must_use]
+    pub(crate) const fn moved_to(self, target: CellRef) -> Self {
+        Self {
+            start: target,
+            end: CellRef::new(
+                target.row + (self.end.row - self.start.row),
+                target.column + (self.end.column - self.start.column),
+            ),
+        }
     }
 }
 
@@ -834,6 +876,133 @@ impl CellKind {
     }
 }
 
+/// An error value a cell holds: what its `<v>` spells under `t="e"`.
+///
+/// The eighteen errors Excel spells are variants of their own, from the
+/// classic `#NULL!` to `#DIV/0!`, `#N/A` and `#NAME?` through the ones a
+/// dynamic array, a data type or a connected source answers - `#SPILL!`,
+/// `#CALC!`, `#FIELD!`, `#BLOCKED!`, `#CONNECT!`, `#BUSY!`, `#UNKNOWN!`,
+/// `#PYTHON!`, `#TIMEOUT!`, `#EXTERNAL!` and `#GETTING_DATA`. Any other
+/// text is [`ExcelError::Unrecognized`]: the cell keeps the literal it read
+/// and writes it back unchanged, so an error a later Excel adds survives a
+/// round trip through this crate.
+///
+/// ```
+/// use yggdryl::excel::ExcelError;
+///
+/// assert_eq!(ExcelError::from_text("#DIV/0!"), ExcelError::Div0);
+/// assert_eq!(ExcelError::from_text("#n/a"), ExcelError::NA);
+/// assert_eq!(ExcelError::Spill.as_str(), "#SPILL!");
+/// assert_eq!(ExcelError::from_text("#WHAT?"), ExcelError::Unrecognized);
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ExcelError {
+    /// `#NULL!`: two ranges that do not intersect.
+    Null,
+    /// `#DIV/0!`: a division by zero.
+    Div0,
+    /// `#VALUE!`: an operand of the wrong type.
+    Value,
+    /// `#REF!`: a reference to a cell that is gone.
+    Ref,
+    /// `#NAME?`: a name no function or defined name has.
+    Name,
+    /// `#NUM!`: a number no cell can hold.
+    Num,
+    /// `#N/A`: a value that is not available.
+    NA,
+    /// `#GETTING_DATA`: a value still being fetched.
+    GettingData,
+    /// `#SPILL!`: a dynamic array with no room to spill.
+    Spill,
+    /// `#CALC!`: a calculation the engine cannot perform.
+    Calc,
+    /// `#FIELD!`: a field a data type does not have.
+    Field,
+    /// `#BLOCKED!`: a feature the workbook's settings block.
+    Blocked,
+    /// `#CONNECT!`: a connected service that did not answer.
+    Connect,
+    /// `#BUSY!`: a value a service is still computing.
+    Busy,
+    /// `#UNKNOWN!`: a data type this Excel does not know.
+    Unknown,
+    /// `#PYTHON!`: a Python formula that failed.
+    Python,
+    /// `#TIMEOUT!`: a computation that ran out of time.
+    Timeout,
+    /// `#EXTERNAL!`: an external computation that failed.
+    External,
+    /// Any other text: the cell holds the literal it was read with.
+    Unrecognized,
+}
+
+impl ExcelError {
+    /// The error as Excel spells it; [`Self::Unrecognized`] answers
+    /// `#UNRECOGNIZED`, which is never written - its cell writes the literal
+    /// it holds.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Null => "#NULL!",
+            Self::Div0 => "#DIV/0!",
+            Self::Value => "#VALUE!",
+            Self::Ref => "#REF!",
+            Self::Name => "#NAME?",
+            Self::Num => "#NUM!",
+            Self::NA => "#N/A",
+            Self::GettingData => "#GETTING_DATA",
+            Self::Spill => "#SPILL!",
+            Self::Calc => "#CALC!",
+            Self::Field => "#FIELD!",
+            Self::Blocked => "#BLOCKED!",
+            Self::Connect => "#CONNECT!",
+            Self::Busy => "#BUSY!",
+            Self::Unknown => "#UNKNOWN!",
+            Self::Python => "#PYTHON!",
+            Self::Timeout => "#TIMEOUT!",
+            Self::External => "#EXTERNAL!",
+            Self::Unrecognized => "#UNRECOGNIZED",
+        }
+    }
+
+    /// The error `text` spells, compared without case as Excel reads an
+    /// error typed in any case; any other text is [`Self::Unrecognized`].
+    #[must_use]
+    pub fn from_text(text: &str) -> Self {
+        const KNOWN: [ExcelError; 18] = [
+            ExcelError::Null,
+            ExcelError::Div0,
+            ExcelError::Value,
+            ExcelError::Ref,
+            ExcelError::Name,
+            ExcelError::Num,
+            ExcelError::NA,
+            ExcelError::GettingData,
+            ExcelError::Spill,
+            ExcelError::Calc,
+            ExcelError::Field,
+            ExcelError::Blocked,
+            ExcelError::Connect,
+            ExcelError::Busy,
+            ExcelError::Unknown,
+            ExcelError::Python,
+            ExcelError::Timeout,
+            ExcelError::External,
+        ];
+        KNOWN
+            .into_iter()
+            .find(|error| error.as_str().eq_ignore_ascii_case(text))
+            .unwrap_or(Self::Unrecognized)
+    }
+}
+
+impl fmt::Display for ExcelError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 /// One cell: its reference, what the file stated about it, and its value.
 ///
 /// The value is the one the file's facts prove, derived once when the cell
@@ -842,6 +1011,11 @@ impl CellKind {
 /// format, `boolean` for `b`, `utf8` for text, the datetime a `d` cell's
 /// ISO 8601 text spells, and null for an error or an empty cell. A cell
 /// built from a value states the kind and format that value writes as.
+///
+/// A cell is at most 80 bytes: its value, its reference, one pointer to a
+/// shared [`Formula`], its [`StyleId`], and one byte each for its kind, its
+/// format and its error. What only a few cells state is held beside them by
+/// their [`Sheet`](super::Sheet), never in every cell.
 ///
 /// ```
 /// use yggdryl::excel::{Cell, CellKind, CellRef, DateSystem, NumberFormat};
@@ -859,13 +1033,18 @@ impl CellKind {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cell {
+    /// The typed value, a formula's cached result, or the literal an
+    /// [`ExcelError::Unrecognized`] was read with.
+    value: Scalar,
     reference: CellRef,
+    formula: Option<Formula>,
+    style: StyleId,
     kind: CellKind,
     format: NumberFormat,
-    value: Scalar,
-    formula: Option<SmolStr>,
-    error: Option<SmolStr>,
+    error: Option<ExcelError>,
 }
+
+const _: () = assert!(std::mem::size_of::<Cell>() <= 80);
 
 impl Cell {
     /// A cell stated fact by fact: the kind and format the file gave it, and
@@ -878,11 +1057,12 @@ impl Cell {
         value: Scalar,
     ) -> Self {
         Self {
+            value,
             reference,
+            formula: None,
+            style: StyleId::DEFAULT,
             kind,
             format,
-            value,
-            formula: None,
             error: None,
         }
     }
@@ -917,14 +1097,13 @@ impl Cell {
                 if value.as_f64().is_some_and(f64::is_finite) {
                     (CellKind::Number, NumberFormat::General)
                 } else {
-                    let mut cell = Self::new(
+                    return Ok(Self::new(
                         reference,
-                        CellKind::Error,
+                        CellKind::Number,
                         NumberFormat::General,
                         Scalar::Null,
-                    );
-                    cell.error = Some(SmolStr::new_static("#NUM!"));
-                    return Ok(cell);
+                    )
+                    .with_error(ExcelError::Num));
                 }
             }
             Scalar::Int8(_)
@@ -964,26 +1143,236 @@ impl Cell {
         Ok(cell)
     }
 
+    /// Read a calculation operand from this cell and its already resolved
+    /// source serial, without reparsing cell text.
+    pub(crate) fn calculation_operand(
+        &self,
+        system: DateSystem,
+        raw: Option<f64>,
+    ) -> super::formula::value::Outcome {
+        use super::formula::shape::Held;
+        use super::formula::value::{Operand, Outcome, Unevaluated};
+        if let Some(error) = self.error {
+            return if error == ExcelError::Unrecognized {
+                Outcome::Uncomputed(Unevaluated::Held(Held::Unrecognized))
+            } else {
+                Outcome::Computed(Operand::Error(error))
+            };
+        }
+        if self.kind.is_text() {
+            // A typed source value can be serialized as text without changing
+            // its Scalar. The cell owns that wire/display spelling.
+            let text = match &self.value {
+                crate::string_scalars!(text) => text.clone(),
+                _ => self.text().into(),
+            };
+            return Outcome::Computed(Operand::Text(text));
+        }
+        let value = match &self.value {
+            Scalar::Null => Operand::Blank,
+            Scalar::Boolean(value) => Operand::Boolean(value.get()),
+            crate::string_scalars!(text) => Operand::Text(text.clone()),
+            value if value.temporal_unit().is_some() => {
+                let serial = raw.or_else(|| {
+                    system
+                        .serial_of(value)
+                        .ok()
+                        .flatten()
+                        .map(|(serial, _)| serial)
+                });
+                return serial.map_or(Outcome::Uncomputed(Unevaluated::TemporalSerial), |serial| {
+                    Outcome::Computed(Operand::Number(serial))
+                });
+            }
+            value => match value.as_decimal_f64().or_else(|| number_of(value)) {
+                Some(value) if value.is_finite() => Operand::Number(value),
+                Some(_) => Operand::Error(ExcelError::Num),
+                None => return Outcome::Uncomputed(Unevaluated::Coercion),
+            },
+        };
+        Outcome::Computed(value)
+    }
+
+    /// A computed formula result staged without changing this cell's formula,
+    /// style, reference, or adjacent metadata. Numeric caches are read under
+    /// their format by the same date-system owner as wire caches.
+    pub(crate) fn with_calculated(
+        &self,
+        result: super::formula::value::Operand,
+        system: DateSystem,
+        shown_format: NumberFormat,
+    ) -> Result<Option<Self>> {
+        use super::formula::value::Operand;
+
+        debug_assert!(self.formula.is_some());
+        let result = match result {
+            Operand::Blank => Operand::Number(0.0),
+            other => other,
+        };
+        let (kind, value, error, format) = match result {
+            Operand::Blank => unreachable!("blank is normalized before cache publication"),
+            Operand::Reference(_) => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new(self.reference.to_string()),
+                    reason: SmolStr::new_static(
+                        "expected a scalar formula result, got an unresolved reference",
+                    ),
+                });
+            }
+            Operand::Number(value) => match system.scalar_from_serial(value, shown_format) {
+                Ok(value) => (CellKind::Number, value, None, shown_format),
+                // A temporal format cannot interpret this finite number. As
+                // in restyle, retain its numeric meaning under General.
+                Err(_) => (
+                    CellKind::Number,
+                    Scalar::from(value),
+                    None,
+                    NumberFormat::General,
+                ),
+            },
+            Operand::Text(value) => {
+                if value.as_str().chars().count() > MAX_CELL_TEXT {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new(self.reference.to_string()),
+                        reason: format_smolstr!(
+                            "expected at most {MAX_CELL_TEXT} text characters from the formula"
+                        ),
+                    });
+                }
+                (
+                    CellKind::FormulaString,
+                    Scalar::from(value),
+                    None,
+                    self.format,
+                )
+            }
+            Operand::Boolean(value) => (CellKind::Boolean, Scalar::from(value), None, self.format),
+            Operand::Error(error) => {
+                if error == ExcelError::Unrecognized {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new(self.reference.to_string()),
+                        reason: SmolStr::new_static(
+                            "expected a recognized computed error, got an unrecognized one",
+                        ),
+                    });
+                }
+                (CellKind::Error, Scalar::Null, Some(error), self.format)
+            }
+        };
+        if self.kind == kind && self.value == value && self.error == error && self.format == format
+        {
+            return Ok(None);
+        }
+        let mut changed = self.clone();
+        changed.kind = kind;
+        changed.value = value;
+        changed.error = error;
+        changed.format = format;
+        Ok(Some(changed))
+    }
+
     /// This cell with a formula, whose cached result the value is.
     #[must_use]
-    pub fn with_formula(mut self, formula: impl Into<SmolStr>) -> Self {
-        self.formula = Some(formula.into());
+    pub fn with_formula(mut self, formula: Formula) -> Self {
+        self.formula = Some(formula);
         self
     }
 
+    /// Put `formula` in the cell, or take the one it holds out.
+    pub(crate) fn set_formula(&mut self, formula: Option<Formula>) {
+        self.formula = formula;
+    }
+
     /// This cell holding the error `error`, its value null.
+    ///
+    /// An [`ExcelError::Unrecognized`] keeps the literal it was read with:
+    /// the text the cell's value holds when the error is set, which is what
+    /// [`Self::error_text`] answers and what the cell is written back as.
+    /// An empty text is no literal.
     #[must_use]
-    pub fn with_error(mut self, error: impl Into<SmolStr>) -> Self {
+    pub fn with_error(mut self, error: ExcelError) -> Self {
+        let literal = error == ExcelError::Unrecognized
+            && self.value.as_str().is_some_and(|text| !text.is_empty());
+        if !literal {
+            self.value = Scalar::Null;
+        }
         self.kind = CellKind::Error;
-        self.value = Scalar::Null;
-        self.error = Some(error.into());
+        self.error = Some(error);
         self
+    }
+
+    /// This cell displayed with the style `style`.
+    ///
+    /// A style is an index into the cell formats of the workbook the sheet
+    /// is written into ([`StyleSheet`](super::StyleSheet)): a save refuses
+    /// an index those do not hold, naming the cell, and writes a temporal
+    /// cell whose style does not read as its format under the style the
+    /// workbook interns for that format.
+    #[must_use]
+    pub const fn with_style(mut self, style: StyleId) -> Self {
+        self.style = style;
+        self
+    }
+
+    /// Display the cell with `style`, nothing else changed.
+    pub(crate) const fn set_style(&mut self, style: StyleId) {
+        self.style = style;
+    }
+
+    /// Display the cell with the default style again.
+    pub(crate) const fn clear_style(&mut self) {
+        self.style = StyleId::DEFAULT;
+    }
+
+    /// Display the cell with `style`, whose number format says its number
+    /// is `format`, reading the value again under it where that changes
+    /// what the number is - `45292` under a date format is a date, a date
+    /// under a number format its serial - through `system`. A number no
+    /// date spells under a date format stays the number it is.
+    /// Answers the source numeric serial for the sheet to retain when the
+    /// new typed temporal value cannot reproduce it.
+    pub(crate) fn restyle(
+        &mut self,
+        style: StyleId,
+        format: NumberFormat,
+        system: DateSystem,
+        raw: Option<f64>,
+    ) -> Option<f64> {
+        self.style = style;
+        if self.format == format {
+            return raw;
+        }
+        if self.error.is_none() && self.kind == CellKind::Number && !self.value.is_null() {
+            let serial = raw.or_else(|| match system.serial_of(&self.value) {
+                Ok(Some((serial, _))) => Some(serial),
+                _ => number_of(&self.value),
+            });
+            let Some(serial) = serial else {
+                self.format = format;
+                return None;
+            };
+            if !format.is_temporal() {
+                if self.format.is_temporal() {
+                    self.value = Scalar::from(serial);
+                }
+            } else if let Ok(value) = system.scalar_from_serial(serial, format) {
+                self.value = value;
+            } else {
+                self.value = Scalar::from(serial);
+                self.format = NumberFormat::General;
+                return Some(serial);
+            }
+            self.format = format;
+            return Some(serial);
+        }
+        self.format = format;
+        None
     }
 
     /// This cell at another reference.
     #[must_use]
     pub const fn at(mut self, reference: CellRef) -> Self {
-        self.reference = reference;
+        self.move_to(reference);
         self
     }
 
@@ -1017,36 +1406,82 @@ impl Cell {
         self.format
     }
 
-    /// The value the cell holds.
+    /// The `cellXfs` index the cell is displayed with, as the file stated
+    /// it - the default for an index the file's styles do not hold;
+    /// [`Self::with_style`] says how it is written back.
+    #[must_use]
+    pub const fn style(&self) -> StyleId {
+        self.style
+    }
+
+    /// The value the cell holds: null for an error cell.
     #[must_use]
     pub const fn value(&self) -> &Scalar {
-        &self.value
+        match self.error {
+            Some(_) => &Scalar::Null,
+            None => &self.value,
+        }
     }
 
-    /// The value, taken.
+    /// The value, taken: null for an error cell.
     #[must_use]
     pub fn into_scalar(self) -> Scalar {
-        self.value
+        match self.error {
+            Some(_) => Scalar::Null,
+            None => self.value,
+        }
     }
 
-    /// The formula whose cached result the value is, as the file spells it -
-    /// empty for a dependent of a shared formula, whose text lives on the
-    /// master cell.
+    /// The formula whose cached result the value is.
     #[must_use]
-    pub fn formula(&self) -> Option<&str> {
-        self.formula.as_deref()
+    pub const fn formula(&self) -> Option<&Formula> {
+        self.formula.as_ref()
     }
 
     /// The error the cell holds, `#N/A`, `#DIV/0!` and the rest.
     #[must_use]
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+    pub const fn error(&self) -> Option<ExcelError> {
+        self.error
+    }
+
+    /// The error as it is written: its spelling, or the literal an
+    /// [`ExcelError::Unrecognized`] was read with - `#UNRECOGNIZED` for one
+    /// holding no literal, which no part spells - and the empty text for a
+    /// cell holding no error.
+    #[must_use]
+    pub fn error_text(&self) -> &str {
+        match self.error {
+            None => "",
+            Some(error) => self.written_error().unwrap_or(error.as_str()),
+        }
+    }
+
+    /// The text a part spells the cell's error with: `None` for no error,
+    /// and for an unrecognized one holding no literal to write back.
+    pub(crate) fn written_error(&self) -> Option<&str> {
+        match self.error? {
+            ExcelError::Unrecognized => self.value.as_str(),
+            error => Some(error.as_str()),
+        }
+    }
+
+    /// Move the cell to `reference` in place, which is what a sheet moving
+    /// a row does to every cell in it; [`Self::at`] is its consuming form.
+    pub(crate) const fn move_to(&mut self, reference: CellRef) {
+        self.reference = reference;
     }
 
     /// Whether the cell holds no value: an empty cell or an error.
     #[must_use]
     pub const fn is_null(&self) -> bool {
-        matches!(self.value, Scalar::Null)
+        self.error.is_some() || matches!(self.value, Scalar::Null)
+    }
+
+    /// Whether the cell holds something a user sees: a value, a formula or
+    /// an error, as against a blank cell kept for its style.
+    #[must_use]
+    pub(crate) const fn has_content(&self) -> bool {
+        self.formula.is_some() || self.error.is_some() || !matches!(self.value, Scalar::Null)
     }
 
     /// The cell spelled as text, which is what a declared `utf8` column
@@ -1056,11 +1491,28 @@ impl Cell {
     /// empty text.
     #[must_use]
     pub fn text(&self) -> Cow<'_, str> {
-        if let Some(error) = &self.error {
-            return Cow::Borrowed(error);
+        if self.error.is_some() {
+            return Cow::Borrowed(self.error_text());
         }
         cell_text(&self.value)
     }
+}
+
+/// The number a numeric value is, `None` for anything else.
+pub(crate) fn number_of(value: &Scalar) -> Option<f64> {
+    if let Some(number) = value.as_f64() {
+        return Some(number);
+    }
+    if let Some(integer) = value.as_i128() {
+        return Some(integer as f64);
+    }
+    if let Some(integer) = value.as_u128() {
+        return Some(integer as f64);
+    }
+    if value.is_decimal() {
+        return cell_text(value).parse::<f64>().ok();
+    }
+    None
 }
 
 /// A value spelled as a cell displays it.
@@ -1171,6 +1623,9 @@ fn unescape_content(text: &str) -> String {
 
 /// The shortest text that reads back as `serial`.
 pub(crate) fn serial_text(serial: f64) -> SmolStr {
+    if serial == 0.0 && serial.is_sign_negative() {
+        return SmolStr::new_static("-0");
+    }
     if serial.fract() == 0.0 && serial.abs() < 1e15 {
         return format_smolstr!("{}", serial as i64);
     }
@@ -1233,6 +1688,22 @@ pub(crate) fn iso_scalar(text: &str) -> Result<Scalar> {
     })
 }
 
+/// A decoded cell scalar and its already-parsed numeric serial, or the
+/// temporal interpretation that a held sheet alone may fall back from.
+pub(crate) enum WireScalar {
+    Decoded { scalar: Scalar, serial: Option<f64> },
+    TemporalInvalid { serial: f64, error: Error },
+}
+
+impl WireScalar {
+    pub(crate) fn into_scalar(self) -> Result<Scalar> {
+        match self {
+            Self::Decoded { scalar, .. } => Ok(scalar),
+            Self::TemporalInvalid { error, .. } => Err(error),
+        }
+    }
+}
+
 /// The value the file's facts about one cell prove, before a field says
 /// anything: what [`Cell::value`] holds and what inference reads.
 ///
@@ -1246,28 +1717,42 @@ pub(crate) fn wire_scalar(
     format: NumberFormat,
     system: DateSystem,
     content: &str,
-) -> Result<Scalar> {
-    match kind {
+) -> Result<WireScalar> {
+    let decoded = |scalar| WireScalar::Decoded {
+        scalar,
+        serial: None,
+    };
+    Ok(match kind {
         CellKind::Number => {
             if content.trim().is_empty() {
-                return Ok(Scalar::Null);
+                return Ok(decoded(Scalar::Null));
             }
-            system.scalar_from_serial(parse_number(content)?, format)
+            let serial = parse_number(content)?;
+            match system.scalar_from_serial(serial, format) {
+                Ok(scalar) => WireScalar::Decoded {
+                    scalar,
+                    serial: Some(serial),
+                },
+                Err(error) if format.is_temporal() => WireScalar::TemporalInvalid { serial, error },
+                Err(error) => return Err(error),
+            }
         }
         CellKind::SharedString | CellKind::FormulaString | CellKind::InlineString => {
-            Ok(Scalar::from(Str::new(content)))
+            decoded(Scalar::from(Str::new(content)))
         }
-        CellKind::Boolean => match content.trim() {
-            "1" | "true" | "TRUE" => Ok(Scalar::from(true)),
-            "0" | "" | "false" | "FALSE" => Ok(Scalar::from(false)),
-            other => Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected 0 or 1 for a boolean cell, got {other:?}"),
-            }),
-        },
-        CellKind::Date => iso_scalar(content),
-        CellKind::Error => Ok(Scalar::Null),
-    }
+        CellKind::Boolean => decoded(match content.trim() {
+            "1" | "true" | "TRUE" => Scalar::from(true),
+            "0" | "" | "false" | "FALSE" => Scalar::from(false),
+            other => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected 0 or 1 for a boolean cell, got {other:?}"),
+                });
+            }
+        }),
+        CellKind::Date => decoded(iso_scalar(content)?),
+        CellKind::Error => decoded(Scalar::Null),
+    })
 }
 
 /// The value one cell's facts prove under the column `field` declares.
@@ -1324,7 +1809,7 @@ pub(crate) fn field_scalar(
             crate::text::prepare_text(Scalar::from(Str::new(content)), field)
         }
         CellKind::Boolean => {
-            let held = wire_scalar(kind, format, system, content)?;
+            let held = wire_scalar(kind, format, system, content)?.into_scalar()?;
             if is_text_target {
                 return field.scalar(Scalar::from(cell_text(&held).into_owned()));
             }

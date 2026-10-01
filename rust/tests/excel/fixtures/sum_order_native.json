@@ -1,0 +1,604 @@
+{
+  "source": "Excel 16.0 build 20430.0; rust/target/excel-desktop/p5-sum-order/results.json",
+  "input_sha256": "3f2aebd4e7408601612a76477fe9ce9c8cf2c2cfbe90c9c0fdd3daa2110aec86",
+  "saved_sha256": "e4e4649b001b4185bb9ceafdf42b8ae86c2f7df07c164e495ee9d95494f7ee13",
+  "native_cases": 288,
+  "ordered_sum_cases": 54,
+  "before_after_bits_equal": true,
+  "cases": [
+    {
+      "formula": "SUM(C2,D2,E2)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffe",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cc0000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "4.4408920985006262E-16"
+    },
+    {
+      "formula": "SUM(C2,E2,D2)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffffe"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E2,C2,D2)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffe"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C3,D3,E3)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffe",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "0000000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C3,E3,D3)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffffe"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "0000000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E3,C3,D3)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffe"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "0000000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C4,D4,E4)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffc",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cc8000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "6.6613381477509392E-16"
+    },
+    {
+      "formula": "SUM(C4,E4,D4)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffffc"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E4,C4,D4)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffc"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C5,D5,E5)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffc",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cb0000000000000",
+      "grouped_bits": "3cb0000000000000",
+      "cached_xml": "2.2204460492503131E-16"
+    },
+    {
+      "formula": "SUM(C5,E5,D5)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffffc"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cb0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E5,C5,D5)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffc"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cb0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C6,D6,E6)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffa",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cd0000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "8.8817841970012523E-16"
+    },
+    {
+      "formula": "SUM(C6,E6,D6)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffffa"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E6,C6,D6)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffa"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C7,D7,E7)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffffa",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cc0000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "4.4408920985006262E-16"
+    },
+    {
+      "formula": "SUM(C7,E7,D7)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffffa"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E7,C7,D7)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffffa"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc0000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C8,D8,E8)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff8",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cd4000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "1.1102230246251565E-15"
+    },
+    {
+      "formula": "SUM(C8,E8,D8)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffff8"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E8,C8,D8)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff8"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C9,D9,E9)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff8",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cc8000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "6.6613381477509392E-16"
+    },
+    {
+      "formula": "SUM(C9,E9,D9)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffff8"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E9,C9,D9)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff8"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cc8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C10,D10,E10)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff6",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cd8000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "1.3322676295501878E-15"
+    },
+    {
+      "formula": "SUM(C10,E10,D10)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffff6"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E10,C10,D10)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff6"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C11,D11,E11)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff6",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cd0000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "8.8817841970012523E-16"
+    },
+    {
+      "formula": "SUM(C11,E11,D11)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffff6"
+      ],
+      "expected_bits": "3cd0000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "8.8817841970012523E-16"
+    },
+    {
+      "formula": "SUM(E11,C11,D11)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff6"
+      ],
+      "expected_bits": "3cd0000000000000",
+      "grouped_bits": "3cd0000000000000",
+      "cached_xml": "8.8817841970012523E-16"
+    },
+    {
+      "formula": "SUM(C12,D12,E12)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff4",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3cdc000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "1.5543122344752192E-15"
+    },
+    {
+      "formula": "SUM(C12,E12,D12)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffff4"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(E12,C12,D12)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff4"
+      ],
+      "expected_bits": "0000000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "0"
+    },
+    {
+      "formula": "SUM(C13,D13,E13)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff4",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cd4000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "1.1102230246251565E-15"
+    },
+    {
+      "formula": "SUM(C13,E13,D13)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffff4"
+      ],
+      "expected_bits": "3cd4000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "1.1102230246251565E-15"
+    },
+    {
+      "formula": "SUM(E13,C13,D13)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff4"
+      ],
+      "expected_bits": "3cd4000000000000",
+      "grouped_bits": "3cd4000000000000",
+      "cached_xml": "1.1102230246251565E-15"
+    },
+    {
+      "formula": "SUM(C14,D14,E14)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff2",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    },
+    {
+      "formula": "SUM(C14,E14,D14)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffff2"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    },
+    {
+      "formula": "SUM(E14,C14,D14)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff2"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    },
+    {
+      "formula": "SUM(C15,D15,E15)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff2",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cd8000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "1.3322676295501878E-15"
+    },
+    {
+      "formula": "SUM(C15,E15,D15)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffff2"
+      ],
+      "expected_bits": "3cd8000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "1.3322676295501878E-15"
+    },
+    {
+      "formula": "SUM(E15,C15,D15)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff2"
+      ],
+      "expected_bits": "3cd8000000000000",
+      "grouped_bits": "3cd8000000000000",
+      "cached_xml": "1.3322676295501878E-15"
+    },
+    {
+      "formula": "SUM(C16,D16,E16)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff0",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3ce2000000000000",
+      "grouped_bits": "3ce2000000000000",
+      "cached_xml": "1.9984014443252818E-15"
+    },
+    {
+      "formula": "SUM(C16,E16,D16)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfeffffffffffff0"
+      ],
+      "expected_bits": "3ce2000000000000",
+      "grouped_bits": "3ce2000000000000",
+      "cached_xml": "1.9984014443252818E-15"
+    },
+    {
+      "formula": "SUM(E16,C16,D16)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff0"
+      ],
+      "expected_bits": "3ce2000000000000",
+      "grouped_bits": "3ce2000000000000",
+      "cached_xml": "1.9984014443252818E-15"
+    },
+    {
+      "formula": "SUM(C17,D17,E17)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfeffffffffffff0",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3cdc000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "1.5543122344752192E-15"
+    },
+    {
+      "formula": "SUM(C17,E17,D17)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfeffffffffffff0"
+      ],
+      "expected_bits": "3cdc000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "1.5543122344752192E-15"
+    },
+    {
+      "formula": "SUM(E17,C17,D17)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfeffffffffffff0"
+      ],
+      "expected_bits": "3cdc000000000000",
+      "grouped_bits": "3cdc000000000000",
+      "cached_xml": "1.5543122344752192E-15"
+    },
+    {
+      "formula": "SUM(C18,D18,E18)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfefffffffffffee",
+        "3cb0000000000000"
+      ],
+      "expected_bits": "3ce4000000000000",
+      "grouped_bits": "3ce4000000000000",
+      "cached_xml": "2.2204460492503131E-15"
+    },
+    {
+      "formula": "SUM(C18,E18,D18)",
+      "source_bits": [
+        "3ff0000000000000",
+        "3cb0000000000000",
+        "bfefffffffffffee"
+      ],
+      "expected_bits": "3ce4000000000000",
+      "grouped_bits": "3ce4000000000000",
+      "cached_xml": "2.2204460492503131E-15"
+    },
+    {
+      "formula": "SUM(E18,C18,D18)",
+      "source_bits": [
+        "3cb0000000000000",
+        "3ff0000000000000",
+        "bfefffffffffffee"
+      ],
+      "expected_bits": "3ce4000000000000",
+      "grouped_bits": "3ce4000000000000",
+      "cached_xml": "2.2204460492503131E-15"
+    },
+    {
+      "formula": "SUM(C19,D19,E19)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bfefffffffffffee",
+        "bcb0000000000000"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    },
+    {
+      "formula": "SUM(C19,E19,D19)",
+      "source_bits": [
+        "3ff0000000000000",
+        "bcb0000000000000",
+        "bfefffffffffffee"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    },
+    {
+      "formula": "SUM(E19,C19,D19)",
+      "source_bits": [
+        "bcb0000000000000",
+        "3ff0000000000000",
+        "bfefffffffffffee"
+      ],
+      "expected_bits": "3ce0000000000000",
+      "grouped_bits": "3ce0000000000000",
+      "cached_xml": "1.7763568394002505E-15"
+    }
+  ]
+}

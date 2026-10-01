@@ -1,0 +1,612 @@
+{
+  "provenance": {
+    "source": [
+      "rust/target/excel-desktop/carried-area-formula-native/results.json",
+      "rust/target/excel-desktop/carried-area-followup-native/results.json",
+      "rust/target/excel-desktop/carried-area-absolute-owner/results.json",
+      "rust/target/excel-desktop/carried-area-partial-owner/results.json"
+    ],
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "cleanup_completed": true,
+    "reopened_without_repair": true,
+    "input_note": "Complete legacy and x14 worksheet registrations, including extLst. Before XML preserves native scopes; after records contain exact native formula/range facts. No tolerance or omitted representation."
+  },
+  "cases": [
+    {
+      "id": "cf-left-cross",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(B1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-interior-cross",
+      "kind": "cf",
+      "source": "Data",
+      "block": "B2",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-left-absolute-cross",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM($A$1:C3)&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM($B$1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-left-same",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J9 H10:I10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-left-cross",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(B1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-interior-cross",
+      "kind": "dv",
+      "source": "Data",
+      "block": "B2",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-left-absolute-cross",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM($A$1:C3)&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM($B$1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-left-same",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J9 H10:I10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-same-disjoint",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "M10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-cross-multi-host",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10 L8:N10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(B1:C3)+Other!J10+Other!$J$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "SUM(E1:G3)+E1+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-same-multi-disjoint",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10 L8:N10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)+P10+$P$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "SUM(E1:G3)+E1+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-cross-whole-area",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:C3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(Other!J10:L12)+Other!J10+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-destination-only",
+      "kind": "cf",
+      "source": "Other",
+      "block": "E1:E3",
+      "destination": "Data",
+      "target": "A1",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)+A1+$A$1>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-same-disjoint",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "M10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-cross-multi-host",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10 L8:N10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(B1:C3)+Other!J10+Other!$J$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "SUM(E1:G3)+E1+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-same-multi-disjoint",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10 L8:N10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)+P10+$P$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "SUM(E1:G3)+E1+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-cross-whole-area",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:C3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(Other!J10:L12)+Other!J10+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-destination-only",
+      "kind": "dv",
+      "source": "Other",
+      "block": "E1:E3",
+      "destination": "Data",
+      "target": "A1",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(A1:C3)+A1+$A$1>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-cross-absolute-owner",
+      "kind": "cf",
+      "source": "Data",
+      "block": "C3:D4",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:extLst xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" xmlns:ns2=\"http://schemas.microsoft.com/office/excel/2006/main\"><ns0:ext uri=\"{78C0D931-6437-407d-A8EE-F0AAD7539E65}\"><ns1:conditionalFormattings><ns1:conditionalFormatting><ns1:cfRule type=\"expression\" priority=\"1\" id=\"{00000000-000E-0000-0000-000001000000}\"><ns2:f>SUM($C$3:$D$4)+SUM(Other!$A$1:$A$2)&gt;0</ns2:f><ns1:dxf /></ns1:cfRule><ns2:sqref>B2:D5</ns2:sqref></ns1:conditionalFormatting></ns1:conditionalFormattings></ns0:ext></ns0:extLst>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "B2:D2 B5:D5 B3:B4",
+            "formulas": [
+              "SUM(Other!$J$10:$K$11)+SUM(Other!$A$1:$A$2)>0"
+            ]
+          }
+        ],
+        "Other": [
+          {
+            "sqref": "J10:K11",
+            "formulas": [
+              "SUM($C$3:$D$4)+SUM($A$1:$A$2)>0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cf-same-absolute-owner",
+      "kind": "cf",
+      "source": "Data",
+      "block": "C3:D4",
+      "destination": "Data",
+      "target": "D4",
+      "before": {
+        "Data": "<ns0:extLst xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" xmlns:ns2=\"http://schemas.microsoft.com/office/excel/2006/main\"><ns0:ext uri=\"{78C0D931-6437-407d-A8EE-F0AAD7539E65}\"><ns1:conditionalFormattings><ns1:conditionalFormatting><ns1:cfRule type=\"expression\" priority=\"1\" id=\"{00000000-000E-0000-0000-000001000000}\"><ns2:f>SUM($C$3:$D$4)+SUM(Other!$A$1:$A$2)&gt;0</ns2:f><ns1:dxf /></ns1:cfRule><ns2:sqref>B2:D5</ns2:sqref></ns1:conditionalFormatting></ns1:conditionalFormattings></ns0:ext></ns0:extLst>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "B2:D2 B5:C5 B3:B4 D4:E5",
+            "formulas": [
+              "SUM($D$4:$E$5)+SUM(Other!$A$1:$A$2)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-cross-absolute-owner",
+      "kind": "dv",
+      "source": "Data",
+      "block": "C3:D4",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:extLst xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" xmlns:ns2=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" xmlns:ns3=\"http://schemas.microsoft.com/office/excel/2006/main\"><ns0:ext uri=\"{CCE6A557-97BC-4b89-ADB6-D9C93CAAB3DF}\"><ns1:dataValidations count=\"1\"><ns1:dataValidation type=\"custom\" ns2:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns1:formula1><ns3:f>SUM($C$3:$D$4)+SUM(Other!$A$1:$A$2)&gt;0</ns3:f></ns1:formula1><ns3:sqref>B2:D5</ns3:sqref></ns1:dataValidation></ns1:dataValidations></ns0:ext></ns0:extLst>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "B2:D2 B5:D5 B3:B4",
+            "formulas": [
+              "SUM(Other!$J$10:$K$11)+SUM(Other!$A$1:$A$2)>0"
+            ]
+          }
+        ],
+        "Other": [
+          {
+            "sqref": "J10:K11",
+            "formulas": [
+              "SUM($C$3:$D$4)+SUM($A$1:$A$2)>0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "dv-same-absolute-owner",
+      "kind": "dv",
+      "source": "Data",
+      "block": "C3:D4",
+      "destination": "Data",
+      "target": "D4",
+      "before": {
+        "Data": "<ns0:extLst xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" xmlns:ns2=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" xmlns:ns3=\"http://schemas.microsoft.com/office/excel/2006/main\"><ns0:ext uri=\"{CCE6A557-97BC-4b89-ADB6-D9C93CAAB3DF}\"><ns1:dataValidations count=\"1\"><ns1:dataValidation type=\"custom\" ns2:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns1:formula1><ns3:f>SUM($C$3:$D$4)+SUM(Other!$A$1:$A$2)&gt;0</ns3:f></ns1:formula1><ns3:sqref>B2:D5</ns3:sqref></ns1:dataValidation></ns1:dataValidations></ns0:ext></ns0:extLst>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "B2:D2 B5:C5 B3:B4 D4:E5",
+            "formulas": [
+              "SUM($D$4:$E$5)+SUM(Other!$A$1:$A$2)>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-same-whole-reference",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:C3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(P10:R12)+P10+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-same-whole-reference",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:C3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>SUM(A1:C3)+A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "SUM(P10:R12)+P10+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    }
+  ]
+}

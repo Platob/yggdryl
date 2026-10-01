@@ -337,6 +337,10 @@ impl Safety {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Function {
+    /// The non-negative magnitude of a number or duration, preserving its datatype.
+    Abs,
+    /// Square root as a Float64; inputs convert through the bound cast.
+    Sqrt,
     /// Lowercased text.
     Lower,
     /// Uppercased text.
@@ -403,7 +407,9 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 22] = [
+        Self::Abs,
+        Self::Sqrt,
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -431,6 +437,8 @@ impl Function {
     pub fn as_str(&self) -> &str {
         match self {
             Self::User(reference) => reference.as_str(),
+            Self::Abs => "abs",
+            Self::Sqrt => "sqrt",
             Self::Lower => "lower",
             Self::Upper => "upper",
             Self::Length => "length",
@@ -463,6 +471,8 @@ impl Function {
     pub fn from_name(name: &str) -> Option<Self> {
         let lowered = name.to_ascii_lowercase();
         Some(match lowered.as_str() {
+            "abs" => Self::Abs,
+            "sqrt" => Self::Sqrt,
             "lower" | "lcase" => Self::Lower,
             "upper" | "ucase" => Self::Upper,
             "length" | "len" | "char_length" | "character_length" => Self::Length,

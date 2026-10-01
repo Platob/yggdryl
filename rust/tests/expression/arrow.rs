@@ -229,7 +229,7 @@ mod grammar {
     }
 
     /// The predicates the two tiers are compared on, all evaluable per row.
-    const AGREEMENT: [&str; 38] = [
+    const AGREEMENT: [&str; 43] = [
         "i = 1",
         "i <> 1",
         "i < 0",
@@ -241,6 +241,11 @@ mod grammar {
         "f = f",
         "f > 1.0",
         "f is null",
+        "abs(i)",
+        "abs(f)",
+        "abs(d)",
+        "sqrt(i)",
+        "sqrt(f)",
         "d > decimal128(9,2) '1.00'",
         "d <= 0",
         "s = 'alpha'",

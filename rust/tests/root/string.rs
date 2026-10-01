@@ -3023,3 +3023,26 @@ mod leaf_variants {
         }
     }
 }
+
+#[test]
+fn substring_unicode_scalar_window_preserves_sql_positions() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from("a😀e\u{301}z")]);
+    for (text, expected) in [
+        ("substring(s, 2, 2)", "😀e"),
+        ("substring(s, 4, 1)", "\u{301}"),
+        ("substring(s, -2, 2)", "\u{301}z"),
+        ("substring(s, 0, 3)", "a😀"),
+        ("substring(s, 9, 4)", ""),
+        ("substring(s, 2)", "😀e\u{301}z"),
+    ] {
+        let bound = text.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.eval(&row).unwrap(), Scalar::from(expected), "{text}");
+    }
+}

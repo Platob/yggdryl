@@ -1344,6 +1344,34 @@ mod avro {
         }
 
         #[test]
+        fn wrapper_field_reports_projected_schema_from_avro_metadata() {
+            let mut media = yggdryl::avro::Avro::new(handle());
+            let write = media.record_options().unwrap().with_field(schema());
+            media
+                .overwrite_arrow_reader(reader(vec![1, 2]), &write)
+                .unwrap();
+            let options = media
+                .record_options()
+                .unwrap()
+                .with_select("id as key")
+                .unwrap();
+            let field = media.read_arrow_field(&options).unwrap();
+            assert_eq!(field.fields()[0].name(), "key");
+            assert_eq!(field.field_len(), 1);
+            assert_eq!(
+                field.into_arrow_schema().unwrap(),
+                media.read_arrow_reader(&options).unwrap().schema()
+            );
+            let missing = media
+                .record_options()
+                .unwrap()
+                .with_select("absent")
+                .unwrap();
+            let error = media.read_arrow_field(&missing).unwrap_err().to_string();
+            assert!(error.contains("absent"), "{error}");
+        }
+
+        #[test]
         fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
             let mut handle = handle();
             let options = handle.record_options().unwrap().with_field(schema());

@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use yggdryl::HOSTNAME;
-use yggdryl::fs::{BoundLocation, FileSystem, LocalFileSystem, MemoryFileSystem, mask_uri};
+#[cfg(unix)]
+use yggdryl::fs::LocalFileSystem;
+use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, mask_uri};
 
 use crate::counting_filesystem::CountingFileSystem;
 

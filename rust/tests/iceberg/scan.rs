@@ -556,6 +556,15 @@ mod iceberg {
         assert_eq!(opened.len(), 2, "{opened:?}");
         assert!(opened.iter().all(|file| !file.contains("venue=XNYS")));
 
+        // An unchanged declaration keeps the same metadata pruning. The
+        // datatype-cast guard must not turn an exact projection into a scan.
+        let declared = options.clone().with_field(table.schema().unwrap().clone());
+        table.root().reset();
+        assert_eq!(triples(table.read_arrow_reader(&declared).unwrap()), read);
+        let opened = table.root().data_files();
+        assert_eq!(opened.len(), 2, "{opened:?}");
+        assert!(opened.iter().all(|file| !file.contains("venue=XNYS")));
+
         // The folder route pushes the same clause down.
         let folder = LocalFolder::new(&path).unwrap();
         let read = triples(folder.read_arrow_reader(&options).unwrap());

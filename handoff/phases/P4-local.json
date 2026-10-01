@@ -1,0 +1,584 @@
+{
+  "scope": "Local continuation from WIP P4; P5 through P12 have not started.",
+  "branch": "ccr-a1679fa8-oczghl",
+  "baseline_head": "06e813934",
+  "baseline": {
+    "core_all_targets": "passed",
+    "excel": "549 passed",
+    "excel_internals": "572 passed",
+    "media": "145 passed",
+    "openpyxl": "six exchange halves passed, no skipped final half",
+    "workspace": "expected failure: Python Excel 14 errors and Node Excel 10 errors; repair in P10/P11"
+  },
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036,
+    "country": 33,
+    "status": "Desktop Excel16.0build20430.0 available: actual-source fidelity13opens/edit/structural/symmetric-save checks pass; styles110/110 pass; latest probes cleanuptrue. No privacy dialog blocker.",
+    "ownership": "The active user session is never quit or terminated. Four application settings and format separators are recorded before changes and restored. Latest completed fidelity/style/format/character runs report cleanup_completed=true; one earlier180-second fidelity timeout was manually restored to its recorded settings and only its oracle input was closed, leaving the user workbook open.",
+    "fixtures": "Native format/tint JSON, rich_excel.xlsx and vml_excel.json are commit candidates. Rich exact raw-member/edit pins pass; VML9tests include fixture-driven anchor shifts and saved inverse. Pivot refresh remains P6; formula oracle remains P5.",
+    "format_cases": "Historical first oracle: 359 Rust-exported cases ran with original codes and COM LCID1033 (308 matches, 51 differences/refusals). Later native evidence pins 726 renderable semantics cases, 4 assignment refusals and 658 fraction observations; this does not claim universal Excel equality.",
+    "pending_harness": [
+      "Historical classification task from the 359-case oracle. Later format fixtures retain 726 renderable semantics cases, 4 assignment refusals and 658 fraction observations; unsupported spellings and French OS locale substitutions are classified, not counted as equal. Date1904 behavior is not asserted here.",
+      "Add formula/pivot/end-to-end modes with P5/P6/P9."
+    ],
+    "raw_fixture_diagnostic": "Resolved: actual rich_package source, unchanged rewrite and edited file accepted by native Excel; source and unchanged snapshots equal. Native assets replace invalid synthetic theme/drawing/VML/printer payloads; real local shared formulas and registered pivot edge are retained.",
+    "desktop_results": {
+      "probe": "PASS --active probe, Excel16.0build20430.0, Windows64-bit, UI1036/country33.",
+      "fidelity": "PASS actual-source13opens plus edited-feature, anchored structural and independent native-save comparisons; original=unchanged snapshots, cleanuptrue; report rust/target/excel-desktop/fidelity-actual-rich-source/results.json.",
+      "styles": "Latest durable export: 110/110 matched, no repair or failures, cleanup=true, Excel16.0 build20430.0. local-desktop-durable-styles.log.",
+      "formats": "Historical first oracle: 308/359 matched under COM LCID1033; all answers and refusals retained despite console CP1252 failure after JSON save. Later native semantics/fraction fixtures pin 726 renderable cases, 4 assignment refusals and 658 observations; equality is limited to their asserted subsets.",
+      "characters": "Native full-pair and CRLF probes confirmed source UTF16 run offsets despite normalized Characters positions; actualinspect from-rust.xlsx/from-openpyxl.xlsx bothpass, cleanupTrue. local-desktop-text-recovery.log.",
+      "pure_harness": "69tests passed including active ownership, restoration, locale and native note Placement checks.",
+      "insertions": "12dimension/outline and72border/diagonal observations completed withcleanup. Per-edgeagreement and atomicdiagonal-tripleagreement nowimplemented; unsupported inner/nonoutlineborder insertion refusesatomically untilobserved. Eightnewstyle/undo tests plusoriginalregression pass.",
+      "format_repairs": "Historical 12 observed defects were fixed first. Later 726 renderable semantics cases, 4 assignment refusals and 658 fraction observations were recorded and 31 format tests passed; original unmatched observations were classified by input kind, unsupported spelling and locale where established, without claiming all native results equal.",
+      "structural": "Resolved by VML fix: current actual-source fidelity13opens, structural and independent native-save comparisons allPASS, cleanuptrue; report fidelity-actual-rich-source/results.json."
+    }
+  },
+  "repairs": {
+    "table_formulas": "10 new regressions passed: table formula reference rewrites, dormant templates, unique ownership, malformed counts and grid-edge clipping refusals.",
+    "shared_formula_host": "A shape that remains relative-identical is still rendered when its host moves; also fixes carried CF/DV.",
+    "table_cost": "Excel IO suite 7 passed. First cross-sheet edit adds exactly two part reads (worksheet relationships + table), each local header and member; subsequent edit/rename zero reads. Structural allocation pin unchanged.",
+    "remove_sheet": "8 regressions passed: orphaned parts/registrations across saves; shared dependencies; unsaved overrides + journal byte accounting; atomic reused part/rId refusals; namespace scopes; missing shared dependency refusal; namespace quotes/entities escaped once. Saved-undo property now includes RemoveSheet and compares persisted identities on both saved sides.",
+    "interop": "Chart and comment added to the openpyxl fixture; cargo-backed exchange passed all six halves, checking chart formula references, both anchor corners and moved comment location/text/author.",
+    "lints": "Rust 1.98 clippy: simplified existing relationship-owner Option match and names-test map_or identity; removed three redundant one-argument concat macros from new undo tests."
+  },
+  "ui_baseline": {
+    "node": "22.23.3",
+    "playwright": "1.63.0",
+    "unit": "38 passed",
+    "syntax": "18 modules passed",
+    "browser": "Historical browser baseline: 77 passed/1 failed from Windows clipboard CRLF versus LF expectation. The test-only native clipboard correction subsequently passed the full mock walk 78/78 with no console errors (ui_followup).",
+    "screenshots": ".scratch/excel-ui/screenshots/before (46 images)",
+    "tracked_ui_changes": "none; scratch launchers adapt original Linux-only paths",
+    "rerun": "pwsh -File .scratch/excel-ui/run.ps1 browser"
+  },
+  "remaining_p4": [
+    "Checkpoint and push the checked P4 tree, merge origin/main, reconcile the shared header API and container changes, and run affected smoke checks before P5."
+  ],
+  "ci": "not run; no PR created; per instructions CI comes with final PR",
+  "unrun": [
+    "P5-P12 implementation and their checks, final whole workspace/MSRV/binding/docs matrices, release-direction benchmarks, final merge/squash/PR/CI: not reached.",
+    "UI integration and P9b theme checks: service and CLI not implemented; mock baseline follow-up is now78passed."
+  ],
+  "checkpoint_scope": "P4 pre-merge core checks settled, including table/header/media extensions and native Excel evidence. Main merge follows this checkpoint. P5-P12 remain unimplemented; no PR/CI yet.",
+  "checkpoint_checks": {
+    "log": "handoff/local-p4-ownership-validation.log; clippy correction in handoff/local-p4-ownership-clippy.log",
+    "internals_current": "python/.venv/Scripts/python.exe scripts/generate_internals.py --check: current",
+    "core_all_targets": "cargo check --locked -p yggdryl --all-targets --features internals --keep-going --message-format=short: exit 0",
+    "excel": "cargo test --locked -p yggdryl --test excel: 668 passed, 0 failed",
+    "excel_internals": "cargo test --locked -p yggdryl --features internals --test excel: 746 passed, 0 failed",
+    "allocations": "cargo test --locked -p yggdryl --features internals --test allocations -- excel --nocapture: 23 passed, no cost pin changed",
+    "iobase": "cargo test --locked -p yggdryl --features internals --test iobase_calls -- excel --nocapture: 16 passed, no cost pin changed",
+    "bench_smoke": "cargo test --locked -p yggdryl --features internals --bench media -- excel: 18 cases Success",
+    "excel_rustdoc": "RUSTDOCFLAGS=-D warnings cargo test --locked -p yggdryl --doc excel::: 40 passed",
+    "core_rustdoc": "RUSTDOCFLAGS=-D warnings cargo doc --locked -p yggdryl --no-deps: exit 0",
+    "openpyxl": "python/.venv/Scripts/python.exe scripts/check_excel_interop.py: exit 0, all six exchange halves printed, no SKIPPED",
+    "clippy": "cargo clippy --locked -p yggdryl --all-targets --no-deps -- -D warnings and with --features internals: both exit 0 after one fixture-only useless format! correction",
+    "shared_media": "root iomedia:: 71 passed; default-option IO pin1 and allocation pin1 passed; Arrow benchmark8 Success (local-media-own-options-validation.log and local-media-own-options-costs.log)",
+    "formatting": "cargo fmt --all and git diff --check: exit 0"
+  },
+  "checkpoint_checks_head": "next checkpoint over fe289dfba",
+  "p4_exit_chain": {
+    "status": "passed at the pre-main-merge P4 tree; later merge changes require their own smoke checks",
+    "log": "handoff/local-p4-close.log",
+    "excel_default": "first run 926 passed/10 failed/2 ignored from stale VML anchor expectations after the native rich fixture update; native-derived corner pins corrected, note/threaded filter 39 passed, full rerun 936 passed/0 failed/2 ignored exporters",
+    "excel_internals": "first run 1025 passed/1 failed/2 ignored from stale foreign q:tableParts expectation; qualified foreign child is Blocking, focused corrected internal test 1 passed, full rerun 1026 passed/0 failed/2 ignored exporters",
+    "root_media": "iomedia:: 74 passed; options:: 35 passed; handoff/local-p4-media-final.log and local-p4-media-options-final.log",
+    "desktop_harness": "69 tests and 125 subtests passed; handoff/local-desktop-harness-final.log",
+    "allocation_cost": "full first run 43 passed/2 failed on named-table writer pins; disabling raw outside-cell bypass yields 836/836 and 836/6688; reverting exact XML output capacity too restores old 837/837 and 837/6689 (2 passed). Current full/focused runs differ by one fixed allocation with no proven source, so final ceilings 829/829 and 829/6676 preserve at least 8/13 saved allocations, exact unrelated-height flatness, and selected-row growth at most 5847; focused bounds 2 passed (handoff/local-named-table-allocation-bounds-final.log)",
+    "io_and_bench": "Excel IO pins 30 passed/0 failed; Excel debug benchmark smoke exit 0 (handoff/local-p4-close.log)",
+    "rustdoc": "46 Excel examples passed with -D warnings; core cargo doc exit 0. Initial stale tint assertion repaired to native-confirmed 0x808080; focused example 1 passed first.",
+    "interop": "scripts/check_excel_interop.py exit 0; all 11 reported exchange steps printed, including both directions, multiline headers and named-table resize; no SKIPPED.",
+    "clippy": "default and internals core all-targets lanes exit 0 with -D warnings. Seven core findings and one test-fixture repeat_n finding corrected without suppressions; focused inference/table/hyperlink smoke 53 passed before cross-sheet and writer-cost checks; null-record allocation fixture smoke 1 passed.",
+    "transfer_smoke": "26 passed, 0 failed",
+    "writer_cost_smoke": "2 passed, 0 failed",
+    "benchmarks": "139 debug cases Success; no release timing claim",
+    "generated_and_formatting": "cargo fmt --all, generated internals --check and git diff --check passed",
+    "native_fixture_bytes": "Four rich XML index blobs equal their source bytes. Targeted -text and whitespace=cr-at-eol attributes preserve authored mixed line endings; staged diff --check passed without rewriting the native fixtures."
+  },
+  "continuation": {
+    "state": "Historical continuation records follow. The current pre-merge P4 checks are settled in p4_exit_chain; later phases remain pending.",
+    "package_overlay": "Explicit absent/present part state flows through members, lookup, snapshots and inverses. Successful mark clears matching overlays; adopt keeps them so failed writes remain dirty. Required metadata deletion preflights every restore step.",
+    "overlay_checks": "cargo test --locked -p yggdryl --features internals --test excel: package_overlay filter 6 passed, remove_sheet_undo filter 8 passed, every_edit_undone_after_a_save filter 1 passed. New pins reproduced red first.",
+    "table_cut": "Whole source tables cannot land over stationary destination tables. All moving members are excluded together, with current effective bytes reused by preflight and rewrite. Typed refusals identify destination range and both table names.",
+    "table_checks": "cargo test --locked -p yggdryl --test excel shift::table_cut_: 14 passed after initial 3 passed / 6 failed. Review adds cached edits, renamed owners, collective old extents and four adjacent boundaries.",
+    "table_io": "cargo test --locked -p yggdryl --test iobase_calls excel_table_cut_: 4 passed. New red pins first saw 7 vs 6 same-sheet and 10 vs 8 cross-sheet reads. Owned-discovery relationships are now shared; plain cut stays 0 reads.",
+    "next": "Historical next step at the identity/frame checkpoint. Scoped-name and carried-child regressions were subsequently implemented and checked; current pending work is the P4 exit chain in p4_exit_chain.",
+    "cost_checks": "cargo test --locked -p yggdryl --test allocations -- excel --nocapture: 16 passed (prior14 unchanged). Collision at1024/16384 source cells:252/252 allocations. Sparse cut at16 cells:71/71 column/grid; at256 cells:912/912.",
+    "iobase_all": "cargo test --locked -p yggdryl --test iobase_calls -- excel:11 passed (prior7 unchanged).",
+    "bench_smoke": "cargo test --locked -p yggdryl --bench media -- workbook_cut:2 cases Success.",
+    "build": "cargo check --locked -p yggdryl --all-targets --keep-going --message-format=short:exit0.",
+    "fresh_identity": "Worksheet part names are reserved on insertion against effective members, relationship-owner paths and live slots, independent of tab order. Backing belongs to SheetKey, not merely a reused path. Restore rejects a conflicting live reservation atomically.",
+    "snapshot_identity": "One PartOverride per entry retains bytes/presence and a u128 insertion revision. Snapshot stores names/revisions; successful mark clears exact insertion matches. A newer undo reintroducing the same payload Arc survives an older snapshot that omitted the removed sheet; ordinary removal/save becomes clean.",
+    "fresh_checks": "cargo test --locked -p yggdryl --features internals --test excel: fresh_identity_ 8 passed; package_overlay 6 passed; remove_sheet_undo 8 passed; every_edit_undone_after_a_save 1 passed. Initial fresh cases and same-Arc stale save reproduced red. handoff/local-fresh-identity-validation.log.",
+    "table_membership": "Worksheet table ownership resolves actual tableParts/tablePart relationship-namespace IDs in root/local namespace scope. One Registration scanner captures selected fragments for reuse. Unlisted relationships and foreign/nested lookalikes are ignored; missing IDs/relationships/members, external/wrong-kind targets and duplicate active IDs refuse before mutation.",
+    "membership_checks": "cargo test --locked -p yggdryl --features internals --test excel table_owner_: initial 0 passed/7 failed, now 7 passed. Includes Strict, alternate prefixes, namespace entities, scope shadowing and atomic package/revision/name assertions. handoff/local-table-owner-membership-{red,smoke}.log.",
+    "desktop_preferences": "Initial pure restoration regression went red then 32 passed. Later active Excel fidelity/style/format runs recorded cleanup_completed=true and restoration of captured application settings; the earlier unverified status is historical.",
+    "current_pending": "Historical pre-media status. Rows writers, named-table equal-height and bounded positive resize, and supported carried transfers now have focused Rust and native evidence; unsupported moved A1/grouped totals and partial relative-area formulas retain located refusals. P4 exit chain and P5-P12 remain pending.",
+    "full_frames": "Canonical WorksheetFrame envelope shared by fresh writes and attached metadata. Step::Frame retains optional entire frame: root/namespaces, declaration, epilogue, original carried pane and children. Sheet layout pane remains independently editable. Journal accounts all retained envelope bytes.",
+    "frame_checks": "frame_items_ initial1pass/1fail; frame_inverse_ initial0pass/3fail. Combined frame_6passed; savedundo1passed. Logs .scratch/frame-{items-red,inverse-red,pane-green,saved-undo-green}.log.",
+    "namespace_detach": "Normalize namespace declarations at existing carried element intake. Encoded Transitional/Strict root/local namespaces detach old relationships on insertion/replacement, while custom namespaced attributes remain. One test with8cases red then green; .scratch/table-detach-namespace-{red,green}.log.",
+    "cache_cost": "Full frame restoration invalidates ownership index; normal frame-child edits invalidate only changed tableParts. A CF-only rename sequence first reproduced5unexpected reads, now0 while saved CF formula shows final renamed sheet. One new IO pin green; .scratch/frame-cache-specific-{red,green}.log. Existing11IO tests passed before the targeted repair.",
+    "generator": "Internals generator writes LF explicitly on Windows. Temporary-output check proved LF-only and byte-idempotence; actual regeneration and --check passed, leaving only the new excel_sheet export in lib.rs.",
+    "combined_checks": {
+      "excel_internals": "633 executed: 632 passed, 1 malformed carried fixture failed; switched that test to complete rich_package, targeted test 1 passed and all carried:: 11 passed. No remaining known failure.",
+      "allocations": "16 passed; no cost pin changed. Plain cuts 79/79 at16 cells and920/920 at256 (was71/71 and912/912); fixed8 allocations now validate relationships for reserved fresh sheet parts. Table collisions276/276 at1024/16384 (was252/252); fixed24 for qualified memberships and namespace scopes. Per-cell/per-shape bounds unchanged.",
+      "iobase": "12 passed; original11 unchanged plus CF-cache zero-read regression.",
+      "bench": "14 Excel smoke cases Success.",
+      "build": "cargo check --locked -p yggdryl --all-targets --keep-going --message-format=short: exit0.",
+      "clippy": "cargo clippy --locked -p yggdryl --all-targets --no-deps -- -D warnings: exit0.",
+      "generator": "--check current; formatter and git diff --check exit0.",
+      "log": "handoff/local-p4-identity-frame-validation.log"
+    },
+    "retained_styles": "StyleSheet retains one immutable original-XF prefix across written snapshots. One shared rebind reconciles the entire mutable suffix, preserving opaque originals; inverses retain only distinct referenced mutable style meanings. Typed cells/row/column formats, removed raw worksheet roots and active worksheet overlays are remapped before publication. Clean snapshots retain their loaded style interpretation too. Journal bytes include descriptor capacity and string/gradient payloads. Direct remove_sheet skips discarded binding capture.",
+    "retained_style_smoke": "Initial six public regressions:0passed/6failed. Typed repair:10passed/1rawcasefailed. Extra context run:6passed/2rawcasesfailed. Complete narrow result:style_bindings13passed (8public+5internals), raw_style_ids_7passed. Logs handoff/local-retained-styles-{red,typed,smoke}.log and local-retained-style-context-red.log, local-raw-style-smoke.log.",
+    "qualified_document_edits": "Shared package editor accepts exact attribute QNames, supplies resolved element namespaces from one normalized declaration boundary, and splices only changed value bytes. It preserves other attribute spelling/quotes/spacing/entities. Styles target only real main/Strict worksheet ancestry and unqualified s/style, leaving foreign elements/custom attributes opaque.",
+    "qualified_editor_smoke": "Six lexical regressions initially0passed/6failed; final package::internal15passed including5namespace-scope cases. handoff/local-qualified-{attributes-red,editor-smoke}.log.",
+    "retained_style_cost": {
+      "descriptor": "Corrected the allocation fixture to set equal nonblank contents, since clearing removes only default blank cells. 64 cells:default337/original337/appended338; 4096:21168/21168/21169. One descriptor allocation per distinct mutable style, no per-cell descriptor copies.",
+      "original_removal": "New red pin:553 allocations at64cells versus24745 at4096. Skip style capture/raw XML scanning when no mutable suffix exists; green143/143. Direct removal without retained inverse skips capture too.",
+      "journal": "One distinct long font/format/gradient descriptor counted once at1/128cells; journal eviction and undo/redo verified. One test passed.",
+      "refusal": "Missing later sheet in retained Restore refuses before changing an earlier step, styles, revisions, package or journal. One test passed."
+    },
+    "retained_style_validation": {
+      "excel_internals": "666 passed, 0 failed.",
+      "excel_default": "599 passed, 0 failed.",
+      "allocations": "18 passed, no cost pin changed.",
+      "iobase": "12 passed, no read pin changed.",
+      "benchmark_smoke": "14 Excel cases, every one Success.",
+      "openpyxl": "Exit0; all six exchange halves printed, no SKIPPED.",
+      "build_and_lints": "Core all-targets check, clippy -Dwarnings, formatter, internals --check and git diff --check:exit0.",
+      "log": "handoff/local-p4-styles-validation.log; initial allocation-fixture failure retained with subsequent corrected green evidence."
+    },
+    "inverse_origin": "Every opaque Restore has mandatory owning Workbook identity, reused by RestoreSheet. Public apply preflights all opaque children recursively before reads or mutation; direct restore preflight also refuses foreign identity. Removed Default; internal constructors/callers require the target workbook. Retained byte estimate includes the 8-byte origin.",
+    "inverse_origin_checks": "Three original cases red0/3 plus nestedBatch red0/1; repaired foreign_restore_4/4pass. Matching local sheet keys/original XF IDs cannot authorize foreign state. handoff/local-atomicity-origin-red.log, local-foreign-batch-red.log, local-foreign-origin-smoke.log.",
+    "atomicity_red": "Five defects reproduced: guarded multientry failure leaves styles/revision, invalid AddSheet position corrupts Future!A1, Batch style rollback leaves metadata, failed journal compound undo/redo leave dirty/revision/package. handoff/local-atomicity-origin-red.log. Three foreign tests in that same run also failed; total0/8.",
+    "guarded_rollback": "Shared preflight/infallible commit_restore; guarded edits retain inline touched revisions and style-list checkpoints, restore payload before truncating appended styles/resetting revisions. No whole-workbook/style-table checkpoint. AddSheet validates tab position before insertion instead of destructive error cleanup.",
+    "guarded_checks": "Guarded multientry refusal + invalid AddSheet formula:2passed after both red. Future-key preservation:1passed. Allocation2passed: unchanged shared style table4/4 at64/4096XFs; failedpercentpaste38/38, faileddatepaste39/39 at64/4096resident cells. local-guarded-atomicity-smoke.log, local-guarded-cost-smoke.log, local-batch-overlay-red.log.",
+    "restore_sheet_inverse": "A historical RestoreSheet may overwrite intervening formulas, names or views. Its returned inverse now includes their current values after RemoveSheet; Step::Views shares restore/inverse/byte accounting. Formula savedroundtrip red then green1; added names/views, frame and savedinverse checks:9passed. local-restored-sheet-inverse-{red,smoke,validation}.log.",
+    "batch_candidate": "One existing Edit dispatcher has a private trusted rollback mode fed only generated inverses from the synchronous attempt. Nested ledger retains touched slot stamps and exact prior override presence/bytes/insertion revisions; marks retain scalar metadata/styles and ownership-cache Arc. Seven original atomicity checks and edit::28passed; broad264case property and two no-op regressions nowgreen. Source-IO/full touched suites not yet complete.",
+    "table_transfer_red": "Six regressions reproduced runtime red: loaded/fresh destination ownership, exact savedundo/redo, empty formula-template hosts/grid refusal, qualified membership/relationship fragments. No transfer implementation applied yet. local-cross-table-red.log and local-cross-table-namespace-red.log.",
+    "batch_property": "The broad property first failed after DeleteColumns only in is_dirty: its inverse republished an unchanged drawing/VML part that had no forward overlay stamp. Stated::set_part now records the first package write even during rollback. Re-run: 1 passed, all264 forward/inverse/nesting cases; handoff/local-batch-property-{smoke,fixed}.log.",
+    "batch_noops": "Two new runtime regressions failed: zero-count structural inverse incremented revision; unchanged visibility on an unparsed sheet panicked. Trusted rollback skips both no-ops. Public atomicity_ re-run:3passed, including10 flat/nested no-op cases. handoff/local-batch-noop-{red,smoke}.log.",
+    "batch_cost": "New proportional allocation pin:1passed. Fixed two-child failed edit22allocations, unchanged at64/4096originalXFs,2/128sheets,64/4096residentcells. No existing cost pin moved; handoff/local-batch-cost-smoke.log. Source-read pin running separately.",
+    "batch_io": "cargo test --locked -p yggdryl --test iobase_calls excel_failed_batch_rollback_reads_no_source_parts:1passed. Parsed cell failure0reads; row insertion14forward/14total; rename10/10; removal43/43. Rollback added zero source reads. handoff/local-batch-io-smoke.log.",
+    "table_transfer": "Whole-table cross-sheet moves now transfer tableParts memberships and OPC .rels registrations with exact QName, namespace closure, root envelope and unrelated fragment preservation; destination-relative Targets/unique IDs and absent relationship content types are preflighted. Plan combines pending frame/part edits while inverses retain the first before-image. Table ref/filter/sort ranges and empty calculated/totals template hosts follow their destination sheet.",
+    "table_transfer_checks": "Six runtime regressions were red; cargo test --locked -p yggdryl --test excel table_cut_:20passed. Includes loaded/fresh targets, qualified fragments, empty template hosts/refusal and exact savedundo/redo. handoff/local-table-transfer-smoke.log.",
+    "table_transfer_io": "New successful cross-sheet read pin first failed10reads versus8. Existing per-plan bytes now retain source/destination relationships and transfer reuses them; table IO filter5passed with8cold/4warmreads and prior4pins unchanged. handoff/local-table-transfer-io-{red,smoke}.log.",
+    "table_mce": "Addendum14 declares ECMA-376 Part3 (2015) inheritance. Existing Registration reader carries resolved Ignorable/ProcessContent scope, closes inherited namespace pairs on relocation, preserves authored bytes and refuses changed unknown-edition context or unprovable destination interpretation atomically. Four tests runtime-red then4passed; malformed-list test contains10cases. handoff/local-table-mce-{red,smoke}.log.",
+    "table_mce_followup": "Review found detached fragment reparses lost inherited-only Ignorable used by authored ProcessContent. Exact runtime regression failed, then seeded select_in with inherited context:1passed with2destination cases. First attempted filter matched0 and is not counted. handoff/local-table-mce-inherited-{red,smoke}.log.",
+    "strict_namespace_red": "Five runtime tests failed: Strict fresh table target, root binding/default/prefixed/encoded namespace and reopen, unknown/missing/wrong root refusal, newly created sharedStrings, newly created styles after rebase. Typed namespace-family repair prepared separately; no extra source reads permitted. handoff/local-namespace-family-red.log.",
+    "note_cut_red": "Three runtime note/VML cut tests failed: note on unstored cell remains at old ref, partial cross-sheet note/author ownership not moved, whole-to-fresh source relationships remain. Candidate pending, using existing Registration/package edits/PartGraph for shared ownership and prospective cleanup. handoff/local-note-cut-red.log.",
+    "strict_namespace": "One NamespaceFamily resolved once at workbook root intake drives newly emitted worksheets, styles, shared strings and relationships. Existing frames remain exact. Five runtime reds now five passed; handoff/local-namespace-family-{red,smoke}.log.",
+    "strict_streaming": "Streamed Arrow overwrite originally emitted Transitional XML in a Strict package. SheetXml now reads date system and namespace family once from Workbook, adding no argument or source read. One runtime red then one passed with two targets and two batches, all element namespaces/date1904/reopen/unmodified sheet pinned. handoff/local-namespace-family-stream-{red,smoke}.log.",
+    "added_user_scope": "Enrich shared Rust media read/write paths; multiple-table discovery within a sheet and multiline (multirow/merged and embedded-newline) header inference. Explicit internet research begun with official Power Query, pandas and openpyxl examples; handoff/media-table-refinements.md. Core design/implementation/checks pending before bindings and Get Data.",
+    "note_initial": "Initial legacy-note transfer applied. Three prior runtime failures now3passed: note-only cells, partial to existing with authors/VML, whole to fresh with exact saved absence/undo/redo. handoff/local-note-cut-smoke.log.",
+    "note_cost": "Initial no-note cuts increased fixed allocations by110 (234/234 at16cells,1075/1075 at256). Narrow cold run239/234 exposed5 lazy initialization allocations as well. Eligibility now derives from existing typed relationships and VML loads only after selected comments:124/124 and965/965 restored, no test bound changed. Original moves2passed. handoff/local-note-cut-fast-path.log.",
+    "note_ordinary_red": "Four additional tests reproduced runtime refusal: full to existing; partial to fresh; selected-note overwrite cross-sheet; blank-source overwrite. Original3 remained green. Candidate being implemented. handoff/local-note-cut-ordinary-red.log.",
+    "transfer_regressions": "After initial note+fastpath, table_cut_26passed and table IO5passed. remove_sheet_undo7passed/1failed on second saved undo of exclusive chart; diagnosed duplicate inverse ownership of orphaned parts. RemovedParts now sole retained owner for those plan entries; narrow smoke running. handoff/local-note-transfer-regressions.log.",
+    "shared_media_options": "IOMedia read_arrow(None)/write_arrow(None) bypassed record_options and lost wrapper selection or folder format inference. Three runtime reds then3passed after forwarding to self.record_options; all root iomedia::71passed. No bindings changed; benchmark/cost followup and projected-field contract remain. handoff/local-media-own-options-{red,smoke,validation}.log.",
+    "verification_provenance": "A reviewer briefly edited/reverted Registration scan/scope despite scratch-only ownership. Initial note-transfer cost chain is not authoritative for source provenance. Root reran restored-source no-note cost before fastpath (239/234 cold failure), then verified fastpath124/124,965/965. No other source changes accepted from that transient candidate.",
+    "remove_sheet_exclusive_parts": "RemovedParts owns exclusive removed sidecars; filter duplicate retained before-images from the generic inverse. remove_sheet_undo: 8 passed; handoff/local-remove-sheet-exclusive-smoke.log.",
+    "metadata_multiple_roots": "Malformed metadata with two top-level roots caused an unchecked splice panic. Registration::root_at pairs offset with captured root and rejects a second root. Runtime red then 1 passed; local-registration-multiple-roots-{red,smoke}.log.",
+    "content_types_historical": "Historical overlays reconcile live sheet kinds and backed shared parts with parsed Override names, preserving lexical variants without duplicate declarations. Historical tab/shared-part regression runtime red then 1 passed; original partial-note-to-fresh saved undo 1 passed. local-content-types-live-{red,smoke}.log and local-note-cut-fresh-content-types-smoke.log.",
+    "shared_media_options_costs": "IO default-options pin 1 passed: same calls as explicit options. Allocation pin 1 passed: one measured options clone at64/4096rows. Arrow benchmark 8 smoke cases Success. local-media-own-options-costs.log.",
+    "note_ordinary": "Full-to-existing, partial-to-fresh, selected overwrite and blank-source overwrite implemented. Original note_ordinary smoke6passed/1failed; its historical content-types failure subsequently repaired. Six further true runtime reds cover live reservations, pending reservation collisions, orphan relationship owners, irrelevant source namespace, numeric VML IDs and unrelated primitive preservation. local-note-cut-followup-red.log.",
+    "note_reservations": "One package allocator serves worksheets/notes and reserves effective members, orphan relationship owners, live slots and pending planned parts. Blank-source overwrite ignores unused comment namespace; last-note deletion preserves unrelated VML primitives. Five runtime reds now pass; local-note-cut-reservations-smoke.log:12passed/1numericfailure subsequently fixed.",
+    "note_numeric_ids": "Standard numeric VML shape/type collisions remap IDs and references, including matching Office spid and idmap blocks; target geometry remains exact. Three runtime reds now3passed; local-note-cut-numeric-smoke.log.",
+    "note_parser_cost": "One complete direct-child capture replaces repeated classification/capture; shape identity and lexical key share one map. Behavior15passed; two known retained ownership reds excluded, not settled. Allocations at64/4096unrelatedcells:1note1351/1351 (previous1506/1506),16notes5449/5449 (previous5752/5752). Source reads8allfourcases. local-note-single-capture-smoke.log.",
+    "test_layout": "Moved36 public Workbook ownership/transfer tests from shift.rs into workbook.rs; shared fixtures have one owner in support/excel_package.rs. Exact names/count conserved. Workbook137passed with2knownownershipreds excluded; table/batch benchmarks10Success, note benchmark1Success. local-p4-layout-bench-smoke.log and local-table-batch-bench-smoke.log.",
+    "focused_regressions": "remove_sheet_undo8passed, atomicity_9passed (including264case property), table_cut_27passed, namespace_family6passed, restored_sheet_inverse2passed. Earlier guessed restore_sheet_inverse/failed_batch filters matched0 and are not evidence. local-p4-transfer-focused.log and local-note-cut-identity-followup-red.log.",
+    "retained_part_identity": "Generic expected-presence/relationship guard applied. Initial two stale undo/redo regressions now pass. Wider internals run718passed/1metadata diagnostic failure, repaired narrowly; new total has further tests and is not yet settled. Trusted Batch rollback keeps direct commit and no extra reads.",
+    "current_build": "cargo check --locked -p yggdryl --all-targets --features internals --keep-going --message-format=short:exit0 with one relocated unused import warning; import removed in following edit. No clean clippy claim yet. local-p4-current-build.log.",
+    "metadata_truncation": "Registration early validation changed a pre-existing truncated-part diagnostic. Preserve the expected named closing tag and actual byte offset. Existing package truncation regression1passed; local-metadata-truncation-smoke.log.",
+    "owner_witness": "Four further runtime reds proved unchanged owner documents must also survive in inverses: same-sheet note cut, note band, table cut, table band followed by cross-sheet ownership transfer. Plan.kept retains each unchanged .rels once; table Referring shares the already-read owner Arc, preferring current overlays. Four regressions now pass; combined historical undo/atomicity/removal22passed. local-owner-witness-smoke.log and local-owner-witness-regressions.log.",
+    "owner_witness_costs": "Allocation4passed and IO7passed, existing pins unchanged. Plain cut124/124 and965/965; fixed failed Batch22. Note cut1354/1354 at1note and5452/5452 at16notes, +3fixed for retained ownership witness; table refusal321/321 at1024/16384cells. Notes8reads; cross-table8cold/4warm; rollback0extra reads. local-owner-witness-costs.log.",
+    "threaded_comments": "Initial three transfer and five malformed-input runtime reds now8passed. Additional extLst order, partial-to-fresh, blank overwrite, nested reply order, namespace variants and person/mention validation pass. The first extLst assertion incorrectly used natural XML name ordering; corrected to the lexical event stream, not a production defect. local-threaded-cut-smoke.log, local-threaded-order-owner-cache.log, local-threaded-variants-red.log.",
+    "threaded_protocol": "Threaded cuts:21 passed after true runtime reds for ambiguous placeholder authors, malformed person/parent identity, invalid MS-XLSX ownership, and custom outgoing dependencies. Whole-part and same-sheet custom dependencies are preserved; splits/merges that cannot carry them refuse atomically. local-threaded-custom-smoke.log.",
+    "owner_cache": "Removal left a retired table in Referring, causing later AddSheet undo after save to conflict on orphan table1. Runtime red then cache invalidation green. A separate Future-sheet case proved replacement staleness too; insert_sheet replacement now invalidates. adding_sheet_after_:2passed. local-threaded-protocol-owner-red.log and local-owner-cache-replacement-smoke.log.",
+    "threaded_cost_baseline": "Current complete P4 validation includes threaded allocation/IO pins and threaded benchmark smoke, all green; source IO remains12 at1/16chains and64/4096residentcells. No repin. See current checkpoint log for allocation values.",
+    "threaded_uid": "MS-XLSX refers to optional uid while official SDK schema declares unqualified guid; qualified revision uid applicability is not established for Comment by primary sources. Preserve all authored attributes, resolve through the mandatory tc={GUID} author association, refuse multiple disagreeing author links. Do not invent UID semantics or claim Excel acceptance; desktop fixture still pending.",
+    "scoped_names": "7 public cut regressions passed: source-local qualification, table formulas, global control, global/undefined destination shadows, qualified rename, LET/LAMBDA scope and named callable refusals. Formula subtree with internals27passed. Caller regression was re-proved runtime-red with LocalAdder (not built-in RATE). No Excel Cut spelling oracle yet. local-scoped-name-validation.log and local-scoped-callable-nonbuiltin-red.log.",
+    "scoped_name_costs": "New allocation pin1passed at64/4096cells Ãƒâ€”1/32name occurrences:401/402 and22586/22587, unchanged with4096unrelatednames. Existing structural formula overhead10/10 and sparsecuts124/124,965/965 preserved. New IO pin1passed:success/refusal0additionalreads. Benchmark4smoke cases success. local-scoped-name-existing-costs.log; local-scoped-name-validation.log.",
+    "carried_transfer": "12 public runtime-red and followup cases now pass: CF/DV/hyperlink ownership and saved inverses, globally ordered CF priorities, namespace/MCE preservation, hyperlink relationship collisions and partial/foreign/unported markup refusals. cross_sheet filter:26passed; full default Excel:688passed. local-result-field-cost-and-cut-checks.log; local-p4-carried-full-excel.log.",
+    "result_field": "One IORecordOptions::result_field binds existing clauses over owned Field without a reader. Generic3, IPC1, Excel1, Avro/Text/XMLA/Parquet each1 passed after runtime reds. Source caches and canonical dimensions stay unprojected. Helper1/cost IO1/alloc1 pass (identity0alloc at64/4096columns, declared schema0IO); benchmark4cases Success. No binding/final docs update. local-media-result-field-*-smoke.log; local-result-field-cost-and-cut-checks.log.",
+    "carried_costs": "New allocation pin flat at64/4096unrelatedcells: CF365/365 at1registration,5093/5093 at16; DV310/310,1028/1028; hyperlinks647/647,2156/2156. All25Excel allocation tests pass unchanged. New IO pin passes: CF/DV0reads; hyperlink4reads = cold source .rels header/body plus [Content_Types].xml header/body for new destination .rels. Proposed2 was runtime-red; no duplicate source read. Benchmark12cases Success with workbook_cut_carried filter; earlier excel_carried_cut matched no cases and is not evidence. local-carried-cost-settled.log; local-carried-bench-smoke.log; local-excel-cut-cost-regressions.log.",
+    "iceberg_cast_pruning": "Declared Int64->UTF8 filter id > 10 text incorrectly pruned id2; runtime red then green with a rejected id1 control. read_scoped only pushes user filters when referenced declared/stored Fields agree; otherwise the existing post-cast expression path owns filtering. Unchanged-declared pruning control1passed with exactly2files; tablemodule6passed. Existing physical field-ID rename1passed under parquet iceberg internals. New options benchmark4cases Success at10/20files with numeric/text exact IDs checked outside timer. Candidate fixture expected count corrected before first smoke (4rows/2files=2rows/file), no product defect claimed. local-iceberg-declared-cast-pruning-{red,smoke}.log; local-iceberg-projection-regressions.log; local-iceberg-options-bench.log.",
+    "carried_exchange": "Expanded shared openpyxl driver: Python authors CF/DV/external hyperlink fixture; Rust moves B2:D3 to Other!J10, saves/rebases the same Workbook origin, applies saved inverse and saves; Python checks every value/blank, owner absence, ranges/formulas and target in moved/undone outputs. All7reported exchange checks pass with no SKIPPED. This is openpyxl evidence, not Microsoft Excel. local-carried-openpyxl-exchange.log.",
+    "carried_cost_controls": "Location-only hyperlink IO0; existing destination relationships IO4 (source/destination headers and bodies). Rename-back warm probe measured4/4 and was removed: no warm-cache claim. local-carried-io-controls.log. Complete Excel IO19passed.",
+    "named_tables": "One ExcelSelection enum replaces independent sheet/range fields. Registered membership, namespace-aware metadata and decoded ST_Xstring identities resolve once; dense body includes absent physical rows and excludes authoritative header/totals. Source/None changes names, not body. Twenty-two named tests pass after runtime-red fixes for pairing, empty-body binding, duplicate attributes, dense missing rows, truncated root and encoded names. local-named-regions-regressions.log.",
+    "named_table_costs": "Metadata observer uses existing SheetRows depth skip and keeps tableParts only. Reader construction433 allfour selected2/32 Ãƒâ€” unrelated16/256; inference428/490, fullread458/583, headeronly415 with unrelatedheightconstant. Three allocation pins and one source-call pin pass; onepackage stream perread/field, declaredschema0IO. Eight debug benchmarks previouslypassed; sharedstrings extraction/visitor refactor preservedpins.",
+    "header_policy": "ExcelHeader::{Source,None} replaces bool only on ExcelOptions/RecordOptions so far; Sheet bool API migrates with shared layout. Source/None authoritative table-band3 tests redthen green. from_scalar source/none/null2redthen green; boolean and unrecognized inputs refuse at $.header. No Rows/Infer arm published yet.",
+    "named_exchange": "openpyxl driver exit0 with8reported checks andnoSKIPPED: named header/totals + headless table, missingbodyrow, exactLF/CRLF metadata, edit/savedreopen. openpyxl inline-string escape limitation is checked as exactwiretext; Rust before/after reopen asserts decodedCRLF. local-named-table-openpyxl-exchange-fixed.log.",
+    "regions": "Public excel::regions returns registeredtables plus8-neighbour occupied component bounds using width-bounded compacted frontier and recycledparserrows. Namedextents excluded byrowevents, no fullSheet/no table scanpercell. Blankstyles/emptytext ignored; uncachedformula/literalwhitespace occupied. Resultcap1024 refuses, live1025fragments mayjoin. Seven runtime-redÃ¢â€ â€™green, three reviewcontrolsgreen, finalcap2tests green; local-excel-regions-{red,smoke,cost-review,frontier-bound}.log.",
+    "regions_costs": "One source stream across64/4096rows Ãƒâ€”1/32results, exactsourcecalls pstream_bytes=1 bound_location=3 media_type=1 parent=1. Allocation slope initially157Ã¢â€ â€™159, traced toZIPrestartmap Vec16bytes+Arc32bytes at64KiB. Fixedtransportgeometry157/157 and159/159; separatedefaultrestartcontrols pin+2. Fourdebugbenchmarksuccesses. No productionfix/repinofexistingcounts; local-excel-regions-cost-{trace,settled}.log.",
+    "named_regions_default": "cargo test --locked -p yggdryl --test excel:725passed; later extra live-fragment limit test addsonecase and its2testfilter passed. local-named-regions-regressions.log; local-excel-regions-frontier-bound.log. Currentinternals/fullgate not yet run.",
+    "named_regions_cost_regressions": "All29Excel allocation and21IO pins pass, including every previous pin unchanged; defaultcorealltargetclippy-Dwarnings exit0. local-named-regions-cost-clippy.log. Subsequentselection scalar intake stillinprogress; no finalcorecheckclaim.",
+    "namespace_verification": "8new namespace/envelope regressions reproduced runtime-red then green; table root2 and pivotlocation1 +table102 controls pass. Main Excel run740passed/1oldexpectationfailed; the old foreign-root ownership expectation was corrected to assert named atomic blocking and its15-case focusedtest passes. Excelallocation30pass: fixed NamespaceResolver4unpolled/6consumed setup costs exactly account for4changed pins, comments state reasons. Current newinsertinheritance test remains red."
+  },
+  "added_media_scope": [
+    "Historical intake milestone: named-table reads and regions were implemented while writes still refused. Equal-height writes and bounded positive shrink/grow, including representable one-row totals, subsequently passed Rust/openpyxl/native checks.",
+    "Atomic combined selection intake is implemented and tested; typed/dynamic conflicts refuse before mutation.",
+    "Historical shared-header milestone: Source/None and Rows(n) reads had landed before writers and inference. Both Rows writers, conservative Infer, all-null footprint handling and named-table writes subsequently landed with focused checks.",
+    "Generic borrowed-handle intake now moves first stream chunk into a private growing result and publishes after EOF. Native stream preserved, fullMediaType preserved, typed late errors retained. Bound/parent reopen remain lazy; public copy_into atomicity unchanged. Narrow behavior/cost/benchmark checks pass."
+  ],
+  "ui_followup": {
+    "scope": "Mock service only, test expectation fix; no product UI changes or real-service integration claim.",
+    "red": "Focused clipboard check:1failed/2passed, Windows native CRLF vs authored LF; .scratch/excel-ui/logs/clipboard-focused-red.log",
+    "green": "Focused3passed; fullwalk78passed,0consoleerrors; .scratch/excel-ui/logs/clipboard-focused-green.log and clipboard-full-green.log",
+    "change": "Read native clipboard text back, assert only platform CRLF normalization of numeric TSV, then assert pasteText forwarded exact native string. App payload remains unchanged.",
+    "screenshots": ".scratch/excel-ui/screenshots/after-clipboard:46images; before46retained",
+    "command": "Set PLAYWRIGHT_BROWSERS_PATH=.scratch/excel-ui/runtime/browsers, YGGDRYL_PYTHON=python/.venv/Scripts/python.exe, YGGDRYL_REPO=repository root; .scratch/excel-ui/runtime/node-v22.23.3-win-x64/node.exe .scratch/excel-ui/check-clipboard-full.cjs"
+  },
+  "previous_carried_checkpoint_checks": {
+    "core_build": "cargo check --locked -p yggdryl --all-targets --features internals --keep-going --message-format=short:exit0; local-carried-core-build.log",
+    "excel_default": "cargo test --locked -p yggdryl --test excel:688passed; local-p4-carried-full-excel.log",
+    "excel_internals": "cargo test --locked -p yggdryl --features internals --test excel:766passed; local-p4-carried-checkpoint-validation.log",
+    "excel_allocations": "cargo test --locked -p yggdryl --test allocations excel_:25passed, existing pins unchanged; local-excel-cut-cost-regressions.log",
+    "core_clippy": "cargo clippy --locked -p yggdryl --all-targets --no-deps -- -D warnings:exit0; local-p4-carried-checkpoint-validation.log",
+    "housekeeping": "cargo fmt --all, python scripts/generate_internals.py --check and git diff --check:exit0",
+    "core_gated_clippy": "cargo clippy --locked -p yggdryl --all-targets --features \"parquet iceberg internals\" --no-deps -- -D warnings:exit0; local-p4-carried-final-gates.log",
+    "excel_io": "cargo test --locked -p yggdryl --test iobase_calls excel:19passed; local-p4-carried-io-complete.log. Earlier excel_ filter ran12, not the complete Excel subset.",
+    "rustdoc_examples": "cargo test --locked -p yggdryl --doc excel:::40passed; local-p4-carried-final-gates.log",
+    "rustdoc": "RUSTDOCFLAGS=-D warnings cargo doc --locked -p yggdryl --no-deps:exit0; local-p4-carried-final-gates.log",
+    "openpyxl": "python/.venv/Scripts/python.exe scripts/check_excel_interop.py:exit0,7reported checks, no SKIPPED; local-carried-openpyxl-exchange.log"
+  },
+  "current_work_checks": {
+    "shared_header": "Historical header milestone: Rows model/stream readers and writers passed their focused tests, while all-null physical rows, Infer and named writes were pending. Later Land null-footprint, Infer and named-table write/resize tests passed; see land_null_records, inference and named_table_totals_resize.",
+    "layout": "Two qualified-attribute regressions runtime-red togreen; full layout12passed. Insertion cellstyle core added after6/8newtests red;8/8green plus original inserted_rows_inherit1green. Inline workbook-bound RestoreBand avoids temporary inheritance while undoing removals.",
+    "formats": "Native semantics726renderable/4assignmentrefusals andall658fractionobservations nowpinned. Fractionred382mismatches→greenafterfixedroundednumerator32767bound,variableinput2^31-1bound andpartial-productconvergentbound. All31format tests passed; allformatallocationpinsunchanged. NativeFrenchOSlocale substitutions/unsupportedformatspellings remain classified ratherthanclaimedmatching.",
+    "desktop_harness": "66 unit tests pass after symmetric native-rich save control. Both original opens and equal one-SaveAs/reopen legs compare exactly. Every non-comment-geometry source fact remains exact; finite native comment geometry normalization is explicitly recorded with full snapshots. Cleanup gates publication. local-desktop-rich-save-oracle-{red,smoke}.log.",
+    "internals": "Historical regeneration after shared Header/owned_handle. Current generated-internals check passed in handoff/local-p4-close.log; Excel internals rerun 1026 passed/0 failed/2 ignored exporters.",
+    "remaining_validation": "Historical pre-rich/x14/named-write gate list. Native-valid raw rich source and bounded carried/media work now have focused evidence. Current P4 exit checks continue; P5-P12, main merge, commit/push/PR and CI have not been reached.",
+    "owned_handle": "Internals behavior3passed; direct allocation1passed at64/4096/131089bytes (2/2/6 allocations), direct source-call1passed (one bound_location). Downstream all-cost audit129allocator+42IO controls passed,6allocation+5IO expected private-intake reductions repaired with reasons; all11 repairedtests passed narrowly. Public atomic-copy23/26 pins unchanged; text_lines/decode/plain benchmark smoke Success. local-owned-handle-{red,smoke,downstream-costs,downstream-settled}.log.",
+    "desktop_observations": "730format-boundary observations completed with40TEXTrefusals and4cellassignmentrefusals preserved, no comparison-pass claim. 110tint readbacks completed. 8additionaldiagonal flag cases confirm fulltriple equality. All restore attached Excel preferences/window and report cleanup_completed:true, Excel16.0 build20430.0.",
+    "read_validation": "Historical read validation: table+Rows refused before IO, recursive width checked, and reader Rows tests passed. Both Rows writer paths later passed their focused tests; this line records the original intake milestone.",
+    "style_capacity": "Known-full style table refusal moved from30/701allocations at64/4096unrelatedformatcodes to equal counts after owning StyleSheet preflight before Arc::make_mut. Narrow test passed; exactvalues next costcheck. local-insertion-style-capacity-{red,smoke}.log.",
+    "format_comparisons": "CurrentRust vs full newnativeobservations:730semantics569matches121differences40uncompared;372fractionbounds144matches6differences222uncompared;158fractionrefinement70matches42differences46uncompared. Every refusal retained and mustbeclassified. No fullformat-pass claim.",
+    "tint": "Native110case fixture covers87nonzero tints; integerHLS240 rules match measuredExcel. Rusttheme11passed; current110stylecases (fill,font,borders andformat) allpassed against realExcel16.0build20430.0 afterreexport,cleanuptrue. local-theme-native-smoke.log andlocal-desktop-styles-grouped-native.log.",
+    "openpyxl": "Driver exit0 with nine printed checks and no SKIPPED: includes both directions of merged hierarchical headers, literal LF/CRLF labels, temporal values and explicit all-null records. local-rows-openpyxl-exchange.log.",
+    "flat_atomicity": "Review reproduced3flatSource/None/extend failures plus1gridcontrol. Selected-cell staging sharedwithRows, nopost-mutationfalliblemerge. Narrow4tests nowpass. local-flat-write-atomic-{red,smoke}.log.",
+    "costs": "Latest explicit Rows three-cost check passes: metadata237/237 at16/256 unrelated cells (explicit and implicit range), modelwrite15/15, stream write457/456 at64/640 records (separate invocation456/455). New stream pin uses measured upper budget457 and no growth with tenfold records; it does not require an unstable exact whole-package total. Existing media wrapper source-call pin corrected from3 to1 bound_location after private intake removes two redundant probes; narrow wrapper test passes.",
+    "record_occupancy": "Explicit cell-less rows use the existing row-layout map. Stream/model/save-reopen preserve trailing null records; clearing formats preserves occupied rows without creating absent rows. Required null errors name the physical cell. Six focused occupancy controls and seven flat controls passed. A zero-column Source header was separately reproduced red and fixed (one test passed). Logs local-record-occupancy-location-smoke, local-flat-record-occupancy-smoke and local-record-empty-source-header-{red,smoke}.log.",
+    "grid_overflow": "Raw-batch row preflight precedes Arrow casting/landing. Direct huge NullArray and cumulative-batch tests2pass; mirrored internals pin1pass; reader regressions 7pass; reader allocation pins2pass and Rows allocation pins3pass unchanged. Direct out-of-grid and u32::MAX anchors reproduced red, now2pass with early anchor validation and u64 diagnostic formatting. All checks --locked.",
+    "rows_desktop": "Actual Excel16.0 build20430.0 opened both from-rust-rows.xlsx and from-openpyxl-rows.xlsx, produced snapshots without repairs and restored the active session (cleanup_completed=true). local-desktop-rows-exchange.log. A separate strict snapshot comparison remains unrun.",
+    "rows_benchmark": "cargo test --locked -p yggdryl --bench media -- excel/rows2: all eight debug smoke cases Success (model/stream read/write, 16/64 records). local-rows-benchmark-smoke.log; no release timing claim.",
+    "rich_native": "Committed candidate rich_excel.xlsx is an Excel-saved 27-member package; sanitized local path/comment author/core author only, then native-open verified. Two Rust pins pass, strengthened edit pin checks all four regenerated XML parts under the closed normalization list. Excel inspect of Rust-edited output passes with cleanup=true. Pivot refresh remains P6.",
+    "sparse_headers": "Two streamed header tests reproduced red and now pass, including Rows(MAX_ROWS) with one label and no body. Merge-covered header rows emit no empty records; actual null body rows remain explicit. Excel independently opens both A:A and A1:A1048576 merge spellings without repair.",
+    "core_regressions": "Current full Excel default run:798pass,3fail,1 intentionally ignored local-only tint exporter. All three failures subsequently fixed narrowly: two existing grid-limit diagnostic checks pass after preserving the located message, and wrapper source-call reduction is explained/pinned. No rerun of the full theme yet; later carried changes are separate.",
+    "carried_scope": "Protected ranges, ignored errors and cell watches transfer by selected ownership, with namespace-expanded container semantics and atomic refusal for incompatible selected extensions. 10 new controls plus9 related cut tests pass. IO pin:0 extra reads; allocation pin:equal at64/4096 resident cells, protected266/724, ignored288/703, watches256/558 at1/16 registrations. All24 benchmark smoke workloads succeed. Native cut verification pending.",
+    "native_fidelity": "Historical symmetric-save setup. Later actual rich-source fidelity completed 13 opens, edited/structural and equal native-save comparisons without repair, cleanup true; see rich_source_install and excel.desktop_results.fidelity.",
+    "native_filter_cut": "Seven native cases complete, cleanuptrue. Rust reproduced7red tests covering full/partial/same-sheet cuts, source name scope, destination filters, standalone sort and inherited namespace controls. Correct native ownership patch pending; no old transfer patch applied. local-worksheet-filter-native-namespace-red.log.",
+    "inference": "Infer25cases pass after runtime reds. Exact occupied-run contacts join selected header merges; hollow bounding rectangles never establish connectivity. Named tables stay independent authorities. Implicit selection ignores styled blanks; held/streamed nested paths use the same resolved extent. Read regressions46pass, sharedheaders47pass, regions15pass. Final no-evidence wording precision pending; no staging unresolved_error remains. Infer writes refuse explicitly as a read-only policy. local-infer-final-errors-smoke.log.",
+    "native_vml": "VML9Rusttests pass incl malformed/duplicate/empty coordinate refusal, both axes validated once, controls refusal, namespaces, owner-delta shift and exact saved inverse. Test consumes Excel fixture vml_excel.json. Both native save-cycle controls pass exactly with cleanuptrue: no tolerance. Source-without-anchor keeps named atomic Unsupported. Controls/other placement variants not native-verified.",
+    "anchored_exchange": "scripts/check_excel_interop.py exit0, nine reported halves, no SKIPPED. Raw CSS-only row/column edits each have mandatory atomic Unsupported marker; separate explicitly anchored positive shifts every feature and its VML owner anchor. local-vml-anchored-interop.log. Native comparison pending, so full fidelity not claimed.",
+    "inference_costs": "Flat numeric corpus64/4096rows: exact fixed extra allocations versus None95implicit/31explicit for schema and full read; no additional per-row slope. Both open one source stream at either height. Sparse tall2merge/3occupiedrow fixture schema/read/held352/378/125 allocations at both64/4096height; equality pin added. Original tall fixture had unmerged blank header paths and was corrected to actual spans. All6flat+12merged debug benchmark workloads succeed; no release timing claim. local-infer-validation.log and local-infer-final-cost-pins-fixed.log.",
+    "infer_final": "27 Infer tests pass including held/wire trailing physical null row and no-evidence errors. Allocation2 pass: implicit fixed95 and explicit fixed31 extra allocations versus None at64/4096 rows; tall merged heights64/4096 schema352/read378/held125 exactly equal. local-worksheet-filter-infer-validation.log.",
+    "worksheet_filter_final": "8 behavior tests pass including namespace and unaffected-name controls. Allocations1 and IO1 pass: zero extra reads; same-sheet185/380 allocations for1/16 criteria, full-cross66/67, body63/64, each equal at64/4096 unrelated cells. All12 debug benchmark cases Success. local-worksheet-filter-controls-smoke.log and local-worksheet-filter-infer-validation.log.",
+    "desktop_fidelity_latest": "Historical one-sided extra SaveAs mismatch: note Top7.8 versus7.2. Equal-cycle comparison and the actual rich-source 13-open native fidelity gate later passed without repair, cleanup true; see rich_source_install.",
+    "native_partial_cuts": "8 native CF/DV partial-cut cases accepted and saved/reopened without repair, cleanuptrue. Partial source and destination ranges split; cross-sheet formulas rehost; same-sheet overlap retains source precedence. rust/target/excel-desktop/partial-carried-native/results.json. Rust partial carried implementation remains pending.",
+    "native_printer_donor": "Historical donor creation: Excel-authored 5428-byte printerSettings1.bin and native chart/VML graph reopened with cleanup true. The corrected actual rich_package source later passed native 13-open fidelity and exact raw-member/edit pins.",
+    "journal_bound": "All five corrected regressions runtime-red against original Journal; new combined undo+redo byte accounting passes all10 public Journal tests. Oversized generated inverse clears both histories after successful edit; refused edit retains history; zero-entry record answers false. local-journal-byte-bound-final-{red,smoke}.log.",
+    "named_table_writer": "Historical equal-height writer milestone: 16 focused named-table tests passed for sparse/formula/styled replacement and atomic errors. Bounded positive no-totals and one-totals-row grow/shrink subsequently landed; grouped/moved A1 totals formulas and absent totals synthesis retain located refusals. See named_table_document_reader_final and named_table_totals_resize for the current writer and cost evidence.",
+    "named_table_writer_cost_baseline": "Before final style/planner optimization: allocator2pass, unrelated64/4096 rows exactly839; selected2/256rows839/6691 (measurement only, final numeric pin unsettled). IO2pass across2/32 selected and16/256 unrelated rows: one pstream_bytes, write_all_bytes, size, bound_location, media_type, parent; late extra-batch failure performs no write. local-named-table-write-{cost,io}-baseline.log.",
+    "x14_transfer": "Six public runtime regressions prove current named Unsupported boundary for CF/DV/sparkline owner transfer, same-coordinate move, same-URI merge and priority collision. Scratch core awaits root smoke. Native partial CF evidence contradicts current append-last priority policy; whole native legacy/x14 control prepared and pending Excel availability. local-x14-transfer-red.log.",
+    "package_document_reader": {
+      "command": "cargo test --locked -p yggdryl --features internals --test excel package::",
+      "result": "46 passed, 0 failed; after fixing three accidental cp1252 bytes in new test text",
+      "log": "handoff/local-package-splice-reader-smoke.log",
+      "bound": "source worksheet Arc plus eager changed XML and splice metadata plus one input batch plus staged ZIP; removes second whole edited worksheet buffer, not a fully pull-based overlay"
+    },
+    "native_carried_cut_followup": {
+      "result": "8/8 accepted, saved and reopened; passed true, cleanup true",
+      "report": "rust/target/excel-desktop/carried-cut-followup-native/results.json",
+      "findings": "whole and partial destination CF incoming priority 1, previous rule priority 2; linked dataBar x14 GUID matches priority-owning legacy rule with no x14 priority; residual source formula stays authored after top-left cut; mixed absolute moved formula uses destination effective host",
+      "pending": "x14, shared priority correction and partial CF/DV implementation"
+    },
+    "rich_placement_harness": {
+      "red": "RichSaveOracle 9 tests: 5 failures with real Placement property",
+      "green": "scripts.tests.test_check_excel_desktop: 69 passed",
+      "logs": [
+        "handoff/local-desktop-rich-placement-red.log",
+        "handoff/local-desktop-rich-placement-smoke.log"
+      ],
+      "contract": "only four finite comment coordinates may normalize; Placement and unknown geometry keys remain exact"
+    },
+    "native_raw_rich_latest": {
+      "result": "two one-range chart variants open without repair; cleanup true",
+      "report": ".scratch/excel-desktop-diagnostics/open-rich-raw-one-range-results.json",
+      "pending": "Historical stage only: corrected source/assets were applied and actual-source native fidelity later passed; see rich_source_install."
+    },
+    "named_table_document_reader_final": {
+      "checks": {
+        "writer": "37 passed",
+        "named_table_write": "17 passed including split/empty batches",
+        "allocations": "2 passed with exact837/837 and837/6689 pins",
+        "iobase_calls": "2 passed, one source read and one publish on success; zero publish on late refusal",
+        "benchmark": "14 debug named_table cases Success (12 read/resolve/write; 2 scaling); no release timing claim"
+      },
+      "pending": "Historical equal-height stage: bounded positive no-totals and one-totals-row resize later passed focused Rust/openpyxl/native checks; see named_table_positive_resize and named_table_totals_resize.",
+      "logs": [
+        "handoff/local-named-table-reader-writer-smoke.log",
+        "handoff/local-named-table-reader-split-smoke.log",
+        "handoff/local-named-table-reader-cost.log",
+        "handoff/local-named-table-reader-io.log"
+      ],
+      "cost_reason": "DocumentReader removes source-sized Vec allocation and one subsequent growth allocation; selected replacement plan remains eager"
+    },
+    "rich_source_install": {
+      "state": "source/assets applied and corrected; actual export matches every ZIP member of accepted native one-range diagnostic",
+      "checks": [
+        "rich filter7pass",
+        "four original fixture roundtrip/edit/rowinsert/rowremove tests pass",
+        "core all-targets check clean"
+      ],
+      "logs": [
+        "handoff/local-native-rich-roundtrip-smoke.log",
+        "handoff/local-native-rich-all-targets.log",
+        "handoff/local-native-rich-source-export.log"
+      ],
+      "pending": "none for actual-source fidelity; full P4 gates remain",
+      "desktop": {
+        "passed": true,
+        "excel": "16.0 build20430.0",
+        "workbook_opens": 13,
+        "original_unchanged_snapshot_equal": true,
+        "structural_comparison": "passed",
+        "independent_native_save_comparison": "passed",
+        "cleanup_completed": true,
+        "log": "handoff/local-desktop-actual-rich-source.log",
+        "report": "rust/target/excel-desktop/fidelity-actual-rich-source/results.json"
+      }
+    },
+    "media_parser_regression": {
+      "result": "95 passed; Excel source IO28passed; allocation37pass3fail",
+      "log": "handoff/local-table-writer-regression-costs.log",
+      "resolution": "all three observed allocation failures resolved narrowly: named inference2pass and region1pass; no whole rerun"
+    },
+    "named_inference_final_pins": {
+      "result": "2 passed; rows2 schema425/read457,rows32 schema457/read552; no-body411; all unchanged by unrelated16/256rows",
+      "log": "handoff/local-named-table-inference-final-pins.log"
+    },
+    "x14_priority_link_review_red": {
+      "result": "runtime12tests:2pass10fail against unchanged core",
+      "log": "handoff/local-x14-priority-link-review-red.log",
+      "pending": "whole transfer corrections settled narrowly:26cross-sheet tests and2exact-attribute helper tests pass; partial formula-carrying transfer remains"
+    },
+    "region_sort": {
+      "smoke": "15 passed",
+      "allocations": "1 passed: one region147/147 and32regions150/150 at64/4096rows",
+      "reason": "96-byte Found permits in-place64-byte ExcelRegion collect without prior single-result shrink; unstable sort avoids32-result heap scratch",
+      "logs": [
+        "handoff/local-regions-sort-smoke.log",
+        "handoff/local-regions-sort-cost-smoke.log"
+      ]
+    },
+    "native_retained_formulas": {
+      "result": "8 passed; cleanup completed",
+      "report": "rust/target/excel-desktop/carried-retained-formulas/results.json",
+      "finding": "retained CF/DV rules require formula-specific affine subdivisions; incoming formulas rehost; implementation pending"
+    },
+    "x14_cross_sheet": {
+      "result": "26 passed",
+      "log": "handoff/local-x14-prioritized-id-smoke.log",
+      "bugs_proven": "incorrect parent depth caused12sqref refusals; rebound main-namespace cfRule accepted before guard; each corrected after runtime red"
+    },
+    "partial_carried_geometry": {
+      "result": "2 public tests pass with saved inverses;2internals partition properties pass across10016rectangle pairs and full-grid edges",
+      "log": "handoff/local-partial-carried-geometry-final-smoke.log",
+      "pending": "formula-bearing CF/DV partial cuts still pending",
+      "cost": "protected269/780 andignored291/755 for1/16registrations, identical64/4096rows",
+      "io": "1passed, loaded frames only",
+      "benchmark": "4debug cases Success including1048575-row extents"
+    },
+    "native_named_resize": {
+      "result": "sixcases completed/cleanuptrue; positive no-totals grow/shrink accepted; header-only refused;totals movement separate",
+      "report": ".scratch/excel-desktop-diagnostics/native-table-resize-two-column/results.json",
+      "prior_attempts": "initial COM Address property bug corrected; second probe adjacentF4autoexpanded table, replacedbyG4withstrictinitialextent assertions"
+    },
+    "named_table_positive_resize": {
+      "result": "47behavior/refusal tests,1full-width table-ref test,6allocation tests,2IO tests passed",
+      "log": "handoff/local-named-resize-checks.log",
+      "growth_allocations": "906 at64 and4096unrelated rows; same-height837 atbothsizes before later generic XML reserve edits",
+      "pending": "observed positive no-totals and one-totals-row resize slices settled; final P4 gates remain",
+      "exchange": "Rust1test passes; openpyxl input andgrow/shrink outputs checked, noSKIPPED",
+      "allocations": "all6named-table pins pass unchanged; grow906/shrink877 atboth64/4096unrelated rows",
+      "io": "3tests passed, including grow/equal/shrink one-read/one-publish and late-refusal zero-publish",
+      "benchmark": "6debug cases Success",
+      "desktop": "3workbooks opened without repair; exact table extents/cell values/neighbor table andsentinel confirmed; cleanuptrue",
+      "desktop_report": "rust/target/excel-desktop/named-resize-active/results.json"
+    },
+    "xml_reserve": {
+      "result": "48package tests and2allocation tests passed; temporary lexical diagnostic removed after its proof",
+      "log": "handoff/local-retagged-capacity-cost.log",
+      "reason": "exact document output size plus exact escaped first-attribute growth, with existing encoder and no second parse",
+      "pending": "none for this narrow change; broader phase gates remain"
+    },
+    "land_null_records": {
+      "red": "5runtime failures: null overwrite, known all-null width, invalid-anchor overflow, save/undo/redo footprint, slice/band footprint",
+      "smoke": "5passed after pre-interning the Source header; full member-map inverse unchanged",
+      "log": "handoff/local-land-null-final-smoke.log",
+      "cost": "1passed: allocation counts independent of null width at64/512physical rows",
+      "sheet_regression": "69passed",
+      "benchmark": "1debug case Success"
+    },
+    "native_area_cut_matrix": {
+      "result": "10accepted/reopened; cleanuptrue; Excel16.0build20430.0",
+      "report": "rust/target/excel-desktop/cell-cut-area-native/results.json",
+      "finding": "source edge strips contract referenced area; interior retains bounding rectangle; full cut rehosts; whole row/column contracts; partial destination overwrite leaves area",
+      "pending": "none for observed ordinary-cell area cases; CF/DV area policies separate",
+      "rust": "10-case native fixture test and2area/reversed-corner tests allpass afterruntime-red"
+    },
+    "native_whole_cut_comparison": {
+      "result": "two-formula actual Rust vs native cut identical before and after equal native SaveAs cycles; cleanuptrue",
+      "report": "rust/target/excel-desktop/carried-whole-two-formula-active/results.json"
+    },
+    "native_carried_representation": {
+      "result": "10cases complete/cleanuptrue",
+      "report": "rust/target/excel-desktop/carried-representation/results.json",
+      "finding": "legacy andx14 same-sheet CF retained dependency policy agrees; partial crosssheet databar forks destination GUID pair"
+    },
+    "whole_carried_followup": {
+      "allocations": "1passed",
+      "io": "1passed",
+      "benchmark": "36debug cases Success includingstandard/x14CF/DV/sparklines/hyperlinks/protected/ignored/watch",
+      "logs": [
+        "handoff/local-p4-followup-independent-checks.log",
+        "handoff/local-whole-carried-benchmark-smoke.log"
+      ]
+    },
+    "affine_carried_formula_owner": {
+      "result": "2 internals tests and 8-case public native fixture passed with exact saved inverses",
+      "log": "handoff/local-partial-carried-registration-smoke.log",
+      "pending": "disjoint-component policy, area-specific policy, partial linked GUIDs and namespace/priority regressions"
+    },
+    "edit_filter_overlap_regression": {
+      "result": "9 filter tests and all 39 edit tests passed after native-backed partial-overlap preservation",
+      "log": "handoff/local-edit-filter-cut-regression.log",
+      "native": "4 unsorted and 4 Excel-authored-sort cases accepted; cleanup true",
+      "rule": "Retain original broad Cut test vector; do not avoid the supported native operation by relocating its fixture.",
+      "pending": "strengthened criteria assertions and added partial-filter cost checks"
+    },
+    "native_carried_area_semantics": {
+      "result": "40 supported scalar/area native cases passed with exact saved inverses",
+      "reports": [
+        "rust/target/excel-desktop/carried-area-formula-native/results.json",
+        "rust/target/excel-desktop/carried-area-followup-native/results.json"
+      ],
+      "finding": "Same-sheet retained area differs from ordinary-cell cuts; crosssheet rulesmaypromote to x14. Initialcompactextractor omittedextLst; corrected fromrawsavedXML, no native registration deletion.",
+      "pending": "none for the supported native scalar and area cases; unsupported relative areas retain located atomic refusals",
+      "log": "handoff/local-carried-area-supported-smoke.log"
+    },
+    "native_carried_scalar_disjoint": {
+      "result": "16 original/scalar native cases passed with exact saved inverses",
+      "report": "rust/target/excel-desktop/carried-scalar-disjoint/results.json",
+      "finding": "An uncut original sqref component follows dependencies once at its own anchor for CF and DV, same-sheet and cross-sheet.",
+      "pending": "none for the scalar component policy",
+      "log": "handoff/local-carried-scalar-disjoint-smoke.log"
+    },
+    "native_carried_area_partial_owner": {
+      "result": "16 native partial-area cases retained as durable evidence; exact located atomic refusal passed; 24 synthetic relative/whole-axis refusal controls passed",
+      "report": "rust/target/excel-desktop/carried-area-partial-owner/results.json",
+      "finding": "Partial-owner area references do not follow ordinary per-cell contraction. Unsupported cases require a located atomic refusal until represented exactly.",
+      "pending": "no approximate rewrite is published; full semantics remain an explicitly unsupported case",
+      "logs": [
+        "handoff/local-carried-relative-area-smoke.log",
+        "handoff/local-carried-area-hyperlink-red.log"
+      ],
+      "limitation": "Moving host-dependent relative area formulas from a split or same-sheet carried owner is refused; disjoint components, fixed absolute areas and whole cross-sheet copies use observed supported policies."
+    },
+    "native_named_totals_a1_resize": {
+      "result": "2 cases completed; cleanup true; Excel 16.0 build 20430.0",
+      "report": ".scratch/excel-desktop-diagnostics/native-table-resize-a1/results.json",
+      "finding": "Native resize moves totals with special A1 formula edits; a generic row translation would be wrong.",
+      "limit": "unmodeled moved A1 totals formulas retain a located atomic refusal"
+    },
+    "named_table_totals_resize": {
+      "state": "positive shrink/equal/grow for one totals row with physically present representable cells is supported; absent-cell metadata synthesis and moved A1/grouped formulas retain located atomic refusals; equal-height writes retain the original totals band",
+      "rust": "native-backed allocated-style and absent-cell regressions were red 2/7 then green 7/7; JSON-driven three-mode oracle pin 1 passed; handoff/local-named-totals-style-missing-{red,smoke}.log and local-named-totals-native-pin.log",
+      "exchange": "openpyxl authored source, Rust interop export and openpyxl reads of shrink/equal/grow outputs passed; handoff/local-named-totals-exchange.log",
+      "desktop": "Excel16.0build20430.0 native/Rust shrink/equal/grow comparison passed with calculated SUBTOTAL sums 6/13/21, table/filter extents and visible cells; no failure/repair and cleanuptrue; rust/target/excel-desktop/named-totals-compare-active/results.json",
+      "native_styles": "three native allocated no-s/explicit-s0/missing-label cases passed and reopened; allocated cells stay plain while Excel synthesizes an absent label/style from table-column metadata; rust/target/excel-desktop/allocated-totals-styles-native-base/results.json",
+      "io": "shrink/equal/grow each pstream_bytes=1 and write_all_bytes=1; handoff/local-named-totals-cleanup-io-bench.log",
+      "benchmark": "six debug shrink/equal/grow cases Success after Float64 assertion correction; handoff/local-named-totals-bench-smoke.log",
+      "cost": "pin passed: unrelated64/4096=1038/1039, local-namespace cells1/16=1425/1424, old totals-row cells1/16=1038/1038. Traced variance comes from ZIP extras/deflate restart metadata and MemberSink/Buffer starting capacity/pwrite, not per-row or per-cell TableBody work; handoff/local-named-totals-cost-final.log and local-named-totals-realloc-stacks.log",
+      "limits": "moving a physically absent totals cell refuses with source/destination/table because Excel may synthesize value/style from totals metadata; moved A1/grouped formulas and unsupported namespace scopes refuse. No formula evaluator or full P4 phase completion is claimed."
+    },
+    "carried_formula_path": {
+      "red": "1 runtime failure: a standard cfvo leaf under a vendor ancestor was rewritten",
+      "log": "handoff/local-carried-retained-opaque-smoke.log",
+      "pending": "none for the namespace fix",
+      "result": "27 tests passed: full standard ancestor path, retained opaque content, and existing cross-sheet refusal/transfer controls"
+    },
+    "cf_priority_lazy_validation": {
+      "red": "1 runtime failure: moving a sparkline parsed unchanged malformed x14 CF priority in the same extLst",
+      "log": "handoff/local-carried-priority-lazy-smoke.log",
+      "pending": "none for the priority scope fix",
+      "result": "27 cross-sheet/priority tests passed, including unchanged malformed CF beside moved sparkline/hyperlink"
+    },
+    "carried_validation_identity": {
+      "red": "unchanged count=\"01\" was normalized to \"1\"",
+      "result": "legacy and x14 byte-identity controls passed",
+      "log": "handoff/local-carried-container-identity-smoke.log"
+    },
+    "partial_linked_databar": {
+      "red": "source and destination reused the same linked GUID",
+      "result": "27 Rust partial/whole transfer tests passed; actual Rust output matches Excel before and after one save/reopen, no repair, cleanup true",
+      "logs": [
+        "handoff/local-partial-databar-guid-smoke.log",
+        "handoff/local-desktop-partial-databar-compare.log"
+      ],
+      "desktop_report": "rust/target/excel-desktop/carried-partial-compare-active/results.json"
+    },
+    "partial_range_hyperlinks": {
+      "native": "4 accepted/reopened, cleanup true; Excel 16.0 build 20430.0",
+      "report": "rust/target/excel-desktop/partial-hyperlink-native-fixed/results.json",
+      "result": "4-case fixture plus 2 transfer/collision controls passed with saved inverses",
+      "log": "handoff/local-partial-hyperlink-smoke.log",
+      "finding": "A partial cut retains the original whole source hyperlink; a cross-sheet cut adds a destination intersection with its own relationship. Same-sheet cut leaves only the original hyperlink.",
+      "prior_failure": "First probe had malformed internal-hyperlink XML order; fixed producer, fresh native run. Its two earlier external cases were valid.",
+      "costs": {
+        "result": "PASS: 64/4096 range-height equality and zero additional IO reads; 12 debug benchmarks passed (8 ignored/hyperlink and 4 CF)",
+        "logs": [
+          "handoff/local-partial-hyperlink-cost.log",
+          "handoff/local-partial-hyperlink-io.log",
+          "handoff/local-partial-hyperlink-bench-corrected.log"
+        ],
+        "prior_failure": "The first benchmark invocation supplied two filters; corrected to one regex before the successful run."
+      }
+    },
+    "rust_carried_formula_desktop": {
+      "result": "PASS: cf-cross-interior, dv-cross-interior, cf-same-multi; actual Rust output and native output agree after equal save/reopen; no repair; cleanup_completed=true",
+      "version": "Excel 16.0 build 20430.0",
+      "report": "rust/target/excel-desktop/carried-formula-compare-active/results.json",
+      "log": "handoff/local-desktop-carried-formula-compare.log",
+      "note": "rust/tests/excel/fixtures/carried_formulas_excel.md"
+    },
+    "shared_parent_cf_template": {
+      "red": "128 grouped rules allocated 128433 versus 67279 in separate parents; first template also regressed separate-parent cost",
+      "result": "PASS: grouped32=10273/separate32=16815; grouped128=40099/separate128=67151; separate-parent counts bounded by original measured costs; exact opaque-sibling positions and 40 native fixtures passed",
+      "logs": [
+        "handoff/local-carried-rule-single-parent-smoke.log",
+        "handoff/local-carried-rule-single-parent-behavior.log"
+      ],
+      "benchmark": "4 debug cases also passed within the 12-case partial-carried benchmark smoke; no release timing claimed"
+    },
+    "worksheet_filter_partial_cost": {
+      "result": "PASS: allocation equality at 64/4096 rows, zero additional IO reads, 20 debug benchmark cases",
+      "counts": "same1/16=186/381; full1/16=69/70; body1/16=66/67; partial-interior1/16=54/55; partial-header2/16=64/64",
+      "logs": [
+        "handoff/local-worksheet-filter-partial-cost.log",
+        "handoff/local-worksheet-filter-partial-io.log",
+        "handoff/local-worksheet-filter-partial-bench.log"
+      ]
+    },
+    "x14_validation_extension_tail": {
+      "red": "destination trailing extension rejected because inserted_before received a local name instead of its lexical key",
+      "result": "PASS: exact tail bytes, direct-child schema order in raw XML, count, ranges and saved inverse",
+      "log": "handoff/local-x14-validation-tail-smoke.log"
+    }
+  },
+  "main_sync": "origin/main eeb6389a2 is 11 commits ahead of the merge base. Merge follows this checked checkpoint on ccr-a1679fa8-oczghl."
+}

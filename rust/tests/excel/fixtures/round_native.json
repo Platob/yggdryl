@@ -1,0 +1,1752 @@
+{
+  "excel_version": "16.0",
+  "excel_build": "20430.0",
+  "source_report": "rust/target/excel-desktop/p5-numeric-computed-overflow/results/results.json",
+  "input_sha256": "9108c33c23810144d87dc86bec62629dc4f338a6d6154b76f6f7ab3c167d8c3e",
+  "saved_workbook_sha256": "066e17b455672b22721f48534c989fcf15636c7166e07777f64a83adb09e0aa5",
+  "cases": [
+    {
+      "formula": "ROUND(2.15,1)",
+      "cell": "B2",
+      "argument_bits": "4001333333333333",
+      "places_bits": "3ff0000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2.15"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1"
+      },
+      "expected": {
+        "bits": "400199999999999a"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 2.2,
+        "hex": "0x1.199999999999ap+1",
+        "ieee754_hex": "400199999999999a",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 2.2,
+        "hex": "0x1.199999999999ap+1",
+        "ieee754_hex": "400199999999999a",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "2.2000000000000002",
+        "formula_text": "ROUND(2.15,1)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2.149,1)",
+      "cell": "B3",
+      "argument_bits": "40013126e978d4fe",
+      "places_bits": "3ff0000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2.149"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1"
+      },
+      "expected": {
+        "bits": "4000cccccccccccd"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 2.1,
+        "hex": "0x1.0cccccccccccdp+1",
+        "ieee754_hex": "4000cccccccccccd",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 2.1,
+        "hex": "0x1.0cccccccccccdp+1",
+        "ieee754_hex": "4000cccccccccccd",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "2.1",
+        "formula_text": "ROUND(2.149,1)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(-1.475,2)",
+      "cell": "B4",
+      "argument_bits": "bff799999999999a",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-1.475"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "bff7ae147ae147ae"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": -1.48,
+        "hex": "-0x1.7ae147ae147aep+0",
+        "ieee754_hex": "bff7ae147ae147ae",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": -1.48,
+        "hex": "-0x1.7ae147ae147aep+0",
+        "ieee754_hex": "bff7ae147ae147ae",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "-1.48",
+        "formula_text": "ROUND(-1.475,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(21.5,-1)",
+      "cell": "B5",
+      "argument_bits": "4035800000000000",
+      "places_bits": "bff0000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "21.5"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-1"
+      },
+      "expected": {
+        "bits": "4034000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 20.0,
+        "hex": "0x1.4000000000000p+4",
+        "ieee754_hex": "4034000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 20.0,
+        "hex": "0x1.4000000000000p+4",
+        "ieee754_hex": "4034000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "20",
+        "formula_text": "ROUND(21.5,-1)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(626.3,-3)",
+      "cell": "B6",
+      "argument_bits": "4083926666666666",
+      "places_bits": "c008000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "626.3"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-3"
+      },
+      "expected": {
+        "bits": "408f400000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1000.0,
+        "hex": "0x1.f400000000000p+9",
+        "ieee754_hex": "408f400000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1000.0,
+        "hex": "0x1.f400000000000p+9",
+        "ieee754_hex": "408f400000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1000",
+        "formula_text": "ROUND(626.3,-3)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1.98,-1)",
+      "cell": "B7",
+      "argument_bits": "3fffae147ae147ae",
+      "places_bits": "bff0000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1.98"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-1"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(1.98,-1)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(-50.55,-2)",
+      "cell": "B8",
+      "argument_bits": "c049466666666666",
+      "places_bits": "c000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-50.55"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-2"
+      },
+      "expected": {
+        "bits": "c059000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": -100.0,
+        "hex": "-0x1.9000000000000p+6",
+        "ieee754_hex": "c059000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": -100.0,
+        "hex": "-0x1.9000000000000p+6",
+        "ieee754_hex": "c059000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "-100",
+        "formula_text": "ROUND(-50.55,-2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2.675,2)",
+      "cell": "B9",
+      "argument_bits": "4005666666666666",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2.675"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "400570a3d70a3d71"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 2.68,
+        "hex": "0x1.570a3d70a3d71p+1",
+        "ieee754_hex": "400570a3d70a3d71",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 2.68,
+        "hex": "0x1.570a3d70a3d71p+1",
+        "ieee754_hex": "400570a3d70a3d71",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "2.68",
+        "formula_text": "ROUND(2.675,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(-2.675,2)",
+      "cell": "B10",
+      "argument_bits": "c005666666666666",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-2.675"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "c00570a3d70a3d71"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": -2.68,
+        "hex": "-0x1.570a3d70a3d71p+1",
+        "ieee754_hex": "c00570a3d70a3d71",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": -2.68,
+        "hex": "-0x1.570a3d70a3d71p+1",
+        "ieee754_hex": "c00570a3d70a3d71",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "-2.68",
+        "formula_text": "ROUND(-2.675,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1.005,2)",
+      "cell": "B11",
+      "argument_bits": "3ff0147ae147ae14",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1.005"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "3ff028f5c28f5c29"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.01,
+        "hex": "0x1.028f5c28f5c29p+0",
+        "ieee754_hex": "3ff028f5c28f5c29",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.01,
+        "hex": "0x1.028f5c28f5c29p+0",
+        "ieee754_hex": "3ff028f5c28f5c29",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1.01",
+        "formula_text": "ROUND(1.005,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(9.995,2)",
+      "cell": "B16",
+      "argument_bits": "4023fd70a3d70a3d",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "9.995"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "4024000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 10.0,
+        "hex": "0x1.4000000000000p+3",
+        "ieee754_hex": "4024000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 10.0,
+        "hex": "0x1.4000000000000p+3",
+        "ieee754_hex": "4024000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "ROUND(9.995,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(-9.995,2)",
+      "cell": "B17",
+      "argument_bits": "c023fd70a3d70a3d",
+      "places_bits": "4000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-9.995"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "2"
+      },
+      "expected": {
+        "bits": "c024000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": -10.0,
+        "hex": "-0x1.4000000000000p+3",
+        "ieee754_hex": "c024000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": -10.0,
+        "hex": "-0x1.4000000000000p+3",
+        "ieee754_hex": "c024000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "-10",
+        "formula_text": "ROUND(-9.995,2)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(99999999999999.5,0)",
+      "cell": "B18",
+      "argument_bits": "42d6bcc41e8fffe0",
+      "places_bits": "0000000000000000",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "99999999999999.5"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "0"
+      },
+      "expected": {
+        "bits": "42d6bcc41e900000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 100000000000000.0,
+        "hex": "0x1.6bcc41e900000p+46",
+        "ieee754_hex": "42d6bcc41e900000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 100000000000000.0,
+        "hex": "0x1.6bcc41e900000p+46",
+        "ieee754_hex": "42d6bcc41e900000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "100000000000000",
+        "formula_text": "ROUND(99999999999999.5,0)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(12.55,1.9)",
+      "cell": "B19",
+      "argument_bits": "402919999999999a",
+      "places_bits": "3ffe666666666666",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "12.55"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1.9"
+      },
+      "expected": {
+        "bits": "4029333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 12.6,
+        "hex": "0x1.9333333333333p+3",
+        "ieee754_hex": "4029333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 12.6,
+        "hex": "0x1.9333333333333p+3",
+        "ieee754_hex": "4029333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "12.6",
+        "formula_text": "ROUND(12.55,1.9)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(125.5,-1.9)",
+      "cell": "B20",
+      "argument_bits": "405f600000000000",
+      "places_bits": "bffe666666666666",
+      "argument_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "125.5"
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-1.9"
+      },
+      "expected": {
+        "bits": "4060400000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 130.0,
+        "hex": "0x1.0400000000000p+7",
+        "ieee754_hex": "4060400000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 130.0,
+        "hex": "0x1.0400000000000p+7",
+        "ieee754_hex": "4060400000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "130",
+        "formula_text": "ROUND(125.5,-1.9)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(0.1+0.2,15)",
+      "cell": "B22",
+      "argument_bits": "3fd3333333333334",
+      "places_bits": "402e000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "0.1+0.2",
+        "observed_bits": "3fd3333333333334",
+        "cache": {
+          "type": "n",
+          "value_text": "0.30000000000000004",
+          "formula_text": "0.1+0.2",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "15"
+      },
+      "expected": {
+        "bits": "3fd3333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.3",
+        "formula_text": "ROUND(0.1+0.2,15)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(0.1+0.2,20)",
+      "cell": "B24",
+      "argument_bits": "3fd3333333333334",
+      "places_bits": "4034000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "0.1+0.2",
+        "observed_bits": "3fd3333333333334",
+        "cache": {
+          "type": "n",
+          "value_text": "0.30000000000000004",
+          "formula_text": "0.1+0.2",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "20"
+      },
+      "expected": {
+        "bits": "3fd3333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.3",
+        "formula_text": "ROUND(0.1+0.2,20)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(0.1+0.2,308)",
+      "cell": "B26",
+      "argument_bits": "3fd3333333333334",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "0.1+0.2",
+        "observed_bits": "3fd3333333333334",
+        "cache": {
+          "type": "n",
+          "value_text": "0.30000000000000004",
+          "formula_text": "0.1+0.2",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "bits": "3fd3333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.3",
+        "formula_text": "ROUND(0.1+0.2,308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(0.1+0.2,324)",
+      "cell": "B28",
+      "argument_bits": "3fd3333333333334",
+      "places_bits": "4074400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "0.1+0.2",
+        "observed_bits": "3fd3333333333334",
+        "cache": {
+          "type": "n",
+          "value_text": "0.30000000000000004",
+          "formula_text": "0.1+0.2",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "324"
+      },
+      "expected": {
+        "bits": "3fd3333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.3",
+        "formula_text": "ROUND(0.1+0.2,324)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(0.1+0.2,1000000)",
+      "cell": "B30",
+      "argument_bits": "3fd3333333333334",
+      "places_bits": "412e848000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "0.1+0.2",
+        "observed_bits": "3fd3333333333334",
+        "cache": {
+          "type": "n",
+          "value_text": "0.30000000000000004",
+          "formula_text": "0.1+0.2",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1000000"
+      },
+      "expected": {
+        "bits": "3fd3333333333333"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.3,
+        "hex": "0x1.3333333333333p-2",
+        "ieee754_hex": "3fd3333333333333",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.3",
+        "formula_text": "ROUND(0.1+0.2,1000000)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1/3,15)",
+      "cell": "B33",
+      "argument_bits": "3fd5555555555555",
+      "places_bits": "402e000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1/3",
+        "observed_bits": "3fd5555555555555",
+        "cache": {
+          "type": "n",
+          "value_text": "0.33333333333333331",
+          "formula_text": "1/3",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "15"
+      },
+      "expected": {
+        "bits": "3fd555555555554f"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.33333333333333298",
+        "formula_text": "ROUND(1/3,15)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1/3,20)",
+      "cell": "B35",
+      "argument_bits": "3fd5555555555555",
+      "places_bits": "4034000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1/3",
+        "observed_bits": "3fd5555555555555",
+        "cache": {
+          "type": "n",
+          "value_text": "0.33333333333333331",
+          "formula_text": "1/3",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "20"
+      },
+      "expected": {
+        "bits": "3fd555555555554f"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.33333333333333298",
+        "formula_text": "ROUND(1/3,20)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1/3,308)",
+      "cell": "B37",
+      "argument_bits": "3fd5555555555555",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1/3",
+        "observed_bits": "3fd5555555555555",
+        "cache": {
+          "type": "n",
+          "value_text": "0.33333333333333331",
+          "formula_text": "1/3",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "bits": "3fd555555555554f"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.33333333333333298",
+        "formula_text": "ROUND(1/3,308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1/3,324)",
+      "cell": "B39",
+      "argument_bits": "3fd5555555555555",
+      "places_bits": "4074400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1/3",
+        "observed_bits": "3fd5555555555555",
+        "cache": {
+          "type": "n",
+          "value_text": "0.33333333333333331",
+          "formula_text": "1/3",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "324"
+      },
+      "expected": {
+        "bits": "3fd555555555554f"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.33333333333333298",
+        "formula_text": "ROUND(1/3,324)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1/3,1000000)",
+      "cell": "B41",
+      "argument_bits": "3fd5555555555555",
+      "places_bits": "412e848000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1/3",
+        "observed_bits": "3fd5555555555555",
+        "cache": {
+          "type": "n",
+          "value_text": "0.33333333333333331",
+          "formula_text": "1/3",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1000000"
+      },
+      "expected": {
+        "bits": "3fd555555555554f"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.333333333333333,
+        "hex": "0x1.555555555554fp-2",
+        "ieee754_hex": "3fd555555555554f",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0.33333333333333298",
+        "formula_text": "ROUND(1/3,1000000)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1+2^-49,15)",
+      "cell": "B44",
+      "argument_bits": "3ff0000000000008",
+      "places_bits": "402e000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1+2^-49",
+        "observed_bits": "3ff0000000000008",
+        "cache": {
+          "type": "n",
+          "value_text": "1.0000000000000018",
+          "formula_text": "1+2^-49",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "15"
+      },
+      "expected": {
+        "bits": "3ff0000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ROUND(1+2^-49,15)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1+2^-49,20)",
+      "cell": "B46",
+      "argument_bits": "3ff0000000000008",
+      "places_bits": "4034000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1+2^-49",
+        "observed_bits": "3ff0000000000008",
+        "cache": {
+          "type": "n",
+          "value_text": "1.0000000000000018",
+          "formula_text": "1+2^-49",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "20"
+      },
+      "expected": {
+        "bits": "3ff0000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ROUND(1+2^-49,20)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1+2^-49,308)",
+      "cell": "B48",
+      "argument_bits": "3ff0000000000008",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1+2^-49",
+        "observed_bits": "3ff0000000000008",
+        "cache": {
+          "type": "n",
+          "value_text": "1.0000000000000018",
+          "formula_text": "1+2^-49",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "bits": "3ff0000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ROUND(1+2^-49,308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1+2^-49,324)",
+      "cell": "B50",
+      "argument_bits": "3ff0000000000008",
+      "places_bits": "4074400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1+2^-49",
+        "observed_bits": "3ff0000000000008",
+        "cache": {
+          "type": "n",
+          "value_text": "1.0000000000000018",
+          "formula_text": "1+2^-49",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "324"
+      },
+      "expected": {
+        "bits": "3ff0000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ROUND(1+2^-49,324)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(1+2^-49,1000000)",
+      "cell": "B52",
+      "argument_bits": "3ff0000000000008",
+      "places_bits": "412e848000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "1+2^-49",
+        "observed_bits": "3ff0000000000008",
+        "cache": {
+          "type": "n",
+          "value_text": "1.0000000000000018",
+          "formula_text": "1+2^-49",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1000000"
+      },
+      "expected": {
+        "bits": "3ff0000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ROUND(1+2^-49,1000000)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),15)",
+      "cell": "B55",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "402e000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "15"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),15)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),20)",
+      "cell": "B57",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "4034000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "20"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),20)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),308)",
+      "cell": "B59",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),324)",
+      "cell": "B61",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "4074400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "324"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),324)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),1000000)",
+      "cell": "B63",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "412e848000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1000000"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff000000000000a",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),1000000)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,15)",
+      "cell": "B66",
+      "argument_bits": "0010000000000000",
+      "places_bits": "402e000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "15"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,15)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,20)",
+      "cell": "B68",
+      "argument_bits": "0010000000000000",
+      "places_bits": "4034000000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "20"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,20)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,308)",
+      "cell": "B70",
+      "argument_bits": "0010000000000000",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,324)",
+      "cell": "B72",
+      "argument_bits": "0010000000000000",
+      "places_bits": "4074400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "324"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,324)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,1000000)",
+      "cell": "B74",
+      "argument_bits": "0010000000000000",
+      "places_bits": "412e848000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "1000000"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,1000000)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^1023*(2-2^-52),-308)",
+      "cell": "B176",
+      "argument_bits": "7fefffffffffffff",
+      "places_bits": "c073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^1023*(2-2^-52)",
+        "observed_bits": "7fefffffffffffff",
+        "cache": {
+          "type": "n",
+          "value_text": "1.7976931348623157E+308",
+          "formula_text": "2^1023*(2-2^-52)",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "-308"
+      },
+      "expected": {
+        "error": "#NUM!"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff1ccf385ebc8a0",
+        "classification": "nan"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": null,
+        "hex": "nan",
+        "ieee754_hex": "7ff1ccf385ebc8a0",
+        "classification": "nan"
+      },
+      "cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ROUND(2^1023*(2-2^-52),-308)",
+        "formula_attributes": {}
+      }
+    },
+    {
+      "formula": "ROUND(2^-1022,308)",
+      "cell": "B177",
+      "argument_bits": "0010000000000000",
+      "places_bits": "4073400000000000",
+      "argument_basis": {
+        "kind": "observed_identity",
+        "formula": "2^-1022",
+        "observed_bits": "0010000000000000",
+        "cache": {
+          "type": "n",
+          "value_text": "2.2250738585072014E-308",
+          "formula_text": "2^-1022",
+          "formula_attributes": {}
+        }
+      },
+      "places_basis": {
+        "kind": "direct_decimal_token_candidate",
+        "token": "308"
+      },
+      "expected": {
+        "bits": "0000000000000000"
+      },
+      "com_before": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "com_after": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ROUND(2^-1022,308)",
+        "formula_attributes": {}
+      }
+    }
+  ]
+}

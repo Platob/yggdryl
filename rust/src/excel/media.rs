@@ -22,42 +22,266 @@ use super::cell::CellRef;
 use super::options::ExcelOptions;
 use super::parser::SheetRows;
 use super::reader::Source;
+use super::records::RowsWriteLayout;
+use super::records::{FlatBinding, FlatExtent, Header, RowsLayout, RowsWindow};
 use super::sheet::Sheet;
-use super::workbook::Workbook;
-use super::writer::SheetXml;
+use super::styles::Splice;
+use super::workbook::{NamedTable, Replaced, SheetReplacement, Workbook};
+use super::writer::{SheetXml, WriteHeader, overwrite_table_body, temporal_formats};
+use crate::RecordHeader;
 
 /// Open the workbook `handle` holds, over a handle of the package's own.
 fn open<H: IOBase + ?Sized>(handle: &H) -> Result<Workbook> {
     Workbook::open(crate::iobase::owned_handle(handle)?)
 }
 
-/// The worksheet a read under `options` addresses: the sheet named, else
-/// the first worksheet; `None` for a workbook with none, or for a sheet the
-/// workbook lacks, which reads as the empty stream a missing resource is -
-/// a chart or dialog sheet of that name is refused by its kind.
-fn addressed(workbook: &Workbook, options: &ExcelOptions) -> Result<Option<SmolStr>> {
-    match &options.sheet {
+/// Discover named tables and suggested occupied-cell regions in a workbook.
+///
+/// None inspects all worksheets in tab order; a named sheet is compared
+/// without ASCII case. Results are ordered by tab, source rectangle and table
+/// name. Named table cells are excluded from suggestions. A suggestion uses
+/// eight-neighbour contact, not the worksheet's declared dimension, and does
+/// not select a table or infer a header. Its bounding rectangle can contain
+/// gaps or overlap a named table even though that table's cells were excluded.
+/// At most 1,024 regions are returned;
+/// exceeding that bound is a located refusal, never truncation.
+///
+/// ```
+/// use yggdryl::{holder::Buffer, excel::regions};
+/// assert!(regions(&Buffer::new(), None)?.is_empty());
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns malformed package/table metadata, an unknown or non-worksheet
+/// selection, a located cell refusal, or the region-count bound refusal.
+pub fn regions<H: IOBase + ?Sized>(
+    handle: &H,
+    sheet: Option<&str>,
+) -> Result<Vec<super::ExcelRegion>> {
+    let workbook = open(handle)?;
+    super::regions::read(&workbook, sheet)
+}
+
+/// One resolved record selection, shared by schema, reader and dimensions.
+struct Region {
+    sheet: SmolStr,
+    range: super::CellRange,
+    header: RecordHeader,
+    explicit_range: bool,
+    names: Option<Arc<[SmolStr]>>,
+    row_count: Option<u32>,
+    /// The metadata pass's observed cell extent and selected merges.
+    geometry: Option<(super::CellRange, Vec<super::CellRange>)>,
+    probed: Option<(Field, u64)>,
+}
+
+/// Named-table selection resolves once before any schema or row pass.
+fn addressed(
+    workbook: &Workbook,
+    options: &ExcelOptions,
+    declared: Option<&Field>,
+) -> Result<Option<Region>> {
+    options.require_valid()?;
+    let header = options.header;
+    if let Some(name) = options.table() {
+        let NamedTable {
+            sheet,
+            table,
+            columns: names,
+            ..
+        } = workbook.named_table(name)?;
+        let first = table.range.start().row() + table.header_rows;
+        let after = table.range.end().row() + 1 - table.totals_rows;
+        let has_rows = first < after;
+        // A no-body table keeps its legal extent solely for column coordinates;
+        // row_count=0 prevents its header/totals from becoming a record.
+        let range = if has_rows {
+            super::CellRange::new(
+                CellRef::new(first, table.range.start().column()),
+                CellRef::new(after - 1, table.range.end().column()),
+            )
+        } else {
+            table.range
+        };
+        return Ok(Some(Region {
+            sheet,
+            range,
+            header: RecordHeader::None,
+            explicit_range: true,
+            names: matches!(header, RecordHeader::Source | RecordHeader::Infer)
+                .then(|| Arc::from(names)),
+            row_count: Some(after - first),
+            geometry: None,
+            probed: None,
+        }));
+    }
+    let sheet = match options.sheet() {
         Some(name) => {
             if workbook.position(name).is_none() {
                 return Ok(None);
             }
             workbook.sheet_part(name)?;
-            Ok(Some(name.clone()))
+            SmolStr::new(name)
         }
-        None => Ok(workbook.first_worksheet().map(SmolStr::new)),
+        None => match workbook.first_worksheet() {
+            Some(name) => SmolStr::new(name),
+            None => return Ok(None),
+        },
+    };
+    let mut region = Region {
+        sheet,
+        range: options.cells()?,
+        header,
+        explicit_range: options.range().is_some(),
+        names: None,
+        row_count: None,
+        geometry: None,
+        probed: None,
+    };
+    if header == RecordHeader::Infer {
+        // Same SheetRows parser observes trailing merge metadata without
+        // constructing cell rows; discovery then records actual run contacts.
+        let (physical, merges) = observe_geometry(workbook, &region)?;
+        let candidates = if region.explicit_range {
+            None
+        } else {
+            Some(super::regions::read_for_infer(
+                workbook,
+                &region.sheet,
+                &merges,
+            )?)
+        };
+        if let Some(candidates) = &candidates {
+            if candidates.iter().any(|candidate| {
+                matches!(
+                    &candidate.region.kind,
+                    super::regions::ExcelRegionKind::Table { .. }
+                )
+            }) {
+                super::regions::require_single(candidates, None, &merges)?;
+            }
+        }
+        let occupied = candidates
+            .as_deref()
+            .and_then(super::regions::occupied_extent);
+        let (observed, depth) = infer_geometry(&region, occupied, &merges)?;
+        let chosen = if !region.explicit_range {
+            depth
+                .map(|depth| {
+                    RowsWindow::implicit_range(observed, depth, merges.iter().copied()).map(
+                        |range| {
+                            // Physical row occupancy owns cardinality, while actual
+                            // value/formula facts own the implicit column span.
+                            let last = physical.map_or(range.end().row(), |physical| {
+                                range.end().row().max(physical.end().row())
+                            });
+                            super::CellRange::new(
+                                range.start(),
+                                CellRef::new(last, range.end().column()),
+                            )
+                        },
+                    )
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        if let Some(candidates) = &candidates {
+            let header = chosen
+                .map(|range| {
+                    RowsWindow::header_range(range, depth.expect("chosen range has a depth"))
+                })
+                .transpose()?;
+            super::regions::require_single(candidates, header, &merges)?;
+        }
+        if let Some(depth) = depth {
+            region.range = if region.explicit_range {
+                region.range
+            } else {
+                chosen.expect("inferred depth has a chosen range")
+            };
+            region.header = RecordHeader::Rows(depth);
+            region.geometry = Some((region.range, merges));
+            if declared.is_some() {
+                let source = source(workbook, &region)?;
+                super::reader::inferred_rows_evidence(
+                    &source,
+                    rows(workbook, &region.sheet)?,
+                    depth,
+                )?;
+            }
+        } else {
+            let source = source(workbook, &region)?;
+            let resolved = super::reader::probe_header(
+                &source,
+                rows(workbook, &region.sheet)?,
+                options.name(),
+                declared,
+                options.safe(),
+            )?;
+            region.header = resolved.policy;
+            region.probed = Some((resolved.field, resolved.record_count));
+        }
     }
+    Ok(Some(region))
 }
 
-/// What a read of the sheet `name` streams and names.
-fn source(workbook: &Workbook, name: &str, options: &ExcelOptions) -> Result<Source> {
-    workbook.sheet_part(name)?;
+/// Observe coordinates and trailing merge refs through the existing parser.
+/// No RawRow or RawCell is built, including for tall physical spans.
+fn observe_geometry(
+    workbook: &Workbook,
+    region: &Region,
+) -> Result<(Option<super::CellRange>, Vec<super::CellRange>)> {
+    let member = workbook.sheet_reader(&region.sheet)?;
+    let input = std::io::BufReader::with_capacity(crate::DEFAULT_FETCH_BYTE_SIZE, member);
+    let mut observer = if region.explicit_range {
+        SheetRows::observing_header_merges(input, region.sheet.clone(), region.range)
+    } else {
+        SheetRows::observing_header_geometry(input, region.sheet.clone(), super::cell::MAX_ROWS)
+    };
+    for event in &mut observer {
+        event?;
+    }
+    observer.into_header_geometry()
+}
+
+fn infer_geometry(
+    region: &Region,
+    occupied: Option<super::CellRange>,
+    merges: &[super::CellRange],
+) -> Result<(super::CellRange, Option<u32>)> {
+    let observed = if region.explicit_range {
+        region.range
+    } else {
+        occupied.ok_or_else(super::options::ExcelOptions::no_evidence_error)?
+    };
+    // Extend only the *probe* to grid bottom. The resolved range is
+    // bounded to the actual extent and linked header merges below.
+    let selected = if region.explicit_range {
+        observed
+    } else {
+        super::CellRange::new(
+            observed.start(),
+            CellRef::new(super::cell::MAX_ROWS - 1, observed.end().column()),
+        )
+    };
+    let depth = super::records::merge_proven_depth(&region.sheet, selected, merges)?;
+    Ok((observed, depth))
+}
+
+fn source(workbook: &Workbook, region: &Region) -> Result<Source> {
     Ok(Source {
-        sheet: SmolStr::new(name),
-        system: workbook.date_system(),
+        sheet: region.sheet.clone(),
+        system: workbook.stated_date_system(),
         strings: workbook.strings()?,
         styles: workbook.styles()?,
-        range: options.cells(),
-        header: options.header,
+        range: region.range,
+        header: region.header,
+        explicit_range: region.explicit_range,
+        column_names: region.names.clone(),
+        row_count: region.row_count,
     })
 }
 
@@ -77,10 +301,54 @@ fn rows(
 
 /// The field the sheet `name` states for itself: the header's names over
 /// the datatypes its cells prove.
-fn inferred(workbook: &Workbook, name: &str, options: &ExcelOptions) -> Result<Field> {
-    let source = source(workbook, name, options)?;
-    let rows = rows(workbook, name)?;
+fn inferred(workbook: &Workbook, region: &Region, options: &ExcelOptions) -> Result<Field> {
+    if let Some((field, _)) = &region.probed {
+        return Ok(field.clone());
+    }
+    if let RecordHeader::Rows(levels) = region.header {
+        return Ok(inferred_rows(workbook, region, options, levels)?
+            .root()
+            .clone());
+    }
+    let source = source(workbook, region)?;
+    let rows = rows(workbook, &region.sheet)?;
     super::reader::infer_field(&source, rows, options.name())
+}
+
+fn inferred_rows(
+    workbook: &Workbook,
+    region: &Region,
+    options: &ExcelOptions,
+    levels: u32,
+) -> Result<RowsLayout> {
+    let source = source(workbook, region)?;
+    let member = workbook.sheet_reader(&region.sheet)?;
+    let input = std::io::BufReader::with_capacity(crate::DEFAULT_FETCH_BYTE_SIZE, member);
+    let known = region
+        .geometry
+        .as_ref()
+        .map(|(extent, merges)| (*extent, merges.clone()));
+    let rows = if known.is_some() {
+        SheetRows::new(input, region.sheet.clone())
+    } else if source.explicit_range {
+        let window = RowsWindow::header_range(source.range, levels)?;
+        SheetRows::capturing_header_merges(input, region.sheet.clone(), window)
+    } else {
+        SheetRows::capturing_header_geometry(input, region.sheet.clone(), levels)
+    };
+    super::reader::infer_rows_layout(&source, rows, options.name(), levels, known)
+}
+
+/// Tables state their complete body length; worksheets count stored rows.
+fn count_rows(workbook: &Workbook, region: &Region) -> Result<u64> {
+    if let Some((_, count)) = &region.probed {
+        return Ok(*count);
+    }
+    if let Some(count) = region.row_count {
+        return Ok(u64::from(count));
+    }
+    let source = source(workbook, region)?;
+    super::reader::row_count(&source, rows(workbook, &region.sheet)?)
 }
 
 /// Read the schema of the workbook `handle` holds: the declared field, else
@@ -94,11 +362,12 @@ fn inferred(workbook: &Workbook, name: &str, options: &ExcelOptions) -> Result<F
 /// Returns a read, package or sheet failure, or a refusal naming the first
 /// cell whose datatype disagrees with its column's.
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<Field> {
+    options.require_valid()?;
     if let Some(field) = options.field() {
         return Ok(field);
     }
     let workbook = open(handle)?;
-    match addressed(&workbook, options)? {
+    match addressed(&workbook, options, None)? {
         Some(name) => inferred(&workbook, &name, options),
         None => super::reader::empty_root(options.name()),
     }
@@ -112,12 +381,11 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Res
 /// Returns a read, package or sheet failure.
 pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<u64> {
     let workbook = open(handle)?;
-    let Some(name) = addressed(&workbook, options)? else {
+    let declared = options.field();
+    let Some(name) = addressed(&workbook, options, declared.as_ref())? else {
         return Ok(0);
     };
-    let source = source(&workbook, &name, options)?;
-    let rows = rows(&workbook, &name)?;
-    super::reader::row_count(&source, rows)
+    count_rows(&workbook, &name)
 }
 
 /// The field the stored sheet states, `None` where it states none: an empty
@@ -134,7 +402,7 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(
         return Ok(None);
     }
     let workbook = open(handle)?;
-    let Some(name) = addressed(&workbook, options)? else {
+    let Some(name) = addressed(&workbook, options, None)? else {
         return Ok(None);
     };
     let field = inferred(&workbook, &name, options)?;
@@ -169,10 +437,12 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &ExcelOptions,
 ) -> crate::arrow::Result<BatchReader> {
+    options.require_valid()?;
     let workbook = open(handle)?;
-    let Some(name) = addressed(&workbook, options)? else {
+    let declared = field.cloned().or_else(|| options.field());
+    let Some(mut name) = addressed(&workbook, options, declared.as_ref())? else {
         // Per the laziness contract, a missing workbook holds no rows.
-        let schema = match field.cloned().or_else(|| options.field()) {
+        let schema = match declared.clone() {
             Some(field) => arrow_schema_from_field(&field)?,
             None => Arc::new(arrow_schema::Schema::empty()),
         };
@@ -181,29 +451,42 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             schema,
         )));
     };
-    let root = match field.cloned().or_else(|| options.field()) {
-        Some(field) => field,
-        None => inferred(&workbook, &name, options)?,
+    let mut source = source(&workbook, &name)?;
+    let (root, layout, merges) = match (declared, name.header) {
+        (None, RecordHeader::Rows(levels)) => {
+            let layout = inferred_rows(&workbook, &name, options, levels)?;
+            source.range = layout.range();
+            (layout.root().clone(), Some(layout), Vec::new())
+        }
+        (Some(root), RecordHeader::Rows(levels)) => {
+            let (range, merges) = if let Some((_, merges)) = name.geometry.take() {
+                (name.range, merges)
+            } else {
+                let member = workbook.sheet_reader(&name.sheet)?;
+                super::reader::observed_merges(&source, member, levels)?
+            };
+            source.range = range;
+            (root, None, merges)
+        }
+        (Some(root), _) => (root, None, Vec::new()),
+        (None, _) => (inferred(&workbook, &name, options)?, None, Vec::new()),
     };
-    let source = source(&workbook, &name, options)?;
-    let member = workbook.sheet_reader(&name)?;
-    super::reader::batch_reader(
-        source,
-        member,
-        &root,
-        options.safe(),
-        options.batch_row_size(),
-        options.batch_byte_size(),
-    )
+    let member = workbook.sheet_reader(&name.sheet)?;
+    super::reader::batch_reader(source, member, &root, layout, merges, options)
 }
 
 /// Replace the addressed sheet of the workbook `handle` holds with
 /// `batches`, every other sheet and part carried over; an empty handle
 /// becomes a workbook of that one sheet.
 ///
-/// The rows start at the range's top-left cell, the column names in its
-/// first row when the options say `header`; text is written inline, so the
-/// write holds one batch and the package image, never a string table.
+/// Worksheet rows start at the range's top-left cell, with the resolved
+/// header above them. A named table keeps its header and totals; body resizing
+/// checks collisions and whether its totals can move without changing meaning.
+/// Text is inline, without a string table.
+/// Both paths hold one input batch and stage the package before publishing.
+/// A table write additionally retains the source worksheet and an eager plan
+/// of changed cell XML; it releases payloads as the package encoder consumes
+/// them, without building a second complete worksheet image.
 ///
 /// # Errors
 ///
@@ -214,6 +497,7 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     batches: BatchReader,
     options: &ExcelOptions,
 ) -> Result<()> {
+    options.require_write()?;
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let mut workbook = if handle.size() == 0 {
@@ -221,9 +505,117 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     } else {
         open(handle)?
     };
+    if let Some(wanted) = options.table() {
+        let NamedTable {
+            sheet,
+            table,
+            columns: names,
+            part,
+            bytes,
+            siblings,
+        } = workbook.named_table(wanted)?;
+        let at = workbook
+            .position(&sheet)
+            .expect("registered table worksheet");
+        let source = workbook.part_bytes(&workbook.sheet_part(&sheet)?)?;
+        let header = Header::resolve(
+            table.range,
+            FlatExtent::Table(Some(&names)),
+            options.header == RecordHeader::Source,
+            std::iter::empty::<Result<(u32, Option<std::borrow::Cow<'static, str>>)>>(),
+        )?;
+        let pairing = header.pairing(
+            &root,
+            FlatBinding {
+                sheet: &sheet,
+                range: table.range,
+                by_name: options.header == RecordHeader::Source,
+                authoritative: true,
+            },
+        )?;
+        let mut columns = vec![None; names.len()];
+        for (input, column) in pairing.into_iter().enumerate() {
+            let Some(column) = column else {
+                return Err(Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$.{}", root.fields()[input].name()),
+                    reason: smol_str::format_smolstr!(
+                        "expected a column of named table {wanted}, got an unmatched input field"
+                    ),
+                });
+            };
+            let offset = (column - table.range.start().column()) as usize;
+            if columns[offset].replace(input).is_some() {
+                return Err(Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$.table[{wanted}]"),
+                    reason: smol_str::format_smolstr!(
+                        "expected one input field for table column {}, got a duplicate",
+                        names[offset]
+                    ),
+                });
+            }
+        }
+        let columns: Vec<usize> = columns
+            .into_iter()
+            .enumerate()
+            .map(|(offset, input)| {
+                input.ok_or_else(|| Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$.table[{wanted}]"),
+                    reason: smol_str::format_smolstr!(
+                        "expected an input field for table column {}, got none",
+                        names[offset]
+                    ),
+                })
+            })
+            .collect::<Result<_>>()?;
+        let formats = temporal_formats(root.fields());
+        let system = workbook.date_system();
+        let stream = move |splice: &mut Splice<'_>| -> Result<SheetReplacement> {
+            let written =
+                overwrite_table_body(source, rows, &table, columns, sheet.clone(), system, splice)?;
+            let original_body_after = table.range.end().row() + 1 - table.totals_rows;
+            let changed = written.after != original_body_after;
+            let range = super::cell::CellRange::new(
+                table.range.start(),
+                CellRef::new(
+                    written.after + table.totals_rows - 1,
+                    table.range.end().column(),
+                ),
+            );
+            let parts = if changed {
+                if let Some((other, _)) = siblings
+                    .iter()
+                    .find(|(_, other_range)| other_range.intersects(range))
+                {
+                    return Err(Error::InvalidRecord {
+                        path: smol_str::format_smolstr!("$.table[{wanted}]"),
+                        reason: smol_str::format_smolstr!(
+                            "expected a resized extent outside table {other}, got {range}"
+                        ),
+                    });
+                }
+                vec![(
+                    part.clone(),
+                    table.resized_part(&bytes, &part, written.after)?,
+                )]
+            } else {
+                Vec::new()
+            };
+            Ok(SheetReplacement {
+                stream: Box::new(written.xml),
+                parts,
+            })
+        };
+        let package = workbook.write_package(Some(Replaced {
+            at,
+            formats,
+            stream: Box::new(stream),
+        }))?;
+        drop(workbook);
+        return handle.write_all_bytes(package.as_bytes());
+    }
     let name = options
-        .sheet
-        .clone()
+        .sheet()
+        .map(SmolStr::new)
         .or_else(|| workbook.first_worksheet().map(SmolStr::new))
         .unwrap_or_else(|| SmolStr::new_static(super::DEFAULT_SHEET_NAME));
     let at = match workbook.position(&name) {
@@ -234,22 +626,51 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
         }
     };
     let anchor = options
-        .range
+        .range()
         .map_or(CellRef::new(0, 0), |range| range.start());
-    let system = workbook.date_system();
-    let header = options.header;
+    let workbook_ref = &workbook;
+    let header = match options.header {
+        RecordHeader::None => WriteHeader::None,
+        RecordHeader::Source => WriteHeader::Source,
+        RecordHeader::Infer => return Err(super::options::ExcelOptions::write_error()),
+        RecordHeader::Rows(levels) => {
+            WriteHeader::Rows(RowsWriteLayout::compile(&root, levels, anchor, None)?)
+        }
+    };
     let sheet = name.clone();
     let failure = Arc::new(std::sync::Mutex::new(None));
     let slot = Arc::clone(&failure);
-    let stream = move |offset: u32| -> Result<Box<dyn std::io::Read + Send>> {
-        let xml = SheetXml::new(rows, root, sheet, system, offset, anchor, header)?;
+    let formats = match &header {
+        WriteHeader::Rows(layout) => {
+            temporal_formats(layout.leaves().iter().map(|leaf| &leaf.field))
+        }
+        _ => temporal_formats(root.fields()),
+    };
+    let stream = move |splice: &mut Splice<'_>| -> Result<SheetReplacement> {
+        let xml = SheetXml::new(
+            rows,
+            root,
+            sheet,
+            workbook_ref,
+            splice.temporal_styles(),
+            anchor,
+            header,
+        )?;
         if let Ok(mut held) = slot.lock() {
             *held = Some(xml.failure());
         }
-        Ok(Box::new(xml))
+        Ok(SheetReplacement {
+            stream: Box::new(xml),
+            parts: Vec::new(),
+        })
     };
-    let bytes = match workbook.write_package(Some((at, Box::new(stream)))) {
-        Ok(bytes) => bytes,
+    let replaced = Replaced {
+        at,
+        formats,
+        stream: Box::new(stream),
+    };
+    let package = match workbook.write_package(Some(replaced)) {
+        Ok(package) => package,
         Err(error) => {
             // The archive saw an `io::Error`; the stream kept the refusal.
             let refusal = failure
@@ -259,11 +680,9 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
             return Err(refusal.unwrap_or(error));
         }
     };
-    // The package was read through a handle of its own onto the same file,
-    // and Windows refuses to resize a file while a view of it is mapped:
-    // that handle goes before this one rewrites the file.
+    // Release the package mapping before a Windows file is resized.
     drop(workbook);
-    handle.write_all_bytes(&bytes)
+    handle.write_all_bytes(package.as_bytes())
 }
 
 /// A byte handle retained with one workbook configuration.
@@ -310,7 +729,7 @@ impl<H: IOBase> Excel<H> {
     /// Return this media addressing the sheet `sheet`.
     #[must_use]
     pub fn with_sheet(mut self, sheet: impl Into<SmolStr>) -> Self {
-        self.options.sheet = Some(sheet.into());
+        self.options.set_sheet(Some(sheet.into()));
         self
     }
 
@@ -408,17 +827,24 @@ impl<H: IOBase> IOMedia for Excel<H> {
             );
         }
         let workbook = self.workbook()?;
-        let Some(name) = addressed(&workbook, &self.options)? else {
+        let declared = self.options.field();
+        let Some(name) = addressed(&workbook, &self.options, declared.as_ref())? else {
             return Ok(0);
         };
-        let source = source(&workbook, &name, &self.options)?;
-        let rows = rows(&workbook, &name)?;
-        super::reader::row_count(&source, rows)
+        count_rows(&workbook, &name)
     }
 
     fn column_size(&self) -> Result<usize> {
-        if let Some(field) = self.options.field() {
-            return Ok(field.field_len());
+        self.options.require_valid()?;
+        let declared = self.options.field();
+        if self.options.header != RecordHeader::Infer {
+            if let Some(field) = &declared {
+                return Ok(if matches!(self.options.header, RecordHeader::Rows(_)) {
+                    RowsLayout::leaf_width(field)?
+                } else {
+                    field.field_len()
+                });
+            }
         }
         if !self.warm() && self.handle.is_container() {
             return Ok(crate::iomedia::container_field(
@@ -428,9 +854,19 @@ impl<H: IOBase> IOMedia for Excel<H> {
             .field_len());
         }
         let workbook = self.workbook()?;
-        match addressed(&workbook, &self.options)? {
-            Some(name) => Ok(inferred(&workbook, &name, &self.options)?.field_len()),
-            None => Ok(0),
+        match addressed(&workbook, &self.options, declared.as_ref())? {
+            Some(name) => {
+                let field = match declared {
+                    Some(field) => field,
+                    None => inferred(&workbook, &name, &self.options)?,
+                };
+                Ok(if matches!(name.header, RecordHeader::Rows(_)) {
+                    RowsLayout::leaf_width(&field)?
+                } else {
+                    field.field_len()
+                })
+            }
+            None => Ok(declared.map_or(0, |field| field.field_len())),
         }
     }
 
@@ -440,17 +876,19 @@ impl<H: IOBase> IOMedia for Excel<H> {
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let options = self.require_options(options)?;
+        options.require_valid()?;
         if let Some(field) = options.field() {
-            return Ok(field);
+            return options.result_field(field);
         }
         if !self.warm() && self.handle.is_container() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
         }
         let workbook = self.workbook()?;
-        match addressed(&workbook, options)? {
+        let source = match addressed(&workbook, options, None)? {
             Some(name) => inferred(&workbook, &name, options),
             None => super::reader::empty_root(options.name()),
-        }
+        }?;
+        options.result_field(source)
     }
 
     fn overwrite_arrow_reader(
@@ -458,7 +896,7 @@ impl<H: IOBase> IOMedia for Excel<H> {
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        self.require_options(options)?;
+        self.require_options(options)?.require_write()?;
         self.invalidate();
         crate::iobase::overwrite_arrow_reader_default(self, batches, options)
     }
@@ -468,19 +906,19 @@ impl<H: IOBase> IOMedia for Excel<H> {
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        self.require_options(options)?;
+        self.require_options(options)?.require_write()?;
         self.invalidate();
         crate::iobase::leaf_writer(self, batches, options)
     }
 
     fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
-        self.require_options(options)?;
+        self.require_options(options)?.require_write()?;
         self.invalidate();
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
     fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
-        self.require_options(options)?;
+        self.require_options(options)?.require_write()?;
         self.invalidate();
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }

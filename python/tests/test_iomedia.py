@@ -1377,4 +1377,3 @@ def test_an_options_value_is_built_with_its_properties_by_name() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert TextOptions(rowheader=...) == TextOptions()
-

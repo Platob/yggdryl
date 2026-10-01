@@ -1,0 +1,2632 @@
+{
+  "schema_version": 1,
+  "scope": "102 observed formulas; raw COM Value2 and saved OOXML cache, before/after SaveAs; no Rust evaluator equivalence or reopen claim",
+  "groups": [
+    {
+      "version_marker": "absent",
+      "source_report": "rust/target/excel-desktop/p5-unicode-absent-decoded/results.json",
+      "source_report_sha256": "1b60b0f910e148799d9186c704498fb4437d1a9da4c75b0ab1199762bfcb943a",
+      "source_manifest": ".scratch/p5-unicode-compat/absent/cases.json",
+      "source_manifest_sha256": "217afaa06078bf6ce48e1eb133680f444688bdc04c67bd07f8c68716e1253b47",
+      "excel_version": "16.0",
+      "excel_build": "20430.0",
+      "excel_ui_language": 1036,
+      "cleanup_completed": true,
+      "native_cases": 34,
+      "workbooks": [
+        {
+          "date_system": "1900",
+          "input_file": "functions-input-1900.xlsx",
+          "input_sha256": "eb2b2fa99fc918d4bb68bf8527b174e910d6f6c4ac0bbca608b03ed59f1e0e89",
+          "input_marker": [],
+          "saved_file": "functions-cached-1900.xlsx",
+          "saved_sha256": "930c460c6984c08693a591737fa57b820c891cb0a1249d1eeb508b7e459e297c",
+          "saved_marker": []
+        },
+        {
+          "date_system": "1904",
+          "input_file": "functions-input-1904.xlsx",
+          "input_sha256": "aff600335949815bb259e1c66124e5e9e84723ae584563b0e47819d1ac38857c",
+          "input_marker": [],
+          "saved_file": "functions-cached-1904.xlsx",
+          "saved_sha256": "fb9b7b1774e85b24c144aea0b836722c6e3169e9250775dbac518fa51e99654b",
+          "saved_marker": []
+        }
+      ]
+    },
+    {
+      "version_marker": "1",
+      "source_report": "rust/target/excel-desktop/p5-unicode-v1-decoded/results.json",
+      "source_report_sha256": "0dd7b48bbcb43f84296272d038a7dfbb5e1df86f190fb7ea79b47bb629e75997",
+      "source_manifest": ".scratch/p5-unicode-compat/v1/cases.json",
+      "source_manifest_sha256": "07517d72cc87e8c4bef92aa8f0ad7eb0b39462f5e764087de700f9e0596efff6",
+      "excel_version": "16.0",
+      "excel_build": "20430.0",
+      "excel_ui_language": 1036,
+      "cleanup_completed": true,
+      "native_cases": 34,
+      "workbooks": [
+        {
+          "date_system": "1900",
+          "input_file": "functions-input-1900.xlsx",
+          "input_sha256": "ed5493aaac584810a1a0bcd94e2afbeec72b9304e21cedde08b8ea2195d41074",
+          "input_marker": [
+            {
+              "setVersion": "1"
+            }
+          ],
+          "saved_file": "functions-cached-1900.xlsx",
+          "saved_sha256": "169880db1c1622937b47a54511845562d8811cf6933d45491128bb1df55a7b6a",
+          "saved_marker": []
+        },
+        {
+          "date_system": "1904",
+          "input_file": "functions-input-1904.xlsx",
+          "input_sha256": "95146190ef6b5ef50c087040e83ea0364dda2989d9bd55c14ce3a7f5130db18a",
+          "input_marker": [
+            {
+              "setVersion": "1"
+            }
+          ],
+          "saved_file": "functions-cached-1904.xlsx",
+          "saved_sha256": "279ce9a694d710ea9d3e072fa3d3078a09ff52da84950da0473080378985c29d",
+          "saved_marker": []
+        }
+      ]
+    },
+    {
+      "version_marker": "2",
+      "source_report": "rust/target/excel-desktop/p5-unicode-v2/results.json",
+      "source_report_sha256": "ce7ec4536a0d15e9a7698d71b5f25fce296354d0e5b40bf643c0ea1fa757033e",
+      "source_manifest": ".scratch/p5-unicode-compat/v2/cases.json",
+      "source_manifest_sha256": "3a5707b3d5b68000a82fb9ddfc26e30326a6142d211985e6ec0141ef9f210c3c",
+      "excel_version": "16.0",
+      "excel_build": "20430.0",
+      "excel_ui_language": 1036,
+      "cleanup_completed": true,
+      "native_cases": 34,
+      "workbooks": [
+        {
+          "date_system": "1900",
+          "input_file": "functions-input-1900.xlsx",
+          "input_sha256": "c1c013442a9cf40650f4daed6febead8e555b1067bf8b8b9a749849532574992",
+          "input_marker": [
+            {
+              "setVersion": "2"
+            }
+          ],
+          "saved_file": "functions-cached-1900.xlsx",
+          "saved_sha256": "4cecce32bb4dc31620b50af636c62000ae8a6138a15ad5a7e0568c58b8b5af99",
+          "saved_marker": [
+            {
+              "warnBelowVersion": "2",
+              "setVersion": "2"
+            }
+          ]
+        },
+        {
+          "date_system": "1904",
+          "input_file": "functions-input-1904.xlsx",
+          "input_sha256": "59843e51b8d67080bcc58281baf3278cc41fcbdb49e157d5a0e019dbbeeb68e0",
+          "input_marker": [
+            {
+              "setVersion": "2"
+            }
+          ],
+          "saved_file": "functions-cached-1904.xlsx",
+          "saved_sha256": "a986ec1789ea428709b3bf14f26c562fdf99bcbd243e525769382683897283c0",
+          "saved_marker": [
+            {
+              "warnBelowVersion": "2",
+              "setVersion": "2"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "version_marker": "absent",
+      "id": "len-pair-1900",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "len-combining-1900",
+      "date_system": "1900",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-high-1900",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xD83D_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "d83d"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-low-1900",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xDE00_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "de00"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-pair-1900",
+      "date_system": "1900",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-combining-1900",
+      "date_system": "1900",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "left-half-1900",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "left-pair-1900",
+      "date_system": "1900",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "right-half-1900",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "right-pair-1900",
+      "date_system": "1900",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "find-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "search-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "replace-half-1900",
+      "date_system": "1900",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX_xDE00_Z",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "0041",
+          "0058",
+          "de00",
+          "005a"
+        ]
+      },
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "replace-pair-1900",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "lower-case-1900",
+      "date_system": "1900",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "upper-case-1900",
+      "date_system": "1900",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "proper-case-1900",
+      "date_system": "1900",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "len-pair-1904",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "len-combining-1904",
+      "date_system": "1904",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-high-1904",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xD83D_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "d83d"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-low-1904",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xDE00_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "de00"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-pair-1904",
+      "date_system": "1904",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "mid-combining-1904",
+      "date_system": "1904",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "left-half-1904",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "left-pair-1904",
+      "date_system": "1904",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "right-half-1904",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "right-pair-1904",
+      "date_system": "1904",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "absent",
+      "id": "find-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "search-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "replace-half-1904",
+      "date_system": "1904",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX_xDE00_Z",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "0041",
+          "0058",
+          "de00",
+          "005a"
+        ]
+      },
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "replace-pair-1904",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "lower-case-1904",
+      "date_system": "1904",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "upper-case-1904",
+      "date_system": "1904",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "absent",
+      "id": "proper-case-1904",
+      "date_system": "1904",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "len-pair-1900",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "len-combining-1900",
+      "date_system": "1900",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-high-1900",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xD83D_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "d83d"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-low-1900",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xDE00_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "de00"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-pair-1900",
+      "date_system": "1900",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-combining-1900",
+      "date_system": "1900",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "left-half-1900",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "left-pair-1900",
+      "date_system": "1900",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "right-half-1900",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "right-pair-1900",
+      "date_system": "1900",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "find-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "search-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "replace-half-1900",
+      "date_system": "1900",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX_xDE00_Z",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "0041",
+          "0058",
+          "de00",
+          "005a"
+        ]
+      },
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "replace-pair-1900",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "lower-case-1900",
+      "date_system": "1900",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "upper-case-1900",
+      "date_system": "1900",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "proper-case-1900",
+      "date_system": "1900",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "len-pair-1904",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "len-combining-1904",
+      "date_system": "1904",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-high-1904",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "d83d"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xD83D_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "d83d"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-low-1904",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "de00"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "_xDE00_",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "de00"
+        ]
+      },
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-pair-1904",
+      "date_system": "1904",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "mid-combining-1904",
+      "date_system": "1904",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "left-half-1904",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "left-pair-1904",
+      "date_system": "1904",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "right-half-1904",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "1",
+      "id": "right-pair-1904",
+      "date_system": "1904",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "1",
+      "id": "find-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "search-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "4",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "replace-half-1904",
+      "date_system": "1904",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "value2_after": {
+        "variant": "str",
+        "text_transport": {
+          "encoding": "utf16_code_units",
+          "units_hex": [
+            "0041",
+            "0058",
+            "de00",
+            "005a"
+          ]
+        }
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX_xDE00_Z",
+      "cache_value_decoded": {
+        "encoding": "utf16_code_units",
+        "units_hex": [
+          "0041",
+          "0058",
+          "de00",
+          "005a"
+        ]
+      },
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "replace-pair-1904",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "lower-case-1904",
+      "date_system": "1904",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "upper-case-1904",
+      "date_system": "1904",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "1",
+      "id": "proper-case-1904",
+      "date_system": "1904",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "len-pair-1900",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "len-combining-1900",
+      "date_system": "1900",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-high-1900",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-low-1900",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "Z",
+      "cache_value_decoded": "Z",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-pair-1900",
+      "date_system": "1900",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-combining-1900",
+      "date_system": "1900",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "left-half-1900",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "left-pair-1900",
+      "date_system": "1900",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "right-half-1900",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "right-pair-1900",
+      "date_system": "1900",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "find-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "search-after-pair-1900",
+      "date_system": "1900",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "replace-half-1900",
+      "date_system": "1900",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "replace-pair-1900",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AX"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AX"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX",
+      "cache_value_decoded": "AX",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "lower-case-1900",
+      "date_system": "1900",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "upper-case-1900",
+      "date_system": "1900",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "proper-case-1900",
+      "date_system": "1900",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "len-pair-1904",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=LEN(\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=LEN(\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "len-combining-1904",
+      "date_system": "1904",
+      "cell": "B3",
+      "wire_formula": "LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_before": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "native_formula_after": "=LEN(\"e\u0301\ud83d\ude00\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "LEN(\"e\u0301\ud83d\ude00\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-high-1904",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-low-1904",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",3,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "Z",
+      "cache_value_decoded": "Z",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",3,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-pair-1904",
+      "date_system": "1904",
+      "cell": "B6",
+      "wire_formula": "MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_before": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "native_formula_after": "=MID(\"A\ud83d\ude00Z\",2,2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "MID(\"A\ud83d\ude00Z\",2,2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "mid-combining-1904",
+      "date_system": "1904",
+      "cell": "B7",
+      "wire_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_before": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "native_formula_after": "=MID(\"e\u0301\ud83d\ude00\",2,1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u0301"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u0301",
+      "cache_value_decoded": "\u0301",
+      "cache_formula": "MID(\"e\u0301\ud83d\ude00\",2,1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "left-half-1904",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "left-pair-1904",
+      "date_system": "1904",
+      "cell": "B9",
+      "wire_formula": "LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_before": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "native_formula_after": "=LEFT(\"\ud83d\ude00Z\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00Z"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00Z",
+      "cache_value_decoded": "\ud83d\ude00Z",
+      "cache_formula": "LEFT(\"\ud83d\ude00Z\",2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "right-half-1904",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",1)",
+      "value2_before": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\ud83d\ude00",
+      "cache_value_decoded": "\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",1)"
+    },
+    {
+      "version_marker": "2",
+      "id": "right-pair-1904",
+      "date_system": "1904",
+      "cell": "B11",
+      "wire_formula": "RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_before": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "native_formula_after": "=RIGHT(\"A\ud83d\ude00\",2)",
+      "value2_before": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "A\ud83d\ude00"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "A\ud83d\ude00",
+      "cache_value_decoded": "A\ud83d\ude00",
+      "cache_formula": "RIGHT(\"A\ud83d\ude00\",2)"
+    },
+    {
+      "version_marker": "2",
+      "id": "find-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=FIND(\"Z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "search-after-pair-1904",
+      "date_system": "1904",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_before": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "native_formula_after": "=SEARCH(\"z\",\"A\ud83d\ude00Z\")",
+      "value2_before": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "value2_after": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_xml": "3",
+      "cache_value_decoded": null,
+      "cache_formula": "SEARCH(\"z\",\"A\ud83d\ude00Z\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "replace-half-1904",
+      "date_system": "1904",
+      "cell": "B14",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AXZ"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AXZ",
+      "cache_value_decoded": "AXZ",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,1,\"X\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "replace-pair-1904",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_before": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "native_formula_after": "=REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "AX"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "AX"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "AX",
+      "cache_value_decoded": "AX",
+      "cache_formula": "REPLACE(\"A\ud83d\ude00Z\",2,2,\"X\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "lower-case-1904",
+      "date_system": "1904",
+      "cell": "B16",
+      "wire_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_before": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "native_formula_after": "=LOWER(\"\u0130\ud83d\ude00ABC\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "i\ud83d\ude00abc"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "i\ud83d\ude00abc",
+      "cache_value_decoded": "i\ud83d\ude00abc",
+      "cache_formula": "LOWER(\"\u0130\ud83d\ude00ABC\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "upper-case-1904",
+      "date_system": "1904",
+      "cell": "B17",
+      "wire_formula": "UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_before": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "native_formula_after": "=UPPER(\"\u00df\ud83d\ude00abc\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00df\ud83d\ude00ABC"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00df\ud83d\ude00ABC",
+      "cache_value_decoded": "\u00df\ud83d\ude00ABC",
+      "cache_formula": "UPPER(\"\u00df\ud83d\ude00abc\")"
+    },
+    {
+      "version_marker": "2",
+      "id": "proper-case-1904",
+      "date_system": "1904",
+      "cell": "B18",
+      "wire_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_before": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "native_formula_after": "=PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")",
+      "value2_before": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "value2_after": {
+        "variant": "str",
+        "value": "\u00c9\ud83d\ude00O\u2019Brien"
+      },
+      "cache_type": "str",
+      "cache_value_xml": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_value_decoded": "\u00c9\ud83d\ude00O\u2019Brien",
+      "cache_formula": "PROPER(\"\u00e9\ud83d\ude00o\u2019BRIEN\")"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "phase": "P4",
+  "scope": "Historical carried-range cut audit and its subsequent P4 closure evidence; excludes later formula/pivot/service phases and separate table/header/media scope.",
+  "status": "Historical four-family gap list is superseded by supported Rust/native carried transfer checks. P4 exit checks are still in progress; unsupported relative-area and opaque/singular cases retain located refusals rather than approximate rewrites.",
+  "review_base": "Historical read-only source review at 850637bbf plus named-region-selection working tree; later results are recorded in P4-local.json and its linked logs.",
+  "historical_record": {
+    "replaces": "handoff/phases/P4-cut-audit.json",
+    "superseded_by": "850637bbf (including preceding f2261058d, a77b58b42, fe289dfba and 367400aba)",
+    "do_not_reopen": [
+      "Effective part presence/tombstones and insertion revisions; stable fresh worksheet part identity and complete optional frames.",
+      "Actual namespace-qualified tablePart ownership, whole-table same/cross-sheet moves, collisions and formula templates.",
+      "Ordinary legacy/threaded notes, authors/persons, standard VML numeric identities, ownership/orphan cleanup and saved inverses.",
+      "Batch/guarded atomicity, retained style meanings, removal registrations, reused-part inverse guards and unchanged owner witnesses.",
+      "Source-local name preservation/refusals and legacy conditional-format/data-validation/hyperlink ownership transfer.",
+      "Old UI mock failure: later P4-local.ui_followup evidence records full walk 78 passed, no console errors."
+    ],
+    "checks": "Historical numeric checks stay in P4-local and their logs. Root owns the current validation chain; this review neither reruns nor upgrades that evidence."
+  },
+  "contract": [
+    "design section1 excludes authoring carried objects but explicitly requires carrying and shifting them.",
+    "design2.4 lists protectedRanges, ignoredErrors, cellWatches, worksheet autoFilter/sortState and the three recognized x14 extension families as Shifted.",
+    "design4.3 specifies cut move semantics;4.4 sends carried range/formula rewrites through one adjuster;4.5 requires exact inverses.",
+    "addendum6/10/11 do not narrow these cut semantics; addendum14 permits named MCE refusals when unchanged meaning cannot be proved."
+  ],
+  "allowed_named_refusals": [
+    "Specified Blocking/unknown worksheet elements or ext URIs; ambiguous/malformed relationship ownership; query-fed table bands; table column/header/all-data band removal; array/data-table/pivot splitting; grid/cell limits and distinct table collisions.",
+    "Addendum14 explicitly unsupported changed MCE interpretation; no full MCE processor or alternate-branch selection is required.",
+    "Distinct singular worksheet filter/sort settings or conflicting sheet-wide validation container attributes without a lossless merge.",
+    "Previously disclosed unsupported opaque VML/image/thread dependency shapes and unresolved callable/name scopes stay separate named limits, not excuses to refuse ordinary listed carried records."
+  ],
+  "scratch_red_stage": {
+    "patch": ".scratch/carried-scope-01-red.patch",
+    "snippet": ".scratch/carried-scope-01-red.rs",
+    "target": "rust/tests/excel/workbook.rs",
+    "command": "cargo test --locked -p yggdryl --test excel carried_scope_cut_",
+    "expected_before_fix": "Historical red-stage expectation from the review; subsequent carried-scope tests and related cut checks passed as recorded in P4-local.json current_work_checks.carried_scope. This worker did not run Cargo.",
+    "coverage": "Each formula-free family: moved source child, unaffected source child, fully overwritten destination child, surviving destination child, exact expanded namespaces/attributes, and save->undo->save->redo repeated twice with every decompressed member equal."
+  },
+  "oracle_boundary": "Historical review made no Excel/COM call or native acceptance claim. Later native filter, CF/DV, hyperlink, GUID and area observations are recorded in P4-local.json and its fixture reports. Source XML tests alone still do not prove Excel acceptance for unobserved opaque cases.",
+  "primary_sources": [
+    {
+      "url": "https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/025ea6e4-ad42-43ea-a016-16f4e4688ac8",
+      "supports": "x14 CF priority domain and priority-less data-bar linkage by GUID"
+    },
+    {
+      "url": "https://learn.microsoft.com/en-us/openspecs/office_standards/MS-XLSX/331c1ecb-e49d-4cd0-843d-3ae189dc8a88",
+      "supports": "group-owned sparkline settings and optional date-axis formula"
+    }
+  ],
+  "historical_findings": [
+    {
+      "id": "formula_free_containers",
+      "source": "rust/src/excel/workbook.rs::refuse_untransferred_carried / transfer_carried; rust/src/excel/shift.rs::SheetEdits::start",
+      "current": "Whole moved protectedRange and ignoredError sqref, and cellWatch r, are refused as unported. Destination covered registrations are already removed by the normal planned frame rewrite.",
+      "required": "Transfer source-selected children and merge surviving destination containers, preserving each child attribute, namespace/MCE scope and frame order. A cellWatch must use ownership-aware range partitioning rather than discarding the sheet returned by Shift::place.",
+      "next_slice": true
+    },
+    {
+      "id": "worksheet_filter_sort",
+      "source": "workbook.rs::refuse_untransferred_carried / transfer_carried; shift.rs::SheetEdits::start autoFilter/sortState/sortCondition branch",
+      "current": "Whole selected worksheet autoFilter/sortState is refused. Table-owned filter/sort transfer is already implemented and is a separate owner.",
+      "required": "Move a complete worksheet filter/sort registration using an ownership-aware singular range result. Retain filterColumn colId offsets and nested sort ranges; account for any worksheet-local _xlnm._FilterDatabase name through the existing Names owner. A distinct surviving destination filter cannot silently be overwritten.",
+      "allowed_limits": "A single-ref filter or sort extent cannot encode a disconnected remainder. Retain a typed located refusal for a genuinely unrepresentable split or conflicting singular destination registration; blanket whole-object refusal is the missing behavior."
+    },
+    {
+      "id": "recognized_x14_and_sparklines",
+      "source": "carried.rs::SHIFTED_EXTENSIONS; workbook.rs::refuse_untransferred_carried / Registration::standard_transfer_only; shift.rs::GatherX14 / is_x14_host / SheetEdits",
+      "current": "Recognized extLst entries are classified Shifted and adjusted for bands, but a moved xm:sqref is refused. The current standard_transfer_only gate correctly does not admit these namespaces by accident.",
+      "required": "Partition recognized ext children by their exact URI and expanded element names using Registration; preserve their envelopes and unrelated children. Transfer x14 CF/DV and sparkline children with the existing formula/range adjuster. Merge singleton extension entries instead of duplicating the URI.",
+      "constraints": [
+        "CF priorities share a worksheet-wide domain across legacy and x14 rules. Priority-less x14 data-bar records link to legacy rules by GUID and must move with the linked rule, not receive invented independent priority.",
+        "Sparkline group settings and optional date-axis xm:f travel with moved members; individual sparkline data xm:f is a source reference, not a relative formula hosted at the display cell.",
+        "Namespace/MCE semantics use the existing Registration fragment path. Unknown URI, unsupported changed inherited directives, malformed/ambiguous identities remain named refusals."
+      ]
+    },
+    {
+      "id": "partial_carried_ranges",
+      "source": "shift.rs::check_partial_carried / adjust_list / moved_list / relocate; workbook.rs::transfer_carried",
+      "current": "Cross-sheet partly intersected carried ranges refuse before mutation; same-sheet relocate only moves wholly enclosed ranges. Existing tests pin cross-sheet partial CF-source and DV-destination refusal.",
+      "required": "For representable sqref families, retain old rectangle minus selected/overwritten intersection and transfer the translated intersection. Preserve formula meaning by rehosting each resulting registration through SheetEdits::host_of/formula. Source selection wins an overlapping same-sheet destination.",
+      "constraints": [
+        "Do not change scalar formula-reference relocate semantics to use sqref fragmentation. A carried range partition is a bounded geometry result owned in shift.rs.",
+        "A rectangle remainder is at most four disjoint rectangles; sqref can carry their union. Hyperlink ref is singular, so multiple pieces require cloned registrations and shared/remapped relationship ownership, not an invalid whitespace ref.",
+        "Keep scalar/ref-only filters and unknown opaque shapes refused when no lossless representation exists. These are different from ordinary CF/DV sqref splits that the format can represent."
+      ]
+    }
+  ],
+  "remaining": [
+    {
+      "id": "partial_owner_relative_area",
+      "current": "Split or same-sheet carried owners with host-dependent relative area formulas retain a located atomic refusal. Disjoint components, fixed absolute areas and supported whole cross-sheet copies follow native-observed policies; no approximate rewrite is published.",
+      "evidence": "P4-local.json continuation.native_carried_area_partial_owner and rust/target/excel-desktop/carried-area-partial-owner/results.json"
+    },
+    {
+      "id": "opaque_or_singular_conflict",
+      "current": "Unknown/changed MCE meanings, incompatible selected extension payloads, conflicting singular destination filters and unrepresentable disconnected single-ref shapes retain typed located refusals. These are bounded representability limits, not blanket refusal of the four historical carried families.",
+      "evidence": "P4-local.json current_work_checks.carried_scope, continuation.edit_filter_overlap_regression and worksheet_filter_partial_cost"
+    }
+  ],
+  "later_supported_evidence": {
+    "formula_free_containers": "Protected/ignored/watch transfer: 10 new controls plus 9 related cut tests; zero extra IO reads, 64/4096 resident-row allocation equality and 24 debug workloads (P4-local.json current_work_checks.carried_scope).",
+    "worksheet_filter_sort": "Native 4 unsorted plus 4 authored-sort partial-overlap cuts accepted; Rust filter9/edit39 passed; partial-filter allocation/IO/20-debug-case pins passed (P4-local.json continuation.edit_filter_overlap_regression and worksheet_filter_partial_cost).",
+    "x14_and_sparklines": "Recognized transfer tests passed with shared priority/GUID ownership, lazy validation and exact extension tail; supported whole/partial formula cases compared against native Excel (P4-local.json continuation.x14_cross_sheet, partial_linked_databar, native_carried_representation and rust_carried_formula_desktop).",
+    "partial_carried_ranges": "Bounded rectangle partition, hyperlink and CF/DV scalar/area subsets have saved-inverse and native comparisons; unsupported partial relative-area meaning refuses atomically (P4-local.json continuation.partial_carried_geometry, partial_range_hyperlinks, native_carried_area_semantics and native_carried_area_partial_owner)."
+  }
+}

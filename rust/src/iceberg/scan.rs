@@ -963,7 +963,7 @@ fn file_projection(
     wanted: &Field,
     defaults: &[(Field, Scalar)],
 ) -> Field {
-    let Ok(file_root) = crate::IOMedia::read_arrow_field(handle, options) else {
+    let Ok(file_root) = crate::iobase::leaf_field(handle, options) else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());

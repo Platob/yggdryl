@@ -2275,6 +2275,73 @@ mod record_columns {
         stream_of(&quote_root(), quote_rows())
     }
 
+    #[test]
+    fn omitted_options_read_uses_the_media_handles_own_selection() {
+        let mut bytes = handle("held-read-options.arrows");
+        bytes
+            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .unwrap();
+        let options = yggdryl::ipc::IpcOptions::new()
+            .with_select("symbol")
+            .unwrap();
+        let source = yggdryl::ipc::Ipc::new(bytes).with_options(options);
+        let read = source.read_arrow(None).unwrap();
+        assert_eq!(
+            read.field(),
+            &record([DataType::utf8().required_field("symbol")])
+        );
+        assert_eq!(
+            drained(read),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL")]),
+                Scalar::from_sequence([Scalar::from("MSFT")]),
+            ])
+        );
+        let explicit = source
+            .record_options()
+            .unwrap()
+            .with_select("size")
+            .unwrap();
+        let read = source.read_arrow(Some(&explicit)).unwrap();
+        assert_eq!(
+            read.field(),
+            &record([DataType::Int64.required_field("size")])
+        );
+        assert_eq!(
+            drained(read),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from(100_i64)]),
+                Scalar::from_sequence([Scalar::from(250_i64)]),
+            ])
+        );
+    }
+
+    #[test]
+    fn omitted_options_write_uses_the_media_handles_own_selection() {
+        let options = yggdryl::ipc::IpcOptions::new()
+            .with_select("symbol")
+            .unwrap();
+        let mut target =
+            yggdryl::ipc::Ipc::new(handle("held-write-options.arrows")).with_options(options);
+        target
+            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .unwrap();
+        // Explicit unprojected read proves the write stored only the selected column.
+        let plain = RecordOptions::Ipc(yggdryl::ipc::IpcOptions::new());
+        let read = target.read_arrow(Some(&plain)).unwrap();
+        assert_eq!(
+            read.field(),
+            &record([DataType::utf8().required_field("symbol")])
+        );
+        assert_eq!(
+            drained(read),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL")]),
+                Scalar::from_sequence([Scalar::from("MSFT")]),
+            ])
+        );
+    }
+
     /// Record options carrying the declared root a read lands under.
     fn declaring(field: &Field) -> RecordOptions {
         let mut options = RecordOptions::for_media_type(&MediaType::new(MimeType::ARROW_STREAM))
@@ -2545,6 +2612,33 @@ mod shape {
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).expect("a writable temporary root");
         path
+    }
+
+    #[test]
+    fn omitted_options_read_resolves_a_partitioned_folder_from_its_leaves() {
+        use yggdryl::IOMedia as _;
+        use yggdryl::media::IORecordOptions as _;
+
+        let path = root("column-default-options");
+        let mut leaf =
+            yggdryl::local::LocalPath::new(path.join("year=2024").join("part.arrows")).unwrap();
+        let options = leaf.record_options().unwrap().with_field(super::schema());
+        leaf.overwrite_arrow_reader(super::reader(), &options)
+            .unwrap();
+        let folder = yggdryl::local::LocalFolder::new(&path).unwrap();
+        assert!(folder.record_options().is_ok());
+        let columns = folder
+            .read_arrow(None)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(columns.iter().map(yggdryl::Serie::len).sum::<usize>(), 2);
+        assert!(
+            columns
+                .iter()
+                .all(|column| column.field().unwrap().field_len() == 3)
+        );
+        std::fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -2956,5 +3050,87 @@ mod shape {
         assert_eq!(rows, 3);
 
         let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+#[test]
+fn read_arrow_field_projects_declared_schema_without_opening_source() {
+    let source = handle("absent-declared-result.arrows");
+    let options = source
+        .record_options()
+        .unwrap()
+        .with_field(schema())
+        .with_select("id as key")
+        .unwrap();
+    let result = source.read_arrow_field(&options).unwrap();
+    let expected = StructType::from_fields([DataType::Int64.required_field("key")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    assert_eq!(result, expected);
+
+    // `select *` is the declared identity, including its root/child metadata.
+    let identity = source.record_options().unwrap().with_field(schema());
+    assert_eq!(source.read_arrow_field(&identity).unwrap(), schema());
+
+    // Both errors are known from the declared schema alone. A source read
+    // would be unnecessary and, for this absent source, potentially misleading.
+    let absent = identity.clone().with_select("absent").unwrap();
+    let error = source.read_arrow_field(&absent).unwrap_err().to_string();
+    assert!(error.contains("absent"), "{error}");
+    let absent = identity.with_filter("absent > 0").unwrap();
+    let error = source.read_arrow_field(&absent).unwrap_err().to_string();
+    assert!(error.contains("absent"), "{error}");
+}
+
+#[test]
+fn read_arrow_field_and_reader_agree_for_alias_filter_and_computed_projection() {
+    let mut source = handle("result-field-alias.arrows");
+    let stored = source.record_options().unwrap();
+    source.overwrite_arrow_reader(reader(), &stored).unwrap();
+    for options in [
+        stored
+            .clone()
+            .with_field(schema())
+            .with_select("id as key")
+            .unwrap()
+            .with_filter("key > 0")
+            .unwrap(),
+        stored
+            .clone()
+            .with_select("id + 1 as next_id")
+            .unwrap()
+            .with_filter("id > 0")
+            .unwrap(),
+    ] {
+        let field = source.read_arrow_field(&options).unwrap();
+        let reader = source.read_arrow_reader(&options).unwrap();
+        assert_eq!(field.clone().into_arrow_schema().unwrap(), reader.schema());
+        assert_eq!(field.field_len(), 1);
+        assert_eq!(source.column_size().unwrap(), 2);
+    }
+}
+
+#[test]
+fn read_arrow_field_refuses_unbound_clauses_as_the_reader_does() {
+    let source = handle("absent-unbound-result.arrows");
+    let declared = source.record_options().unwrap().with_field(schema());
+    for options in [
+        declared.clone().with_select("absent").unwrap(),
+        declared.with_filter("absent > 0").unwrap(),
+    ] {
+        let error = source.read_arrow_field(&options).unwrap_err();
+        match &error {
+            Error::InvalidRecord { path, reason } => {
+                assert!(!path.is_empty());
+                assert!(reason.contains("absent"), "{reason}");
+            }
+            other => panic!("expected a located clause refusal, got {other}"),
+        }
+        let reader_error = match source.read_arrow_reader(&options) {
+            Ok(_) => panic!("an unknown column cannot construct a reader"),
+            Err(error) => error,
+        };
+        assert_eq!(error.to_string(), reader_error.to_string());
     }
 }

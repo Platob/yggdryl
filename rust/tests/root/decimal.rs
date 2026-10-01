@@ -1065,3 +1065,126 @@ mod fields {
         assert_eq!(held.id(), DataTypeId::Decimal128);
     }
 }
+
+#[test]
+fn all_decimal_scalar_layouts_cast_signed_and_zero_values_to_float64() {
+    use yggdryl::{BigDecimal, DataType, Decimal, Decimal32, Decimal64, Scalar, i256};
+    for (dtype, values) in [
+        (
+            DataType::decimal32(9, 2).unwrap(),
+            [
+                Scalar::Decimal32(Decimal32::new(225, 2)),
+                Scalar::Decimal32(Decimal32::new(-225, 2)),
+                Scalar::Decimal32(Decimal32::new(0, 2)),
+            ],
+        ),
+        (
+            DataType::decimal64(18, 2).unwrap(),
+            [
+                Scalar::Decimal64(Decimal64::new(225, 2)),
+                Scalar::Decimal64(Decimal64::new(-225, 2)),
+                Scalar::Decimal64(Decimal64::new(0, 2)),
+            ],
+        ),
+        (
+            DataType::decimal128(38, 2).unwrap(),
+            [
+                Scalar::decimal128(225, 2),
+                Scalar::decimal128(-225, 2),
+                Scalar::decimal128(0, 2),
+            ],
+        ),
+        (
+            DataType::decimal256(76, 2).unwrap(),
+            [
+                Scalar::decimal256(i256::from_i128(225), 2),
+                Scalar::decimal256(i256::from_i128(-225), 2),
+                Scalar::decimal256(i256::ZERO, 2),
+            ],
+        ),
+        (
+            DataType::Decimal,
+            [
+                Scalar::Decimal("2.25".parse::<Decimal>().unwrap()),
+                Scalar::Decimal("-2.25".parse::<Decimal>().unwrap()),
+                Scalar::Decimal("0".parse::<Decimal>().unwrap()),
+            ],
+        ),
+        (
+            DataType::BigDecimal,
+            [
+                Scalar::BigDecimal("2.25".parse::<BigDecimal>().unwrap()),
+                Scalar::BigDecimal("-2.25".parse::<BigDecimal>().unwrap()),
+                Scalar::BigDecimal("0".parse::<BigDecimal>().unwrap()),
+            ],
+        ),
+    ] {
+        for (value, expected) in values.into_iter().zip([2.25, -2.25, 0.0]) {
+            assert_eq!(value.id(), dtype.id(), "{dtype}");
+            assert_eq!(
+                DataType::Float64.cast_scalar(&value).unwrap(),
+                Scalar::from(expected),
+                "{dtype}: {value:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn decimal128_native_width_float_rounding_matches_arrow() {
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie};
+
+    // Arrow converts each decimal coefficient in its native width before it
+    // narrows the resulting f64 to f32/f16. Widening i128 to i256 first rounds
+    // these halfway values differently.
+    let mut mismatches = Vec::new();
+    for (coefficient, scale, target, expected_bits) in [
+        (
+            6_777_667_198_067_427_044_175_453_363_236_786_405_i128,
+            0_i8,
+            DataType::Float64,
+            0x4794_6553_2b98_07e9_u64,
+        ),
+        (
+            1_208_925_891_672_223_346_994_073_i128,
+            0_i8,
+            DataType::Float32,
+            0x44f0_0000_2000_0000_u64,
+        ),
+        (
+            10_004_883_408_546_448_385_i128,
+            19_i8,
+            DataType::Float16,
+            0x3ff0_0400_0000_0000_u64,
+        ),
+    ] {
+        let value = Scalar::decimal128(coefficient, scale);
+        let source = DataType::decimal128(38, scale)
+            .unwrap()
+            .required_field("amount");
+        let output = target.clone().required_field("amount");
+        let column = Serie::from_scalars(source, [value.clone()]).unwrap();
+        let expected = column
+            .cast(&output, ArrowCastOptions::new().with_safe(false))
+            .unwrap()
+            .scalar(0)
+            .unwrap()
+            .as_f64()
+            .unwrap()
+            .to_bits();
+        assert_eq!(expected, expected_bits, "Arrow baseline for {target}");
+        let actual = target
+            .cast_scalar(&value)
+            .unwrap()
+            .as_f64()
+            .unwrap()
+            .to_bits();
+        if actual != expected {
+            mismatches.push((target, coefficient, scale, actual, expected));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "decimal scalar/Arrow divergences: {mismatches:#?}"
+    );
+}

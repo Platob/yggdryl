@@ -715,33 +715,16 @@ pub(crate) fn float_arithmetic(
         16 => {
             let left = left_number as f32;
             let right = right_number as f32;
-            let held = float_operation(left, operation, right);
+            let held = operation.apply_float(left, right);
             Scalar::Float16(Float16::from_f16(half::f16::from_f32(held)))
         }
-        32 => Scalar::Float32(Float32::from_f32(float_operation(
-            left_number as f32,
-            operation,
-            right_number as f32,
-        ))),
-        _ => Scalar::Float64(Float64::from_f64(float_operation(
-            left_number,
-            operation,
-            right_number,
-        ))),
+        32 => Scalar::Float32(Float32::from_f32(
+            operation.apply_float(left_number as f32, right_number as f32),
+        )),
+        _ => Scalar::Float64(Float64::from_f64(
+            operation.apply_float(left_number, right_number),
+        )),
     })
-}
-
-fn float_operation<T>(left: T, operation: Arithmetic, right: T) -> T
-where
-    T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + Rem<Output = T>,
-{
-    match operation {
-        Arithmetic::Add => left + right,
-        Arithmetic::Sub => left - right,
-        Arithmetic::Mul => left * right,
-        Arithmetic::Div => left / right,
-        Arithmetic::Rem => left % right,
-    }
 }
 
 macro_rules! float_operators {

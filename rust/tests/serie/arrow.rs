@@ -1789,3 +1789,58 @@ fn a_batch_that_lays_out_as_its_root_lands_as_it_stands_and_a_narrower_one_takes
         assert!(refused.to_string().contains("id"), "{refused}");
     }
 }
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_reader_preflights_the_raw_batch_before_conversion_and_fuses_on_refusal() {
+    use yggdryl::internals::serie_arrow;
+
+    let target =
+        DataType::from(StructType::from_fields([DataType::Null.nullable_field("blank")]).unwrap())
+            .required_field("row");
+    let source = target.clone().into_arrow_schema().unwrap();
+    let batch = RecordBatch::try_new(
+        Arc::clone(&source),
+        vec![Arc::new(arrow_array::NullArray::new(usize::MAX))],
+    )
+    .unwrap();
+    let mut reader = SerieReader::from_arrow_reader(
+        Some(&target),
+        batch_reader(source, [batch]),
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
+    let refused = serie_arrow::next_with_preflight(&mut reader, |rows| {
+        assert_eq!(rows, usize::MAX);
+        Err(yggdryl::Error::InvalidRecord {
+            path: "$.preflight".into(),
+            reason: "before cast".into(),
+        }
+        .into())
+    })
+    .unwrap()
+    .unwrap_err();
+    assert!(matches!(
+        refused,
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidRecord { ref path, .. })
+            if path.as_str() == "$.preflight"
+    ));
+    assert!(
+        reader.next().is_none(),
+        "a preflight refusal fuses the reader"
+    );
+
+    let small = RecordBatch::try_new(
+        target.clone().into_arrow_schema().unwrap(),
+        vec![Arc::new(arrow_array::NullArray::new(2))],
+    )
+    .unwrap();
+    let mut ordinary = SerieReader::from_arrow_reader(
+        Some(&target),
+        batch_reader(small.schema(), [small]),
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
+    assert_eq!(ordinary.next().unwrap().unwrap().len(), 2);
+    assert!(ordinary.next().is_none());
+}

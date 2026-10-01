@@ -159,12 +159,12 @@ impl<H: IOBase> IOMedia for Text<H> {
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let text = self.require_text_options(options)?;
         if let Some(field) = text.field() {
-            return Ok(field);
+            return text.result_field(field);
         }
         if self.handle.is_container() {
             return crate::iomedia::container_field(&self.handle, options);
         }
-        text.source_field()
+        text.result_field(text.source_field()?)
     }
 
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {

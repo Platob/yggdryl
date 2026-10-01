@@ -434,6 +434,36 @@ pub trait IORecordOptions: Sized {
         Some(columns)
     }
 
+    /// Resolve the result field from an already declared or inferred source.
+    ///
+    /// Clauses bind in the same order as [`Self::apply_arrow_expressions`],
+    /// without opening a reader or decoding rows. An identity selection returns
+    /// the source unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns a located binding error when a clause cannot bind against the
+    /// source or selected field it meets.
+    fn result_field(&self, source: Field) -> Result<Field> {
+        let late = crate::expression::filter_after_select(
+            self.filter(),
+            self.select(),
+            source.fields().iter().map(Field::name),
+        );
+        if !late && !self.filter().is_always_true() {
+            self.filter().bind(&source)?;
+        }
+        let output = if self.select().is_all() {
+            source
+        } else {
+            self.select().bind(&source)?.output().clone()
+        };
+        if late {
+            self.filter().bind(&output)?;
+        }
+        Ok(output)
+    }
+
     /// Run the filter, then the selector, over a reader.
     ///
     /// Each clause binds once against the schema the clause before it
@@ -1202,6 +1232,14 @@ pub enum RecordOptions {
 }
 
 impl RecordOptions {
+    /// Validate encoding-specific read intent before a schema fast path or I/O.
+    pub(crate) fn require_read(&self) -> Result<()> {
+        if let Self::Excel(options) = self {
+            options.require_valid()?;
+        }
+        Ok(())
+    }
+
     /// Return a deterministic hash of the encoding and its complete options.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
@@ -1461,28 +1499,48 @@ impl RecordOptions {
             .set_comment(comment)
     }
 
-    /// Return whether the first record names the columns - a CSV's first
-    /// record, a workbook's first row - or `None` for an encoding whose
+    /// Return the column naming policy, or `None` for an encoding whose
     /// columns are named by its own schema.
-    pub const fn header(&self) -> Option<bool> {
+    pub fn header(&self) -> Option<crate::RecordHeader> {
         match self {
-            Self::Csv(options) => Some(options.header()),
+            Self::Csv(options) => Some(options.header().into()),
             Self::Excel(options) => Some(options.header),
             _ => None,
         }
     }
 
-    /// Set whether the first record names the columns: a CSV's first record,
-    /// a workbook's first row.
+    /// Set the column naming policy. Boolean input resolves to Source or None.
     ///
     /// # Errors
     ///
-    /// Returns an error for an encoding that is neither.
-    pub fn set_header(&mut self, header: bool) -> Result<()> {
+    /// Refuses an unsupported policy or encoding without changing the options.
+    pub fn set_header(&mut self, header: impl Into<crate::RecordHeader>) -> Result<()> {
+        use crate::RecordHeader;
+        let header = header.into();
         let media_type = self.mime_type();
         match self {
-            Self::Csv(options) => options.set_header(header),
-            Self::Excel(options) => options.header = header,
+            Self::Csv(options) => {
+                let enabled = match header {
+                    RecordHeader::Source | RecordHeader::Rows(1) => true,
+                    RecordHeader::None => false,
+                    RecordHeader::Rows(_) | RecordHeader::Infer => {
+                        return Err(Error::InvalidRecord {
+                            path: SmolStr::new_static("$.header"),
+                            reason: smol_str::format_smolstr!(
+                                "expected Source, None or Rows(1) for a CSV header, got {header:?}"
+                            ),
+                        });
+                    }
+                };
+                options.set_header(enabled);
+            }
+            Self::Excel(options) => {
+                let previous = std::mem::replace(&mut options.header, header);
+                if let Err(error) = options.require_valid() {
+                    options.header = previous;
+                    return Err(error);
+                }
+            }
             _ => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.header"),
@@ -1697,6 +1755,9 @@ impl RecordOptions {
     /// append refuse every key.
     #[doc(hidden)]
     pub fn require_write_mode(&self, mode: IOMode) -> Result<()> {
+        if let Self::Excel(options) = self {
+            options.require_write()?;
+        }
         let keyed = mode == IOMode::Merge;
         let keys = self.merge_by();
         if keyed != keys.is_empty() {
@@ -1840,11 +1901,30 @@ impl RecordOptions {
         }
     }
 
+    /// The complete workbook selection, or `None` for another encoding.
+    pub fn excel_selection(&self) -> Option<&crate::excel::ExcelSelection> {
+        match self {
+            Self::Excel(options) => Some(&options.selection),
+            _ => None,
+        }
+    }
+
+    /// Replace the complete workbook selection.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a non-workbook encoding, an invalid selection, or a selection
+    /// incompatible with the header policy without changing the options.
+    pub fn set_excel_selection(&mut self, selection: crate::excel::ExcelSelection) -> Result<()> {
+        self.excel_mut("$.selection", "a workbook selection")?
+            .set_selection(selection)
+    }
+
     /// The worksheet a workbook read or write addresses, or `None` for
     /// another encoding or when none is named.
     pub fn excel_sheet(&self) -> Option<&str> {
         match self {
-            Self::Excel(options) => options.sheet.as_deref(),
+            Self::Excel(options) => options.sheet(),
             _ => None,
         }
     }
@@ -1860,7 +1940,7 @@ impl RecordOptions {
         if let Some(sheet) = sheet {
             crate::excel::validate_sheet_name(sheet)?;
         }
-        options.sheet = sheet.map(SmolStr::new);
+        options.set_sheet(sheet.map(SmolStr::new));
         Ok(())
     }
 
@@ -1868,7 +1948,7 @@ impl RecordOptions {
     /// encoding or the whole sheet.
     pub fn excel_range(&self) -> Option<crate::excel::CellRange> {
         match self {
-            Self::Excel(options) => options.range,
+            Self::Excel(options) => options.range(),
             _ => None,
         }
     }
@@ -1877,10 +1957,57 @@ impl RecordOptions {
     ///
     /// # Errors
     ///
-    /// Returns an error for a non-workbook variant.
+    /// Refuses a non-workbook variant or cells outside Excel's grid without
+    /// changing the options.
     pub fn set_excel_range(&mut self, range: Option<crate::excel::CellRange>) -> Result<()> {
-        self.excel_mut("$.range", "a cell range")?.range = range;
+        let options = self.excel_mut("$.range", "a cell range")?;
+        let previous = options.selection.clone();
+        options.set_range(range);
+        if let Err(error) = options.require_valid() {
+            options.selection = previous;
+            return Err(error);
+        }
         Ok(())
+    }
+
+    /// The named OOXML table selected by workbook options.
+    pub fn excel_table(&self) -> Option<&str> {
+        match self {
+            Self::Excel(options) => options.table(),
+            _ => None,
+        }
+    }
+
+    /// Select a named OOXML table, replacing a worksheet selection. Clearing
+    /// an active table selects the default worksheet; another arm is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Refuses another encoding, an empty table name, or a physical row header
+    /// policy without changing the options.
+    pub fn set_excel_table(&mut self, table: Option<&str>) -> Result<()> {
+        let options = self.excel_mut("$.table", "a named table")?;
+        if table.is_some_and(str::is_empty) {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.table"),
+                reason: SmolStr::new_static("expected a nonempty table name"),
+            });
+        }
+        let selection = match table {
+            Some(name) => crate::excel::ExcelSelection::Table {
+                name: SmolStr::new(name),
+            },
+            None => match &options.selection {
+                crate::excel::ExcelSelection::Table { .. } => {
+                    crate::excel::ExcelSelection::Worksheet {
+                        sheet: None,
+                        range: None,
+                    }
+                }
+                current => current.clone(),
+            },
+        };
+        options.set_selection(selection)
     }
 
     fn excel_mut(

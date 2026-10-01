@@ -728,8 +728,11 @@ impl Binder<'_> {
             Term::Function(function, arguments) => {
                 let field = term.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(arguments.len());
-                let unified = matches!(function, Function::Coalesce | Function::IfNull)
-                    .then(|| field.dtype().clone());
+                let unified = match function {
+                    Function::Coalesce | Function::IfNull => Some(field.dtype().clone()),
+                    Function::Sqrt => Some(DataType::Float64),
+                    _ => None,
+                };
                 for argument in arguments.iter() {
                     lowered.push(self.lower(argument, unified.as_ref())?);
                 }

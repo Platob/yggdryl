@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "excel_version": "16.0",
+  "excel_build": "20430.0",
+  "cleanup_completed": true,
+  "full_run_passed": false,
+  "unrelated_failure": "French-locale TEXT calibration",
+  "report_sha256": "379ba9e5fb987c07ab283392280c5c58e11c4f7c91faa170dd3eec4d151a9b72",
+  "manifest_sha256": "3a1b341d1e66691c04e2f33d6803aada608cbd7a648c94de03b411c63eabafc5",
+  "input_sha256": [
+    "22444c6a061fb4168f988dd3bf92092ec6a5f1f276026b9775dd4ee43807b42b",
+    "3657406e9450affe37e89a82277994529bb59ac44af029a1f6ef2352aa1de287"
+  ],
+  "cases": [
+    {
+      "id": "sum-direct-coercion",
+      "formula": "SUM(TRUE,\"3\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "4"
+    },
+    {
+      "id": "sum-reference-coercion",
+      "formula": "SUM(Inputs!B1:B8)",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "5"
+    },
+    {
+      "id": "sum-array-coercion",
+      "formula": "SUM({1,TRUE,\"3\"})",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1"
+    },
+    {
+      "id": "arithmetic-text",
+      "formula": "\"3\"+TRUE",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "4"
+    },
+    {
+      "id": "arithmetic-bad-text",
+      "formula": "\"abc\"+1",
+      "date_system": "1900",
+      "value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_text": "#VALUE!"
+    },
+    {
+      "id": "blank-number",
+      "formula": "Inputs!B5+1",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1"
+    },
+    {
+      "id": "number-text-unequal",
+      "formula": "1=\"1\"",
+      "date_system": "1900",
+      "value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_text": "0"
+    },
+    {
+      "id": "function-value",
+      "formula": "VALUE(\"123.5\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 123.5,
+        "hex": "0x1.ee00000000000p+6",
+        "ieee754_hex": "405ee00000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "123.5"
+    },
+    {
+      "id": "value-percent",
+      "formula": "VALUE(\"12.5%\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 0.125,
+        "hex": "0x1.0000000000000p-3",
+        "ieee754_hex": "3fc0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.125"
+    },
+    {
+      "id": "value-grouping",
+      "formula": "VALUE(\"1,234.50\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 1234.5,
+        "hex": "0x1.34a0000000000p+10",
+        "ieee754_hex": "40934a0000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1234.5"
+    },
+    {
+      "id": "function-datevalue",
+      "formula": "DATEVALUE(\"2024-01-31\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 45322.0,
+        "hex": "0x1.6214000000000p+15",
+        "ieee754_hex": "40e6214000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "45322"
+    },
+    {
+      "id": "function-timevalue",
+      "formula": "TIMEVALUE(\"23:45:30\")",
+      "date_system": "1900",
+      "value2": {
+        "variant": "float",
+        "value": 0.9899305555555555,
+        "hex": "0x1.fad82d82d82d8p-1",
+        "ieee754_hex": "3fefad82d82d82d8",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.98993055555555554"
+    }
+  ]
+}

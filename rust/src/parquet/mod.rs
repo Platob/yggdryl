@@ -2165,14 +2165,15 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
 
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
         let options = self.require_record_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
-        if !self.warm() && self.reads_leaves() {
+        let source = if let Some(field) = options.field() {
+            field
+        } else if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let schema = self.read_arrow_schema()?;
-        Ok(field_from_arrow_schema(options.name(), schema.as_ref())?)
+        } else {
+            let schema = self.read_arrow_schema()?;
+            field_from_arrow_schema(options.name(), schema.as_ref())?
+        };
+        options.result_field(source)
     }
 
     fn read_parquet_statistics(&self) -> crate::Result<FileStatistics> {

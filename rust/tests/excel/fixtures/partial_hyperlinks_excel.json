@@ -1,0 +1,146 @@
+{
+  "provenance": {
+    "source": "rust/target/excel-desktop/partial-hyperlink-native-fixed/results.json",
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "cleanup_completed": true,
+    "reopened_without_repair": true
+  },
+  "cases": [
+    {
+      "id": "external-data",
+      "kind": "external",
+      "block": "C3:D4",
+      "destination": "Data",
+      "target": "J10",
+      "before": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": null,
+            "relationship_id": "rId1",
+            "target": "https://example.invalid/range-hyperlink"
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      },
+      "after": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": null,
+            "relationship_id": "rId1",
+            "target": "https://example.invalid/range-hyperlink"
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      }
+    },
+    {
+      "id": "external-other",
+      "kind": "external",
+      "block": "C3:D4",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": null,
+            "relationship_id": "rId1",
+            "target": "https://example.invalid/range-hyperlink"
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      },
+      "after": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": null,
+            "relationship_id": "rId1",
+            "target": "https://example.invalid/range-hyperlink"
+          }
+        ],
+        "xl/worksheets/sheet2.xml": [
+          {
+            "ref": "J10:K11",
+            "location": null,
+            "relationship_id": "rId1",
+            "target": "https://example.invalid/range-hyperlink"
+          }
+        ]
+      }
+    },
+    {
+      "id": "internal-data",
+      "kind": "internal",
+      "block": "C3:D4",
+      "destination": "Data",
+      "target": "J10",
+      "before": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": "Data!A1",
+            "relationship_id": null,
+            "target": null
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      },
+      "after": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": "Data!A1",
+            "relationship_id": null,
+            "target": null
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      }
+    },
+    {
+      "id": "internal-other",
+      "kind": "internal",
+      "block": "C3:D4",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": "Data!A1",
+            "relationship_id": null,
+            "target": null
+          }
+        ],
+        "xl/worksheets/sheet2.xml": []
+      },
+      "after": {
+        "xl/worksheets/sheet1.xml": [
+          {
+            "ref": "B2:D5",
+            "location": "Data!A1",
+            "relationship_id": null,
+            "target": null
+          }
+        ],
+        "xl/worksheets/sheet2.xml": [
+          {
+            "ref": "J10:K11",
+            "location": "Data!A1",
+            "relationship_id": null,
+            "target": null
+          }
+        ]
+      }
+    }
+  ]
+}

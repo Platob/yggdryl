@@ -1,0 +1,146 @@
+{
+  "provenance": {
+    "source_report": "rust/target/excel-desktop/cell-cut-area-native/results.json",
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "cleanup_completed": true,
+    "passed": true
+  },
+  "cases": [
+    {
+      "id": "left-cross",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!B1:C3)",
+        "Other": "SUM(Data!B1:C3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "right-cross",
+      "source": "Data",
+      "block": "C1:C3",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A1:B3)",
+        "Other": "SUM(Data!A1:B3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "top-cross",
+      "source": "Data",
+      "block": "A1:C1",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A2:C3)",
+        "Other": "SUM(Data!A2:C3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "bottom-cross",
+      "source": "Data",
+      "block": "A3:C3",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A1:C2)",
+        "Other": "SUM(Data!A1:C2)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "interior-cross",
+      "source": "Data",
+      "block": "B2",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A1:C3)",
+        "Other": "SUM(Data!A1:C3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "whole-area-cross",
+      "source": "Data",
+      "block": "A1:C3",
+      "destination": "Other",
+      "target": "J10",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Other!J10:L12)",
+        "Other": "SUM(Other!J10:L12)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "destination-edge-same",
+      "source": "Data",
+      "block": "E1:E3",
+      "destination": "Data",
+      "target": "A1",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A1:C3)",
+        "Other": "SUM(Data!A1:C3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "destination-edge-cross",
+      "source": "Other",
+      "block": "E1:E3",
+      "destination": "Data",
+      "target": "A1",
+      "formula": "=SUM(Data!A1:C3)",
+      "after": {
+        "Data": "SUM(Data!A1:C3)",
+        "Other": "SUM(Data!A1:C3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "whole-rows-cross",
+      "source": "Data",
+      "block": "1:1",
+      "destination": "Other",
+      "target": "10:10",
+      "formula": "=SUM(Data!1:3)",
+      "after": {
+        "Data": "SUM(Data!2:3)",
+        "Other": "SUM(Data!2:3)"
+      },
+      "reopened_without_repair": true
+    },
+    {
+      "id": "whole-columns-cross",
+      "source": "Data",
+      "block": "A:A",
+      "destination": "Other",
+      "target": "J:J",
+      "formula": "=SUM(Data!A:C)",
+      "after": {
+        "Data": "SUM(Data!B:C)",
+        "Other": "SUM(Data!B:C)"
+      },
+      "reopened_without_repair": true
+    }
+  ]
+}

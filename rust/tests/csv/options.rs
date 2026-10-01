@@ -191,7 +191,7 @@ fn record_options_accessors_reach_every_dialect_setting() {
     assert_eq!(options.csv_quote(), Some(Some(b'"')));
     assert_eq!(options.csv_escape(), Some(None));
     assert_eq!(options.csv_comment(), Some(None));
-    assert_eq!(options.header(), Some(true));
+    assert_eq!(options.header(), Some(yggdryl::RecordHeader::Source));
     assert_eq!(options.csv_null_values().map(<[_]>::len), Some(1));
     assert_eq!(options.csv_trim(), Some(false));
     assert_eq!(options.csv_infer_row_size(), Some(1024));
@@ -208,7 +208,7 @@ fn record_options_accessors_reach_every_dialect_setting() {
     assert_eq!(options.csv_quote(), Some(Some(b'\'')));
     assert_eq!(options.csv_escape(), Some(Some(b'\\')));
     assert_eq!(options.csv_comment(), Some(Some(b'#')));
-    assert_eq!(options.header(), Some(false));
+    assert_eq!(options.header(), Some(yggdryl::RecordHeader::None));
     assert_eq!(
         options
             .csv_null_values()

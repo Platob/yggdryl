@@ -51,9 +51,12 @@ mod grammar {
     fn unnest_is_one_of_the_closed_functions_under_its_duckdb_name() {
         use yggdryl::expression::Function;
 
-        assert_eq!(Function::ALL.len(), 20);
+        // ABS and SQRT are shared numeric functions in the closed vocabulary.
+        assert_eq!(Function::ALL.len(), 22);
         assert_eq!(Function::ALL.last(), Some(&Function::Unnest));
         assert_eq!(Function::Unnest.as_str(), "unnest");
+        assert_eq!(Function::Sqrt.as_str(), "sqrt");
+        assert_eq!(Function::from_name("SQRT"), Some(Function::Sqrt));
         for spelling in ["unnest", "UNNEST", "explode"] {
             assert_eq!(
                 Function::from_name(spelling),

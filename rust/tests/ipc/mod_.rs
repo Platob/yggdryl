@@ -147,6 +147,34 @@ mod records {
     }
 
     #[test]
+    fn opened_ipc_cache_stays_unprojected_across_call_specific_selectors() {
+        use yggdryl::media::IORecordOptions;
+
+        let mut media = Ipc::new(handle("projected-cache.arrows"));
+        let write = media.record_options().unwrap();
+        media.overwrite_arrow_reader(reader(), &write).unwrap();
+        let mut media =
+            media.with_options(yggdryl::ipc::IpcOptions::new().with_select("id").unwrap());
+        assert_eq!(
+            media.column_size().unwrap(),
+            2,
+            "held selection cannot change source width"
+        );
+        media.open().unwrap();
+        for (select, name) in [("id as key", "key"), ("symbol as ticker", "ticker")] {
+            let options = media.record_options().unwrap().with_select(select).unwrap();
+            let field = media.read_arrow_field(&options).unwrap();
+            assert_eq!(field.fields()[0].name(), name);
+            assert_eq!(field.field_len(), 1);
+            assert_eq!(
+                field.into_arrow_schema().unwrap(),
+                media.read_arrow_reader(&options).unwrap().schema()
+            );
+            assert_eq!(media.column_size().unwrap(), 2);
+        }
+    }
+
+    #[test]
     fn a_member_of_a_located_archive_reads_its_own_rows_not_the_archive_s() {
         // A member is addressed in the archive's URL fragment, so the file name
         // of its location is the archive's: reopening the member by that name

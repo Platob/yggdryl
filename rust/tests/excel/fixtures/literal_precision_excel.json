@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "kind": "native_excel_formula_literal_intake",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "scope": "Authored literal intake and computed-range controls; no full evaluator equality claim",
+  "literal_cases": [
+    {
+      "id": "literal-above-last-digit-negative",
+      "wire_formula": "-9.999999999999991E307",
+      "input_sha256": "b3ab5020140b91ad073340af2edc84eb7577ce185a7bc4732c8f7a2740962ff0",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-above-last-digit-negative/results.json",
+      "cleanup_completed": true,
+      "bits": "ffe1ccf385ebc89b",
+      "native_formula": "-9.99999999999999E+307",
+      "native_cached_value": "-9.9999999999999901E+307",
+      "native_sha256": "55aade8be1150ac13735c1903e1dcd81cb7b5a0da491a3a7690a3a95fe17ec7c"
+    },
+    {
+      "id": "literal-above-last-digit-positive",
+      "wire_formula": "9.999999999999991E307",
+      "input_sha256": "dd435080572ab8b259d24482b98ec3f3e422aa674523529ae6bc532625f1d0a1",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-above-last-digit-positive/results.json",
+      "cleanup_completed": true,
+      "bits": "7fe1ccf385ebc89b",
+      "native_formula": "9.99999999999999E+307",
+      "native_cached_value": "9.9999999999999901E+307",
+      "native_sha256": "2f0be95bbaaccc96432af9d941dec173b771d5788cc119a7efd1f47f83644b42"
+    },
+    {
+      "id": "literal-above-rounding-digit-negative",
+      "wire_formula": "-9.999999999999999E307",
+      "input_sha256": "a5820d6befaaa2e0b51e15d78f5936cf5b07e98e4fdbc1f70950e0c152f628f8",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-above-rounding-digit-negative/results.json",
+      "cleanup_completed": true,
+      "bits": "ffe1ccf385ebc89b",
+      "native_formula": "-9.99999999999999E+307",
+      "native_cached_value": "-9.9999999999999901E+307",
+      "native_sha256": "18e844bf01ae5db5177df1d1113eb6d8efcbf42be435f1761c4a6968a0700438"
+    },
+    {
+      "id": "literal-above-rounding-digit-positive",
+      "wire_formula": "9.999999999999999E307",
+      "input_sha256": "d45b674794f62eaf60963914399838227e0f086d6802e603c4c7609ecbce0800",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-above-rounding-digit-positive/results.json",
+      "cleanup_completed": true,
+      "bits": "7fe1ccf385ebc89b",
+      "native_formula": "9.99999999999999E+307",
+      "native_cached_value": "9.9999999999999901E+307",
+      "native_sha256": "c7632361d2e1f5d4249c586c37997257c36ecac4d9e8702aaca03236c9239a23"
+    },
+    {
+      "id": "literal-positive-documented-maximum",
+      "wire_formula": "9.99999999999999E307",
+      "input_sha256": "8bc59e4ff20e0be8474dc0118dd94a008c4e3bb0c83e833312bb95302e59a47c",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/numeric-controls/results.json",
+      "cleanup_completed": true,
+      "bits": "7fe1ccf385ebc89b",
+      "native_formula": "9.99999999999999E+307",
+      "native_cached_value": "9.9999999999999901E+307",
+      "native_sha256": "25b28ce3d6ad6bcc3d372790c3a463bf4291eca8bc32c322b9e5274fe800ab7a"
+    },
+    {
+      "id": "literal-negative-documented-maximum",
+      "wire_formula": "-9.99999999999999E307",
+      "input_sha256": "8bc59e4ff20e0be8474dc0118dd94a008c4e3bb0c83e833312bb95302e59a47c",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/numeric-controls/results.json",
+      "cleanup_completed": true,
+      "bits": "ffe1ccf385ebc89b",
+      "native_formula": "-9.99999999999999E+307",
+      "native_cached_value": "-9.9999999999999901E+307",
+      "native_sha256": "25b28ce3d6ad6bcc3d372790c3a463bf4291eca8bc32c322b9e5274fe800ab7a"
+    },
+    {
+      "id": "literal-precision-0",
+      "wire_formula": "1.234567890123456",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "3ff3c0ca428c59dd",
+      "native_formula": "1.23456789012345",
+      "native_cached_value": "1.23456789012345",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-1",
+      "wire_formula": "1.234567890123459",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "3ff3c0ca428c59dd",
+      "native_formula": "1.23456789012345",
+      "native_cached_value": "1.23456789012345",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-2",
+      "wire_formula": "9.999999999999999",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "4023fffffffffffa",
+      "native_formula": "9.99999999999999",
+      "native_cached_value": "9.9999999999999893",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-3",
+      "wire_formula": "1234567890123456",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "43118b54f22aeae8",
+      "native_formula": "1234567890123450",
+      "native_cached_value": "1234567890123450",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-4",
+      "wire_formula": "1234567890123459",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "43118b54f22aeae8",
+      "native_formula": "1234567890123450",
+      "native_cached_value": "1234567890123450",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-5",
+      "wire_formula": "0.9999999999999999",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "3feffffffffffff7",
+      "native_formula": "0.999999999999999",
+      "native_cached_value": "0.999999999999999",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-precision-6",
+      "wire_formula": "9.999999999999999E306",
+      "input_sha256": "934682fc3577c8e5e20cf2c5d33c47c06922e11ffb083e20c17ab61e5fb1104e",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-precision/results.json",
+      "cleanup_completed": true,
+      "bits": "7fac7b1f3cac742b",
+      "native_formula": "9.99999999999999E+306",
+      "native_cached_value": "9.9999999999999899E+306",
+      "native_sha256": "85254e1727a29bae2a3885a9210c32f786c38cf784aec4023b6ebd7f1765bfd9"
+    },
+    {
+      "id": "literal-subthreshold-rounds-up",
+      "wire_formula": "9.99999999999999999E307",
+      "input_sha256": "5dfca56c4aa8b6f88bb84c04b1d28145272e8fb89da1df92a161c8e8d95e394c",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/literal-subthreshold-rounds-up/results.json",
+      "cleanup_completed": true,
+      "bits": "7fe1ccf385ebc89b",
+      "native_formula": "9.99999999999999E+307",
+      "native_cached_value": "9.9999999999999901E+307",
+      "native_sha256": "83d166cbd1b9ba7de8b0eed104d99b59e15991c43aa7ead0d3b41308d6cb38f0"
+    }
+  ],
+  "computed_controls": [
+    {
+      "id": "computed-positive-f64-maximum",
+      "wire_formula": "2^1023*(2-2^-52)",
+      "input_sha256": "8bc59e4ff20e0be8474dc0118dd94a008c4e3bb0c83e833312bb95302e59a47c",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/numeric-controls/results.json",
+      "cleanup_completed": true,
+      "bits": "7fefffffffffffff",
+      "native_formula": "2^1023*(2-2^-52)",
+      "native_cached_value": "1.7976931348623157E+308",
+      "native_sha256": "25b28ce3d6ad6bcc3d372790c3a463bf4291eca8bc32c322b9e5274fe800ab7a"
+    },
+    {
+      "id": "computed-negative-f64-maximum",
+      "wire_formula": "-(2^1023*(2-2^-52))",
+      "input_sha256": "8bc59e4ff20e0be8474dc0118dd94a008c4e3bb0c83e833312bb95302e59a47c",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/numeric-controls/results.json",
+      "cleanup_completed": true,
+      "bits": "ffefffffffffffff",
+      "native_formula": "-(2^1023*(2-2^-52))",
+      "native_cached_value": "-1.7976931348623157E+308",
+      "native_sha256": "25b28ce3d6ad6bcc3d372790c3a463bf4291eca8bc32c322b9e5274fe800ab7a"
+    }
+  ],
+  "refused_literal_cases": [
+    {
+      "id": "literal-one-e308-negative",
+      "wire_formula": "-1E308",
+      "input_sha256": "56601cf0aa5b0fe2dfbdc666316f3162be1ccfc20c8f0f0addcfa6192a7cc521",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-one-e308-negative/results.json",
+      "cleanup_completed": true,
+      "stage": "opening-owned-input",
+      "failure": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ]
+    },
+    {
+      "id": "literal-one-e308-positive",
+      "wire_formula": "1E308",
+      "input_sha256": "572df142da5549056b52a392e61509e2ace276e28bfeb73c3ac09cafceb8c445",
+      "report": "rust/target/excel-desktop/p5-parser-boundary-observed/literal-one-e308-positive/results.json",
+      "cleanup_completed": true,
+      "stage": "opening-owned-input",
+      "failure": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ]
+    }
+  ]
+}
