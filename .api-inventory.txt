@@ -17,6 +17,11 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "YGGDRYL:ipc:dictionary-ids";
   pub fn from_reader_error(error: ArrowError) -> Error
   pub type Result<T> = std::result::Result<T, Error>;
 
+### yggdryl::arrow::size  [rust/src/arrow/size.rs]  (the one memory estimator every byte bound reads: a batch or an array costs the bytes its own slice reaches, a scalar what the row-to-batch builder charges it)
+pub fn memory_size(batch: &RecordBatch) -> usize
+pub fn array_memory_size(column: &ArrayRef) -> usize
+pub fn scalar_memory_size(value: &Scalar) -> usize
+
 ### yggdryl::arrow::extension  [rust/src/arrow/extension.rs]  (arrow-rs's typed extension types for the datatypes that ride a name, every method redirecting into the recognizer Field::from_arrow_field imports through: the name over the storage the datatype lays out, a dictionary of it included, is that datatype, and any other storage or a document a parameter-free name states none of is refused)
 impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType  (NAME the datatype identifier's arrow_extension_name, Metadata = (), no document)
 impl ExtensionType for StringType  (NAME yggdryl.string, Metadata = Self: the leaf written whole as its extension_json document)
@@ -2773,7 +2778,7 @@ pub struct Csv<H: IOBase>  (the medium over one handle: `IOMedia` and `IOBase` t
   pub const fn handle(&self) -> &H
   pub fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
-pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_byte_size`, `batch_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, `commit_row_size`, `level` - as `pub` fields under `IORecordOptions`, and the dialect behind validated setters, each refusal `InvalidRecord` at `$.<setting>` leaving the options unchanged; Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)
+pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_byte_size`, `batch_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, `commit_batch_num`, `level` - as `pub` fields under `IORecordOptions`, and the dialect behind validated setters, each refusal `InvalidRecord` at `$.<setting>` leaving the options unchanged; Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)
   pub fn new() -> Self  (`,`, `"`, no escape, no comment, a header, `[""]` the null spellings, no trim, `DEFAULT_CSV_INFER_ROW_SIZE`, LF; `safe` true, `DEFAULT_RECORD_BATCH_ROW_SIZE` rows and `DEFAULT_CSV_BATCH_BYTE_SIZE` bytes a batch)
   pub fn tsv() -> Self  (`new()` under a tab)
   pub const fn separator(&self) -> u8
@@ -3357,6 +3362,7 @@ pub enum Media
 
 ### yggdryl::media::options  [rust/src/media/options.rs]
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
+pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-based write session publishes by when its options state no `commit_batch_num`)
   pub trait IORecordOptions: Sized
   fn declared(&self) -> Option<&Field>
   fn set_declared(&mut self, field: Option<Field>)
@@ -3371,15 +3377,14 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn set_batch_row_size(&mut self, batch_row_size: Option<usize>)
   fn batch_byte_size(&self) -> Option<u64>
   fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>)
-  fn write_batch_row_size(&self) -> Option<usize>
   fn max_row_size(&self) -> Option<u64>
   fn set_max_row_size(&mut self, max_row_size: Option<u64>)
   fn row_offset(&self) -> Option<u64>
   fn set_row_offset(&mut self, row_offset: Option<u64>)
   fn max_byte_size(&self) -> Option<u64>
   fn set_max_byte_size(&mut self, max_byte_size: Option<u64>)
-  fn commit_row_size(&self) -> Option<usize>
-  fn set_commit_row_size(&mut self, commit_row_size: Option<usize>)
+  fn commit_batch_num(&self) -> Option<usize>
+  fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>)
   fn level(&self) -> Level
   fn set_level(&mut self, level: Level)
   fn merge_by(&self) -> &Selector
@@ -3414,7 +3419,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn with_row_offset(mut self, row_offset: u64) -> Self
   fn with_max_row_size(mut self, max_row_size: u64) -> Self
   fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
-  fn with_commit_row_size(mut self, commit_row_size: usize) -> Self
+  fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self
   fn with_level(mut self, level: Level) -> Self
   fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self>
   fn require_merge_by(&self) -> Result<()>
@@ -3459,7 +3464,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub const fn csv_infer_row_size(&self) -> Option<usize>
   pub fn set_csv_infer_row_size(&mut self, infer_row_size: usize) -> Result<()>
   pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
-  pub fn require_commit_row_size(&self) -> Result<Option<usize>>
+  pub fn require_commit_batch_num(&self) -> Result<Option<usize>>
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
   pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)

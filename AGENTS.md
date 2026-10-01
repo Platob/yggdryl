@@ -1227,9 +1227,14 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   filter-then-select seam - never from a second property. Reads project in the
   encoding and cast each batch; writes cast once, pop the field before delegating
   to overwrite, never materialize the stream.
-- `options.commit_row_size`: unset = one commit; `N` publishes every `N` rows plus the
-  remainder, holding at most one bounded commit; the first overwrite commit
-  overwrites, later ones append; failure leaves published prefixes visible.
+- `options.commit_batch_num`: `N` publishes every `N` whole batches of the shaped
+  stream plus the remainder, holding at most one cadence and cutting no batch;
+  unset is the destination's own cadence - a leaf or a partitioned folder
+  publishes once when the source ends (a leaf append is a rewrite), an Iceberg
+  table commits each time the held batches reach its target file size as
+  `arrow::memory_size` measures them, the push-based write session every
+  `DEFAULT_COMMIT_BYTE_SIZE`; the first overwrite commit overwrites, later ones
+  append; failure leaves published prefixes visible.
 - Overwrite replaces rows under the stored field; append retains stored rows;
   merge needs a non-empty `merge_by` selector, updates matches, appends misses,
   and streams incoming batches - no positional upsert. A `Plan` names the same
