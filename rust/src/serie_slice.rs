@@ -49,9 +49,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
+use crate::arrow::scalar_memory_size;
 use crate::serie::{
     Rows, compare_rows, compare_values, hash_rows, proven_row, require_range, require_row,
-    require_window, scalar_memory_size,
+    require_window,
 };
 use crate::{DataType, Field, Result, Scalar, Serie, SortOptions};
 

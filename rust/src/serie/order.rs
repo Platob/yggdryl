@@ -25,6 +25,7 @@ use arrow_ord::ord::{DynComparator, make_comparator};
 use arrow_row::{RowConverter, Rows, SortField};
 
 use super::{Proof, Rows as _, Serie, land};
+use crate::arrow::{array_memory_size, scalar_memory_size};
 use crate::{DataType, Error, Field, FieldPath, Result, Scalar, SortOptions};
 
 /// The name an index column answers: the positions a sort chose.
@@ -1031,16 +1032,4 @@ impl Serie {
         *self = self.into_filtered(mask)?;
         Ok(self)
     }
-}
-
-/// The bytes a column's rows occupy, as its own slice counts them.
-// W2 merges this into arrow/size.rs as `crate::arrow::array_memory_size`.
-pub(crate) fn array_memory_size(array: &ArrayRef) -> usize {
-    crate::arrow::sliced_array_size(array)
-}
-
-/// The bytes one value is charged, as the row estimator charges it.
-// W2 merges this into arrow/size.rs as `crate::arrow::scalar_memory_size`.
-pub(crate) fn scalar_memory_size(value: &Scalar) -> usize {
-    usize::try_from(crate::arrow::rows::appended_bytes(value)).unwrap_or(usize::MAX)
 }
