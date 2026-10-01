@@ -644,23 +644,28 @@ root.remove(true)?;
 
 `FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect on everything it produced;
-`add_cfb_file` folds one into a held registry, `add_cfb_files` folds the files
-themselves - a glob listing, several listings or single holders chained, a
-container passed by, a file named twice folding once - and `merge_with` folds
-a whole other registry, dialect defaulting to each file's own stem. A fold
-keeps every declaration the dictionary already holds. The answered `FixMerge`
-counts `sources`, `added` and `merged`, `restated` among the merged - a
-field whose source stated another precision of the stored datatype (a
-CBlock's `float` against `decimal128`, `string` against `ccy`) and folded
-under it - and lists in `dropped` each contradiction passed over rather than
-refusing the whole source; only a source that leaves nothing to keep -
-malformed XML or JSON, a catalog that does not validate - is refused whole.
-What the reader cannot keep of a file is a `log` warning naming the line, the
-column, the element and what the reader did instead.
+`add_cfb_file` folds one into a held registry, `add_cfb_files` folds what the
+locations it is handed hold - a glob every file it matches, a folder the `.cfb`
+files directly inside it, a file itself, a file reached twice folding once -
+and `merge_with` folds a whole other registry, dialect defaulting to each
+file's own stem. A fold keeps every declaration the dictionary already holds.
+The answered `FixMerge` counts `sources`, `added` and `merged`, `restated`
+among the merged - a field whose source stated another precision of the
+stored datatype (a CBlock's `float` against `decimal128`, `string` against
+`ccy`) and folded under it - and lists in `dropped` each contradiction passed
+over rather than refusing the whole source. `add_cfb_files` folds each file as
+one mutation: a file it cannot read, parse or fold is left out alone, named in
+`failed` as a `FixFailure` (`source`, `reason`), while the rest fold;
+`add_cfb_file` and `merge_with` refuse whole only a source that leaves nothing
+to keep - malformed XML or JSON, a catalog that does not validate.
+`is_clean()` is `dropped` and `failed` both empty. What the reader cannot keep
+of a file is a `log` warning naming the line, the column, the element and what
+the reader did instead.
 
 ```rust
-use yggdryl::local::{LocalFile, LocalFolder};
-use yggdryl::{FixRegistry, IOBase};
+use yggdryl::holder::Holder;
+use yggdryl::local::LocalFile;
+use yggdryl::FixRegistry;
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
@@ -672,18 +677,23 @@ let cblock = |name: &str| format!(r#"<?xml version="1.0" encoding="US-ASCII"?>
 "#);
 std::fs::write(path.join("alpha.cfb"), cblock("buy"))?;
 std::fs::write(path.join("beta.cfb"), cblock("venue_buy"))?;
+std::fs::write(path.join("broken.cfb"), "<cplugin-configuration><vocabulary>")?;
 
 let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha.cfb"))?, Some("venue"))?;
 assert_eq!(venue.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
 assert!(roots.is_empty());
 
-// `add_cfb_files` takes the files themselves: a glob listing, anchored and
-// walked exactly as `IOBase::glob` walks it.
+// `add_cfb_files` takes the locations alone: a folder holds the `.cfb`
+// files directly inside it, a glob (`path.join("*.cfb")`) what it matches.
 let mut registry = FixRegistry::new();
-let merge = registry.add_cfb_files(LocalFolder::new(&path)?.glob("*.cfb", false)?, None)?;
+let merge = registry.add_cfb_files(&[Holder::local(&path)?], None)?;
 assert_eq!(merge.sources, 2);
 assert_eq!(merge.restated, 0, "both files type tag 4 alike");
-assert!(merge.is_clean(), "{:?}", merge.dropped);
+assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
+// One file is one mutation: the broken one is left out, the others fold.
+assert_eq!(merge.failed.len(), 1);
+assert!(merge.failed[0].source.as_deref().is_some_and(|url| url.ends_with("broken.cfb")));
+assert!(!merge.is_clean());
 // Ascending URL order, each file stamped with its stem.
 assert_eq!(registry.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["alpha", "beta"]);
 

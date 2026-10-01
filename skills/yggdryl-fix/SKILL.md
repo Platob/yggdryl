@@ -53,7 +53,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(folder.glob("*.cfb", false)?, None)?`, `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
+| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
@@ -155,22 +155,34 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is
     counted in `restated`; a contradiction (`boolean` against `int32`, a
-    time of day against a timestamp), a member a held definition declares in
-    another shape and a group on another counter are passed over, each named
-    in the answered `FixMerge` rather than refusing the whole source. A field
-    named by nothing but its tag (a CBlock tag no `alt` or binding names) is
-    unnamed: one on a held tag folds into the holder, and the first name to
-    arrive on its tag names it. A field on a held tag under another name
-    stands beside the holder, and neither learns the other's name. A fold
-    refuses whole only where nothing is left to keep (malformed XML or JSON,
-    a source whose own catalog does not validate); what a CBlock states that
-    the reader cannot keep is dropped, or kept another way (an unread type
-    word types the tag string), with a `log` warning naming the line, the
-    column, the element and what the reader did instead. `add_cfb_files`
-    folds in ascending URL order, so where two files type one tag two ways the
-    first-sorting file's declaration is held, and a code set only widens (the
-    held name wins a shared value; a new value under a taken name stays
-    unnamed).
+    time of day against an instant), a member a held definition declares in
+    another shape, a code set that does not fold and a definition whose fold
+    refuses are passed over, each named in `dropped` rather than refusing the
+    whole source. The one datatype a fold changes is a group's counter: held
+    as unbounded text, a float or another integer width, it is retyped
+    `int32` with a warning; a counter on the alternate tag of a field that is
+    no count is that field's value on the wire, so its group is passed over
+    instead. A group
+    on another counter than the held group of its name stands beside it as
+    `{name}_{counter}`, read by one member per counter. A field named by nothing
+    but its tag (a CBlock tag no `alt` or binding names) is unnamed: one on a
+    tag a held field answers, as its own or as an alternate, folds into that
+    field, and the first name to arrive on its tag names it. A field on a held
+    tag under another name stands beside the holder, and neither learns the
+    other's name. `add_cfb_file` and `merge_with` refuse whole only where
+    nothing is left to keep (malformed XML or JSON, a source whose own catalog
+    does not validate); `add_cfb_files` folds each file as one mutation, so
+    such a file is left out alone and named in `failed` while the rest fold,
+    and `is_clean()` means `dropped` and `failed` are both empty. What a
+    CBlock states that the reader cannot keep is dropped, or kept another way
+    (an unread type word types the tag string), with a `log` warning naming
+    the line, the column, the element and what the reader did instead; a map
+    entry whose key or value is blank, `none` or `null` states no code and is
+    skipped, named once per code set. `add_cfb_files` folds in ascending URL
+    order, so where two files type one tag two ways the first-sorting file's
+    declaration is held, and a code set only widens (the held name wins a
+    shared value; a new value under a name another code claims keeps no
+    name).
 11. Mutations are atomic: a refused `insert`, `set` or `set_codeset` leaves the
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.

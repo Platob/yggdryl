@@ -6216,7 +6216,6 @@ class FixRegistry:
     def add_cfb_files(
         self,
         location: IOBase | Url | str | PathLike[str],
-        pattern: str,
         dialect: str | None = None,
     ) -> dict[str, Any]: ...
     def add_json_file(

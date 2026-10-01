@@ -59,7 +59,16 @@
 //! set that answers every spelling either declared - keyed by wire value,
 //! a placeholder name yielding to a real one, every surviving spelling kept
 //! as an alias - which is why a merge adds to a dictionary's vocabulary and
-//! never narrows it.
+//! never narrows it. A merge never answers a set the writer refuses: a name
+//! another code already claims leaves its code a value under no name.
+//!
+//! # Spellings of nothing
+//!
+//! `none`, `null` and a blank are what a venue writes where it has no code
+//! to state. [`is_sentinel`] is the one test: such a name claims nothing, so
+//! two codes may both carry it and neither stands in another's way, and a
+//! CBlock map entry spelling one is no code at all. A code the specification
+//! names `None` keeps its name - it is a real value on the wire.
 
 use std::collections::btree_map::Entry;
 use std::iter::FusedIterator;
@@ -67,8 +76,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::FixRegistry;
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
+use super::{FixDrop, FixRegistry};
 use crate::folds_equal;
 use crate::{Error, Field, Result, Scalar};
 
@@ -211,6 +220,55 @@ fn spelled_as(held: &str, value: &str, text: &str) -> bool {
         return held == text;
     }
     folds_equal(held, text)
+}
+
+/// The words a venue writes for "no value".
+const SENTINELS: [&str; 2] = ["none", "null"];
+
+/// Whether a spelling names nothing: blank, or `none` or `null` trimmed and
+/// under the crate's one fold - so `None`, `NULL`, ` n_u_l_l ` and a blank
+/// are all one, while `-` and `_` are spellings like any other.
+///
+/// A venue's map writes these where it has no code to state - `<entry
+/// key="0" value="none"/>` - so a CBlock entry spelling one is never read
+/// as a code. A spelling that names nothing also claims no name: two codes
+/// a sentinel names are not two codes sharing a name, and neither blocks a
+/// code arriving under another value, so a sentinel never takes part in the
+/// one-name-per-code rule rendering and merging hold names to. A stored code
+/// carrying one keeps it - `EncryptMethod` `0` is `None`, and `NONE` is a
+/// wire value `SecurityType` and `DateRollConvention` state - because the
+/// value is a fact about the wire whatever it is called.
+pub(super) fn is_sentinel(spelling: &str) -> bool {
+    let spelling = spelling.trim();
+    spelling.is_empty()
+        || SENTINELS
+            .iter()
+            .any(|sentinel| folds_equal(spelling, sentinel))
+}
+
+/// Whether `name`, stated for a code of wire `value`, is a name [`FixCodes::render`]
+/// refuses beside `held`'s: one rendering holds names to.
+///
+/// Both ways round, because a lookup is: a name folding onto `held`'s while
+/// `held` is named after its own wire value reaches `held` exactly and the
+/// other code by the fold, and two codes one spelling reaches resolve to
+/// neither. A sentinel claims nothing and is claimed by nothing, on either
+/// side, so the rule reads the two names alike whichever was held first.
+pub(super) fn names_collide(held: &FixCode, name: &str, value: &str) -> bool {
+    !is_sentinel(name)
+        && !is_sentinel(&held.name)
+        && (spelled_as(&held.name, &held.value, name) || spelled_as(name, value, &held.name))
+}
+
+/// Whether `held` already claims `name`, stated for a code of wire `value`:
+/// the names collide under [`names_collide`], or `name` is one of the
+/// aliases `held` answers to.
+///
+/// The test a fold asks before it gives a code a name, stricter than the one
+/// rendering refuses on, so a fold never answers a set the writer refuses
+/// and never names a code by a spelling another code already answers to.
+pub(super) fn claims(held: &FixCode, name: &str, value: &str) -> bool {
+    names_collide(held, name, value) || (!is_sentinel(name) && held.is_spelled(name))
 }
 
 /// One member of a FIX code set, as a caller states it.
@@ -503,43 +561,49 @@ impl<'field> FixCodes<'field> {
     /// sits in it is the presentation rank the specification gives it. There
     /// is no rank key beside the order, because a list already has one.
     /// Two names may share a value - that is an alias, the rule `StringEnum`
-    /// already states - but two codes may not share a name.
+    /// already states - but two codes may not share a name, except a
+    /// [sentinel](is_sentinel), which names nothing and so claims nothing.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when two codes share a name, or when one
-    /// states an empty value or an empty name.
+    /// Returns [`Error::InvalidRecord`] naming the code by its position when
+    /// two codes share a name - both names and both values quoted - or when
+    /// one states an empty value or an empty name.
     pub(super) fn render(codes: &[FixCode]) -> Result<String> {
         let ordered: Vec<&FixCode> = codes.iter().collect();
         for (index, code) in ordered.iter().enumerate() {
             if code.value.is_empty() || code.name.is_empty() {
-                return Err(Error::Parse {
-                    target: TARGET,
-                    position: 0,
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("codes[{index}]"),
                     reason: format_smolstr!(
-                        "expected every code to state a value and a name, got {:?} and {:?}",
+                        "expected every code to state a value and a name, got value {:?} and name {:?}",
                         code.value(),
                         code.name()
                     ),
                 });
             }
-            // Names against names, as before, and under the rule
-            // [`spelled_as`] states: two whose names are their own wire
-            // values - `b` and `B` - are two codes rather than one name
-            // twice, because a wire value is matched exactly. Aliases stay
-            // out of it. A set is refused here only for what rendering
-            // itself cannot represent, and widening this to the spellings a
-            // code also answers to would refuse documents that have always
-            // been legal; an alias two codes share still names neither, which
-            // is [`FixCodes::merge`]'s rule and a lookup's, not a write's.
-            if ordered[..index].iter().any(|held| {
-                spelled_as(&held.name, &held.value, &code.name)
-                    || spelled_as(&code.name, &code.value, &held.name)
-            }) {
-                return Err(Error::Parse {
-                    target: TARGET,
-                    position: 0,
-                    reason: format_smolstr!("expected each name once, got {:?} twice", code.name()),
+            // Names against names, under the rule [`names_collide`] states:
+            // two whose names are their own wire values - `b` and `B` - are
+            // two codes rather than one name twice, because a wire value is
+            // matched exactly. Aliases stay out of it. A set is refused here
+            // only for what rendering itself cannot represent, and widening
+            // this to the spellings a code also answers to would refuse
+            // documents that have always been legal; an alias two codes share
+            // still names neither, which is [`FixCodes::merge`]'s rule and a
+            // lookup's, not a write's.
+            let claimed = ordered[..index]
+                .iter()
+                .find(|held| names_collide(held, &code.name, &code.value));
+            if let Some(held) = claimed {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("codes[{index}]"),
+                    reason: format_smolstr!(
+                        "expected each code name once, got {:?} for value {:?} beside {:?} for value {:?}",
+                        code.name(),
+                        code.value(),
+                        held.name(),
+                        held.value()
+                    ),
                 });
             }
         }
@@ -741,7 +805,7 @@ impl FixCodes<'_> {
     ///
     /// What cannot be kept is a spelling another code already answers to,
     /// folded: two codes one spelling reaches resolve to nothing rather than
-    /// to either, and two sharing a name are refused outright. So that
+    /// to either, and two sharing a name are refused by the writer. So that
     /// spelling is dropped, and a code whose own *name* is taken keeps its
     /// value under no name - a code named after its own wire value carries
     /// none - because the value is a fact about the wire the vocabulary has
@@ -763,14 +827,21 @@ impl FixCodes<'_> {
     /// another code's name cannot be kept even unnamed, and is dropped with a
     /// warning, so the fold never answers a set the writer refuses.
     ///
+    /// Whether a name is taken is asked under the rule rendering refuses on
+    /// as well as the one a lookup answers by: a code named after its own wire
+    /// value answers only that value exactly, but a name folding onto it -
+    /// `eom` beside a held `EOM` - is still one rendering refuses, so the
+    /// incoming code keeps its value under no name rather than refusing the
+    /// fold. A [sentinel](is_sentinel) claims nothing and is claimed by
+    /// nothing, whichever side states it.
+    ///
     /// Either side may be absent, which is what a dictionary meeting a set it
     /// does not hold has; two absences answer nothing, and a fold that keeps
     /// no member writes no document.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when either document does not parse, and what
-    /// [`Self::render`] refuses the fold on.
+    /// Returns [`Error::Parse`] when either document does not parse.
     pub(super) fn merge(
         set: &str,
         winner: Option<&str>,
@@ -801,6 +872,38 @@ impl FixCodes<'_> {
     }
 }
 
+/// The drop one incoming code set is passed over with, naming the set and
+/// the field of `other` that reads by it - for a `CBlock`, the field its map
+/// decodes, spelled as the file spells it - so a reader finds the map the
+/// refusal is about.
+fn codeset_drop(other: &FixRegistry, name: &str, error: &Error) -> FixDrop {
+    let reader = other.scalars().find(|field| {
+        field
+            .as_fix()
+            .codeset()
+            .is_some_and(|set| folds_equal(set, name))
+    });
+    let read_by = reader.map_or_else(String::new, |field| {
+        let spelled = field.display().unwrap_or_else(|| field.name());
+        match field.as_fix().tag().ok().flatten() {
+            Some(tag) => format!(", which {spelled:?} ({tag}) reads by,"),
+            None => format!(", which {spelled:?} reads by,"),
+        }
+    });
+    let incoming = reader
+        .cloned()
+        .unwrap_or_else(|| crate::DataType::utf8().nullable_field(name));
+    FixDrop::new(
+        incoming,
+        &Error::InvalidRecord {
+            path: format_smolstr!("codesets.{name}"),
+            reason: format_smolstr!(
+                "the code set {name:?}{read_by} does not fold into the one held: {error}; the held set stays as it was"
+            ),
+        },
+    )
+}
+
 /// The code among `codes` whose name [`FixCodes::render`] would refuse
 /// `name` beside, the one rule rendering holds names to.
 fn render_collision<'held>(
@@ -808,9 +911,7 @@ fn render_collision<'held>(
     name: &str,
     value: &str,
 ) -> Option<&'held FixCode> {
-    codes.iter().find(|held| {
-        spelled_as(&held.name, &held.value, name) || spelled_as(name, value, &held.name)
-    })
+    codes.iter().find(|held| names_collide(held, name, value))
 }
 
 /// Keeps `code` under its value alone, because the name it states is another
@@ -834,6 +935,15 @@ fn keep_unnamed(set: &str, codes: &mut Vec<FixCode>, code: FixCode, held: &str) 
 /// Folds one code into the codes already held, under [`FixCodes::merge`]'s
 /// rule.
 fn fold_code(set: &str, codes: &mut Vec<FixCode>, incoming: FixCode) {
+    // A name spelling nothing names nothing: the code arrives named after its
+    // value, the placeholder a real name displaces, so it never stands in the
+    // way of a held code a sentinel already names.
+    let incoming = if is_sentinel(incoming.name()) {
+        let value = SmolStr::new(incoming.value());
+        incoming.with_name(value)
+    } else {
+        incoming
+    };
     // Every spelling this code arrives with, its name first, held apart from
     // the code so the code itself can move into the set.
     let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
@@ -845,15 +955,14 @@ fn fold_code(set: &str, codes: &mut Vec<FixCode>, incoming: FixCode) {
     {
         Some(at) => {
             // A placeholder name yields to a real one, whichever side carries
-            // it. The incoming name is a spelling either way, so it is added
-            // below like any other spelling; taking it here is only a
-            // question of which one leads.
+            // it, where no other code claims it. The incoming name is a
+            // spelling either way, so it is added below like any other
+            // spelling; taking it here is only a question of which one leads.
             if named
                 && codes[at].is_unnamed()
-                && !codes
-                    .iter()
-                    .enumerate()
-                    .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
+                && !codes.iter().enumerate().any(|(index, held)| {
+                    index != at && claims(held, &spellings[0], incoming.value())
+                })
             {
                 codes[at] = codes[at].clone().with_name(spellings[0].clone());
             }
@@ -861,7 +970,14 @@ fn fold_code(set: &str, codes: &mut Vec<FixCode>, incoming: FixCode) {
         }
         None => {
             let code = incoming.with_aliases(std::iter::empty::<SmolStr>());
-            match codes.iter().find(|held| held.is_spelled(&spellings[0])) {
+            // Claimed under the rule rendering refuses on as well as the one
+            // a lookup answers by, so a name a placeholder's value folds onto
+            // - `eom` beside a held `EOM` - is held off here rather than
+            // rendered into a set the writer refuses.
+            match codes
+                .iter()
+                .find(|held| claims(held, code.name(), code.value()))
+            {
                 // The spelling names the code that already answers to it, so
                 // this one keeps its value and nothing else - or, where even
                 // its value is taken, nothing at all.
@@ -879,9 +995,14 @@ fn fold_code(set: &str, codes: &mut Vec<FixCode>, incoming: FixCode) {
         }
     };
     // A code answers its own name, so this adds it where the value was already
-    // held and skips it where the code was just pushed.
+    // held and skips it where the code was just pushed - and a spelling
+    // another code claims, which the warning above said is not kept, is not.
+    let value = SmolStr::new(codes[at].value());
     for spelling in &spellings {
-        if !codes.iter().any(|held| held.is_spelled(spelling)) {
+        if !codes
+            .iter()
+            .any(|held| held.is_spelled(spelling) || names_collide(held, spelling, &value))
+        {
             codes[at].push_alias(spelling.clone());
         }
     }
@@ -1122,7 +1243,8 @@ impl FixRegistry {
     /// The set is filed under the folded name, which is the stem a store
     /// writes it as. Codes are rendered canonically, so one set is one text
     /// however it was built. Two names may share a value - that is an
-    /// alias - but two codes may not share a name.
+    /// alias - but two codes may not share a name, unless it is `none`,
+    /// `null` or blank, which names nothing and so claims nothing.
     ///
     /// An empty slice removes the set, exactly as an empty code list removed
     /// a field's own property before a set had a name; a set no field names
@@ -1132,7 +1254,7 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] when the name is not one a store can
-    /// file, [`Error::Parse`] when two codes share a name or one states an
+    /// file, when two codes share a name - naming both - or when one states an
     /// empty value or name, and [`Error::Conflict`] when an empty slice would
     /// take away a set a held field names or any value would change the
     /// intrinsic MsgCat operation identifiers. Any of them leaves this
@@ -1251,10 +1373,12 @@ impl FixRegistry {
     /// what either side named, aliased or documented is named after the
     /// fold.
     ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] when either document does not parse.
-    pub(super) fn merge_codesets(&mut self, other: &Self) -> Result<()> {
+    /// A set the fold cannot keep - a document that does not parse, or one
+    /// that would rewrite a set this crate owns - is one set: the held set
+    /// stays as it was and the incoming one is passed over into `dropped`,
+    /// named by the set and the field that reads by it, and every other set
+    /// and field of the source still folds.
+    pub(super) fn merge_codesets(&mut self, other: &Self, dropped: &mut Vec<FixDrop>) {
         for (name, incoming) in &other.codesets {
             match self.codesets.entry(name.clone()) {
                 Entry::Vacant(slot) => {
@@ -1264,17 +1388,24 @@ impl FixRegistry {
                     if slot.get().as_ref() == incoming.as_ref() {
                         continue;
                     }
-                    if let Some(merged) =
-                        FixCodes::merge(name, Some(slot.get()), Some(incoming.as_ref()))?
-                    {
-                        validate_intrinsic_codeset(name, Some(&merged))?;
-                        slot.insert(Arc::from(merged.as_str()));
+                    let merged = FixCodes::merge(name, Some(slot.get()), Some(incoming.as_ref()))
+                        .and_then(|merged| {
+                            if let Some(merged) = &merged {
+                                validate_intrinsic_codeset(name, Some(merged))?;
+                            }
+                            Ok(merged)
+                        });
+                    match merged {
+                        Ok(Some(merged)) => {
+                            slot.insert(Arc::from(merged.as_str()));
+                        }
+                        Ok(None) => {}
+                        Err(error) => dropped.push(codeset_drop(other, name, &error)),
                     }
                 }
             }
         }
         self.forget_codesets();
-        Ok(())
     }
 
     /// Folds the set an incoming field reads by into the one a stored field

@@ -99,7 +99,24 @@
 //! catalogued by - `underlying_newordersingle`, or `underlying_message414e`
 //! where tag 35 names the type nothing a store can file - while the member
 //! the message holds keeps the grammar's name; two messages declaring one
-//! group alike share one definition.
+//! group alike share one definition. A message declaring one name in
+//! several shapes - its parties at the root and again inside its legs -
+//! takes a split per shape in the order it declares them,
+//! `party_message5a`, `party_message5a_2`: a shape is one definition, and
+//! nothing a member has already read is rewritten under it. A message the
+//! catalog will not hold takes back every definition its walk wrote.
+//!
+//! # Names a catalog can file
+//!
+//! A reference names a definition by a catalog name - ASCII letters,
+//! digits, `_`, `-` and `.` - and a CBlock spells freely: `OTC Trade Flags`,
+//! `(BloombergCustomTag05)`, an `rg-name` of `No Fidessa Legs`. So every
+//! name this reader gives - a field from its `alt` or its normalization, a
+//! group and its occurrence from the `rg-name` or the counter - is the
+//! catalog name the spelling folds to: lower case, every run of anything
+//! else one `_`, no `_` at either end, `otc_trade_flags`. The spelling stays
+//! the definition's `display`, and a spelling nothing of which folds leaves
+//! a tag named by its decimal, as a tag declaring no `alt` is.
 //!
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
@@ -296,6 +313,11 @@
 //! first statement standing; and a bare `&` in a description's text is the
 //! character. Each is named the same way, and none refuses the document.
 //!
+//! A map entry whose key or value spells nothing - `none`, `null`, blank -
+//! states no code: a venue writes one where it has none to state, so it is
+//! skipped, never claims a name and never meets a code the dictionary
+//! holds, and the entries one code set skipped are named in one warning.
+//!
 //! Two things are refusals, because neither leaves anything to keep. A
 //! document that is not XML is one: the reader stopped, and it quotes the
 //! bytes just before it did, because there is no element to name. A document
@@ -320,7 +342,8 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{Charset, DataType, Error, Field, IOBase, Result, StructType, Url};
 
-use super::codes::FixCodes;
+use super::catalog::{catalog_name, push_member};
+use super::codes::{FixCodes, claims, is_sentinel, names_collide};
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
 
 /// How deep a grammar may nest before the parse stops descending.
@@ -359,6 +382,9 @@ const DECLARATION_PROBE: usize = 512;
 
 /// What every drop of a nested grammar leaves behind, for the warning to say.
 const GROUP_DROPPED: &str = "the group is dropped and the message keeps the rest";
+
+/// How many skipped map entries one warning lists before it counts the rest.
+const SKIPPED_LISTED: usize = 16;
 
 /// The two domains a validity element may declare.
 const DOMAINS: [&str; 2] = ["all-values", "ranges"];
@@ -628,7 +654,25 @@ struct Declared {
     /// warning over two declarations of one tag names the declaration that
     /// raised it rather than the end of the file.
     position: usize,
+    /// The map entries decoding this tag that spell no code - a key or a
+    /// value that is `none`, `null` or nothing - in the order the maps
+    /// stated them, named once for the whole code set when the dictionary is
+    /// built.
+    skipped: Vec<Skipped>,
     field: Field,
+}
+
+/// One map entry as the file spelled it: its `key` and its `value`.
+type Entry = (String, String);
+
+/// One map entry skipped because one of its two attributes spells nothing.
+struct Skipped {
+    /// The map the entry was read from, as the file named it.
+    map: String,
+    key: String,
+    value: String,
+    /// The byte the reader had reached at the map, for the warning to name.
+    position: usize,
 }
 
 impl<'doc> Parse<'doc> {
@@ -694,11 +738,15 @@ impl<'doc> Parse<'doc> {
                 tag,
                 position,
                 codes,
+                skipped,
                 mut field,
             } = held;
             // Read before the field moves: the warning names the entry the
             // file declared, which the registry no longer has to hand.
             let named = SmolStr::new(field.name());
+            if !skipped.is_empty() {
+                self.skipped_entries(tag, &field, &skipped);
+            }
             // The set the file's maps decode, filed under the name this field
             // supplies and named by the field: the dictionary owns the
             // members, so they are stated before the field points at them.
@@ -769,6 +817,42 @@ impl<'doc> Parse<'doc> {
         Ok((registry, roots))
     }
 
+    /// Names, in one warning, every map entry decoding `tag` that was
+    /// skipped because it spells no code: one line per code set however many
+    /// maps and entries it covers, so a file of placeholder entries reads as
+    /// one sentence per vocabulary rather than one per entry. The entries are
+    /// listed up to [`SKIPPED_LISTED`], the rest counted.
+    fn skipped_entries(&self, tag: i32, field: &Field, skipped: &[Skipped]) {
+        let mut listed = String::new();
+        for entry in skipped.iter().take(SKIPPED_LISTED) {
+            if !listed.is_empty() {
+                listed.push_str(", ");
+            }
+            listed.push_str(&format!(
+                "{:?} key {:?} value {:?}",
+                elide_to(&entry.map, ERROR_TEXT_LIMIT),
+                elide_to(&entry.key, ERROR_TEXT_LIMIT),
+                elide_to(&entry.value, ERROR_TEXT_LIMIT)
+            ));
+        }
+        if skipped.len() > SKIPPED_LISTED {
+            listed.push_str(&format!(" and {} more", skipped.len() - SKIPPED_LISTED));
+        }
+        let count = skipped.len();
+        self.dropped(
+            &self.refusal_at(
+                skipped[0].position,
+                format_smolstr!(
+                    "tag {tag} {:?}, code set {}: {count} map {} spelling none, null or nothing: {listed}",
+                    elide_to(spelled(field), ERROR_TEXT_LIMIT),
+                    FixRegistry::derived_codeset_name(field),
+                    if count == 1 { "entry" } else { "entries" },
+                ),
+            ),
+            "an entry spelling nothing states no code, so each is skipped",
+        );
+    }
+
     /// One root as the catalog holds it: its name resolved through tag 35's
     /// own code set, its members registered under that name, and the entry
     /// itself written.
@@ -778,19 +862,44 @@ impl<'doc> Parse<'doc> {
     /// Inbound` and `6 Outbound` reach the same entry, and the second one
     /// *folds* into the first rather than being qualified into a message of
     /// its own: the members the first declared stay, in their order, and
-    /// every member only the second declares is appended. The two roots the
-    /// caller is handed are still one per binding - that is what the file
-    /// bound - but the dictionary holds the union, which is the message the
-    /// dialect actually speaks.
+    /// every member only the second declares is appended. A member the two
+    /// declare differently is read as a fold with another dictionary reads
+    /// one: two groups on one counter fold their members together, a group
+    /// on another counter stands beside, and only what neither reading holds
+    /// is dropped, with a warning, while the rest of the binding folds. The
+    /// two roots the caller is handed are still one per binding - that is
+    /// what the file bound - but the dictionary holds the union, which is the
+    /// message the dialect actually speaks.
     ///
     /// **The name is settled before a member is.** A group or component
     /// whose name another context already holds with other members is split
     /// under this message's name - `underlying_newordersingle`, or
     /// `underlying_message414e` where tag 35 names the type nothing
-    /// readable - so a split definition says which message it came from.
+    /// readable - so a split definition says which message it came from; a
+    /// third shape in one message takes `_2`, a fourth `_3`.
     fn catalogued(&self, registry: &mut FixRegistry, root: Field, wire: &str) -> Result<Field> {
+        // One message is one mutation of the file's dictionary: the groups
+        // and components its walk wrote go with it where it is dropped, so a
+        // message the catalog will not hold leaves no definition nothing
+        // reads.
+        let mut written = Vec::new();
+        let catalogued = self.catalogue(registry, root, wire, &mut written);
+        if catalogued.is_err() {
+            registry.forget_definitions(&written);
+        }
+        catalogued
+    }
+
+    /// [`Self::catalogued`]'s walk, recording every definition it writes.
+    fn catalogue(
+        &self,
+        registry: &mut FixRegistry,
+        root: Field,
+        wire: &str,
+        written: &mut Vec<(crate::FixCategory, String)>,
+    ) -> Result<Field> {
         let qualifier = message_name(registry, wire);
-        let mut root = catalog_members(registry, root, &qualifier)?;
+        let mut root = catalog_members(registry, root, &qualifier, written)?;
         // The root a caller is handed is the file's too, so it carries the
         // membership the catalogued message carries; only its name differs,
         // the caller's keeping the wire's spelling.
@@ -807,14 +916,45 @@ impl<'doc> Parse<'doc> {
         {
             // One wire type is one message: the grammar bound second folds
             // into the first, keeping the members already declared in their
-            // order and appending every member only this binding states.
+            // order and appending every member only this binding states. A
+            // member it declares otherwise is read the way a fold with
+            // another dictionary reads one - two references to one group on
+            // one counter fold their members together, a group on another
+            // counter stands beside under a name of its own - and only what
+            // cannot be read either way is passed over, named, while the
+            // rest of the binding still folds.
             log::info!(
                 "folding another grammar for message type {wire:?} into {:?}",
                 root.name()
             );
-            registry.fold_definition(crate::FixCategory::Components, root)?;
+            let mut staged = registry.clone();
+            let mut drops = Vec::new();
+            staged.fold_definition_into(crate::FixCategory::Components, root, Some(&mut drops))?;
+            // What this binding's walk split for the message folded into what
+            // the message reads, so a split nothing reads is no definition.
+            staged.forget_unread(written);
+            *registry = staged;
+            for drop in drops {
+                self.dropped(
+                    &self.refusal_at(
+                        0,
+                        format_smolstr!(
+                            "message {:?}, bound again: {}",
+                            elide_to(wire, ERROR_TEXT_LIMIT),
+                            drop.reason
+                        ),
+                    ),
+                    "the member is dropped and the message keeps the rest",
+                );
+            }
         } else {
-            catalog_entry(registry, crate::FixCategory::Components, root, &qualifier)?;
+            catalog_entry(
+                registry,
+                crate::FixCategory::Components,
+                root,
+                &qualifier,
+                written,
+            )?;
         }
         Ok(held)
     }
@@ -916,19 +1056,28 @@ impl<'doc> Parse<'doc> {
         // it agrees on, or nothing where they disagree or say nothing; and how
         // many tags each such spelling is spoken for, because a spelling two
         // tags are called by names neither.
+        // Keyed by the catalog name each spelling folds to, the name a tag
+        // would take, so two spellings one name reaches contend however they
+        // are punctuated; a spelling nothing of which is a catalog name names
+        // nothing.
+        let folded_key = |spelling: &str| {
+            catalog_name(spelling).map(|folded| super::registry::name_key(&folded))
+        };
         let mut spoken: std::collections::HashMap<i32, Option<String>> =
             std::collections::HashMap::new();
         for held in &self.named {
             if held.name.contains(super::field::SEPARATOR) {
                 continue;
             }
-            let key = super::registry::name_key(&held.name);
+            let Some(key) = folded_key(&held.name) else {
+                continue;
+            };
             spoken
                 .entry(held.tag)
                 .and_modify(|prior| {
                     if prior
                         .as_deref()
-                        .is_some_and(|prior| super::registry::name_key(prior) != key)
+                        .is_some_and(|prior| folded_key(prior) != Some(key))
                     {
                         *prior = None;
                     }
@@ -936,10 +1085,12 @@ impl<'doc> Parse<'doc> {
                 .or_insert_with(|| Some(held.name.clone()));
         }
         let mut speakers: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
-        for spelling in spoken.values().flatten() {
-            *speakers
-                .entry(super::registry::name_key(spelling))
-                .or_default() += 1;
+        for key in spoken
+            .values()
+            .flatten()
+            .filter_map(|spelling| folded_key(spelling))
+        {
+            *speakers.entry(key).or_default() += 1;
         }
         let mut warnings: Vec<(usize, SmolStr, &str)> = Vec::new();
         // The tags the vocabulary left unnamed take what the bindings call
@@ -956,7 +1107,10 @@ impl<'doc> Parse<'doc> {
             let Some(Some(spelling)) = spoken.get(&tag).cloned() else {
                 continue;
             };
-            let spoken_key = super::registry::name_key(&spelling);
+            let Some(lowered) = catalog_name(&spelling) else {
+                continue;
+            };
+            let spoken_key = super::registry::name_key(&lowered);
             if claimed.contains_key(&spoken_key)
                 || decimals.contains_key(&spoken_key)
                 || speakers.get(&spoken_key) != Some(&1)
@@ -965,7 +1119,6 @@ impl<'doc> Parse<'doc> {
             }
             let position = self.vocabulary[at].position;
             let field = &mut self.vocabulary[at].field;
-            let lowered = spelling.to_ascii_lowercase();
             if lowered == spelling {
                 field.remove_metadata("display");
             } else if let Err(error) = field.set_display(spelling.as_str()) {
@@ -979,7 +1132,7 @@ impl<'doc> Parse<'doc> {
                 ));
                 continue;
             }
-            field.set_name(lowered);
+            field.set_name(lowered.as_str());
             if let Some(tags) = claimed.get_mut(&key) {
                 tags.retain(|held| *held != tag);
             }
@@ -1184,16 +1337,22 @@ impl<'doc> Parse<'doc> {
             DataType::utf8()
         });
 
-        // The FIX name case-folded and nothing else, with the file's own
-        // spelling kept beside it: name resolution folds ASCII case, so a
-        // caller spelling it the file's way still resolves and nothing is lost.
+        // The file's own spelling kept beside the name: name resolution
+        // folds ASCII case and separators, so a caller spelling it the file's
+        // way still resolves and nothing is lost.
         let alt = self.attribute(element, "alt");
+        // Named by the catalog name the spelling folds to - lower case, every
+        // run of what no catalog name holds one `_` - so a reference can name
+        // the field whatever the file wrote: `OTC Trade Flags` is
+        // `otc_trade_flags`. A spelling nothing of which folds leaves the tag
+        // named by its decimal, as a tag declaring no `alt` is.
         let spelling = alt.clone().unwrap_or_else(|| name.clone());
-        let mut field = dtype.nullable_field(spelling.to_ascii_lowercase());
+        let named = catalog_name(&spelling).map_or_else(|| name.clone(), String::from);
+        let mut field = dtype.nullable_field(named.as_str());
         // The file's own spelling first: `set_metadata` replaces the whole
         // snapshot, so anything written into the `FIX:` namespace before it
         // would be replaced away.
-        if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase())
+        if let Some(alt) = alt.filter(|held| *held != named)
             && let Err(error) = field.set_metadata([("display", alt.as_str())])
         {
             self.dropped(
@@ -1235,6 +1394,7 @@ impl<'doc> Parse<'doc> {
             tag,
             position: self.position(),
             codes: Vec::new(),
+            skipped: Vec::new(),
             field,
         });
         Ok(())
@@ -1260,14 +1420,24 @@ impl<'doc> Parse<'doc> {
             match event {
                 Event::Eof => return Err(self.unclosed("maps")),
                 Event::Start(element) if is_named(&element, b"map") => {
+                    let position = self.position();
                     let named = self.attribute(&element, "name");
                     let decodes = named.as_deref().and_then(|named| self.decodes(named));
                     // A map naming no tag is still read to its end: skipping
                     // the entries would leave the reader inside them.
-                    let codes = self.read_map_entries(decodes.is_some_and(|(_, fix)| fix))?;
+                    let (codes, skipped) =
+                        self.read_map_entries(decodes.is_some_and(|(_, fix)| fix))?;
                     // The name is what resolved the tag, so a map that
                     // decodes one has one to quote in a refusal.
                     if let Some(((at, _), named)) = decodes.zip(named.as_deref()) {
+                        self.vocabulary[at].skipped.extend(skipped.into_iter().map(
+                            |(key, value)| Skipped {
+                                map: named.to_owned(),
+                                key,
+                                value,
+                                position,
+                            },
+                        ));
                         self.attach_codes(at, &codes, named)?;
                     }
                 }
@@ -1285,12 +1455,14 @@ impl<'doc> Parse<'doc> {
         Ok(())
     }
 
-    /// One map's entries, each oriented the way the map's name says.
+    /// One map's entries, each oriented the way the map's name says, and the
+    /// entries skipped because they spell no code, as `(key, value)`.
     ///
     /// `fix` is what [`Parse::decodes`] resolved: the FIX way round reads
     /// `key` as the wire value, the UlMessage way reads `value` as it.
-    fn read_map_entries(&mut self, fix: bool) -> Result<Vec<FixCode>> {
+    fn read_map_entries(&mut self, fix: bool) -> Result<(Vec<FixCode>, Vec<Entry>)> {
         let mut codes: Vec<FixCode> = Vec::new();
+        let mut skipped = Vec::new();
         let mut buffer = Vec::new();
         let mut depth = 0_usize;
         loop {
@@ -1301,10 +1473,10 @@ impl<'doc> Parse<'doc> {
             match event {
                 Event::Eof => return Err(self.unclosed("map")),
                 Event::Empty(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, fix, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes, &mut skipped);
                 }
                 Event::Start(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, fix, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes, &mut skipped);
                     depth += 1;
                 }
                 Event::Start(_) => depth += 1,
@@ -1318,48 +1490,64 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
-        Ok(codes)
+        Ok((codes, skipped))
     }
 
     /// One `entry` as a code, oriented the way the map's name says.
     ///
-    /// An empty attribute says what an absent one says, so both drop the
-    /// entry. Everything else is kept, because a CBlock names one wire value
-    /// twice routinely - `7` is both `accountiscarriedonnoncustomersmargined`
-    /// and `accountishousetraderandcrossmargined` - and a set that took the
-    /// first name and dropped the second would answer to one spelling fewer
-    /// than the file declared. A second name for a value already held is what
-    /// a code set calls an alias, so it is added as one.
+    /// **An entry spelling nothing states no code.** A venue's map writes
+    /// `none`, `null` or nothing at all where it has no code to state -
+    /// `<entry key="0" value="none"/>` - so an entry whose key or value is
+    /// one of those, trimmed and folded, is skipped and recorded in
+    /// `skipped`, never entering the set, never claiming a name and never
+    /// standing in the way of a code the dictionary already holds. An absent
+    /// attribute says what an empty one says. The skipped entries are named
+    /// once per code set, when the dictionary is built.
     ///
-    /// A spelling another code already answers to is the one thing that
-    /// cannot be kept: two codes one spelling reaches resolve to nothing
-    /// rather than to either, so the entry is dropped. That is a stricter
-    /// test than [`FixCodes::render`](super::codes::FixCodes) refuses on:
-    /// aliases participate here too, while rendering rejects collisions
-    /// between canonical names.
+    /// Everything else is kept, because a CBlock names one wire value twice
+    /// routinely - `7` is both `accountiscarriedonnoncustomersmargined` and
+    /// `accountishousetraderandcrossmargined` - and a set that took the first
+    /// name and dropped the second would answer to one spelling fewer than
+    /// the file declared. A second name for a value already held is what a
+    /// code set calls an alias, so it is added as one.
+    ///
+    /// A name another code already claims is the one thing that cannot be
+    /// kept: two codes one spelling reaches resolve to nothing rather than
+    /// to either, so the name is dropped. The value is still a fact about the
+    /// wire, so a value the set does not hold yet is kept under no name - a
+    /// code named after its own value - unless that value is itself another
+    /// code's name. A new code is held to the rule
+    /// [`FixCodes::render`](super::codes::FixCodes) refuses on as well, so
+    /// one entry folding onto a code named after its own wire value costs
+    /// that entry's name rather than the whole map.
     fn push_entry(
         &self,
         element: &BytesStart<'_>,
         fix: bool,
         codes: &mut Vec<FixCode>,
-    ) -> Result<()> {
-        let (Some(key), Some(held)) = (
-            self.attribute(element, "key")
-                .filter(|held| !held.is_empty()),
-            self.attribute(element, "value")
-                .filter(|held| !held.is_empty()),
-        ) else {
-            return Ok(());
-        };
+        skipped: &mut Vec<Entry>,
+    ) {
+        let key = self.attribute(element, "key").unwrap_or_default();
+        let held = self.attribute(element, "value").unwrap_or_default();
+        if is_sentinel(&key) || is_sentinel(&held) {
+            skipped.push((key, held));
+            return;
+        }
         let (value, name) = if fix { (key, held) } else { (held, key) };
-        if codes.iter().any(|code| code.is_spelled(&name)) {
-            return Ok(());
+        let claimed = codes.iter().any(|code| claims(code, &name, &value));
+        match codes.iter().position(|code| code.value() == value) {
+            Some(at) if !claimed => codes[at].push_alias(name),
+            Some(_) => {}
+            None if !claimed => codes.push(FixCode::new(name, value)),
+            // The value is a fact about the wire whatever it is called: it is
+            // kept under no name where its name is another code's, unless the
+            // value is itself another code's name.
+            None => {
+                if !codes.iter().any(|code| names_collide(code, &value, &value)) {
+                    codes.push(FixCode::new(value.clone(), value));
+                }
+            }
         }
-        match codes.iter_mut().find(|code| code.value() == value) {
-            Some(code) => code.push_alias(name),
-            None => codes.push(FixCode::new(name, value)),
-        }
-        Ok(())
     }
 
     /// The vocabulary position a map decodes, and whether it is written the
@@ -1399,7 +1587,15 @@ impl<'doc> Parse<'doc> {
         if let Some(at) = self.decoded(|held| spelled(&held.field) == named) {
             return Some((at, true));
         }
-        let at = self.decoded(|held| crate::folds_equal(held.field.name(), named))?;
+        // The name a field is filed under folds its punctuation away, so a
+        // map spelled with it reaches the field by the same fold.
+        let folded = catalog_name(named);
+        let at = self.decoded(|held| {
+            crate::folds_equal(held.field.name(), named)
+                || folded
+                    .as_deref()
+                    .is_some_and(|folded| crate::folds_equal(held.field.name(), folded))
+        })?;
         Some((at, false))
     }
 
@@ -1428,7 +1624,11 @@ impl<'doc> Parse<'doc> {
         if let Err(error) = FixCodes::render(codes) {
             self.dropped(
                 &self.refused_by(
-                    format_args!("map {:?} on tag {tag}", elide_to(named, ERROR_TEXT_LIMIT)),
+                    format_args!(
+                        "map {:?} on tag {tag}, code set {}",
+                        elide_to(named, ERROR_TEXT_LIMIT),
+                        FixRegistry::derived_codeset_name(&self.vocabulary[at].field)
+                    ),
                     &error,
                 ),
                 "the tag keeps no code set",
@@ -1506,9 +1706,12 @@ impl<'doc> Parse<'doc> {
             match event {
                 Event::Eof => return Err(self.unclosed(&String::from_utf8_lossy(name))),
                 Event::Start(element) | Event::Empty(element) if is_named(&element, b"entry") => {
-                    let key = self.attribute(&element, "key");
+                    // A side spelling nothing names nothing, as in a map.
+                    let key = self
+                        .attribute(&element, "key")
+                        .filter(|held| !is_sentinel(held));
                     let spelling = self.attribute(&element, "value");
-                    if let Some(spelling) = spelling.filter(|held| !held.trim().is_empty()) {
+                    if let Some(spelling) = spelling.filter(|held| !is_sentinel(held)) {
                         let spelled = spelling.trim();
                         let Some(at) = self
                             .values
@@ -1530,7 +1733,7 @@ impl<'doc> Parse<'doc> {
                         // `J Report` and a table that writes `J` are one type
                         // under two names, and both are names it answers to.
                         self.alias_msgtype(at, spelled);
-                        if let Some(key) = key.filter(|held| !held.trim().is_empty()) {
+                        if let Some(key) = key {
                             self.alias_msgtype(at, &key);
                         }
                     }
@@ -2012,12 +2215,12 @@ impl<'doc> Parse<'doc> {
                 Event::Eof => return Err(self.unclosed("grammar")),
                 Event::Start(element) if is_named(&element, b"tag-constraint") => {
                     if let Some(field) = self.read_constraint(&element, false, msgtype)? {
-                        push_child(&mut children, field);
+                        push_member(&mut children, field);
                     }
                 }
                 Event::Empty(element) if is_named(&element, b"tag-constraint") => {
                     if let Some(field) = self.read_constraint(&element, true, msgtype)? {
-                        push_child(&mut children, field);
+                        push_member(&mut children, field);
                     }
                 }
                 Event::Start(element) if is_named(&element, b"grammar") => {
@@ -2026,8 +2229,8 @@ impl<'doc> Parse<'doc> {
                     if let Some((counter, group)) =
                         self.grouped(nested, msgtype, declared.as_deref())
                     {
-                        push_child(&mut children, counter);
-                        push_child(&mut children, group);
+                        push_member(&mut children, counter);
+                        push_member(&mut children, group);
                     }
                 }
                 // A nested grammar with no children has no counter to name it,
@@ -2113,24 +2316,30 @@ impl<'doc> Parse<'doc> {
         }
         let (group_name, group_display, occurrence_name, occurrence_display) =
             super::component::group_names(&counter, declared);
-        let mut name = group_name.to_string();
-        let mut display = group_display.to_string();
+        // Named as a catalog files a name, whatever the `rg-name` or the
+        // counter's spelling holds - `(BloombergLegs)` is `bloomberglegs` -
+        // the spelling kept as the display; one nothing of which folds is
+        // named after the counter, whose name already is a catalog name.
+        let mut name = catalog_name(&group_name)
+            .map_or_else(|| format!("{}grp", counter.name()), String::from);
+        let mut display = group_display.trim().to_owned();
         if self
             .vocabulary
             .iter()
-            .any(|field| field.field.name().eq_ignore_ascii_case(&name))
+            .any(|field| crate::folds_equal(field.field.name(), &name))
         {
             name.push_str("grp");
             if !display.ends_with("Grp") {
                 display.push_str("Grp");
             }
         }
-        let mut entry = occurrence_name.to_string();
-        let mut entry_display = occurrence_display.to_string();
+        let mut entry = catalog_name(&occurrence_name)
+            .map_or_else(|| format!("{}component", counter.name()), String::from);
+        let mut entry_display = occurrence_display.trim().to_owned();
         if self
             .vocabulary
             .iter()
-            .any(|field| field.field.name().eq_ignore_ascii_case(&entry))
+            .any(|field| crate::folds_equal(field.field.name(), &entry))
         {
             entry.push_str("component");
             if !entry_display.ends_with("Component") {
@@ -2282,6 +2491,7 @@ impl<'doc> Parse<'doc> {
             tag,
             position: self.position(),
             codes: Vec::new(),
+            skipped: Vec::new(),
             field: field.clone(),
         });
         Some(field)
@@ -2685,35 +2895,41 @@ fn message_name(registry: &FixRegistry, wire: &str) -> String {
     }
 }
 
-/// Stores a named definition, qualifying distinct message contexts once.
+/// Stores a named definition, qualifying distinct message contexts.
 ///
 /// A name the catalog already holds with other members is split under the
 /// message it was read in, `{name}_{message}`: the split says where it came
-/// from, and a message is one wire type, so two bindings of one type reach
-/// one split rather than two.
+/// from, and a message is one wire type, so two bindings of one type that
+/// declare it alike reach one split rather than two. A message declaring
+/// one name in several shapes - its parties at the root and again inside
+/// its legs, or two bindings of the type stating it two ways - takes a split
+/// per shape in the order it declares them, `{name}_{message}_2`, `_3`: a
+/// shape is one definition and two shapes are two, and nothing already
+/// written is rewritten under a member that has read it. Every definition
+/// written is recorded in `written`, so a message that fails to catalogue
+/// takes them back with it.
 fn catalog_entry(
     registry: &mut FixRegistry,
     category: crate::FixCategory,
     mut field: Field,
     message: &str,
+    written: &mut Vec<(crate::FixCategory, String)>,
 ) -> Result<Field> {
-    if let Some(held) = registry.get_definition(category, field.name()) {
-        if restated(held, &field) {
-            return Ok(field);
+    let base = field.name().to_owned();
+    for ordinal in 0_usize.. {
+        match ordinal {
+            0 => {}
+            1 => field.set_name(format!("{base}_{message}")),
+            ordinal => field.set_name(format!("{base}_{message}_{ordinal}")),
         }
-        field.set_name(format!("{}_{message}", field.name()));
-        if let Some(held) = registry.get_definition(category, field.name()) {
-            if !restated(held, &field) {
-                return Err(Error::Conflict {
-                    expected: "one CBlock definition per context",
-                    actual: "conflicting definitions",
-                    path: field.name().into(),
-                });
-            }
-            return Ok(field);
+        match registry.get_definition(category, field.name()) {
+            Some(held) if restated(held, &field) => return Ok(field),
+            Some(_) => {}
+            None => break,
         }
     }
     registry.insert_definition(category, field.clone())?;
+    written.push((category, field.name().to_owned()));
     Ok(field)
 }
 
@@ -2729,13 +2945,18 @@ fn restated(held: &Field, field: &Field) -> bool {
     &held == field
 }
 
-fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) -> Result<Field> {
+fn catalog_members(
+    registry: &mut FixRegistry,
+    mut field: Field,
+    message: &str,
+    written: &mut Vec<(crate::FixCategory, String)>,
+) -> Result<Field> {
     match field.dtype() {
         DataType::Struct(children) => {
             let children = children
                 .iter()
                 .cloned()
-                .map(|child| catalog_members(registry, child, message))
+                .map(|child| catalog_members(registry, child, message, written))
                 .collect::<Result<Vec<_>>>()?;
             field.set_dtype(DataType::from(StructType::from_fields(children)?))?;
         }
@@ -2745,14 +2966,26 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) 
             // for it, so every dialect's message names one group one way and
             // a fold meets the two readings as one member.
             let (member, occurrence) = (field.name().to_owned(), item.name().to_owned());
-            let item = catalog_members(registry, item.as_ref().clone(), message)?;
-            let mut item = catalog_entry(registry, crate::FixCategory::Components, item, message)?;
+            let item = catalog_members(registry, item.as_ref().clone(), message, written)?;
+            let mut item = catalog_entry(
+                registry,
+                crate::FixCategory::Components,
+                item,
+                message,
+                written,
+            )?;
             let component = item.name().to_owned();
             item.as_fix_mut().set_component(&component)?;
             item.set_name(occurrence);
             field.set_dtype(DataType::serie(item))?;
             field.as_fix_mut().set_component(&component)?;
-            field = catalog_entry(registry, crate::FixCategory::Groups, field, message)?;
+            field = catalog_entry(
+                registry,
+                crate::FixCategory::Groups,
+                field,
+                message,
+                written,
+            )?;
             let name = field.name().to_owned();
             field.as_fix_mut().set_group(&name)?;
             field.set_name(member);
@@ -2768,8 +3001,11 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) 
                     .or_else(|| tag.and_then(|tag| registry.get_field_by_tag(tag))),
                 (None, _) => None,
             };
+            // A nested grammar retypes its counter int32 once it is read, so
+            // a message bound before the group cloned the counter at the type
+            // its word stated: the counter is the int32 now.
             if let Some(known) = known
-                && field.dtype() == known.dtype()
+                && (field.dtype() == known.dtype() || known.dtype() == &DataType::Int32)
             {
                 // Maps and message codes can follow the grammar. Resolve
                 // its earlier clone against the completed vocabulary.
@@ -2783,24 +3019,6 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, message: &str) 
         }
     }
     Ok(field)
-}
-
-/// Preserves duplicate constraints in wire order under distinct child names.
-/// Their original `FIX:tag` still identifies the wire field.
-fn push_child(children: &mut Vec<Field>, mut field: Field) {
-    if !children.iter().any(|held| held.name() == field.name()) {
-        children.push(field);
-        return;
-    }
-    let base = field.name().to_owned();
-    for suffix in 2..u32::MAX {
-        let candidate = format!("{base}{suffix}");
-        if !children.iter().any(|held| held.name() == candidate) {
-            field.set_name(candidate);
-            children.push(field);
-            return;
-        }
-    }
 }
 
 /// Whether one element carries this name, without its namespace prefix.
@@ -2842,9 +3060,10 @@ impl Named for quick_xml::events::BytesEnd<'_> {
 ///
 /// The fallback is an identity rather than a guess, and the two writers of a
 /// name are what make it one. [`Parse::push_tag`] stores `display` exactly
-/// when the `alt` differs from its own lower-case form and names the field
-/// that same lower-case form; [`Parse::settle_names`] stores `display`
-/// whenever it takes a contended spelling out of a name. Either way a
+/// when the `alt` differs from the catalog name it folds to and names the
+/// field that name; [`Parse::settle_names`] stores `display` whenever it
+/// takes a contended spelling out of a name, and whenever a normalization's
+/// spelling differs from the name it folds to. Either way a
 /// `display` is the declared spelling and no `display` means the name already
 /// *is* it. That coupling is load-bearing, because [`Parse::decodes`] orients
 /// a map by comparing its name against this.

@@ -1829,8 +1829,9 @@ fix_ingested: dict[str, Any] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
 )
 fix_globbed: dict[str, Any] = fix_registry_from_fields.add_cfb_files(
-    Path("cblocks"), "*.cfb"
+    Path("cblocks") / "*.cfb"
 )
+fix_folder_folded: dict[str, Any] = fix_registry_from_fields.add_cfb_files(Path("cblocks"))
 fix_snapshot_folded: dict[str, Any] = fix_registry_from_fields.add_json_file(
     Path("dictionaries") / "venue.json"
 )

@@ -589,8 +589,9 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 `FixRegistry.fromCfbFile` reads one Ullink CBlock (`.cfb`) into a registry and
 its declared roots, stamping the dialect on everything it produced. The folds
 into a held registry (`add_cfb_file`, `add_cfb_files`, `merge_with`) are not
-bound here: fold a CBlock with `yggdryl fix ingest`, a whole dictionary folder
-with `yggdryl fix sync` ([cli](cli.md)), or in Rust or Python.
+bound here: fold CBlocks - files, folders of them or globs - with `yggdryl fix
+ingest`, a whole dictionary folder with `yggdryl fix sync` ([cli](cli.md)), or
+in Rust or Python.
 
 ```javascript
 const assert = require('node:assert/strict')

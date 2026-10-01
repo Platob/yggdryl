@@ -2451,13 +2451,24 @@ def test_a_glob_of_cblocks_passes_over_a_tag_typed_two_ways(tmp_path: pathlib.Pa
     (folder / "bloomberg_fix44_dropcopy.cfb").write_text(_rejection("integer"))
     (folder / "axessiq_fix44.cfb").write_text(_rejection("boolean"))
     (folder / "tradeweb_fix44.cfb").write_text(_rejection("string"))
+    (folder / "broken_fix44.cfb").write_text("<cplugin-configuration><vocabulary>")
+    (folder / "notes.txt").write_text("not a dictionary")
+    # A folder holds the .cfb files directly inside it, and a glob what it
+    # matches: both fold the same files into the same dictionary.
+    globbed = FixRegistry()
+    globbed.add_cfb_files(folder / "*fix44*.cfb")
     dictionary = FixRegistry()
-    report = dictionary.add_cfb_files(folder, "*.cfb")
+    report = dictionary.add_cfb_files(folder)
+    assert dictionary.into_json() == globbed.into_json()
 
-    # Every file folds; the first in URL order is held. An integer contradicts
-    # a flag and is named; text is every FIX datatype on the wire, so it
-    # restates the flag and folds under it.
+    # Every file folds but the one that is no CBlock, which is left out and
+    # named; the first in URL order is held. An integer contradicts a flag
+    # and is named; text is every FIX datatype on the wire, so it restates
+    # the flag and folds under it.
     assert report["sources"] == 3
+    [failed] = report["failed"]
+    assert failed["source"].endswith("broken_fix44.cfb")
+    assert "vocabulary" in failed["reason"]
     assert report["restated"] == 1
     [dropped] = report["dropped"]
     assert dropped["source"].endswith("bloomberg_fix44_dropcopy.cfb")

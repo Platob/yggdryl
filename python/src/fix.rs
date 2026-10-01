@@ -44,9 +44,10 @@ use crate::uri::core_url_from_value;
 use crate::{Failed, Pulled, python_failure, value_error};
 
 /// A fold's report as the ordinary mapping `commit`'s is: `sources`,
-/// `added`, `merged` and `restated` counted, and `dropped` one mapping per
+/// `added`, `merged` and `restated` counted, `dropped` one mapping per
 /// declaration passed over - its `source` URL or `None`, the `incoming`
-/// `Field`, and the `reason` naming what the dictionary keeps.
+/// `Field`, and the `reason` naming what the dictionary keeps - and `failed`
+/// one mapping per source left out whole, its `source` and `reason`.
 fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDict>> {
     let answer = PyDict::new(python);
     answer.set_item("sources", merge.sources)?;
@@ -62,6 +63,14 @@ fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDic
         dropped.append(entry)?;
     }
     answer.set_item("dropped", dropped)?;
+    let failed = PyList::empty(python);
+    for failure in merge.failed {
+        let entry = PyDict::new(python);
+        entry.set_item("source", failure.source.as_deref())?;
+        entry.set_item("reason", failure.reason.as_str())?;
+        failed.append(entry)?;
+    }
+    answer.set_item("failed", failed)?;
     Ok(answer)
 }
 
@@ -528,46 +537,49 @@ impl PyFixRegistry {
         merge_report(python, merge)
     }
 
-    /// Read every Ullink `CBlock` a pattern selects into this dictionary.
+    /// Read every Ullink `CBlock` a location holds into this dictionary.
     ///
-    /// The plural of `add_cfb_file`, over the core's own glob walk: `pattern`
-    /// is anchored at `location` the way `IOBase.glob` anchors it - a fixed
-    /// prefix is descended rather than listed, `**` spans any number of
-    /// levels - and a pattern selecting nothing folds nothing rather than
-    /// raising. Private entries are never matched.
+    /// The plural of `add_cfb_file`, and it takes the location alone - a
+    /// path, a URL or an `IOBase` - reading what it is: a glob such as
+    /// `cblocks/*.cfb` or `cblocks/**/*.cfb` holds every file the pattern
+    /// matches, walked the way `IOBase.glob` walks it with private entries
+    /// never matched; a folder holds the `.cfb` files directly inside it; a
+    /// file holds itself; and a location where nothing is holds nothing.
     ///
     /// The files parse side by side and fold in ascending URL order whatever
     /// order the listing arrived in, into one staged dictionary resolved
     /// once, so where two files contradict each other about one tag the
     /// first-sorting file's declaration is held, the later one is passed
-    /// over, and every spelling of one pattern answers the same dictionary;
-    /// a file declaring another precision of the held datatype - `float`
-    /// against `decimal128`, `string` against `ccy` - folds under it and is
-    /// counted in `restated`.
+    /// over, and a folder and a glob over the same files answer the same
+    /// dictionary; a file declaring another precision of the held datatype -
+    /// `float` against `decimal128`, `string` against `ccy` - folds under it
+    /// and is counted in `restated`.
     ///
     /// `dialect` is resolved per file: a name supplied here stamps every
-    /// matched file with it, and `None` lets each file's own stem stand in,
-    /// which is what globbing a folder of counterparty files is for.
+    /// file with it, and `None` lets each file's own stem stand in, which is
+    /// what globbing a folder of counterparty files is for.
     ///
-    /// Answers `merge_with`'s mapping, `sources` counting the files folded
-    /// and each drop naming its file. One mutation, and one copy of the
-    /// dictionary for the whole call: a file that will not parse leaves it
-    /// exactly as it was and the `ValueError` names that file.
-    #[pyo3(signature = (location, pattern, dialect=None))]
+    /// Answers `merge_with`'s mapping, `sources` counting the files folded,
+    /// `failed` naming every file left out and each drop naming its file.
+    /// One file is one mutation: a file that cannot be read, parsed or folded
+    /// is left out and named in `failed` while every other file still folds,
+    /// and nothing is adopted until the last file is in. A listing that fails
+    /// is a `ValueError`, leaving the dictionary as it was.
+    #[pyo3(signature = (location, dialect=None))]
     fn add_cfb_files<'py>(
         &mut self,
         python: Python<'py>,
         location: &Bound<'_, PyAny>,
-        pattern: &str,
         dialect: Option<&str>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        // A glob is walked from a container, where a `CBlock` is a leaf.
-        let root = folder_holder_from_value(location)?;
-        let files = root.as_io().glob(pattern, false).map_err(value_error)?;
-        let merge = self
-            .inner_mut()?
-            .add_cfb_files(files, dialect)
-            .map_err(value_error)?;
+        let registry = self.inner_mut()?;
+        let merge = if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
+            registry.add_cfb_files(std::slice::from_ref(handle.inner()?), dialect)
+        } else {
+            let url = core_url_from_value(location)?;
+            registry.add_cfb_files(&[located_holder(&url)?], dialect)
+        }
+        .map_err(value_error)?;
         merge_report(python, merge)
     }
 

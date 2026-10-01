@@ -610,6 +610,24 @@ pub(super) struct Documents {
     /// The derived tag each document holds, so a definition arriving with
     /// another dictionary's derivation is seen to collide before it lands.
     tags: HashMap<i32, DefinitionKey>,
+    /// What every write replaced since the oldest open [checkpoint], oldest
+    /// first: what a rollback puts back. Empty while no checkpoint is open,
+    /// so a fold nothing brackets keeps nothing.
+    ///
+    /// [checkpoint]: Self::checkpoint
+    journal: Vec<Replaced>,
+    /// How many checkpoints are open.
+    open: usize,
+}
+
+/// What one write to [`Documents`] replaced.
+struct Replaced {
+    key: DefinitionKey,
+    /// The document the key held before, or nothing where the write added it.
+    document: Option<Field>,
+    /// The derived tag the written document holds, and the key that tag
+    /// indexed before the write.
+    tag: Option<(i32, Option<DefinitionKey>)>,
 }
 
 impl Documents {
@@ -618,11 +636,70 @@ impl Documents {
             raw: BTreeMap::new(),
             keys: HashMap::new(),
             tags: HashMap::new(),
+            journal: Vec::new(),
+            open: 0,
         };
         for (key, document) in registry.compact_catalog()? {
             documents.put(key, document);
         }
         Ok(documents)
+    }
+
+    /// Opens a checkpoint: every write from here on can be undone by
+    /// [`Self::rollback`] with the mark this answers, and is forgotten by
+    /// [`Self::release`] once the outermost checkpoint closes.
+    ///
+    /// What lets one source, or one definition of it, be one mutation of
+    /// documents shared by a whole fold: the undo costs the writes it
+    /// undoes, never a copy of the catalog.
+    pub(super) fn checkpoint(&mut self) -> usize {
+        self.open += 1;
+        self.journal.len()
+    }
+
+    /// Closes the checkpoint `mark` opened, keeping what was written since.
+    pub(super) fn release(&mut self, mark: usize) {
+        debug_assert!(mark <= self.journal.len(), "a mark this journal answered");
+        self.open = self.open.saturating_sub(1);
+        if self.open == 0 {
+            self.journal.clear();
+        }
+    }
+
+    /// Undoes every write since `mark` was answered, newest first, and closes
+    /// that checkpoint: the documents are exactly what they were at it.
+    pub(super) fn rollback(&mut self, mark: usize) {
+        while self.journal.len() > mark {
+            let Some(Replaced { key, document, tag }) = self.journal.pop() else {
+                break;
+            };
+            match document {
+                Some(document) => {
+                    self.raw.insert(key, document);
+                }
+                None => {
+                    self.raw.remove(&key);
+                    let index = Catalog::key(key.0, &key.1);
+                    if let Some(held) = self.keys.get_mut(&index) {
+                        held.retain(|held| held != &key);
+                        if held.is_empty() {
+                            self.keys.remove(&index);
+                        }
+                    }
+                }
+            }
+            if let Some((tag, previous)) = tag {
+                match previous {
+                    Some(previous) => {
+                        self.tags.insert(tag, previous);
+                    }
+                    None => {
+                        self.tags.remove(&tag);
+                    }
+                }
+            }
+        }
+        self.release(mark);
     }
 
     /// The document one folded name reaches, with its key.
@@ -644,7 +721,20 @@ impl Documents {
         &mut self,
         renamed: &HashMap<FixId, Option<(i32, SmolStr)>>,
     ) -> Result<()> {
-        rename_raw_references(&mut self.raw, renamed)
+        if renamed.is_empty() {
+            return Ok(());
+        }
+        let keys: Vec<DefinitionKey> = self.raw.keys().cloned().collect();
+        for key in keys {
+            let Some(document) = self.raw.get(&key) else {
+                continue;
+            };
+            let rewritten = rename_document(document.clone(), renamed)?;
+            if self.raw.get(&key) != Some(&rewritten) {
+                self.put(key, rewritten);
+            }
+        }
+        Ok(())
     }
 
     fn put(&mut self, key: DefinitionKey, document: Field) {
@@ -652,10 +742,20 @@ impl Documents {
         if !held.contains(&key) {
             held.push(key.clone());
         }
-        if let Some(tag) = document.as_fix().tag().ok().flatten() {
-            self.tags.insert(tag, key.clone());
+        let tag = document
+            .as_fix()
+            .tag()
+            .ok()
+            .flatten()
+            .map(|tag| (tag, self.tags.insert(tag, key.clone())));
+        let previous = self.raw.insert(key.clone(), document);
+        if self.open > 0 {
+            self.journal.push(Replaced {
+                key,
+                document: previous,
+                tag,
+            });
         }
-        self.raw.insert(key, document);
     }
 }
 
@@ -670,18 +770,57 @@ pub(super) fn validate_name(field: &Field) -> Result<()> {
 /// rule answers for both: what a store can file, a checkout can hold, and a
 /// reader can key.
 pub(super) fn validate_definition_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || matches!(name, "." | "..")
-        || !name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-    {
+    if !is_catalog_name(name) {
         return Err(Error::InvalidRecord {
             path: name.into(),
             reason: "expected a nonempty ASCII definition name containing letters, digits, underscore, hyphen, or dot".into(),
         });
     }
     Ok(())
+}
+
+/// Whether `name` is one a store files a document under and a reference
+/// names a definition by: nonempty ASCII letters, digits, underscore, hyphen
+/// and dot, and neither `.` nor `..`.
+///
+/// The one alphabet every catalog name is held to, a field's reference among
+/// them, so what a reader may name is what a reference may point at.
+pub(super) fn is_catalog_name(name: &str) -> bool {
+    !name.is_empty()
+        && !matches!(name, "." | "..")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+/// The catalog name a source's spelling is filed under: lower case, every
+/// run of characters outside the [catalog alphabet](is_catalog_name) one
+/// `_`, no `_` at either end - `OTC Trade Flags` is `otc_trade_flags`,
+/// `(BloombergCustomTag05)` is `bloombergcustomtag05` - or `None` where
+/// nothing of it is left.
+///
+/// What a reader names a field, a group or an occurrence by when a source
+/// spells it freely: the spelling itself stays the definition's `display`,
+/// and the fold drops only what a name lookup already folds away - case,
+/// space, `_` and `-` - and punctuation, so the spelling still reaches the
+/// definition wherever it carries no punctuation.
+pub(super) fn catalog_name(spelling: &str) -> Option<SmolStr> {
+    let mut name = String::with_capacity(spelling.len());
+    let mut gap = false;
+    for character in spelling.chars() {
+        let character = character.to_ascii_lowercase();
+        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.') {
+            if gap && !name.is_empty() && !name.ends_with('_') && character != '_' {
+                name.push('_');
+            }
+            gap = false;
+            name.push(character);
+        } else {
+            gap = true;
+        }
+    }
+    let name = name.trim_matches('_');
+    is_catalog_name(name).then(|| SmolStr::new(name))
 }
 
 /// Drops from a reference occurrence the identity only its target owns.
@@ -989,12 +1128,56 @@ impl FixRegistry {
         Ok(added)
     }
 
+    /// Takes back the named definitions a walk wrote, newest first, without
+    /// proving the catalog again: what it held before them was proven, and
+    /// nothing else reads a definition the same walk wrote and abandoned.
+    pub(super) fn forget_definitions(&mut self, written: &[(FixCategory, String)]) {
+        let mut forgot = false;
+        for (category, name) in written.iter().rev() {
+            if let Some(position) = self.catalog.position(*category, name) {
+                self.catalog.remove(position);
+                forgot = true;
+            }
+        }
+        if forgot {
+            self.refresh_msgtype_aliases();
+        }
+    }
+
+    /// Takes back the named definitions among `written` that nothing in the
+    /// catalog reads any more, newest first, so a definition another read
+    /// was folded into leaves no copy of itself behind.
+    pub(super) fn forget_unread(&mut self, written: &[(FixCategory, String)]) {
+        for (category, name) in written.iter().rev() {
+            let read = self
+                .catalog
+                .all()
+                .any(|entry| reads_definition(entry.field.as_field(), *category, name, 0));
+            if !read && let Some(position) = self.catalog.position(*category, name) {
+                self.catalog.remove(position);
+            }
+        }
+    }
+
     /// The fold of one named definition, without the staging.
     ///
     /// [`Self::insert`] over a nested field is this plus the copy that makes
     /// it one mutation, and a fold already holding a staged dictionary calls
     /// this so the copy is paid once.
     pub(super) fn fold_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
+        self.fold_definition_into(category, field, None)
+    }
+
+    /// [`Self::fold_definition`], passing what disagrees with the held
+    /// definition over into `drops` - the way a fold with another dictionary
+    /// does - rather than refusing the definition whole, where `drops` is
+    /// given.
+    pub(super) fn fold_definition_into(
+        &mut self,
+        category: FixCategory,
+        field: Field,
+        drops: Option<&mut Vec<FixDrop>>,
+    ) -> Result<bool> {
         validate_name(&field)?;
         check_shape(category, &field)?;
         if self.get_definition(category, field.name()).is_none() {
@@ -1005,7 +1188,7 @@ impl FixRegistry {
         // whose Null placeholders no longer carry their scalar tags.
         let field = canonical_occurrences(field, true)?;
         let mut documents = Documents::from_registry(self)?;
-        self.fold_document(&mut documents, category, &field, &mut None)?;
+        self.fold_document(&mut documents, category, &field, &mut { drops })?;
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()?;
         Ok(false)
@@ -1198,13 +1381,72 @@ impl FixRegistry {
             {
                 Some(held) => {
                     if let Some(error) = self.disagreement(documents, owner, &held, child)? {
-                        self.reconcile(documents, &held, child, error, drops, depth)?;
+                        match self.beside(documents, &held, child, drops)? {
+                            // One member per counter: one already reading a
+                            // group on this counter - a fold placed it beside
+                            // before, or the stored definition declares it -
+                            // is the member this reading folds into, and only
+                            // a counter no member reads takes one of its own.
+                            Some((beside, counter)) => match merged
+                                .iter()
+                                .find(|standing| {
+                                    group_counter(documents, standing) == Some(counter)
+                                })
+                                .cloned()
+                            {
+                                Some(standing) => {
+                                    if let Some(error) =
+                                        self.disagreement(documents, owner, &standing, &beside)?
+                                    {
+                                        self.reconcile(
+                                            documents, &standing, &beside, error, drops, depth,
+                                        )?;
+                                    }
+                                }
+                                None => push_member(&mut merged, beside),
+                            },
+                            None => self.reconcile(documents, &held, child, error, drops, depth)?,
+                        }
                     }
                 }
                 None => merged.push(child.clone()),
             }
         }
         Ok(merged)
+    }
+
+    /// An incoming member reading a group on another counter than the group
+    /// the stored member of its name reads, as a member of its own beside it,
+    /// named for its counter - `dealers_7101` beside `dealers` - or `None`
+    /// for any other disagreement.
+    ///
+    /// Two counters are two tags on the wire, so the one message carries both
+    /// groups and a venue's occurrences land in the member its counter opens;
+    /// a member read two ways under one name is still the only member the
+    /// stored definition has for it. Only a fold with another dictionary
+    /// places one beside: a definition written alone is refused as before.
+    fn beside(
+        &self,
+        documents: &Documents,
+        held: &Field,
+        child: &Field,
+        drops: &Option<&mut Vec<FixDrop>>,
+    ) -> Result<Option<(Field, i32)>> {
+        if drops.is_none() {
+            return Ok(None);
+        }
+        let (Some(stored), Some(incoming)) = (
+            group_counter(documents, held),
+            group_counter(documents, child),
+        ) else {
+            return Ok(None);
+        };
+        if stored == incoming {
+            return Ok(None);
+        }
+        let mut beside = child.clone();
+        beside.set_name(format!("{}_{incoming}", child.name()));
+        Ok(Some((beside, incoming)))
     }
 
     /// Settles one member the stored and the incoming definition declare
@@ -1880,6 +2122,14 @@ impl FixRegistry {
     /// field here, or whose own identity disagrees with the group held under
     /// its name, is passed over with every member reading it, and a message
     /// whose name another wire code holds is named for its own code.
+    ///
+    /// **One definition is one mutation.** A definition this fold cannot make
+    /// read the dictionary, or whose fold refuses rather than passing a member
+    /// over, is passed over whole into `dropped`: every write its fold made to
+    /// `documents` is undone and every drop it recorded is replaced by its
+    /// own, and every other definition of the source still folds. A
+    /// definition that arrives new and goes is passed over with every member
+    /// of the source reading it, as a group refused its counter is.
     pub(super) fn merge_catalog(
         &self,
         documents: &mut Documents,
@@ -1887,63 +2137,143 @@ impl FixRegistry {
         remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
         dropped: &mut Vec<FixDrop>,
     ) -> Result<()> {
+        // The definitions that will not land, by category and name: a member
+        // of the source reading one goes with it, where nothing held answers
+        // to the name instead.
+        let mut lost: Vec<(FixCategory, String)> = Vec::new();
+        let mut losing = |documents: &Documents, category: FixCategory, name: &str| {
+            if category == FixCategory::Groups || documents.get(category, name).is_none() {
+                lost.push((category, name.to_owned()));
+            }
+        };
         let mut incoming = Vec::new();
         for category in [FixCategory::Components, FixCategory::Groups] {
             for field in other.catalog.iter(category) {
-                let document = compact(field.clone(), true)?;
-                let document = if remap.is_empty() {
-                    document
-                } else {
+                let mark = dropped.len();
+                let document = compact(field.clone(), true).and_then(|mut document| {
+                    if remap.is_empty() {
+                        return Ok(Ok(document));
+                    }
+                    // A group counts by a field as its members read one: the
+                    // counter is read under the identity the scalar fold left.
+                    if category == FixCategory::Groups
+                        && let Some(error) = counter_remapped(other, &mut document, remap)?
+                    {
+                        return Ok(Err(error));
+                    }
                     members_read(document, dropped, &mut |owner, member| {
                         remapped(owner, member, remap)
-                    })?
-                };
-                incoming.push((category, document));
-            }
-        }
-        let mut lost: Vec<String> = Vec::new();
-        let mut kept = Vec::with_capacity(incoming.len());
-        for (category, document) in incoming {
-            match self.standing(documents, category, document)? {
-                Ok(document) => kept.push((category, document)),
-                Err((document, error)) => {
-                    if category == FixCategory::Groups {
-                        lost.push(document.name().to_owned());
+                    })
+                    .map(Ok)
+                });
+                match document {
+                    Ok(Ok(document)) => incoming.push((category, document)),
+                    Ok(Err(error)) | Err(error) => {
+                        dropped.truncate(mark);
+                        losing(documents, category, field.name());
+                        dropped.push(FixDrop::new(field.clone(), &error));
                     }
-                    dropped.push(FixDrop::new(document, &error));
                 }
             }
         }
+        let mut kept = Vec::with_capacity(incoming.len());
+        // The groups `standing` named for their own counter, under the name the
+        // source's members read them by, so those members follow.
+        let mut renamed: Vec<(String, String)> = Vec::new();
+        for (category, document) in incoming {
+            let name = document.name().to_owned();
+            let (document, error) = match self.standing(documents, category, document.clone()) {
+                Ok(Ok(document)) => {
+                    if category == FixCategory::Groups && document.name() != name {
+                        renamed.push((name, document.name().to_owned()));
+                    }
+                    kept.push((category, document));
+                    continue;
+                }
+                Ok(Err(refused)) => refused,
+                Err(error) => (document, error),
+            };
+            // Under the name the source's members read it by, whatever name
+            // `standing` tried for it.
+            losing(documents, category, &name);
+            dropped.push(FixDrop::new(document, &error));
+        }
+        if !renamed.is_empty() {
+            let mut reading = Vec::with_capacity(kept.len());
+            for (category, document) in kept {
+                let mark = dropped.len();
+                match members_read(document.clone(), dropped, &mut |_, member| {
+                    let group = member.as_fix().group().and_then(|group| {
+                        renamed.iter().find(|(held, _)| folds_equal(held, group))
+                    });
+                    if let Some((_, named)) = group {
+                        member.as_fix_mut().set_group(named)?;
+                    }
+                    Ok(None)
+                }) {
+                    Ok(read) => reading.push((category, read)),
+                    Err(error) => {
+                        dropped.truncate(mark);
+                        dropped.push(FixDrop::new(document, &error));
+                    }
+                }
+            }
+            kept = reading;
+        }
         if !lost.is_empty() {
-            for (_, document) in &mut kept {
-                *document = members_read(document.clone(), dropped, &mut |owner, member| {
-                    Ok(member
-                        .as_fix()
-                        .group()
-                        .filter(|group| lost.iter().any(|held| folds_equal(held, group)))
-                        .map(|group| Error::InvalidRecord {
+            let mut reading = Vec::with_capacity(kept.len());
+            for (category, document) in kept {
+                let mark = dropped.len();
+                match members_read(document.clone(), dropped, &mut |owner, member| {
+                    Ok(reference(member)
+                        .filter(|(category, name)| {
+                            lost.iter()
+                                .any(|(held, lost)| held == category && folds_equal(lost, name))
+                        })
+                        .map(|(category, name)| Error::InvalidRecord {
                             path: format_smolstr!("{owner}.{}", member.name()),
                             reason: format_smolstr!(
-                                "expected a group this dictionary holds, got {group:?}, which the merge passed over"
+                                "expected a {} this dictionary holds, got {name:?}, which the merge passed over",
+                                if category == FixCategory::Groups {
+                                    "group"
+                                } else {
+                                    "component"
+                                }
                             ),
                         }))
-                })?;
+                }) {
+                    Ok(read) => reading.push((category, read)),
+                    Err(error) => {
+                        dropped.truncate(mark);
+                        dropped.push(FixDrop::new(document, &error));
+                    }
+                }
             }
+            kept = reading;
         }
-        let mut drops = Some(dropped);
         // What arrives new is put before anything merges, so a member that
         // references it on one side and states it inline on the other is
         // compared against it whatever category it belongs to.
         let mut folding = Vec::new();
+        let mut arriving = Vec::new();
         for (category, document) in kept {
             if documents.get(category, document.name()).is_none() {
-                self.fold_document(documents, category, &document, &mut drops)?;
+                arriving.push((category, document));
             } else {
                 folding.push((category, document));
             }
         }
-        for (category, document) in folding {
-            self.fold_document(documents, category, &document, &mut drops)?;
+        for (category, document) in arriving.into_iter().chain(folding) {
+            let mark = documents.checkpoint();
+            let passed = dropped.len();
+            match self.fold_document(documents, category, &document, &mut Some(&mut *dropped)) {
+                Ok(()) => documents.release(mark),
+                Err(error) => {
+                    documents.rollback(mark);
+                    dropped.truncate(passed);
+                    dropped.push(FixDrop::new(document, &error));
+                }
+            }
         }
         Ok(())
     }
@@ -2007,30 +2337,94 @@ impl FixRegistry {
         let Err(error) = merge_root(stored, &probe) else {
             return Ok(Ok(document));
         };
-        let renamed = document
-            .as_fix()
-            .msgtype()
-            .filter(|wire| stored.as_fix().msgtype() != Some(*wire))
-            .map(super::msgtype::derived_name)
-            .filter(|name| !folds_equal(name, document.name()));
+        // Another identity under a held name is another definition: a message
+        // is named for its own wire code, as a CBlock names one no spelling
+        // names, and a group for its own counter, as a CBlock splits one for
+        // its message - so a venue's `dealers` on its own counter stands
+        // beside the held `dealers` rather than being passed over with every
+        // member reading it.
+        let (stored_counter, counter) = (stored.as_fix().counter()?, document.as_fix().counter()?);
+        let renamed = match category {
+            FixCategory::Groups => counter
+                .filter(|counter| stored_counter.is_some_and(|held| held != *counter))
+                .map(|counter| format!("{}_{counter}", document.name())),
+            _ => document
+                .as_fix()
+                .msgtype()
+                .filter(|wire| stored.as_fix().msgtype() != Some(*wire))
+                .map(super::msgtype::derived_name)
+                .filter(|name| !folds_equal(name, document.name())),
+        };
         let Some(name) = renamed else {
+            let error = Error::InvalidRecord {
+                path: document.name().into(),
+                reason: format_smolstr!(
+                    "expected the {} held under this name, got another: {error}",
+                    if category == FixCategory::Groups {
+                        "group"
+                    } else {
+                        "component"
+                    }
+                ),
+            };
             return Ok(Err((document, error)));
         };
         log::debug!(
-            "message type {:?} takes {name:?}: {:?} names message type {:?}",
-            document.as_fix().msgtype().unwrap_or_default(),
+            "{:?} takes {name:?}: the {} held under its name is another",
             document.name(),
-            stored.as_fix().msgtype().unwrap_or_default()
+            if category == FixCategory::Groups {
+                "group"
+            } else {
+                "message"
+            }
         );
         document.set_name(name);
-        match documents.get(category, document.name()) {
-            Some((_, held)) => match merge_root(held, &document) {
-                Ok(_) => Ok(Ok(document)),
-                Err(error) => Ok(Err((document, error))),
-            },
-            None => Ok(Ok(document)),
+        let Some((_, held)) = documents.get(category, document.name()) else {
+            return Ok(Ok(document));
+        };
+        // The name taken may hold this group from another source already,
+        // drawn from another component: one group on one counter, whose
+        // component the fold reconciles, as under the first name.
+        let probe = match held.as_fix().component() {
+            Some(component)
+                if category == FixCategory::Groups
+                    && held.as_fix().counter()? == document.as_fix().counter()? =>
+            {
+                with_component(&document, component)?
+            }
+            _ => document.clone(),
+        };
+        match merge_root(held, &probe) {
+            Ok(_) => Ok(Ok(document)),
+            Err(error) => Ok(Err((document, error))),
         }
     }
+}
+
+/// Whether `field` reads the definition `category` `name` anywhere beneath
+/// its own root, through a member's reference marker.
+fn reads_definition(field: &Field, category: FixCategory, name: &str, depth: usize) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    let children: &[Field] = match occurrence_of(field) {
+        Some(item) => std::slice::from_ref(item),
+        None => field.fields(),
+    };
+    children.iter().any(|child| {
+        reference(child).is_some_and(|(held, target)| held == category && folds_equal(target, name))
+            || reads_definition(child, category, name, depth + 1)
+    })
+}
+
+/// The counter of the group a member reads by reference, where it reads one
+/// the documents hold.
+fn group_counter(documents: &Documents, member: &Field) -> Option<i32> {
+    let (FixCategory::Groups, name) = reference(member)? else {
+        return None;
+    };
+    let (_, group) = documents.get(FixCategory::Groups, name)?;
+    group.as_fix().counter().ok().flatten()
 }
 
 /// `group` drawing its occurrences from the component `name`.
@@ -2081,19 +2475,28 @@ pub(super) fn rename_raw_references(
     if renamed.is_empty() {
         return Ok(());
     }
-    let mut drops = Vec::new();
     let keys: Vec<DefinitionKey> = raw.keys().cloned().collect();
     for key in keys {
         let Some(document) = raw.remove(&key) else {
             continue;
         };
-        let rewritten = members_read(document, &mut drops, &mut |owner, member| {
-            remapped(owner, member, renamed)
-        })?;
-        raw.insert(key, rewritten);
+        raw.insert(key, rename_document(document, renamed)?);
     }
-    debug_assert!(drops.is_empty(), "a rename passes no member over");
     Ok(())
+}
+
+/// One document with every member reading a renamed field reading it under
+/// the identity it holds now.
+fn rename_document(
+    document: Field,
+    renamed: &HashMap<FixId, Option<(i32, SmolStr)>>,
+) -> Result<Field> {
+    let mut drops = Vec::new();
+    let rewritten = members_read(document, &mut drops, &mut |owner, member| {
+        remapped(owner, member, renamed)
+    })?;
+    debug_assert!(drops.is_empty(), "a rename passes no member over");
+    Ok(rewritten)
 }
 
 /// A member reading a field the scalar fold did not keep under the identity
@@ -2128,6 +2531,61 @@ fn remapped(
             path: format_smolstr!("{owner}.{}", member.name()),
             reason: format_smolstr!(
                 "expected a field this dictionary holds, got {name} ({tag}), which the merge passed over"
+            ),
+        })),
+    }
+}
+
+/// Keeps two members of one struct reading one field in wire order under
+/// distinct names: the first keeps its name, a later one the first free
+/// `{name}2`, `{name}3`... Their `FIX:tag` still names the wire field.
+///
+/// The one rule a duplicate member is named by, whether a grammar binds one
+/// tag twice or a fold lands two of a source's fields on one held field.
+pub(super) fn push_member(children: &mut Vec<Field>, mut field: Field) {
+    if !children.iter().any(|held| held.name() == field.name()) {
+        children.push(field);
+        return;
+    }
+    let base = field.name().to_owned();
+    for suffix in 2..u32::MAX {
+        let candidate = format!("{base}{suffix}");
+        if !children.iter().any(|held| held.name() == candidate) {
+            field.set_name(candidate);
+            children.push(field);
+            return;
+        }
+    }
+}
+
+/// A group of the source whose counter the scalar fold did not keep under
+/// the identity the group names, read the way [`remapped`] reads a member:
+/// counted by the field that holds the counter now, or the refusal the group
+/// is passed over with where the counter itself was passed over.
+fn counter_remapped(
+    other: &FixRegistry,
+    group: &mut Field,
+    remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
+) -> Result<Option<Error>> {
+    let Some(tag) = group.as_fix().counter()? else {
+        return Ok(None);
+    };
+    let Some(counter) = other.get_field_by_tag(tag) else {
+        return Ok(None);
+    };
+    match remap.get(&super::registry::canonical_id(counter)?) {
+        None => Ok(None),
+        Some(Some((held, _))) => {
+            if *held != tag {
+                group.as_fix_mut().set_counter(*held)?;
+            }
+            Ok(None)
+        }
+        Some(None) => Ok(Some(Error::InvalidRecord {
+            path: group.name().into(),
+            reason: format_smolstr!(
+                "expected a counter this dictionary holds, got {} ({tag}), which the merge passed over",
+                counter.name()
             ),
         })),
     }
@@ -2168,11 +2626,19 @@ fn members_read(
                     drops.push(FixDrop::new(child, &error));
                     continue;
                 }
-                kept.push(if reference(&child).is_some() {
-                    child
-                } else {
-                    members_read(child, drops, member)?
-                });
+                // A member the read renamed onto a sibling's name - two fields
+                // of the source the scalar fold landed on one held field, each
+                // member named after the field it read - is the same field
+                // twice, as a duplicate constraint is, and takes the name a
+                // duplicate constraint takes rather than refusing the struct.
+                push_member(
+                    &mut kept,
+                    if reference(&child).is_some() {
+                        child
+                    } else {
+                        members_read(child, drops, member)?
+                    },
+                );
             }
             DataType::from(StructType::from_fields(kept)?)
         }

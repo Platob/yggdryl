@@ -822,15 +822,17 @@ fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept(
         "{annotated}"
     );
 
-    // A file refused whole still shows what the files before it were read as.
+    // A file the core cannot fold is left out and named after what the
+    // files beside it were read as, and every other file still folds.
     let truncated = rejection("string").replace("</vocabulary>", "");
     workspace.cblocks(&[("b_venue.cfb", &truncated)]);
-    let refused = output_text(&workspace.failure(&[
+    let refused = output_text(&workspace.success(&[
         "ingest",
         folder.join("*.cfb").to_str().expect("test path"),
         "--dialect",
         "venue",
     ]));
+    assert!(refused.contains("1 file(s) left out"), "{refused}");
     let warned = refused
         .find("typed string")
         .unwrap_or_else(|| panic!("the kept tag named: {refused}"));
@@ -838,10 +840,19 @@ fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept(
         .find("b_venue.cfb")
         .unwrap_or_else(|| panic!("the refused file named: {refused}"));
     assert!(warned < refusal, "{refused}");
+
+    // A run whose every file is left out names each, then fails.
+    let output = workspace.failure(&[
+        "ingest",
+        folder.join("b_venue.cfb").to_str().expect("test path"),
+    ]);
+    let text = output_text(&output);
+    assert!(text.contains("b_venue.cfb"), "{text}");
+    assert!(text.contains(".cfb file that folds"), "{text}");
 }
 
 #[test]
-fn ingest_refuses_a_pattern_matching_nothing_and_sync_names_the_verb_for_a_cblock() {
+fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cblock() {
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("venue.cfb", &rejection("string"))]);
     let output = workspace.failure(&["ingest", folder.join("*.xml").to_str().expect("test path")]);
@@ -850,9 +861,20 @@ fn ingest_refuses_a_pattern_matching_nothing_and_sync_names_the_verb_for_a_cbloc
         "{}",
         output_text(&output)
     );
-    let output = workspace.failure(&["ingest", folder.to_str().expect("test path")]);
+    let empty = folder.join("empty");
+    std::fs::create_dir_all(&empty).expect("an empty folder");
+    let output = workspace.failure(&["ingest", empty.to_str().expect("test path")]);
     assert!(
-        output_text(&output).contains("got directory"),
+        output_text(&output).contains(".cfb file the locations hold"),
+        "{}",
+        output_text(&output)
+    );
+    let output = workspace.failure(&[
+        "ingest",
+        folder.join("absent.cfb").to_str().expect("test path"),
+    ]);
+    assert!(
+        output_text(&output).contains("absent.cfb"),
         "{}",
         output_text(&output)
     );

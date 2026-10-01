@@ -605,16 +605,20 @@ with tempfile.TemporaryDirectory() as directory:
 
 `FixRegistry.from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect on everything it produced;
-`add_cfb_file` folds one into a held registry, `add_cfb_files` folds every
-file a glob pattern selects under a folder, and `merge_with` folds a whole
-other registry, dialect defaulting to each file's own stem. Each answers a
-`dict` - `sources`, `added`, `merged`, `restated` and `dropped` - and a fold
-keeps every declaration the dictionary already holds: a field whose source
-stated another precision of the stored datatype (a CBlock's `float` against
-`decimal128`, `string` against `ccy`) folds under it and is counted in
-`restated`, and a contradiction is passed over into `dropped` rather than
-refusing the whole source; only a source that leaves nothing to keep is
-refused whole. What the reader cannot keep of a file is a `logging` warning
+`add_cfb_file` folds one into a held registry, `add_cfb_files(location)`
+folds what one location holds - a glob (`folder / "*.cfb"`) every file it
+matches, a folder the `.cfb` files directly inside it, a file itself - and
+`merge_with` folds a whole other registry, dialect defaulting to each file's
+own stem. Each answers a `dict` - `sources`, `added`, `merged`, `restated`,
+`dropped` and `failed` - and a fold keeps every declaration the dictionary
+already holds: a field whose source stated another precision of the stored
+datatype (a CBlock's `float` against `decimal128`, `string` against `ccy`)
+folds under it and is counted in `restated`, and a contradiction is passed
+over into `dropped` rather than refusing the whole source. `add_cfb_files`
+folds each file as one mutation: a file it cannot read, parse or fold is left
+out alone, one `{"source", "reason"}` entry in `failed`, while the rest fold;
+`add_cfb_file` and `merge_with` raise only for a source that leaves nothing
+to keep. What the reader cannot keep of a file is a `logging` warning
 under `yggdryl.fix.cfb` naming the line, the column, the element and what the
 reader did instead.
 
@@ -634,15 +638,23 @@ with tempfile.TemporaryDirectory() as directory:
     folder = pathlib.Path(directory)
     (folder / "alpha.cfb").write_text(cblock.format(name="buy"))
     (folder / "beta.cfb").write_text(cblock.format(name="venue_buy"))
+    (folder / "broken.cfb").write_text("<cplugin-configuration><vocabulary>")
 
     venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
     assert venue.field(4).fix.branches == ["venue"] and roots == []
 
+    # A folder holds the .cfb files directly inside it, a glob what it matches.
     registry = FixRegistry()
-    report = registry.add_cfb_files(folder, "*.cfb")
+    report = registry.add_cfb_files(folder)
     assert report["sources"] == 2
     assert report["restated"] == 0, "both files type tag 4 alike"
     assert report["dropped"] == []
+    # One file is one mutation: the broken one is left out, the others fold.
+    [failed] = report["failed"]
+    assert failed["source"].endswith("broken.cfb")
+    globbed = FixRegistry()
+    globbed.add_cfb_files(folder / "*.cfb")
+    assert globbed == registry
     # Ascending URL order, each file stamped with its stem.
     assert registry.field(4).fix.branches == ["alpha", "beta"]
     # A code set only widens: the held name wins a shared value.

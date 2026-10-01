@@ -914,7 +914,11 @@ fn a_folded_code_set_name_collision_refuses_atomically() {
             ],
         )
         .unwrap_err();
-    assert!(matches!(error, yggdryl::Error::Parse { .. }), "{error}");
+    assert!(
+        matches!(error, yggdryl::Error::InvalidRecord { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("good_till_date"), "{error}");
     assert_eq!(registry, before);
     assert_eq!(
         registry

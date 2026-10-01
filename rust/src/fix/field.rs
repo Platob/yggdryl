@@ -710,12 +710,7 @@ impl FixFieldMut<'_> {
     }
 
     fn set_reference(&mut self, key: &str, name: &str) -> Result<()> {
-        if name.is_empty()
-            || matches!(name, "." | "..")
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-        {
+        if !super::catalog::is_catalog_name(name) {
             return Err(self.rejected(key, format_smolstr!("expected a nonempty catalog name of ASCII letters, digits, underscore, hyphen or dot, got {name:?}")));
         }
         self.store(key, name.to_ascii_lowercase())

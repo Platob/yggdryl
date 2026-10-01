@@ -304,16 +304,96 @@ fn datatypes_agree(stored: &crate::DataType, incoming: &crate::DataType) -> bool
     }
 }
 
+/// One `CBlock` file a fold reads: a location the caller handed over, or a
+/// file a glob or a folder listed.
+enum CblockFile<'location> {
+    Given(&'location crate::holder::Holder),
+    Listed(Box<crate::holder::Holder>),
+}
+
+impl CblockFile<'_> {
+    fn as_io(&self) -> &dyn IOBase {
+        match self {
+            Self::Given(location) => location.as_io(),
+            Self::Listed(file) => file.as_io(),
+        }
+    }
+}
+
+/// Whether the leaf a URL names is called `*.cfb`, the suffix in any case:
+/// the member an archive URL's fragment names, else the file its path does.
+fn is_cblock_name(url: &crate::Url) -> bool {
+    let member = url.fragment(true).ok().flatten();
+    let name = match &member {
+        Some(member) => member.rsplit('/').next(),
+        None => url.file_name(),
+    };
+    name.and_then(|name| name.rsplit_once('.'))
+        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("cfb"))
+}
+
+/// The `CBlock` files one location holds, appended to `files`: what a glob
+/// matches, the `.cfb` files directly inside a folder, or the location
+/// itself where it is a file - and nothing where nothing is there, which is
+/// logged at warn level, because a location beside others that hold files
+/// would otherwise add nothing without a word.
+fn cblock_files<'location>(
+    location: &'location crate::holder::Holder,
+    files: &mut Vec<CblockFile<'location>>,
+) -> Result<()> {
+    let before = files.len();
+    if !location.is_container() {
+        if location.kind() != crate::IOKind::Unknown {
+            files.push(CblockFile::Given(location));
+        }
+    } else {
+        // A pattern is the caller's filter; a folder's is the suffix, read
+        // off the entry's own name - an archive member's is in the fragment.
+        let glob = location.url().is_some_and(crate::Url::is_glob);
+        for entry in location.ls(false, false) {
+            let entry = entry?;
+            let cblock = glob || entry.url().is_some_and(is_cblock_name);
+            if cblock && !entry.is_container() {
+                files.push(CblockFile::Listed(Box::new(entry)));
+            }
+        }
+    }
+    if files.len() == before {
+        match location.url() {
+            Some(url) => log::warn!("{url}: holds no .cfb file, so it adds nothing"),
+            None => log::warn!("a location holds no .cfb file, so it adds nothing"),
+        }
+    }
+    Ok(())
+}
+
 fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
+    // A time of day against an instant is the one contradiction two FIX
+    // spellings of one field routinely make - a CBlock has `utc-time-only`
+    // and no word for `TZTimeOnly` - so the refusal says what each reading
+    // accepts rather than leaving a reader to guess why two clocks disagree.
+    let consequence = match (
+        stored.dtype().id().temporal_family(),
+        incoming.dtype().id().temporal_family(),
+    ) {
+        (Some("datetime"), Some("time")) => {
+            ": the stored instant reads a clock only with its offset, a bare time of day as null"
+        }
+        (Some("time"), Some("datetime")) => ": the stored time of day reads no date and no offset",
+        _ => "",
+    };
     Error::InvalidRecord {
         path: incoming.name().into(),
-        reason: crate::text::expected_got(
-            format_args!(
-                "the datatype {} stored for {} ({tag})",
-                stored.dtype(),
-                stored.name()
-            ),
-            incoming.dtype(),
+        reason: format_smolstr!(
+            "{}{consequence}",
+            crate::text::expected_got(
+                format_args!(
+                    "the datatype {} stored for {} ({tag})",
+                    stored.dtype(),
+                    stored.name()
+                ),
+                incoming.dtype(),
+            )
         ),
     }
 }
@@ -406,8 +486,8 @@ impl Route {
 /// refusing the whole source for it.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FixMerge {
-    /// The sources folded: one for a dictionary or a file, the files a
-    /// pattern matched for [`FixRegistry::add_cfb_files`].
+    /// The sources folded: one for a dictionary or a file, every file the
+    /// locations held that folded for [`FixRegistry::add_cfb_files`].
     pub sources: usize,
     /// The scalar fields that arrived.
     pub added: usize,
@@ -418,13 +498,17 @@ pub struct FixMerge {
     pub restated: usize,
     /// The declarations passed over, in the order the fold met them.
     pub dropped: Vec<FixDrop>,
+    /// The sources left out whole, in the order the fold met them: a file
+    /// [`FixRegistry::add_cfb_files`] could not read, parse or fold, which
+    /// contributed nothing while every other file still folded.
+    pub failed: Vec<FixFailure>,
 }
 
 impl FixMerge {
     /// Whether the fold kept every declaration its sources made.
     #[must_use]
     pub fn is_clean(&self) -> bool {
-        self.dropped.is_empty()
+        self.dropped.is_empty() && self.failed.is_empty()
     }
 
     /// Adds another fold's counts and drops to this one's.
@@ -434,6 +518,7 @@ impl FixMerge {
         self.merged += other.merged;
         self.restated += other.restated;
         self.dropped.extend(other.dropped);
+        self.failed.extend(other.failed);
     }
 
     /// Names the source every drop was read from.
@@ -484,6 +569,40 @@ impl FixDrop {
 }
 
 impl fmt::Display for FixDrop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(source) = &self.source {
+            write!(formatter, "{source}: ")?;
+        }
+        formatter.write_str(&self.reason)
+    }
+}
+
+/// One source a plural fold left out whole.
+///
+/// [`FixRegistry::add_cfb_files`] folds each file as one mutation of its own:
+/// a file that cannot be read, is not a well-formed CBlock, or whose fold
+/// refuses rather than passing a declaration over is rolled back alone and
+/// named here, and every other file still folds. Nothing the file said is
+/// held, so the reason is the whole of what it contributed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FixFailure {
+    /// The file's URL, where the source is a file with one.
+    pub source: Option<SmolStr>,
+    /// The refusal the file was left out over.
+    pub reason: SmolStr,
+}
+
+impl FixFailure {
+    fn new(handle: &dyn IOBase, error: &Error) -> Self {
+        log::debug!("fix merge left out {:?}: {error}", handle.url());
+        Self {
+            source: handle.url().map(|url| format_smolstr!("{url}")),
+            reason: format_smolstr!("{error}"),
+        }
+    }
+}
+
+impl fmt::Display for FixFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(source) = &self.source {
             write!(formatter, "{source}: ")?;
@@ -1465,7 +1584,11 @@ impl FixRegistry {
     /// [`FixMerge::restated`]. An unbounded text declaration restates any
     /// datatype, the integer, floating and decimal families restate each
     /// other, an integer restates an enum leaf, the byte layouts one another,
-    /// a date a datetime whatever the zone, and one time width another.
+    /// a date a datetime whatever the zone, and one time width another. The
+    /// one exception is a repeating group's counter: a field the other
+    /// dictionary counts a group by is NumInGroup, and one held as unbounded
+    /// text, a float or another integer width is retyped int32 - said at
+    /// warn level - so the group stands whichever source was folded first.
     ///
     /// **What the other dictionary says otherwise is passed over, and named;
     /// the rest of it still folds.** Counterparties contradict each other
@@ -1473,13 +1596,18 @@ impl FixRegistry {
     /// so the declaration already held stays and the other is a [`FixDrop`]
     /// in the answer: a scalar whose datatype contradicts the field its
     /// identity or name reaches, a member a held definition already declares
-    /// in another shape, a definition whose counter, component or message
-    /// code disagrees with the one held under its name, and a member reading
-    /// a field passed over. Two references
-    /// under one member name to two groups or two components are one member
-    /// read two ways: the members the incoming target declares fold into the
-    /// held target under these same rules, so a group one dialect split for
-    /// one message still widens the group the dictionary reads there.
+    /// in another shape, a definition whose component or message code
+    /// disagrees with the one held under its name, a member reading a field
+    /// passed over, and a code set that will not fold into the one held. Two
+    /// references under one member name to two groups or two components on
+    /// one counter are one member read two ways: the members the incoming
+    /// target declares fold into the held target under these same rules, so
+    /// a group one dialect split for one message still widens the group the
+    /// dictionary reads there. A group held under its name on another counter
+    /// is another group: it arrives named for its counter, `dealers_7101`,
+    /// and a member reading it stands beside the held member under that
+    /// counter's suffix. A definition whose fold refuses rather than passing
+    /// a member over is passed over whole, every write it made undone.
     ///
     /// Answers the [`FixMerge`]: the scalars added and merged, and what was
     /// passed over.
@@ -1541,10 +1669,9 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns what leaves nothing to keep: an incoming dictionary whose own
-    /// catalog does not validate, a code set that does not parse or would
-    /// rewrite one this crate owns, and what [`Self::add_field`] and
-    /// [`Self::insert`] refuse beyond a disagreeing shape - an alias or an
-    /// alternate tag another field holds. One mutation: the fields and the
+    /// catalog does not validate, a resolution of the folded catalog that
+    /// does not, and what [`Self::add_field`] refuses beyond a disagreeing
+    /// declaration. One mutation: the fields and the
     /// definitions are staged together and adopted together, so a refusal
     /// anywhere leaves this dictionary exactly as it was.
     pub fn merge_with(&mut self, other: &Self) -> Result<FixMerge> {
@@ -1601,22 +1728,70 @@ impl FixRegistry {
         // already reads by, so the members the other dictionary states have
         // to be in that set by the time the field is folded. Fold them after
         // and a merge would narrow a vocabulary instead of widening one.
-        self.merge_codesets(other)?;
         let mut merge = FixMerge {
             sources: 1,
             ..FixMerge::default()
         };
+        self.merge_codesets(other, &mut merge.dropped);
         // How a member of the other dictionary's definitions reads each field
         // the scalar fold did not keep under the identity the member names: a
         // field merged by its name alone now answers under the held identity,
         // and one passed over with nothing here answering to its identity is
         // gone, so the members reading it go with it.
         let mut remap = HashMap::new();
+        // The tags the other dictionary counts a repeating group by: a field
+        // on one is NumInGroup there, whatever this dictionary typed it.
+        let counters: std::collections::HashSet<i32> = other
+            .catalog
+            .iter(crate::FixCategory::Groups)
+            .filter_map(|group| group.as_fix().counter().ok().flatten())
+            .collect();
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
         // one fold twice.
         for declared in other.scalars() {
-            let route = self.route(declared)?;
+            let mut route = self.route(declared)?;
+            let (tag, _) = canonical_identity(declared)?;
+            if counters.contains(&tag) {
+                // A tag this dictionary reads as another field's alternate is
+                // that field spelled with another number. Where the field is
+                // a count, a group counted by the tag is counted by it; where
+                // it is anything else, the group contradicts the dictionary,
+                // and counting it by the field's own tag, or retyping a field
+                // reached only through a spelling of it, would read every
+                // value that field carries as a count.
+                if let Route::Identity(position) = route
+                    && canonical_identity(&self.fields[position])?.0 != tag
+                    && self.fields[position].dtype() != &crate::DataType::Int32
+                {
+                    let held = &self.fields[position];
+                    let refusal = Error::InvalidRecord {
+                        path: declared.name().into(),
+                        reason: crate::text::expected_got(
+                            format_args!("tag {tag}, counting a repeating group, to spell a count"),
+                            format_args!(
+                                "the alternate tag of {} ({}), held as {}",
+                                held.name(),
+                                canonical_identity(held)?.0,
+                                held.dtype()
+                            ),
+                        ),
+                    };
+                    merge.dropped.push(FixDrop::new(declared.clone(), &refusal));
+                    remap.insert(canonical_id(declared)?, None);
+                    continue;
+                }
+                // The field a group is counted by here: the one the arrival
+                // folds into - its tag's, or the one its name reaches on
+                // another tag - else the tag's canonical holder, which a
+                // group's counter reads.
+                if declared.dtype() == &crate::DataType::Int32
+                    && let Some(position) = route.target().or_else(|| self.tags.get(&tag).copied())
+                    && self.retype_counter(position)?
+                {
+                    route = self.route(declared)?;
+                }
+            }
             // The field as it folds: the source's declaration, restated under
             // the datatype the dictionary holds where the two say one thing
             // at two precisions - merging never changes a declared datatype,
@@ -1678,8 +1853,34 @@ impl FixRegistry {
             };
             // Named as the source stated it, the datatype it declared included.
             merge.dropped.push(FixDrop::new(declared.clone(), &refusal));
-            if !matches!(route, Route::Identity(_)) {
-                remap.insert(canonical_id(declared)?, None);
+            match route {
+                // The declaration is passed over, the field its tag reaches
+                // is not: the dictionary keeps its own declaration of it, and
+                // the source's members read that one, under the identity it
+                // holds - an arrival named by nothing but its tag included,
+                // whose own identity nothing holds.
+                Route::Identity(position) | Route::Unnamed(position) => {
+                    let (tag, id) = canonical_identity(&self.fields[position])?;
+                    let arrived = canonical_id(declared)?;
+                    if arrived != id {
+                        let name = SmolStr::new(self.fields[position].name());
+                        remap.insert(arrived, Some((tag, name)));
+                    }
+                }
+                _ => {
+                    remap.insert(canonical_id(declared)?, None);
+                }
+            }
+        }
+        // A member is read under the identity its field holds once every
+        // scalar folded: a holder named by its tag alone that a later arrival
+        // named is that name, whichever arrival the remap recorded first.
+        for target in remap.values_mut().flatten() {
+            for _ in 0..self.renamed.len() {
+                match self.renamed.get(&FixId::of(target.0, &target.1)?) {
+                    Some(Some(moved)) if moved != target => *target = moved.clone(),
+                    _ => break,
+                }
             }
         }
         // The dictionary's own documents read a field that took a source's
@@ -1693,6 +1894,46 @@ impl FixRegistry {
             merge.dropped.len()
         );
         Ok(merge)
+    }
+
+    /// Retypes the field at `position` int32 where a source counts a
+    /// repeating group by it and this dictionary holds it at a coarser
+    /// statement of a count: unbounded text, a float, or another integer
+    /// width - answering whether it did.
+    ///
+    /// The one exception to a merge never changing a declared datatype, and
+    /// the rule a CBlock's own parse already applies to a nested grammar's
+    /// counter: a group is counted by NumInGroup, an int32, and a venue that
+    /// typed the tag `float` or `string` before another counted a group by it
+    /// said less than the second did, not something else. Without it the
+    /// group and every member reading it would be passed over whenever the
+    /// coarser declaration's file sorted first, and kept whenever it sorted
+    /// second. A decimal, an enum, a code, a flag or a temporal is a
+    /// contradiction rather than a coarser count, and stays as held - the
+    /// group is then passed over and named. Logged at warn level, because a
+    /// value another dialect sends in the tag that is not an integer reads as
+    /// null from here on.
+    fn retype_counter(&mut self, position: usize) -> Result<bool> {
+        let held = self.fields[position].dtype();
+        let coarser = held
+            .string_parameters()
+            .is_some_and(|leaf| leaf.bound().is_none())
+            || matches!(
+                held.kind(),
+                crate::DataTypeKind::Integer | crate::DataTypeKind::Floating
+            );
+        if held == &crate::DataType::Int32 || !coarser {
+            return Ok(false);
+        }
+        let mut retyped = self.fields[position].clone();
+        retyped.set_dtype(crate::DataType::Int32)?;
+        let (canonical, _) = canonical_identity(&retyped)?;
+        log::warn!(
+            "tag {canonical} counts a repeating group, so {} is retyped int32 from {held}",
+            retyped.name()
+        );
+        self.replace_field(position, retyped, canonical, References::Defer)?;
+        Ok(true)
     }
 
     /// Reads one Ullink `CBlock` into this dictionary, whole.
@@ -1725,23 +1966,28 @@ impl FixRegistry {
         Ok(self.merge_with(&parsed)?.located(handle))
     }
 
-    /// Reads every Ullink `CBlock` among `files` into this dictionary.
+    /// Reads every Ullink `CBlock` the locations hold into this dictionary.
     ///
-    /// The plural of [`Self::add_cfb_file`]. `files` is any run of handles -
-    /// the listing [`IOBase::glob`] answers, several of them chained, or files
-    /// a caller names one by one - so a folder of counterparty files is
-    /// `add_cfb_files(folder.glob("*.cfb", false)?, None)`, anchored and
-    /// walked exactly as the glob walks it. A container among them is passed
-    /// by, since a dictionary is a file, and a file named twice folds once.
+    /// The plural of [`Self::add_cfb_file`], and it takes the locations alone:
+    /// each is a holder, and what it is decides what it holds. A **glob** -
+    /// `cblocks/*.cfb`, `cblocks/**/*.cfb`, `**/venue-*.cfb` - holds every
+    /// file its pattern matches, walked exactly as [`IOBase::glob`] walks it:
+    /// `*` inside one name, `**` across folders, private entries never
+    /// matched. A **folder** holds the `.cfb` files directly inside it, the
+    /// suffix in any case. A **file** holds itself, whatever it is named, and
+    /// a location where nothing is holds nothing. A container a glob matches
+    /// is passed by, since a dictionary is a file, and a file reached twice
+    /// folds once. So a folder of counterparty files is
+    /// `add_cfb_files(&[Holder::local("cblocks")?], None)`, and several
+    /// locations are one call: one fold, one resolution.
     ///
-    /// **Files fold in ascending URL order**, whatever order they arrived in,
-    /// because the fold's precedence is its input order and a listing's
+    /// **Files fold in ascending URL order**, whatever order they were listed
+    /// in, because the fold's precedence is its input order and a listing's
     /// sequence is not a caller's to see: it varies with how a pattern
     /// decomposed and with the backend beneath. So where two files disagree
     /// about one tag the first-sorting file's declaration is the one held and
-    /// the later one is passed over, and `cblocks/*.cfb`, `cblocks/**/*.cfb`
-    /// and `**/venue-*.cfb` over the same files all answer the same
-    /// dictionary.
+    /// the later one is passed over, and `cblocks/`, `cblocks/*.cfb` and
+    /// `**/*.cfb` over the same files all answer the same dictionary.
     ///
     /// **Files parse on every core, and fold on one.** A parse reads nothing
     /// but its own bytes, so the files are read in order and parsed side by
@@ -1757,34 +2003,85 @@ impl FixRegistry {
     /// and `blpfix44` rather than one name for both.
     ///
     /// Answers the [`FixMerge`] of every file together: `sources` counts the
-    /// files folded, and each drop names the file it was read from. The file
-    /// count is a fact only this call holds: an empty listing and one whose
-    /// files all folded into stored fields both answer zeroes for the
-    /// counts, so without it a mistyped pattern reads as a silent success.
+    /// files folded, `failed` names every file left out, and each drop names
+    /// the file it was read from. The file count is a fact only this call
+    /// holds: an empty listing and one whose files all folded into stored
+    /// fields both answer zeroes for the counts, so without it a mistyped
+    /// pattern reads as a silent success.
     ///
-    /// One mutation, and one copy of the dictionary for the whole call rather
-    /// than one per file: nothing is adopted until every file has parsed and
-    /// folded, so a listing entry that fails, a file that is not well-formed
-    /// XML, or a name the core will not store leaves this dictionary exactly
-    /// as it was and the refusal names the file among however many there
-    /// were.
+    /// **One file is one mutation, and one bad file is one file.** Each file
+    /// folds into the staged dictionary as a mutation of its own: a file that
+    /// cannot be read, is not a well-formed CBlock, or whose fold refuses
+    /// rather than passing a declaration over is rolled back alone - the
+    /// staged dictionary is exactly what the files before it left - and named
+    /// in [`FixMerge::failed`], and every other file still folds. Nothing is
+    /// adopted until the last file is in and the catalog resolves, so a
+    /// caller sees every file's contribution or none of the call's. The
+    /// resolution is the one place two files' contributions can refuse each
+    /// other; where it does, the files fold again one at a time, each resolved
+    /// before the next, so the file the union cannot hold is the one named
+    /// and left out, and the rest are still the dictionary.
     ///
     /// # Errors
     ///
-    /// Returns the first failing entry of `files`, and what
-    /// [`Self::add_cfb_file`] returns for each file, located at that file's
-    /// URL.
-    pub fn add_cfb_files<I>(&mut self, files: I, dialect: Option<&str>) -> Result<FixMerge>
-    where
-        I: IntoIterator<Item = Result<crate::holder::Holder>>,
-    {
+    /// Returns a listing that fails - a location's or one entry of it, before
+    /// any file is parsed, so a listing that fails part way is a refusal
+    /// rather than a half-read dictionary - and what reading this
+    /// dictionary's own catalog refuses.
+    pub fn add_cfb_files(
+        &mut self,
+        locations: &[crate::holder::Holder],
+        dialect: Option<&str>,
+    ) -> Result<FixMerge> {
         // Collected before anything is parsed, so a listing that fails part
         // way is a refusal rather than a half-read dictionary. What is held
         // is one handle per file, never a registry per file.
-        let mut files: Vec<crate::holder::Holder> = files.into_iter().collect::<Result<_>>()?;
-        files.retain(|file| !file.is_container());
+        let mut listed = Vec::new();
+        for location in locations {
+            cblock_files(location, &mut listed)?;
+        }
+        let mut files: Vec<&dyn IOBase> = listed.iter().map(CblockFile::as_io).collect();
         files.sort_by_cached_key(|file| file.url().map(ToString::to_string));
         files.dedup_by_key(|file| file.url().map(ToString::to_string));
+        let (staged, merge) = match self.fold_cfb_files(&files, dialect, false) {
+            Ok(folded) => folded,
+            Err(error) => {
+                log::warn!(
+                    "the {} cblock files folded do not resolve together ({error}); folding them again one at a time",
+                    files.len()
+                );
+                self.fold_cfb_files(&files, dialect, true)?
+            }
+        };
+        *self = staged;
+        log::debug!(
+            "added {} and merged {} fix fields from {} cblock files, passing over {} and leaving out {}",
+            merge.added,
+            merge.merged,
+            merge.sources,
+            merge.dropped.len(),
+            merge.failed.len()
+        );
+        Ok(merge)
+    }
+
+    /// Every file of `files`, in the order given, parsed side by side and
+    /// folded into one staged copy of this dictionary, each file as one
+    /// mutation of its own: the staged copy and the [`FixMerge`] of the files
+    /// that folded, every other file named in [`FixMerge::failed`].
+    ///
+    /// `settle_each` is the slow path a failed resolution falls back to:
+    /// without it every file folds into one set of documents resolved once at
+    /// the end, which is one resolution for any number of files and the
+    /// refusal of the whole call where the union does not resolve; with it
+    /// each file is resolved before the next folds, so a file the union
+    /// cannot hold is left out by name.
+    fn fold_cfb_files(
+        &self,
+        files: &[&dyn IOBase],
+        dialect: Option<&str>,
+        settle_each: bool,
+    ) -> Result<(Self, FixMerge)> {
         // Read here, in order, and parsed on the workers: the bytes and the
         // name each file is stamped with cross by value, the dictionary each
         // parse answers comes back, and at most one file per thread is held.
@@ -1792,8 +2089,7 @@ impl FixRegistry {
             .map_or(1, usize::from)
             .min(files.len())
             .max(1);
-        let reads = files.iter().map(|file| {
-            let handle = file.as_io();
+        let reads = files.iter().copied().map(|handle| {
             let named = dialect
                 .map(str::to_owned)
                 .or_else(|| super::cfb::stem_dialect(handle).map(Cow::into_owned));
@@ -1811,26 +2107,53 @@ impl FixRegistry {
         let mut staged = self.clone();
         let mut documents = staged.documents()?;
         let mut merge = FixMerge::default();
-        for (file, parsed) in files.iter().zip(parsed) {
-            let handle = file.as_io();
-            let (parsed, _) = parsed.map_err(|error| super::store::located(error, handle))?;
-            let folded = staged
-                .fold_source(&parsed, &mut documents)
-                .map_err(|error| super::store::located(error, handle))?;
-            merge.absorb(folded.located(handle));
+        for (handle, parsed) in files.iter().copied().zip(parsed) {
+            let folded = match parsed {
+                Ok((parsed, _)) if settle_each => {
+                    let mut trial = staged.clone();
+                    let folded = (|| {
+                        let mut documents = trial.documents()?;
+                        let folded = trial.fold_source(&parsed, &mut documents)?;
+                        trial.state_parents();
+                        trial.settle(documents)?;
+                        Ok(folded)
+                    })();
+                    if folded.is_ok() {
+                        staged = trial;
+                    }
+                    folded
+                }
+                Ok((parsed, _)) => {
+                    // The file's own mutation: what it folds is undone whole
+                    // where its fold refuses, so the next file folds into
+                    // exactly what the files before it left.
+                    let held = staged.clone();
+                    let mark = documents.checkpoint();
+                    match staged.fold_source(&parsed, &mut documents) {
+                        Ok(folded) => {
+                            documents.release(mark);
+                            Ok(folded)
+                        }
+                        Err(error) => {
+                            staged = held;
+                            documents.rollback(mark);
+                            Err(error)
+                        }
+                    }
+                }
+                Err(error) => Err(error),
+            };
+            match folded {
+                Ok(folded) => merge.absorb(folded.located(handle)),
+                Err(error) => merge.failed.push(FixFailure::new(handle, &error)),
+            }
         }
-        // One resolution for every file, whatever the count.
-        staged.state_parents();
-        staged.settle(documents)?;
-        *self = staged;
-        log::debug!(
-            "added {} and merged {} fix fields from {} cblock files, passing over {}",
-            merge.added,
-            merge.merged,
-            merge.sources,
-            merge.dropped.len()
-        );
-        Ok(merge)
+        if !settle_each {
+            // One resolution for every file, whatever the count.
+            staged.state_parents();
+            staged.settle(documents)?;
+        }
+        Ok((staged, merge))
     }
 
     /// Adds every field, the way [`Self::fold_field`] adds one.
@@ -1912,17 +2235,29 @@ impl FixRegistry {
         if let Some(position) = self.position_of_identity(field)? {
             return Ok(Route::Identity(position));
         }
-        if let Some(holder) = self.tags.get(&tag).copied() {
-            // A field named by nothing but its own decimal tag carries no
-            // name: it is what a source that never says what a tag is called
-            // produces. Such a field on a held tag is the holder's, whatever
-            // the holder is called, and a holder named that way takes the
-            // name of a field arriving on its tag where the name is free - so
-            // a dictionary holds one field per tag rather than a numbered
-            // twin beside a named one, reached by the members of neither.
-            if is_unnamed(field) {
+        // A field named by nothing but its own decimal tag carries no name:
+        // it is what a source that never says what a tag is called produces.
+        // Such a field on a tag a held field answers - as its own or as an
+        // alternate - is that field's, whatever it is called, so a dictionary
+        // holds one field per tag rather than a numbered twin beside a named
+        // one, reached by the members of neither. The one exception is the
+        // other half of a pair the source linked: an arrival naming the
+        // holder's own tag among its alternates is the tag a source said is
+        // spelled like the holder, which is two fields and not one.
+        if is_unnamed(field) {
+            let holder = self.tags.get(&tag).copied().or_else(|| {
+                let holder = self.alternate_tags.get(&tag).copied()?;
+                let (canonical, _) = canonical_identity(&self.fields[holder]).ok()?;
+                let linked = field.as_fix().tags().ok()?.contains(&canonical);
+                (!linked).then_some(holder)
+            });
+            if let Some(holder) = holder {
                 return Ok(Route::Identity(holder));
             }
+        }
+        if let Some(holder) = self.tags.get(&tag).copied() {
+            // A holder named by its tag alone takes the name of a field
+            // arriving on its tag where the name is free.
             if is_unnamed(&self.fields[holder])
                 && self
                     .position_by_name(field.name())
