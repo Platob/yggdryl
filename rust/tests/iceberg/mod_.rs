@@ -4885,14 +4885,14 @@ mod handles {
         .unwrap();
         let untyped_table = yggdryl::IOMedia::record_options(&table)
             .unwrap()
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         table
             .overwrite_arrow_reader(
                 yggdryl::arrow::batch_reader(bad.schema(), [bad.clone()]),
                 &untyped_table,
             )
             .unwrap();
-        let untyped_leaf = leaf.record_options().unwrap().with_commit_row_size(1);
+        let untyped_leaf = leaf.record_options().unwrap().with_commit_batch_num(1);
         leaf.overwrite_arrow_reader(
             yggdryl::arrow::batch_reader(bad.schema(), [bad]),
             &untyped_leaf,
@@ -4914,8 +4914,16 @@ mod handles {
         }
     }
 
+    /// One batch per row, so a cadence of one batch is a commit per row.
+    fn one_row_batches(batch: &RecordBatch) -> yggdryl::arrow::BatchReader {
+        let rows: Vec<RecordBatch> = (0..batch.num_rows())
+            .map(|row| batch.slice(row, 1))
+            .collect();
+        yggdryl::arrow::batch_reader(batch.schema(), rows)
+    }
+
     #[test]
-    fn table_commit_row_size_publishes_each_intent_at_the_requested_cadence() {
+    fn table_commit_batch_num_publishes_each_intent_at_the_requested_cadence() {
         let path = root("handle-table-commit-cadence");
         let schema = trade_schema();
         let mut table = Table::create(
@@ -4928,7 +4936,7 @@ mod handles {
         let options = yggdryl::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
 
         let batch = trades(
             &[1, 2, 3],
@@ -4936,10 +4944,7 @@ mod handles {
             &[Some("XNAS"), Some("XNYS"), Some("XLON")],
         );
         table
-            .overwrite_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 3);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 3);
@@ -4950,10 +4955,7 @@ mod handles {
             &[Some("XLON"), Some("XLON")],
         );
         table
-            .append_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .append_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 5);
 
@@ -4964,10 +4966,7 @@ mod handles {
             &[Some("XNYS"), Some("XLON")],
         );
         table
-            .merge_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &merging,
-            )
+            .merge_arrow_reader(one_row_batches(&batch), &merging)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 7);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 6);
@@ -4976,7 +4975,7 @@ mod handles {
     #[test]
     fn a_table_located_through_its_folder_keeps_the_same_commit_cadence() {
         let (path, mut folder) = table("handle-located-table-cadence");
-        let options = options(&folder).with_commit_row_size(1);
+        let options = options(&folder).with_commit_batch_num(1);
         let batch = trades(
             &[1, 2, 3],
             &[Some("AAPL"), Some("MSFT"), Some("VOD")],
@@ -4984,10 +4983,7 @@ mod handles {
         );
 
         folder
-            .overwrite_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
 
         let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
@@ -4996,6 +4992,62 @@ mod handles {
             collect(reopened.read_arrow_reader(&options).unwrap()).len(),
             3
         );
+    }
+
+    #[test]
+    fn an_unset_cadence_commits_a_table_per_target_file_size_of_batches() {
+        // Three one-row batches: under the 512 MiB default they are one
+        // commit; under a one-byte target every batch reaches the target
+        // and is a commit of its own, and every row still reads back once.
+        let rows = || {
+            one_row_batches(&trades(
+                &[1, 2, 3],
+                &[Some("AAPL"), Some("MSFT"), Some("VOD")],
+                &[Some("XNAS"), Some("XNYS"), Some("XLON")],
+            ))
+        };
+        for (label, target, commits) in [
+            ("default", None, 1),
+            ("tiny", Some(1), 3),
+            ("larger-than-the-stream", Some(1 << 20), 1),
+        ] {
+            let path = root(&format!("handle-table-byte-cadence-{label}"));
+            let schema = trade_schema();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            if let Some(target) = target {
+                let mut explicit = yggdryl::iceberg::IcebergOptions::default();
+                explicit.set_target_file_size_bytes(target).unwrap();
+                table.set_options(explicit);
+            }
+            let options = yggdryl::IOMedia::record_options(&table)
+                .unwrap()
+                .with_field(schema);
+            assert_eq!(options.commit_batch_num(), None, "{label}");
+
+            table.append_arrow_reader(rows(), &options).unwrap();
+            assert_eq!(table.metadata().snapshots().len(), commits, "{label}");
+            assert_eq!(
+                collect(table.read_arrow_reader(&options).unwrap()).len(),
+                3,
+                "{label}"
+            );
+
+            // The first cadence overwrites, every later one appends.
+            table.overwrite_arrow_reader(rows(), &options).unwrap();
+            assert_eq!(table.metadata().snapshots().len(), 2 * commits, "{label}");
+            assert_eq!(
+                collect(table.read_arrow_reader(&options).unwrap()).len(),
+                3,
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
     }
 
     #[test]
@@ -5012,7 +5064,7 @@ mod handles {
         let options = yggdryl::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         let first = trades(&[7], &[Some("NVDA")], &[Some("XNAS")]);
         let reader = Box::new(RecordBatchIterator::new(
             [

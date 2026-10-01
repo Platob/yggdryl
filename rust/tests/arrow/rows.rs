@@ -73,7 +73,7 @@ mod widening {
             end: 5,
             pulls: Arc::clone(&pulls),
         };
-        let mut batches = reader(&field(), rows, Some(2), None, None, None).unwrap();
+        let mut batches = reader(&field(), rows, Some(2), None, None).unwrap();
         assert_eq!(pulls.load(Ordering::Relaxed), 0);
 
         let first = batches.next().unwrap().unwrap();
@@ -96,7 +96,7 @@ mod widening {
 
     #[test]
     fn empty_rows_keep_the_declared_schema_without_a_pull() {
-        let mut batches = reader::<_, Scalar>(&field(), [], None, None, None, None).unwrap();
+        let mut batches = reader::<_, Scalar>(&field(), [], None, None, None).unwrap();
         assert_eq!(batches.schema(), field().into_arrow_schema().unwrap());
         assert!(batches.next().is_none());
     }
@@ -104,7 +104,7 @@ mod widening {
     #[test]
     fn zero_batch_row_size_still_makes_forward_progress() {
         let rows = [Row { id: 1, name: None }, Row { id: 2, name: None }];
-        let batches = reader(&field(), rows, Some(0), None, None, None).unwrap();
+        let batches = reader(&field(), rows, Some(0), None, None).unwrap();
         assert_eq!(
             batches
                 .map(|batch| batch.unwrap().num_rows())
@@ -120,7 +120,7 @@ mod widening {
             Scalar::from_sequence([Scalar::from("wrong"), Scalar::from("bad")]),
             Scalar::from_sequence([Scalar::from(3_i32), Scalar::from("unread")]),
         ];
-        let mut batches = reader(&field(), rows, Some(3), None, None, None).unwrap();
+        let mut batches = reader(&field(), rows, Some(3), None, None).unwrap();
         let prefix = batches.next().unwrap().unwrap();
         assert_eq!(prefix.num_rows(), 1);
         assert_eq!(
@@ -150,7 +150,6 @@ mod widening {
             None,
             None,
             None,
-            None,
         )
         .unwrap();
         let batch = batches.next().unwrap().unwrap();
@@ -173,26 +172,27 @@ mod widening {
             None,
             None,
             None,
-            None,
         )
         .unwrap();
         assert_eq!(batches.count(), 1);
     }
 
     #[test]
-    fn batches_align_to_non_divisible_commit_and_global_row_boundaries() {
+    fn batches_align_to_the_global_row_boundary_without_one_extra_pull() {
+        // A commit cadence counts the batches cut here and never cuts one, so
+        // the row bound and the global row limit are the only cuts.
         let pulls = Arc::new(AtomicUsize::new(0));
         let rows = Counted {
             next: 0,
             end: 10,
             pulls: Arc::clone(&pulls),
         };
-        let mut batches = reader(&field(), rows, Some(2), None, Some(3), Some(5)).unwrap();
+        let mut batches = reader(&field(), rows, Some(2), None, Some(5)).unwrap();
 
         assert_eq!(batches.next().unwrap().unwrap().num_rows(), 2);
-        assert_eq!(batches.next().unwrap().unwrap().num_rows(), 1);
-        assert_eq!(pulls.load(Ordering::Relaxed), 3);
         assert_eq!(batches.next().unwrap().unwrap().num_rows(), 2);
+        assert_eq!(pulls.load(Ordering::Relaxed), 4);
+        assert_eq!(batches.next().unwrap().unwrap().num_rows(), 1);
         assert_eq!(pulls.load(Ordering::Relaxed), 5);
         assert!(batches.next().is_none());
         assert_eq!(pulls.load(Ordering::Relaxed), 5);

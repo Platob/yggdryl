@@ -47,7 +47,6 @@ where
         Some(usize::MAX),
         None,
         None,
-        None,
     )?;
     let schema = reader.schema();
     match reader.next() {
@@ -96,7 +95,6 @@ where
         rows,
         batch_row_size,
         options.batch_byte_size(),
-        None,
         None,
     )?)
 }

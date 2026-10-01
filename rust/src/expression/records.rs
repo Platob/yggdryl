@@ -51,7 +51,7 @@ impl Records {
     ///
     /// Returns an error when the field cannot be expressed as an Arrow schema.
     pub fn into_arrow_reader(self) -> Result<crate::arrow::BatchReader> {
-        crate::arrow::rows::result_reader(&self.field, self.rows, None, None, None, None)
+        crate::arrow::rows::result_reader(&self.field, self.rows, None, None, None)
             .map_err(Error::from)
     }
 

@@ -361,14 +361,19 @@ mod lake {
         let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
         let reader = Box::new(RecordBatchIterator::new(
             [
-                Ok(full.clone()),
+                // One row a batch: a cadence of two batches publishes the
+                // first two rows and still holds the third when the source
+                // fails, so only that complete prefix is kept.
+                Ok(full.slice(0, 1)),
+                Ok(full.slice(1, 1)),
+                Ok(full.slice(2, 1)),
                 Err(ArrowError::ComputeError(
                     "later partition source failure".into(),
                 )),
             ],
             full.schema(),
         ));
-        let committed = options(Some(field.clone())).with_commit_row_size(2);
+        let committed = options(Some(field.clone())).with_commit_batch_num(2);
 
         let message = handle
             .overwrite_arrow_reader(reader, &committed)
@@ -442,7 +447,7 @@ mod lake {
             let mut merging = options(Some(field.clone()))
                 .with_merge_by(["year", "month"])
                 .unwrap();
-            merging.set_commit_row_size(cadence);
+            merging.set_commit_batch_num(cadence);
 
             let message = handle
                 .merge_arrow_reader(

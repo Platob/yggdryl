@@ -147,7 +147,7 @@ impl From<Url> for Location {
 /// The properties are the `with (...)` clause, kept in the order they were
 /// written. The ones a holder reads - `media_type`, `codec`, an object
 /// store's endpoint and credentials - open the location; the ones a write
-/// reads - `safe`, `batch_row_size`, `commit_row_size`, `max_row_size`,
+/// reads - `safe`, `batch_row_size`, `commit_batch_num`, `max_row_size`,
 /// `row_offset` and their byte counterparts - shape the read or write. Anything else travels
 /// along unread, the way a catalog's properties do.
 #[derive(
@@ -1404,8 +1404,8 @@ mod arrow {
             if let Some(bytes) = self.knob("batch_byte_size", "a byte count")? {
                 options.set_batch_byte_size(Some(bytes));
             }
-            if let Some(rows) = self.knob("commit_row_size", "a row count")? {
-                options.set_commit_row_size(Some(rows));
+            if let Some(batches) = self.knob("commit_batch_num", "a batch count")? {
+                options.set_commit_batch_num(Some(batches));
             }
             if let Some(rows) = self.knob("max_row_size", "a row count")? {
                 options.set_max_row_size(Some(rows));

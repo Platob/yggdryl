@@ -919,7 +919,7 @@ fn a_commit_cadence_publishes_every_record_in_order() {
     let field = trades();
     let mut handle = xlsx();
     let mut options = handle.record_options().unwrap();
-    options.set_commit_row_size(Some(2));
+    options.set_commit_batch_num(Some(2));
     let label = |id: i64| format!("r{id}");
     let records: Vec<Scalar> = (1..=5).map(|id| trade(id, Some(&label(id)))).collect();
     handle

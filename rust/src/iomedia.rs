@@ -475,12 +475,14 @@ pub trait IOMedia: Send {
     /// is never pulled from it. A match key is refused: use
     /// [`merge_arrow_reader`](Self::merge_arrow_reader) for that intent.
     ///
-    /// [`commit_row_size`](crate::media::IORecordOptions::commit_row_size)
+    /// [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)
     /// changes publication, not shaping: the incoming reader is cast and
-    /// limited once, then sliced into exact row cadences. The first cadence
-    /// overwrites and every later one appends. Successful prefixes remain
-    /// visible if a later cadence fails; zero is rejected before the source is
-    /// pulled. With no cadence, this method publishes once at the end.
+    /// limited once, then cut into cadences of that many batches, no batch
+    /// ever split. The first cadence overwrites and every later one appends.
+    /// Successful prefixes remain visible if a later cadence fails; zero is
+    /// rejected before the source is pulled. With no cadence, a leaf or a
+    /// folder publishes once at the end and an Iceberg table publishes a
+    /// commit per target file size of batches.
     ///
     /// # Errors
     ///
@@ -586,7 +588,7 @@ pub trait IOMedia: Send {
     /// the incoming reader here exactly as they do on
     /// [`overwrite_arrow_reader`](Self::overwrite_arrow_reader), and a
     /// limit combined with a non-empty match key is refused the same way.
-    /// `commit_row_size` retains append intent for every bounded publication;
+    /// `commit_batch_num` retains append intent for every bounded publication;
     /// successful prefixes remain visible after a later failure.
     ///
     /// # Errors
@@ -633,7 +635,7 @@ pub trait IOMedia: Send {
     ///
     /// Returns a read, cast, merge, encoding, or write failure. An empty match
     /// key is refused: use overwrite or append when rows have no identity.
-    /// `commit_row_size` retains merge intent for every bounded publication;
+    /// `commit_batch_num` retains merge intent for every bounded publication;
     /// successful prefixes remain visible after a later failure.
     fn merge_arrow_reader(
         &mut self,
@@ -670,9 +672,9 @@ pub trait IOMedia: Send {
     /// standard library supplies its `TryInto` implementation.
     ///
     /// Rows are converted lazily and held only for the current
-    /// [`batch_row_size`](crate::media::IORecordOptions::batch_row_size), additionally
-    /// bounded by `commit_row_size` when it is smaller so conversion never
-    /// reads past the next publication. The exact
+    /// [`batch_row_size`](crate::media::IORecordOptions::batch_row_size); a
+    /// commit cadence counts those batches and never cuts one, so conversion
+    /// never reads past the next publication. The exact
     /// declared schema reaches the reader primitive unchanged. Its one shaping
     /// seam applies selection, limits, and stored-shape completion, and its
     /// exact-schema fast path returns these arrays without rebuilding them.
@@ -728,14 +730,13 @@ pub trait IOMedia: Send {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(crate::IOMode::Overwrite)?;
-        options.require_commit_row_size()?;
+        options.require_commit_batch_num()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_row_size(),
+            options.batch_row_size(),
             options.batch_byte_size(),
-            options.commit_row_size(),
             options.max_row_size(),
         )?;
         self.overwrite_arrow_reader(batches, options)
@@ -764,14 +765,13 @@ pub trait IOMedia: Send {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(crate::IOMode::Append)?;
-        options.require_commit_row_size()?;
+        options.require_commit_batch_num()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_row_size(),
+            options.batch_row_size(),
             options.batch_byte_size(),
-            options.commit_row_size(),
             options.max_row_size(),
         )?;
         self.append_arrow_reader(batches, options)
@@ -800,14 +800,13 @@ pub trait IOMedia: Send {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(crate::IOMode::Merge)?;
-        options.require_commit_row_size()?;
+        options.require_commit_batch_num()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_row_size(),
+            options.batch_row_size(),
             options.batch_byte_size(),
-            options.commit_row_size(),
             options.max_row_size(),
         )?;
         self.merge_arrow_reader(batches, options)

@@ -60,7 +60,8 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
-use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
+use crate::arrow::rows::{Closing, canonical_closing_reader};
+use crate::arrow::scalar_memory_size;
 use crate::graph::{ElementColumn, EventColumn};
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
@@ -894,7 +895,7 @@ const ROW_REFUSED: &str = "FIX row excluded: its message was not read or does no
 /// with a warning; a source failure as itself.
 fn charged(message: Result<FixMsg>, schema: &Field) -> Option<Result<Charged>> {
     match message.and_then(|message| message.into_row(schema)) {
-        Ok(row) => Some(Ok((appended_bytes(&row), row))),
+        Ok(row) => Some(Ok((scalar_memory_size(&row) as u64, row))),
         Err(error) => source_failure(error, ROW_REFUSED).map(Err),
     }
 }

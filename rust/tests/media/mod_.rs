@@ -191,14 +191,14 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
     for name in names {
         let mut media = Media::open(handle(name)).unwrap().with_field(schema());
         match &mut media {
-            Media::Ipc(ipc) => ipc.options_mut().set_commit_row_size(Some(1)),
+            Media::Ipc(ipc) => ipc.options_mut().set_commit_batch_num(Some(1)),
             #[cfg(feature = "parquet")]
-            Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
-            Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
-            Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
-            Media::Xmla(xmla) => xmla.options_mut().set_commit_row_size(Some(1)),
-            Media::Csv(csv) => csv.options_mut().set_commit_row_size(Some(1)),
-            Media::Excel(excel) => excel.options_mut().set_commit_row_size(Some(1)),
+            Media::Parquet(parquet) => parquet.options_mut().set_commit_batch_num(Some(1)),
+            Media::Avro(avro) => avro.options_mut().set_commit_batch_num(Some(1)),
+            Media::Text(text) => text.options_mut().set_commit_batch_num(Some(1)),
+            Media::Xmla(xmla) => xmla.options_mut().set_commit_batch_num(Some(1)),
+            Media::Csv(csv) => csv.options_mut().set_commit_batch_num(Some(1)),
+            Media::Excel(excel) => excel.options_mut().set_commit_batch_num(Some(1)),
         }
 
         let options = media.record_options().unwrap();

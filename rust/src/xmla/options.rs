@@ -38,7 +38,7 @@ pub struct XmlaOptions {
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    pub commit_batch_num: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     /// Whether the document is a SOAP message - the response of `method` -
@@ -67,7 +67,7 @@ impl XmlaOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
             level: Level::DEFAULT,
             envelope: true,
             method: Method::Execute,

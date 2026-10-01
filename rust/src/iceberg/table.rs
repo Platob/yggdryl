@@ -114,7 +114,7 @@ use crate::arrow::BatchReader;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::Projection;
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::media::{Cadence, IORecordOptions, RecordOptions};
 use crate::{
     DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
@@ -360,9 +360,15 @@ impl<H: IOBase> Table<H> {
     /// Iceberg's own default of 512 MiB.
     ///
     /// What a write measures against this target is the Arrow in-memory size
-    /// of the accumulated rows - a zero-copy slice counts its own extent, not
-    /// its parent's buffers - estimated *before* encoding. Parquet compresses
-    /// what it writes, so data files land under the target rather than at it.
+    /// of the accumulated rows as [`memory_size`](crate::arrow::memory_size)
+    /// counts it - a zero-copy slice counts its own extent, not its parent's
+    /// buffers - estimated *before* encoding. Parquet compresses what it
+    /// writes, so data files land under the target rather than at it. The
+    /// same target is the cadence a streamed write through [`IOMedia`] commits
+    /// at when its options state no
+    /// [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num):
+    /// the batches held reach it, they commit, and the stream holds at most
+    /// one target file of rows between commits.
     ///
     /// # Errors
     ///
@@ -2569,7 +2575,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         options: &RecordOptions,
     ) -> Result<()> {
         options.require_write_mode(crate::IOMode::Overwrite)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         let stored = self.schema()?.clone();
         let (batches, _, _) =
             crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
@@ -2578,11 +2584,8 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.commit_overwrite_where(&pairs, batches);
-        }
         let schema = batches.schema();
-        let mut commits = options.commit_arrow_readers(batches)?;
+        let mut commits = options.commit_arrow_readers(batches, cadence)?;
         let Some(first) = commits.next() else {
             return self.commit_overwrite_where(&pairs, crate::arrow::batch_reader(schema, []));
         };
@@ -2599,7 +2602,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
     /// is a write.
     fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         options.require_write_mode(crate::IOMode::Append)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         if options.write_limit_is_zero() {
             return Ok(());
@@ -2613,10 +2616,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
-        if commit_row_size.is_none() {
-            return self.commit_append(batches);
-        }
-        for commit in options.commit_arrow_readers(batches)? {
+        for commit in options.commit_arrow_readers(batches, cadence)? {
             self.commit_append(commit?)?;
         }
         Ok(())
@@ -2635,7 +2635,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         if self.metadata.default_spec()?.is_unpartitioned() || !options.merge_by().is_empty() {
             options.require_write_mode(crate::IOMode::Merge)?;
         }
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
@@ -2651,10 +2651,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.commit_merge_where(&pairs, batches, options.merge_by(), options.safe());
-        }
-        for commit in options.commit_arrow_readers(batches)? {
+        for commit in options.commit_arrow_readers(batches, cadence)? {
             self.commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
         }
         Ok(())
@@ -3159,9 +3156,7 @@ fn column_at(batch: &RecordBatch, path: &[SmolStr]) -> Result<ArrayRef> {
 fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
     let bytes = batches.iter().fold(0_u64, |total, batch| {
-        total.saturating_add(
-            u64::try_from(crate::arrow::sliced_memory_size(batch)).unwrap_or(u64::MAX),
-        )
+        total.saturating_add(u64::try_from(crate::arrow::memory_size(batch)).unwrap_or(u64::MAX))
     });
     if rows == 0 || bytes <= target {
         return vec![batches];

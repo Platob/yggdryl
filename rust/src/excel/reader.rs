@@ -531,7 +531,7 @@ pub(crate) fn batch_reader(
         empty: false,
         failed: false,
     };
-    crate::arrow::rows::result_reader(root, stream, batch_row_size, batch_byte_size, None, None)
+    crate::arrow::rows::result_reader(root, stream, batch_row_size, batch_byte_size, None)
 }
 
 /// The empty record field a sheet with no cell states.

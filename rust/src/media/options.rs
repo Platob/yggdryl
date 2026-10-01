@@ -35,13 +35,13 @@
 //!     .with_field(schema.clone())
 //!     .with_filter("id > 10")?
 //!     .with_batch_row_size(1024)
-//!     .with_commit_row_size(10_000);
+//!     .with_commit_batch_num(10);
 //!
 //! assert_eq!(options.field(), Some(schema.clone()));
 //! assert_eq!(options.name(), "row");
 //! assert_eq!(options.plan().to_string(), "create (id int64 not null) where id > 10");
 //! assert_eq!(options.batch_row_size(), Some(1024));
-//! assert_eq!(options.commit_row_size(), Some(10_000));
+//! assert_eq!(options.commit_batch_num(), Some(10));
 //!
 //! // The same plan, spelled as text.
 //! let spelled = options.clone().with_plan("create trade (id int64 not null) where id > 10")?;
@@ -55,8 +55,8 @@ mod commit;
 mod dispatch;
 mod limits;
 
-pub(crate) use commit::CommitBuffer;
 use commit::CommitReaders;
+pub(crate) use commit::{Cadence, CommitBuffer};
 use limits::Limited;
 pub(crate) use limits::WriteLimitState;
 
@@ -80,6 +80,18 @@ use crate::{
 /// Runtime bindings use this same value when their host-language rows must be
 /// widened into Arrow before entering the core reader surface.
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
+
+/// The bytes a resumable write session holds before it publishes, where
+/// [`commit_batch_num`](IORecordOptions::commit_batch_num) is unset: 64 MiB,
+/// measured as [`memory_size`](crate::arrow::memory_size) counts the held
+/// batches.
+///
+/// A one-shot write with no cadence publishes once, after its source ends;
+/// a session ([`ArrowWriteSession`](crate::ArrowWriteSession)) exists to
+/// publish between the awaits of a runtime that pushes it batches, so it
+/// publishes by this many bytes instead. A non-zero target always yields at
+/// least one batch, and no batch is ever cut.
+pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The threads one file may decode or encode on; `None` is what the host
 /// offers.
@@ -218,25 +230,6 @@ pub trait IORecordOptions: Sized {
         let _ = batch_byte_size;
     }
 
-    /// Return the row materialization bound for a native-record write.
-    ///
-    /// Row conversion must never run past the next publication boundary: a
-    /// conversion error at row `N + 1` must not erase the complete `N`-row
-    /// prefix waiting to commit. The smaller of `batch_row_size` and
-    /// `commit_row_size` is therefore the writer's batch size; either setting
-    /// alone supplies the bound.
-    fn write_batch_row_size(&self) -> Option<usize> {
-        match self.commit_row_size() {
-            Some(commit) => Some(
-                self.batch_row_size()
-                    .unwrap_or(DEFAULT_RECORD_BATCH_ROW_SIZE)
-                    .max(1)
-                    .min(commit),
-            ),
-            None => self.batch_row_size(),
-        }
-    }
-
     /// Return the bound on how many result rows flow in total, if any - a
     /// **count of rows**, never a per-row byte cap, because the name reads
     /// both ways.
@@ -271,12 +264,13 @@ pub trait IORecordOptions: Sized {
 
     /// Return the bound on the result rows' Arrow in-memory bytes, if any.
     ///
-    /// Bytes are counted as
-    /// [`get_array_memory_size`](arrow_array::RecordBatch::get_array_memory_size)
-    /// counts them - the same accounting the Iceberg target-file-size rolling
-    /// uses - never as encoded bytes, so a Parquet file written under a byte
-    /// limit lands well under it: the format compresses what this measures
-    /// uncompressed. The flow stops at the last row that keeps the running
+    /// Bytes are counted as [`memory_size`](crate::arrow::memory_size)
+    /// counts them - each batch's own rows, a zero-copy slice its own
+    /// extent rather than its parent's buffers, the one accounting every
+    /// byte bound in the crate reads, the commit cadence and the Iceberg
+    /// target-file-size rolling included - never as encoded bytes, so a
+    /// Parquet file written under a byte limit lands well under it: the
+    /// format compresses what this measures uncompressed. The flow stops at the last row that keeps the running
     /// total at or under the limit, and a non-zero limit always yields at
     /// least one row rather than silently losing everything to one wide row -
     /// only `Some(0)` yields nothing. When
@@ -287,15 +281,30 @@ pub trait IORecordOptions: Sized {
     /// Set the bound on the result rows' Arrow in-memory bytes.
     fn set_max_byte_size(&mut self, max_byte_size: Option<u64>);
 
-    /// Return the publication cadence for a streamed write, in rows.
+    /// Return the publication cadence for a streamed write, in batches.
     ///
-    /// `None` publishes once after the source ends. `Some(N)` publishes every
-    /// complete group of `N` incoming rows and then the final remainder. Zero
-    /// is not a cadence and is rejected before a write pulls its source.
-    fn commit_row_size(&self) -> Option<usize>;
+    /// `Some(N)` publishes every `N` batches of the shaped stream and then
+    /// the final remainder; a batch is one `RecordBatch` the source yields,
+    /// cut by [`batch_row_size`](Self::batch_row_size) and
+    /// [`batch_byte_size`](Self::batch_byte_size) where a row adapter made
+    /// it, never by the cadence, and an empty batch counts for nothing.
+    /// Zero is not a cadence and is rejected before a write pulls its
+    /// source.
+    ///
+    /// `None` is the destination's own best cadence. A leaf of any
+    /// encoding and a partitioned folder publish once, after the source
+    /// ends: a leaf append is a rewrite, so a periodic commit on one would
+    /// be a rewrite per commit. An Iceberg table publishes a commit each
+    /// time the batches it holds reach its target file size
+    /// (`write.target-file-size-bytes`) as
+    /// [`memory_size`](crate::arrow::memory_size) measures them, then the
+    /// remainder, so a streamed write of any length holds at most one
+    /// target file of rows before each commit. A resumable write session
+    /// publishes by [`DEFAULT_COMMIT_BYTE_SIZE`].
+    fn commit_batch_num(&self) -> Option<usize>;
 
-    /// Set the publication cadence for a streamed write.
-    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>);
+    /// Set the publication cadence for a streamed write, in batches.
+    fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>);
 
     /// Return the compression level applied to a declared content coding.
     fn level(&self) -> Level;
@@ -676,15 +685,16 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Return these options with a publication every `commit_row_size` rows.
+    /// Return these options with a publication every `commit_batch_num`
+    /// batches.
     ///
     /// A zero value is retained so the write can return a typed error before
     /// touching a one-shot input. Use `None` through
-    /// [`set_commit_row_size`](Self::set_commit_row_size) for one publication
-    /// at the end.
+    /// [`set_commit_batch_num`](Self::set_commit_batch_num) for the
+    /// destination's own cadence.
     #[must_use]
-    fn with_commit_row_size(mut self, commit_row_size: usize) -> Self {
-        self.set_commit_row_size(Some(commit_row_size));
+    fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self {
+        self.set_commit_batch_num(Some(commit_batch_num));
         self
     }
 
@@ -1160,12 +1170,12 @@ macro_rules! record_options_fields {
             self.max_byte_size = max_byte_size;
         }
 
-        fn commit_row_size(&self) -> Option<usize> {
-            self.commit_row_size
+        fn commit_batch_num(&self) -> Option<usize> {
+            self.commit_batch_num
         }
 
-        fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
-            self.commit_row_size = commit_row_size;
+        fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
+            self.commit_batch_num = commit_batch_num;
         }
 
         fn level(&self) -> $crate::Level {
@@ -1718,32 +1728,51 @@ impl RecordOptions {
     /// This is public only for the workspace bindings, which must reject a
     /// zero cadence before converting or pulling a runtime iterator.
     #[doc(hidden)]
-    pub fn require_commit_row_size(&self) -> Result<Option<usize>> {
-        match self.commit_row_size() {
+    pub fn require_commit_batch_num(&self) -> Result<Option<usize>> {
+        match self.commit_batch_num() {
             Some(0) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.commit_row_size"),
+                path: SmolStr::new_static("$.commit_batch_num"),
                 reason: SmolStr::new_static(
-                    "expected commit_row_size to be a non-zero row count, got 0",
+                    "expected commit_batch_num to be a non-zero batch count, got 0",
                 ),
             }),
-            commit_row_size => Ok(commit_row_size),
+            commit_batch_num => Ok(commit_batch_num),
         }
+    }
+
+    /// The cadence a write publishes by: the batch count these options
+    /// state, or `default`, the destination's own, where they state none.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`require_commit_batch_num`](Self::require_commit_batch_num)
+    /// refusal of a zero count.
+    pub(crate) fn commit_cadence(&self, default: Cadence) -> Result<Cadence> {
+        Ok(match self.require_commit_batch_num()? {
+            Some(batches) => Cadence::Batches(
+                std::num::NonZeroUsize::new(batches).expect("a zero count was refused"),
+            ),
+            None => default,
+        })
     }
 
     /// Split one already-shaped stream into bounded publication readers.
     ///
     /// The caller validates write intent and shapes the stream before entering
     /// here. Every yielded reader contains exactly one complete cadence, or
-    /// the final remainder after end-of-stream. A source error discards only
-    /// the incomplete cadence it interrupted.
+    /// the final remainder after end-of-stream; `default` is the cadence
+    /// where the options state no batch count, and [`Cadence::Once`] yields
+    /// the stream itself once. A source error discards only the incomplete
+    /// cadence it interrupted.
     pub(crate) fn commit_arrow_readers(
         &self,
         batches: crate::arrow::BatchReader,
+        default: Cadence,
     ) -> Result<CommitReaders> {
         Ok(CommitReaders {
             schema: batches.schema(),
             batches: Some(batches),
-            commit_row_size: self.require_commit_row_size()?,
+            cadence: self.commit_cadence(default)?,
             buffer: None,
             done: false,
         })
@@ -1906,17 +1935,19 @@ impl RecordOptions {
 pub mod internals {
     //! What `rust/tests/media/options.rs` pins and a caller cannot reach.
     //!
-    //! `commit_arrow_readers` is the crate-private slicer every bounded write
-    //! pulls through: it cuts a stream at the declared row cadence without
-    //! reading ahead, which is a claim only a counted reader handed straight
-    //! to it can make. The readers it yields come back as an opaque iterator,
-    //! so the type carrying them stays as private as it was.
+    //! `commit_arrow_readers` is the crate-private splitter every bounded
+    //! write pulls through: it cuts a stream at the declared batch cadence,
+    //! or at the byte target a destination defaults to, without reading
+    //! ahead, which is a claim only a counted reader handed straight to it
+    //! can make. The readers it yields come back as an opaque iterator, so
+    //! the type carrying them stays as private as it was.
 
     use super::RecordOptions;
     use crate::Result;
     use crate::arrow::BatchReader;
 
-    /// Split one already-shaped stream into bounded publication readers.
+    /// Split one already-shaped stream into bounded publication readers,
+    /// once after the source ends where the options state no cadence.
     ///
     /// # Errors
     ///
@@ -1925,7 +1956,22 @@ pub mod internals {
         options: &RecordOptions,
         batches: BatchReader,
     ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
-        options.commit_arrow_readers(batches)
+        options.commit_arrow_readers(batches, super::Cadence::Once)
+    }
+
+    /// Split one already-shaped stream into bounded publication readers,
+    /// by `target` bytes of held batches where the options state no
+    /// cadence - what an Iceberg table and a write session default to.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the declared cadence is zero.
+    pub fn commit_arrow_readers_by_bytes(
+        options: &RecordOptions,
+        batches: BatchReader,
+        target: u64,
+    ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
+        options.commit_arrow_readers(batches, super::Cadence::Bytes(target))
     }
 
     /// Hand one file its share of a table's threads, as a table scan or

@@ -1,7 +1,7 @@
 //! Arrow record transfer through [`IOBase`](super::IOBase).
 
 use super::IOBase;
-use crate::media::RecordOptions;
+use crate::media::{Cadence, RecordOptions};
 use crate::{Error, Result};
 
 /// The default append implementation after an encoding-specific boundary has
@@ -17,7 +17,7 @@ pub(crate) fn append_arrow_reader_default(
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Append)?;
-    let commit_row_size = options.require_commit_row_size()?;
+    options.require_commit_batch_num()?;
     options.require_write_limits()?;
     if options.write_limit_is_zero() {
         return Ok(());
@@ -33,25 +33,21 @@ pub(crate) fn append_arrow_reader_default(
         if let Some(mut table) = crate::iceberg::located(handle)? {
             return table.append_arrow_reader(batches, options);
         }
-        return append_arrow_reader_folder(handle, batches, options, commit_row_size);
+        return append_arrow_reader_folder(handle, batches, options);
     }
     let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
         return Ok(());
     };
-    if commit_row_size.is_some() {
-        for commit in options.commit_arrow_readers(batches)? {
-            match &target {
-                Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
-                None => append_leaf(handle, commit?, &delegated)?,
-            }
+    // A leaf append is a rewrite, so with no stated cadence it publishes
+    // once, after the source ends.
+    for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
+        match &target {
+            Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
+            None => append_leaf(handle, commit?, &delegated)?,
         }
-        return Ok(());
     }
-    match target {
-        Some(target) => append_leaf_onto(handle, batches, &delegated, &target),
-        None => append_leaf(handle, batches, &delegated),
-    }
+    Ok(())
 }
 
 /// The default merge implementation after an encoding-specific boundary has
@@ -64,7 +60,7 @@ pub(crate) fn merge_arrow_reader_default(
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Merge)?;
-    let commit_row_size = options.require_commit_row_size()?;
+    options.require_commit_batch_num()?;
     options.require_write_limits()?;
     // Key and limit intent is deterministic and has already been validated;
     // only then may an empty merge end without touching its destination.
@@ -77,27 +73,21 @@ pub(crate) fn merge_arrow_reader_default(
         if let Some(mut table) = crate::iceberg::located(handle)? {
             return table.merge_arrow_reader(batches, options);
         }
-        return merge_arrow_reader_folder(handle, batches, options, commit_row_size);
+        return merge_arrow_reader_folder(handle, batches, options);
     }
     let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
         return Ok(());
     };
-    if commit_row_size.is_some() {
-        for commit in options.commit_arrow_readers(batches)? {
-            match &target {
-                Some(target) => {
-                    merge_leaf_onto(handle, commit?, &delegated, options.merge_by(), target)?
-                }
-                None => merge_leaf(handle, commit?, &delegated, options.merge_by())?,
+    for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
+        match &target {
+            Some(target) => {
+                merge_leaf_onto(handle, commit?, &delegated, options.merge_by(), target)?
             }
+            None => merge_leaf(handle, commit?, &delegated, options.merge_by())?,
         }
-        return Ok(());
     }
-    match target {
-        Some(target) => merge_leaf_onto(handle, batches, &delegated, options.merge_by(), &target),
-        None => merge_leaf(handle, batches, &delegated, options.merge_by()),
-    }
+    Ok(())
 }
 
 /// The common overwrite implementation for byte and folder handles.
@@ -135,7 +125,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Overwrite)?;
-    let commit_row_size = options.require_commit_row_size()?;
+    options.require_commit_batch_num()?;
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
@@ -143,7 +133,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
             table.overwrite_arrow_reader(batches, options)?;
             return Ok(None);
         }
-        return overwrite_arrow_reader_folder(handle, batches, options, commit_row_size).map(Some);
+        return overwrite_arrow_reader_folder(handle, batches, options).map(Some);
     }
     let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
     let schema = batches.schema();
@@ -153,29 +143,23 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
             delegated.name(),
             schema.as_ref(),
         )?));
-    if commit_row_size.is_some() {
-        let mut commits = options.commit_arrow_readers(batches)?;
-        let Some(first) = commits.next() else {
-            // Overwrite is the one intent for which an empty input still
-            // publishes its shaped schema and clears the prior rows.
-            handle.overwrite_prepared_arrow_reader(
-                crate::arrow::batch_reader(schema, []),
-                &delegated,
-            )?;
-            return Ok(published);
-        };
-        handle.overwrite_prepared_arrow_reader(first?, &delegated)?;
-        // Replacing every cadence would retain only the last one. Once the
-        // first prefix is visible, later overwrite cadences are appends.
-        for commit in commits {
-            match &target {
-                Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
-                None => append_leaf(handle, commit?, &delegated)?,
-            }
-        }
+    let mut commits = options.commit_arrow_readers(batches, Cadence::Once)?;
+    let Some(first) = commits.next() else {
+        // Overwrite is the one intent for which an empty input still
+        // publishes its shaped schema and clears the prior rows.
+        handle
+            .overwrite_prepared_arrow_reader(crate::arrow::batch_reader(schema, []), &delegated)?;
         return Ok(published);
+    };
+    handle.overwrite_prepared_arrow_reader(first?, &delegated)?;
+    // Replacing every cadence would retain only the last one. Once the
+    // first prefix is visible, later overwrite cadences are appends.
+    for commit in commits {
+        match &target {
+            Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
+            None => append_leaf(handle, commit?, &delegated)?,
+        }
     }
-    handle.overwrite_prepared_arrow_reader(batches, &delegated)?;
     Ok(published)
 }
 
@@ -184,7 +168,6 @@ fn append_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-    commit_row_size: Option<usize>,
 ) -> Result<()> {
     let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
     let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
@@ -192,13 +175,10 @@ fn append_arrow_reader_folder(
         return Ok(());
     };
     writer.set_options(routing_options(delegated, declared))?;
-    if commit_row_size.is_some() {
-        for commit in options.commit_arrow_readers(batches)? {
-            writer.append(folder, commit?)?;
-        }
-        return Ok(());
+    for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
+        writer.append(folder, commit?)?;
     }
-    writer.append(folder, batches)
+    Ok(())
 }
 
 /// Merge through one folder routing plan shared by every publication cadence.
@@ -206,7 +186,6 @@ fn merge_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-    commit_row_size: Option<usize>,
 ) -> Result<()> {
     // Layout resolves before shaping or mutation because it decides whether
     // at least one merge key remains inside each leaf. The top-level no-op
@@ -217,13 +196,10 @@ fn merge_arrow_reader_folder(
         return Ok(());
     };
     writer.set_options(routing_options(delegated, declared))?;
-    if commit_row_size.is_some() {
-        for commit in options.commit_arrow_readers(batches)? {
-            writer.merge(folder, commit?)?;
-        }
-        return Ok(());
+    for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
+        writer.merge(folder, commit?)?;
     }
-    writer.merge(folder, batches)
+    Ok(())
 }
 
 /// Overwrite through one folder routing plan shared by every publication cadence.
@@ -231,7 +207,6 @@ fn overwrite_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-    commit_row_size: Option<usize>,
 ) -> Result<crate::Field> {
     use crate::media::IORecordOptions;
 
@@ -240,12 +215,7 @@ fn overwrite_arrow_reader_folder(
     let schema = batches.schema();
     let published = crate::arrow::field_from_arrow_schema(delegated.name(), schema.as_ref())?;
     writer.set_options(routing_options(delegated, declared))?;
-    if commit_row_size.is_none() {
-        writer.overwrite(folder, batches)?;
-        return Ok(published);
-    }
-
-    let mut commits = options.commit_arrow_readers(batches)?;
+    let mut commits = options.commit_arrow_readers(batches, Cadence::Once)?;
     let Some(first) = commits.next() else {
         writer.overwrite(folder, crate::arrow::batch_reader(schema, []))?;
         return Ok(published);
@@ -263,7 +233,7 @@ fn overwrite_arrow_reader_folder(
 ///
 /// The declared field and expressions are applied before the limits. The field
 /// is then *taken* from the clone, and every other consumed shaping option is
-/// cleared - including `commit_row_size` - so a default append or merge can
+/// cleared - including `commit_batch_num` - so a default append or merge can
 /// publish through an implementor's required overwrite hook without applying
 /// an incoming-only transform to the stored rows, splitting recursively, or
 /// casting the incoming rows twice.
@@ -314,7 +284,7 @@ fn delegated_options(options: &RecordOptions) -> (RecordOptions, Option<crate::F
     delegated.set_max_row_size(None);
     delegated.set_row_offset(None);
     delegated.set_max_byte_size(None);
-    delegated.set_commit_row_size(None);
+    delegated.set_commit_batch_num(None);
     (delegated, declared)
 }
 
@@ -391,7 +361,7 @@ pub struct ArrowWriteSession {
     delegated: RecordOptions,
     declared: Option<crate::Field>,
     limit: crate::media::WriteLimitState,
-    commit_row_size: usize,
+    cadence: Cadence,
     input_schema: Option<arrow_schema::SchemaRef>,
     shaped_schema: Option<arrow_schema::SchemaRef>,
     /// The shaping compiled for the layout the last batch carried, so a
@@ -457,16 +427,11 @@ impl ArrowWriteSession {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(mode)?;
-        let commit_row_size =
-            options
-                .require_commit_row_size()?
-                .ok_or_else(|| Error::InvalidRecord {
-                    path: smol_str::SmolStr::new_static("$.commit_row_size"),
-                    reason: crate::text::expected_got(
-                        "a non-zero commit_row_size for a resumable write session",
-                        "an unset commit_row_size",
-                    ),
-                })?;
+        // A session exists to publish between awaits, so an unset cadence
+        // publishes by bytes rather than once after a source it never sees
+        // the end of.
+        let cadence =
+            options.commit_cadence(Cadence::Bytes(crate::media::DEFAULT_COMMIT_BYTE_SIZE))?;
         options.require_write_limits()?;
         let (delegated, declared) = delegated_options(options);
         Ok(Self {
@@ -479,7 +444,7 @@ impl ArrowWriteSession {
                 options.max_row_size(),
                 options.max_byte_size(),
             ),
-            commit_row_size,
+            cadence,
             input_schema: None,
             shaped_schema: None,
             shapings: crate::cast::PlanCache::new(),
@@ -567,21 +532,15 @@ impl ArrowWriteSession {
             let Some(batch) = self.limit.apply(batch) else {
                 break;
             };
-            if batch.num_rows() != 0 {
-                if let Some(reader) = self
-                    .buffer
-                    .as_mut()
-                    .expect("a shaped session owns a commit buffer")
-                    .push(batch)
-                    && let Err(error) = self.publish(handle, reader)
-                {
-                    self.abort();
-                    return Err(error);
-                }
-                if let Err(error) = self.publish_ready(handle) {
-                    self.abort();
-                    return Err(error);
-                }
+            if let Some(reader) = self
+                .buffer
+                .as_mut()
+                .expect("a shaped session owns a commit buffer")
+                .push(batch)
+                && let Err(error) = self.publish(handle, reader)
+            {
+                self.abort();
+                return Err(error);
             }
             if self.limit.satisfied() {
                 if let Err(error) = self.complete_input(handle) {
@@ -758,28 +717,16 @@ impl ArrowWriteSession {
         }
         self.buffer = Some(crate::media::CommitBuffer::new(
             std::sync::Arc::clone(&schema),
-            self.commit_row_size,
+            self.cadence,
         ));
         self.shaped_schema = Some(schema);
         Ok(())
-    }
-
-    fn publish_ready(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
-        loop {
-            let ready = self
-                .buffer
-                .as_mut()
-                .and_then(crate::media::CommitBuffer::next_ready);
-            let Some(reader) = ready else { return Ok(()) };
-            self.publish(handle, reader)?;
-        }
     }
 
     fn complete_input(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
         if self.input_complete {
             return Ok(());
         }
-        self.publish_ready(handle)?;
         let remainder = self
             .buffer
             .as_mut()

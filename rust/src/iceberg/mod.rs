@@ -116,7 +116,7 @@ pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
 use crate::holder::Holder;
-use crate::media::RecordOptions;
+use crate::media::{Cadence, RecordOptions};
 use crate::{Error, Result};
 use crate::{IOBase, IOMedia};
 
@@ -263,7 +263,8 @@ impl Located {
         options: &RecordOptions,
     ) -> Result<()> {
         options.require_write_mode(crate::IOMode::Overwrite)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence =
+            options.commit_cadence(Cadence::Bytes(self.table.target_file_size_bytes()?))?;
         let stored = self.table.schema()?.clone();
         let (batches, _, _) =
             crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
@@ -272,11 +273,8 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_overwrite_where(&pairs, batches);
-        }
         let schema = batches.schema();
-        let mut commits = options.commit_arrow_readers(batches)?;
+        let mut commits = options.commit_arrow_readers(batches, cadence)?;
         let Some(first) = commits.next() else {
             return self
                 .table
@@ -302,7 +300,8 @@ impl Located {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(crate::IOMode::Append)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence =
+            options.commit_cadence(Cadence::Bytes(self.table.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         if options.write_limit_is_zero() {
             return Ok(());
@@ -316,10 +315,7 @@ impl Located {
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
-        if commit_row_size.is_none() {
-            return self.table.commit_append(batches);
-        }
-        for commit in options.commit_arrow_readers(batches)? {
+        for commit in options.commit_arrow_readers(batches, cadence)? {
             self.table.commit_append(commit?)?;
         }
         Ok(())
@@ -338,7 +334,8 @@ impl Located {
         use crate::media::IORecordOptions;
 
         options.require_write_mode(crate::IOMode::Merge)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence =
+            options.commit_cadence(Cadence::Bytes(self.table.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
@@ -354,15 +351,7 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_merge_where(
-                &pairs,
-                batches,
-                options.merge_by(),
-                options.safe(),
-            );
-        }
-        for commit in options.commit_arrow_readers(batches)? {
+        for commit in options.commit_arrow_readers(batches, cadence)? {
             self.table
                 .commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
         }

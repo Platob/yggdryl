@@ -16,6 +16,9 @@ use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 mod extension;
 pub(crate) mod rows;
+pub mod size;
+
+pub use size::{array_memory_size, memory_size, scalar_memory_size};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
 ///
@@ -652,94 +655,6 @@ fn reconciled(left: &Field, right: &Field) -> Result<Field> {
         .with_nullable(left.is_nullable() || right.is_nullable()))
 }
 
-/// The bytes a batch's rows occupy, as its own slices count them.
-///
-/// [`RecordBatch::get_array_memory_size`] counts every buffer whole, so a
-/// zero-copy slice of a large batch reports its parent's allocation; a size
-/// estimate spread over the slice's rows then comes out as many times too
-/// large as there are slices. This counts each column's sliced extent, and
-/// falls back to the whole buffers for a layout that cannot be sliced so.
-pub(crate) fn sliced_memory_size(batch: &arrow_array::RecordBatch) -> usize {
-    batch.columns().iter().map(sliced_array_size).sum()
-}
-
-/// The bytes one column's rows occupy, as its own slice counts them - the
-/// per-column half of [`sliced_memory_size`].
-///
-/// A flat column counts its sliced buffers. The layouts whose values live
-/// elsewhere count what the slice reaches: a view column its sixteen-byte
-/// views and the out-of-line bytes they point at, a list or map only the
-/// child range its offsets span, a struct its children, a dictionary its keys
-/// and its values whole.
-pub(crate) fn sliced_array_size(column: &arrow_array::ArrayRef) -> usize {
-    sliced_size(column.as_ref())
-}
-
-fn sliced_size(array: &dyn arrow_array::Array) -> usize {
-    use arrow_array::cast::AsArray;
-    use arrow_schema::DataType as ArrowType;
-
-    let nulls = array.nulls().map_or(0, |nulls| nulls.len().div_ceil(8));
-    // A view's low 32 bits are its length; one of at most twelve bytes is
-    // stored inline, and a longer one points at a data buffer.
-    let viewed = |views: &[u128]| {
-        views.len() * 16
-            + views
-                .iter()
-                .map(|view| *view as u32 as usize)
-                .filter(|length| *length > 12)
-                .sum::<usize>()
-    };
-    match array.data_type() {
-        ArrowType::Utf8View => nulls + viewed(array.as_string_view().views()),
-        ArrowType::BinaryView => nulls + viewed(array.as_binary_view().views()),
-        ArrowType::List(_) => {
-            let list = array.as_list::<i32>();
-            nulls + offsets_size(list.offsets(), list.values())
-        }
-        ArrowType::LargeList(_) => {
-            let list = array.as_list::<i64>();
-            nulls + offsets_size(list.offsets(), list.values())
-        }
-        ArrowType::Map(..) => {
-            let map = array.as_map();
-            let entries: arrow_array::ArrayRef = Arc::new(map.entries().clone());
-            nulls + offsets_size(map.offsets(), &entries)
-        }
-        ArrowType::Struct(_) => {
-            nulls
-                + array
-                    .as_struct()
-                    .columns()
-                    .iter()
-                    .map(|child| sliced_size(child.as_ref()))
-                    .sum::<usize>()
-        }
-        ArrowType::Dictionary(..) => {
-            let dictionary = array.as_any_dictionary();
-            sliced_size(dictionary.keys()) + dictionary.values().get_array_memory_size()
-        }
-        _ => {
-            let whole = array.get_array_memory_size();
-            array
-                .to_data()
-                .get_slice_memory_size()
-                .map_or(whole, |sliced| sliced.min(whole))
-        }
-    }
-}
-
-/// A list's offsets and the child range they span.
-fn offsets_size<O: arrow_array::OffsetSizeTrait>(
-    offsets: &arrow_buffer::OffsetBuffer<O>,
-    values: &arrow_array::ArrayRef,
-) -> usize {
-    let first = offsets.first().map_or(0, |offset| offset.as_usize());
-    let last = offsets.last().map_or(0, |offset| offset.as_usize());
-    std::mem::size_of_val(offsets.as_ref())
-        + sliced_size(values.slice(first, last.saturating_sub(first)).as_ref())
-}
-
 /// Return whether two schemas name the same columns, in the same order.
 ///
 /// This is the question a stream asks of a batch that is not the shape it
@@ -953,7 +868,7 @@ impl arrow_array::RecordBatchReader for Sliced {
 /// ([`RecordBatch::slice`]) and a batch within both bounds passes untouched;
 /// nothing is merged, so a short batch stays short. The byte bound is a target
 /// rather than a ceiling, sized from the batch's
-/// [`sliced_memory_size`] spread over its rows, and a non-zero bound always
+/// [`memory_size`] spread over its rows, and a non-zero bound always
 /// yields at least one row. At most one source batch is held.
 pub(crate) fn rebatched_reader(
     reader: BatchReader,
@@ -988,7 +903,7 @@ impl Rebatched {
     fn cut_rows(&self, batch: &RecordBatch) -> usize {
         let mut cut = self.rows.unwrap_or(usize::MAX).max(1);
         if let Some(bytes) = self.bytes {
-            let size = sliced_memory_size(batch) as u128;
+            let size = memory_size(batch) as u128;
             if let Some(fits) = (u128::from(bytes) * batch.num_rows() as u128).checked_div(size) {
                 cut = cut.min(usize::try_from(fits.max(1)).unwrap_or(usize::MAX));
             }

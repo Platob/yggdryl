@@ -14,6 +14,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::{Field, Scalar};
 
+use super::size::scalar_memory_size;
 use super::{BatchReader, Error, Result, arrow_schema_from_field};
 
 /// Default number of row values materialized into one Arrow batch.
@@ -31,7 +32,6 @@ pub(crate) fn reader<I, R>(
     rows: I,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
 ) -> Result<BatchReader>
 where
@@ -52,7 +52,6 @@ where
         }),
         batch_row_size,
         batch_byte_size,
-        commit_row_size,
         max_row_size,
         false,
         None,
@@ -92,13 +91,11 @@ fn absent_by_name(root: &Field, value: Scalar) -> Scalar {
 /// `closes` is the producer's own cut, read off an item before it converts:
 /// the batch closes after a row it answers `true` for. None where the bounds
 /// alone decide.
-#[allow(clippy::too_many_arguments)]
 fn build<I, R>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
     canonical: bool,
     closes: Option<fn(&R) -> bool>,
@@ -116,8 +113,6 @@ where
         schema,
         batch_row_size: batch_row_size.unwrap_or(DEFAULT_BATCH_ROW_SIZE).max(1),
         batch_byte_size,
-        commit_row_size,
-        rows_to_commit: commit_row_size,
         remaining_rows: max_row_size,
         pending_error: None,
         done: false,
@@ -132,7 +127,6 @@ pub(crate) fn result_reader<I>(
     rows: I,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
 ) -> Result<BatchReader>
 where
@@ -144,7 +138,6 @@ where
         rows.into_iter().map(FallibleScalar),
         batch_row_size,
         batch_byte_size,
-        commit_row_size,
         max_row_size,
         false,
         None,
@@ -176,7 +169,6 @@ where
         field,
         rows,
         Some(usize::MAX),
-        None,
         None,
         None,
         true,
@@ -212,8 +204,6 @@ struct Rows<I: Iterator> {
     schema: SchemaRef,
     batch_row_size: usize,
     batch_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
-    rows_to_commit: Option<usize>,
     remaining_rows: Option<u64>,
     pending_error: Option<ArrowError>,
     done: bool,
@@ -241,16 +231,12 @@ where
             return None;
         }
 
-        // A native row must not be converted past either an observable
-        // publication boundary or the operation-wide row limit. In
-        // particular, `batch_row_size = 1024` and `commit_row_size = 1500` must
-        // yield 1024 then 476 rows: touching row 1501 before the 1500-row
-        // prefix has been handed to the writer would make a conversion error
-        // erase a prefix that was ready to publish.
+        // A native row must not be converted past the operation-wide row
+        // limit: touching a row the limit excludes would make its conversion
+        // error erase a prefix that was ready to publish. A commit cadence
+        // counts the batches cut here and never cuts one, so it bounds
+        // nothing of its own.
         let mut row_size = self.batch_row_size;
-        if let Some(remaining) = self.rows_to_commit {
-            row_size = row_size.min(remaining);
-        }
         if let Some(remaining) = self.remaining_rows {
             row_size = row_size.min(usize::try_from(remaining).unwrap_or(usize::MAX));
         }
@@ -314,7 +300,7 @@ where
             match canonical {
                 Ok(value) => {
                     if self.batch_byte_size.is_some() {
-                        appended += appended_bytes(&value);
+                        appended += scalar_memory_size(&value) as u64;
                     }
                     values.push(value);
                     // The producer's own cut: the row it flagged is the
@@ -349,14 +335,6 @@ where
                 *remaining -= u64::try_from(accepted).unwrap_or(u64::MAX);
                 if *remaining == 0 {
                     self.done = true;
-                }
-            }
-            if let Some(remaining) = &mut self.rows_to_commit {
-                *remaining -= accepted;
-                if *remaining == 0 {
-                    *remaining = self
-                        .commit_row_size
-                        .expect("a cadence remainder has a cadence");
                 }
             }
         }
@@ -403,70 +381,6 @@ fn external(error: crate::Error) -> ArrowError {
     ArrowError::ExternalError(Box::new(error))
 }
 
-/// A fixed per-row width, standing for the offsets and validity a row costs.
-///
-/// Every Arrow layout charges something per row beyond the payload - an
-/// offset, a validity bit, a null slot - and a running estimate that charged
-/// nothing would never close a batch of empty rows. Shared with the producers
-/// that measure their own rows, so one row costs the same width whichever
-/// statistic charges it.
-pub(crate) const ROW_OVERHEAD: u64 = 16;
-
-/// What one canonicalized row is about to append, near enough to batch by.
-///
-/// The bound is a target rather than a ceiling. An in-progress builder cannot
-/// be measured the way a finished batch can, so this accumulates what was
-/// appended plus a fixed per-row width, and the finished batch's own
-/// accounting is what a caller measures against. Cheap and monotone beats
-/// exact and per-row: an exact measure would cost more than the parse that
-/// produced the row. A producer closing its own batches charges a row by
-/// this where it has no better statistic for it.
-pub(crate) fn appended_bytes(value: &Scalar) -> u64 {
-    ROW_OVERHEAD + payload_bytes(value)
-}
-
-/// The leaf payload one value carries, summed through nesting.
-fn payload_bytes(value: &Scalar) -> u64 {
-    // A null costs a validity bit, not a value. Charging it a leaf's width
-    // would make a wide mostly-null row - which a mixed capture's facet
-    // columns are - estimate several times what it actually occupies, and the
-    // bound would then cut batches far shorter than the caller asked for.
-    if value.is_null() {
-        return 0;
-    }
-    if let Some(text) = value.as_str() {
-        return text.len() as u64;
-    }
-    if let Some(bytes) = value.as_bytes() {
-        return bytes.len() as u64;
-    }
-    if let Some(held) = value.as_serie() {
-        return ROW_OVERHEAD
-            + match held.into_arrow_array() {
-                // A column's cost is its buffers, and no row is built to
-                // count it.
-                Some(array) => array.get_array_memory_size() as u64,
-                None => held.rows().iter().map(payload_bytes).sum::<u64>(),
-            };
-    }
-    if let Some(held) = value.as_mapping() {
-        return held
-            .iter()
-            .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
-            .sum::<u64>()
-            + ROW_OVERHEAD;
-    }
-    if let Some(held) = value.as_struct() {
-        return held
-            .iter()
-            .map(|(key, held)| key.len() as u64 + payload_bytes(held))
-            .sum::<u64>()
-            + ROW_OVERHEAD;
-    }
-    // Every remaining variant is a fixed-width leaf, and the widest is 16.
-    16
-}
-
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
@@ -489,7 +403,6 @@ pub mod internals {
         rows: I,
         batch_row_size: Option<usize>,
         batch_byte_size: Option<u64>,
-        commit_row_size: Option<usize>,
         max_row_size: Option<u64>,
     ) -> Result<BatchReader>
     where
@@ -498,13 +411,6 @@ pub mod internals {
         R: TryInto<Scalar>,
         R::Error: Into<crate::Error>,
     {
-        super::reader(
-            field,
-            rows,
-            batch_row_size,
-            batch_byte_size,
-            commit_row_size,
-            max_row_size,
-        )
+        super::reader(field, rows, batch_row_size, batch_byte_size, max_row_size)
     }
 }
