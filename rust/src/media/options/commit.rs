@@ -1,134 +1,136 @@
-//! Bounded publication windows over a streaming record reader.
+//! Bounded publication cadences over a streaming record reader.
 
-/// The one streaming splitter for row-count publication boundaries.
+use std::num::NonZeroUsize;
+
+use arrow_array::RecordBatch;
+
+use crate::arrow::{BatchReader, memory_size};
+
+/// How a streamed write is cut into publications.
 ///
-/// A bounded instance owns at most one complete cadence plus the unconsumed
-/// remainder of the current input batch. Batch slices are Arrow views over the
-/// same buffers. It never pulls a following batch after the current cadence is
-/// full, which is what makes a successful prefix observable before a later
-/// source failure. An unbounded instance yields the original reader once.
+/// A cadence counts whole batches and never cuts one: a batch is the unit
+/// the source yields, and the one shaping pass has already cut it to the
+/// `batch_row_size` and `batch_byte_size` a caller asked for.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Cadence {
+    /// One publication after the source ends.
+    Once,
+    /// A publication every `n` batches, then the remainder.
+    Batches(NonZeroUsize),
+    /// A publication each time the held batches reach this many bytes as
+    /// [`memory_size`] counts them, then the remainder. A non-zero target
+    /// always yields at least one batch, so one enormous batch is still one
+    /// cadence.
+    Bytes(u64),
+}
+
+impl Cadence {
+    /// Whether `batches` held batches of `bytes` complete one cadence.
+    fn is_full(self, batches: usize, bytes: u64) -> bool {
+        match self {
+            Self::Once => false,
+            Self::Batches(count) => batches >= count.get(),
+            Self::Bytes(target) => bytes >= target,
+        }
+    }
+}
+
+/// The one streaming splitter for publication boundaries.
+///
+/// A bounded instance owns at most one complete cadence of whole batches. It
+/// never pulls a following batch after the current cadence is full, which is
+/// what makes a successful prefix observable before a later source failure.
+/// A once-only instance yields the original reader once.
 pub(crate) struct CommitReaders {
     pub(super) schema: arrow_schema::SchemaRef,
-    pub(super) batches: Option<crate::arrow::BatchReader>,
-    pub(super) commit_row_size: Option<usize>,
+    pub(super) batches: Option<BatchReader>,
+    pub(super) cadence: Cadence,
     pub(super) buffer: Option<CommitBuffer>,
     pub(super) done: bool,
 }
 
-/// One owned, bounded publication window.
+/// One owned, bounded publication window of whole batches.
 ///
 /// Both the ordinary pull reader and a runtime binding that pushes batches
-/// between awaits use this object. It owns only the current cadence; slices are
-/// Arrow views over their source buffers.
+/// between awaits use this object. It owns only the current cadence.
 pub(crate) struct CommitBuffer {
     pub(super) schema: arrow_schema::SchemaRef,
-    row_size: usize,
-    rows: usize,
-    batches: Vec<arrow_array::RecordBatch>,
-    /// The one input batch whose leading rows completed the last cadence.
-    /// Its remaining rows are not sliced until the caller asks for the next
-    /// cadence, after it has had a chance to publish the one just returned.
-    current: Option<(arrow_array::RecordBatch, usize)>,
+    cadence: Cadence,
+    batches: Vec<RecordBatch>,
+    /// What the held batches occupy, as [`memory_size`] counts them.
+    bytes: u64,
 }
 
 impl CommitBuffer {
-    pub(crate) fn new(schema: arrow_schema::SchemaRef, row_size: usize) -> Self {
-        debug_assert!(row_size > 0);
+    pub(crate) fn new(schema: arrow_schema::SchemaRef, cadence: Cadence) -> Self {
         Self {
             schema,
-            row_size,
-            rows: 0,
+            cadence,
             batches: Vec::new(),
-            current: None,
+            bytes: 0,
         }
     }
 
-    /// Add one batch and return at most the first cadence it completes.
+    /// Add one batch and return the cadence it completes, if it does.
     ///
-    /// A remainder stays in `current`; callers must publish the returned
-    /// reader before asking [`next_ready`](Self::next_ready) to advance it.
-    pub(crate) fn push(
-        &mut self,
-        batch: arrow_array::RecordBatch,
-    ) -> Option<crate::arrow::BatchReader> {
-        debug_assert!(self.current.is_none());
-        self.current = Some((batch, 0));
-        self.next_ready()
-    }
-
-    /// Advance only the retained input batch, yielding at most one cadence.
-    pub(crate) fn next_ready(&mut self) -> Option<crate::arrow::BatchReader> {
-        let (batch, offset) = self.current.take()?;
-        let available = batch.num_rows().saturating_sub(offset);
-        if available == 0 {
+    /// An empty batch is skipped and counts for nothing. A batch is never
+    /// cut, so the reader returned holds exactly the batches pushed since
+    /// the last one.
+    pub(crate) fn push(&mut self, batch: RecordBatch) -> Option<BatchReader> {
+        if batch.num_rows() == 0 {
             return None;
         }
-        let take = (self.row_size - self.rows).min(available);
-        if offset == 0 && take == batch.num_rows() {
-            self.batches.push(batch);
-        } else {
-            self.batches.push(batch.slice(offset, take));
-            if take < available {
-                self.current = Some((batch, offset + take));
-            }
+        if matches!(self.cadence, Cadence::Bytes(_)) {
+            self.bytes = self
+                .bytes
+                .saturating_add(u64::try_from(memory_size(&batch)).unwrap_or(u64::MAX));
         }
-        self.rows += take;
-        if self.rows != self.row_size {
-            return None;
-        }
-        self.rows = 0;
-        Some(crate::arrow::batch_reader(
-            std::sync::Arc::clone(&self.schema),
-            std::mem::take(&mut self.batches),
-        ))
+        self.batches.push(batch);
+        self.cadence
+            .is_full(self.batches.len(), self.bytes)
+            .then(|| self.take())
     }
 
     /// Take the successful final remainder, if this window holds one.
-    pub(crate) fn finish(&mut self) -> Option<crate::arrow::BatchReader> {
-        if self.rows == 0 {
-            return None;
-        }
-        self.rows = 0;
-        Some(crate::arrow::batch_reader(
-            std::sync::Arc::clone(&self.schema),
-            std::mem::take(&mut self.batches),
-        ))
+    pub(crate) fn finish(&mut self) -> Option<BatchReader> {
+        (!self.batches.is_empty()).then(|| self.take())
     }
 
     /// Discard an incomplete cadence after a source or conversion failure.
     pub(crate) fn clear(&mut self) {
-        self.rows = 0;
+        self.bytes = 0;
         self.batches.clear();
-        self.current = None;
+    }
+
+    fn take(&mut self) -> BatchReader {
+        self.bytes = 0;
+        crate::arrow::batch_reader(
+            std::sync::Arc::clone(&self.schema),
+            std::mem::take(&mut self.batches),
+        )
     }
 }
 
 impl Iterator for CommitReaders {
-    type Item = crate::Result<crate::arrow::BatchReader>;
+    type Item = crate::Result<BatchReader>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             return None;
         }
-        let Some(commit_row_size) = self.commit_row_size else {
+        if self.cadence == Cadence::Once {
             self.done = true;
             return self.batches.take().map(Ok);
-        };
+        }
         loop {
-            if let Some(reader) = self.buffer.as_mut().and_then(CommitBuffer::next_ready) {
-                return Some(Ok(reader));
-            }
             let batches = self
                 .batches
                 .as_mut()
                 .expect("a live commit splitter owns its source");
             match batches.next() {
                 Some(Ok(batch)) => {
-                    if batch.num_rows() == 0 {
-                        continue;
-                    }
                     let buffer = self.buffer.get_or_insert_with(|| {
-                        CommitBuffer::new(std::sync::Arc::clone(&self.schema), commit_row_size)
+                        CommitBuffer::new(std::sync::Arc::clone(&self.schema), self.cadence)
                     });
                     if let Some(reader) = buffer.push(batch) {
                         return Some(Ok(reader));

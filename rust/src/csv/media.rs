@@ -202,7 +202,6 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
                 batch_row_size,
                 options.batch_byte_size(),
                 None,
-                None,
             )
         }
         None => {

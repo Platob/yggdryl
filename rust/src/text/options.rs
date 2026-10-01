@@ -163,7 +163,7 @@ pub struct TextOptions {
     /// Most Arrow in-memory bytes of result rows.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    pub commit_batch_num: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     /// First emitted row number, which `seqnum` counts from; `None` counts
@@ -235,7 +235,7 @@ impl TextOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
             level: Level::DEFAULT,
             start_rownum: None,
             parse_mtime: true,

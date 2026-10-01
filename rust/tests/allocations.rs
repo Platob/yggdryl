@@ -2971,6 +2971,46 @@ fn session_chunk_costs(
 }
 
 #[test]
+fn measuring_a_batch_of_flat_and_struct_columns_allocates_nothing() {
+    use arrow_array::{BooleanArray, Int64Array, RecordBatch, StringArray, StructArray};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::arrow::memory_size;
+
+    // `memory_size` is what every byte bound reads per batch - the commit
+    // cadence, the write limit, the Iceberg file rolling - so it reads the
+    // sliced extents off the arrays and builds no `ArrayData` to count them.
+    for rows in [8_i64, 4_096] {
+        let record: arrow_array::ArrayRef = Arc::new(StructArray::from(vec![(
+            Arc::new(ArrowField::new("flag", ArrowDataType::Boolean, false)),
+            Arc::new(BooleanArray::from(vec![true; rows as usize])) as arrow_array::ArrayRef,
+        )]));
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("id", ArrowDataType::Int64, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+            ArrowField::new("payload", record.data_type().clone(), false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..rows)),
+                Arc::new(StringArray::from_iter_values(
+                    (0..rows).map(|id| id.to_string()),
+                )),
+                record,
+            ],
+        )
+        .expect("the measured batch");
+        let piece = batch.slice(1, (rows / 2) as usize);
+        free(&format!("memory_size over {rows} rows"), || {
+            black_box(memory_size(black_box(&batch)));
+        });
+        free(&format!("memory_size over a slice of {rows} rows"), || {
+            black_box(memory_size(black_box(&piece)));
+        });
+    }
+}
+
+#[test]
 fn a_write_session_compiles_its_shaping_once() {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::media::IORecordOptions as _;
@@ -2985,7 +3025,7 @@ fn a_write_session_compiles_its_shaping_once() {
     let options = yggdryl::media::RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
         .expect("Arrow IPC options")
         .with_field(root.clone())
-        .with_commit_row_size(1);
+        .with_commit_batch_num(1);
     let declared = root.into_arrow_schema().expect("the session root projects");
     // The same columns under another layout: a key admitting nulls.
     let relaxed = Arc::new(Schema::new(vec![

@@ -154,7 +154,7 @@ pub struct ParquetOptions {
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    pub commit_batch_num: Option<usize>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// The threads one file's columns decode or encode on; `None` is what
@@ -189,7 +189,7 @@ struct ParquetOptionsIdentity<'a> {
     max_row_size: Option<u64>,
     row_offset: Option<u64>,
     max_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
+    commit_batch_num: Option<usize>,
     level: crate::Level,
 }
 
@@ -210,7 +210,7 @@ impl ParquetOptions {
             max_row_size: self.max_row_size,
             row_offset: self.row_offset,
             max_byte_size: self.max_byte_size,
-            commit_row_size: self.commit_row_size,
+            commit_batch_num: self.commit_batch_num,
             level: self.level,
         }
     }
@@ -232,7 +232,7 @@ impl ParquetOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
             level: crate::Level::DEFAULT,
             threads: None,
         }
@@ -747,7 +747,7 @@ impl RowGroupEncoder {
             return Ok(());
         }
         for (root, column) in batch.columns().iter().enumerate() {
-            let size = crate::arrow::sliced_array_size(column);
+            let size = crate::arrow::array_memory_size(column);
             if let (Some(pending), Some(weight)) =
                 (self.pending.get_mut(root), self.weights.get_mut(root))
             {

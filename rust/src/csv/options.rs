@@ -67,7 +67,7 @@ pub struct CsvOptions {
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    pub commit_batch_num: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     separator: u8,
@@ -101,7 +101,7 @@ impl CsvOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
             level: Level::DEFAULT,
             separator: b',',
             quote: Some(b'"'),

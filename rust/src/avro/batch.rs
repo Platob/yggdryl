@@ -87,7 +87,7 @@ pub struct AvroOptions {
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    pub commit_batch_num: Option<usize>,
     /// Compression level for the block codec.
     pub level: Level,
     /// The Avro codec name blocks are written with: `null`, `deflate`,
@@ -120,7 +120,7 @@ impl AvroOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
             level: Level::DEFAULT,
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
@@ -401,7 +401,7 @@ where
         // least a byte on the wire whatever it takes in memory, so a bit-packed
         // boolean is not a block of a million rows. A block never holds more
         // rows than a reader with the default limits accepts.
-        let width = (crate::arrow::sliced_memory_size(&batch) / rows)
+        let width = (crate::arrow::memory_size(&batch) / rows)
             .max(batch.num_columns())
             .max(1);
         let block_rows = (WRITE_BLOCK_BYTES / width).clamp(1, Limits::default().max_nodes());

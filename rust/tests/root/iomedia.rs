@@ -137,18 +137,29 @@ mod dispatch {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(1);
+            // A cadence counts whole batches, so the row adapter cuts one
+            // row a batch for every row to be its own publication.
+            .with_batch_row_size(1)
+            .with_commit_batch_num(1);
         reader_handle
-            .write_arrow_reader(reader(), IOMode::Overwrite, &options)
+            .write_arrow_reader(
+                yggdryl::arrow::batch_reader(
+                    schema().into_arrow_schema().unwrap(),
+                    [rows_batch(&[1]), rows_batch(&[2])],
+                ),
+                IOMode::Overwrite,
+                &options,
+            )
             .unwrap();
         assert_eq!(reader_handle.publications.load(Ordering::SeqCst), 2);
 
+        // A held batch is one batch, and a cadence never cuts one.
         let mut batch_handle =
             PublicationProbe::new("generic-batch-commits.arrows", Arc::clone(&pulls));
         batch_handle
             .write_arrow_batch(batch(), IOMode::Overwrite, &options)
             .unwrap();
-        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 1);
 
         let mut record_handle = PublicationProbe::new("generic-row-commits.arrows", pulls);
         record_handle
@@ -1048,7 +1059,12 @@ mod rows {
                     conversions: Arc::clone(&conversions),
                 },
             ];
-            let committed = plain.clone().with_commit_row_size(1);
+            // One row a batch, one batch a commit: row one publishes before
+            // row two converts.
+            let committed = plain
+                .clone()
+                .with_batch_row_size(1)
+                .with_commit_batch_num(1);
             let result = match intent {
                 "overwrite" => handle.overwrite_records(records, &committed),
                 "append" => handle.append_records(records, &committed),
@@ -1076,7 +1092,11 @@ mod rows {
     }
 
     #[test]
-    fn native_rows_align_a_non_divisible_batch_before_the_next_conversion() {
+    fn native_rows_publish_the_whole_batches_a_cadence_counts() {
+        // Two rows a batch, two batches a commit: the second batch closes on
+        // the failing fourth row, so the three rows before it publish as
+        // one cadence after that row's conversion, and a cadence never
+        // cuts a batch to publish sooner.
         let conversions = Arc::new(AtomicUsize::new(0));
         let mut handle =
             PublicationProbe::new("native-non-divisible.arrows", Arc::clone(&conversions));
@@ -1085,7 +1105,7 @@ mod rows {
             .unwrap()
             .with_field(schema())
             .with_batch_row_size(2)
-            .with_commit_row_size(3);
+            .with_commit_batch_num(2);
         let mut records = Vec::new();
         for id in 1..=3_i64 {
             records.push(CountedFallibleRow {
@@ -1109,8 +1129,8 @@ mod rows {
         assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
         assert_eq!(
             handle.pulls_when_published.lock().unwrap().as_slice(),
-            [3],
-            "row four must not convert before the three-row cadence publishes"
+            [4],
+            "the second batch closes on row four, then the two batches publish"
         );
         assert_eq!(conversions.load(Ordering::SeqCst), 4);
         assert_eq!(rows(&handle, &options), 3);
@@ -1506,11 +1526,13 @@ mod write {
     }
 
     #[test]
-    fn commit_row_size_controls_exact_publication_counts() {
+    fn commit_batch_num_controls_exact_publication_counts() {
+        // Three batches of two, one and one rows: a cadence counts the
+        // batches, and an unset one publishes a leaf once.
         for (label, cadence, expected) in [
             ("unset", None, 1),
-            ("one", Some(1), 4),
-            ("across-batches", Some(3), 2),
+            ("one", Some(1), 3),
+            ("two", Some(2), 2),
             ("larger-than-stream", Some(10), 1),
         ] {
             let pulls = Arc::new(AtomicUsize::new(0));
@@ -1519,10 +1541,10 @@ mod write {
                 Arc::clone(&pulls),
             );
             let mut options = handle.record_options().unwrap().with_field(schema());
-            options.set_commit_row_size(cadence);
+            options.set_commit_batch_num(cadence);
             let source = yggdryl::arrow::batch_reader(
                 schema().into_arrow_schema().unwrap(),
-                [rows_batch(&[1, 2]), rows_batch(&[3, 4])],
+                [rows_batch(&[1, 2]), rows_batch(&[3]), rows_batch(&[4])],
             );
 
             handle.overwrite_arrow_reader(source, &options).unwrap();
@@ -1556,10 +1578,10 @@ mod write {
                 .unwrap();
             handle.reset_publications();
 
-            let options = plain.clone().with_commit_row_size(2);
+            let options = plain.clone().with_commit_batch_num(1);
             let incoming = yggdryl::arrow::batch_reader(
                 schema().into_arrow_schema().unwrap(),
-                [rows_batch(&[1, 3, 4, 5])],
+                [rows_batch(&[1, 3]), rows_batch(&[4, 5])],
             );
             match intent {
                 "overwrite" => handle.overwrite_arrow_reader(incoming, &options).unwrap(),
@@ -1589,11 +1611,13 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(1);
+            .with_batch_row_size(1)
+            .with_commit_batch_num(1);
+        // A held batch is one batch, published once whatever its rows.
         batch_handle
             .overwrite_arrow_batch(rows_batch(&[1, 2]), &options)
             .unwrap();
-        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 2);
+        assert_eq!(batch_handle.publications.load(Ordering::SeqCst), 1);
 
         let mut row_handle = PublicationProbe::new("commit-rows.arrows", pulls);
         row_handle
@@ -1616,7 +1640,7 @@ mod write {
     }
 
     #[test]
-    fn zero_commit_row_size_is_rejected_before_any_input_pull() {
+    fn zero_commit_batch_num_is_rejected_before_any_input_pull() {
         for intent in ["overwrite", "append", "merge"] {
             let pulls = Arc::new(AtomicUsize::new(0));
             let mut handle =
@@ -1625,7 +1649,7 @@ mod write {
                 .record_options()
                 .unwrap()
                 .with_field(schema())
-                .with_commit_row_size(0);
+                .with_commit_batch_num(0);
             let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1]))]);
             let result = match intent {
                 "overwrite" => handle.overwrite_arrow_reader(source, &options),
@@ -1636,7 +1660,7 @@ mod write {
             };
 
             let message = result.unwrap_err().to_string();
-            assert!(message.contains("commit_row_size"), "{intent}: {message}");
+            assert!(message.contains("commit_batch_num"), "{intent}: {message}");
             assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
             assert_eq!(handle.publications.load(Ordering::SeqCst), 0, "{intent}");
         }
@@ -1655,12 +1679,12 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(0);
+            .with_commit_batch_num(0);
         let message = handle
             .overwrite_records(records, &options)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("commit_row_size"), "{message}");
+        assert!(message.contains("commit_batch_num"), "{message}");
         assert_eq!(pulls.load(Ordering::SeqCst), 0);
     }
 
@@ -1754,11 +1778,12 @@ mod write {
                     .unwrap();
                 handle.reset_publications();
             }
-            let options = plain.clone().with_commit_row_size(2);
+            let options = plain.clone().with_commit_batch_num(2);
             let source = counted_source(
                 Arc::clone(&pulls),
                 [
-                    Ok(rows_batch(&[2, 3])),
+                    Ok(rows_batch(&[2])),
+                    Ok(rows_batch(&[3])),
                     Ok(rows_batch(&[99])),
                     Err(ArrowError::ComputeError("later source failure".into())),
                 ],
@@ -1779,13 +1804,13 @@ mod write {
             assert_eq!(handle.publications.load(Ordering::SeqCst), 1, "{intent}");
             assert_eq!(
                 handle.pulls_when_published.lock().unwrap().as_slice(),
-                [1],
-                "{intent}: the second batch must not be pulled before commit one publishes"
+                [2],
+                "{intent}: the third batch must not be pulled before commit one publishes"
             );
             assert_eq!(
                 pulls.load(Ordering::SeqCst),
-                3,
-                "{intent}: the one-row second cadence is discarded when its next pull fails"
+                4,
+                "{intent}: the one-batch second cadence is discarded when its next pull fails"
             );
             let expected_rows = match intent {
                 "overwrite" => 2,
@@ -1806,10 +1831,10 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2);
+            .with_commit_batch_num(1);
         let source = yggdryl::arrow::batch_reader(
             schema().into_arrow_schema().unwrap(),
-            [rows_batch(&[1, 2, 3, 4])],
+            [rows_batch(&[1, 2]), rows_batch(&[3, 4])],
         );
 
         let message = handle
@@ -1823,6 +1848,36 @@ mod write {
     }
 
     #[test]
+    fn a_session_without_a_cadence_publishes_by_bytes_so_small_chunks_wait_for_finish() {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut handle = PublicationProbe::new("resumed-default-cadence.arrows", pulls);
+        let options = handle.record_options().unwrap().with_field(schema());
+        assert_eq!(options.commit_batch_num(), None);
+        let mut session = ArrowWriteSession::overwrite(&options).unwrap();
+
+        for ids in [&[1_i64, 2][..], &[3], &[4]] {
+            assert!(
+                session
+                    .push(
+                        &mut handle,
+                        yggdryl::arrow::batch_reader(
+                            schema().into_arrow_schema().unwrap(),
+                            [rows_batch(ids)],
+                        ),
+                    )
+                    .unwrap()
+            );
+        }
+        // Three chunks are far under `DEFAULT_COMMIT_BYTE_SIZE`, so nothing
+        // publishes until the input ends - and a session with no cadence
+        // is no longer refused, because it publishes by bytes.
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
+        session.finish(&mut handle).unwrap();
+        assert_eq!(handle.publications.load(Ordering::SeqCst), 1);
+        assert_eq!(rows(&handle, &options), 4);
+    }
+
+    #[test]
     fn resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder() {
         let pulls = Arc::new(AtomicUsize::new(0));
         let mut handle = PublicationProbe::new("resumed-write.arrows", pulls);
@@ -1830,7 +1885,8 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(3);
+            // Two batches a commit: the first two chunks publish together.
+            .with_commit_batch_num(2);
         let mut session = ArrowWriteSession::overwrite(&options).unwrap();
 
         assert!(
@@ -1882,7 +1938,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2)
+            .with_commit_batch_num(1)
             .with_max_row_size(3);
         let mut session = ArrowWriteSession::overwrite(&options).unwrap();
 
@@ -1914,7 +1970,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2)
+            .with_commit_batch_num(2)
             .with_max_row_size(0);
         handle.destination_touches.store(0, Ordering::SeqCst);
 
@@ -1946,14 +2002,15 @@ mod write {
             .unwrap();
 
         handle.reset_publications();
-        let append_options = plain.clone().with_commit_row_size(1);
+        // One row a batch, one batch a commit.
+        let append_options = plain.clone().with_commit_batch_num(1);
         let mut append = ArrowWriteSession::append(&append_options).unwrap();
         append
             .push(
                 &mut handle,
                 yggdryl::arrow::batch_reader(
                     schema().into_arrow_schema().unwrap(),
-                    [rows_batch(&[3, 4])],
+                    [rows_batch(&[3]), rows_batch(&[4])],
                 ),
             )
             .unwrap();
@@ -1964,7 +2021,7 @@ mod write {
         handle.reset_publications();
         let merge_options = plain
             .clone()
-            .with_commit_row_size(1)
+            .with_commit_batch_num(1)
             .with_merge_by(["id"])
             .unwrap();
         let mut merge = ArrowWriteSession::merge(&merge_options).unwrap();
@@ -1973,7 +2030,7 @@ mod write {
                 &mut handle,
                 yggdryl::arrow::batch_reader(
                     schema().into_arrow_schema().unwrap(),
-                    [rows_batch(&[2, 5])],
+                    [rows_batch(&[2]), rows_batch(&[5])],
                 ),
             )
             .unwrap();
@@ -1990,7 +2047,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(10);
+            .with_commit_batch_num(10);
         let mut session = ArrowWriteSession::overwrite(&large_options).unwrap();
         session
             .push(
@@ -2022,14 +2079,14 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2);
+            .with_commit_batch_num(1);
         let mut exact_session = ArrowWriteSession::overwrite(&exact_options).unwrap();
         exact_session
             .push(
                 &mut exact,
                 yggdryl::arrow::batch_reader(
                     schema().into_arrow_schema().unwrap(),
-                    [rows_batch(&[1, 2, 3, 4])],
+                    [rows_batch(&[1, 2]), rows_batch(&[3, 4])],
                 ),
             )
             .unwrap();
@@ -2046,7 +2103,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2);
+            .with_commit_batch_num(2);
         let mut session = ArrowWriteSession::overwrite(&options).unwrap();
         session
             .push(
@@ -2082,7 +2139,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(2);
+            .with_commit_batch_num(1);
         let mut source_session = ArrowWriteSession::overwrite(&source_options).unwrap();
         let error = source_session
             .push(
@@ -2106,14 +2163,14 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         let mut publication_session = ArrowWriteSession::overwrite(&publication_options).unwrap();
         let error = publication_session
             .push(
                 &mut publication,
                 yggdryl::arrow::batch_reader(
                     schema().into_arrow_schema().unwrap(),
-                    [rows_batch(&[1, 2])],
+                    [rows_batch(&[1]), rows_batch(&[2])],
                 ),
             )
             .unwrap_err();
@@ -2130,7 +2187,7 @@ mod write {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         let mut session = ArrowWriteSession::overwrite(&options).unwrap();
         session
             .push(
@@ -2185,7 +2242,7 @@ mod write {
         let plain = handle.record_options().unwrap().with_field(schema());
         handle.overwrite_arrow_reader(reader(), &plain).unwrap();
         handle.reset_publications();
-        let bounded = plain.clone().with_commit_row_size(2);
+        let bounded = plain.clone().with_commit_batch_num(2);
         let empty = || yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), []);
 
         handle.append_arrow_reader(empty(), &bounded).unwrap();

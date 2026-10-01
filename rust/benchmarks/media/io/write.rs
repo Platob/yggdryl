@@ -759,7 +759,15 @@ fn streaming_benchmarks(criterion: &mut Criterion) {
 fn commit_benchmarks(criterion: &mut Criterion) {
     const COMMIT_ROWS: usize = 64;
     let source = batch().slice(0, COMMIT_ROWS);
-    let mut commits = criterion.benchmark_group("io_write_commit_rows");
+    // One row a batch, so a cadence of N batches is a cadence of N rows
+    // and the publication cost per cadence stays visible.
+    let reader = |source: &RecordBatch| -> BatchReader {
+        let rows: Vec<RecordBatch> = (0..source.num_rows())
+            .map(|row| source.slice(row, 1))
+            .collect();
+        yggdryl::arrow::batch_reader(source.schema(), rows)
+    };
+    let mut commits = criterion.benchmark_group("io_write_commit_batches");
     commits.sample_size(10);
     commits.throughput(Throughput::Elements(COMMIT_ROWS as u64));
 
@@ -780,7 +788,7 @@ fn commit_benchmarks(criterion: &mut Criterion) {
                         .record_options()
                         .expect("an implemented encoding")
                         .with_field(wide());
-                    options.set_commit_row_size(cadence);
+                    options.set_commit_batch_num(cadence);
                     (target, options)
                 },
                 |(mut target, options)| {
@@ -797,7 +805,7 @@ fn commit_benchmarks(criterion: &mut Criterion) {
         .record_options()
         .expect("an implemented encoding")
         .with_field(wide())
-        .with_commit_row_size(8);
+        .with_commit_batch_num(8);
     commits.bench_function("append/n_8", |bencher| {
         bencher.iter_batched(
             || stored_with("commit-append.arrows", &source),

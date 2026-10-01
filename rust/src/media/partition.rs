@@ -718,7 +718,7 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     leaf.set_max_row_size(None);
     leaf.set_row_offset(None);
     leaf.set_max_byte_size(None);
-    leaf.set_commit_row_size(None);
+    leaf.set_commit_batch_num(None);
     if pairs.is_empty() {
         return Ok(leaf);
     }
@@ -921,8 +921,8 @@ fn part_reader(
 /// while [`IOBase`] supplies no cross-leaf atomic primitive.
 ///
 /// Layout discovery drains the tree once at top-level preflight. Reusing this
-/// value keeps `commit_row_size = 1` from turning one listing into one listing
-/// per row, and prevents rows in the same operation from observing different
+/// value keeps `commit_batch_num = 1` from turning one listing into one
+/// listing per batch, and prevents rows in the same operation from observing different
 /// layouts if another writer changes the folder between publications.
 pub(crate) struct FolderWriter {
     existing: HashMap<Vec<(String, String)>, String>,

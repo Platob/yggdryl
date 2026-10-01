@@ -422,7 +422,6 @@ impl Candle {
             batch_row_size,
             None,
             None,
-            None,
         )?)
     }
 }
