@@ -989,7 +989,7 @@ macro_rules! define_field_types {
     ($(#[$meta:meta])* $marker:ident, $variant:ident $(,)?) => {
         $(#[$meta])*
         #[doc = concat!(
-            "The parameter-free datatype of a [`DataType::",
+            "The parameter-free datatype of a [`crate::DataType::",
             stringify!($variant),
             "`] field."
         )]
